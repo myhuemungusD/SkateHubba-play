@@ -71,17 +71,17 @@ Zero serverless functions. Zero custom API layer. The client talks directly to F
 
 ```bash
 # Extract the project
-tar xzf skatehubba-skate.tar.gz -C skatehubba-skate
-cd skatehubba-skate
+tar xzf skatehubba-play.tar.gz -C skatehubba-play
+cd skatehubba-play
 
 # Initialize git
 git init
 git add -A
 git commit -m "feat: skatehubba async s.k.a.t.e. game mvp"
 
-# Create repo on GitHub (name it skatehubba-skate or whatever you want)
+# Create repo on GitHub (name it skatehubba-play or whatever you want)
 # Then push:
-git remote add origin https://github.com/myhuemungusD/skatehubba-skate.git
+git remote add origin https://github.com/myhuemungusD/skatehubba-play.git
 git branch -M main
 git push -u origin main
 ```
@@ -89,7 +89,7 @@ git push -u origin main
 ### Step 3: Deploy to Vercel (5 min)
 
 1. Go to [vercel.com/new](https://vercel.com/new)
-2. Import the `skatehubba-skate` repo
+2. Import the `skatehubba-play` repo
 3. Framework: **Vite** (auto-detected)
 4. Add environment variables — paste your Firebase config values:
 
@@ -132,7 +132,7 @@ If you want this on `skate.skatehubba.com` or a subdomain:
 ## File Structure
 
 ```
-skatehubba-skate/
+skatehubba-play/
 ├── index.html              # Entry point
 ├── package.json            # Dependencies (React, Firebase, Vite)
 ├── vercel.json             # Vercel SPA routing
