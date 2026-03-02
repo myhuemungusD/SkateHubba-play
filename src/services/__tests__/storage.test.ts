@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ── mock firebase/storage ──────────────────── */
-const mockRef = vi.fn((_storage: unknown, path: string) => path);
+const mockRef = vi.fn((...args: any[]) => args[1]);
 const mockUploadBytes = vi.fn().mockResolvedValue({});
 const mockGetDownloadURL = vi.fn().mockResolvedValue("https://cdn.example.com/video.webm");
 
 vi.mock("firebase/storage", () => ({
-  ref: (...args: unknown[]) => mockRef(...args),
-  uploadBytes: (...args: unknown[]) => mockUploadBytes(...args),
-  getDownloadURL: (...args: unknown[]) => mockGetDownloadURL(...args),
+  ref: (...args: any[]) => mockRef(...args),
+  uploadBytes: (...args: any[]) => mockUploadBytes(...args),
+  getDownloadURL: (...args: any[]) => mockGetDownloadURL(...args),
 }));
 
 vi.mock("../../firebase");
