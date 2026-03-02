@@ -8,11 +8,11 @@ const mockDoc = vi.fn((...args: any[]) => args.slice(1).join("/"));
 const mockServerTimestamp = vi.fn(() => "SERVER_TS");
 
 vi.mock("firebase/firestore", () => ({
-  doc: (...args: any[]) => mockDoc(...args),
-  getDoc: (...args: any[]) => mockGetDoc(...args),
-  setDoc: (...args: any[]) => mockSetDoc(...args),
-  runTransaction: (...args: any[]) => mockRunTransaction(...args),
-  serverTimestamp: () => mockServerTimestamp(),
+  doc: mockDoc,
+  getDoc: mockGetDoc,
+  setDoc: mockSetDoc,
+  runTransaction: mockRunTransaction,
+  serverTimestamp: mockServerTimestamp,
 }));
 
 vi.mock("../../firebase");

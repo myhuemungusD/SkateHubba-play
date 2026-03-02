@@ -6,9 +6,9 @@ const mockUploadBytes = vi.fn().mockResolvedValue({});
 const mockGetDownloadURL = vi.fn().mockResolvedValue("https://cdn.example.com/video.webm");
 
 vi.mock("firebase/storage", () => ({
-  ref: (...args: any[]) => mockRef(...args),
-  uploadBytes: (...args: any[]) => mockUploadBytes(...args),
-  getDownloadURL: (...args: any[]) => mockGetDownloadURL(...args),
+  ref: mockRef,
+  uploadBytes: mockUploadBytes,
+  getDownloadURL: mockGetDownloadURL,
 }));
 
 vi.mock("../../firebase");
