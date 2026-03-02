@@ -1,0 +1,83 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper functions ──
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isPlayer(game) {
+      return isSignedIn() && (
+        request.auth.uid == game.player1Uid ||
+        request.auth.uid == game.player2Uid
+      );
+    }
+
+    // ── Users ──
+    // Users can read any profile (for opponent lookup)
+    // Users can only write their own profile (created once)
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.username is string
+        && request.resource.data.username.size() >= 3
+        && request.resource.data.username.size() <= 20;
+      allow update: if isOwner(uid)
+        // Cannot change username or uid after creation
+        && request.resource.data.username == resource.data.username
+        && request.resource.data.uid == resource.data.uid;
+      allow delete: if false;
+    }
+
+    // ── Usernames (reservation docs for uniqueness) ──
+    match /usernames/{username} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && username.size() >= 3
+        && username.size() <= 20;
+      // Once reserved, cannot be changed or deleted
+      allow update, delete: if false;
+    }
+
+    // ── Games ──
+    match /games/{gameId} {
+      // Both players can read their game
+      allow read: if isSignedIn() && isPlayer(resource.data);
+
+      // Any signed-in user can create a game (as player1)
+      allow create: if isSignedIn()
+        && request.resource.data.player1Uid == request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.p1Letters == 0
+        && request.resource.data.p2Letters == 0
+        && request.resource.data.turnNumber == 1;
+
+      // Only the player whose turn it is can update
+      allow update: if isSignedIn()
+        && isPlayer(resource.data)
+        && (
+          // The current turn player can update
+          request.auth.uid == resource.data.currentTurn
+          // OR the game just ended (winner set)
+          || request.resource.data.status == 'complete'
+        )
+        // Cannot change player UIDs
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        // Letters can only increase
+        && request.resource.data.p1Letters >= resource.data.p1Letters
+        && request.resource.data.p2Letters >= resource.data.p2Letters;
+
+      allow delete: if false;
+    }
+  }
+}

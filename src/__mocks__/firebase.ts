@@ -1,0 +1,17 @@
+/**
+ * Centralized Firebase mock for all tests.
+ *
+ * vi.mock("../firebase") in each test file will resolve to this __mocks__ version
+ * automatically thanks to Vitest's manual-mock convention.
+ */
+import { vi } from "vitest";
+
+export const auth = {
+  currentUser: null,
+};
+
+export const db = {};
+
+export const storage = {};
+
+export default {}; // default export (the app object)
