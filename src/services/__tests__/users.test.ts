@@ -4,14 +4,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockGetDoc = vi.fn();
 const mockSetDoc = vi.fn();
 const mockRunTransaction = vi.fn();
-const mockDoc = vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/"));
+const mockDoc = vi.fn((...args: any[]) => args.slice(1).join("/"));
 const mockServerTimestamp = vi.fn(() => "SERVER_TS");
 
 vi.mock("firebase/firestore", () => ({
-  doc: (...args: unknown[]) => mockDoc(...args),
-  getDoc: (...args: unknown[]) => mockGetDoc(...args),
-  setDoc: (...args: unknown[]) => mockSetDoc(...args),
-  runTransaction: (...args: unknown[]) => mockRunTransaction(...args),
+  doc: (...args: any[]) => mockDoc(...args),
+  getDoc: (...args: any[]) => mockGetDoc(...args),
+  setDoc: (...args: any[]) => mockSetDoc(...args),
+  runTransaction: (...args: any[]) => mockRunTransaction(...args),
   serverTimestamp: () => mockServerTimestamp(),
 }));
 
