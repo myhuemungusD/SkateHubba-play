@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ── mock firebase/firestore ────────────────── */
-const mockGetDoc = vi.fn();
-const mockSetDoc = vi.fn();
-const mockRunTransaction = vi.fn();
-const mockDoc = vi.fn((...args: any[]) => args.slice(1).join("/"));
-const mockServerTimestamp = vi.fn(() => "SERVER_TS");
+const { mockGetDoc, mockSetDoc, mockRunTransaction, mockDoc, mockServerTimestamp } = vi.hoisted(() => ({
+  mockGetDoc: vi.fn(),
+  mockSetDoc: vi.fn(),
+  mockRunTransaction: vi.fn(),
+  mockDoc: vi.fn((...args: any[]) => args.slice(1).join("/")),
+  mockServerTimestamp: vi.fn(() => "SERVER_TS"),
+}));
 
 vi.mock("firebase/firestore", () => ({
   doc: mockDoc,
