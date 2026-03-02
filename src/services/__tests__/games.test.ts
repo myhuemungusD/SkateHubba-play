@@ -24,15 +24,15 @@ const {
 }));
 
 vi.mock("firebase/firestore", () => ({
-  collection: (...args: any[]) => mockCollection(...args),
-  doc: (...args: any[]) => mockDoc(...args),
-  addDoc: (...args: any[]) => mockAddDoc(...args),
-  getDoc: (...args: any[]) => mockGetDoc(...args),
-  updateDoc: (...args: any[]) => mockUpdateDoc(...args),
-  query: (...args: any[]) => mockQuery(...args),
-  where: (...args: any[]) => mockWhere(...args),
-  orderBy: (...args: any[]) => mockOrderBy(...args),
-  onSnapshot: (...args: any[]) => mockOnSnapshot(...args),
+  collection: mockCollection,
+  doc: mockDoc,
+  addDoc: mockAddDoc,
+  getDoc: mockGetDoc,
+  updateDoc: mockUpdateDoc,
+  query: mockQuery,
+  where: mockWhere,
+  orderBy: mockOrderBy,
+  onSnapshot: mockOnSnapshot,
   serverTimestamp: () => "SERVER_TS",
   Timestamp: {
     fromMillis: (ms: number) => ({ _ms: ms, toMillis: () => ms }),
