@@ -18,11 +18,13 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Validate config in dev
-if (import.meta.env.DEV && !firebaseConfig.apiKey) {
-  console.error(
-    "⚠️ Firebase config missing. Copy .env.example to .env and fill in your Firebase project values."
-  );
+// Validate config — detect missing environment variables
+if (!firebaseConfig.apiKey) {
+  const isVercel = typeof import.meta.env.VERCEL !== "undefined";
+  const message = isVercel
+    ? "Firebase config missing. Add VITE_FIREBASE_* environment variables in Vercel Dashboard → Project Settings → Environment Variables (scope: Preview and/or Production)."
+    : "Firebase config missing. Copy .env.example to .env.local and fill in your Firebase project values.";
+  console.error(`⚠️ ${message}`);
 }
 
 const app = initializeApp(firebaseConfig);
