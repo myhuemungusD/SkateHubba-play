@@ -12,6 +12,14 @@
   </head>
   <body class="bg-[#0A0A0A] text-white antialiased">
     <div id="root"></div>
+    <script>
+      // Unregister stale service workers left by previous setups
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          registrations.forEach(function(registration) { registration.unregister(); });
+        });
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
