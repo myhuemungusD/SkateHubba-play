@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import { useAuth } from "./hooks/useAuth";
 import { signUp, signIn, signOut, resetPassword } from "./services/auth";
 import {
@@ -1171,6 +1172,7 @@ export default function App() {
           onBack={() => { setActiveGame(null); setScreen("lobby"); }}
         />
       )}
+      <Analytics />
     </>
   );
 }
