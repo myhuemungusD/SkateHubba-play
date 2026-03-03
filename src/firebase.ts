@@ -4,8 +4,6 @@ import {
   getFirestore,
   connectFirestoreEmulator,
   initializeFirestore,
-  persistentLocalCache,
-  persistentMultipleTabManager,
 } from "firebase/firestore";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
 
@@ -29,12 +27,8 @@ if (!firebaseConfig.apiKey) {
 
 const app = initializeApp(firebaseConfig);
 
-// Firestore with offline persistence — using named database "skatehubba"
-export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({
-    tabManager: persistentMultipleTabManager(),
-  }),
-}, "skatehubba");
+// Firestore — using default database
+export const db = getFirestore(app);
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
