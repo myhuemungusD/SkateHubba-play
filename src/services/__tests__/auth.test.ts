@@ -42,7 +42,10 @@ describe("auth service", () => {
 
     it("sends a verification email (fire-and-forget)", async () => {
       await signUp("a@b.com", "pass123");
-      expect(mockSendVerify).toHaveBeenCalledWith(mockUserCredential.user);
+      expect(mockSendVerify).toHaveBeenCalledWith(mockUserCredential.user, {
+        url: expect.any(String),
+        handleCodeInApp: false,
+      });
     });
   });
 
@@ -64,7 +67,10 @@ describe("auth service", () => {
   describe("resetPassword", () => {
     it("sends a password reset email", async () => {
       await resetPassword("a@b.com");
-      expect(mockSendReset).toHaveBeenCalledWith(auth, "a@b.com");
+      expect(mockSendReset).toHaveBeenCalledWith(auth, "a@b.com", {
+        url: expect.any(String),
+        handleCodeInApp: false,
+      });
     });
   });
 
@@ -72,7 +78,10 @@ describe("auth service", () => {
     it("sends verification when there is a current user", async () => {
       (auth as any).currentUser = { uid: "u1" };
       await resendVerification();
-      expect(mockSendVerify).toHaveBeenCalledWith({ uid: "u1" });
+      expect(mockSendVerify).toHaveBeenCalledWith({ uid: "u1" }, {
+        url: expect.any(String),
+        handleCodeInApp: false,
+      });
     });
 
     it("does nothing when there is no current user", async () => {
