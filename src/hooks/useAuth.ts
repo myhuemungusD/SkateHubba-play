@@ -28,8 +28,13 @@ export function useAuth(): AuthState {
     const unsub = onAuthChange(async (u) => {
       setUser(u);
       if (u) {
-        const p = await getUserProfile(u.uid);
-        setProfile(p);
+        try {
+          const p = await getUserProfile(u.uid);
+          setProfile(p);
+        } catch {
+          // Profile may not exist yet (new user) or Firestore not ready
+          setProfile(null);
+        }
       } else {
         setProfile(null);
       }
@@ -41,7 +46,7 @@ export function useAuth(): AuthState {
   // Re-fetch profile when user changes
   useEffect(() => {
     if (user && !profile) {
-      getUserProfile(user.uid).then(setProfile);
+      getUserProfile(user.uid).then(setProfile).catch(() => setProfile(null));
     }
   }, [user, profile]);
 

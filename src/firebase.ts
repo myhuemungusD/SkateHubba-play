@@ -29,12 +29,12 @@ if (!firebaseConfig.apiKey) {
 
 const app = initializeApp(firebaseConfig);
 
-// Firestore with offline persistence
+// Firestore with offline persistence — using named database "skatehubba"
 export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({
     tabManager: persistentMultipleTabManager(),
   }),
-});
+}, "skatehubba");
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
