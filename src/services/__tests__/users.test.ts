@@ -5,7 +5,7 @@ const { mockGetDoc, mockSetDoc, mockRunTransaction, mockDoc, mockServerTimestamp
   mockGetDoc: vi.fn(),
   mockSetDoc: vi.fn(),
   mockRunTransaction: vi.fn(),
-  mockDoc: vi.fn((...args: any[]) => args.slice(1).join("/")),
+  mockDoc: vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/")),
   mockServerTimestamp: vi.fn(() => "SERVER_TS"),
 }));
 
@@ -14,7 +14,7 @@ vi.mock("firebase/firestore", () => ({
   getDoc: mockGetDoc,
   setDoc: mockSetDoc,
   runTransaction: mockRunTransaction,
-  serverTimestamp: mockServerTimestamp,
+  serverTimestamp: () => mockServerTimestamp(),
 }));
 
 vi.mock("../../firebase");

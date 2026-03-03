@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ── mock firebase/storage ──────────────────── */
 const { mockRef, mockUploadBytes, mockGetDownloadURL } = vi.hoisted(() => ({
-  mockRef: vi.fn((...args: any[]) => args[1]),
+  mockRef: vi.fn((_storage: unknown, path: string) => path),
   mockUploadBytes: vi.fn().mockResolvedValue({}),
   mockGetDownloadURL: vi.fn().mockResolvedValue("https://cdn.example.com/video.webm"),
 }));
