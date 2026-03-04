@@ -482,8 +482,14 @@ function ProfileSetup({
 
     const id = ++checkRef.current;
     const timeout = setTimeout(async () => {
-      const ok = await isUsernameAvailable(normalized);
-      if (checkRef.current === id) setAvailable(ok);
+      try {
+        const ok = await isUsernameAvailable(normalized);
+        if (checkRef.current === id) setAvailable(ok);
+      } catch {
+        // Firestore read failed — treat as unavailable and show error
+        if (checkRef.current === id) setAvailable(null);
+        setError("Could not check username — try again");
+      }
     }, 400);
     return () => clearTimeout(timeout);
   }, [username]);
@@ -493,6 +499,7 @@ function ProfileSetup({
     const normalized = username.toLowerCase().trim();
     if (normalized.length < 3) { setError("Username must be 3+ characters"); return; }
     if (available === false) { setError("Username is taken"); return; }
+    if (available === null) { setError("Still checking username — wait a moment"); return; }
 
     setLoading(true);
     try {
@@ -551,7 +558,7 @@ function ProfileSetup({
 
         <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-        <Btn onClick={submit} disabled={loading || username.length < 3 || available === false}>
+        <Btn onClick={submit} disabled={loading || username.length < 3 || available !== true}>
           {loading ? "Creating..." : "Lock It In"}
         </Btn>
       </div>
@@ -998,7 +1005,7 @@ export default function App() {
   const [activeGame, setActiveGame] = useState<GameDoc | null>(null);
   const [activeProfile, setActiveProfile] = useState<UserProfile | null>(null);
 
-  // Sync profile state
+  // Sync profile from useAuth hook into local state
   useEffect(() => {
     if (profile) setActiveProfile(profile);
   }, [profile]);
@@ -1014,9 +1021,9 @@ export default function App() {
       setScreen("profile");
       return;
     }
-    if (screen === "landing" || screen === "auth" || screen === "profile") {
-      setScreen("lobby");
-    }
+    setScreen((prev) =>
+      prev === "landing" || prev === "auth" || prev === "profile" ? "lobby" : prev
+    );
   }, [loading, user, activeProfile]);
 
   // Subscribe to games when in lobby
@@ -1062,9 +1069,11 @@ export default function App() {
         <ProfileSetup
           uid={user.uid}
           email={user.email || ""}
-          onDone={(p) => {
+          onDone={async (p) => {
             setActiveProfile(p);
             setScreen("lobby");
+            // Sync the useAuth hook so profile is available on refresh
+            await refreshProfile();
           }}
         />
       )}
