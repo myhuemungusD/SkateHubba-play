@@ -33,6 +33,14 @@ vi.mock("./services/storage", () => ({
   uploadVideo: vi.fn(),
 }));
 
+vi.mock("./firebase", () => ({
+  firebaseReady: true,
+  auth: { currentUser: null },
+  db: {},
+  storage: {},
+  default: {},
+}));
+
 import App from "./App";
 
 beforeEach(() => vi.clearAllMocks());
