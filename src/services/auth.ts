@@ -22,31 +22,35 @@ function getActionCodeSettings(): ActionCodeSettings {
 }
 
 export function onAuthChange(cb: (user: User | null) => void) {
+  if (!auth) {
+    cb(null);
+    return () => {};
+  }
   return onAuthStateChanged(auth, cb);
 }
 
 export async function signUp(email: string, password: string): Promise<User> {
-  const cred = await createUserWithEmailAndPassword(auth, email, password);
+  const cred = await createUserWithEmailAndPassword(auth!, email, password);
   // Fire-and-forget verification email
   sendEmailVerification(cred.user, getActionCodeSettings()).catch(() => {});
   return cred.user;
 }
 
 export async function signIn(email: string, password: string): Promise<User> {
-  const cred = await signInWithEmailAndPassword(auth, email, password);
+  const cred = await signInWithEmailAndPassword(auth!, email, password);
   return cred.user;
 }
 
 export async function signOut(): Promise<void> {
-  await fbSignOut(auth);
+  await fbSignOut(auth!);
 }
 
 export async function resetPassword(email: string): Promise<void> {
-  await sendPasswordResetEmail(auth, email, getActionCodeSettings());
+  await sendPasswordResetEmail(auth!, email, getActionCodeSettings());
 }
 
 export async function resendVerification(): Promise<void> {
-  if (auth.currentUser) {
+  if (auth?.currentUser) {
     await sendEmailVerification(auth.currentUser, getActionCodeSettings());
   }
 }

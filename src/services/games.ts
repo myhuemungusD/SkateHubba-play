@@ -45,7 +45,7 @@ export interface GameDoc {
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
-const gamesRef = collection(db, "games");
+const gamesRef = db ? collection(db, "games") : null;
 
 /* ────────────────────────────────────────────
  * Create a new game (challenge)
@@ -81,7 +81,7 @@ export async function createGame(
     updatedAt: serverTimestamp(),
   };
 
-  const docRef = await addDoc(gamesRef, gameData);
+  const docRef = await addDoc(gamesRef!, gameData);
   return docRef.id;
 }
 
@@ -94,7 +94,7 @@ export async function setTrick(
   trickName: string,
   videoUrl: string | null
 ): Promise<void> {
-  const gameRef = doc(db, "games", gameId);
+  const gameRef = doc(db!, "games", gameId);
   const snap = await getDoc(gameRef);
   if (!snap.exists()) throw new Error("Game not found");
 
@@ -125,7 +125,7 @@ export async function submitMatchResult(
   landed: boolean,
   matchVideoUrl: string | null
 ): Promise<{ gameOver: boolean; winner: string | null }> {
-  const gameRef = doc(db, "games", gameId);
+  const gameRef = doc(db!, "games", gameId);
   const snap = await getDoc(gameRef);
   if (!snap.exists()) throw new Error("Game not found");
 
@@ -212,8 +212,8 @@ export function subscribeToMyGames(
     onUpdate(sorted);
   };
 
-  const q1 = query(gamesRef, where("player1Uid", "==", uid));
-  const q2 = query(gamesRef, where("player2Uid", "==", uid));
+  const q1 = query(gamesRef!, where("player1Uid", "==", uid));
+  const q2 = query(gamesRef!, where("player2Uid", "==", uid));
 
   const unsub1 = onSnapshot(q1, (snap) => {
     p1Games = snap.docs.map((d) => ({ id: d.id, ...d.data() } as GameDoc));
@@ -238,7 +238,7 @@ export function subscribeToGame(
   gameId: string,
   onUpdate: (game: GameDoc | null) => void
 ): Unsubscribe {
-  return onSnapshot(doc(db, "games", gameId), (snap) => {
+  return onSnapshot(doc(db!, "games", gameId), (snap) => {
     if (!snap.exists()) {
       onUpdate(null);
       return;

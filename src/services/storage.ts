@@ -14,7 +14,7 @@ export async function uploadVideo(
   blob: Blob
 ): Promise<string> {
   const path = `games/${gameId}/turn-${turnNumber}/${role}.webm`;
-  const storageRef = ref(storage, path);
+  const storageRef = ref(storage!, path);
 
   await uploadBytes(storageRef, blob, {
     contentType: "video/webm",
