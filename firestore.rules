@@ -1,5 +1,4 @@
 rules_version = '2';
-// SkateHubba S.K.A.T.E. Game — deployed to skatehubba database
 
 service cloud.firestore {
   match /databases/{database}/documents {

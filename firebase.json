@@ -1,5 +1,6 @@
 {
   "firestore": {
+    "database": "skatehubba",
     "rules": "firestore.rules"
   },
   "storage": {
