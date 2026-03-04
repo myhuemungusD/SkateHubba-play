@@ -22,23 +22,41 @@ import { uploadVideo } from "./services/storage";
  *  BRAND TOKENS
  * ═══════════════════════════════════════════ */
 
-const C = {
-  bg: "#0A0A0A",
-  surface: "#141414",
-  surfaceAlt: "#1A1A1A",
-  border: "#2A2A2A",
-  orange: "#FF6B00",
-  orangeGlow: "rgba(255,107,0,0.12)",
-  green: "#00E676",
-  greenGlow: "rgba(0,230,118,0.10)",
-  red: "#FF3D00",
-  redGlow: "rgba(255,61,0,0.10)",
-  text: "#F5F5F5",
-  muted: "#888",
-  dim: "#555",
-};
+const BG = "#0A0A0A";
 
 const LETTERS = ["S", "K", "A", "T", "E"];
+
+/** Build a placeholder GameDoc for optimistic UI before the real-time listener syncs. */
+function newGameShell(
+  gameId: string,
+  myUid: string,
+  myUsername: string,
+  opponentUid: string,
+  opponentUsername: string,
+): GameDoc {
+  return {
+    id: gameId,
+    player1Uid: myUid,
+    player2Uid: opponentUid,
+    player1Username: myUsername,
+    player2Username: opponentUsername,
+    p1Letters: 0,
+    p2Letters: 0,
+    status: "active",
+    currentTurn: myUid,
+    phase: "setting",
+    currentSetter: myUid,
+    currentTrickName: null,
+    currentTrickVideoUrl: null,
+    matchVideoUrl: null,
+    turnDeadline: { toMillis: () => Date.now() + 86400000 } as any,
+    turnNumber: 1,
+    winner: null,
+    createdAt: null,
+    updatedAt: null,
+  };
+}
+
 const TRICKS = [
   "Kickflip", "Heelflip", "Tre Flip", "Hardflip", "Pop Shove-it",
   "FS 180", "BS 180", "Nollie Flip", "Varial Flip", "Laser Flip",
@@ -328,7 +346,7 @@ function Landing({ onGo }: { onGo: (mode: "signup" | "signin") => void }) {
   return (
     <div
       className="min-h-dvh flex flex-col items-center justify-center px-6"
-      style={{ background: `radial-gradient(ellipse at 50% 0%, rgba(255,107,0,0.06) 0%, transparent 60%), ${C.bg}` }}
+      style={{ background: `radial-gradient(ellipse at 50% 0%, rgba(255,107,0,0.06) 0%, transparent 60%), ${BG}` }}
     >
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-2">SKATEHUBBA™</span>
       <h1 className="font-display text-[clamp(56px,12vw,88px)] text-white leading-[0.95] text-center">
@@ -964,8 +982,8 @@ function GameOverScreen({
       className="min-h-dvh flex flex-col items-center justify-center px-6"
       style={{
         background: isWinner
-          ? `radial-gradient(ellipse at 50% 30%, rgba(0,230,118,0.05) 0%, transparent 60%), ${C.bg}`
-          : `radial-gradient(ellipse at 50% 30%, rgba(255,61,0,0.05) 0%, transparent 60%), ${C.bg}`,
+          ? `radial-gradient(ellipse at 50% 30%, rgba(0,230,118,0.05) 0%, transparent 60%), ${BG}`
+          : `radial-gradient(ellipse at 50% 30%, rgba(255,61,0,0.05) 0%, transparent 60%), ${BG}`,
       }}
     >
       <div className="text-center max-w-sm animate-fade-in">
@@ -1108,30 +1126,7 @@ export default function App() {
               opponentUid,
               opponentUsername
             );
-            // The realtime listener will pick up the new game
-            // Open it immediately
-            const newGame: GameDoc = {
-              id: gameId,
-              player1Uid: user!.uid,
-              player2Uid: opponentUid,
-              player1Username: activeProfile.username,
-              player2Username: opponentUsername,
-              p1Letters: 0,
-              p2Letters: 0,
-              status: "active",
-              currentTurn: user!.uid,
-              phase: "setting",
-              currentSetter: user!.uid,
-              currentTrickName: null,
-              currentTrickVideoUrl: null,
-              matchVideoUrl: null,
-              turnDeadline: { toMillis: () => Date.now() + 86400000 } as any,
-              turnNumber: 1,
-              winner: null,
-              createdAt: null,
-              updatedAt: null,
-            };
-            setActiveGame(newGame);
+            setActiveGame(newGameShell(gameId, user!.uid, activeProfile.username, opponentUid, opponentUsername));
             setScreen("game");
           }}
           onBack={() => setScreen("lobby")}
@@ -1156,26 +1151,7 @@ export default function App() {
             const opponentName =
               activeGame.player1Uid === user!.uid ? activeGame.player2Username : activeGame.player1Username;
             const gameId = await createGame(user!.uid, activeProfile.username, opponentUid, opponentName);
-            setActiveGame({
-              id: gameId,
-              player1Uid: user!.uid,
-              player2Uid: opponentUid,
-              player1Username: activeProfile.username,
-              player2Username: opponentName,
-              p1Letters: 0, p2Letters: 0,
-              status: "active",
-              currentTurn: user!.uid,
-              phase: "setting",
-              currentSetter: user!.uid,
-              currentTrickName: null,
-              currentTrickVideoUrl: null,
-              matchVideoUrl: null,
-              turnDeadline: { toMillis: () => Date.now() + 86400000 } as any,
-              turnNumber: 1,
-              winner: null,
-              createdAt: null,
-              updatedAt: null,
-            });
+            setActiveGame(newGameShell(gameId, user!.uid, activeProfile.username, opponentUid, opponentName));
             setScreen("game");
           }}
           onBack={() => { setActiveGame(null); setScreen("lobby"); }}
