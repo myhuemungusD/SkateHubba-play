@@ -17,6 +17,7 @@ import {
   type GameDoc,
 } from "./services/games";
 import { uploadVideo } from "./services/storage";
+import { firebaseReady } from "./firebase";
 
 /* ═══════════════════════════════════════════
  *  BRAND TOKENS
@@ -1064,6 +1065,25 @@ export default function App() {
     });
     return unsub;
   }, [activeGame?.id]);
+
+  if (!firebaseReady) {
+    return (
+      <div
+        className="min-h-dvh flex flex-col items-center justify-center px-6 text-center"
+        style={{ background: BG }}
+      >
+        <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-2">
+          SKATEHUBBA™
+        </span>
+        <h2 className="font-display text-3xl text-white mt-4">Setup Required</h2>
+        <p className="font-body text-base text-[#888] max-w-sm mt-4 leading-relaxed">
+          Firebase environment variables are missing. Add{" "}
+          <code className="text-brand-orange">VITE_FIREBASE_*</code> variables in
+          your Vercel Dashboard under Project Settings → Environment Variables.
+        </p>
+      </div>
+    );
+  }
 
   if (loading) return <Spinner />;
 

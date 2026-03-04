@@ -6,6 +6,8 @@
  */
 import { vi } from "vitest";
 
+export const firebaseReady = true;
+
 export const auth = {
   currentUser: null,
 };

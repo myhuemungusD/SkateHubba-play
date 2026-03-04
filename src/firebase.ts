@@ -1,12 +1,17 @@
-import { initializeApp } from "firebase/app";
-import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { initializeApp, type FirebaseApp } from "firebase/app";
+import { getAuth, connectAuthEmulator, type Auth } from "firebase/auth";
 import {
   connectFirestoreEmulator,
   initializeFirestore,
   persistentLocalCache,
   persistentMultipleTabManager,
+  type Firestore,
 } from "firebase/firestore";
-import { getStorage, connectStorageEmulator } from "firebase/storage";
+import {
+  getStorage,
+  connectStorageEmulator,
+  type FirebaseStorage,
+} from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,8 +22,40 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Validate config — detect missing environment variables
-if (!firebaseConfig.apiKey) {
+// True when all required Firebase env vars are present
+export const firebaseReady = Boolean(firebaseConfig.apiKey);
+
+let app: FirebaseApp | null = null;
+let db: Firestore | null = null;
+let auth: Auth | null = null;
+let storage: FirebaseStorage | null = null;
+
+if (firebaseReady) {
+  app = initializeApp(firebaseConfig);
+
+  // Firestore with offline persistence — using named "skatehubba" database
+  db = initializeFirestore(
+    app,
+    {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    },
+    "skatehubba"
+  );
+
+  auth = getAuth(app);
+  storage = getStorage(app);
+
+  // Connect to emulators in development (if running)
+  if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {
+    connectAuthEmulator(auth, "http://localhost:9099", {
+      disableWarnings: true,
+    });
+    connectFirestoreEmulator(db, "localhost", 8080);
+    connectStorageEmulator(storage, "localhost", 9199);
+  }
+} else {
   const isVercel = typeof import.meta.env.VERCEL !== "undefined";
   const message = isVercel
     ? "Firebase config missing. Add VITE_FIREBASE_* environment variables in Vercel Dashboard → Project Settings → Environment Variables (scope: Preview and/or Production)."
@@ -26,27 +63,5 @@ if (!firebaseConfig.apiKey) {
   console.error(`⚠️ ${message}`);
 }
 
-const app = initializeApp(firebaseConfig);
-
-// Firestore with offline persistence — using named "skatehubba" database
-export const db = initializeFirestore(
-  app,
-  {
-    localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
-    }),
-  },
-  "skatehubba"
-);
-
-export const auth = getAuth(app);
-export const storage = getStorage(app);
-
-// Connect to emulators in development (if running)
-if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {
-  connectAuthEmulator(auth, "http://localhost:9099", { disableWarnings: true });
-  connectFirestoreEmulator(db, "localhost", 8080);
-  connectStorageEmulator(storage, "localhost", 9199);
-}
-
+export { db, auth, storage };
 export default app;
