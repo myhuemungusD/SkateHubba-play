@@ -235,31 +235,27 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Set your trick")).toBeInTheDocument();
-      expect(screen.getByText("Name This Trick")).toBeInTheDocument();
+      expect(screen.getByText("Record your trick")).toBeInTheDocument();
     });
 
-    // Trick quick-select buttons should be visible
-    expect(screen.getByText("Kickflip")).toBeInTheDocument();
-    expect(screen.getByText("Heelflip")).toBeInTheDocument();
+    // Camera auto-opens for setter, so record button should appear in preview state
+    expect(screen.getByRole("button", { name: /Record — Land Your Trick/ })).toBeInTheDocument();
   });
 
-  it("setter can select a trick from quick-pick buttons", async () => {
+  it("setter auto-submits trick after recording", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
+    mockSetTrick.mockResolvedValueOnce(undefined);
     renderLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Kickflip")).toBeInTheDocument();
+      expect(screen.getByText("Record your trick")).toBeInTheDocument();
     });
 
-    await userEvent.click(screen.getByText("Kickflip"));
-
-    // The input should now contain "Kickflip"
-    const input = screen.getByPlaceholderText(/Kickflip/);
-    expect(input).toHaveValue("Kickflip");
+    // Verify the phase banner shows correct text for setter
+    expect(screen.getByText("Record your trick")).toBeInTheDocument();
   });
 
   /* ── 7. Gameplay — Waiting on opponent ────── */
