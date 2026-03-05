@@ -58,11 +58,6 @@ function newGameShell(
   };
 }
 
-const TRICKS = [
-  "Kickflip", "Heelflip", "Tre Flip", "Hardflip", "Pop Shove-it",
-  "FS 180", "BS 180", "Nollie Flip", "Varial Flip", "Laser Flip",
-];
-
 /* ═══════════════════════════════════════════
  *  SHARED UI COMPONENTS
  * ═══════════════════════════════════════════ */
@@ -345,9 +340,13 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
 function VideoRecorder({
   onRecorded,
   label,
+  autoOpen = false,
+  doneLabel = "Recorded",
 }: {
   onRecorded: (blob: Blob | null) => void;
   label: string;
+  autoOpen?: boolean;
+  doneLabel?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mrRef = useRef<MediaRecorder | null>(null);
@@ -420,6 +419,11 @@ function VideoRecorder({
     };
   }, []);
 
+  // Auto-open camera on mount when autoOpen is true
+  useEffect(() => {
+    if (autoOpen && state === "idle") openCamera();
+  }, [autoOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
   return (
@@ -471,7 +475,7 @@ function VideoRecorder({
       {state === "done" && (
         <div className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green">
           <span className="text-brand-green font-display text-lg tracking-wider">
-            ✓ Recorded — Auto-submitted
+            ✓ {doneLabel}
           </span>
         </div>
       )}
@@ -933,7 +937,6 @@ function GamePlayScreen({
 }: {
   game: GameDoc; profile: UserProfile; onBack: () => void;
 }) {
-  const [trickName, setTrickName] = useState("");
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -944,29 +947,33 @@ function GamePlayScreen({
   const opponentName =
     game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
 
-  const handleRecorded = useCallback((blob: Blob | null) => {
-    setVideoBlob(blob);
-    setVideoRecorded(true);
-  }, []);
-
-  // Setter submits trick
-  const submitTrick = async () => {
-    if (!trickName) return;
+  // Auto-submit setter trick when recording finishes
+  const submitSetterTrick = useCallback(async (blob: Blob | null) => {
     setSubmitting(true);
     setError("");
     try {
       let videoUrl: string | null = null;
-      if (videoBlob) {
-        videoUrl = await uploadVideo(game.id, game.turnNumber, "set", videoBlob);
+      if (blob) {
+        videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob);
       }
-      await setTrick(game.id, trickName, videoUrl);
-      // Game will update via realtime listener → back to lobby
+      await setTrick(game.id, "Trick", videoUrl);
     } catch (err: any) {
-      setError(err?.message || "Failed to submit trick");
+      setError(err?.message || "Failed to send trick");
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [game.id, game.turnNumber]);
+
+  const handleSetterRecorded = useCallback((blob: Blob | null) => {
+    setVideoBlob(blob);
+    setVideoRecorded(true);
+    submitSetterTrick(blob);
+  }, [submitSetterTrick]);
+
+  const handleRecorded = useCallback((blob: Blob | null) => {
+    setVideoBlob(blob);
+    setVideoRecorded(true);
+  }, []);
 
   // Matcher submits result
   const submitResult = async (landed: boolean) => {
@@ -1033,31 +1040,9 @@ function GamePlayScreen({
             ${isSetter ? "bg-[rgba(255,107,0,0.06)] border-brand-orange" : "bg-[rgba(0,230,118,0.06)] border-brand-green"}`}
         >
           <span className={`font-display text-xl tracking-wider ${isSetter ? "text-brand-orange" : "text-brand-green"}`}>
-            {isSetter ? "Set your trick" : `Match @${game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}'s ${game.currentTrickName || "trick"}`}
+            {isSetter ? "Record your trick" : `Match @${game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}'s ${game.currentTrickName || "trick"}`}
           </span>
         </div>
-
-        {/* Trick name input (setter) */}
-        {isSetter && (
-          <>
-            <Field label="Name This Trick" value={trickName} onChange={setTrickName} placeholder="Kickflip, Tre Flip..." />
-            <div className="flex flex-wrap gap-1.5 mb-5">
-              {TRICKS.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTrickName(t)}
-                  className={`px-3 py-1.5 rounded-md text-xs font-body cursor-pointer transition-all
-                    ${trickName === t
-                      ? "bg-[rgba(255,107,0,0.1)] border border-brand-orange text-brand-orange"
-                      : "bg-surface-alt border border-border text-[#555]"
-                    }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
 
         {/* Setter's video to watch (matcher) */}
         {isMatcher && game.currentTrickVideoUrl && (
@@ -1073,17 +1058,24 @@ function GamePlayScreen({
 
         {/* Video Recorder */}
         <VideoRecorder
-          onRecorded={handleRecorded}
+          onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
           label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
+          autoOpen={isSetter}
+          doneLabel={isSetter ? "Recorded — Sending..." : "Recorded"}
         />
 
         <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-        {/* Setter Submit */}
-        {isSetter && videoRecorded && (
+        {/* Setter auto-submit status */}
+        {isSetter && submitting && (
+          <div className="mt-5 text-center">
+            <span className="font-display text-lg text-brand-orange tracking-wider animate-pulse">Sending to @{opponentName}...</span>
+          </div>
+        )}
+        {isSetter && !submitting && error && videoRecorded && (
           <div className="mt-5">
-            <Btn onClick={submitTrick} variant="success" disabled={!trickName || submitting}>
-              {submitting ? "Sending..." : `✓ Submit — Send to @${opponentName}`}
+            <Btn onClick={() => submitSetterTrick(videoBlob)} variant="secondary">
+              Retry Send
             </Btn>
           </div>
         )}
