@@ -1,5 +1,23 @@
 /// <reference types="vite/client" />
 
+interface ContactInfo {
+  name?: string[];
+  email?: string[];
+  tel?: string[];
+}
+
+interface ContactsManager {
+  select(
+    properties: string[],
+    options?: { multiple?: boolean }
+  ): Promise<ContactInfo[]>;
+  getProperties(): Promise<string[]>;
+}
+
+interface Navigator {
+  contacts?: ContactsManager;
+}
+
 interface ImportMetaEnv {
   readonly VITE_FIREBASE_API_KEY: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN: string;
