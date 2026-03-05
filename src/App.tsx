@@ -198,6 +198,29 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () =
   );
 }
 
+function InviteButton({ username, className = "" }: { username?: string; className?: string }) {
+  return (
+    <Btn
+      onClick={async () => {
+        const url = import.meta.env.VITE_APP_URL || window.location.origin;
+        const text = username
+          ? `I'm playing S.K.A.T.E. on SkateHubba — challenge me! My handle: @${username}`
+          : "Play S.K.A.T.E. on SkateHubba — the first async trick battle game!";
+        if (navigator.share) {
+          try { await navigator.share({ title: "SkateHubba", text, url }); } catch { /* user cancelled */ }
+        } else {
+          await navigator.clipboard.writeText(`${text}\n${url}`);
+          alert("Invite link copied to clipboard!");
+        }
+      }}
+      variant="ghost"
+      className={className}
+    >
+      📲 Invite a Friend
+    </Btn>
+  );
+}
+
 /* ═══════════════════════════════════════════
  *  VIDEO RECORDER (one-take, no retries)
  * ═══════════════════════════════════════════ */
@@ -359,6 +382,7 @@ function Landing({ onGo }: { onGo: (mode: "signup" | "signin") => void }) {
       <div className="w-full max-w-xs flex flex-col gap-3">
         <Btn onClick={() => onGo("signup")}>Get Started</Btn>
         <Btn onClick={() => onGo("signin")} variant="ghost">I Have an Account</Btn>
+        <InviteButton className="mt-2" />
       </div>
       <div className="flex gap-5 mt-12 flex-wrap justify-center">
         {[
@@ -624,7 +648,8 @@ function Lobby({
       <div className="px-5 pt-6 max-w-lg mx-auto">
         <h1 className="font-display text-[42px] text-white mb-6">Your Games</h1>
 
-        <Btn onClick={onChallenge} className="mb-8">🎯 Challenge Someone</Btn>
+        <Btn onClick={onChallenge} className="mb-3">🎯 Challenge Someone</Btn>
+        <InviteButton username={profile.username} className="mb-8" />
 
         {/* Active */}
         {active.length > 0 && (
@@ -758,6 +783,8 @@ function ChallengeScreen({
           placeholder="their_handle"
           icon="@"
         />
+
+        <InviteButton username={profile.username} className="mb-6" />
 
         <div className="p-4 rounded-xl bg-surface-alt border border-border mb-6">
           <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
@@ -1003,6 +1030,7 @@ function GameOverScreen({
 
         <div className="flex flex-col gap-3 w-full">
           <Btn onClick={onRematch}>🔥 Rematch</Btn>
+          <InviteButton username={profile.username} />
           <Btn onClick={onBack} variant="ghost">Back to Lobby</Btn>
         </div>
       </div>
