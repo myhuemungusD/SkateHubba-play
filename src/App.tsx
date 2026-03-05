@@ -341,10 +341,12 @@ function VideoRecorder({
   onRecorded,
   label,
   autoOpen = false,
+  doneLabel = "Recorded",
 }: {
   onRecorded: (blob: Blob | null) => void;
   label: string;
   autoOpen?: boolean;
+  doneLabel?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const mrRef = useRef<MediaRecorder | null>(null);
@@ -473,7 +475,7 @@ function VideoRecorder({
       {state === "done" && (
         <div className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green">
           <span className="text-brand-green font-display text-lg tracking-wider">
-            ✓ Recorded — Auto-submitted
+            ✓ {doneLabel}
           </span>
         </div>
       )}
@@ -946,10 +948,7 @@ function GamePlayScreen({
     game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
 
   // Auto-submit setter trick when recording finishes
-  const autoSubmitTrick = useCallback(async (blob: Blob | null) => {
-    setVideoBlob(blob);
-    setVideoRecorded(true);
-    if (!isSetter) return;
+  const submitSetterTrick = useCallback(async (blob: Blob | null) => {
     setSubmitting(true);
     setError("");
     try {
@@ -959,11 +958,17 @@ function GamePlayScreen({
       }
       await setTrick(game.id, "Trick", videoUrl);
     } catch (err: any) {
-      setError(err?.message || "Failed to submit trick");
+      setError(err?.message || "Failed to send trick");
     } finally {
       setSubmitting(false);
     }
-  }, [isSetter, game.id, game.turnNumber]);
+  }, [game.id, game.turnNumber]);
+
+  const handleSetterRecorded = useCallback((blob: Blob | null) => {
+    setVideoBlob(blob);
+    setVideoRecorded(true);
+    submitSetterTrick(blob);
+  }, [submitSetterTrick]);
 
   const handleRecorded = useCallback((blob: Blob | null) => {
     setVideoBlob(blob);
@@ -1035,7 +1040,7 @@ function GamePlayScreen({
             ${isSetter ? "bg-[rgba(255,107,0,0.06)] border-brand-orange" : "bg-[rgba(0,230,118,0.06)] border-brand-green"}`}
         >
           <span className={`font-display text-xl tracking-wider ${isSetter ? "text-brand-orange" : "text-brand-green"}`}>
-            {isSetter ? "Set your trick" : `Match @${game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}'s ${game.currentTrickName || "trick"}`}
+            {isSetter ? "Record your trick" : `Match @${game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}'s ${game.currentTrickName || "trick"}`}
           </span>
         </div>
 
@@ -1053,9 +1058,10 @@ function GamePlayScreen({
 
         {/* Video Recorder */}
         <VideoRecorder
-          onRecorded={isSetter ? autoSubmitTrick : handleRecorded}
+          onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
           label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
           autoOpen={isSetter}
+          doneLabel={isSetter ? "Recorded — Sending..." : "Recorded"}
         />
 
         <ErrorBanner message={error} onDismiss={() => setError("")} />
@@ -1064,6 +1070,13 @@ function GamePlayScreen({
         {isSetter && submitting && (
           <div className="mt-5 text-center">
             <span className="font-display text-lg text-brand-orange tracking-wider animate-pulse">Sending to @{opponentName}...</span>
+          </div>
+        )}
+        {isSetter && !submitting && error && videoRecorded && (
+          <div className="mt-5">
+            <Btn onClick={() => submitSetterTrick(videoBlob)} variant="secondary">
+              Retry Send
+            </Btn>
           </div>
         )}
 
