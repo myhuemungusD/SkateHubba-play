@@ -199,25 +199,164 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () =
 }
 
 function InviteButton({ username, className = "" }: { username?: string; className?: string }) {
+  const [showPanel, setShowPanel] = useState(false);
+  const [contactStatus, setContactStatus] = useState("");
+
+  const url = import.meta.env.VITE_APP_URL || window.location.origin;
+  const text = username
+    ? `I'm playing S.K.A.T.E. on SkateHubba — challenge me! My handle: @${username}`
+    : "Play S.K.A.T.E. on SkateHubba — the first async trick battle game!";
+  const fullMessage = `${text}\n${url}`;
+  const encodedText = encodeURIComponent(fullMessage);
+  const encodedUrl = encodeURIComponent(url);
+
+  const handleShare = async () => {
+    if (navigator.share) {
+      try { await navigator.share({ title: "SkateHubba", text, url }); } catch { /* user cancelled */ }
+    } else {
+      await navigator.clipboard.writeText(fullMessage);
+      alert("Invite link copied to clipboard!");
+    }
+  };
+
+  const handleContacts = async () => {
+    if (!("contacts" in navigator) || !navigator.contacts) {
+      setContactStatus("Phone contacts not supported in this browser. Try Chrome on Android.");
+      setTimeout(() => setContactStatus(""), 3000);
+      return;
+    }
+    try {
+      const contacts = await navigator.contacts.select(
+        ["name", "tel"],
+        { multiple: true }
+      );
+      if (!contacts.length) return;
+
+      const phones = contacts
+        .flatMap((c) => c.tel || [])
+        .filter(Boolean);
+
+      if (phones.length === 0) {
+        setContactStatus("Selected contacts have no phone numbers.");
+        setTimeout(() => setContactStatus(""), 3000);
+        return;
+      }
+
+      const recipients = phones.join(",");
+      const smsBody = encodeURIComponent(fullMessage);
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const sep = isIOS ? "&" : "?";
+      window.location.href = `sms:${recipients}${sep}body=${smsBody}`;
+    } catch {
+      /* user cancelled picker */
+    }
+  };
+
+  const socials = [
+    {
+      name: "Twitter / X",
+      icon: "𝕏",
+      href: `https://twitter.com/intent/tweet?text=${encodedText}`,
+    },
+    {
+      name: "WhatsApp",
+      icon: "💬",
+      href: `https://wa.me/?text=${encodedText}`,
+    },
+    {
+      name: "Snapchat",
+      icon: "👻",
+      href: `https://www.snapchat.com/scan?attachmentUrl=${encodedUrl}`,
+    },
+    {
+      name: "Facebook",
+      icon: "f",
+      href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`,
+    },
+    {
+      name: "Reddit",
+      icon: "🤙",
+      href: `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodeURIComponent(text)}`,
+    },
+    {
+      name: "Telegram",
+      icon: "✈",
+      href: `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(text)}`,
+    },
+  ];
+
   return (
-    <Btn
-      onClick={async () => {
-        const url = import.meta.env.VITE_APP_URL || window.location.origin;
-        const text = username
-          ? `I'm playing S.K.A.T.E. on SkateHubba — challenge me! My handle: @${username}`
-          : "Play S.K.A.T.E. on SkateHubba — the first async trick battle game!";
-        if (navigator.share) {
-          try { await navigator.share({ title: "SkateHubba", text, url }); } catch { /* user cancelled */ }
-        } else {
-          await navigator.clipboard.writeText(`${text}\n${url}`);
-          alert("Invite link copied to clipboard!");
-        }
-      }}
-      variant="ghost"
-      className={className}
-    >
-      📲 Invite a Friend
-    </Btn>
+    <div className={className}>
+      <Btn onClick={() => setShowPanel(!showPanel)} variant="ghost" className="w-full">
+        {showPanel ? "✕ Close" : "📲 Invite a Friend"}
+      </Btn>
+
+      {showPanel && (
+        <div className="mt-3 p-4 rounded-2xl bg-surface border border-border animate-fade-in">
+          {/* Phone Contacts */}
+          <button
+            onClick={handleContacts}
+            className="w-full flex items-center gap-3 p-3 rounded-xl bg-surface-alt border border-border
+              hover:border-brand-orange transition-colors mb-3 text-left"
+          >
+            <span className="text-2xl">📱</span>
+            <div>
+              <span className="font-display text-sm tracking-wider text-white block">FROM CONTACTS</span>
+              <span className="font-body text-xs text-[#555]">Pick contacts & send via SMS</span>
+            </div>
+          </button>
+
+          {contactStatus && (
+            <div className="text-xs text-brand-orange font-body mb-3 px-1">{contactStatus}</div>
+          )}
+
+          {/* Social Media */}
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {socials.map((s) => (
+              <a
+                key={s.name}
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-surface-alt border border-border
+                  hover:border-brand-orange transition-colors"
+              >
+                <span className="text-xl">{s.icon}</span>
+                <span className="font-body text-[10px] text-[#888] leading-tight">{s.name}</span>
+              </a>
+            ))}
+          </div>
+
+          {/* Copy Link + Native Share */}
+          <div className="flex gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(fullMessage);
+                  setContactStatus("Link copied!");
+                } catch {
+                  setContactStatus("Could not copy — try long-pressing to copy instead.");
+                }
+                setTimeout(() => setContactStatus(""), 2000);
+              }}
+              className="flex-1 p-2.5 rounded-xl bg-surface-alt border border-border
+                hover:border-brand-orange transition-colors font-body text-xs text-[#888]"
+            >
+              📋 Copy Link
+            </button>
+            {typeof navigator.share === "function" && (
+              <button
+                onClick={handleShare}
+                className="flex-1 p-2.5 rounded-xl bg-surface-alt border border-border
+                  hover:border-brand-orange transition-colors font-body text-xs text-[#888]"
+              >
+                🔗 More Options
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
