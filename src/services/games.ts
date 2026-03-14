@@ -16,7 +16,7 @@ import { requireDb } from "../firebase";
  * Types
  * ──────────────────────────────────────────── */
 
-export type GameStatus = "pending" | "active" | "complete" | "forfeit";
+export type GameStatus = "active" | "complete" | "forfeit";
 export type GamePhase = "setting" | "matching";
 
 export interface GameDoc {
@@ -39,8 +39,8 @@ export interface GameDoc {
   turnDeadline: Timestamp;
   turnNumber: number;
   winner: string | null;
-  createdAt: unknown;
-  updatedAt: unknown;
+  createdAt: Timestamp | null;
+  updatedAt: Timestamp | null;
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours

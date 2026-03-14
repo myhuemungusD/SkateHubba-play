@@ -509,7 +509,8 @@ describe("Smoke Test: Game E2E", () => {
 
     await waitFor(() => {
       expect(mockResendVerification).toHaveBeenCalled();
-      expect(screen.getByText("Sent!")).toBeInTheDocument();
+      // After sending, button shows countdown (e.g. "60s") and is disabled
+      expect(screen.getByRole("button", { name: /resend available in/i })).toBeDisabled();
     });
   });
 

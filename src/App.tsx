@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Component, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, useId, Component, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { useAuth } from "./hooks/useAuth";
 import { signUp, signIn, signOut, resetPassword, resendVerification } from "./services/auth";
@@ -68,6 +68,17 @@ const BG = "#0A0A0A";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
+function pwStrength(pw: string): 1 | 2 | 3 {
+  if (pw.length < 8) return 1;
+  const hasUpper = /[A-Z]/.test(pw);
+  const hasDigit = /[0-9]/.test(pw);
+  const hasSymbol = /[^a-zA-Z0-9]/.test(pw);
+  if (pw.length >= 12 && (hasUpper || hasDigit) && hasSymbol) return 3;
+  if (pw.length >= 8 && (hasUpper || hasDigit || hasSymbol)) return 2;
+  return 1;
+}
+
 const LETTERS = ["S", "K", "A", "T", "E"];
 
 /** Build a placeholder GameDoc for optimistic UI before the real-time listener syncs. */
@@ -106,9 +117,10 @@ function newGameShell(
  * ═══════════════════════════════════════════ */
 
 function Btn({
-  children, onClick, variant = "primary", disabled, className = "",
+  children, onClick, variant = "primary", disabled, className = "", type = "button",
 }: {
   children: ReactNode; onClick?: () => void; variant?: string; disabled?: boolean; className?: string;
+  type?: "button" | "submit";
 }) {
   const base =
     "w-full rounded-xl font-display tracking-wider text-center transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
@@ -121,7 +133,7 @@ function Btn({
   };
   return (
     <button
-      type="button"
+      type={type}
       onClick={onClick}
       disabled={disabled}
       className={`${base} ${variants[variant ?? "primary"]} ${className}`}
@@ -131,8 +143,6 @@ function Btn({
   );
 }
 
-let fieldIdCounter = 0;
-
 function Field({
   label, value, onChange, placeholder, type = "text", maxLength, note, icon, autoComplete, autoFocus,
 }: {
@@ -140,7 +150,7 @@ function Field({
   placeholder?: string; type?: string; maxLength?: number; note?: string; icon?: string;
   autoComplete?: string; autoFocus?: boolean;
 }) {
-  const [id] = useState(() => `field-${++fieldIdCounter}`);
+  const id = useId();
   return (
     <div className="mb-4 w-full">
       {label && (
@@ -415,6 +425,9 @@ function VideoRecorder({
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number>(0);
+  // Track the current blob URL in a ref so the cleanup effect can revoke it
+  // even though it runs with [] deps (avoids stale closure memory leak)
+  const blobUrlRef = useRef<string | null>(null);
 
   const [state, setState] = useState<"idle" | "preview" | "recording" | "done">("idle");
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -464,6 +477,7 @@ function VideoRecorder({
         return;
       }
       const url = URL.createObjectURL(blob);
+      blobUrlRef.current = url;
       setBlobUrl(url);
       setState("done");
       onRecorded(blob);
@@ -490,14 +504,16 @@ function VideoRecorder({
     return () => {
       clearInterval(timerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
+      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Auto-open camera on mount when autoOpen is true
+  // Auto-open camera once on mount when autoOpen is true.
+  // autoOpen is a static prop; openCamera is a stable useCallback — no deps needed.
+  const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
-    if (autoOpen && state === "idle") openCamera();
-  }, [autoOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (autoOpenRef.current) openCamera();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
@@ -664,6 +680,32 @@ function AuthScreen({
         <form onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
           <Field label="Email" value={email} onChange={setEmail} placeholder="you@email.com" icon="@" type="email" autoComplete="email" autoFocus />
           <Field label="Password" value={password} onChange={setPassword} placeholder="••••••••" icon="🔒" type="password" autoComplete={isSignup ? "new-password" : "current-password"} />
+          {isSignup && password.length > 0 && (() => {
+            const strength = pwStrength(password);
+            const labels: Record<1 | 2 | 3, string> = { 1: "Weak", 2: "Fair", 3: "Strong" };
+            const colors: Record<1 | 2 | 3, string> = {
+              1: "bg-brand-red",
+              2: "bg-yellow-500",
+              3: "bg-brand-green",
+            };
+            return (
+              <div className="flex items-center gap-2 -mt-2 mb-4">
+                <div className="flex gap-1 flex-1">
+                  {([1, 2, 3] as const).map((lvl) => (
+                    <div
+                      key={lvl}
+                      className={`h-0.5 flex-1 rounded-full transition-colors duration-300 ${
+                        strength >= lvl ? colors[strength] : "bg-surface-alt"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <span className={`font-body text-[10px] ${colors[strength].replace("bg-", "text-")}`}>
+                  {labels[strength]}
+                </span>
+              </div>
+            );
+          })()}
           {isSignup && (
             <Field label="Confirm" value={confirm} onChange={setConfirm} placeholder="••••••••" icon="🔒" type="password" autoComplete="new-password" />
           )}
@@ -676,7 +718,7 @@ function AuthScreen({
             </div>
           )}
 
-          <Btn onClick={submit} disabled={loading}>
+          <Btn type="submit" disabled={loading}>
             {loading ? "..." : isSignup ? "Create Account" : "Sign In"}
           </Btn>
         </form>
@@ -821,39 +863,58 @@ function ProfileSetup({
  *  SCREEN: LOBBY
  * ═══════════════════════════════════════════ */
 
+const RESEND_COOLDOWN_S = 60;
+
 function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
-  const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
-  const [resendError, setResendError] = useState(false);
+  const [cooldown, setCooldown] = useState(0); // seconds until resend is available again
+  const [sendError, setSendError] = useState(false);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = window.setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   if (emailVerified) return null;
 
   const handleResend = async () => {
     setSending(true);
-    setResendError(false);
+    setSendError(false);
     try {
       await resendVerification();
-      setSent(true);
+      setCooldown(RESEND_COOLDOWN_S);
     } catch {
-      setResendError(true);
+      setSendError(true);
     } finally {
       setSending(false);
     }
   };
 
+  const btnLabel = sending
+    ? "..."
+    : cooldown > 0
+      ? `${cooldown}s`
+      : sendError
+        ? "Retry"
+        : "Resend";
+
   return (
     <div className="mx-5 mt-4 p-3.5 rounded-xl bg-[rgba(255,107,0,0.06)] border border-brand-orange flex items-center justify-between gap-3">
       <div>
         <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
-        <span className="font-body text-xs text-[#888]">Check your inbox for the verification link.</span>
+        <span className="font-body text-xs text-[#888]">
+          {sendError ? "Failed to send — check your connection." : "Check your inbox for the verification link."}
+        </span>
       </div>
       <button
         type="button"
         onClick={handleResend}
-        disabled={sending || sent}
-        className="font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange rounded-lg px-3 py-1.5 whitespace-nowrap disabled:opacity-40"
+        disabled={sending || cooldown > 0}
+        className="font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange rounded-lg px-3 py-1.5 whitespace-nowrap disabled:opacity-40 transition-opacity"
+        aria-label={cooldown > 0 ? `Resend available in ${cooldown} seconds` : "Resend verification email"}
       >
-        {sent ? "Sent!" : resendError ? "Retry" : sending ? "..." : "Resend"}
+        {btnLabel}
       </button>
     </div>
   );
@@ -1410,6 +1471,7 @@ function AppInner() {
 
       {screen === "auth" && (
         <AuthScreen
+          key={authMode}
           mode={authMode}
           onDone={() => {
             // Auth state change will trigger the useEffect above

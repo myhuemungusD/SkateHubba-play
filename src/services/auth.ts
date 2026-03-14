@@ -50,7 +50,8 @@ export async function resetPassword(email: string): Promise<void> {
 }
 
 export async function resendVerification(): Promise<void> {
-  if (auth?.currentUser) {
-    await sendEmailVerification(auth.currentUser, getActionCodeSettings());
+  const user = requireAuth().currentUser;
+  if (user) {
+    await sendEmailVerification(user, getActionCodeSettings());
   }
 }
