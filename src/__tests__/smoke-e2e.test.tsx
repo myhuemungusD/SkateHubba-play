@@ -18,17 +18,20 @@ const mockGetUidByUsername = vi.fn();
 const mockCreateGame = vi.fn();
 const mockSetTrick = vi.fn();
 const mockSubmitMatchResult = vi.fn();
+const mockForfeitExpiredTurn = vi.fn();
 const mockSubscribeToMyGames = vi.fn(() => vi.fn());
 const mockSubscribeToGame = vi.fn(() => vi.fn());
 
 const mockUploadVideo = vi.fn();
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
+const mockResendVerification = vi.fn();
 vi.mock("../services/auth", () => ({
   signUp: (...args: unknown[]) => mockSignUp(...args),
   signIn: (...args: unknown[]) => mockSignIn(...args),
   signOut: (...args: unknown[]) => mockSignOut(...args),
   resetPassword: (...args: unknown[]) => mockResetPassword(...args),
+  resendVerification: (...args: unknown[]) => mockResendVerification(...args),
 }));
 vi.mock("../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
@@ -39,6 +42,7 @@ vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
   submitMatchResult: (...args: unknown[]) => mockSubmitMatchResult(...args),
+  forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
 }));
@@ -59,7 +63,8 @@ beforeEach(() => vi.clearAllMocks());
 
 /* ── Helpers ─────────────────────────────────── */
 
-const authedUser = { uid: "u1", email: "sk8r@test.com" };
+const authedUser = { uid: "u1", email: "sk8r@test.com", emailVerified: false };
+const verifiedUser = { uid: "u1", email: "sk8r@test.com", emailVerified: true };
 const profile = { uid: "u1", username: "sk8r", stance: "regular" };
 
 function activeGame(overrides: Record<string, unknown> = {}) {
@@ -457,6 +462,189 @@ describe("Smoke Test: Game E2E", () => {
 
     await waitFor(() => {
       expect(mockSignIn).toHaveBeenCalledWith("sk8r@test.com", "password123");
+    });
+  });
+
+  /* ── 16. Email verification banner ────────── */
+
+  it("shows email verification banner when email not verified", () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser, // emailVerified: false
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(<App />);
+
+    expect(screen.getByText("VERIFY YOUR EMAIL")).toBeInTheDocument();
+    expect(screen.getByText("Resend")).toBeInTheDocument();
+  });
+
+  it("hides email verification banner when email is verified", () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: verifiedUser,
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(<App />);
+
+    expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
+  });
+
+  it("resend verification button calls resendVerification", async () => {
+    mockResendVerification.mockResolvedValueOnce(undefined);
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(<App />);
+
+    await userEvent.click(screen.getByText("Resend"));
+
+    await waitFor(() => {
+      expect(mockResendVerification).toHaveBeenCalled();
+      expect(screen.getByText("Sent!")).toBeInTheDocument();
+    });
+  });
+
+  /* ── 17. Forfeit game display ─────────────── */
+
+  it("shows forfeit result on game over screen", async () => {
+    const game = activeGame({
+      status: "forfeit",
+      winner: "u1",
+      p1Letters: 1,
+      p2Letters: 2,
+    });
+    renderLobby([game]);
+    withGameSub(game);
+
+    await userEvent.click(screen.getByText(/vs @rival/));
+
+    await waitFor(() => {
+      expect(screen.getByText("You Win")).toBeInTheDocument();
+      expect(screen.getByText(/@rival ran out of time/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows forfeit loss on game over screen", async () => {
+    const game = activeGame({
+      status: "forfeit",
+      winner: "u2",
+      p1Letters: 1,
+      p2Letters: 2,
+    });
+    renderLobby([game]);
+    withGameSub(game);
+
+    await userEvent.click(screen.getByText(/vs @rival/));
+
+    await waitFor(() => {
+      expect(screen.getByText("Forfeit")).toBeInTheDocument();
+      expect(screen.getByText("You ran out of time.")).toBeInTheDocument();
+    });
+  });
+
+  /* ── 18. Password reset flow ──────────────── */
+
+  it("password reset sends email and shows confirmation", async () => {
+    mockResetPassword.mockResolvedValueOnce(undefined);
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    render(<App />);
+
+    await userEvent.click(screen.getByText("I Have an Account"));
+
+    const emailInput = screen.getByPlaceholderText("you@email.com");
+    await userEvent.type(emailInput, "sk8r@test.com");
+
+    await userEvent.click(screen.getByText("Forgot password?"));
+
+    await waitFor(() => {
+      expect(mockResetPassword).toHaveBeenCalledWith("sk8r@test.com");
+      expect(screen.getByText(/Reset email sent/)).toBeInTheDocument();
+    });
+  });
+
+  /* ── 19. Auth error handling ──────────────── */
+
+  it("shows error for invalid email on sign up", async () => {
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    render(<App />);
+
+    await userEvent.click(screen.getByText("Get Started"));
+
+    const emailInput = screen.getByPlaceholderText("you@email.com");
+    const passwordInputs = screen.getAllByPlaceholderText(/•/);
+
+    await userEvent.type(emailInput, "notanemail");
+    await userEvent.type(passwordInputs[0], "password123");
+    await userEvent.type(passwordInputs[1], "password123");
+
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    expect(screen.getByText("Enter a valid email")).toBeInTheDocument();
+  });
+
+  it("shows error for short password on sign up", async () => {
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    render(<App />);
+
+    await userEvent.click(screen.getByText("Get Started"));
+
+    const emailInput = screen.getByPlaceholderText("you@email.com");
+    const passwordInputs = screen.getAllByPlaceholderText(/•/);
+
+    await userEvent.type(emailInput, "test@test.com");
+    await userEvent.type(passwordInputs[0], "12345");
+    await userEvent.type(passwordInputs[1], "12345");
+
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+    expect(screen.getByText("Password must be 6+ characters")).toBeInTheDocument();
+  });
+
+  it("shows firebase auth error for duplicate email", async () => {
+    mockSignUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    render(<App />);
+
+    await userEvent.click(screen.getByText("Get Started"));
+
+    const emailInput = screen.getByPlaceholderText("you@email.com");
+    const passwordInputs = screen.getAllByPlaceholderText(/•/);
+
+    await userEvent.type(emailInput, "taken@test.com");
+    await userEvent.type(passwordInputs[0], "password123");
+    await userEvent.type(passwordInputs[1], "password123");
+
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Email already in use")).toBeInTheDocument();
+    });
+  });
+
+  /* ── 20. Expired turn triggers forfeit check ── */
+
+  it("checks for expired turn when opening a game", async () => {
+    mockForfeitExpiredTurn.mockResolvedValueOnce({ forfeited: false, winner: null });
+    const game = activeGame({
+      phase: "setting",
+      currentSetter: "u2",
+      currentTurn: "u2",
+      turnDeadline: { toMillis: () => Date.now() - 1000 }, // expired
+    });
+    renderLobby([game]);
+    withGameSub(game);
+
+    await userEvent.click(screen.getByText(/vs @rival/));
+
+    await waitFor(() => {
+      expect(mockForfeitExpiredTurn).toHaveBeenCalledWith("game1");
     });
   });
 });

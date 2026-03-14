@@ -5,7 +5,7 @@ import {
   runTransaction,
   serverTimestamp,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { requireDb } from "../firebase";
 
 export interface UserProfile {
   uid: string;
@@ -20,7 +20,7 @@ export interface UserProfile {
  * Get user profile by UID
  */
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  const snap = await getDoc(doc(db!, "users", uid));
+  const snap = await getDoc(doc(requireDb(), "users", uid));
   return snap.exists() ? (snap.data() as UserProfile) : null;
 }
 
@@ -32,7 +32,7 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
   if (normalized.length < 3 || normalized.length > 20) return false;
   if (!/^[a-z0-9_]+$/.test(normalized)) return false;
 
-  const snap = await getDoc(doc(db!, "usernames", normalized));
+  const snap = await getDoc(doc(requireDb(), "usernames", normalized));
   return !snap.exists();
 }
 
@@ -51,9 +51,9 @@ export async function createProfile(
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
 
-  const profile = await runTransaction(db!, async (tx) => {
+  const profile = await runTransaction(requireDb(), async (tx) => {
     // Check username availability inside transaction
-    const usernameRef = doc(db!, "usernames", normalized);
+    const usernameRef = doc(requireDb(), "usernames", normalized);
     const usernameSnap = await tx.get(usernameRef);
 
     if (usernameSnap.exists()) {
@@ -64,7 +64,7 @@ export async function createProfile(
     tx.set(usernameRef, { uid, reservedAt: serverTimestamp() });
 
     // Create the user profile
-    const userRef = doc(db!, "users", uid);
+    const userRef = doc(requireDb(), "users", uid);
     const profileData: UserProfile = {
       uid,
       email,
@@ -86,7 +86,7 @@ export async function createProfile(
  */
 export async function getUidByUsername(username: string): Promise<string | null> {
   const normalized = username.toLowerCase().trim();
-  const snap = await getDoc(doc(db!, "usernames", normalized));
+  const snap = await getDoc(doc(requireDb(), "usernames", normalized));
   if (!snap.exists()) return null;
   return snap.data().uid as string;
 }

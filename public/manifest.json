@@ -1,0 +1,25 @@
+{
+  "name": "SkateHubba S.K.A.T.E.",
+  "short_name": "SkateHubba",
+  "description": "The first async S.K.A.T.E. trick battle game. Set tricks. Match tricks. One take only.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0A0A0A",
+  "theme_color": "#0A0A0A",
+  "categories": ["games", "sports"],
+  "icons": [
+    {
+      "src": "/icon-192.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

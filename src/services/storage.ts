@@ -1,5 +1,5 @@
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { storage } from "../firebase";
+import { requireStorage } from "../firebase";
 
 /**
  * Upload a video blob to Firebase Storage and return the download URL.
@@ -14,7 +14,7 @@ export async function uploadVideo(
   blob: Blob
 ): Promise<string> {
   const path = `games/${gameId}/turn-${turnNumber}/${role}.webm`;
-  const storageRef = ref(storage!, path);
+  const storageRef = ref(requireStorage(), path);
 
   await uploadBytes(storageRef, blob, {
     contentType: "video/webm",

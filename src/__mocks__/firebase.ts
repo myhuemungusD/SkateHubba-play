@@ -16,4 +16,8 @@ export const db = {};
 
 export const storage = {};
 
+export const requireDb = () => db;
+export const requireAuth = () => auth;
+export const requireStorage = () => storage;
+
 export default {}; // default export (the app object)

@@ -63,5 +63,20 @@ if (firebaseReady) {
   console.error(`⚠️ ${message}`);
 }
 
-export { db, auth, storage };
+function requireDb(): Firestore {
+  if (!db) throw new Error("Firebase not initialized — check VITE_FIREBASE_* env vars");
+  return db;
+}
+
+function requireAuth(): Auth {
+  if (!auth) throw new Error("Firebase not initialized — check VITE_FIREBASE_* env vars");
+  return auth;
+}
+
+function requireStorage(): FirebaseStorage {
+  if (!storage) throw new Error("Firebase not initialized — check VITE_FIREBASE_* env vars");
+  return storage;
+}
+
+export { db, auth, storage, requireDb, requireAuth, requireStorage };
 export default app;

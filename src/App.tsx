@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { useAuth } from "./hooks/useAuth";
-import { signUp, signIn, signOut, resetPassword } from "./services/auth";
+import { signUp, signIn, signOut, resetPassword, resendVerification } from "./services/auth";
 import {
   createProfile,
   isUsernameAvailable,
@@ -12,6 +12,7 @@ import {
   createGame,
   setTrick,
   submitMatchResult,
+  forfeitExpiredTurn,
   subscribeToMyGames,
   subscribeToGame,
   type GameDoc,
@@ -734,11 +735,47 @@ function ProfileSetup({
  *  SCREEN: LOBBY
  * ═══════════════════════════════════════════ */
 
+function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
+  const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  if (emailVerified) return null;
+
+  const handleResend = async () => {
+    setSending(true);
+    try {
+      await resendVerification();
+      setSent(true);
+    } catch {
+      // Silently fail — rate limited or other issue
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mx-5 mt-4 p-3.5 rounded-xl bg-[rgba(255,107,0,0.06)] border border-brand-orange flex items-center justify-between gap-3">
+      <div>
+        <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
+        <span className="font-body text-xs text-[#888]">Check your inbox for the verification link.</span>
+      </div>
+      <button
+        onClick={handleResend}
+        disabled={sending || sent}
+        className="font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange rounded-lg px-3 py-1.5 whitespace-nowrap disabled:opacity-40"
+      >
+        {sent ? "Sent!" : sending ? "..." : "Resend"}
+      </button>
+    </div>
+  );
+}
+
 function Lobby({
-  profile, games, onChallenge, onOpenGame, onSignOut,
+  profile, games, onChallenge, onOpenGame, onSignOut, user,
 }: {
   profile: UserProfile; games: GameDoc[];
   onChallenge: () => void; onOpenGame: (g: GameDoc) => void; onSignOut: () => void;
+  user: { emailVerified?: boolean } | null;
 }) {
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
@@ -765,6 +802,8 @@ function Lobby({
           Sign Out
         </button>
       </div>
+
+      <VerifyEmailBanner emailVerified={user?.emailVerified ?? false} />
 
       <div className="px-5 pt-6 max-w-lg mx-auto">
         <h1 className="font-display text-[42px] text-white mb-6">Your Games</h1>
@@ -828,6 +867,7 @@ function Lobby({
                 <span className="font-display text-xl text-white">vs @{opponent(g)}</span>
                 <span className={`block font-body text-xs mt-0.5 ${g.winner === profile.uid ? "text-brand-green" : "text-brand-red"}`}>
                   {g.winner === profile.uid ? "You won!" : "You lost"}
+                  {g.status === "forfeit" && " (forfeit)"}
                 </span>
               </div>
             ))}
@@ -941,6 +981,17 @@ function GamePlayScreen({
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [forfeitChecked, setForfeitChecked] = useState(false);
+
+  // Check for expired turn on mount
+  useEffect(() => {
+    if (forfeitChecked || game.status !== "active") return;
+    const deadline = game.turnDeadline?.toMillis?.() ?? 0;
+    if (deadline > 0 && Date.now() >= deadline) {
+      forfeitExpiredTurn(game.id).catch(() => {});
+    }
+    setForfeitChecked(true);
+  }, [game.id, game.status, forfeitChecked, game.turnDeadline]);
 
   const isSetter = game.phase === "setting" && game.currentSetter === profile.uid;
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
@@ -1109,6 +1160,7 @@ function GameOverScreen({
   game: GameDoc; profile: UserProfile; onRematch: () => void; onBack: () => void;
 }) {
   const isWinner = game.winner === profile.uid;
+  const isForfeit = game.status === "forfeit";
   const opponentName =
     game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
@@ -1126,10 +1178,16 @@ function GameOverScreen({
       <div className="text-center max-w-sm animate-fade-in">
         <span className="text-6xl block mb-4">{isWinner ? "🏆" : "💀"}</span>
         <h1 className={`font-display text-5xl mb-2 ${isWinner ? "text-brand-green" : "text-brand-red"}`}>
-          {isWinner ? "You Win" : "S.K.A.T.E."}
+          {isWinner ? "You Win" : isForfeit ? "Forfeit" : "S.K.A.T.E."}
         </h1>
         <p className="font-body text-base text-[#888] mb-8">
-          {isWinner ? `@${opponentName} spelled S.K.A.T.E.` : `@${opponentName} outlasted you.`}
+          {isForfeit
+            ? isWinner
+              ? `@${opponentName} ran out of time.`
+              : "You ran out of time."
+            : isWinner
+              ? `@${opponentName} spelled S.K.A.T.E.`
+              : `@${opponentName} outlasted you.`}
         </p>
 
         <div className="flex justify-center gap-5 mb-10">
@@ -1196,7 +1254,7 @@ export default function App() {
       if (!updated) return;
       setActiveGame(updated);
       // If game just finished, go to game over
-      if (updated.status === "complete" && screen === "game") {
+      if ((updated.status === "complete" || updated.status === "forfeit") && screen === "game") {
         setScreen("gameover");
       }
     });
@@ -1257,10 +1315,11 @@ export default function App() {
         <Lobby
           profile={activeProfile}
           games={games}
+          user={user}
           onChallenge={() => setScreen("challenge")}
           onOpenGame={(g) => {
             setActiveGame(g);
-            if (g.status === "complete") setScreen("gameover");
+            if (g.status === "complete" || g.status === "forfeit") setScreen("gameover");
             else setScreen("game");
           }}
           onSignOut={async () => {
