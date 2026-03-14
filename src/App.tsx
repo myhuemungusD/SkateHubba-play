@@ -127,6 +127,8 @@ function Btn({
   );
 }
 
+let fieldIdCounter = 0;
+
 function Field({
   label, value, onChange, placeholder, type = "text", maxLength, note, icon, autoComplete, autoFocus,
 }: {
@@ -134,20 +136,22 @@ function Field({
   placeholder?: string; type?: string; maxLength?: number; note?: string; icon?: string;
   autoComplete?: string; autoFocus?: boolean;
 }) {
+  const [id] = useState(() => `field-${++fieldIdCounter}`);
   return (
     <div className="mb-4 w-full">
       {label && (
-        <label className="block font-display text-sm tracking-[0.12em] text-[#888] mb-1.5">
+        <label htmlFor={id} className="block font-display text-sm tracking-[0.12em] text-[#888] mb-1.5">
           {label}
         </label>
       )}
       <div className="relative">
         {icon && (
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#555] text-base">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#555] text-base" aria-hidden="true">
             {icon}
           </span>
         )}
         <input
+          id={id}
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -1431,17 +1435,17 @@ function AppInner() {
         />
       )}
 
-      {screen === "challenge" && activeProfile && (
+      {screen === "challenge" && activeProfile && user && (
         <ChallengeScreen
           profile={activeProfile}
           onSend={async (opponentUid, opponentUsername) => {
             const gameId = await createGame(
-              user!.uid,
+              user.uid,
               activeProfile.username,
               opponentUid,
               opponentUsername
             );
-            setActiveGame(newGameShell(gameId, user!.uid, activeProfile.username, opponentUid, opponentUsername));
+            setActiveGame(newGameShell(gameId, user.uid, activeProfile.username, opponentUid, opponentUsername));
             setScreen("game");
           }}
           onBack={() => setScreen("lobby")}
@@ -1456,17 +1460,17 @@ function AppInner() {
         />
       )}
 
-      {screen === "gameover" && activeGame && activeProfile && (
+      {screen === "gameover" && activeGame && activeProfile && user && (
         <GameOverScreen
           game={activeGame}
           profile={activeProfile}
           onRematch={async () => {
             const opponentUid =
-              activeGame.player1Uid === user!.uid ? activeGame.player2Uid : activeGame.player1Uid;
+              activeGame.player1Uid === user.uid ? activeGame.player2Uid : activeGame.player1Uid;
             const opponentName =
-              activeGame.player1Uid === user!.uid ? activeGame.player2Username : activeGame.player1Username;
-            const gameId = await createGame(user!.uid, activeProfile.username, opponentUid, opponentName);
-            setActiveGame(newGameShell(gameId, user!.uid, activeProfile.username, opponentUid, opponentName));
+              activeGame.player1Uid === user.uid ? activeGame.player2Username : activeGame.player1Username;
+            const gameId = await createGame(user.uid, activeProfile.username, opponentUid, opponentName);
+            setActiveGame(newGameShell(gameId, user.uid, activeProfile.username, opponentUid, opponentName));
             setScreen("game");
           }}
           onBack={() => { setActiveGame(null); setScreen("lobby"); }}
