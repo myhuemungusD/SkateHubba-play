@@ -252,15 +252,19 @@ export function subscribeToMyGames(
   const q1 = query(gamesRef(), where("player1Uid", "==", uid));
   const q2 = query(gamesRef(), where("player2Uid", "==", uid));
 
+  const handleError = (err: Error) => {
+    console.warn("Game subscription error:", err.message);
+  };
+
   const unsub1 = onSnapshot(q1, (snap) => {
     p1Games = snap.docs.map((d) => ({ id: d.id, ...d.data() } as GameDoc));
     merge();
-  });
+  }, handleError);
 
   const unsub2 = onSnapshot(q2, (snap) => {
     p2Games = snap.docs.map((d) => ({ id: d.id, ...d.data() } as GameDoc));
     merge();
-  });
+  }, handleError);
 
   return () => {
     unsub1();
@@ -275,11 +279,18 @@ export function subscribeToGame(
   gameId: string,
   onUpdate: (game: GameDoc | null) => void
 ): Unsubscribe {
-  return onSnapshot(doc(requireDb(), "games", gameId), (snap) => {
-    if (!snap.exists()) {
+  return onSnapshot(
+    doc(requireDb(), "games", gameId),
+    (snap) => {
+      if (!snap.exists()) {
+        onUpdate(null);
+        return;
+      }
+      onUpdate({ id: snap.id, ...snap.data() } as GameDoc);
+    },
+    (err) => {
+      console.warn("Game subscription error:", err.message);
       onUpdate(null);
-      return;
     }
-    onUpdate({ id: snap.id, ...snap.data() } as GameDoc);
-  });
+  );
 }

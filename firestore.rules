@@ -48,6 +48,11 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ── Helper: determine the opponent of a player ──
+    function opponentUid(game, uid) {
+      return uid == game.player1Uid ? game.player2Uid : game.player1Uid;
+    }
+
     // ── Games ──
     match /games/{gameId} {
       // Both players can read their game
@@ -59,25 +64,50 @@ service cloud.firestore {
         && request.resource.data.status == 'active'
         && request.resource.data.p1Letters == 0
         && request.resource.data.p2Letters == 0
-        && request.resource.data.turnNumber == 1;
+        && request.resource.data.turnNumber == 1
+        && request.resource.data.winner == null;
 
-      // Only the current-turn player can update an active game
+      // Current-turn player can make normal game updates
       allow update: if isSignedIn()
         && isPlayer(resource.data)
-        // Game must still be active to be updated
         && resource.data.status == 'active'
-        && (
-          // The current turn player can update
-          request.auth.uid == resource.data.currentTurn
-          // OR this update ends the game (setting status to complete/forfeit)
-          || request.resource.data.status in ['complete', 'forfeit']
-        )
+        && request.auth.uid == resource.data.currentTurn
         // Cannot change player UIDs
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
-        // Letters can only increase
+        // Letters can only increase, max 1 per update
         && request.resource.data.p1Letters >= resource.data.p1Letters
-        && request.resource.data.p2Letters >= resource.data.p2Letters;
+        && request.resource.data.p1Letters <= resource.data.p1Letters + 1
+        && request.resource.data.p2Letters >= resource.data.p2Letters
+        && request.resource.data.p2Letters <= resource.data.p2Letters + 1
+        && (
+          // Normal update (game stays active, no winner yet)
+          (request.resource.data.status == 'active' && request.resource.data.winner == null)
+          // Game complete: a player hit 5 letters, winner is the other player
+          || (
+            request.resource.data.status == 'complete'
+            && (request.resource.data.p1Letters >= 5 || request.resource.data.p2Letters >= 5)
+            && request.resource.data.winner == (
+              request.resource.data.p1Letters >= 5
+                ? resource.data.player2Uid
+                : resource.data.player1Uid
+            )
+          )
+        );
+
+      // Either player can forfeit the current-turn player's expired turn
+      // Winner must be the opponent of the player whose turn it is
+      allow update: if isSignedIn()
+        && isPlayer(resource.data)
+        && resource.data.status == 'active'
+        && request.resource.data.status == 'forfeit'
+        // Cannot change player UIDs or letters
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        // Winner must be the opponent of the current-turn player (who timed out)
+        && request.resource.data.winner == opponentUid(resource.data, resource.data.currentTurn);
 
       allow delete: if false;
     }

@@ -107,7 +107,7 @@ function Btn({
   children: ReactNode; onClick?: () => void; variant?: string; disabled?: boolean; className?: string;
 }) {
   const base =
-    "w-full rounded-xl font-display tracking-wider text-center transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98]";
+    "w-full rounded-xl font-display tracking-wider text-center transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
   const variants: Record<string, string> = {
     primary: "bg-brand-orange text-white py-4 text-xl",
     secondary: "bg-surface-alt border border-border text-white py-3.5 text-lg",
@@ -159,6 +159,9 @@ function Field({
           maxLength={maxLength}
           autoComplete={autoComplete}
           autoFocus={autoFocus}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
             focus:border-brand-orange transition-colors duration-200
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
@@ -441,7 +444,12 @@ function VideoRecorder({
       return;
     }
     chunksRef.current = [];
-    const mr = new MediaRecorder(streamRef.current, { mimeType: "video/webm" });
+    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
+      ? "video/webm;codecs=vp9"
+      : MediaRecorder.isTypeSupported("video/webm")
+        ? "video/webm"
+        : ""; // Let browser choose default
+    const mr = new MediaRecorder(streamRef.current, mimeType ? { mimeType } : undefined);
     mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     mr.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
@@ -472,8 +480,9 @@ function VideoRecorder({
     return () => {
       clearInterval(timerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (blobUrl) URL.revokeObjectURL(blobUrl);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-open camera on mount when autoOpen is true
   useEffect(() => {
