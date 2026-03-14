@@ -144,7 +144,7 @@ function Field({
   return (
     <div className="mb-4 w-full">
       {label && (
-        <label htmlFor={id} className="block font-display text-sm tracking-[0.12em] text-[#888] mb-1.5">
+        <label htmlFor={id} className="block font-display text-sm tracking-[0.12em] text-[#999] mb-1.5">
           {label}
         </label>
       )}
@@ -171,7 +171,7 @@ function Field({
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />
       </div>
-      {note && <span className="text-xs text-[#555] mt-1 block">{note}</span>}
+      {note && <span className="text-xs text-[#777] mt-1 block">{note}</span>}
     </div>
   );
 }
@@ -232,7 +232,7 @@ function Timer({ deadline }: { deadline: number }) {
 
 function Spinner() {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-[#0A0A0A]">
+    <div className="flex items-center justify-center min-h-dvh bg-[#0A0A0A]">
       <div className="flex flex-col items-center gap-4 animate-fade-in">
         <div className="w-10 h-10 border-2 border-[#2A2A2A] border-t-brand-orange rounded-full animate-spin" />
         <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
@@ -244,7 +244,7 @@ function Spinner() {
 function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () => void }) {
   if (!message) return null;
   return (
-    <div className="w-full p-3 rounded-xl bg-[rgba(255,61,0,0.08)] border border-brand-red mb-4 flex justify-between items-center">
+    <div role="alert" className="w-full p-3 rounded-xl bg-[rgba(255,61,0,0.08)] border border-brand-red mb-4 flex justify-between items-center">
       <span className="font-body text-sm text-brand-red">{message}</span>
       {onDismiss && (
         <button type="button" onClick={onDismiss} className="text-brand-red text-lg leading-none ml-2 p-1" aria-label="Dismiss error">×</button>
@@ -457,6 +457,12 @@ function VideoRecorder({
     mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     mr.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
+      if (blob.size === 0) {
+        // Recording captured no data — treat as demo mode
+        setState("done");
+        onRecorded(null);
+        return;
+      }
       const url = URL.createObjectURL(blob);
       setBlobUrl(url);
       setState("done");
@@ -905,7 +911,7 @@ function Lobby({
                 tabIndex={0}
                 onClick={() => onOpenGame(g)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
-                className={`p-4 rounded-2xl mb-3 bg-surface border cursor-pointer transition-all
+                className={`p-4 rounded-2xl mb-3 bg-surface border cursor-pointer transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange
                   ${isMyTurn(g) ? "border-brand-orange shadow-[0_0_20px_rgba(255,107,0,0.08)]" : "border-border"}`}
               >
                 <div className="flex justify-between items-center mb-2.5">
@@ -951,7 +957,7 @@ function Lobby({
                 tabIndex={0}
                 onClick={() => onOpenGame(g)}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
-                className="p-4 rounded-2xl mb-3 bg-surface border border-border cursor-pointer transition-all opacity-70"
+                className="p-4 rounded-2xl mb-3 bg-surface border border-border cursor-pointer transition-all opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 <span className="font-display text-xl text-white">vs @{opponent(g)}</span>
                 <span className={`block font-body text-xs mt-0.5 ${g.winner === profile.uid ? "text-brand-green" : "text-brand-red"}`}>
