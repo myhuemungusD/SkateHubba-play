@@ -89,7 +89,7 @@ function newGameShell(
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    turnDeadline: { toMillis: () => Date.now() + 86400000 } as any,
+    turnDeadline: { toMillis: () => Date.now() + 86400000 } as unknown as GameDoc["turnDeadline"],
     turnNumber: 1,
     winner: null,
     createdAt: null,
@@ -117,6 +117,7 @@ function Btn({
   };
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
       className={`${base} ${variants[variant ?? "primary"]} ${className}`}
@@ -127,10 +128,11 @@ function Btn({
 }
 
 function Field({
-  label, value, onChange, placeholder, type = "text", maxLength, note, icon,
+  label, value, onChange, placeholder, type = "text", maxLength, note, icon, autoComplete, autoFocus,
 }: {
   label?: string; value: string; onChange: (v: string) => void;
   placeholder?: string; type?: string; maxLength?: number; note?: string; icon?: string;
+  autoComplete?: string; autoFocus?: boolean;
 }) {
   return (
     <div className="mb-4 w-full">
@@ -151,6 +153,8 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           maxLength={maxLength}
+          autoComplete={autoComplete}
+          autoFocus={autoFocus}
           className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
             focus:border-brand-orange transition-colors duration-200
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
@@ -232,7 +236,7 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () =
     <div className="w-full p-3 rounded-xl bg-[rgba(255,61,0,0.08)] border border-brand-red mb-4 flex justify-between items-center">
       <span className="font-body text-sm text-brand-red">{message}</span>
       {onDismiss && (
-        <button onClick={onDismiss} className="text-brand-red text-lg leading-none ml-2">×</button>
+        <button type="button" onClick={onDismiss} className="text-brand-red text-lg leading-none ml-2 p-1" aria-label="Dismiss error">×</button>
       )}
     </div>
   );
@@ -321,6 +325,7 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
           <div>
             <h4 className="font-display text-[11px] tracking-[0.2em] text-[#555] mb-2">TEXT A FRIEND</h4>
             <button
+              type="button"
               onClick={handleContacts}
               className={`w-full flex items-center gap-3 p-3.5 text-left ${tileBase}
                 border-[rgba(255,107,0,0.25)] bg-[rgba(255,107,0,0.04)]`}
@@ -358,13 +363,14 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
 
           {/* ── Copy & Share ── */}
           <div className="flex gap-2">
-            <button onClick={handleCopy} className={`flex-1 py-2.5 font-body text-xs ${tileBase} ${
+            <button type="button" onClick={handleCopy} className={`flex-1 py-2.5 font-body text-xs ${tileBase} ${
               copied ? "border-brand-green text-brand-green" : "text-[#888]"
             }`}>
               {copied ? "Copied!" : "📋 Copy Link"}
             </button>
             {typeof navigator.share === "function" && (
               <button
+                type="button"
                 onClick={handleNativeShare}
                 className={`flex-1 py-2.5 font-body text-xs text-[#888] ${tileBase}`}
               >
@@ -415,8 +421,9 @@ function VideoRecorder({
         videoRef.current.play();
       }
       setState("preview");
-    } catch {
-      // No camera — still allow demo flow
+    } catch (err) {
+      // Camera unavailable or permission denied — allow demo flow without video
+      console.warn("Camera access failed:", err instanceof Error ? err.message : err);
       setState("preview");
     }
   }, []);
@@ -597,14 +604,14 @@ function AuthScreen({
         await signIn(email, password);
       }
       onDone();
-    } catch (err: any) {
-      const code = err?.code || "";
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code ?? "";
       if (code === "auth/email-already-in-use") setError("Email already in use");
       else if (code === "auth/invalid-credential" || code === "auth/wrong-password")
         setError("Invalid email or password");
       else if (code === "auth/user-not-found") setError("No account with that email");
       else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
-      else setError(err?.message || "Something went wrong");
+      else setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -631,37 +638,44 @@ function AuthScreen({
           {isSignup ? "Join the crew. It's free." : "Sign in to continue your games."}
         </p>
 
-        <Field label="Email" value={email} onChange={setEmail} placeholder="you@email.com" icon="@" type="email" />
-        <Field label="Password" value={password} onChange={setPassword} placeholder="••••••••" icon="🔒" type="password" />
-        {isSignup && (
-          <Field label="Confirm" value={confirm} onChange={setConfirm} placeholder="••••••••" icon="🔒" type="password" />
-        )}
+        <form onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
+          <Field label="Email" value={email} onChange={setEmail} placeholder="you@email.com" icon="@" type="email" autoComplete="email" autoFocus />
+          <Field label="Password" value={password} onChange={setPassword} placeholder="••••••••" icon="🔒" type="password" autoComplete={isSignup ? "new-password" : "current-password"} />
+          {isSignup && (
+            <Field label="Confirm" value={confirm} onChange={setConfirm} placeholder="••••••••" icon="🔒" type="password" autoComplete="new-password" />
+          )}
 
-        <ErrorBanner message={error} onDismiss={() => setError("")} />
+          <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-        {resetSent && (
-          <div className="w-full p-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green mb-4">
-            <span className="font-body text-sm text-brand-green">Reset email sent (if account exists)</span>
-          </div>
-        )}
+          {resetSent && (
+            <div className="w-full p-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green mb-4">
+              <span className="font-body text-sm text-brand-green">Reset email sent (if account exists)</span>
+            </div>
+          )}
 
-        <Btn onClick={submit} disabled={loading}>
-          {loading ? "..." : isSignup ? "Create Account" : "Sign In"}
-        </Btn>
+          <Btn onClick={submit} disabled={loading}>
+            {loading ? "..." : isSignup ? "Create Account" : "Sign In"}
+          </Btn>
+        </form>
 
         {!isSignup && (
-          <p
-            className="font-body text-xs text-[#555] text-center mt-3 cursor-pointer hover:text-[#888] transition-colors"
+          <button
+            type="button"
+            className="w-full font-body text-xs text-[#555] text-center mt-3 cursor-pointer hover:text-[#888] transition-colors bg-transparent border-none"
             onClick={handleReset}
           >
             Forgot password?
-          </p>
+          </button>
         )}
 
-        <p className="font-body text-sm text-[#555] text-center mt-5 cursor-pointer" onClick={onToggle}>
+        <button
+          type="button"
+          className="w-full font-body text-sm text-[#555] text-center mt-5 cursor-pointer bg-transparent border-none"
+          onClick={onToggle}
+        >
           {isSignup ? "Already have an account? " : "Need an account? "}
           <span className="text-brand-orange">{isSignup ? "Sign in" : "Sign up"}</span>
-        </p>
+        </button>
       </div>
     </div>
   );
@@ -714,8 +728,8 @@ function ProfileSetup({
     try {
       const profile = await createProfile(uid, email, normalized, stance);
       onDone(profile);
-    } catch (err: any) {
-      setError(err?.message || "Could not create profile");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not create profile");
     } finally {
       setLoading(false);
     }
@@ -728,48 +742,53 @@ function ProfileSetup({
         <h2 className="font-display text-3xl text-white mb-1">Lock in your handle</h2>
         <p className="font-body text-sm text-[#888] mb-7">This is how the crew knows you.</p>
 
-        <Field
-          label="Username"
-          value={username}
-          onChange={(v) => setUsername(v.replace(/[^a-zA-Z0-9_]/g, ""))}
-          placeholder="sk8legend"
-          maxLength={20}
-          icon="@"
-          note={
-            username.length >= 3
-              ? available === null
-                ? "Checking..."
-                : available
-                  ? `@${username.toLowerCase()} is available ✓`
-                  : `@${username.toLowerCase()} is taken ✗`
-              : "Min 3 characters, letters/numbers/underscore"
-          }
-        />
+        <form onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
+          <Field
+            label="Username"
+            value={username}
+            onChange={(v) => setUsername(v.replace(/[^a-zA-Z0-9_]/g, ""))}
+            placeholder="sk8legend"
+            maxLength={20}
+            icon="@"
+            autoComplete="username"
+            autoFocus
+            note={
+              username.length >= 3
+                ? available === null
+                  ? "Checking..."
+                  : available
+                    ? `@${username.toLowerCase()} is available ✓`
+                    : `@${username.toLowerCase()} is taken ✗`
+                : "Min 3 characters, letters/numbers/underscore"
+            }
+          />
 
-        <div className="mb-6">
-          <label className="block font-display text-sm tracking-[0.12em] text-[#888] mb-2">Stance</label>
-          <div className="flex gap-3">
-            {["Regular", "Goofy"].map((s) => (
-              <button
-                key={s}
-                onClick={() => setStance(s)}
-                className={`flex-1 py-3 rounded-xl font-display text-lg tracking-wider cursor-pointer transition-all
-                  ${stance === s
-                    ? "bg-[rgba(255,107,0,0.08)] border border-brand-orange text-brand-orange"
-                    : "bg-surface-alt border border-border text-[#888]"
-                  }`}
-              >
-                {s}
-              </button>
-            ))}
+          <div className="mb-6">
+            <label className="block font-display text-sm tracking-[0.12em] text-[#888] mb-2">Stance</label>
+            <div className="flex gap-3">
+              {["Regular", "Goofy"].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setStance(s)}
+                  className={`flex-1 py-3 rounded-xl font-display text-lg tracking-wider cursor-pointer transition-all
+                    ${stance === s
+                      ? "bg-[rgba(255,107,0,0.08)] border border-brand-orange text-brand-orange"
+                      : "bg-surface-alt border border-border text-[#888]"
+                    }`}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
 
-        <ErrorBanner message={error} onDismiss={() => setError("")} />
+          <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-        <Btn onClick={submit} disabled={loading || username.length < 3 || available !== true}>
-          {loading ? "Creating..." : "Lock It In"}
-        </Btn>
+          <Btn onClick={submit} disabled={loading || username.length < 3 || available !== true}>
+            {loading ? "Creating..." : "Lock It In"}
+          </Btn>
+        </form>
       </div>
     </div>
   );
@@ -785,13 +804,16 @@ function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
 
   if (emailVerified) return null;
 
+  const [resendError, setResendError] = useState(false);
+
   const handleResend = async () => {
     setSending(true);
+    setResendError(false);
     try {
       await resendVerification();
       setSent(true);
     } catch {
-      // Silently fail — rate limited or other issue
+      setResendError(true);
     } finally {
       setSending(false);
     }
@@ -804,11 +826,12 @@ function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
         <span className="font-body text-xs text-[#888]">Check your inbox for the verification link.</span>
       </div>
       <button
+        type="button"
         onClick={handleResend}
         disabled={sending || sent}
         className="font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange rounded-lg px-3 py-1.5 whitespace-nowrap disabled:opacity-40"
       >
-        {sent ? "Sent!" : sending ? "..." : "Resend"}
+        {sent ? "Sent!" : resendError ? "Retry" : sending ? "..." : "Resend"}
       </button>
     </div>
   );
@@ -842,7 +865,7 @@ function Lobby({
           <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
           <div className="font-body text-xs text-[#555] mt-0.5">@{profile.username}</div>
         </div>
-        <button onClick={onSignOut} className="font-body text-xs text-[#555] hover:text-[#888] transition-colors">
+        <button type="button" onClick={onSignOut} className="font-body text-xs text-[#555] hover:text-[#888] transition-colors">
           Sign Out
         </button>
       </div>
@@ -862,7 +885,10 @@ function Lobby({
             {active.map((g) => (
               <div
                 key={g.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onOpenGame(g)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
                 className={`p-4 rounded-2xl mb-3 bg-surface border cursor-pointer transition-all
                   ${isMyTurn(g) ? "border-brand-orange shadow-[0_0_20px_rgba(255,107,0,0.08)]" : "border-border"}`}
               >
@@ -905,7 +931,10 @@ function Lobby({
             {done.map((g) => (
               <div
                 key={g.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onOpenGame(g)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
                 className="p-4 rounded-2xl mb-3 bg-surface border border-border cursor-pointer transition-all opacity-70"
               >
                 <span className="font-display text-xl text-white">vs @{opponent(g)}</span>
@@ -964,8 +993,8 @@ function ChallengeScreen({
       const uid = await getUidByUsername(normalized);
       if (!uid) { setError(`@${normalized} doesn't exist yet. They need to sign up first.`); return; }
       onSend(uid, normalized);
-    } catch (err: any) {
-      setError(err?.message || "Could not find user");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not find user");
     } finally {
       setLoading(false);
     }
@@ -974,39 +1003,43 @@ function ChallengeScreen({
   return (
     <div className="min-h-dvh bg-[#0A0A0A] px-6 pt-6">
       <div className="max-w-md mx-auto">
-        <button onClick={onBack} className="font-body text-sm text-[#888] mb-6 flex items-center gap-1.5">
+        <button type="button" onClick={onBack} className="font-body text-sm text-[#888] mb-6 flex items-center gap-1.5">
           ← Back
         </button>
 
         <h1 className="font-display text-[42px] text-white mb-2">Challenge</h1>
         <p className="font-body text-sm text-[#888] mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 
-        <Field
-          label="Opponent Username"
-          value={opponent}
-          onChange={(v) => setOpponent(v.replace(/[^a-zA-Z0-9_]/g, ""))}
-          placeholder="their_handle"
-          icon="@"
-        />
+        <form onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
+          <Field
+            label="Opponent Username"
+            value={opponent}
+            onChange={(v) => setOpponent(v.replace(/[^a-zA-Z0-9_]/g, ""))}
+            placeholder="their_handle"
+            icon="@"
+            maxLength={20}
+            autoFocus
+          />
 
-        <InviteButton username={profile.username} className="mb-6" />
+          <InviteButton username={profile.username} className="mb-6" />
 
-        <div className="p-4 rounded-xl bg-surface-alt border border-border mb-6">
-          <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
-          <div className="font-body text-sm text-[#888] leading-7">
-            <div>🎯 You set the first trick</div>
-            <div>📹 One-take video only — no retries</div>
-            <div>⏱ 24 hours per turn or forfeit</div>
-            <div>❌ Miss a match = earn a letter</div>
-            <div>💀 Spell S.K.A.T.E. = you lose</div>
+          <div className="p-4 rounded-xl bg-surface-alt border border-border mb-6">
+            <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
+            <div className="font-body text-sm text-[#888] leading-7">
+              <div>🎯 You set the first trick</div>
+              <div>📹 One-take video only — no retries</div>
+              <div>⏱ 24 hours per turn or forfeit</div>
+              <div>❌ Miss a match = earn a letter</div>
+              <div>💀 Spell S.K.A.T.E. = you lose</div>
+            </div>
           </div>
-        </div>
 
-        <ErrorBanner message={error} onDismiss={() => setError("")} />
+          <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-        <Btn onClick={submit} disabled={loading || opponent.length < 3}>
-          {loading ? "Finding..." : "🔥 Send Challenge"}
-        </Btn>
+          <Btn onClick={submit} disabled={loading || opponent.length < 3}>
+            {loading ? "Finding..." : "🔥 Send Challenge"}
+          </Btn>
+        </form>
       </div>
     </div>
   );
@@ -1032,7 +1065,9 @@ function GamePlayScreen({
     if (forfeitChecked || game.status !== "active") return;
     const deadline = game.turnDeadline?.toMillis?.() ?? 0;
     if (deadline > 0 && Date.now() >= deadline) {
-      forfeitExpiredTurn(game.id).catch(() => {});
+      forfeitExpiredTurn(game.id).catch((err) => {
+        console.warn("Forfeit check failed:", err instanceof Error ? err.message : err);
+      });
     }
     setForfeitChecked(true);
   }, [game.id, game.status, forfeitChecked, game.turnDeadline]);
@@ -1055,8 +1090,8 @@ function GamePlayScreen({
         videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob);
       }
       await setTrick(game.id, "Trick", videoUrl);
-    } catch (err: any) {
-      setError(err?.message || "Failed to send trick");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to send trick");
       submittedRef.current = false; // allow retry on error
     } finally {
       setSubmitting(false);
@@ -1088,8 +1123,8 @@ function GamePlayScreen({
       }
       await submitMatchResult(game.id, landed, videoUrl);
       // Game will update via realtime listener
-    } catch (err: any) {
-      setError(err?.message || "Failed to submit result");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to submit result");
       matchSubmittedRef.current = false; // allow retry on error
     } finally {
       setSubmitting(false);
@@ -1125,7 +1160,7 @@ function GamePlayScreen({
     <div className="min-h-dvh bg-[#0A0A0A] pb-10">
       {/* Header */}
       <div className="px-5 py-4 border-b border-border flex justify-between items-center">
-        <button onClick={onBack} className="font-body text-sm text-[#888]">← Games</button>
+        <button type="button" onClick={onBack} className="font-body text-sm text-[#888]">← Games</button>
         <Timer deadline={deadline} />
       </div>
 
@@ -1308,13 +1343,16 @@ function AppInner() {
   }, [user, activeProfile]);
 
   // Real-time game subscription
+  const screenRef = useRef(screen);
+  screenRef.current = screen;
+
   useEffect(() => {
     if (!activeGame) return;
     const unsub = subscribeToGame(activeGame.id, (updated) => {
       if (!updated) return;
       setActiveGame(updated);
       // If game just finished, go to game over
-      if ((updated.status === "complete" || updated.status === "forfeit") && screen === "game") {
+      if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
         setScreen("gameover");
       }
     });
@@ -1387,6 +1425,7 @@ function AppInner() {
             setActiveProfile(null);
             setGames([]);
             setActiveGame(null);
+            setAuthMode("signup");
             setScreen("landing");
           }}
         />
