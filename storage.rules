@@ -2,13 +2,17 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Game videos: only game participants can upload
+    // Game videos: only authenticated users can read/upload
     // Path: games/{gameId}/turn-{turnNumber}/{role}.webm
-    match /games/{gameId}/{allPaths=**} {
+    // NOTE: Storage rules cannot cross-reference Firestore docs to verify
+    // game membership. Firestore game rules enforce player validation.
+    // Storage restricts to auth + size + content type.
+    match /games/{gameId}/{turnPath}/{fileName} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
-        && request.resource.size < 100 * 1024 * 1024  // 100MB max
-        && request.resource.contentType.matches('video/.*');
+        && request.resource.size < 50 * 1024 * 1024  // 50MB max per video
+        && request.resource.contentType.matches('video/.*')
+        && fileName.matches('.*\\.webm$');  // Only .webm files
     }
 
     // Default: deny everything else

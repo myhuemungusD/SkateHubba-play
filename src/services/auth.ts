@@ -8,7 +8,7 @@ import {
   type User,
   type ActionCodeSettings,
 } from "firebase/auth";
-import { auth } from "../firebase";
+import { auth, requireAuth } from "../firebase";
 
 export type AuthUser = User;
 
@@ -30,27 +30,28 @@ export function onAuthChange(cb: (user: User | null) => void) {
 }
 
 export async function signUp(email: string, password: string): Promise<User> {
-  const cred = await createUserWithEmailAndPassword(auth!, email, password);
+  const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
   // Fire-and-forget verification email
   sendEmailVerification(cred.user, getActionCodeSettings()).catch(() => {});
   return cred.user;
 }
 
 export async function signIn(email: string, password: string): Promise<User> {
-  const cred = await signInWithEmailAndPassword(auth!, email, password);
+  const cred = await signInWithEmailAndPassword(requireAuth(), email, password);
   return cred.user;
 }
 
 export async function signOut(): Promise<void> {
-  await fbSignOut(auth!);
+  await fbSignOut(requireAuth());
 }
 
 export async function resetPassword(email: string): Promise<void> {
-  await sendPasswordResetEmail(auth!, email, getActionCodeSettings());
+  await sendPasswordResetEmail(requireAuth(), email, getActionCodeSettings());
 }
 
 export async function resendVerification(): Promise<void> {
-  if (auth?.currentUser) {
-    await sendEmailVerification(auth.currentUser, getActionCodeSettings());
+  const user = requireAuth().currentUser;
+  if (user) {
+    await sendEmailVerification(user, getActionCodeSettings());
   }
 }

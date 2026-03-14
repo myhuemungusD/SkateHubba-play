@@ -13,6 +13,7 @@ vi.mock("./services/auth", () => ({
   signIn: vi.fn(),
   signOut: vi.fn(),
   resetPassword: vi.fn(),
+  resendVerification: vi.fn(),
 }));
 
 vi.mock("./services/users", () => ({
@@ -25,6 +26,7 @@ vi.mock("./services/games", () => ({
   createGame: vi.fn(),
   setTrick: vi.fn(),
   submitMatchResult: vi.fn(),
+  forfeitExpiredTurn: vi.fn(),
   subscribeToMyGames: vi.fn(() => vi.fn()),
   subscribeToGame: vi.fn(() => vi.fn()),
 }));

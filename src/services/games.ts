@@ -2,8 +2,7 @@ import {
   collection,
   doc,
   addDoc,
-  getDoc,
-  updateDoc,
+  runTransaction,
   query,
   where,
   onSnapshot,
@@ -11,13 +10,13 @@ import {
   Timestamp,
   type Unsubscribe,
 } from "firebase/firestore";
-import { db } from "../firebase";
+import { requireDb } from "../firebase";
 
 /* ────────────────────────────────────────────
  * Types
  * ──────────────────────────────────────────── */
 
-export type GameStatus = "pending" | "active" | "complete" | "forfeit";
+export type GameStatus = "active" | "complete" | "forfeit";
 export type GamePhase = "setting" | "matching";
 
 export interface GameDoc {
@@ -40,12 +39,14 @@ export interface GameDoc {
   turnDeadline: Timestamp;
   turnNumber: number;
   winner: string | null;
-  createdAt: unknown;
-  updatedAt: unknown;
+  createdAt: Timestamp | null;
+  updatedAt: Timestamp | null;
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
-const gamesRef = db ? collection(db, "games") : null;
+function gamesRef() {
+  return collection(requireDb(), "games");
+}
 
 /* ────────────────────────────────────────────
  * Create a new game (challenge)
@@ -81,7 +82,7 @@ export async function createGame(
     updatedAt: serverTimestamp(),
   };
 
-  const docRef = await addDoc(gamesRef!, gameData);
+  const docRef = await addDoc(gamesRef(), gameData);
   return docRef.id;
 }
 
@@ -94,25 +95,27 @@ export async function setTrick(
   trickName: string,
   videoUrl: string | null
 ): Promise<void> {
-  const gameRef = doc(db!, "games", gameId);
-  const snap = await getDoc(gameRef);
-  if (!snap.exists()) throw new Error("Game not found");
+  const gameRef = doc(requireDb(), "games", gameId);
 
-  const game = { id: snap.id, ...snap.data() } as GameDoc;
-  if (game.phase !== "setting") throw new Error("Not in setting phase");
+  await runTransaction(requireDb(), async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) throw new Error("Game not found");
 
-  // Determine the matcher (the other player)
-  const matcherUid =
-    game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const game = { id: snap.id, ...snap.data() } as GameDoc;
+    if (game.phase !== "setting") throw new Error("Not in setting phase");
 
-  await updateDoc(gameRef, {
-    phase: "matching",
-    currentTrickName: trickName,
-    currentTrickVideoUrl: videoUrl,
-    matchVideoUrl: null,
-    currentTurn: matcherUid,
-    turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
-    updatedAt: serverTimestamp(),
+    const matcherUid =
+      game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+
+    tx.update(gameRef, {
+      phase: "matching",
+      currentTrickName: trickName,
+      currentTrickVideoUrl: videoUrl,
+      matchVideoUrl: null,
+      currentTurn: matcherUid,
+      turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+      updatedAt: serverTimestamp(),
+    });
   });
 }
 
@@ -125,61 +128,95 @@ export async function submitMatchResult(
   landed: boolean,
   matchVideoUrl: string | null
 ): Promise<{ gameOver: boolean; winner: string | null }> {
-  const gameRef = doc(db!, "games", gameId);
-  const snap = await getDoc(gameRef);
-  if (!snap.exists()) throw new Error("Game not found");
+  const gameRef = doc(requireDb(), "games", gameId);
 
-  const game = { id: snap.id, ...snap.data() } as GameDoc;
-  if (game.phase !== "matching") throw new Error("Not in matching phase");
+  return runTransaction(requireDb(), async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) throw new Error("Game not found");
 
-  // Determine who the matcher is
-  const matcherUid =
-    game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
-  const isP1Matcher = matcherUid === game.player1Uid;
+    const game = { id: snap.id, ...snap.data() } as GameDoc;
+    if (game.phase !== "matching") throw new Error("Not in matching phase");
 
-  let newP1Letters = game.p1Letters;
-  let newP2Letters = game.p2Letters;
+    const matcherUid =
+      game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const isP1Matcher = matcherUid === game.player1Uid;
 
-  // Missed trick = earn a letter
-  if (!landed) {
-    if (isP1Matcher) newP1Letters++;
-    else newP2Letters++;
-  }
+    let newP1Letters = game.p1Letters;
+    let newP2Letters = game.p2Letters;
 
-  // Check game over
-  const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
-  const winner = gameOver
-    ? newP1Letters >= 5
-      ? game.player2Uid // p1 lost, p2 wins
-      : game.player1Uid // p2 lost, p1 wins
-    : null;
+    if (!landed) {
+      if (isP1Matcher) newP1Letters++;
+      else newP2Letters++;
+    }
 
-  // Next turn: if landed, matcher becomes setter. If missed, same setter sets again.
-  const nextSetter = landed ? matcherUid : game.currentSetter;
+    const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
+    const winner = gameOver
+      ? newP1Letters >= 5
+        ? game.player2Uid
+        : game.player1Uid
+      : null;
 
-  const updates: Record<string, unknown> = {
-    p1Letters: newP1Letters,
-    p2Letters: newP2Letters,
-    matchVideoUrl,
-    updatedAt: serverTimestamp(),
-  };
+    const nextSetter = landed ? matcherUid : game.currentSetter;
 
-  if (gameOver) {
-    updates.status = "complete";
-    updates.winner = winner;
-  } else {
-    updates.phase = "setting";
-    updates.currentSetter = nextSetter;
-    updates.currentTurn = nextSetter;
-    updates.currentTrickName = null;
-    updates.currentTrickVideoUrl = null;
-    updates.matchVideoUrl = null;
-    updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
-    updates.turnNumber = game.turnNumber + 1;
-  }
+    const updates: Record<string, unknown> = {
+      p1Letters: newP1Letters,
+      p2Letters: newP2Letters,
+      matchVideoUrl,
+      updatedAt: serverTimestamp(),
+    };
 
-  await updateDoc(gameRef, updates);
-  return { gameOver, winner };
+    if (gameOver) {
+      updates.status = "complete";
+      updates.winner = winner;
+    } else {
+      updates.phase = "setting";
+      updates.currentSetter = nextSetter;
+      updates.currentTurn = nextSetter;
+      updates.currentTrickName = null;
+      updates.currentTrickVideoUrl = null;
+      updates.matchVideoUrl = null;
+      updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
+      updates.turnNumber = game.turnNumber + 1;
+    }
+
+    tx.update(gameRef, updates);
+    return { gameOver, winner };
+  });
+}
+
+/* ────────────────────────────────────────────
+ * Forfeit expired turn
+ * ──────────────────────────────────────────── */
+
+export async function forfeitExpiredTurn(
+  gameId: string
+): Promise<{ forfeited: boolean; winner: string | null }> {
+  const gameRef = doc(requireDb(), "games", gameId);
+
+  return runTransaction(requireDb(), async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) return { forfeited: false, winner: null };
+
+    const game = { id: snap.id, ...snap.data() } as GameDoc;
+    if (game.status !== "active") return { forfeited: false, winner: null };
+
+    const deadline = game.turnDeadline?.toMillis?.() ?? 0;
+    if (deadline === 0 || Date.now() < deadline) {
+      return { forfeited: false, winner: null };
+    }
+
+    // The player whose turn it is forfeits — opponent wins
+    const winner =
+      game.currentTurn === game.player1Uid ? game.player2Uid : game.player1Uid;
+
+    tx.update(gameRef, {
+      status: "forfeit",
+      winner,
+      updatedAt: serverTimestamp(),
+    });
+
+    return { forfeited: true, winner };
+  });
 }
 
 /* ────────────────────────────────────────────
@@ -212,18 +249,22 @@ export function subscribeToMyGames(
     onUpdate(sorted);
   };
 
-  const q1 = query(gamesRef!, where("player1Uid", "==", uid));
-  const q2 = query(gamesRef!, where("player2Uid", "==", uid));
+  const q1 = query(gamesRef(), where("player1Uid", "==", uid));
+  const q2 = query(gamesRef(), where("player2Uid", "==", uid));
+
+  const handleError = (err: Error) => {
+    console.warn("Game subscription error:", err.message);
+  };
 
   const unsub1 = onSnapshot(q1, (snap) => {
     p1Games = snap.docs.map((d) => ({ id: d.id, ...d.data() } as GameDoc));
     merge();
-  });
+  }, handleError);
 
   const unsub2 = onSnapshot(q2, (snap) => {
     p2Games = snap.docs.map((d) => ({ id: d.id, ...d.data() } as GameDoc));
     merge();
-  });
+  }, handleError);
 
   return () => {
     unsub1();
@@ -238,11 +279,18 @@ export function subscribeToGame(
   gameId: string,
   onUpdate: (game: GameDoc | null) => void
 ): Unsubscribe {
-  return onSnapshot(doc(db!, "games", gameId), (snap) => {
-    if (!snap.exists()) {
+  return onSnapshot(
+    doc(requireDb(), "games", gameId),
+    (snap) => {
+      if (!snap.exists()) {
+        onUpdate(null);
+        return;
+      }
+      onUpdate({ id: snap.id, ...snap.data() } as GameDoc);
+    },
+    (err) => {
+      console.warn("Game subscription error:", err.message);
       onUpdate(null);
-      return;
     }
-    onUpdate({ id: snap.id, ...snap.data() } as GameDoc);
-  });
+  );
 }

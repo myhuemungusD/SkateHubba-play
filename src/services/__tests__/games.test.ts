@@ -3,32 +3,33 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 /* ── mock firebase/firestore ────────────────── */
 const {
   mockAddDoc,
-  mockGetDoc,
-  mockUpdateDoc,
+  mockRunTransaction,
   mockOnSnapshot,
   mockDoc,
   mockCollection,
   mockQuery,
   mockWhere,
   mockOrderBy,
+  mockTxGet,
+  mockTxUpdate,
 } = vi.hoisted(() => ({
   mockAddDoc: vi.fn(),
-  mockGetDoc: vi.fn(),
-  mockUpdateDoc: vi.fn(),
+  mockRunTransaction: vi.fn(),
   mockOnSnapshot: vi.fn(),
   mockDoc: vi.fn((...args: any[]) => args.slice(1).join("/")),
   mockCollection: vi.fn((...args: any[]) => args[1]),
   mockQuery: vi.fn((...args: any[]) => args),
   mockWhere: vi.fn((...args: any[]) => args),
   mockOrderBy: vi.fn((...args: any[]) => args),
+  mockTxGet: vi.fn(),
+  mockTxUpdate: vi.fn(),
 }));
 
 vi.mock("firebase/firestore", () => ({
   collection: mockCollection,
   doc: mockDoc,
   addDoc: mockAddDoc,
-  getDoc: mockGetDoc,
-  updateDoc: mockUpdateDoc,
+  runTransaction: mockRunTransaction,
   query: mockQuery,
   where: mockWhere,
   orderBy: mockOrderBy,
@@ -45,10 +46,19 @@ import {
   createGame,
   setTrick,
   submitMatchResult,
+  forfeitExpiredTurn,
   subscribeToGame,
+  subscribeToMyGames,
 } from "../games";
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Default: runTransaction calls the callback with a mock tx object
+  mockRunTransaction.mockImplementation(async (_db: unknown, cb: Function) => {
+    const tx = { get: mockTxGet, update: mockTxUpdate, set: vi.fn() };
+    return cb(tx);
+  });
+});
 
 /* ── Helpers ────────────────────────────────── */
 
@@ -58,6 +68,10 @@ function makeGameSnap(data: Record<string, unknown>, id = "g1") {
     id,
     data: () => data,
   };
+}
+
+function makeNotFoundSnap() {
+  return { exists: () => false };
 }
 
 const baseGame = {
@@ -95,31 +109,67 @@ describe("games service", () => {
       expect(docData.phase).toBe("setting");
       expect(docData.currentSetter).toBe("p1");
     });
+
+    it("sets initial scores, turn, and timestamps", async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
+      await createGame("p1", "alice", "p2", "bob");
+
+      const docData = mockAddDoc.mock.calls[0][1];
+      expect(docData.p1Letters).toBe(0);
+      expect(docData.p2Letters).toBe(0);
+      expect(docData.turnNumber).toBe(1);
+      expect(docData.currentTurn).toBe("p1");
+      expect(docData.winner).toBeNull();
+      expect(docData.currentTrickName).toBeNull();
+      expect(docData.turnDeadline).toBeDefined();
+      expect(docData.createdAt).toBe("SERVER_TS");
+      expect(docData.updatedAt).toBe("SERVER_TS");
+    });
   });
 
   describe("setTrick", () => {
     it("transitions the game from setting to matching phase", async () => {
-      mockGetDoc.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
-      mockUpdateDoc.mockResolvedValueOnce(undefined);
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
 
       await setTrick("g1", "Kickflip", "https://vid.url");
 
-      expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
-      const updates = mockUpdateDoc.mock.calls[0][1];
+      expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+      const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.phase).toBe("matching");
       expect(updates.currentTrickName).toBe("Kickflip");
       expect(updates.currentTurn).toBe("p2"); // matcher
     });
 
+    it("sets null video URL when no video recorded", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+
+      await setTrick("g1", "Manual", null);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.currentTrickVideoUrl).toBeNull();
+      expect(updates.matchVideoUrl).toBeNull();
+    });
+
+    it("assigns p1 as matcher when p2 is the setter", async () => {
+      mockTxGet.mockResolvedValueOnce(
+        makeGameSnap({ ...baseGame, phase: "setting", currentSetter: "p2", currentTurn: "p2" })
+      );
+
+      await setTrick("g1", "Tre Flip", null);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.currentTurn).toBe("p1");
+    });
+
     it("throws when game is not in setting phase", async () => {
-      mockGetDoc.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "matching" }));
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "matching" }));
       await expect(setTrick("g1", "Kickflip", null)).rejects.toThrow(
         "Not in setting phase"
       );
     });
 
     it("throws when game is not found", async () => {
-      mockGetDoc.mockResolvedValueOnce({ exists: () => false });
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
       await expect(setTrick("g1", "Kickflip", null)).rejects.toThrow("Game not found");
     });
   });
@@ -127,49 +177,43 @@ describe("games service", () => {
   describe("submitMatchResult", () => {
     it("adds a letter when the matcher misses", async () => {
       const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
-      mockGetDoc.mockResolvedValueOnce(makeGameSnap(game));
-      mockUpdateDoc.mockResolvedValueOnce(undefined);
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       const result = await submitMatchResult("g1", false, null);
       expect(result.gameOver).toBe(false);
 
-      const updates = mockUpdateDoc.mock.calls[0][1];
-      // p2 is matcher (since p1 is setter), p2 gets letter
+      const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.p2Letters).toBe(1);
     });
 
     it("does not add a letter when the matcher lands it", async () => {
       const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
-      mockGetDoc.mockResolvedValueOnce(makeGameSnap(game));
-      mockUpdateDoc.mockResolvedValueOnce(undefined);
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       await submitMatchResult("g1", true, null);
 
-      const updates = mockUpdateDoc.mock.calls[0][1];
+      const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.p1Letters).toBe(0);
       expect(updates.p2Letters).toBe(0);
     });
 
     it("switches setter to matcher when trick is landed", async () => {
       const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
-      mockGetDoc.mockResolvedValueOnce(makeGameSnap(game));
-      mockUpdateDoc.mockResolvedValueOnce(undefined);
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       await submitMatchResult("g1", true, null);
 
-      const updates = mockUpdateDoc.mock.calls[0][1];
-      // matcher was p2, now p2 becomes setter
+      const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.currentSetter).toBe("p2");
     });
 
     it("keeps same setter when trick is missed", async () => {
       const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
-      mockGetDoc.mockResolvedValueOnce(makeGameSnap(game));
-      mockUpdateDoc.mockResolvedValueOnce(undefined);
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       await submitMatchResult("g1", false, null);
 
-      const updates = mockUpdateDoc.mock.calls[0][1];
+      const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.currentSetter).toBe("p1");
     });
 
@@ -178,25 +222,166 @@ describe("games service", () => {
         ...baseGame,
         phase: "matching",
         currentSetter: "p1",
-        p2Letters: 4, // p2 (matcher) about to get 5th letter
+        p2Letters: 4,
       };
-      mockGetDoc.mockResolvedValueOnce(makeGameSnap(game));
-      mockUpdateDoc.mockResolvedValueOnce(undefined);
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       const result = await submitMatchResult("g1", false, null);
       expect(result.gameOver).toBe(true);
-      expect(result.winner).toBe("p1"); // p2 lost (reached 5), so p1 wins
+      expect(result.winner).toBe("p1");
 
-      const updates = mockUpdateDoc.mock.calls[0][1];
+      const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.status).toBe("complete");
       expect(updates.winner).toBe("p1");
     });
 
     it("throws when not in matching phase", async () => {
-      mockGetDoc.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
       await expect(submitMatchResult("g1", true, null)).rejects.toThrow(
         "Not in matching phase"
       );
+    });
+
+    it("throws when game is not found", async () => {
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+      await expect(submitMatchResult("g1", true, null)).rejects.toThrow("Game not found");
+    });
+
+    it("adds a letter to p1 when p1 is the matcher and misses", async () => {
+      const game = { ...baseGame, phase: "matching", currentSetter: "p2" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await submitMatchResult("g1", false, null);
+      expect(result.gameOver).toBe(false);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.p1Letters).toBe(1);
+      expect(updates.p2Letters).toBe(0);
+    });
+
+    it("stores match video URL when game ends", async () => {
+      // When game ends, matchVideoUrl is stored as-is (no reset to null)
+      const game = { ...baseGame, phase: "matching", currentSetter: "p1", p2Letters: 4 };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await submitMatchResult("g1", false, "https://cdn.example.com/match.webm");
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.matchVideoUrl).toBe("https://cdn.example.com/match.webm");
+    });
+
+    it("ends the game when p1 reaches 5 letters (p2 wins)", async () => {
+      const game = {
+        ...baseGame,
+        phase: "matching",
+        currentSetter: "p2",
+        p1Letters: 4,
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await submitMatchResult("g1", false, null);
+      expect(result.gameOver).toBe(true);
+      expect(result.winner).toBe("p2");
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.status).toBe("complete");
+      expect(updates.winner).toBe("p2");
+    });
+
+    it("increments turn number when game continues", async () => {
+      const game = { ...baseGame, phase: "matching", currentSetter: "p1", turnNumber: 3 };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await submitMatchResult("g1", false, null);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.turnNumber).toBe(4);
+    });
+
+    it("clears trick data when transitioning back to setting phase", async () => {
+      const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await submitMatchResult("g1", false, null);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.currentTrickName).toBeNull();
+      expect(updates.currentTrickVideoUrl).toBeNull();
+      expect(updates.matchVideoUrl).toBeNull();
+      expect(updates.phase).toBe("setting");
+    });
+  });
+
+  describe("forfeitExpiredTurn", () => {
+    it("forfeits when turn deadline has passed", async () => {
+      const game = {
+        ...baseGame,
+        currentTurn: "p1",
+        turnDeadline: { toMillis: () => Date.now() - 1000 },
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.forfeited).toBe(true);
+      expect(result.winner).toBe("p2");
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.status).toBe("forfeit");
+      expect(updates.winner).toBe("p2");
+    });
+
+    it("does not forfeit when deadline has not passed", async () => {
+      const game = {
+        ...baseGame,
+        currentTurn: "p1",
+        turnDeadline: { toMillis: () => Date.now() + 86400000 },
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.forfeited).toBe(false);
+      expect(mockTxUpdate).not.toHaveBeenCalled();
+    });
+
+    it("does not forfeit completed games", async () => {
+      const game = { ...baseGame, status: "complete" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.forfeited).toBe(false);
+    });
+
+    it("returns false for non-existent games", async () => {
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.forfeited).toBe(false);
+    });
+
+    it("does not forfeit when turnDeadline is missing", async () => {
+      const game = {
+        ...baseGame,
+        currentTurn: "p1",
+        turnDeadline: null,
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.forfeited).toBe(false);
+      expect(mockTxUpdate).not.toHaveBeenCalled();
+    });
+
+    it("awards win to p1 when p2's turn expires", async () => {
+      const game = {
+        ...baseGame,
+        currentTurn: "p2",
+        turnDeadline: { toMillis: () => Date.now() - 5000 },
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.forfeited).toBe(true);
+      expect(result.winner).toBe("p1");
     });
   });
 
@@ -225,6 +410,84 @@ describe("games service", () => {
       const onUpdate = vi.fn();
       subscribeToGame("g1", onUpdate);
       expect(onUpdate).toHaveBeenCalledWith(null);
+    });
+
+    it("returns an unsubscribe function", () => {
+      const mockUnsub = vi.fn();
+      mockOnSnapshot.mockReturnValue(mockUnsub);
+
+      const unsub = subscribeToGame("g1", vi.fn());
+      unsub();
+      expect(mockUnsub).toHaveBeenCalled();
+    });
+  });
+
+  describe("subscribeToMyGames", () => {
+    it("sets up two snapshot listeners (p1 and p2 queries)", () => {
+      mockOnSnapshot.mockReturnValue(vi.fn());
+
+      subscribeToMyGames("u1", vi.fn());
+
+      // Two queries: player1Uid == u1, player2Uid == u1
+      expect(mockOnSnapshot).toHaveBeenCalledTimes(2);
+      expect(mockWhere).toHaveBeenCalledWith("player1Uid", "==", "u1");
+      expect(mockWhere).toHaveBeenCalledWith("player2Uid", "==", "u1");
+    });
+
+    it("unsubscribes both listeners on cleanup", () => {
+      const unsub1 = vi.fn();
+      const unsub2 = vi.fn();
+      mockOnSnapshot.mockReturnValueOnce(unsub1).mockReturnValueOnce(unsub2);
+
+      const unsub = subscribeToMyGames("u1", vi.fn());
+      unsub();
+
+      expect(unsub1).toHaveBeenCalled();
+      expect(unsub2).toHaveBeenCalled();
+    });
+
+    it("merges and deduplicates games from both queries", () => {
+      const onUpdate = vi.fn();
+      const game1 = { id: "g1", ...baseGame, status: "active", turnNumber: 1 };
+      const game2 = { id: "g2", ...baseGame, status: "active", turnNumber: 2 };
+
+      mockOnSnapshot.mockImplementation((_query: unknown, cb: Function) => {
+        // Both queries return the same game + one unique
+        cb({
+          docs: [
+            { id: "g1", data: () => ({ ...baseGame, status: "active", turnNumber: 1 }) },
+            { id: "g2", data: () => ({ ...baseGame, status: "active", turnNumber: 2 }) },
+          ],
+        });
+        return vi.fn();
+      });
+
+      subscribeToMyGames("u1", onUpdate);
+
+      // Should be called with deduplicated games
+      const games = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      const ids = games.map((g: any) => g.id);
+      expect(new Set(ids).size).toBe(ids.length); // no duplicates
+    });
+
+    it("sorts active games before completed games", () => {
+      const onUpdate = vi.fn();
+
+      mockOnSnapshot.mockImplementation((_query: unknown, cb: Function) => {
+        cb({
+          docs: [
+            { id: "g1", data: () => ({ ...baseGame, status: "complete", turnNumber: 5 }) },
+            { id: "g2", data: () => ({ ...baseGame, status: "active", turnNumber: 1 }) },
+          ],
+        });
+        return vi.fn();
+      });
+
+      subscribeToMyGames("u1", onUpdate);
+
+      const games = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
+      expect(games[0].status).toBe("active");
+      expect(games[1].status).toBe("complete");
     });
   });
 });
