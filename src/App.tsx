@@ -34,6 +34,10 @@ class ErrorBoundary extends Component<
     return { error };
   }
 
+  componentDidCatch(error: Error, info: { componentStack?: string }) {
+    console.error("ErrorBoundary caught:", error.message, info.componentStack);
+  }
+
   render() {
     if (this.state.error) {
       return (
@@ -814,10 +818,9 @@ function ProfileSetup({
 function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
+  const [resendError, setResendError] = useState(false);
 
   if (emailVerified) return null;
-
-  const [resendError, setResendError] = useState(false);
 
   const handleResend = async () => {
     setSending(true);
