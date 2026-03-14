@@ -5,6 +5,8 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
   type User,
   type ActionCodeSettings,
 } from "firebase/auth";
@@ -54,4 +56,10 @@ export async function resendVerification(): Promise<void> {
   if (user) {
     await sendEmailVerification(user, getActionCodeSettings());
   }
+}
+
+export async function signInWithGoogle(): Promise<User> {
+  const provider = new GoogleAuthProvider();
+  const cred = await signInWithPopup(requireAuth(), provider);
+  return cred.user;
 }
