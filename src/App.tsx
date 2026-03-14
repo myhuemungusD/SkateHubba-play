@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useRef, useCallback, Component, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { useAuth } from "./hooks/useAuth";
 import { signUp, signIn, signOut, resetPassword, resendVerification } from "./services/auth";
@@ -21,10 +21,48 @@ import { uploadVideo } from "./services/storage";
 import { firebaseReady } from "./firebase";
 
 /* ═══════════════════════════════════════════
+ *  ERROR BOUNDARY
+ * ═══════════════════════════════════════════ */
+
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
+          <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-4">SKATEHUBBA™</span>
+          <h1 className="font-display text-3xl text-white mb-2">Something broke</h1>
+          <p className="font-body text-sm text-[#888] mb-6 text-center max-w-sm">
+            {this.state.error.message}
+          </p>
+          <button
+            onClick={() => { this.setState({ error: null }); window.location.reload(); }}
+            className="px-6 py-3 rounded-xl bg-brand-orange text-white font-display tracking-wider"
+          >
+            Reload App
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/* ═══════════════════════════════════════════
  *  BRAND TOKENS
  * ═══════════════════════════════════════════ */
 
 const BG = "#0A0A0A";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const LETTERS = ["S", "K", "A", "T", "E"];
 
@@ -128,6 +166,7 @@ function LetterDisplay({ count, name, active }: { count: number; name: string; a
     <div
       className={`flex flex-col items-center gap-1.5 px-4 py-3 rounded-xl border transition-all duration-300 min-w-[84px]
         ${active ? "border-brand-orange bg-[rgba(255,107,0,0.08)]" : "border-border bg-transparent"}`}
+      aria-label={`${name}: ${LETTERS.slice(0, count).join(".")}${count > 0 ? "." : "no letters"}`}
     >
       <span className={`font-body text-xs font-semibold ${active ? "text-brand-orange" : "text-[#888]"}`}>
         {name}
@@ -151,22 +190,27 @@ function LetterDisplay({ count, name, active }: { count: number; name: string; a
 function Timer({ deadline }: { deadline: number }) {
   const [text, setText] = useState("");
   useEffect(() => {
+    let id: number;
     const tick = () => {
       const diff = deadline - Date.now();
-      if (diff <= 0) { setText("TIME'S UP"); return; }
+      if (diff <= 0) {
+        setText("TIME'S UP");
+        clearInterval(id);
+        return;
+      }
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
       const s = Math.floor((diff % 60000) / 1000);
       setText(`${h}h ${m}m ${s}s`);
     };
     tick();
-    const id = setInterval(tick, 1000);
+    id = window.setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [deadline]);
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-alt border border-border">
-      <span className="text-[#555] text-sm">⏱</span>
-      <span className="font-display text-sm text-brand-orange tracking-wider">{text}</span>
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-alt border border-border" aria-live="polite">
+      <span className="text-[#555] text-sm" aria-hidden="true">⏱</span>
+      <span className="font-display text-sm text-brand-orange tracking-wider" aria-label={`Turn timer: ${text}`}>{text}</span>
     </div>
   );
 }
@@ -541,7 +585,7 @@ function AuthScreen({
 
   const submit = async () => {
     setError("");
-    if (!email.includes("@")) { setError("Enter a valid email"); return; }
+    if (!EMAIL_RE.test(email.trim())) { setError("Enter a valid email"); return; }
     if (password.length < 6) { setError("Password must be 6+ characters"); return; }
     if (isSignup && password !== confirm) { setError("Passwords don't match"); return; }
 
@@ -567,7 +611,7 @@ function AuthScreen({
   };
 
   const handleReset = async () => {
-    if (!email.includes("@")) { setError("Enter your email first"); return; }
+    if (!EMAIL_RE.test(email.trim())) { setError("Enter your email first"); return; }
     try {
       await resetPassword(email);
       setResetSent(true);
@@ -998,8 +1042,11 @@ function GamePlayScreen({
   const opponentName =
     game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
 
-  // Auto-submit setter trick when recording finishes
+  // Auto-submit setter trick when recording finishes (guarded against double-call)
+  const submittedRef = useRef(false);
   const submitSetterTrick = useCallback(async (blob: Blob | null) => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
     setSubmitting(true);
     setError("");
     try {
@@ -1010,6 +1057,7 @@ function GamePlayScreen({
       await setTrick(game.id, "Trick", videoUrl);
     } catch (err: any) {
       setError(err?.message || "Failed to send trick");
+      submittedRef.current = false; // allow retry on error
     } finally {
       setSubmitting(false);
     }
@@ -1026,8 +1074,11 @@ function GamePlayScreen({
     setVideoRecorded(true);
   }, []);
 
-  // Matcher submits result
+  // Matcher submits result (guarded against double-call)
+  const matchSubmittedRef = useRef(false);
   const submitResult = async (landed: boolean) => {
+    if (matchSubmittedRef.current) return;
+    matchSubmittedRef.current = true;
     setSubmitting(true);
     setError("");
     try {
@@ -1039,6 +1090,7 @@ function GamePlayScreen({
       // Game will update via realtime listener
     } catch (err: any) {
       setError(err?.message || "Failed to submit result");
+      matchSubmittedRef.current = false; // allow retry on error
     } finally {
       setSubmitting(false);
     }
@@ -1212,6 +1264,14 @@ function GameOverScreen({
 type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover";
 
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppInner />
+    </ErrorBoundary>
+  );
+}
+
+function AppInner() {
   const { loading, user, profile, refreshProfile } = useAuth();
   const [screen, setScreen] = useState<Screen>("landing");
   const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");

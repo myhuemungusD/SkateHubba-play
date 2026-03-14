@@ -61,14 +61,16 @@ service cloud.firestore {
         && request.resource.data.p2Letters == 0
         && request.resource.data.turnNumber == 1;
 
-      // Only the player whose turn it is can update
+      // Only the current-turn player can update an active game
       allow update: if isSignedIn()
         && isPlayer(resource.data)
+        // Game must still be active to be updated
+        && resource.data.status == 'active'
         && (
           // The current turn player can update
           request.auth.uid == resource.data.currentTurn
-          // OR the game just ended (winner set)
-          || request.resource.data.status == 'complete'
+          // OR this update ends the game (setting status to complete/forfeit)
+          || request.resource.data.status in ['complete', 'forfeit']
         )
         // Cannot change player UIDs
         && request.resource.data.player1Uid == resource.data.player1Uid
