@@ -44,6 +44,7 @@ vi.mock("../../firebase");
 
 import {
   createGame,
+  _resetCreateGameRateLimit,
   setTrick,
   submitMatchResult,
   forfeitExpiredTurn,
@@ -53,6 +54,7 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetCreateGameRateLimit();
   // Default: runTransaction calls the callback with a mock tx object
   mockRunTransaction.mockImplementation(async (_db: unknown, cb: Function) => {
     const tx = { get: mockTxGet, update: mockTxUpdate, set: vi.fn() };
@@ -110,6 +112,14 @@ describe("games service", () => {
       expect(docData.currentSetter).toBe("p1");
     });
 
+    it("throws when called again within the cooldown period", async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: "game1" });
+      await createGame("p1", "alice", "p2", "bob");
+
+      // Second call without resetting — should hit rate limit
+      await expect(createGame("p1", "alice", "p2", "bob")).rejects.toThrow("Please wait before creating another game");
+    });
+
     it("sets initial scores, turn, and timestamps", async () => {
       mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob");
@@ -152,7 +162,7 @@ describe("games service", () => {
 
     it("assigns p1 as matcher when p2 is the setter", async () => {
       mockTxGet.mockResolvedValueOnce(
-        makeGameSnap({ ...baseGame, phase: "setting", currentSetter: "p2", currentTurn: "p2" })
+        makeGameSnap({ ...baseGame, phase: "setting", currentSetter: "p2", currentTurn: "p2" }),
       );
 
       await setTrick("g1", "Tre Flip", null);
@@ -167,9 +177,7 @@ describe("games service", () => {
 
     it("throws when game is not in setting phase", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "matching" }));
-      await expect(setTrick("g1", "Kickflip", null)).rejects.toThrow(
-        "Not in setting phase"
-      );
+      await expect(setTrick("g1", "Kickflip", null)).rejects.toThrow("Not in setting phase");
     });
 
     it("throws when game is already over", async () => {
@@ -246,9 +254,7 @@ describe("games service", () => {
 
     it("throws when not in matching phase", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
-      await expect(submitMatchResult("g1", true, null)).rejects.toThrow(
-        "Not in matching phase"
-      );
+      await expect(submitMatchResult("g1", true, null)).rejects.toThrow("Not in matching phase");
     });
 
     it("throws when game is already over", async () => {
@@ -566,10 +572,7 @@ describe("games service", () => {
 
       // Should not throw — error is swallowed with a console.warn
       expect(() => subscribeToMyGames("u1", vi.fn())).not.toThrow();
-      expect(warnSpy).toHaveBeenCalledWith(
-        "Game subscription error:",
-        "network error"
-      );
+      expect(warnSpy).toHaveBeenCalledWith("Game subscription error:", "network error");
       warnSpy.mockRestore();
     });
   });

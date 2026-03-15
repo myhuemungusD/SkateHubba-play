@@ -78,8 +78,9 @@ export function Lobby({
         {/* Primary CTA — Challenge */}
         <button
           type="button"
-          onClick={onChallenge}
-          className="w-full flex items-center justify-center gap-2.5 bg-brand-orange text-white rounded-xl py-[15px] mb-3 font-display tracking-wider text-xl transition-all duration-200 active:scale-[0.98] hover:bg-[#FF7A1A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          onClick={user?.emailVerified ? onChallenge : undefined}
+          disabled={!user?.emailVerified}
+          className={`w-full flex items-center justify-center gap-2.5 rounded-xl py-[15px] mb-1 font-display tracking-wider text-xl transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "bg-brand-orange text-white active:scale-[0.98] hover:bg-[#FF7A1A]" : "bg-brand-orange/40 text-white/60 cursor-not-allowed"}`}
         >
           <svg
             width="17"
@@ -101,6 +102,9 @@ export function Lobby({
           </svg>
           Challenge Someone
         </button>
+        {!user?.emailVerified && (
+          <p className="text-[11px] text-[#888] text-center mb-2 font-body">Verify your email to start challenging</p>
+        )}
 
         <InviteButton username={profile.username} className="mb-8" />
 
