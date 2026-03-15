@@ -26,8 +26,10 @@ vi.mock("../../services/logger", () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
   metrics: { signIn: vi.fn(), accountDeleted: vi.fn() },
 }));
-vi.mock("@sentry/react", () => ({
+vi.mock("../../lib/sentry", () => ({
   captureException: vi.fn(),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }));
 
 describe("useGameContext", () => {
