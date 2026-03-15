@@ -125,7 +125,12 @@ export async function writeDoc(collection: string, docId: string, data: Record<s
   const url = `${FS}/v1/projects/${PROJECT_ID}/databases/${DB_NAME}/documents/${collection}/${docId}`;
   const res = await fetch(url, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // "Bearer owner" bypasses Firestore security rules in the emulator,
+      // letting test helpers seed data without needing a real auth token.
+      Authorization: "Bearer owner",
+    },
     body: JSON.stringify({ fields }),
   });
   if (!res.ok) throw new Error(`writeDoc ${collection}/${docId} failed: ${res.status} ${await res.text()}`);
@@ -193,7 +198,10 @@ export async function expireGameDeadline(gameId: string): Promise<void> {
     `?updateMask.fieldPaths=turnDeadline`;
   const res = await fetch(url, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer owner",
+    },
     body: JSON.stringify({ fields: { turnDeadline: { timestampValue: past.toISOString() } } }),
   });
   if (!res.ok) throw new Error(`expireGameDeadline failed: ${res.status} ${await res.text()}`);
