@@ -72,7 +72,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
           metrics.signIn("google", redirectUser.uid);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        logger.warn("google_redirect_resolve_error", {
+          message: err instanceof Error ? err.message : String(err),
+        });
+      });
   }, []);
 
   const handleGoogleSignIn = useCallback(async () => {
@@ -160,7 +164,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const handleSignOut = useCallback(async () => {
     logger.info("user_sign_out");
-    await fbSignOut();
+    try {
+      await fbSignOut();
+    } catch (err) {
+      logger.error("sign_out_error", { message: err instanceof Error ? err.message : String(err) });
+    }
     setActiveProfile(null);
     setGames([]);
     setActiveGame(null);

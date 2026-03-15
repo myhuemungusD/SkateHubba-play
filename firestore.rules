@@ -94,14 +94,18 @@ service cloud.firestore {
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.auth.uid == resource.data.currentTurn
-        // Cannot change player UIDs
+        // Cannot change player UIDs or usernames
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
         // currentTurn must always be one of the two players after the update
         && (
           request.resource.data.currentTurn == resource.data.player1Uid ||
           request.resource.data.currentTurn == resource.data.player2Uid
         )
+        // turnDeadline must be a timestamp
+        && request.resource.data.turnDeadline is timestamp
         // Scores never decrease; at most ONE player gains a letter per update
         // (prevents double-incrementing and score manipulation)
         && (
@@ -136,9 +140,11 @@ service cloud.firestore {
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.resource.data.status == 'forfeit'
-        // Cannot change player UIDs or letters
+        // Cannot change player UIDs, usernames, or letters
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
         // Winner must be the opponent of the current-turn player (who timed out)
