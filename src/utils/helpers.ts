@@ -20,11 +20,11 @@ export function parseFirebaseError(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "object" && err !== null) {
     const obj = err as Record<string, unknown>;
-    // Only return a user-readable message string; raw Firebase error codes
-    // (e.g. "auth/some-unknown-code") and JSON blobs are not user-friendly.
     if (typeof obj.message === "string" && obj.message) return obj.message;
+    if (typeof obj.code === "string" && obj.code) return obj.code;
+    return JSON.stringify(err);
   }
-  return "Something went wrong";
+  return String(err);
 }
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
