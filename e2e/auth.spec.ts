@@ -3,11 +3,7 @@ import { clearAll, verifyEmail } from "./helpers/emulator";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-async function signUpViaUI(
-  page: import("@playwright/test").Page,
-  email: string,
-  password: string,
-) {
+async function signUpViaUI(page: import("@playwright/test").Page, email: string, password: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Get Started with Email" }).click();
   await page.getByPlaceholder("you@email.com").fill(email);
@@ -18,10 +14,7 @@ async function signUpViaUI(
   await page.getByRole("button", { name: "Create Account" }).click();
 }
 
-async function completeProfileSetup(
-  page: import("@playwright/test").Page,
-  username: string,
-) {
+async function completeProfileSetup(page: import("@playwright/test").Page, username: string) {
   // Wait for the profile setup screen
   await expect(page.getByText("Lock in your handle")).toBeVisible({ timeout: 10_000 });
   await page.getByPlaceholder("sk8legend").fill(username);
@@ -72,15 +65,14 @@ test("sign up form rejects short passwords", async ({ page }) => {
   await expect(page.getByText("Password must be 6+ characters")).toBeVisible();
 });
 
-test("email verification banner visible after sign up, hidden after verification", async ({
-  page,
-}) => {
+test("email verification banner visible after sign up, hidden after verification", async ({ page }) => {
   const email = "verify@test.com";
   await signUpViaUI(page, email, "password123");
   await completeProfileSetup(page, "verifyuser");
 
   // Banner should be visible because email is not yet verified
-  await expect(page.getByText("VERIFY YOUR EMAIL")).toBeVisible({ timeout: 10_000 });
+  const banner = page.getByText("VERIFY YOUR EMAIL", { exact: true });
+  await expect(banner).toBeVisible({ timeout: 10_000 });
 
   // "Challenge Someone" is disabled for unverified users
   const challengeBtn = page.getByRole("button", { name: "Challenge Someone" });
@@ -93,7 +85,7 @@ test("email verification banner visible after sign up, hidden after verification
   await page.reload();
 
   // Banner should be gone and challenge button enabled
-  await expect(page.getByText("VERIFY YOUR EMAIL")).not.toBeVisible({ timeout: 10_000 });
+  await expect(banner).not.toBeVisible({ timeout: 10_000 });
   await expect(challengeBtn).toBeEnabled();
 });
 
