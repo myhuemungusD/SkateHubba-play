@@ -1,12 +1,17 @@
 import "@testing-library/jest-dom/vitest";
 
-// Mock navigator.mediaDevices to simulate unavailable camera in jsdom.
-// VideoRecorder will fall back to demo mode (no actual stream) which is simpler to test.
+// Mock navigator.mediaDevices with a fake stream so VideoRecorder enters
+// preview state normally. The stream has no real tracks but satisfies the API.
+const mockStream = {
+  getTracks: () => [{ stop: vi.fn() }],
+  getVideoTracks: () => [{ stop: vi.fn() }],
+  getAudioTracks: () => [{ stop: vi.fn() }],
+};
 Object.defineProperty(globalThis.navigator, "mediaDevices", {
   writable: true,
   configurable: true,
   value: {
-    getUserMedia: vi.fn().mockRejectedValue(new Error("Camera unavailable in jsdom")),
+    getUserMedia: vi.fn().mockResolvedValue(mockStream),
   },
 });
 

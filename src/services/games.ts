@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   runTransaction,
   query,
   where,
@@ -11,6 +12,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
+import { withRetry } from "../utils/retry";
 
 /* ────────────────────────────────────────────
  * Types
@@ -56,7 +58,7 @@ export async function createGame(
   challengerUid: string,
   challengerUsername: string,
   opponentUid: string,
-  opponentUsername: string
+  opponentUsername: string,
 ): Promise<string> {
   const deadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
 
@@ -82,7 +84,11 @@ export async function createGame(
     updatedAt: serverTimestamp(),
   };
 
-  const docRef = await addDoc(gamesRef(), gameData);
+  const docRef = await withRetry(() => addDoc(gamesRef(), gameData));
+  // Update rate-limit timestamp on user profile (best effort — game is already created).
+  setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true }).catch(
+    () => {},
+  );
   return docRef.id;
 }
 
@@ -90,17 +96,15 @@ export async function createGame(
  * Set a trick (setter's turn)
  * ──────────────────────────────────────────── */
 
-export async function setTrick(
-  gameId: string,
-  trickName: string,
-  videoUrl: string | null
-): Promise<void> {
+export async function setTrick(gameId: string, trickName: string, videoUrl: string | null): Promise<void> {
   // Sanitise at the service boundary: trim whitespace, cap length
   const safeTrickName = trickName.trim().slice(0, 100);
   if (!safeTrickName) throw new Error("Trick name cannot be empty");
 
   const gameRef = doc(requireDb(), "games", gameId);
 
+  // Firestore transactions have built-in retry for transient conflicts;
+  // withRetry is not needed here and would incorrectly retry app-logic errors.
   await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
@@ -109,8 +113,7 @@ export async function setTrick(
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "setting") throw new Error("Not in setting phase");
 
-    const matcherUid =
-      game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const matcherUid = game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
 
     tx.update(gameRef, {
       phase: "matching",
@@ -131,7 +134,7 @@ export async function setTrick(
 export async function submitMatchResult(
   gameId: string,
   landed: boolean,
-  matchVideoUrl: string | null
+  matchVideoUrl: string | null,
 ): Promise<{ gameOver: boolean; winner: string | null }> {
   const gameRef = doc(requireDb(), "games", gameId);
 
@@ -143,8 +146,7 @@ export async function submitMatchResult(
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "matching") throw new Error("Not in matching phase");
 
-    const matcherUid =
-      game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const matcherUid = game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
     const isP1Matcher = matcherUid === game.player1Uid;
 
     let newP1Letters = game.p1Letters;
@@ -156,11 +158,7 @@ export async function submitMatchResult(
     }
 
     const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
-    const winner = gameOver
-      ? newP1Letters >= 5
-        ? game.player2Uid
-        : game.player1Uid
-      : null;
+    const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
 
     const nextSetter = landed ? matcherUid : game.currentSetter;
 
@@ -194,9 +192,7 @@ export async function submitMatchResult(
  * Forfeit expired turn
  * ──────────────────────────────────────────── */
 
-export async function forfeitExpiredTurn(
-  gameId: string
-): Promise<{ forfeited: boolean; winner: string | null }> {
+export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: boolean; winner: string | null }> {
   const gameRef = doc(requireDb(), "games", gameId);
 
   return runTransaction(requireDb(), async (tx) => {
@@ -212,8 +208,7 @@ export async function forfeitExpiredTurn(
     }
 
     // The player whose turn it is forfeits — opponent wins
-    const winner =
-      game.currentTurn === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const winner = game.currentTurn === game.player1Uid ? game.player2Uid : game.player1Uid;
 
     tx.update(gameRef, {
       status: "forfeit",
@@ -233,10 +228,7 @@ export async function forfeitExpiredTurn(
  * Subscribe to all games where the user is a player.
  * Returns unsubscribe function.
  */
-export function subscribeToMyGames(
-  uid: string,
-  onUpdate: (games: GameDoc[]) => void
-): Unsubscribe {
+export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => void): Unsubscribe {
   // Firestore doesn't support OR queries across different fields natively,
   // so we run two queries and merge.
   let p1Games: GameDoc[] = [];
@@ -262,15 +254,23 @@ export function subscribeToMyGames(
     console.warn("Game subscription error:", err.message);
   };
 
-  const unsub1 = onSnapshot(q1, (snap) => {
-    p1Games = snap.docs.map((d) => ({ id: d.id, ...d.data() } as GameDoc));
-    merge();
-  }, handleError);
+  const unsub1 = onSnapshot(
+    q1,
+    (snap) => {
+      p1Games = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as GameDoc);
+      merge();
+    },
+    handleError,
+  );
 
-  const unsub2 = onSnapshot(q2, (snap) => {
-    p2Games = snap.docs.map((d) => ({ id: d.id, ...d.data() } as GameDoc));
-    merge();
-  }, handleError);
+  const unsub2 = onSnapshot(
+    q2,
+    (snap) => {
+      p2Games = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as GameDoc);
+      merge();
+    },
+    handleError,
+  );
 
   return () => {
     unsub1();
@@ -281,10 +281,7 @@ export function subscribeToMyGames(
 /**
  * Subscribe to a single game for real-time updates
  */
-export function subscribeToGame(
-  gameId: string,
-  onUpdate: (game: GameDoc | null) => void
-): Unsubscribe {
+export function subscribeToGame(gameId: string, onUpdate: (game: GameDoc | null) => void): Unsubscribe {
   return onSnapshot(
     doc(requireDb(), "games", gameId),
     (snap) => {
@@ -297,6 +294,6 @@ export function subscribeToGame(
     (err) => {
       console.warn("Game subscription error:", err.message);
       onUpdate(null);
-    }
+    },
   );
 }

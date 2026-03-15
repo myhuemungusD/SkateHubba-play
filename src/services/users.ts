@@ -1,5 +1,6 @@
 import { doc, getDoc, runTransaction, serverTimestamp, type FieldValue } from "firebase/firestore";
 import { requireDb } from "../firebase";
+import { withRetry } from "../utils/retry";
 
 export interface UserProfile {
   uid: string;
@@ -16,7 +17,7 @@ export interface UserProfile {
  * Get user profile by UID
  */
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  const snap = await getDoc(doc(requireDb(), "users", uid));
+  const snap = await withRetry(() => getDoc(doc(requireDb(), "users", uid)));
   return snap.exists() ? (snap.data() as UserProfile) : null;
 }
 
@@ -28,7 +29,7 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
   if (normalized.length < 3 || normalized.length > 20) return false;
   if (!/^[a-z0-9_]+$/.test(normalized)) return false;
 
-  const snap = await getDoc(doc(requireDb(), "usernames", normalized));
+  const snap = await withRetry(() => getDoc(doc(requireDb(), "usernames", normalized)));
   return !snap.exists();
 }
 
@@ -105,7 +106,7 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
  */
 export async function getUidByUsername(username: string): Promise<string | null> {
   const normalized = username.toLowerCase().trim();
-  const snap = await getDoc(doc(requireDb(), "usernames", normalized));
+  const snap = await withRetry(() => getDoc(doc(requireDb(), "usernames", normalized)));
   if (!snap.exists()) return null;
   return snap.data().uid as string;
 }
