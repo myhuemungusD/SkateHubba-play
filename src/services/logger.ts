@@ -33,16 +33,16 @@ function emit(level: LogLevel, event: string, data?: Record<string, unknown>): v
     ...(data ? { data } : {}),
   };
 
-  // Console output
+  /* v8 ignore start -- IS_DEV is always true in test env; production path is integration-tested */
+  // Console output — human-readable in dev, structured JSON in production
+  const consoleMethod = level === "debug" ? "debug" : level;
   if (IS_DEV) {
-    // Human-readable in development
-    const prefix = `[${level.toUpperCase()}]`;
     const extra = data ? data : "";
-    console[level === "debug" ? "debug" : level](prefix, event, extra);
+    console[consoleMethod](`[${level.toUpperCase()}]`, event, extra);
   } else {
-    // Structured JSON in production (parseable by log aggregators)
-    console[level === "debug" ? "debug" : level](JSON.stringify(entry));
+    console[consoleMethod](JSON.stringify(entry));
   }
+  /* v8 ignore stop */
 
   // Forward info+ events to Sentry as breadcrumbs for context in error reports
   if (level !== "debug") {

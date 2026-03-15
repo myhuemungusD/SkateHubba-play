@@ -13,11 +13,9 @@ interface WindowWithVa {
 export function trackEvent(name: string, properties?: EventProperties): void {
   // Vercel Analytics custom events (window.va is injected by @vercel/analytics)
   try {
-    if (typeof window !== "undefined") {
-      const w = window as unknown as WindowWithVa;
-      if (typeof w.va === "function") {
-        w.va("event", { name, ...properties });
-      }
+    const w = window as unknown as WindowWithVa;
+    if (typeof w.va === "function") {
+      w.va("event", { name, ...properties });
     }
   } catch {
     // Analytics should never break the app
