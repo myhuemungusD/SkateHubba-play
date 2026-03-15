@@ -7,6 +7,7 @@ import type { UserProfile } from "../services/users";
 import { newGameShell, getErrorCode } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
+import * as Sentry from "@sentry/react";
 
 export type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover";
 
@@ -58,32 +59,51 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [googleError, setGoogleError] = useState("");
   const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
 
-  // Resolve any pending Google redirect on mount
+  // Resolve any pending Google redirect on mount — this completes the OAuth
+  // flow for users who were redirected to Google (mobile/Safari popup fallback).
+  // onAuthStateChanged handles the actual session, but we need to fire analytics
+  // for redirect sign-ins since handleGoogleSignIn only tracks popup completions.
   useEffect(() => {
-    resolveGoogleRedirect().catch(() => {});
+    resolveGoogleRedirect()
+      .then((redirectUser) => {
+        if (redirectUser) {
+          logger.info("google_redirect_resolved", { uid: redirectUser.uid });
+          analytics.signIn("google");
+          metrics.signIn("google", redirectUser.uid);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const handleGoogleSignIn = useCallback(async () => {
     setGoogleError("");
     setGoogleLoading(true);
+    logger.info("google_sign_in_started");
     try {
       const googleUser = await signInWithGoogle();
       // Only track if sign-in completed (null = redirect initiated, not finished)
       if (googleUser) {
+        logger.info("google_sign_in_completed", { uid: googleUser.uid });
         analytics.signIn("google");
         metrics.signIn("google", googleUser.uid);
+      } else {
+        logger.info("google_sign_in_redirect_initiated");
       }
     } catch (err: unknown) {
       const code = getErrorCode(err);
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
-        // User dismissed
+        logger.info("google_sign_in_dismissed", { code });
       } else if (code === "auth/account-exists-with-different-credential") {
+        logger.warn("google_sign_in_credential_conflict", { code });
+        Sentry.captureException(err, { extra: { context: "handleGoogleSignIn", code } });
         setGoogleError("This email is linked to a password account. Sign in with email/password instead.");
         if (screen !== "auth") {
           setAuthMode("signin");
           setScreen("auth");
         }
       } else {
+        logger.error("google_sign_in_error", { code, message: err instanceof Error ? err.message : String(err) });
+        Sentry.captureException(err, { extra: { context: "handleGoogleSignIn", code } });
         setGoogleError(err instanceof Error ? err.message : "Google sign-in failed");
         if (screen !== "auth") {
           setAuthMode("signin");

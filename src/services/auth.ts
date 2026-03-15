@@ -118,7 +118,10 @@ export async function resolveGoogleRedirect(): Promise<User | null> {
   try {
     const result = await getRedirectResult(auth);
     return result?.user ?? null;
-  } catch {
+  } catch (err) {
+    // Log redirect errors so they're visible in production — previously these
+    // were silently swallowed, making Google-redirect failures impossible to debug.
+    Sentry.captureException(err, { extra: { context: "resolveGoogleRedirect" } });
     return null;
   }
 }
