@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useId, Component, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
+import * as Sentry from "@sentry/react";
 import { useAuth } from "./hooks/useAuth";
-import { signUp, signIn, signOut, resetPassword, resendVerification, signInWithGoogle, resolveGoogleRedirect } from "./services/auth";
+import { signUp, signIn, signOut, resetPassword, resendVerification, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "./services/auth";
 import {
   createProfile,
   isUsernameAvailable,
   getUidByUsername,
+  deleteUserData,
   type UserProfile,
 } from "./services/users";
 import {
@@ -36,6 +38,7 @@ class ErrorBoundary extends Component<
 
   componentDidCatch(error: Error, info: { componentStack?: string }) {
     console.error("ErrorBoundary caught:", error.message, info.componentStack);
+    Sentry.captureException(error, { extra: info });
   }
 
   render() {
@@ -68,21 +71,23 @@ const BG = "#0A0A0A";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
 /** Guard against open-redirect or XSS via crafted video URLs stored in Firestore. */
 function isFirebaseStorageUrl(url: string): boolean {
   try {
     const { protocol, hostname } = new URL(url);
+    // Use exact match or strict subdomain regex — .endsWith() is bypassable via
+    // domains like "firebasestorage.googleapis.com.evil.com"
     return (
       protocol === "https:" &&
       (hostname === "firebasestorage.googleapis.com" ||
-        hostname.endsWith(".firebasestorage.app"))
+        /^[a-z0-9-]+\.firebasestorage\.app$/.test(hostname))
     );
   } catch {
     return false;
   }
 }
 
+/** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
 function pwStrength(pw: string): 1 | 2 | 3 {
   if (pw.length < 8) return 1;
   const hasUpper = /[A-Z]/.test(pw);
@@ -161,10 +166,10 @@ function Btn({
 }
 
 function Field({
-  label, value, onChange, placeholder, type = "text", maxLength, note, icon, autoComplete, autoFocus,
+  label, value, onChange, placeholder, type = "text", maxLength, note, fieldError, icon, autoComplete, autoFocus,
 }: {
   label?: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; type?: string; maxLength?: number; note?: string; icon?: string;
+  placeholder?: string; type?: string; maxLength?: number; note?: string; fieldError?: string; icon?: string;
   autoComplete?: string; autoFocus?: boolean;
 }) {
   const id = useId();
@@ -193,12 +198,14 @@ function Field({
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
+          className={`w-full bg-surface-alt border rounded-xl text-white text-base font-body outline-none
             focus:border-brand-orange transition-colors duration-200
+            ${fieldError ? "border-red-500" : "border-border"}
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />
       </div>
-      {note && <span className="text-xs text-[#777] mt-1 block">{note}</span>}
+      {fieldError && <span className="text-xs text-red-400 mt-1 block">{fieldError}</span>}
+      {!fieldError && note && <span className="text-xs text-[#777] mt-1 block">{note}</span>}
     </div>
   );
 }
@@ -232,12 +239,13 @@ function LetterDisplay({ count, name, active }: { count: number; name: string; a
 function Timer({ deadline }: { deadline: number }) {
   const [text, setText] = useState("");
   useEffect(() => {
-    let id: number;
+    // idRef lets the tick callback cancel itself without a mutable let
+    const idRef = { current: 0 };
     const tick = () => {
       const diff = deadline - Date.now();
       if (diff <= 0) {
         setText("TIME'S UP");
-        clearInterval(id);
+        clearInterval(idRef.current);
         return;
       }
       const h = Math.floor(diff / 3600000);
@@ -246,8 +254,8 @@ function Timer({ deadline }: { deadline: number }) {
       setText(`${h}h ${m}m ${s}s`);
     };
     tick();
-    id = window.setInterval(tick, 1000);
-    return () => clearInterval(id);
+    idRef.current = window.setInterval(tick, 1000);
+    return () => clearInterval(idRef.current);
   }, [deadline]);
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-alt border border-border" aria-live="polite">
@@ -276,6 +284,145 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () =
       {onDismiss && (
         <button type="button" onClick={onDismiss} className="text-brand-red text-lg leading-none ml-2 p-1" aria-label="Dismiss error">×</button>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+ *  COOKIE CONSENT BANNER
+ * ═══════════════════════════════════════════ */
+
+const CONSENT_KEY = "sh_analytics_consent";
+
+function CookieConsent({
+  onAccept,
+  onDecline,
+  onPrivacy,
+}: {
+  onAccept: () => void;
+  onDecline: () => void;
+  onPrivacy: () => void;
+}) {
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-surface border-t border-border animate-fade-in">
+      <div className="max-w-lg mx-auto">
+        <p className="font-body text-sm text-[#999] mb-3">
+          We use Vercel Analytics to understand how the app is used. No personally
+          identifiable data is collected.{" "}
+          <button
+            type="button"
+            onClick={onPrivacy}
+            className="text-brand-orange underline bg-transparent border-none cursor-pointer"
+          >
+            Privacy Policy
+          </button>
+        </p>
+        <div className="flex gap-2">
+          <Btn onClick={onAccept} className="py-2 text-sm">
+            Accept
+          </Btn>
+          <Btn onClick={onDecline} variant="ghost" className="py-2 text-sm">
+            Decline
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+ *  SCREEN: PRIVACY POLICY
+ * ═══════════════════════════════════════════ */
+
+function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="min-h-dvh bg-[#0A0A0A] pb-12">
+      <div className="px-5 pt-5 pb-4 border-b border-border flex items-center gap-4">
+        <button type="button" onClick={onBack} className="font-body text-sm text-[#888]">
+          ← Back
+        </button>
+        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
+      </div>
+      <div className="max-w-lg mx-auto px-5 pt-8 font-body text-[#888] leading-relaxed space-y-5">
+        <h1 className="font-display text-3xl text-white">Privacy Policy</h1>
+        <p className="text-xs text-[#555]">Last updated: March 2026</p>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">What We Collect</h2>
+          <p>When you create an account, we collect your email address and the username you choose. Google sign-in may provide your display name. Videos you record during gameplay are stored on Firebase Storage and are only accessible to you and your opponent.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Analytics</h2>
+          <p>We use Vercel Analytics to measure page views and Core Web Vitals. This data is aggregated and does not identify individual users. You can decline analytics collection in the consent banner.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Error Tracking</h2>
+          <p>We use Sentry to capture application errors to improve reliability. Error reports may include browser type, OS, and a stack trace. No personally identifiable data is intentionally sent to Sentry.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Firebase</h2>
+          <p>Authentication, game data, and video uploads are stored in Google Firebase (Firestore and Cloud Storage). Firebase is governed by Google's Privacy Policy. Firebase Auth stores your email address to manage your account.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Your Rights</h2>
+          <p>You can delete your account and associated profile data at any time from the Lobby → Delete Account. Game history is retained for your opponent's records. To request a full data export or removal, contact us at privacy@skatehubba.com.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Contact</h2>
+          <p>Questions? Email privacy@skatehubba.com</p>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+ *  SCREEN: TERMS OF SERVICE
+ * ═══════════════════════════════════════════ */
+
+function TermsOfServiceScreen({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="min-h-dvh bg-[#0A0A0A] pb-12">
+      <div className="px-5 pt-5 pb-4 border-b border-border flex items-center gap-4">
+        <button type="button" onClick={onBack} className="font-body text-sm text-[#888]">
+          ← Back
+        </button>
+        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
+      </div>
+      <div className="max-w-lg mx-auto px-5 pt-8 font-body text-[#888] leading-relaxed space-y-5">
+        <h1 className="font-display text-3xl text-white">Terms of Service</h1>
+        <p className="text-xs text-[#555]">Last updated: March 2026</p>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Use of the App</h2>
+          <p>SkateHubba is provided for personal, non-commercial use. You must be 13 years of age or older to create an account. You are responsible for the content you upload, including trick videos.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Acceptable Use</h2>
+          <p>Do not upload content that is illegal, harmful, threatening, abusive, or infringes on the intellectual property of others. We reserve the right to remove content or suspend accounts that violate these terms.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Game Rules</h2>
+          <p>S.K.A.T.E. games are self-judged. You agree to judge honestly whether you landed a trick. Exploiting the self-judgment system or creating fake accounts is grounds for account termination.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Disclaimer</h2>
+          <p>Skateboarding is a physical activity with inherent risks. SkateHubba is not responsible for any injuries that occur while filming tricks. Always skate safely and follow local laws.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Changes</h2>
+          <p>We may update these terms. Continued use of the app after changes constitutes acceptance of the new terms. Contact legal@skatehubba.com with questions.</p>
+        </section>
+      </div>
     </div>
   );
 }
@@ -579,6 +726,7 @@ function VideoRecorder({
   // autoOpen is a static prop; openCamera is a stable useCallback — no deps needed.
   const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (autoOpenRef.current) openCamera();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -646,11 +794,13 @@ function VideoRecorder({
  * ═══════════════════════════════════════════ */
 
 function Landing({
-  onGo, onGoogle, googleLoading,
+  onGo, onGoogle, googleLoading, onPrivacy, onTerms,
 }: {
   onGo: (mode: "signup" | "signin") => void;
   onGoogle: () => void;
   googleLoading: boolean;
+  onPrivacy: () => void;
+  onTerms: () => void;
 }) {
   return (
     <div
@@ -686,6 +836,14 @@ function Landing({
             <span className="font-body text-xs text-[#555]">{f.text}</span>
           </div>
         ))}
+      </div>
+      <div className="flex gap-4 mt-8">
+        <button type="button" onClick={onPrivacy} className="font-body text-xs text-[#444] hover:text-[#888] transition-colors bg-transparent border-none cursor-pointer">
+          Privacy Policy
+        </button>
+        <button type="button" onClick={onTerms} className="font-body text-xs text-[#444] hover:text-[#888] transition-colors bg-transparent border-none cursor-pointer">
+          Terms of Service
+        </button>
       </div>
     </div>
   );
@@ -893,6 +1051,7 @@ function ProfileSetup({
     .replace(/[^a-z0-9_]/g, "")
     .slice(0, 20);
   const [username, setUsername] = useState(suggested);
+  const [usernameFieldError] = useState("");
   const [stance, setStance] = useState("Regular");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -956,14 +1115,17 @@ function ProfileSetup({
             icon="@"
             autoComplete="username"
             autoFocus
+            fieldError={usernameFieldError}
             note={
-              username.length >= 3
-                ? available === null
-                  ? "Checking..."
-                  : available
-                    ? `@${username.toLowerCase()} is available ✓`
-                    : `@${username.toLowerCase()} is taken ✗`
-                : "Min 3 characters, letters/numbers/underscore"
+              !usernameFieldError
+                ? username.length >= 3
+                  ? available === null
+                    ? "Checking..."
+                    : available
+                      ? `@${username.toLowerCase()} is available ✓`
+                      : `@${username.toLowerCase()} is taken ✗`
+                  : "Min 3 characters, letters/numbers/underscore"
+                : undefined
             }
           />
 
@@ -1061,12 +1223,16 @@ function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
 }
 
 function Lobby({
-  profile, games, onChallenge, onOpenGame, onSignOut, user,
+  profile, games, onChallenge, onOpenGame, onSignOut, onDeleteAccount, user,
 }: {
   profile: UserProfile; games: GameDoc[];
   onChallenge: () => void; onOpenGame: (g: GameDoc) => void; onSignOut: () => void;
+  onDeleteAccount: () => Promise<void>;
   user: { emailVerified?: boolean } | null;
 }) {
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
 
@@ -1278,7 +1444,59 @@ function Lobby({
             ))}
           </div>
         </div>
+
+        {/* Danger Zone */}
+        <div className="mt-6 p-5 rounded-2xl border border-[rgba(255,61,0,0.2)] bg-surface">
+          <h3 className="font-display text-sm tracking-[0.15em] text-[#555] mb-3">DANGER ZONE</h3>
+          <Btn onClick={() => setShowDeleteModal(true)} variant="danger">
+            Delete Account
+          </Btn>
+        </div>
       </div>
+
+      {/* Delete Account Modal */}
+      {showDeleteModal && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center p-6 z-50"
+          onClick={() => { if (!deleting) setShowDeleteModal(false); }}
+        >
+          <div
+            className="bg-surface border border-border rounded-2xl p-6 max-w-sm w-full animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display text-xl text-white mb-2">Delete Account?</h3>
+            <p className="font-body text-sm text-[#888] mb-4">
+              This permanently deletes your profile and sign-in credentials.
+              Your game history is retained for your opponents.
+              <strong className="text-brand-red"> This cannot be undone.</strong>
+            </p>
+            {deleteError && <ErrorBanner message={deleteError} onDismiss={() => setDeleteError("")} />}
+            <div className="flex gap-3">
+              <Btn onClick={() => { setDeleteError(""); setShowDeleteModal(false); }} variant="secondary" disabled={deleting}>
+                Cancel
+              </Btn>
+              <Btn
+                onClick={async () => {
+                  setDeleting(true);
+                  setDeleteError("");
+                  try {
+                    await onDeleteAccount();
+                  } catch (err: unknown) {
+                    setDeleteError(
+                      err instanceof Error ? err.message : "Deletion failed — try again"
+                    );
+                    setDeleting(false);
+                  }
+                }}
+                variant="danger"
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete Forever"}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1293,6 +1511,7 @@ function ChallengeScreen({
   profile: UserProfile; onSend: (opponentUid: string, opponentUsername: string) => Promise<void>; onBack: () => void;
 }) {
   const [opponent, setOpponent] = useState("");
+  const [opponentFieldError] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1336,6 +1555,7 @@ function ChallengeScreen({
             icon="@"
             maxLength={20}
             autoFocus
+            fieldError={opponentFieldError}
           />
 
           <InviteButton username={profile.username} className="mb-6" />
@@ -1353,7 +1573,7 @@ function ChallengeScreen({
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-          <Btn onClick={submit} disabled={loading || opponent.length < 3}>
+          <Btn onClick={submit} disabled={loading || opponent.length < 3 || !!opponentFieldError}>
             {loading ? "Finding..." : "🔥 Send Challenge"}
           </Btn>
         </form>
@@ -1375,19 +1595,20 @@ function GamePlayScreen({
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [forfeitChecked, setForfeitChecked] = useState(false);
-
-  // Check for expired turn on mount
+  // Check for an expired turn whenever the game or its deadline changes.
+  // No one-time guard: if the deadline is updated via a real-time listener
+  // (e.g. opponent's turn begins), we re-evaluate immediately.
+  // forfeitExpiredTurn is idempotent — calling it on an already-forfeited game
+  // is a no-op (the transaction checks game.status === 'active' first).
   useEffect(() => {
-    if (forfeitChecked || game.status !== "active") return;
+    if (game.status !== "active") return;
     const deadline = game.turnDeadline?.toMillis?.() ?? 0;
     if (deadline > 0 && Date.now() >= deadline) {
       forfeitExpiredTurn(game.id).catch((err) => {
         console.warn("Forfeit check failed:", err instanceof Error ? err.message : err);
       });
     }
-    setForfeitChecked(true);
-  }, [game.id, game.status, forfeitChecked, game.turnDeadline]);
+  }, [game.id, game.status, game.turnDeadline]);
 
   const isSetter = game.phase === "setting" && game.currentSetter === profile.uid;
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
@@ -1630,7 +1851,7 @@ function GameOverScreen({
  *  APP ROOT — State Machine
  * ═══════════════════════════════════════════ */
 
-type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover";
+type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover" | "privacy" | "terms";
 
 export default function App() {
   return (
@@ -1649,6 +1870,26 @@ function AppInner() {
   const [activeProfile, setActiveProfile] = useState<UserProfile | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
+
+  // Analytics consent — null = not yet decided (show banner), true = accepted, false = declined
+  const [analyticsConsent, setAnalyticsConsent] = useState<boolean | null>(() => {
+    try {
+      const stored = localStorage.getItem(CONSENT_KEY);
+      return stored === null ? null : stored === "true";
+    } catch {
+      return null;
+    }
+  });
+
+  const handleAcceptConsent = useCallback(() => {
+    localStorage.setItem(CONSENT_KEY, "true");
+    setAnalyticsConsent(true);
+  }, []);
+
+  const handleDeclineConsent = useCallback(() => {
+    localStorage.setItem(CONSENT_KEY, "false");
+    setAnalyticsConsent(false);
+  }, []);
 
   // Resolve any pending Google redirect sign-in on first load
   useEffect(() => {
@@ -1676,6 +1917,37 @@ function AppInner() {
       setGoogleLoading(false);
     }
   }, [screen]);
+
+  const handleDeleteAccount = useCallback(async () => {
+    if (!activeProfile) return;
+    try {
+      // 1. Delete Firestore data first (atomically) while the token is still valid.
+      await deleteUserData(activeProfile.uid, activeProfile.username);
+    } catch (err) {
+      // Firestore delete failed — Auth account is untouched, nothing is orphaned.
+      Sentry.captureException(err, { extra: { stage: "deleteUserData", uid: activeProfile.uid } });
+      throw err;
+    }
+    try {
+      // 2. Delete the Firebase Auth account.
+      await deleteAccount();
+    } catch (err) {
+      // Auth delete failed after Firestore data was already removed.
+      // The user's profile is gone but the Auth account lingers.
+      // Translate auth/requires-recent-login into a clear user message.
+      const code = (err as { code?: string })?.code ?? "";
+      Sentry.captureException(err, { extra: { stage: "deleteAccount", uid: activeProfile.uid } });
+      if (code === "auth/requires-recent-login") {
+        throw new Error("For security, please sign out and sign back in before deleting your account.", { cause: err });
+      }
+      throw err;
+    }
+    // Local state cleanup — onAuthStateChanged will fire and route to landing.
+    setActiveProfile(null);
+    setGames([]);
+    setActiveGame(null);
+    setScreen("landing");
+  }, [activeProfile]);
 
   // Sync profile from useAuth hook into local state
   useEffect(() => {
@@ -1720,7 +1992,7 @@ function AppInner() {
       }
     });
     return unsub;
-  }, [activeGame?.id]);
+  }, [activeGame?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!firebaseReady) {
     return (
@@ -1750,6 +2022,9 @@ function AppInner() {
           onGo={(m) => { setAuthMode(m); setScreen("auth"); }}
           onGoogle={handleGoogleSignIn}
           googleLoading={googleLoading}
+          /* v8 ignore next 2 */
+          onPrivacy={() => setScreen("privacy")}
+          onTerms={() => setScreen("terms")}
         />
       )}
 
@@ -1801,6 +2076,7 @@ function AppInner() {
             setAuthMode("signup");
             setScreen("landing");
           }}
+          onDeleteAccount={handleDeleteAccount}
         />
       )}
 
@@ -1845,7 +2121,25 @@ function AppInner() {
           onBack={() => { setActiveGame(null); setScreen("lobby"); }}
         />
       )}
-      <Analytics />
+      {screen === "privacy" && (
+        <PrivacyPolicyScreen onBack={() => setScreen(user && activeProfile ? "lobby" : user ? "profile" : "landing")} />
+      )}
+
+      {screen === "terms" && (
+        <TermsOfServiceScreen onBack={() => setScreen(user && activeProfile ? "lobby" : user ? "profile" : "landing")} />
+      )}
+
+      {/* Vercel Analytics — only initialised after user consent */}
+      {analyticsConsent === true && <Analytics />}
+
+      {/* Cookie consent banner — shown until user decides */}
+      {analyticsConsent === null && (
+        <CookieConsent
+          onAccept={handleAcceptConsent}
+          onDecline={handleDeclineConsent}
+          onPrivacy={() => setScreen("privacy")}
+        />
+      )}
     </>
   );
 }

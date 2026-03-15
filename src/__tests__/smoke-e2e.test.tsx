@@ -14,6 +14,7 @@ const mockResetPassword = vi.fn();
 const mockCreateProfile = vi.fn();
 const mockIsUsernameAvailable = vi.fn();
 const mockGetUidByUsername = vi.fn();
+const mockDeleteUserData = vi.fn();
 
 const mockCreateGame = vi.fn();
 const mockSetTrick = vi.fn();
@@ -25,6 +26,7 @@ const mockSubscribeToGame = vi.fn(() => vi.fn());
 const mockUploadVideo = vi.fn();
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
+const mockDeleteAccount = vi.fn();
 const mockResendVerification = vi.fn();
 const mockSignInWithGoogle = vi.fn();
 const mockResolveGoogleRedirect = vi.fn().mockResolvedValue(null);
@@ -36,11 +38,13 @@ vi.mock("../services/auth", () => ({
   resendVerification: (...args: unknown[]) => mockResendVerification(...args),
   signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
   resolveGoogleRedirect: (...args: unknown[]) => mockResolveGoogleRedirect(...args),
+  deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
 }));
 vi.mock("../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
   isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
   getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
+  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
 }));
 vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),
@@ -116,6 +120,18 @@ function renderLobby(games: ReturnType<typeof activeGame>[] = []) {
   mockUseAuth.mockReturnValue({
     loading: false,
     user: authedUser,
+    profile,
+    refreshProfile: vi.fn(),
+  });
+  withGames(games);
+  return render(<App />);
+}
+
+/** Renders the lobby with a verified email user (required to access challenge screen). */
+function renderVerifiedLobby(games: ReturnType<typeof activeGame>[] = []) {
+  mockUseAuth.mockReturnValue({
+    loading: false,
+    user: verifiedUser,
     profile,
     refreshProfile: vi.fn(),
   });
@@ -202,7 +218,7 @@ describe("Smoke Test: Game E2E", () => {
   /* ── 5. Challenge flow ────────────────────── */
 
   it("navigates to challenge screen and sends a challenge", async () => {
-    renderLobby([]);
+    renderVerifiedLobby([]);
     withGameSub(activeGame());
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     mockCreateGame.mockResolvedValueOnce("game1");
@@ -223,7 +239,7 @@ describe("Smoke Test: Game E2E", () => {
   });
 
   it("challenge screen prevents self-challenge", async () => {
-    renderLobby([]);
+    renderVerifiedLobby([]);
 
     await userEvent.click(screen.getByText(/Challenge Someone/));
 
@@ -851,7 +867,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("challenge shows error when opponent not found", async () => {
     mockGetUidByUsername.mockResolvedValueOnce(null);
-    renderLobby([]);
+    renderVerifiedLobby([]);
 
     await userEvent.click(screen.getByText(/Challenge Someone/));
 
@@ -868,7 +884,7 @@ describe("Smoke Test: Game E2E", () => {
   /* ── 29. Challenge: short username ── */
 
   it("challenge disables send button with short username", async () => {
-    renderLobby([]);
+    renderVerifiedLobby([]);
 
     await userEvent.click(screen.getByText(/Challenge Someone/));
 
@@ -882,7 +898,7 @@ describe("Smoke Test: Game E2E", () => {
   /* ── 30. Challenge: back button ── */
 
   it("challenge back button returns to lobby", async () => {
-    renderLobby([]);
+    renderVerifiedLobby([]);
 
     await userEvent.click(screen.getByText(/Challenge Someone/));
     expect(screen.getByText("Challenge")).toBeInTheDocument();
@@ -1176,7 +1192,92 @@ describe("Smoke Test: Game E2E", () => {
     });
   });
 
-  /* ── 47. Auth — generic unknown error code ── */
+  /* ── 46–50. Delete Account flow ──────────── */
+
+  it("shows delete account modal when Delete Account is clicked", async () => {
+    renderLobby([]);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+    expect(screen.getByText(/This cannot be undone/)).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
+    expect(screen.getByText("Delete Forever")).toBeInTheDocument();
+  });
+
+  it("cancel button closes the delete modal without calling delete", async () => {
+    renderLobby([]);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Cancel"));
+
+    expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument();
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
+  });
+
+  it("successful delete calls deleteUserData then deleteAccount and navigates to landing", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
+    // After deleteAccount resolves, make useAuth return no user (simulating Firebase sign-out)
+    mockDeleteAccount.mockImplementationOnce(async () => {
+      mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    });
+
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(<App />);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
+      expect(mockDeleteAccount).toHaveBeenCalled();
+      // After deletion, app navigates to landing
+      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows error when deleteUserData fails and does not call deleteAccount", async () => {
+    mockDeleteUserData.mockRejectedValueOnce(new Error("Firestore write failed"));
+    renderLobby([]);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Firestore write failed")).toBeInTheDocument();
+    });
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
+    // Modal stays open so user can retry
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  it("shows friendly message when deleteAccount requires recent login", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
+    const err = new Error("auth/requires-recent-login");
+    (err as unknown as { code: string }).code = "auth/requires-recent-login";
+    mockDeleteAccount.mockRejectedValueOnce(err);
+    renderLobby([]);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
+    });
+    // Modal stays open
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  /* ── 51. Auth — generic unknown error code ── */
 
   it("shows generic error message for unknown firebase auth error", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/some-unknown-error", message: "Unknown auth error" });
@@ -1194,7 +1295,7 @@ describe("Smoke Test: Game E2E", () => {
     });
   });
 
-  /* ── 48. Password reset — error is silently swallowed ── */
+  /* ── 52. Password reset — error is silently swallowed ── */
 
   it("password reset does not reveal whether email exists when it fails", async () => {
     mockResetPassword.mockRejectedValueOnce(new Error("network error"));
@@ -1211,7 +1312,7 @@ describe("Smoke Test: Game E2E", () => {
     });
   });
 
-  /* ── 49. ProfileSetup — username availability check fails ── */
+  /* ── 53. ProfileSetup — username availability check fails ── */
 
   it("shows error when username availability check fails", async () => {
     mockIsUsernameAvailable.mockRejectedValue(new Error("Firestore unavailable"));
@@ -1231,7 +1332,7 @@ describe("Smoke Test: Game E2E", () => {
     });
   });
 
-  /* ── 50. ProfileSetup — createProfile fails ── */
+  /* ── 54. ProfileSetup — createProfile fails ── */
 
   it("shows error when profile creation fails", async () => {
     mockIsUsernameAvailable.mockResolvedValue(true);
@@ -1256,7 +1357,7 @@ describe("Smoke Test: Game E2E", () => {
     });
   });
 
-  /* ── 51. Resend verification — error state ── */
+  /* ── 55. Resend verification — error state ── */
 
   it("resend verification handles errors gracefully", async () => {
     mockResendVerification.mockRejectedValueOnce(new Error("send error"));

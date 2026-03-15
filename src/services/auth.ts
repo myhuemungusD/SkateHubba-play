@@ -5,6 +5,7 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   onAuthStateChanged,
+  deleteUser,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
@@ -13,6 +14,7 @@ import {
   type ActionCodeSettings,
 } from "firebase/auth";
 import { auth, requireAuth } from "../firebase";
+import * as Sentry from "@sentry/react";
 
 export type AuthUser = User;
 
@@ -35,8 +37,11 @@ export function onAuthChange(cb: (user: User | null) => void) {
 
 export async function signUp(email: string, password: string): Promise<User> {
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
-  // Fire-and-forget verification email
-  sendEmailVerification(cred.user, getActionCodeSettings()).catch(() => {});
+  // Fire-and-forget verification email — failure is non-blocking (user can
+  // resend from the lobby banner) but we want visibility in Sentry.
+  sendEmailVerification(cred.user, getActionCodeSettings()).catch((err) => {
+    Sentry.captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
+  });
   return cred.user;
 }
 
@@ -88,6 +93,19 @@ export async function signInWithGoogle(): Promise<User | null> {
     }
     throw err;
   }
+}
+
+/**
+ * Permanently delete the currently signed-in Firebase Auth account.
+ *
+ * IMPORTANT: Call deleteUserData() from users.ts first to clean up Firestore.
+ * Firebase requires recent authentication; if this throws auth/requires-recent-login
+ * the caller should sign the user out and ask them to re-authenticate.
+ */
+export async function deleteAccount(): Promise<void> {
+  const user = requireAuth().currentUser;
+  if (!user) throw new Error("Not signed in");
+  await deleteUser(user);
 }
 
 /**

@@ -26,6 +26,8 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isOwner(uid)
+        // One profile per UID — prevent a race condition from overwriting an existing profile
+        && !exists(/databases/$(database)/documents/users/$(uid))
         && request.resource.data.uid == uid
         && request.resource.data.username is string
         && request.resource.data.username.size() >= 3
@@ -36,7 +38,8 @@ service cloud.firestore {
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid;
-      allow delete: if false;
+      // Users may delete their own profile (account deletion flow)
+      allow delete: if isOwner(uid);
     }
 
     // ── Usernames (reservation docs for uniqueness) ──
@@ -48,8 +51,9 @@ service cloud.firestore {
         && username.size() <= 20
         // Reservation key must be a valid username (lowercase alphanum + underscore)
         && username.matches('[a-z0-9_]+');
-      // Once reserved, cannot be changed or deleted
-      allow update, delete: if false;
+      // Cannot be updated; only the owning user can delete (account deletion flow)
+      allow update: if false;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
     // ── Helper: determine the opponent of a player ──
@@ -62,8 +66,11 @@ service cloud.firestore {
       // Both players can read their game
       allow read: if isSignedIn() && isPlayer(resource.data);
 
-      // Any signed-in user can create a game (as player1)
+      // Any signed-in user with a verified email can create a game (as player1).
+      // Email verification is enforced server-side here so it can't be bypassed
+      // by calling the Firestore API directly (e.g. from the browser console).
       allow create: if isSignedIn()
+        && request.auth.token.email_verified == true
         && request.resource.data.player1Uid == request.auth.uid
         // Prevent self-challenge: player2 must be a different account
         && request.resource.data.player2Uid != request.auth.uid
