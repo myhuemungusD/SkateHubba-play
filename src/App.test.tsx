@@ -37,6 +37,19 @@ vi.mock("./services/storage", () => ({
   uploadVideo: vi.fn(),
 }));
 
+vi.mock("./services/analytics", () => ({
+  trackEvent: vi.fn(),
+  analytics: {
+    gameCreated: vi.fn(),
+    trickSet: vi.fn(),
+    matchSubmitted: vi.fn(),
+    gameCompleted: vi.fn(),
+    videoUploaded: vi.fn(),
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+  },
+}));
+
 vi.mock("./firebase", () => ({
   firebaseReady: true,
   auth: { currentUser: null },
@@ -45,9 +58,18 @@ vi.mock("./firebase", () => ({
   default: {},
 }));
 
+vi.mock("@sentry/react", () => ({
+  init: vi.fn(),
+  captureException: vi.fn(),
+}));
+
 import App from "./App";
 
 beforeEach(() => vi.clearAllMocks());
+
+function renderApp() {
+  return render(<App />);
+}
 
 /* ── Tests ──────────────────────────────────── */
 
@@ -59,21 +81,23 @@ describe("App", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
     expect(screen.getByText("SKATEHUBBA™")).toBeInTheDocument();
   });
 
-  it("shows the landing page when not authenticated", () => {
+  it("shows the landing page when not authenticated", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
-    expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
-    expect(screen.getByText("Get Started with Email")).toBeInTheDocument();
-    expect(screen.getByText("I Have an Account")).toBeInTheDocument();
+    renderApp();
+    await waitFor(() => {
+      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+      expect(screen.getByText("Get Started with Email")).toBeInTheDocument();
+      expect(screen.getByText("I Have an Account")).toBeInTheDocument();
+    });
   });
 
   it("navigates to sign up screen when 'Get Started' is clicked", async () => {
@@ -83,10 +107,12 @@ describe("App", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
-    expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+    });
   });
 
   it("navigates to sign in screen when 'I Have an Account' is clicked", async () => {
@@ -96,32 +122,37 @@ describe("App", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("I Have an Account"));
-    expect(screen.getByText("Welcome Back")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Welcome Back")).toBeInTheDocument();
+    });
   });
 
-  it("shows profile setup when user exists but has no profile", () => {
+  it("shows profile setup when user exists but has no profile", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com" },
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
-    // Profile setup screen heading
-    expect(screen.getByText("Lock in your handle")).toBeInTheDocument();
+    renderApp();
+    await waitFor(() => {
+      expect(screen.getByText("Lock in your handle")).toBeInTheDocument();
+    });
   });
 
-  it("shows lobby when user is authenticated with a profile", () => {
+  it("shows lobby when user is authenticated with a profile", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com" },
       profile: { uid: "u1", username: "sk8r", stance: "regular" },
       refreshProfile: vi.fn(),
     });
-    render(<App />);
-    expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
+    renderApp();
+    await waitFor(() => {
+      expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
+    });
   });
 });

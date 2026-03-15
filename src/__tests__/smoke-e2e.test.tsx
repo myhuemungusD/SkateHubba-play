@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, within, act } from "@testing-library/react";
+import { render, screen, waitFor, act, type RenderResult } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /* ── Hoisted mocks ──────────────────────────── */
@@ -60,8 +60,28 @@ vi.mock("../firebase", () => ({
   storage: {},
   default: {},
 }));
+vi.mock("../services/analytics", () => ({
+  trackEvent: vi.fn(),
+  analytics: {
+    gameCreated: vi.fn(),
+    trickSet: vi.fn(),
+    matchSubmitted: vi.fn(),
+    gameCompleted: vi.fn(),
+    videoUploaded: vi.fn(),
+    signUp: vi.fn(),
+    signIn: vi.fn(),
+  },
+}));
+vi.mock("@sentry/react", () => ({
+  init: vi.fn(),
+  captureException: vi.fn(),
+}));
 
 import App from "../App";
+
+function renderApp(): RenderResult {
+  return render(<App />);
+}
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -98,7 +118,7 @@ function activeGame(overrides: Record<string, unknown> = {}) {
 
 /** Set up mockSubscribeToMyGames to call the callback with the given games. */
 function withGames(games: ReturnType<typeof activeGame>[]) {
-  mockSubscribeToMyGames.mockImplementation((_uid: string, cb: Function) => {
+  mockSubscribeToMyGames.mockImplementation((_uid: string, cb: (g: ReturnType<typeof activeGame>[]) => void) => {
     cb(games);
     return vi.fn();
   });
@@ -106,7 +126,7 @@ function withGames(games: ReturnType<typeof activeGame>[]) {
 
 /** Set up mockSubscribeToGame to call the callback with the given game. */
 function withGameSub(game: ReturnType<typeof activeGame>) {
-  mockSubscribeToGame.mockImplementation((_id: string, cb: Function) => {
+  mockSubscribeToGame.mockImplementation((_id: string, cb: (g: ReturnType<typeof activeGame>) => void) => {
     cb(game);
     return vi.fn();
   });
@@ -120,7 +140,7 @@ function renderLobby(games: ReturnType<typeof activeGame>[] = []) {
     refreshProfile: vi.fn(),
   });
   withGames(games);
-  return render(<App />);
+  return renderApp();
 }
 
 /* ══════════════════════════════════════════════
@@ -132,7 +152,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("landing page renders and navigates to sign-up", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
     expect(screen.getByText("Get Started with Email")).toBeInTheDocument();
@@ -144,7 +164,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("landing page navigates to sign-in", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("I Have an Account"));
     expect(screen.getByText("Welcome Back")).toBeInTheDocument();
@@ -154,7 +174,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("sign-up form validates matching passwords", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
 
@@ -178,7 +198,7 @@ describe("Smoke Test: Game E2E", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
     expect(screen.getByText("Lock in your handle")).toBeInTheDocument();
   });
 
@@ -389,10 +409,7 @@ describe("Smoke Test: Game E2E", () => {
     mockSignOut.mockResolvedValueOnce(undefined);
 
     // After sign out, useAuth returns no user
-    let callCount = 0;
     mockUseAuth.mockImplementation(() => {
-      callCount++;
-      // First few calls: logged in. After signOut triggers re-render: logged out.
       return {
         loading: false,
         user: authedUser,
@@ -402,7 +419,7 @@ describe("Smoke Test: Game E2E", () => {
     });
     withGames([]);
 
-    const { rerender } = render(<App />);
+    renderApp();
 
     expect(screen.getByText("Sign Out")).toBeInTheDocument();
     await userEvent.click(screen.getByText("Sign Out"));
@@ -444,7 +461,7 @@ describe("Smoke Test: Game E2E", () => {
 
     // Start unauthenticated
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile });
-    const { rerender } = render(<App />);
+    renderApp();
 
     // Go to sign in
     await userEvent.click(screen.getByText("I Have an Account"));
@@ -479,7 +496,7 @@ describe("Smoke Test: Game E2E", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    render(<App />);
+    renderApp();
 
     expect(screen.getByText("VERIFY YOUR EMAIL")).toBeInTheDocument();
     expect(screen.getByText("Resend")).toBeInTheDocument();
@@ -493,7 +510,7 @@ describe("Smoke Test: Game E2E", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    render(<App />);
+    renderApp();
 
     expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
   });
@@ -507,7 +524,7 @@ describe("Smoke Test: Game E2E", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Resend"));
 
@@ -561,7 +578,7 @@ describe("Smoke Test: Game E2E", () => {
   it("password reset sends email and shows confirmation", async () => {
     mockResetPassword.mockResolvedValueOnce(undefined);
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("I Have an Account"));
 
@@ -580,7 +597,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("shows error for invalid email on sign up", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
 
@@ -597,7 +614,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("shows error for short password on sign up", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
 
@@ -615,7 +632,7 @@ describe("Smoke Test: Game E2E", () => {
   it("shows firebase auth error for duplicate email", async () => {
     mockSignUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
 
@@ -657,7 +674,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("toggles from sign-up to sign-in and back", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
@@ -676,7 +693,7 @@ describe("Smoke Test: Game E2E", () => {
   it("shows error for invalid credentials on sign in", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/invalid-credential" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("I Have an Account"));
 
@@ -696,7 +713,7 @@ describe("Smoke Test: Game E2E", () => {
   it("shows error for user not found on sign in", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/user-not-found" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("I Have an Account"));
 
@@ -717,7 +734,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("sign-in form shows only one password field", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("I Have an Account"));
 
@@ -734,7 +751,7 @@ describe("Smoke Test: Game E2E", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
 
     const usernameInput = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "ab");
@@ -755,7 +772,7 @@ describe("Smoke Test: Game E2E", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
 
     const usernameInput = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "coolname");
@@ -773,7 +790,7 @@ describe("Smoke Test: Game E2E", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
 
     const usernameInput = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "taken");
@@ -792,7 +809,7 @@ describe("Smoke Test: Game E2E", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
 
     // Default is Regular
     const regularBtn = screen.getByText("Regular");
@@ -822,7 +839,7 @@ describe("Smoke Test: Game E2E", () => {
       profile: null,
       refreshProfile,
     });
-    render(<App />);
+    renderApp();
 
     const usernameInput = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "newsk8r");
@@ -953,7 +970,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("shows spinner while auth is loading", () => {
     mockUseAuth.mockReturnValue({ loading: true, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     expect(screen.getByText("SKATEHUBBA™")).toBeInTheDocument();
     // Spinner has a spinning div
@@ -969,7 +986,7 @@ describe("Smoke Test: Game E2E", () => {
     // This is covered by the App.test.tsx spinner test confirming the guard.
     // Here we test that the normal flow works when firebase IS ready.
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
     expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
   });
 
@@ -980,8 +997,8 @@ describe("Smoke Test: Game E2E", () => {
     renderLobby([game]);
 
     // First subscription returns active game, then sends a completed update
-    let gameUpdateCb: Function;
-    mockSubscribeToGame.mockImplementation((_id: string, cb: Function) => {
+    let gameUpdateCb: (g: ReturnType<typeof activeGame>) => void;
+    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: ReturnType<typeof activeGame>) => void) => {
       gameUpdateCb = cb;
       cb(game); // initial active state
       return vi.fn();
@@ -1027,7 +1044,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("password reset requires email before sending", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("I Have an Account"));
 
@@ -1042,7 +1059,7 @@ describe("Smoke Test: Game E2E", () => {
   it("sign-up form calls signUp with email and password", async () => {
     mockSignUp.mockResolvedValueOnce({ uid: "new-uid" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
 
@@ -1090,7 +1107,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("error banner can be dismissed", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
 
@@ -1114,7 +1131,7 @@ describe("Smoke Test: Game E2E", () => {
   it("shows weak password error from Firebase", async () => {
     mockSignUp.mockRejectedValueOnce({ code: "auth/weak-password" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
 
@@ -1149,7 +1166,9 @@ describe("Smoke Test: Game E2E", () => {
 
     await waitFor(() => {
       expect(screen.getByText("THEIR ATTEMPT")).toBeInTheDocument();
-      const video = document.querySelector("video[src='https://firebasestorage.googleapis.com/v0/b/proj/o/trick.webm?alt=media']");
+      const video = document.querySelector(
+        "video[src='https://firebasestorage.googleapis.com/v0/b/proj/o/trick.webm?alt=media']",
+      );
       expect(video).toBeTruthy();
     });
   });
@@ -1181,7 +1200,7 @@ describe("Smoke Test: Game E2E", () => {
   it("shows generic error message for unknown firebase auth error", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/some-unknown-error", message: "Unknown auth error" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("I Have an Account"));
 
@@ -1199,7 +1218,7 @@ describe("Smoke Test: Game E2E", () => {
   it("password reset does not reveal whether email exists when it fails", async () => {
     mockResetPassword.mockRejectedValueOnce(new Error("network error"));
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("I Have an Account"));
 
@@ -1221,7 +1240,7 @@ describe("Smoke Test: Game E2E", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
 
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "validname");
@@ -1242,7 +1261,7 @@ describe("Smoke Test: Game E2E", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    render(<App />);
+    renderApp();
 
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "validname");
@@ -1267,7 +1286,7 @@ describe("Smoke Test: Game E2E", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    render(<App />);
+    renderApp();
 
     // Click resend — it should fail but not crash
     const resendBtn = await screen.findByRole("button", { name: /resend/i });
@@ -1283,7 +1302,12 @@ describe("Smoke Test: Game E2E", () => {
   /* ── 52. Lobby keyboard navigation ── */
 
   it("opens game via keyboard Enter on active game card", async () => {
-    const game = activeGame({ phase: "matching", currentTurn: "u1", currentSetter: "u2", currentTrickName: "Kickflip" });
+    const game = activeGame({
+      phase: "matching",
+      currentTurn: "u1",
+      currentSetter: "u2",
+      currentTrickName: "Kickflip",
+    });
     renderLobby([game]);
     withGameSub(game);
 
@@ -1464,7 +1488,7 @@ describe("Smoke Test: Game E2E", () => {
   it("Google sign-in popup-closed-by-user is silently ignored", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/popup-closed-by-user" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     const googleBtn = screen.getByRole("button", { name: /continue with google/i });
     await userEvent.click(googleBtn);
@@ -1480,7 +1504,7 @@ describe("Smoke Test: Game E2E", () => {
   it("Google sign-in shows error when email linked to password account", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
@@ -1494,7 +1518,7 @@ describe("Smoke Test: Game E2E", () => {
   it("Google sign-in shows generic error for other failures", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce(new Error("OAuth error"));
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
