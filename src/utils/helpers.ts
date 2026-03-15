@@ -27,6 +27,24 @@ export function parseFirebaseError(err: unknown): string {
   return String(err);
 }
 
+/**
+ * Return a user-facing message from an unknown thrown value, falling back to
+ * the provided `fallback` string when the value carries no human-readable text.
+ *
+ * Rules:
+ *  - Error instances → err.message
+ *  - Plain objects with a non-empty string `message` field → that message
+ *  - Everything else (raw codes, primitives, null) → fallback
+ */
+export function getUserMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const msg = (err as Record<string, unknown>).message;
+    if (typeof msg === "string" && msg) return msg;
+  }
+  return fallback;
+}
+
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const LETTERS = ["S", "K", "A", "T", "E"];
 

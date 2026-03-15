@@ -4,7 +4,7 @@ import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAc
 import { deleteUserData } from "../services/users";
 import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
-import { newGameShell, getErrorCode, parseFirebaseError } from "../utils/helpers";
+import { newGameShell, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import * as Sentry from "@sentry/react";
@@ -108,7 +108,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       } else {
         logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
         Sentry.captureException(err, { extra: { context: "handleGoogleSignIn", code } });
-        setGoogleError(parseFirebaseError(err));
+        setGoogleError(getUserMessage(err, "Google sign-in failed"));
         if (screen !== "auth") {
           setAuthMode("signin");
           setScreen("auth");
