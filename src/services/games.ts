@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   runTransaction,
   query,
   where,
@@ -11,6 +12,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
+import { withRetry } from "../utils/retry";
 
 /* ────────────────────────────────────────────
  * Types
@@ -44,6 +46,10 @@ export interface GameDoc {
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function getOpponent(game: GameDoc, playerUid: string): string {
+  return playerUid === game.player1Uid ? game.player2Uid : game.player1Uid;
+}
 function gamesRef() {
   return collection(requireDb(), "games");
 }
@@ -95,8 +101,12 @@ export async function createGame(
     updatedAt: serverTimestamp(),
   };
 
-  const docRef = await addDoc(gamesRef(), gameData);
+  const docRef = await withRetry(() => addDoc(gamesRef(), gameData));
   lastGameCreatedAt = Date.now();
+  // Update rate-limit timestamp on user profile (best effort — game is already created).
+  setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true }).catch(
+    () => {},
+  );
   return docRef.id;
 }
 
@@ -111,6 +121,8 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
 
   const gameRef = doc(requireDb(), "games", gameId);
 
+  // Firestore transactions have built-in retry for transient conflicts;
+  // withRetry is not needed here and would incorrectly retry app-logic errors.
   await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
@@ -119,7 +131,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "setting") throw new Error("Not in setting phase");
 
-    const matcherUid = game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const matcherUid = getOpponent(game, game.currentSetter);
 
     tx.update(gameRef, {
       phase: "matching",
@@ -152,7 +164,7 @@ export async function submitMatchResult(
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "matching") throw new Error("Not in matching phase");
 
-    const matcherUid = game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const matcherUid = getOpponent(game, game.currentSetter);
     const isP1Matcher = matcherUid === game.player1Uid;
 
     let newP1Letters = game.p1Letters;
@@ -214,7 +226,7 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
     }
 
     // The player whose turn it is forfeits — opponent wins
-    const winner = game.currentTurn === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const winner = getOpponent(game, game.currentTurn);
 
     tx.update(gameRef, {
       status: "forfeit",

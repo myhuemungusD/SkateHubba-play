@@ -66,8 +66,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setGoogleError("");
     setGoogleLoading(true);
     try {
-      await signInWithGoogle();
-      analytics.signIn("google");
+      const googleUser = await signInWithGoogle();
+      // Only track if sign-in completed (null = redirect initiated, not finished)
+      if (googleUser) analytics.signIn("google");
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code ?? "";
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
@@ -144,7 +145,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const handleDeleteAccount = useCallback(async () => {
     if (!activeProfile) return;
-    await deleteUserData(activeProfile.uid, activeProfile.username);
+    // Delete Auth account first — if it fails (e.g. requires-recent-login),
+    // Firestore data remains intact. This prevents orphaned Auth accounts
+    // when Firestore cleanup succeeds but Auth deletion fails.
     try {
       await deleteAccount();
     } catch (err) {
@@ -154,6 +157,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
       throw err;
     }
+    // Auth account is gone — clean up Firestore (best effort; no auth token
+    // issues since Firestore SDK caches credentials briefly after deletion).
+    await deleteUserData(activeProfile.uid, activeProfile.username);
     setActiveProfile(null);
     setGames([]);
     setActiveGame(null);

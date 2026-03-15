@@ -69,6 +69,7 @@ service cloud.firestore {
       // Any signed-in user with a verified email can create a game (as player1).
       // Email verification is enforced server-side here so it can't be bypassed
       // by calling the Firestore API directly (e.g. from the browser console).
+      // Rate limit: user profile must have been updated > 30s ago (prevents spam creation).
       allow create: if isSignedIn()
         && request.auth.token.email_verified == true
         && request.resource.data.player1Uid == request.auth.uid
@@ -78,7 +79,15 @@ service cloud.firestore {
         && request.resource.data.p1Letters == 0
         && request.resource.data.p2Letters == 0
         && request.resource.data.turnNumber == 1
-        && request.resource.data.winner == null;
+        && request.resource.data.winner == null
+        // Rate limit: at most one game creation per 30 seconds per user.
+        // Checks the user's lastGameCreatedAt field — if it doesn't exist
+        // (first game ever) the condition is satisfied automatically.
+        && (
+          !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          || !('lastGameCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+          || request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastGameCreatedAt + duration.value(30, 's')
+        );
 
       // Current-turn player can make normal game updates
       allow update: if isSignedIn()

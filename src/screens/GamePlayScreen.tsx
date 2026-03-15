@@ -16,6 +16,9 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [forfeitChecked, setForfeitChecked] = useState(false);
+  const [trickName, setTrickName] = useState("");
+  const trickNameRef = useRef(trickName);
+  trickNameRef.current = trickName;
 
   useEffect(() => {
     if (forfeitChecked || game.status !== "active") return;
@@ -44,7 +47,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         if (blob) {
           videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob);
         }
-        await setTrick(game.id, "Trick", videoUrl);
+        await setTrick(game.id, trickNameRef.current || "Trick", videoUrl);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to send trick");
         submittedRef.current = false;
@@ -139,10 +142,25 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             className={`font-display text-xl tracking-wider ${isSetter ? "text-brand-orange" : "text-brand-green"}`}
           >
             {isSetter
-              ? "Record your trick"
+              ? "Set your trick"
               : `Match @${game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}'s ${game.currentTrickName || "trick"}`}
           </span>
         </div>
+
+        {isSetter && (
+          <div className="mb-5">
+            <label className="block font-display text-sm tracking-wider text-[#888] mb-1.5">TRICK NAME</label>
+            <input
+              type="text"
+              value={trickName}
+              onChange={(e) => setTrickName(e.target.value)}
+              placeholder="e.g. Kickflip"
+              maxLength={100}
+              disabled={videoRecorded}
+              className="w-full bg-surface-alt border border-border rounded-xl px-4 py-3 font-body text-white placeholder:text-[#444] focus:outline-none focus:border-brand-orange disabled:opacity-50 transition-colors"
+            />
+          </div>
+        )}
 
         {isMatcher && game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) && (
           <div className="mb-5">

@@ -280,7 +280,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Record your trick")).toBeInTheDocument();
+      expect(screen.getByText("Set your trick")).toBeInTheDocument();
     });
 
     // Camera auto-opens for setter, so record button should appear in preview state
@@ -296,11 +296,11 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Record your trick")).toBeInTheDocument();
+      expect(screen.getByText("Set your trick")).toBeInTheDocument();
     });
 
     // Verify the phase banner shows correct text for setter
-    expect(screen.getByText("Record your trick")).toBeInTheDocument();
+    expect(screen.getByText("Set your trick")).toBeInTheDocument();
   });
 
   /* ── 7. Gameplay — Waiting on opponent ────── */
@@ -955,7 +955,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Record your trick")).toBeInTheDocument();
+      expect(screen.getByText("Set your trick")).toBeInTheDocument();
     });
 
     // Re-setup lobby for return
@@ -1023,7 +1023,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Record your trick")).toBeInTheDocument();
+      expect(screen.getByText("Set your trick")).toBeInTheDocument();
     });
 
     // Simulate realtime update: game completed
@@ -1236,7 +1236,7 @@ describe("Smoke Test: Game E2E", () => {
     expect(mockDeleteAccount).not.toHaveBeenCalled();
   });
 
-  it("successful delete calls deleteUserData then deleteAccount and navigates to landing", async () => {
+  it("successful delete calls deleteAccount then deleteUserData and navigates to landing", async () => {
     mockDeleteUserData.mockResolvedValueOnce(undefined);
     // After deleteAccount resolves, make useAuth return no user (simulating Firebase sign-out)
     mockDeleteAccount.mockImplementationOnce(async () => {
@@ -1256,30 +1256,29 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
       expect(mockDeleteAccount).toHaveBeenCalled();
+      expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
       // After deletion, app navigates to landing
       expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
     });
   });
 
-  it("shows error when deleteUserData fails and does not call deleteAccount", async () => {
-    mockDeleteUserData.mockRejectedValueOnce(new Error("Firestore write failed"));
+  it("shows error when deleteAccount fails and does not call deleteUserData", async () => {
+    mockDeleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
     renderLobby([]);
 
     await userEvent.click(screen.getByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(screen.getByText("Firestore write failed")).toBeInTheDocument();
+      expect(screen.getByText("Auth deletion failed")).toBeInTheDocument();
     });
-    expect(mockDeleteAccount).not.toHaveBeenCalled();
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
     // Modal stays open so user can retry
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
 
   it("shows friendly message when deleteAccount requires recent login", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
     const err = new Error("auth/requires-recent-login");
     (err as unknown as { code: string }).code = "auth/requires-recent-login";
     mockDeleteAccount.mockRejectedValueOnce(err);
