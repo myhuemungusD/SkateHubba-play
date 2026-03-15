@@ -28,6 +28,7 @@ export function Field({
   autoCapitalize?: string;
 }) {
   const id = useId();
+  const noteId = note ? `${id}-note` : undefined;
   return (
     <div className="mb-4 w-full">
       {label && (
@@ -54,13 +55,18 @@ export function Field({
           autoCapitalize={autoCapitalize}
           autoCorrect="off"
           spellCheck={false}
+          aria-describedby={noteId}
           className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
             focus:border-brand-orange transition-colors duration-200
             disabled:opacity-40 disabled:cursor-not-allowed
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />
       </div>
-      {note && <span className="text-xs text-[#777] mt-1 block">{note}</span>}
+      {note && (
+        <span id={noteId} className="text-xs text-[#777] mt-1 block">
+          {note}
+        </span>
+      )}
     </div>
   );
 }

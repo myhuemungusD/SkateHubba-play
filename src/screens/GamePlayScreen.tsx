@@ -37,7 +37,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
 
-  if (isSetter && trickName.trim()) recorderRevealedRef.current = true;
+  const trimmedTrickName = trickName.trim();
+  if (isSetter && trimmedTrickName) recorderRevealedRef.current = true;
   const showRecorder = !isSetter || recorderRevealedRef.current;
 
   const submittedRef = useRef(false);
@@ -147,8 +148,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             className={`font-display text-xl tracking-wider ${isSetter ? "text-brand-orange" : "text-brand-green"}`}
           >
             {isSetter
-              ? trickName.trim()
-                ? `Set your ${trickName.trim()}`
+              ? trimmedTrickName
+                ? `Set your ${trimmedTrickName}`
                 : "Name your trick"
               : `Match @${game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}'s ${game.currentTrickName || "trick"}`}
           </span>
