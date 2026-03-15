@@ -7,6 +7,8 @@ import {
   onAuthStateChanged,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   type User,
   type ActionCodeSettings,
 } from "firebase/auth";
@@ -58,8 +60,46 @@ export async function resendVerification(): Promise<void> {
   }
 }
 
-export async function signInWithGoogle(): Promise<User> {
+function makeGoogleProvider(): GoogleAuthProvider {
   const provider = new GoogleAuthProvider();
-  const cred = await signInWithPopup(requireAuth(), provider);
-  return cred.user;
+  // Always show the account chooser so users can switch accounts
+  provider.setCustomParameters({ prompt: "select_account" });
+  return provider;
+}
+
+/**
+ * Sign in with Google.
+ * Uses popup on desktop; falls back to redirect when popups are blocked (mobile/Safari).
+ * Returns the signed-in User, or null if a redirect was initiated (onAuthStateChanged
+ * will fire automatically once the user returns from Google's OAuth page).
+ */
+export async function signInWithGoogle(): Promise<User | null> {
+  const a = requireAuth();
+  const provider = makeGoogleProvider();
+  try {
+    const cred = await signInWithPopup(a, provider);
+    return cred.user;
+  } catch (err: unknown) {
+    const code = (err as { code?: string })?.code ?? "";
+    if (code === "auth/popup-blocked") {
+      // Redirect flow: page navigates to Google; onAuthStateChanged resolves on return
+      await signInWithRedirect(a, provider);
+      return null;
+    }
+    throw err;
+  }
+}
+
+/**
+ * Call once on app mount to resolve any pending Google redirect sign-in.
+ * Safe to call when no redirect is in progress (returns null).
+ */
+export async function resolveGoogleRedirect(): Promise<User | null> {
+  if (!auth) return null;
+  try {
+    const result = await getRedirectResult(auth);
+    return result?.user ?? null;
+  } catch {
+    return null;
+  }
 }

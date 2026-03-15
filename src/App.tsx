@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useId, Component, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { useAuth } from "./hooks/useAuth";
-import { signUp, signIn, signOut, resetPassword, resendVerification, signInWithGoogle } from "./services/auth";
+import { signUp, signIn, signOut, resetPassword, resendVerification, signInWithGoogle, resolveGoogleRedirect } from "./services/auth";
 import {
   createProfile,
   isUsernameAvailable,
@@ -578,7 +578,13 @@ function VideoRecorder({
  *  SCREEN: LANDING
  * ═══════════════════════════════════════════ */
 
-function Landing({ onGo }: { onGo: (mode: "signup" | "signin") => void }) {
+function Landing({
+  onGo, onGoogle, googleLoading,
+}: {
+  onGo: (mode: "signup" | "signin") => void;
+  onGoogle: () => void;
+  googleLoading: boolean;
+}) {
   return (
     <div
       className="min-h-dvh flex flex-col items-center justify-center px-6"
@@ -592,8 +598,14 @@ function Landing({ onGo }: { onGo: (mode: "signup" | "signin") => void }) {
         The first async trick battle game.<br />Set tricks. Match tricks. One take only.
       </p>
       <div className="w-full max-w-xs flex flex-col gap-3">
-        <Btn onClick={() => onGo("signup")}>Get Started</Btn>
-        <Btn onClick={() => onGo("signin")} variant="ghost">I Have an Account</Btn>
+        <GoogleButton onClick={onGoogle} loading={googleLoading} />
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px bg-border" />
+          <span className="font-body text-xs text-[#444]">or</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+        <Btn onClick={() => onGo("signup")} disabled={googleLoading}>Get Started with Email</Btn>
+        <Btn onClick={() => onGo("signin")} variant="ghost" disabled={googleLoading}>I Have an Account</Btn>
         <InviteButton className="mt-2" />
       </div>
       <div className="flex gap-5 mt-12 flex-wrap justify-center">
@@ -640,18 +652,23 @@ function GoogleButton({ onClick, loading }: { onClick: () => void; loading: bool
 }
 
 function AuthScreen({
-  mode, onDone, onToggle,
+  mode, onDone, onToggle, onGoogle, googleLoading, googleError,
 }: {
-  mode: "signup" | "signin"; onDone: () => void; onToggle: () => void;
+  mode: "signup" | "signin";
+  onDone: () => void;
+  onToggle: () => void;
+  onGoogle: () => void;
+  googleLoading: boolean;
+  googleError: string;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const isSignup = mode === "signup";
+  const anyLoading = loading || googleLoading;
 
   const submit = async () => {
     setError("");
@@ -669,12 +686,18 @@ function AuthScreen({
       onDone();
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code ?? "";
-      if (code === "auth/email-already-in-use") setError("Email already in use");
+      if (code === "auth/email-already-in-use")
+        setError("Email already in use. Try signing in, or use Google below.");
+      else if (code === "auth/account-exists-with-different-credential")
+        setError("This email is linked to Google. Tap 'Continue with Google' below.");
       else if (code === "auth/invalid-credential" || code === "auth/wrong-password")
         setError("Invalid email or password");
-      else if (code === "auth/user-not-found") setError("No account with that email");
-      else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
-      else setError(err instanceof Error ? err.message : "Something went wrong");
+      else if (code === "auth/user-not-found")
+        setError("No account with that email. Need to sign up?");
+      else if (code === "auth/weak-password")
+        setError("Password too weak (6+ chars)");
+      else
+        setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
@@ -690,23 +713,8 @@ function AuthScreen({
     }
   };
 
-  const handleGoogle = async () => {
-    setError("");
-    setGoogleLoading(true);
-    try {
-      await signInWithGoogle();
-      onDone();
-    } catch (err: unknown) {
-      const code = (err as { code?: string })?.code ?? "";
-      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
-        // user dismissed — no error needed
-      } else {
-        setError(err instanceof Error ? err.message : "Google sign-in failed");
-      }
-    } finally {
-      setGoogleLoading(false);
-    }
-  };
+  // Combine local + parent Google errors; local error takes priority
+  const displayError = error || googleError;
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
@@ -719,8 +727,21 @@ function AuthScreen({
           {isSignup ? "Join the crew. It's free." : "Sign in to continue your games."}
         </p>
 
-        <form onSubmit={(e) => { e.preventDefault(); submit(); }} noValidate>
-          <Field label="Email" value={email} onChange={setEmail} placeholder="you@email.com" icon="@" type="email" autoComplete="email" autoFocus />
+        {/* Google — primary CTA at top */}
+        <GoogleButton onClick={onGoogle} loading={googleLoading} />
+
+        <div className="flex items-center gap-3 my-5">
+          <div className="flex-1 h-px bg-border" />
+          <span className="font-body text-xs text-[#444]">or continue with email</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+
+        <form
+          onSubmit={(e) => { e.preventDefault(); submit(); }}
+          noValidate
+          className={`transition-opacity duration-200 ${googleLoading ? "opacity-40 pointer-events-none" : ""}`}
+        >
+          <Field label="Email" value={email} onChange={setEmail} placeholder="you@email.com" icon="@" type="email" autoComplete="email" />
           <Field label="Password" value={password} onChange={setPassword} placeholder="••••••••" icon="🔒" type="password" autoComplete={isSignup ? "new-password" : "current-password"} />
           {isSignup && password.length > 0 && (() => {
             const strength = pwStrength(password);
@@ -752,7 +773,7 @@ function AuthScreen({
             <Field label="Confirm" value={confirm} onChange={setConfirm} placeholder="••••••••" icon="🔒" type="password" autoComplete="new-password" />
           )}
 
-          <ErrorBanner message={error} onDismiss={() => setError("")} />
+          <ErrorBanner message={displayError} onDismiss={() => setError("")} />
 
           {resetSent && (
             <div className="w-full p-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green mb-4">
@@ -760,12 +781,12 @@ function AuthScreen({
             </div>
           )}
 
-          <Btn type="submit" disabled={loading || googleLoading}>
+          <Btn type="submit" disabled={anyLoading}>
             {loading ? "..." : isSignup ? "Create Account" : "Sign In"}
           </Btn>
         </form>
 
-        {!isSignup && (
+        {!isSignup && !googleLoading && (
           <button
             type="button"
             className="w-full font-body text-xs text-[#555] text-center mt-3 cursor-pointer hover:text-[#888] transition-colors bg-transparent border-none"
@@ -774,16 +795,6 @@ function AuthScreen({
             Forgot password?
           </button>
         )}
-
-        {/* Divider */}
-        <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px bg-border" />
-          <span className="font-body text-xs text-[#444]">or</span>
-          <div className="flex-1 h-px bg-border" />
-        </div>
-
-        {/* Google sign-in */}
-        <GoogleButton onClick={handleGoogle} loading={googleLoading} />
 
         <button
           type="button"
@@ -803,11 +814,18 @@ function AuthScreen({
  * ═══════════════════════════════════════════ */
 
 function ProfileSetup({
-  uid, email, emailVerified = false, onDone,
+  uid, email, emailVerified = false, displayName, onDone,
 }: {
-  uid: string; email: string; emailVerified?: boolean; onDone: (p: UserProfile) => void;
+  uid: string; email: string; emailVerified?: boolean; displayName?: string | null;
+  onDone: (p: UserProfile) => void;
 }) {
-  const [username, setUsername] = useState("");
+  // Pre-fill from Google display name (sanitised to valid username chars).
+  // Email/password users get no pre-fill so they choose their own handle.
+  const suggested = (displayName ?? "")
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "")
+    .slice(0, 20);
+  const [username, setUsername] = useState(suggested);
   const [stance, setStance] = useState("Regular");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1448,6 +1466,35 @@ function AppInner() {
   const [games, setGames] = useState<GameDoc[]>([]);
   const [activeGame, setActiveGame] = useState<GameDoc | null>(null);
   const [activeProfile, setActiveProfile] = useState<UserProfile | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState("");
+
+  // Resolve any pending Google redirect sign-in on first load
+  useEffect(() => {
+    resolveGoogleRedirect().catch(() => {});
+  }, []);
+
+  const handleGoogleSignIn = useCallback(async () => {
+    setGoogleError("");
+    setGoogleLoading(true);
+    try {
+      await signInWithGoogle();
+      // onAuthStateChanged → useAuth → routing handles navigation
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code ?? "";
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        // User dismissed — not an error
+      } else if (code === "auth/account-exists-with-different-credential") {
+        setGoogleError("This email is linked to a password account. Sign in with email/password instead.");
+        if (screen !== "auth") { setAuthMode("signin"); setScreen("auth"); }
+      } else {
+        setGoogleError(err instanceof Error ? err.message : "Google sign-in failed");
+        if (screen !== "auth") { setAuthMode("signin"); setScreen("auth"); }
+      }
+    } finally {
+      setGoogleLoading(false);
+    }
+  }, [screen]);
 
   // Sync profile from useAuth hook into local state
   useEffect(() => {
@@ -1518,7 +1565,11 @@ function AppInner() {
   return (
     <>
       {screen === "landing" && (
-        <Landing onGo={(m) => { setAuthMode(m); setScreen("auth"); }} />
+        <Landing
+          onGo={(m) => { setAuthMode(m); setScreen("auth"); }}
+          onGoogle={handleGoogleSignIn}
+          googleLoading={googleLoading}
+        />
       )}
 
       {screen === "auth" && (
@@ -1528,7 +1579,10 @@ function AppInner() {
           onDone={() => {
             // Auth state change will trigger the useEffect above
           }}
-          onToggle={() => setAuthMode((m) => (m === "signup" ? "signin" : "signup"))}
+          onToggle={() => { setGoogleError(""); setAuthMode((m) => (m === "signup" ? "signin" : "signup")); }}
+          onGoogle={handleGoogleSignIn}
+          googleLoading={googleLoading}
+          googleError={googleError}
         />
       )}
 
@@ -1537,6 +1591,7 @@ function AppInner() {
           uid={user.uid}
           email={user.email || ""}
           emailVerified={user.emailVerified}
+          displayName={user.displayName}
           onDone={async (p) => {
             setActiveProfile(p);
             setScreen("lobby");

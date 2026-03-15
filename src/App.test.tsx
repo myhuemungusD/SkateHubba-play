@@ -14,6 +14,8 @@ vi.mock("./services/auth", () => ({
   signOut: vi.fn(),
   resetPassword: vi.fn(),
   resendVerification: vi.fn(),
+  signInWithGoogle: vi.fn(),
+  resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("./services/users", () => ({
@@ -70,7 +72,7 @@ describe("App", () => {
     });
     render(<App />);
     expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
-    expect(screen.getByText("Get Started")).toBeInTheDocument();
+    expect(screen.getByText("Get Started with Email")).toBeInTheDocument();
     expect(screen.getByText("I Have an Account")).toBeInTheDocument();
   });
 
@@ -83,7 +85,7 @@ describe("App", () => {
     });
     render(<App />);
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
   });
 
