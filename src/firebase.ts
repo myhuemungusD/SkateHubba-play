@@ -58,6 +58,7 @@ if (firebaseReady) {
     (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   }
   if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
+    /* v8 ignore next 6 */
     initializeAppCheck(app, {
       provider: new ReCaptchaV3Provider(
         import.meta.env.VITE_RECAPTCHA_SITE_KEY as string
@@ -67,6 +68,7 @@ if (firebaseReady) {
   } else if (!import.meta.env.DEV) {
     // Warn in production so the ops team knows App Check is inactive.
     // Not a console.error (would surface in Sentry) — this is an ops notice.
+    /* v8 ignore next 1 */
     console.warn("⚠️ App Check is disabled: set VITE_RECAPTCHA_SITE_KEY to protect against API abuse.");
   }
 

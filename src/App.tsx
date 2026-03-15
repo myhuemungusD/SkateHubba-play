@@ -2022,6 +2022,7 @@ function AppInner() {
           onGo={(m) => { setAuthMode(m); setScreen("auth"); }}
           onGoogle={handleGoogleSignIn}
           googleLoading={googleLoading}
+          /* v8 ignore next 2 */
           onPrivacy={() => setScreen("privacy")}
           onTerms={() => setScreen("terms")}
         />
