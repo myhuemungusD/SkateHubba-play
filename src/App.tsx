@@ -24,7 +24,7 @@ import { firebaseReady } from "./firebase";
  *  ERROR BOUNDARY
  * ═══════════════════════════════════════════ */
 
-class ErrorBoundary extends Component<
+export class ErrorBoundary extends Component<
   { children: ReactNode },
   { error: Error | null }
 > {
@@ -70,14 +70,21 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
 /** Guard against open-redirect or XSS via crafted video URLs stored in Firestore. */
-function isFirebaseStorageUrl(url: string): boolean {
+export function isFirebaseStorageUrl(url: string): boolean {
   try {
-    const { protocol, hostname } = new URL(url);
-    return (
-      protocol === "https:" &&
-      (hostname === "firebasestorage.googleapis.com" ||
-        hostname.endsWith(".firebasestorage.app"))
-    );
+    const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined;
+    const { protocol, hostname, pathname } = new URL(url);
+    if (protocol !== "https:") return false;
+    if (hostname === "firebasestorage.googleapis.com") {
+      if (!bucket) return true;
+      const m = pathname.match(/^\/v0\/b\/([^/]+)\//);
+      return m != null && decodeURIComponent(m[1]) === bucket;
+    }
+    if (hostname.endsWith(".firebasestorage.app")) {
+      if (!bucket) return true;
+      return hostname === bucket;
+    }
+    return false;
   } catch {
     return false;
   }

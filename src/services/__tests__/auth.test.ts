@@ -10,6 +10,7 @@ const mockSignOut = vi.fn().mockResolvedValue(undefined);
 const mockSendReset = vi.fn().mockResolvedValue(undefined);
 const mockSendVerify = vi.fn().mockResolvedValue(undefined);
 const mockOnAuthStateChanged = vi.fn();
+const mockGetRedirectResult = vi.fn();
 
 vi.mock("firebase/auth", () => ({
   createUserWithEmailAndPassword: (...args: unknown[]) => mockCreateUser(...args),
@@ -18,11 +19,15 @@ vi.mock("firebase/auth", () => ({
   sendPasswordResetEmail: (...args: unknown[]) => mockSendReset(...args),
   sendEmailVerification: (...args: unknown[]) => mockSendVerify(...args),
   onAuthStateChanged: (...args: unknown[]) => mockOnAuthStateChanged(...args),
+  getRedirectResult: (...args: unknown[]) => mockGetRedirectResult(...args),
+  GoogleAuthProvider: vi.fn(),
+  signInWithPopup: vi.fn(),
+  signInWithRedirect: vi.fn(),
 }));
 
 vi.mock("../../firebase");
 
-import { signUp, signIn, signOut, resetPassword, resendVerification, onAuthChange } from "../auth";
+import { signUp, signIn, signOut, resetPassword, resendVerification, onAuthChange, resolveGoogleRedirect } from "../auth";
 import { auth } from "../../firebase";
 
 beforeEach(() => {
@@ -96,6 +101,27 @@ describe("auth service", () => {
       const cb = vi.fn();
       onAuthChange(cb);
       expect(mockOnAuthStateChanged).toHaveBeenCalledWith(auth, cb);
+    });
+  });
+
+  describe("resolveGoogleRedirect", () => {
+    it("returns the user when a redirect result is present", async () => {
+      const fakeUser = { uid: "u1" };
+      mockGetRedirectResult.mockResolvedValueOnce({ user: fakeUser });
+      const user = await resolveGoogleRedirect();
+      expect(user).toEqual(fakeUser);
+    });
+
+    it("returns null when no redirect is in progress", async () => {
+      mockGetRedirectResult.mockResolvedValueOnce(null);
+      const user = await resolveGoogleRedirect();
+      expect(user).toBeNull();
+    });
+
+    it("returns null on error (e.g. cross-origin iframe restriction)", async () => {
+      mockGetRedirectResult.mockRejectedValueOnce(new Error("cross-origin"));
+      const user = await resolveGoogleRedirect();
+      expect(user).toBeNull();
     });
   });
 });
