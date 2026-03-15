@@ -10,6 +10,7 @@ const mockSignOut = vi.fn().mockResolvedValue(undefined);
 const mockSendReset = vi.fn().mockResolvedValue(undefined);
 const mockSendVerify = vi.fn().mockResolvedValue(undefined);
 const mockOnAuthStateChanged = vi.fn();
+const mockDeleteUser = vi.fn().mockResolvedValue(undefined);
 const mockGetRedirectResult = vi.fn();
 
 vi.mock("firebase/auth", () => ({
@@ -19,6 +20,7 @@ vi.mock("firebase/auth", () => ({
   sendPasswordResetEmail: (...args: unknown[]) => mockSendReset(...args),
   sendEmailVerification: (...args: unknown[]) => mockSendVerify(...args),
   onAuthStateChanged: (...args: unknown[]) => mockOnAuthStateChanged(...args),
+  deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
   getRedirectResult: (...args: unknown[]) => mockGetRedirectResult(...args),
   GoogleAuthProvider: vi.fn(),
   signInWithPopup: vi.fn(),
@@ -27,7 +29,7 @@ vi.mock("firebase/auth", () => ({
 
 vi.mock("../../firebase");
 
-import { signUp, signIn, signOut, resetPassword, resendVerification, onAuthChange, resolveGoogleRedirect } from "../auth";
+import { signUp, signIn, signOut, resetPassword, resendVerification, onAuthChange, deleteAccount, resolveGoogleRedirect } from "../auth";
 import { auth } from "../../firebase";
 
 beforeEach(() => {
@@ -51,6 +53,13 @@ describe("auth service", () => {
         url: expect.any(String),
         handleCodeInApp: false,
       });
+    });
+
+    it("swallows verification email errors silently", async () => {
+      mockSendVerify.mockRejectedValueOnce(new Error("email quota exceeded"));
+      // signUp should still succeed — the email is fire-and-forget
+      const user = await signUp("a@b.com", "pass123");
+      expect(user).toEqual(mockUserCredential.user);
     });
   });
 
@@ -101,6 +110,20 @@ describe("auth service", () => {
       const cb = vi.fn();
       onAuthChange(cb);
       expect(mockOnAuthStateChanged).toHaveBeenCalledWith(auth, cb);
+    });
+  });
+
+  describe("deleteAccount", () => {
+    it("deletes the current user when signed in", async () => {
+      const mockUser = { uid: "u1" };
+      (auth as any).currentUser = mockUser;
+      await deleteAccount();
+      expect(mockDeleteUser).toHaveBeenCalledWith(mockUser);
+    });
+
+    it("throws when no user is signed in", async () => {
+      (auth as any).currentUser = null;
+      await expect(deleteAccount()).rejects.toThrow("Not signed in");
     });
   });
 

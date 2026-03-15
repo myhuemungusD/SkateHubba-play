@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useId, Component, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
+import * as Sentry from "@sentry/react";
 import { useAuth } from "./hooks/useAuth";
-import { signUp, signIn, signOut, resetPassword, resendVerification, signInWithGoogle, resolveGoogleRedirect } from "./services/auth";
+import { signUp, signIn, signOut, resetPassword, resendVerification, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "./services/auth";
 import {
   createProfile,
   isUsernameAvailable,
   getUidByUsername,
+  deleteUserData,
   type UserProfile,
 } from "./services/users";
 import {
@@ -36,6 +38,7 @@ export class ErrorBoundary extends Component<
 
   componentDidCatch(error: Error, info: { componentStack?: string }) {
     console.error("ErrorBoundary caught:", error.message, info.componentStack);
+    Sentry.captureException(error, { extra: info });
   }
 
   render() {
@@ -68,7 +71,6 @@ const BG = "#0A0A0A";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
 /** Guard against open-redirect or XSS via crafted video URLs stored in Firestore. */
 export function isFirebaseStorageUrl(url: string): boolean {
   try {
@@ -80,7 +82,9 @@ export function isFirebaseStorageUrl(url: string): boolean {
       const m = pathname.match(/^\/v0\/b\/([^/]+)\//);
       return m != null && decodeURIComponent(m[1]) === bucket;
     }
-    if (hostname.endsWith(".firebasestorage.app")) {
+    // Use strict subdomain regex — .endsWith() is bypassable via domains like
+    // "firebasestorage.googleapis.com.evil.app"
+    if (/^[a-z0-9-]+\.firebasestorage\.app$/.test(hostname)) {
       if (!bucket) return true;
       return hostname === bucket;
     }
@@ -90,6 +94,7 @@ export function isFirebaseStorageUrl(url: string): boolean {
   }
 }
 
+/** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
 function pwStrength(pw: string): 1 | 2 | 3 {
   if (pw.length < 8) return 1;
   const hasUpper = /[A-Z]/.test(pw);
@@ -110,6 +115,9 @@ function newGameShell(
   opponentUid: string,
   opponentUsername: string,
 ): GameDoc {
+  // Capture deadline at shell-creation time so the Timer counts down correctly
+  // while waiting for the real Firestore document to arrive.
+  const shellDeadline = Date.now() + 86400000;
   return {
     id: gameId,
     player1Uid: myUid,
@@ -125,7 +133,7 @@ function newGameShell(
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    turnDeadline: { toMillis: () => Date.now() + 86400000 } as unknown as GameDoc["turnDeadline"],
+    turnDeadline: { toMillis: () => shellDeadline } as unknown as GameDoc["turnDeadline"],
     turnNumber: 1,
     winner: null,
     createdAt: null,
@@ -165,10 +173,10 @@ function Btn({
 }
 
 function Field({
-  label, value, onChange, placeholder, type = "text", maxLength, note, icon, autoComplete, autoFocus,
+  label, value, onChange, placeholder, type = "text", maxLength, note, fieldError, icon, autoComplete, autoFocus,
 }: {
   label?: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; type?: string; maxLength?: number; note?: string; icon?: string;
+  placeholder?: string; type?: string; maxLength?: number; note?: string; fieldError?: string; icon?: string;
   autoComplete?: string; autoFocus?: boolean;
 }) {
   const id = useId();
@@ -197,12 +205,14 @@ function Field({
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
+          className={`w-full bg-surface-alt border rounded-xl text-white text-base font-body outline-none
             focus:border-brand-orange transition-colors duration-200
+            ${fieldError ? "border-red-500" : "border-border"}
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />
       </div>
-      {note && <span className="text-xs text-[#777] mt-1 block">{note}</span>}
+      {fieldError && <span className="text-xs text-red-400 mt-1 block">{fieldError}</span>}
+      {!fieldError && note && <span className="text-xs text-[#777] mt-1 block">{note}</span>}
     </div>
   );
 }
@@ -236,12 +246,13 @@ function LetterDisplay({ count, name, active }: { count: number; name: string; a
 function Timer({ deadline }: { deadline: number }) {
   const [text, setText] = useState("");
   useEffect(() => {
-    let id: number;
+    // idRef lets the tick callback cancel itself without a mutable let
+    const idRef = { current: 0 };
     const tick = () => {
       const diff = deadline - Date.now();
       if (diff <= 0) {
         setText("TIME'S UP");
-        clearInterval(id);
+        clearInterval(idRef.current);
         return;
       }
       const h = Math.floor(diff / 3600000);
@@ -250,8 +261,8 @@ function Timer({ deadline }: { deadline: number }) {
       setText(`${h}h ${m}m ${s}s`);
     };
     tick();
-    id = window.setInterval(tick, 1000);
-    return () => clearInterval(id);
+    idRef.current = window.setInterval(tick, 1000);
+    return () => clearInterval(idRef.current);
   }, [deadline]);
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-alt border border-border" aria-live="polite">
@@ -280,6 +291,145 @@ function ErrorBanner({ message, onDismiss }: { message: string; onDismiss?: () =
       {onDismiss && (
         <button type="button" onClick={onDismiss} className="text-brand-red text-lg leading-none ml-2 p-1" aria-label="Dismiss error">×</button>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+ *  COOKIE CONSENT BANNER
+ * ═══════════════════════════════════════════ */
+
+const CONSENT_KEY = "sh_analytics_consent";
+
+function CookieConsent({
+  onAccept,
+  onDecline,
+  onPrivacy,
+}: {
+  onAccept: () => void;
+  onDecline: () => void;
+  onPrivacy: () => void;
+}) {
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-surface border-t border-border animate-fade-in">
+      <div className="max-w-lg mx-auto">
+        <p className="font-body text-sm text-[#999] mb-3">
+          We use Vercel Analytics to understand how the app is used. No personally
+          identifiable data is collected.{" "}
+          <button
+            type="button"
+            onClick={onPrivacy}
+            className="text-brand-orange underline bg-transparent border-none cursor-pointer"
+          >
+            Privacy Policy
+          </button>
+        </p>
+        <div className="flex gap-2">
+          <Btn onClick={onAccept} className="py-2 text-sm">
+            Accept
+          </Btn>
+          <Btn onClick={onDecline} variant="ghost" className="py-2 text-sm">
+            Decline
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+ *  SCREEN: PRIVACY POLICY
+ * ═══════════════════════════════════════════ */
+
+function PrivacyPolicyScreen({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="min-h-dvh bg-[#0A0A0A] pb-12">
+      <div className="px-5 pt-5 pb-4 border-b border-border flex items-center gap-4">
+        <button type="button" onClick={onBack} className="font-body text-sm text-[#888]">
+          ← Back
+        </button>
+        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
+      </div>
+      <div className="max-w-lg mx-auto px-5 pt-8 font-body text-[#888] leading-relaxed space-y-5">
+        <h1 className="font-display text-3xl text-white">Privacy Policy</h1>
+        <p className="text-xs text-[#555]">Last updated: March 2026</p>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">What We Collect</h2>
+          <p>When you create an account, we collect your email address and the username you choose. Google sign-in may provide your display name. Videos you record during gameplay are stored on Firebase Storage and are only accessible to you and your opponent.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Analytics</h2>
+          <p>We use Vercel Analytics to measure page views and Core Web Vitals. This data is aggregated and does not identify individual users. You can decline analytics collection in the consent banner.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Error Tracking</h2>
+          <p>We use Sentry to capture application errors to improve reliability. Error reports may include browser type, OS, and a stack trace. No personally identifiable data is intentionally sent to Sentry.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Firebase</h2>
+          <p>Authentication, game data, and video uploads are stored in Google Firebase (Firestore and Cloud Storage). Firebase is governed by Google's Privacy Policy. Firebase Auth stores your email address to manage your account.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Your Rights</h2>
+          <p>You can delete your account and associated profile data at any time from the Lobby → Delete Account. Game history is retained for your opponent's records. To request a full data export or removal, contact us at privacy@skatehubba.com.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Contact</h2>
+          <p>Questions? Email privacy@skatehubba.com</p>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+ *  SCREEN: TERMS OF SERVICE
+ * ═══════════════════════════════════════════ */
+
+function TermsOfServiceScreen({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="min-h-dvh bg-[#0A0A0A] pb-12">
+      <div className="px-5 pt-5 pb-4 border-b border-border flex items-center gap-4">
+        <button type="button" onClick={onBack} className="font-body text-sm text-[#888]">
+          ← Back
+        </button>
+        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
+      </div>
+      <div className="max-w-lg mx-auto px-5 pt-8 font-body text-[#888] leading-relaxed space-y-5">
+        <h1 className="font-display text-3xl text-white">Terms of Service</h1>
+        <p className="text-xs text-[#555]">Last updated: March 2026</p>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Use of the App</h2>
+          <p>SkateHubba is provided for personal, non-commercial use. You must be 13 years of age or older to create an account. You are responsible for the content you upload, including trick videos.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Acceptable Use</h2>
+          <p>Do not upload content that is illegal, harmful, threatening, abusive, or infringes on the intellectual property of others. We reserve the right to remove content or suspend accounts that violate these terms.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Game Rules</h2>
+          <p>S.K.A.T.E. games are self-judged. You agree to judge honestly whether you landed a trick. Exploiting the self-judgment system or creating fake accounts is grounds for account termination.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Disclaimer</h2>
+          <p>Skateboarding is a physical activity with inherent risks. SkateHubba is not responsible for any injuries that occur while filming tricks. Always skate safely and follow local laws.</p>
+        </section>
+
+        <section>
+          <h2 className="font-display text-lg text-white mb-2">Changes</h2>
+          <p>We may update these terms. Continued use of the app after changes constitutes acceptance of the new terms. Contact legal@skatehubba.com with questions.</p>
+        </section>
+      </div>
     </div>
   );
 }
@@ -351,11 +501,11 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
 
   const socials = [
     { name: "X", icon: "𝕏", href: `https://twitter.com/intent/tweet?text=${encodedText}` },
-    { name: "WhatsApp", icon: "💬", href: `https://wa.me/?text=${encodedText}` },
-    { name: "Snapchat", icon: "👻", href: `https://www.snapchat.com/scan?attachmentUrl=${encodedUrl}` },
-    { name: "Facebook", icon: "f", href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}` },
-    { name: "Reddit", icon: "🤙", href: `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodeURIComponent(text)}` },
-    { name: "Telegram", icon: "✈", href: `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(text)}` },
+    { name: "WhatsApp", icon: "WA", href: `https://wa.me/?text=${encodedText}` },
+    { name: "Snapchat", icon: "SC", href: `https://www.snapchat.com/scan?attachmentUrl=${encodedUrl}` },
+    { name: "Facebook", icon: "FB", href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}` },
+    { name: "Reddit", icon: "Re", href: `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodeURIComponent(text)}` },
+    { name: "Telegram", icon: "TG", href: `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(text)}` },
   ];
 
   const tileBase =
@@ -363,9 +513,29 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
 
   return (
     <div className={className}>
-      <Btn onClick={() => setShowPanel(!showPanel)} variant="ghost" className="w-full">
-        {showPanel ? "Close" : "📲 Invite a Friend"}
-      </Btn>
+      <button
+        type="button"
+        onClick={() => setShowPanel(!showPanel)}
+        className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-border text-[#666] hover:text-white hover:border-[#3A3A3A] rounded-xl py-[13px] font-display tracking-wider text-lg transition-all duration-200 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+      >
+        {showPanel ? (
+          <>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            Close
+          </>
+        ) : (
+          <>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+              <polyline points="16 6 12 2 8 6"/>
+              <line x1="12" y1="2" x2="12" y2="15"/>
+            </svg>
+            Invite a Friend
+          </>
+        )}
+      </button>
 
       {showPanel && (
         <div className="mt-3 p-4 rounded-2xl bg-surface border border-border animate-fade-in space-y-4">
@@ -378,7 +548,11 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
               className={`w-full flex items-center gap-3 p-3.5 text-left ${tileBase}
                 border-[rgba(255,107,0,0.25)] bg-[rgba(255,107,0,0.04)]`}
             >
-              <span className="text-2xl leading-none">📱</span>
+              <div className="w-9 h-9 rounded-lg bg-[rgba(255,107,0,0.1)] flex items-center justify-center shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+              </div>
               <div>
                 <span className="font-display text-sm tracking-wider text-white block">FROM YOUR CONTACTS</span>
                 <span className="font-body text-xs text-[#666]">Pick people & send via SMS</span>
@@ -400,10 +574,10 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
                   href={s.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`flex flex-col items-center gap-1.5 py-3 ${tileBase}`}
+                  className={`flex flex-col items-center gap-2 py-3 ${tileBase}`}
                 >
-                  <span className="text-xl leading-none">{s.icon}</span>
-                  <span className="font-body text-[10px] text-[#777] leading-none">{s.name}</span>
+                  <span className="font-display text-sm text-white tracking-wide leading-none">{s.icon}</span>
+                  <span className="font-body text-[10px] text-[#555] leading-none">{s.name}</span>
                 </a>
               ))}
             </div>
@@ -411,18 +585,38 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
 
           {/* ── Copy & Share ── */}
           <div className="flex gap-2">
-            <button type="button" onClick={handleCopy} className={`flex-1 py-2.5 font-body text-xs ${tileBase} ${
+            <button type="button" onClick={handleCopy} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 font-body text-xs ${tileBase} ${
               copied ? "border-brand-green text-brand-green" : "text-[#888]"
             }`}>
-              {copied ? "Copied!" : "📋 Copy Link"}
+              {copied ? (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  Copied
+                </>
+              ) : (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  Copy Link
+                </>
+              )}
             </button>
             {typeof navigator.share === "function" && (
               <button
                 type="button"
                 onClick={handleNativeShare}
-                className={`flex-1 py-2.5 font-body text-xs text-[#888] ${tileBase}`}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 font-body text-xs text-[#888] ${tileBase}`}
               >
-                🔗 More Options
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+                Share
               </button>
             )}
           </div>
@@ -539,6 +733,7 @@ function VideoRecorder({
   // autoOpen is a static prop; openCamera is a stable useCallback — no deps needed.
   const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (autoOpenRef.current) openCamera();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -606,11 +801,13 @@ function VideoRecorder({
  * ═══════════════════════════════════════════ */
 
 function Landing({
-  onGo, onGoogle, googleLoading,
+  onGo, onGoogle, googleLoading, onPrivacy, onTerms,
 }: {
   onGo: (mode: "signup" | "signin") => void;
   onGoogle: () => void;
   googleLoading: boolean;
+  onPrivacy: () => void;
+  onTerms: () => void;
 }) {
   return (
     <div
@@ -646,6 +843,14 @@ function Landing({
             <span className="font-body text-xs text-[#555]">{f.text}</span>
           </div>
         ))}
+      </div>
+      <div className="flex gap-4 mt-8">
+        <button type="button" onClick={onPrivacy} className="font-body text-xs text-[#444] hover:text-[#888] transition-colors bg-transparent border-none cursor-pointer">
+          Privacy Policy
+        </button>
+        <button type="button" onClick={onTerms} className="font-body text-xs text-[#444] hover:text-[#888] transition-colors bg-transparent border-none cursor-pointer">
+          Terms of Service
+        </button>
       </div>
     </div>
   );
@@ -853,6 +1058,7 @@ function ProfileSetup({
     .replace(/[^a-z0-9_]/g, "")
     .slice(0, 20);
   const [username, setUsername] = useState(suggested);
+  const [usernameFieldError] = useState("");
   const [stance, setStance] = useState("Regular");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -910,20 +1116,23 @@ function ProfileSetup({
           <Field
             label="Username"
             value={username}
-            onChange={(v) => setUsername(v.replace(/[^a-zA-Z0-9_]/g, ""))}
+            onChange={(v) => { if (!loading) setUsername(v.replace(/[^a-zA-Z0-9_]/g, "")); }}
             placeholder="sk8legend"
             maxLength={20}
             icon="@"
             autoComplete="username"
             autoFocus
+            fieldError={usernameFieldError}
             note={
-              username.length >= 3
-                ? available === null
-                  ? "Checking..."
-                  : available
-                    ? `@${username.toLowerCase()} is available ✓`
-                    : `@${username.toLowerCase()} is taken ✗`
-                : "Min 3 characters, letters/numbers/underscore"
+              !usernameFieldError
+                ? username.length >= 3
+                  ? available === null
+                    ? "Checking..."
+                    : available
+                      ? `@${username.toLowerCase()} is available ✓`
+                      : `@${username.toLowerCase()} is taken ✗`
+                  : "Min 3 characters, letters/numbers/underscore"
+                : undefined
             }
           />
 
@@ -934,8 +1143,9 @@ function ProfileSetup({
                 <button
                   key={s}
                   type="button"
-                  onClick={() => setStance(s)}
-                  className={`flex-1 py-3 rounded-xl font-display text-lg tracking-wider cursor-pointer transition-all
+                  onClick={() => { if (!loading) setStance(s); }}
+                  disabled={loading}
+                  className={`flex-1 py-3 rounded-xl font-display text-lg tracking-wider cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed
                     ${stance === s
                       ? "bg-[rgba(255,107,0,0.08)] border border-brand-orange text-brand-orange"
                       : "bg-surface-alt border border-border text-[#888]"
@@ -1020,12 +1230,16 @@ function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
 }
 
 function Lobby({
-  profile, games, onChallenge, onOpenGame, onSignOut, user,
+  profile, games, onChallenge, onOpenGame, onSignOut, onDeleteAccount, user,
 }: {
   profile: UserProfile; games: GameDoc[];
   onChallenge: () => void; onOpenGame: (g: GameDoc) => void; onSignOut: () => void;
+  onDeleteAccount: () => Promise<void>;
   user: { emailVerified?: boolean } | null;
 }) {
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
 
@@ -1043,110 +1257,253 @@ function Lobby({
     <div className="min-h-dvh bg-[#0A0A0A] pb-24">
       {/* Header */}
       <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-border">
-        <div>
-          <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
-          <div className="font-body text-xs text-[#555] mt-0.5">@{profile.username}</div>
+        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
+              <span className="font-display text-[11px] text-brand-orange leading-none">
+                {profile.username[0].toUpperCase()}
+              </span>
+            </div>
+            <span className="font-body text-xs text-[#555]">@{profile.username}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="font-body text-xs text-[#555] hover:text-white transition-colors duration-200 px-2.5 py-1.5 rounded-lg border border-border hover:border-[#3A3A3A]"
+          >
+            Sign Out
+          </button>
         </div>
-        <button type="button" onClick={onSignOut} className="font-body text-xs text-[#555] hover:text-[#888] transition-colors">
-          Sign Out
-        </button>
       </div>
 
       <VerifyEmailBanner emailVerified={user?.emailVerified ?? false} />
 
-      <div className="px-5 pt-6 max-w-lg mx-auto">
-        <h1 className="font-display text-[42px] text-white mb-6">Your Games</h1>
+      <div className="px-5 pt-7 max-w-lg mx-auto">
+        {/* Page header */}
+        <div className="mb-7">
+          <h1 className="font-display text-[44px] leading-none text-white tracking-wide">Your Games</h1>
+          {games.length > 0 && (
+            <p className="font-body text-xs text-[#555] mt-1.5">
+              {active.length > 0 ? `${active.length} active` : "No active games"}
+              {done.length > 0 ? ` · ${done.length} completed` : ""}
+            </p>
+          )}
+        </div>
 
-        <Btn onClick={onChallenge} className="mb-3">🎯 Challenge Someone</Btn>
+        {/* Primary CTA — Challenge */}
+        <button
+          type="button"
+          onClick={onChallenge}
+          className="w-full flex items-center justify-center gap-2.5 bg-brand-orange text-white rounded-xl py-[15px] mb-3 font-display tracking-wider text-xl transition-all duration-200 active:scale-[0.98] hover:bg-[#FF7A1A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3"/>
+            <line x1="12" y1="2" x2="12" y2="4.5"/>
+            <line x1="12" y1="19.5" x2="12" y2="22"/>
+            <line x1="2" y1="12" x2="4.5" y2="12"/>
+            <line x1="19.5" y1="12" x2="22" y2="12"/>
+          </svg>
+          Challenge Someone
+        </button>
+
         <InviteButton username={profile.username} className="mb-8" />
 
-        {/* Active */}
+        {/* Active games */}
         {active.length > 0 && (
-          <>
-            <h3 className="font-display text-sm tracking-[0.15em] text-[#888] mb-3">ACTIVE</h3>
-            {active.map((g) => (
-              <div
-                key={g.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => onOpenGame(g)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
-                className={`p-4 rounded-2xl mb-3 bg-surface border cursor-pointer transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange
-                  ${isMyTurn(g) ? "border-brand-orange shadow-[0_0_20px_rgba(255,107,0,0.08)]" : "border-border"}`}
-              >
-                <div className="flex justify-between items-center mb-2.5">
-                  <div>
-                    <span className="font-display text-xl text-white">vs @{opponent(g)}</span>
-                    <span className={`block font-body text-xs mt-0.5 ${isMyTurn(g) ? "text-brand-orange" : "text-[#555]"}`}>
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-[#444]">ACTIVE</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-[#555] leading-none tabular-nums">
+                {active.length}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {active.map((g) => (
+                <div
+                  key={g.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpenGame(g)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
+                  className={`relative flex items-center justify-between p-4 rounded-2xl bg-surface cursor-pointer transition-all duration-200 overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange
+                    ${isMyTurn(g)
+                      ? "border border-[rgba(255,107,0,0.35)] shadow-[0_0_28px_rgba(255,107,0,0.07)]"
+                      : "border border-border hover:border-[#3A3A3A]"
+                    }`}
+                >
+                  {/* Left accent bar */}
+                  {isMyTurn(g) && (
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-brand-orange rounded-l-2xl" aria-hidden="true" />
+                  )}
+                  <div className="pl-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-display text-[19px] text-white leading-none">vs @{opponent(g)}</span>
+                      {isMyTurn(g) && (
+                        <span className="px-2 py-0.5 rounded bg-brand-orange font-display text-[10px] text-white tracking-wider leading-none shrink-0">
+                          PLAY
+                        </span>
+                      )}
+                    </div>
+                    <span className={`font-body text-[11px] ${isMyTurn(g) ? "text-brand-orange" : "text-[#555]"}`}>
                       {isMyTurn(g) ? "Your turn" : "Waiting on opponent"}
                     </span>
-                  </div>
-                  {isMyTurn(g) && (
-                    <div className="px-3 py-1 rounded-md bg-brand-orange">
-                      <span className="font-display text-xs text-white tracking-wider">PLAY</span>
+                    {/* Letter scores */}
+                    <div className="flex items-center gap-3 mt-2.5">
+                      <div className="flex items-center gap-1">
+                        <span className="font-body text-[10px] text-[#444] uppercase tracking-wider mr-0.5">You</span>
+                        {LETTERS.map((l, i) => (
+                          <span
+                            key={i}
+                            className={`font-display text-[13px] leading-none tracking-wide ${i < myLetters(g) ? "text-brand-red" : "text-[#2E2E2E]"}`}
+                          >{l}</span>
+                        ))}
+                      </div>
+                      <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
+                      <div className="flex items-center gap-1">
+                        <span className="font-body text-[10px] text-[#444] uppercase tracking-wider mr-0.5">Them</span>
+                        {LETTERS.map((l, i) => (
+                          <span
+                            key={i}
+                            className={`font-display text-[13px] leading-none tracking-wide ${i < theirLetters(g) ? "text-brand-red" : "text-[#2E2E2E]"}`}
+                          >{l}</span>
+                        ))}
+                      </div>
                     </div>
-                  )}
-                </div>
-                <div className="flex gap-4">
-                  <div className="flex items-center gap-1">
-                    <span className="font-body text-[11px] text-[#555] mr-1">You:</span>
-                    {LETTERS.map((l, i) => (
-                      <span key={i} className={`font-display text-sm ${i < myLetters(g) ? "text-brand-red" : "text-[#555]"}`}>{l}</span>
-                    ))}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-body text-[11px] text-[#555] mr-1">Them:</span>
-                    {LETTERS.map((l, i) => (
-                      <span key={i} className={`font-display text-sm ${i < theirLetters(g) ? "text-brand-red" : "text-[#555]"}`}>{l}</span>
-                    ))}
-                  </div>
+                  {/* Chevron */}
+                  <svg
+                    className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-[#2E2E2E]"}`}
+                    width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                  >
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
                 </div>
-              </div>
-            ))}
-          </>
-        )}
-
-        {/* Completed */}
-        {done.length > 0 && (
-          <>
-            <h3 className="font-display text-sm tracking-[0.15em] text-[#888] mt-6 mb-3">COMPLETED</h3>
-            {done.map((g) => (
-              <div
-                key={g.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => onOpenGame(g)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
-                className="p-4 rounded-2xl mb-3 bg-surface border border-border cursor-pointer transition-all opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-              >
-                <span className="font-display text-xl text-white">vs @{opponent(g)}</span>
-                <span className={`block font-body text-xs mt-0.5 ${g.winner === profile.uid ? "text-brand-green" : "text-brand-red"}`}>
-                  {g.winner === profile.uid ? "You won!" : "You lost"}
-                  {g.status === "forfeit" && " (forfeit)"}
-                </span>
-              </div>
-            ))}
-          </>
-        )}
-
-        {games.length === 0 && (
-          <div className="text-center py-12 border border-dashed border-border rounded-2xl">
-            <span className="text-4xl block mb-3">🛹</span>
-            <p className="font-body text-sm text-[#888]">No games yet. Challenge someone to start.</p>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Roadmap */}
-        <div className="mt-10 p-5 rounded-2xl border border-border bg-surface">
-          <h3 className="font-display text-sm tracking-[0.15em] text-[#555] mb-3">COMING SOON</h3>
-          {["Spot Map & Discovery", "Trick Clips Feed", "Leaderboards", "Crew Challenges"].map((f) => (
-            <div key={f} className="flex items-center gap-2.5 py-2 border-b border-border last:border-0">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#555]" />
-              <span className="font-body text-sm text-[#555]">{f}</span>
+        {/* Completed games */}
+        {done.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-[#444]">COMPLETED</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-[#555] leading-none tabular-nums">
+                {done.length}
+              </span>
             </div>
-          ))}
+            <div className="space-y-2">
+              {done.map((g) => (
+                <div
+                  key={g.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpenGame(g)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border cursor-pointer transition-all duration-200 hover:border-[#3A3A3A] opacity-60 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                >
+                  <div>
+                    <span className="font-display text-[19px] text-white leading-none block mb-1">vs @{opponent(g)}</span>
+                    <span className={`font-body text-[11px] ${g.winner === profile.uid ? "text-brand-green" : "text-brand-red"}`}>
+                      {g.winner === profile.uid ? "You won" : "You lost"}{g.status === "forfeit" ? " · forfeit" : ""}
+                    </span>
+                  </div>
+                  <svg className="text-[#2E2E2E] shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {games.length === 0 && (
+          <div className="flex flex-col items-center py-14 border border-dashed border-border rounded-2xl mb-6">
+            <svg className="text-[#2E2E2E] mb-4" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="7.5" cy="17.5" r="2.5"/>
+              <circle cx="17.5" cy="17.5" r="2.5"/>
+              <path d="M2 7h1.5l2.1 7.5h10.8l2.1-6H7.5"/>
+            </svg>
+            <p className="font-body text-sm text-[#555]">No games yet.</p>
+            <p className="font-body text-xs text-[#333] mt-1">Challenge someone to get started.</p>
+          </div>
+        )}
+
+        {/* Coming Soon */}
+        <div className="p-5 rounded-2xl border border-border bg-surface">
+          <h3 className="font-display text-[10px] tracking-[0.25em] text-[#3A3A3A] mb-4">COMING SOON</h3>
+          <div>
+            {["Spot Map & Discovery", "Trick Clips Feed", "Leaderboards", "Crew Challenges"].map((f, i) => (
+              <div key={f} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
+                <div className="flex items-center gap-3">
+                  <span className="font-display text-[10px] text-[#2E2E2E] w-4 leading-none tabular-nums">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="font-body text-sm text-[#555]">{f}</span>
+                </div>
+                <svg className="text-[#2A2A2A]" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Danger Zone */}
+        <div className="mt-6 p-5 rounded-2xl border border-[rgba(255,61,0,0.2)] bg-surface">
+          <h3 className="font-display text-sm tracking-[0.15em] text-[#555] mb-3">DANGER ZONE</h3>
+          <Btn onClick={() => setShowDeleteModal(true)} variant="danger">
+            Delete Account
+          </Btn>
         </div>
       </div>
+
+      {/* Delete Account Modal */}
+      {showDeleteModal && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center p-6 z-50"
+          onClick={() => { if (!deleting) setShowDeleteModal(false); }}
+        >
+          <div
+            className="bg-surface border border-border rounded-2xl p-6 max-w-sm w-full animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display text-xl text-white mb-2">Delete Account?</h3>
+            <p className="font-body text-sm text-[#888] mb-4">
+              This permanently deletes your profile and sign-in credentials.
+              Your game history is retained for your opponents.
+              <strong className="text-brand-red"> This cannot be undone.</strong>
+            </p>
+            {deleteError && <ErrorBanner message={deleteError} onDismiss={() => setDeleteError("")} />}
+            <div className="flex gap-3">
+              <Btn onClick={() => { setDeleteError(""); setShowDeleteModal(false); }} variant="secondary" disabled={deleting}>
+                Cancel
+              </Btn>
+              <Btn
+                onClick={async () => {
+                  setDeleting(true);
+                  setDeleteError("");
+                  try {
+                    await onDeleteAccount();
+                  } catch (err: unknown) {
+                    setDeleteError(
+                      err instanceof Error ? err.message : "Deletion failed — try again"
+                    );
+                    setDeleting(false);
+                  }
+                }}
+                variant="danger"
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete Forever"}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1158,9 +1515,10 @@ function Lobby({
 function ChallengeScreen({
   profile, onSend, onBack,
 }: {
-  profile: UserProfile; onSend: (opponentUid: string, opponentUsername: string) => void; onBack: () => void;
+  profile: UserProfile; onSend: (opponentUid: string, opponentUsername: string) => Promise<void>; onBack: () => void;
 }) {
   const [opponent, setOpponent] = useState("");
+  const [opponentFieldError] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1174,9 +1532,12 @@ function ChallengeScreen({
     try {
       const uid = await getUidByUsername(normalized);
       if (!uid) { setError(`@${normalized} doesn't exist yet. They need to sign up first.`); return; }
-      onSend(uid, normalized);
+      // Awaiting onSend keeps loading=true for the full createGame round-trip,
+      // preventing a second challenge from being sent while the first is in-flight,
+      // and surfaces any createGame errors back to this screen.
+      await onSend(uid, normalized);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not find user");
+      setError(err instanceof Error ? err.message : "Could not start game");
     } finally {
       setLoading(false);
     }
@@ -1196,11 +1557,12 @@ function ChallengeScreen({
           <Field
             label="Opponent Username"
             value={opponent}
-            onChange={(v) => setOpponent(v.replace(/[^a-zA-Z0-9_]/g, ""))}
+            onChange={(v) => { if (!loading) setOpponent(v.replace(/[^a-zA-Z0-9_]/g, "")); }}
             placeholder="their_handle"
             icon="@"
             maxLength={20}
             autoFocus
+            fieldError={opponentFieldError}
           />
 
           <InviteButton username={profile.username} className="mb-6" />
@@ -1218,7 +1580,7 @@ function ChallengeScreen({
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-          <Btn onClick={submit} disabled={loading || opponent.length < 3}>
+          <Btn onClick={submit} disabled={loading || opponent.length < 3 || !!opponentFieldError}>
             {loading ? "Finding..." : "🔥 Send Challenge"}
           </Btn>
         </form>
@@ -1240,19 +1602,20 @@ function GamePlayScreen({
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [forfeitChecked, setForfeitChecked] = useState(false);
-
-  // Check for expired turn on mount
+  // Check for an expired turn whenever the game or its deadline changes.
+  // No one-time guard: if the deadline is updated via a real-time listener
+  // (e.g. opponent's turn begins), we re-evaluate immediately.
+  // forfeitExpiredTurn is idempotent — calling it on an already-forfeited game
+  // is a no-op (the transaction checks game.status === 'active' first).
   useEffect(() => {
-    if (forfeitChecked || game.status !== "active") return;
+    if (game.status !== "active") return;
     const deadline = game.turnDeadline?.toMillis?.() ?? 0;
     if (deadline > 0 && Date.now() >= deadline) {
       forfeitExpiredTurn(game.id).catch((err) => {
         console.warn("Forfeit check failed:", err instanceof Error ? err.message : err);
       });
     }
-    setForfeitChecked(true);
-  }, [game.id, game.status, forfeitChecked, game.turnDeadline]);
+  }, [game.id, game.status, game.turnDeadline]);
 
   const isSetter = game.phase === "setting" && game.currentSetter === profile.uid;
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
@@ -1426,8 +1789,23 @@ function GamePlayScreen({
 function GameOverScreen({
   game, profile, onRematch, onBack,
 }: {
-  game: GameDoc; profile: UserProfile; onRematch: () => void; onBack: () => void;
+  game: GameDoc; profile: UserProfile; onRematch: () => Promise<void>; onBack: () => void;
 }) {
+  const [rematching, setRematching] = useState(false);
+  const rematchingRef = useRef(false);
+
+  const handleRematch = async () => {
+    if (rematchingRef.current) return;
+    rematchingRef.current = true;
+    setRematching(true);
+    try {
+      await onRematch();
+    } finally {
+      rematchingRef.current = false;
+      setRematching(false);
+    }
+  };
+
   const isWinner = game.winner === profile.uid;
   const isForfeit = game.status === "forfeit";
   const opponentName =
@@ -1465,7 +1843,9 @@ function GameOverScreen({
         </div>
 
         <div className="flex flex-col gap-3 w-full">
-          <Btn onClick={onRematch}>🔥 Rematch</Btn>
+          <Btn onClick={handleRematch} disabled={rematching}>
+            {rematching ? "Starting..." : "🔥 Rematch"}
+          </Btn>
           <InviteButton username={profile.username} />
           <Btn onClick={onBack} variant="ghost">Back to Lobby</Btn>
         </div>
@@ -1478,7 +1858,7 @@ function GameOverScreen({
  *  APP ROOT — State Machine
  * ═══════════════════════════════════════════ */
 
-type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover";
+type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover" | "privacy" | "terms";
 
 export default function App() {
   return (
@@ -1497,6 +1877,26 @@ function AppInner() {
   const [activeProfile, setActiveProfile] = useState<UserProfile | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
+
+  // Analytics consent — null = not yet decided (show banner), true = accepted, false = declined
+  const [analyticsConsent, setAnalyticsConsent] = useState<boolean | null>(() => {
+    try {
+      const stored = localStorage.getItem(CONSENT_KEY);
+      return stored === null ? null : stored === "true";
+    } catch {
+      return null;
+    }
+  });
+
+  const handleAcceptConsent = useCallback(() => {
+    localStorage.setItem(CONSENT_KEY, "true");
+    setAnalyticsConsent(true);
+  }, []);
+
+  const handleDeclineConsent = useCallback(() => {
+    localStorage.setItem(CONSENT_KEY, "false");
+    setAnalyticsConsent(false);
+  }, []);
 
   // Resolve any pending Google redirect sign-in on first load
   useEffect(() => {
@@ -1524,6 +1924,37 @@ function AppInner() {
       setGoogleLoading(false);
     }
   }, [screen]);
+
+  const handleDeleteAccount = useCallback(async () => {
+    if (!activeProfile) return;
+    try {
+      // 1. Delete Firestore data first (atomically) while the token is still valid.
+      await deleteUserData(activeProfile.uid, activeProfile.username);
+    } catch (err) {
+      // Firestore delete failed — Auth account is untouched, nothing is orphaned.
+      Sentry.captureException(err, { extra: { stage: "deleteUserData", uid: activeProfile.uid } });
+      throw err;
+    }
+    try {
+      // 2. Delete the Firebase Auth account.
+      await deleteAccount();
+    } catch (err) {
+      // Auth delete failed after Firestore data was already removed.
+      // The user's profile is gone but the Auth account lingers.
+      // Translate auth/requires-recent-login into a clear user message.
+      const code = (err as { code?: string })?.code ?? "";
+      Sentry.captureException(err, { extra: { stage: "deleteAccount", uid: activeProfile.uid } });
+      if (code === "auth/requires-recent-login") {
+        throw new Error("For security, please sign out and sign back in before deleting your account.", { cause: err });
+      }
+      throw err;
+    }
+    // Local state cleanup — onAuthStateChanged will fire and route to landing.
+    setActiveProfile(null);
+    setGames([]);
+    setActiveGame(null);
+    setScreen("landing");
+  }, [activeProfile]);
 
   // Sync profile from useAuth hook into local state
   useEffect(() => {
@@ -1568,7 +1999,7 @@ function AppInner() {
       }
     });
     return unsub;
-  }, [activeGame?.id]);
+  }, [activeGame?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!firebaseReady) {
     return (
@@ -1598,6 +2029,9 @@ function AppInner() {
           onGo={(m) => { setAuthMode(m); setScreen("auth"); }}
           onGoogle={handleGoogleSignIn}
           googleLoading={googleLoading}
+          /* v8 ignore next 2 */
+          onPrivacy={() => setScreen("privacy")}
+          onTerms={() => setScreen("terms")}
         />
       )}
 
@@ -1649,6 +2083,7 @@ function AppInner() {
             setAuthMode("signup");
             setScreen("landing");
           }}
+          onDeleteAccount={handleDeleteAccount}
         />
       )}
 
@@ -1681,7 +2116,7 @@ function AppInner() {
         <GameOverScreen
           game={activeGame}
           profile={activeProfile}
-          onRematch={async () => {
+          onRematch={async (): Promise<void> => {
             const opponentUid =
               activeGame.player1Uid === user.uid ? activeGame.player2Uid : activeGame.player1Uid;
             const opponentName =
@@ -1693,7 +2128,25 @@ function AppInner() {
           onBack={() => { setActiveGame(null); setScreen("lobby"); }}
         />
       )}
-      <Analytics />
+      {screen === "privacy" && (
+        <PrivacyPolicyScreen onBack={() => setScreen(user && activeProfile ? "lobby" : user ? "profile" : "landing")} />
+      )}
+
+      {screen === "terms" && (
+        <TermsOfServiceScreen onBack={() => setScreen(user && activeProfile ? "lobby" : user ? "profile" : "landing")} />
+      )}
+
+      {/* Vercel Analytics — only initialised after user consent */}
+      {analyticsConsent === true && <Analytics />}
+
+      {/* Cookie consent banner — shown until user decides */}
+      {analyticsConsent === null && (
+        <CookieConsent
+          onAccept={handleAcceptConsent}
+          onDecline={handleDeclineConsent}
+          onPrivacy={() => setScreen("privacy")}
+        />
+      )}
     </>
   );
 }
