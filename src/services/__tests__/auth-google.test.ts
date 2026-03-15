@@ -1,0 +1,102 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+
+/* ── hoist mock functions so vi.mock factories can reference them ── */
+const { mockSignInWithPopup, mockSignInWithRedirect, mockGetRedirectResult } =
+  vi.hoisted(() => ({
+    mockSignInWithPopup: vi.fn(),
+    mockSignInWithRedirect: vi.fn(),
+    mockGetRedirectResult: vi.fn(),
+  }));
+
+vi.mock("firebase/auth", () => {
+  // GoogleAuthProvider must be a constructable class mock
+  class MockGoogleAuthProvider {
+    setCustomParameters = vi.fn();
+  }
+  return {
+    GoogleAuthProvider: MockGoogleAuthProvider,
+    signInWithPopup: (...args: unknown[]) => mockSignInWithPopup(...args),
+    signInWithRedirect: (...args: unknown[]) => mockSignInWithRedirect(...args),
+    getRedirectResult: (...args: unknown[]) => mockGetRedirectResult(...args),
+    // stub unused imports
+    createUserWithEmailAndPassword: vi.fn(),
+    signInWithEmailAndPassword: vi.fn(),
+    signOut: vi.fn(),
+    sendPasswordResetEmail: vi.fn(),
+    sendEmailVerification: vi.fn(),
+    onAuthStateChanged: vi.fn(),
+  };
+});
+
+vi.mock("../../firebase");
+
+import { signInWithGoogle, resolveGoogleRedirect } from "../auth";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+/* ── Tests ──────────────────────────────────── */
+
+describe("signInWithGoogle", () => {
+  it("returns the user when popup sign-in succeeds", async () => {
+    const user = { uid: "u1", email: "sk8r@test.com" };
+    mockSignInWithPopup.mockResolvedValueOnce({ user });
+
+    const result = await signInWithGoogle();
+    expect(result).toEqual(user);
+    expect(mockSignInWithPopup).toHaveBeenCalledTimes(1);
+    expect(mockSignInWithRedirect).not.toHaveBeenCalled();
+  });
+
+  it("falls back to redirect when popup is blocked and returns null", async () => {
+    mockSignInWithPopup.mockRejectedValueOnce({ code: "auth/popup-blocked" });
+    mockSignInWithRedirect.mockResolvedValueOnce(undefined);
+
+    const result = await signInWithGoogle();
+    expect(result).toBeNull();
+    expect(mockSignInWithRedirect).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows errors that are not popup-blocked", async () => {
+    mockSignInWithPopup.mockRejectedValueOnce({
+      code: "auth/account-exists-with-different-credential",
+    });
+
+    await expect(signInWithGoogle()).rejects.toMatchObject({
+      code: "auth/account-exists-with-different-credential",
+    });
+    expect(mockSignInWithRedirect).not.toHaveBeenCalled();
+  });
+
+  it("rethrows generic errors with no code", async () => {
+    const error = new Error("Unknown error");
+    mockSignInWithPopup.mockRejectedValueOnce(error);
+
+    await expect(signInWithGoogle()).rejects.toBe(error);
+  });
+});
+
+describe("resolveGoogleRedirect", () => {
+  it("returns the user when a redirect result exists", async () => {
+    const user = { uid: "u1" };
+    mockGetRedirectResult.mockResolvedValueOnce({ user });
+
+    const result = await resolveGoogleRedirect();
+    expect(result).toEqual(user);
+  });
+
+  it("returns null when no redirect result is present", async () => {
+    mockGetRedirectResult.mockResolvedValueOnce(null);
+
+    const result = await resolveGoogleRedirect();
+    expect(result).toBeNull();
+  });
+
+  it("returns null on error (safe fallback)", async () => {
+    mockGetRedirectResult.mockRejectedValueOnce(new Error("redirect error"));
+
+    const result = await resolveGoogleRedirect();
+    expect(result).toBeNull();
+  });
+});

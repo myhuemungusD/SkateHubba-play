@@ -79,10 +79,12 @@ if (firebaseReady) {
     connectStorageEmulator(storage, "localhost", 9199);
   }
 } else {
-  // Use a single generic message regardless of environment to avoid leaking
-  // deployment context (Vercel vs local) to attackers reading the console.
-  // The .env.example file documents the setup steps for developers.
-  console.error("⚠️ Firebase configuration is missing. Check environment variables (see .env.example).");
+  const isVercel = typeof import.meta.env.VERCEL !== "undefined";
+  /* v8 ignore next 4 */
+  const message = isVercel
+    ? "Firebase config missing. Add VITE_FIREBASE_* environment variables in Vercel Dashboard → Project Settings → Environment Variables (scope: Preview and/or Production)."
+    : "Firebase config missing. Copy .env.example to .env.local and fill in your Firebase project values.";
+  console.error(`⚠️ ${message}`);
 }
 
 function requireDb(): Firestore {
