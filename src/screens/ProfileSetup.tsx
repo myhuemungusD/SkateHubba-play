@@ -117,13 +117,15 @@ export function ProfileSetup({
             }
           />
 
-          <div className="mb-6">
-            <label className="block font-display text-sm tracking-[0.12em] text-[#888] mb-2">Stance</label>
-            <div className="flex gap-3">
+          <fieldset className="mb-6">
+            <legend className="block font-display text-sm tracking-[0.12em] text-[#888] mb-2">Stance</legend>
+            <div className="flex gap-3" role="radiogroup" aria-label="Skating stance">
               {["Regular", "Goofy"].map((s) => (
                 <button
                   key={s}
                   type="button"
+                  role="radio"
+                  aria-checked={stance === s}
                   onClick={() => {
                     if (!loading) setStance(s);
                   }}
@@ -139,7 +141,7 @@ export function ProfileSetup({
                 </button>
               ))}
             </div>
-          </div>
+          </fieldset>
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 

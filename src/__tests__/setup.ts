@@ -26,4 +26,4 @@ class MockMediaRecorder {
     this.onstop?.();
   });
 }
-(globalThis as any).MediaRecorder = MockMediaRecorder;
+(globalThis as unknown as Record<string, unknown>).MediaRecorder = MockMediaRecorder;

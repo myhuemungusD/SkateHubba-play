@@ -5,13 +5,19 @@
 
 type EventProperties = Record<string, string | number | boolean>;
 
+/** Vercel Analytics injects `window.va` at runtime. */
+interface WindowWithVa {
+  va?: (command: string, payload: Record<string, unknown>) => void;
+}
+
 export function trackEvent(name: string, properties?: EventProperties): void {
   // Vercel Analytics custom events (window.va is injected by @vercel/analytics)
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const w = window as any;
-    if (typeof window !== "undefined" && typeof w.va === "function") {
-      w.va("event", { name, ...properties });
+    if (typeof window !== "undefined") {
+      const w = window as unknown as WindowWithVa;
+      if (typeof w.va === "function") {
+        w.va("event", { name, ...properties });
+      }
     }
   } catch {
     // Analytics should never break the app

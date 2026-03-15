@@ -131,7 +131,11 @@ export function InviteButton({ username, className = "" }: { username?: string; 
       </button>
 
       {showPanel && (
-        <div className="mt-3 p-4 rounded-2xl bg-surface border border-border animate-fade-in space-y-4">
+        <div
+          role="region"
+          aria-label="Invite a friend options"
+          className="mt-3 p-4 rounded-2xl bg-surface border border-border animate-fade-in space-y-4"
+        >
           {/* ── Phone Contacts ── */}
           <div>
             <h4 className="font-display text-[11px] tracking-[0.2em] text-[#555] mb-2">TEXT A FRIEND</h4>

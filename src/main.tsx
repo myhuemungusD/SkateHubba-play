@@ -8,7 +8,7 @@ import "./index.css";
 // Vercel → Project Settings → Environment Variables).
 if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
-    dsn: import.meta.env.VITE_SENTRY_DSN as string,
+    dsn: String(import.meta.env.VITE_SENTRY_DSN),
     environment: import.meta.env.MODE,
     // Capture 100% of transactions in development; 10% in production to
     // stay within the free quota. Adjust as traffic grows.

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useId } from "react";
 import type { GameDoc } from "../services/games";
 import { setTrick, submitMatchResult, forfeitExpiredTurn } from "../services/games";
 import { uploadVideo } from "../services/storage";
@@ -17,6 +17,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [error, setError] = useState("");
   const [forfeitChecked, setForfeitChecked] = useState(false);
   const [trickName, setTrickName] = useState("");
+  const trickNameId = useId();
   const trickNameRef = useRef(trickName);
   trickNameRef.current = trickName;
 
@@ -149,8 +150,11 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
         {isSetter && (
           <div className="mb-5">
-            <label className="block font-display text-sm tracking-wider text-[#888] mb-1.5">TRICK NAME</label>
+            <label htmlFor={trickNameId} className="block font-display text-sm tracking-wider text-[#888] mb-1.5">
+              TRICK NAME
+            </label>
             <input
+              id={trickNameId}
               type="text"
               value={trickName}
               onChange={(e) => setTrickName(e.target.value)}
@@ -168,6 +172,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <video
               src={game.currentTrickVideoUrl}
               controls
+              aria-label={`Video of ${game.currentTrickName || "trick"} set by opponent`}
               className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
             />
           </div>
@@ -198,7 +203,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         )}
 
         {isMatcher && videoRecorded && (
-          <div className="mt-5">
+          <div className="mt-5" role="group" aria-label="Did you land the trick?">
             <p className="font-display text-xl text-white text-center mb-4">Did you land it?</p>
             <div className="flex gap-3">
               <Btn onClick={() => submitResult(true)} variant="success" disabled={submitting}>

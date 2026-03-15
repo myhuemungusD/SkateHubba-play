@@ -43,7 +43,7 @@ import { auth } from "../../firebase";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  (auth as any).currentUser = null;
+  (auth as unknown as { currentUser: unknown }).currentUser = null;
 });
 
 /* ── Tests ──────────────────────────────────── */
@@ -99,7 +99,7 @@ describe("auth service", () => {
 
   describe("resendVerification", () => {
     it("sends verification when there is a current user", async () => {
-      (auth as any).currentUser = { uid: "u1" };
+      (auth as unknown as { currentUser: unknown }).currentUser = { uid: "u1" };
       await resendVerification();
       expect(mockSendVerify).toHaveBeenCalledWith(
         { uid: "u1" },
@@ -111,7 +111,7 @@ describe("auth service", () => {
     });
 
     it("does nothing when there is no current user", async () => {
-      (auth as any).currentUser = null;
+      (auth as unknown as { currentUser: unknown }).currentUser = null;
       await resendVerification();
       expect(mockSendVerify).not.toHaveBeenCalled();
     });
@@ -128,13 +128,13 @@ describe("auth service", () => {
   describe("deleteAccount", () => {
     it("deletes the current user when signed in", async () => {
       const mockUser = { uid: "u1" };
-      (auth as any).currentUser = mockUser;
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
       await deleteAccount();
       expect(mockDeleteUser).toHaveBeenCalledWith(mockUser);
     });
 
     it("throws when no user is signed in", async () => {
-      (auth as any).currentUser = null;
+      (auth as unknown as { currentUser: unknown }).currentUser = null;
       await expect(deleteAccount()).rejects.toThrow("Not signed in");
     });
   });

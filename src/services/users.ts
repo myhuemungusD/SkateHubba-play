@@ -138,5 +138,6 @@ export async function getUidByUsername(username: string): Promise<string | null>
   const normalized = username.toLowerCase().trim();
   const snap = await withRetry(() => getDoc(doc(requireDb(), "usernames", normalized)));
   if (!snap.exists()) return null;
-  return snap.data().uid as string;
+  const data = snap.data();
+  return typeof data.uid === "string" ? data.uid : null;
 }
