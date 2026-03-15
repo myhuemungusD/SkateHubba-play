@@ -3,6 +3,7 @@ import {
   getDoc,
   runTransaction,
   serverTimestamp,
+  type FieldValue,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 
@@ -11,7 +12,9 @@ export interface UserProfile {
   email: string;
   username: string;
   stance: string;
-  createdAt: unknown;
+  // serverTimestamp() on write; Firestore Timestamp on read — typed as FieldValue
+  // to match what we pass in. The value is never consumed client-side.
+  createdAt: FieldValue | null;
   emailVerified: boolean;
 }
 
@@ -51,9 +54,10 @@ export async function createProfile(
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
 
-  const profile = await runTransaction(requireDb(), async (tx) => {
+  const db = requireDb();
+  const profile = await runTransaction(db, async (tx) => {
     // Check username availability inside transaction
-    const usernameRef = doc(requireDb(), "usernames", normalized);
+    const usernameRef = doc(db, "usernames", normalized);
     const usernameSnap = await tx.get(usernameRef);
 
     if (usernameSnap.exists()) {
@@ -64,7 +68,7 @@ export async function createProfile(
     tx.set(usernameRef, { uid, reservedAt: serverTimestamp() });
 
     // Create the user profile
-    const userRef = doc(requireDb(), "users", uid);
+    const userRef = doc(db, "users", uid);
     const profileData: UserProfile = {
       uid,
       email,

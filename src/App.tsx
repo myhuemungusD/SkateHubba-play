@@ -71,7 +71,6 @@ const BG = "#0A0A0A";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
 /** Guard against open-redirect or XSS via crafted video URLs stored in Firestore. */
 function isFirebaseStorageUrl(url: string): boolean {
   try {
@@ -88,6 +87,7 @@ function isFirebaseStorageUrl(url: string): boolean {
   }
 }
 
+/** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
 function pwStrength(pw: string): 1 | 2 | 3 {
   if (pw.length < 8) return 1;
   const hasUpper = /[A-Z]/.test(pw);
