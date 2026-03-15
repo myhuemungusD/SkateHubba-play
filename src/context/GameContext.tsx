@@ -122,16 +122,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // Route based on auth state
   useEffect(() => {
-    if (loading) return;
+    if (loading) {
+      logger.debug("auth_router_waiting", { loading: true });
+      return;
+    }
     if (!user) {
+      logger.debug("auth_router_no_user", { target: "landing" });
       setScreen("landing");
       return;
     }
     if (!activeProfile) {
+      logger.debug("auth_router_no_profile", { uid: user.uid, target: "profile" });
       setScreen("profile");
       return;
     }
-    setScreen((prev) => (prev === "landing" || prev === "auth" || prev === "profile" ? "lobby" : prev));
+    setScreen((prev) => {
+      const next = prev === "landing" || prev === "auth" || prev === "profile" ? "lobby" : prev;
+      logger.debug("auth_router_resolved", { uid: user.uid, username: activeProfile.username, from: prev, to: next });
+      return next;
+    });
   }, [loading, user, activeProfile]);
 
   // Subscribe to games list
@@ -170,6 +179,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const handleDeleteAccount = useCallback(async () => {
     if (!activeProfile) return;
+    logger.info("delete_account_start", { uid: activeProfile.uid, username: activeProfile.username });
     // Delete Auth account first — if it fails (e.g. requires-recent-login),
     // Firestore data remains intact. This prevents orphaned Auth accounts
     // when Firestore cleanup succeeds but Auth deletion fails.
@@ -177,14 +187,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
       await deleteAccount();
     } catch (err) {
       const code = getErrorCode(err);
+      logger.error("delete_account_auth_failed", { uid: activeProfile.uid, code });
       if (code === "auth/requires-recent-login") {
         throw new Error("For security, please sign out and sign back in before deleting your account.", { cause: err });
       }
       throw err;
     }
+    logger.info("delete_account_auth_done", { uid: activeProfile.uid });
     // Auth account is gone — clean up Firestore (best effort; no auth token
     // issues since Firestore SDK caches credentials briefly after deletion).
     await deleteUserData(activeProfile.uid, activeProfile.username);
+    logger.info("delete_account_firestore_done", { uid: activeProfile.uid });
     metrics.accountDeleted(activeProfile.uid);
     setActiveProfile(null);
     setGames([]);

@@ -5,6 +5,7 @@ import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { GoogleButton } from "../components/GoogleButton";
+import { logger } from "../services/logger";
 
 export function AuthScreen({
   mode,
@@ -46,15 +47,22 @@ export function AuthScreen({
     }
 
     setLoading(true);
+    logger.info("auth_screen_submit", { mode: isSignup ? "signup" : "signin", email: email.trim() });
     try {
       if (isSignup) {
         await signUp(email, password);
       } else {
         await signIn(email, password);
       }
+      logger.info("auth_screen_submit_success", { mode: isSignup ? "signup" : "signin" });
       onDone();
     } catch (err: unknown) {
       const code = getErrorCode(err);
+      logger.warn("auth_screen_submit_error", {
+        mode: isSignup ? "signup" : "signin",
+        code,
+        message: err instanceof Error ? err.message : String(err),
+      });
       if (code === "auth/email-already-in-use") setError("Email already in use. Try signing in, or use Google below.");
       else if (code === "auth/account-exists-with-different-credential")
         setError("This email is linked to Google. Tap 'Continue with Google' below.");
@@ -73,10 +81,12 @@ export function AuthScreen({
       setError("Enter your email first");
       return;
     }
+    logger.info("auth_screen_password_reset", { email: email.trim() });
     try {
       await resetPassword(email);
       setResetSent(true);
-    } catch {
+    } catch (err) {
+      logger.warn("auth_screen_password_reset_error", { error: err instanceof Error ? err.message : String(err) });
       setResetSent(true); // Don't reveal if email exists
     }
   };

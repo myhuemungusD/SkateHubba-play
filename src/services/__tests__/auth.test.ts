@@ -121,7 +121,25 @@ describe("auth service", () => {
     it("registers a listener via onAuthStateChanged", () => {
       const cb = vi.fn();
       onAuthChange(cb);
-      expect(mockOnAuthStateChanged).toHaveBeenCalledWith(auth, cb);
+      expect(mockOnAuthStateChanged).toHaveBeenCalledWith(auth, expect.any(Function));
+    });
+
+    it("forwards the user to the callback with debug logging", () => {
+      const cb = vi.fn();
+      onAuthChange(cb);
+      // Get the wrapper function passed to onAuthStateChanged
+      const wrapper = mockOnAuthStateChanged.mock.calls[0][1];
+      const fakeUser = { uid: "u1", email: "a@b.com", emailVerified: true, providerData: [{ providerId: "password" }] };
+      wrapper(fakeUser);
+      expect(cb).toHaveBeenCalledWith(fakeUser);
+    });
+
+    it("forwards null to the callback on sign-out", () => {
+      const cb = vi.fn();
+      onAuthChange(cb);
+      const wrapper = mockOnAuthStateChanged.mock.calls[0][1];
+      wrapper(null);
+      expect(cb).toHaveBeenCalledWith(null);
     });
   });
 
