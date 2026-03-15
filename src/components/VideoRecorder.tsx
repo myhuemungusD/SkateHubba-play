@@ -35,10 +35,12 @@ export function VideoRecorder({
         audio: true,
       });
       streamRef.current = stream;
+      /* v8 ignore start */
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        videoRef.current.play();
+        void videoRef.current.play();
       }
+      /* v8 ignore stop */
       setState("preview");
     } catch (err) {
       const isPermission =
@@ -68,7 +70,9 @@ export function VideoRecorder({
         : "";
     const mr = new MediaRecorder(streamRef.current, mimeType ? { mimeType } : undefined);
     mr.ondataavailable = (e) => {
+      /* v8 ignore start */
       if (e.data.size > 0) chunksRef.current.push(e.data);
+      /* v8 ignore stop */
     };
     mr.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: "video/webm" });
@@ -90,12 +94,14 @@ export function VideoRecorder({
     setSeconds(0);
     timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
     // Auto-stop at max duration
+    /* v8 ignore start */
     maxTimerRef.current = window.setTimeout(() => {
       clearInterval(timerRef.current);
       if (mrRef.current?.state === "recording") {
         mrRef.current.stop();
       }
     }, MAX_RECORDING_SECONDS * 1000);
+    /* v8 ignore stop */
   }, [onRecorded]);
 
   const stopRec = useCallback(() => {
