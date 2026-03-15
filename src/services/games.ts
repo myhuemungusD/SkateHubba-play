@@ -95,6 +95,10 @@ export async function setTrick(
   trickName: string,
   videoUrl: string | null
 ): Promise<void> {
+  // Sanitise at the service boundary: trim whitespace, cap length
+  const safeTrickName = trickName.trim().slice(0, 100);
+  if (!safeTrickName) throw new Error("Trick name cannot be empty");
+
   const gameRef = doc(requireDb(), "games", gameId);
 
   await runTransaction(requireDb(), async (tx) => {
@@ -109,7 +113,7 @@ export async function setTrick(
 
     tx.update(gameRef, {
       phase: "matching",
-      currentTrickName: trickName,
+      currentTrickName: safeTrickName,
       currentTrickVideoUrl: videoUrl,
       matchVideoUrl: null,
       currentTurn: matcherUid,

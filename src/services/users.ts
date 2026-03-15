@@ -46,7 +46,8 @@ export async function createProfile(
   uid: string,
   email: string,
   username: string,
-  stance: string
+  stance: string,
+  emailVerified = false
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
 
@@ -70,7 +71,7 @@ export async function createProfile(
       username: normalized,
       stance,
       createdAt: serverTimestamp(),
-      emailVerified: false,
+      emailVerified,
     };
     tx.set(userRef, profileData);
 

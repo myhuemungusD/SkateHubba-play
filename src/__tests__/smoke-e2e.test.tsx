@@ -26,12 +26,16 @@ const mockUploadVideo = vi.fn();
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
 const mockResendVerification = vi.fn();
+const mockSignInWithGoogle = vi.fn();
+const mockResolveGoogleRedirect = vi.fn().mockResolvedValue(null);
 vi.mock("../services/auth", () => ({
   signUp: (...args: unknown[]) => mockSignUp(...args),
   signIn: (...args: unknown[]) => mockSignIn(...args),
   signOut: (...args: unknown[]) => mockSignOut(...args),
   resetPassword: (...args: unknown[]) => mockResetPassword(...args),
   resendVerification: (...args: unknown[]) => mockResendVerification(...args),
+  signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
+  resolveGoogleRedirect: (...args: unknown[]) => mockResolveGoogleRedirect(...args),
 }));
 vi.mock("../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
@@ -131,10 +135,10 @@ describe("Smoke Test: Game E2E", () => {
     render(<App />);
 
     expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
-    expect(screen.getByText("Get Started")).toBeInTheDocument();
+    expect(screen.getByText("Get Started with Email")).toBeInTheDocument();
     expect(screen.getByText("I Have an Account")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
   });
 
@@ -152,7 +156,7 @@ describe("Smoke Test: Game E2E", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     render(<App />);
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -578,7 +582,7 @@ describe("Smoke Test: Game E2E", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     render(<App />);
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -595,7 +599,7 @@ describe("Smoke Test: Game E2E", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     render(<App />);
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -613,7 +617,7 @@ describe("Smoke Test: Game E2E", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     render(<App />);
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -625,7 +629,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Email already in use")).toBeInTheDocument();
+      expect(screen.getByText("Email already in use. Try signing in, or use Google below.")).toBeInTheDocument();
     });
   });
 
@@ -655,7 +659,7 @@ describe("Smoke Test: Game E2E", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     render(<App />);
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
 
     // Toggle to sign-in
@@ -705,7 +709,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText("Sign In"));
 
     await waitFor(() => {
-      expect(screen.getByText("No account with that email")).toBeInTheDocument();
+      expect(screen.getByText("No account with that email. Need to sign up?")).toBeInTheDocument();
     });
   });
 
@@ -839,7 +843,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "sk8r@test.com", "newsk8r", "Regular");
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "sk8r@test.com", "newsk8r", "Regular", false);
     });
   });
 
@@ -1040,7 +1044,7 @@ describe("Smoke Test: Game E2E", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     render(<App />);
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -1088,7 +1092,7 @@ describe("Smoke Test: Game E2E", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     render(<App />);
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     await userEvent.type(emailInput, "bad");
@@ -1112,7 +1116,7 @@ describe("Smoke Test: Game E2E", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     render(<App />);
 
-    await userEvent.click(screen.getByText("Get Started"));
+    await userEvent.click(screen.getByText("Get Started with Email"));
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -1136,7 +1140,7 @@ describe("Smoke Test: Game E2E", () => {
       currentTurn: "u1",
       currentSetter: "u2",
       currentTrickName: "Heelflip",
-      currentTrickVideoUrl: "https://storage.example.com/trick.webm",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/proj/o/trick.webm?alt=media",
     });
     renderLobby([game]);
     withGameSub(game);
@@ -1145,7 +1149,7 @@ describe("Smoke Test: Game E2E", () => {
 
     await waitFor(() => {
       expect(screen.getByText("THEIR ATTEMPT")).toBeInTheDocument();
-      const video = document.querySelector("video[src='https://storage.example.com/trick.webm']");
+      const video = document.querySelector("video[src='https://firebasestorage.googleapis.com/v0/b/proj/o/trick.webm?alt=media']");
       expect(video).toBeTruthy();
     });
   });
