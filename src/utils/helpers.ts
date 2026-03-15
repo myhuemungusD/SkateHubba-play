@@ -1,6 +1,16 @@
+import { Timestamp } from "firebase/firestore";
 import type { GameDoc } from "../services/games";
 
 export const BG = "#0A0A0A";
+
+/** Extract a Firebase error code from an unknown error value. */
+export function getErrorCode(err: unknown): string {
+  if (typeof err === "object" && err !== null && "code" in err) {
+    const code = (err as { code: unknown }).code;
+    return typeof code === "string" ? code : "";
+  }
+  return "";
+}
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const LETTERS = ["S", "K", "A", "T", "E"];
 
@@ -36,7 +46,6 @@ export function newGameShell(
   opponentUid: string,
   opponentUsername: string,
 ): GameDoc {
-  const shellDeadline = Date.now() + 86400000;
   return {
     id: gameId,
     player1Uid: myUid,
@@ -52,7 +61,7 @@ export function newGameShell(
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    turnDeadline: { toMillis: () => shellDeadline } as unknown as GameDoc["turnDeadline"],
+    turnDeadline: Timestamp.fromMillis(Date.now() + 86400000),
     turnNumber: 1,
     winner: null,
     createdAt: null,

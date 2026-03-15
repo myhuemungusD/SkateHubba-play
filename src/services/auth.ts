@@ -15,6 +15,7 @@ import {
 } from "firebase/auth";
 import { auth, requireAuth } from "../firebase";
 import * as Sentry from "@sentry/react";
+import { getErrorCode } from "../utils/helpers";
 
 export type AuthUser = User;
 
@@ -85,7 +86,7 @@ export async function signInWithGoogle(): Promise<User | null> {
     const cred = await signInWithPopup(a, provider);
     return cred.user;
   } catch (err: unknown) {
-    const code = (err as { code?: string })?.code ?? "";
+    const code = getErrorCode(err);
     if (code === "auth/popup-blocked") {
       // Redirect flow: page navigates to Google; onAuthStateChanged resolves on return
       await signInWithRedirect(a, provider);

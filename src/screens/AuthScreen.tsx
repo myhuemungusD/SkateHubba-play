@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { signUp, signIn, resetPassword } from "../services/auth";
-import { EMAIL_RE, pwStrength } from "../utils/helpers";
+import { EMAIL_RE, pwStrength, getErrorCode } from "../utils/helpers";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -54,7 +54,7 @@ export function AuthScreen({
       }
       onDone();
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code ?? "";
+      const code = getErrorCode(err);
       if (code === "auth/email-already-in-use") setError("Email already in use. Try signing in, or use Google below.");
       else if (code === "auth/account-exists-with-different-credential")
         setError("This email is linked to Google. Tap 'Continue with Google' below.");
@@ -137,8 +137,12 @@ export function AuthScreen({
                 3: "bg-brand-green",
               };
               return (
-                <div className="flex items-center gap-2 -mt-2 mb-4">
-                  <div className="flex gap-1 flex-1">
+                <div
+                  className="flex items-center gap-2 -mt-2 mb-4"
+                  role="status"
+                  aria-label={`Password strength: ${labels[strength]}`}
+                >
+                  <div className="flex gap-1 flex-1" aria-hidden="true">
                     {([1, 2, 3] as const).map((lvl) => (
                       <div
                         key={lvl}

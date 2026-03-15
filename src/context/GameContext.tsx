@@ -4,8 +4,9 @@ import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAc
 import { deleteUserData } from "../services/users";
 import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
-import { newGameShell } from "../utils/helpers";
+import { newGameShell, getErrorCode } from "../utils/helpers";
 import { analytics } from "../services/analytics";
+import { logger, metrics } from "../services/logger";
 
 export type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover";
 
@@ -66,10 +67,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setGoogleError("");
     setGoogleLoading(true);
     try {
-      await signInWithGoogle();
-      analytics.signIn("google");
+      const googleUser = await signInWithGoogle();
+      // Only track if sign-in completed (null = redirect initiated, not finished)
+      if (googleUser) {
+        analytics.signIn("google");
+        metrics.signIn("google", googleUser.uid);
+      }
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code ?? "";
+      const code = getErrorCode(err);
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
         // User dismissed
       } else if (code === "auth/account-exists-with-different-credential") {
@@ -134,6 +139,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [activeGame?.id]);
 
   const handleSignOut = useCallback(async () => {
+    logger.info("user_sign_out");
     await fbSignOut();
     setActiveProfile(null);
     setGames([]);
@@ -144,16 +150,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const handleDeleteAccount = useCallback(async () => {
     if (!activeProfile) return;
-    await deleteUserData(activeProfile.uid, activeProfile.username);
+    // Delete Auth account first — if it fails (e.g. requires-recent-login),
+    // Firestore data remains intact. This prevents orphaned Auth accounts
+    // when Firestore cleanup succeeds but Auth deletion fails.
     try {
       await deleteAccount();
     } catch (err) {
-      const code = (err as { code?: string })?.code ?? "";
+      const code = getErrorCode(err);
       if (code === "auth/requires-recent-login") {
         throw new Error("For security, please sign out and sign back in before deleting your account.", { cause: err });
       }
       throw err;
     }
+    // Auth account is gone — clean up Firestore (best effort; no auth token
+    // issues since Firestore SDK caches credentials briefly after deletion).
+    await deleteUserData(activeProfile.uid, activeProfile.username);
+    metrics.accountDeleted(activeProfile.uid);
     setActiveProfile(null);
     setGames([]);
     setActiveGame(null);

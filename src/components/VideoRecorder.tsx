@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Btn } from "./ui/Btn";
 
+const MAX_RECORDING_SECONDS = 60;
+
 export function VideoRecorder({
   onRecorded,
   label,
@@ -17,13 +19,16 @@ export function VideoRecorder({
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number>(0);
+  const maxTimerRef = useRef<number>(0);
   const blobUrlRef = useRef<string | null>(null);
 
   const [state, setState] = useState<"idle" | "preview" | "recording" | "done">("idle");
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
+  const [cameraError, setCameraError] = useState<string | null>(null);
 
   const openCamera = useCallback(async () => {
+    setCameraError(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment", width: { ideal: 720 }, height: { ideal: 1280 } },
@@ -36,8 +41,15 @@ export function VideoRecorder({
       }
       setState("preview");
     } catch (err) {
-      console.warn("Camera access failed:", err instanceof Error ? err.message : err);
-      setState("preview");
+      const isPermission =
+        err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
+      const msg = err instanceof Error ? err.message : String(err);
+      setCameraError(
+        isPermission
+          ? "Camera access denied. Check your browser permissions and try again."
+          : `Camera unavailable: ${msg}`,
+      );
+      console.warn("Camera access failed:", msg);
     }
   }, []);
 
@@ -77,10 +89,18 @@ export function VideoRecorder({
     setState("recording");
     setSeconds(0);
     timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
+    // Auto-stop at max duration
+    maxTimerRef.current = window.setTimeout(() => {
+      clearInterval(timerRef.current);
+      if (mrRef.current?.state === "recording") {
+        mrRef.current.stop();
+      }
+    }, MAX_RECORDING_SECONDS * 1000);
   }, [onRecorded]);
 
   const stopRec = useCallback(() => {
     clearInterval(timerRef.current);
+    clearTimeout(maxTimerRef.current);
     if (mrRef.current?.state === "recording") {
       mrRef.current.stop();
     } else {
@@ -92,6 +112,7 @@ export function VideoRecorder({
   useEffect(() => {
     return () => {
       clearInterval(timerRef.current);
+      clearTimeout(maxTimerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     };
@@ -114,9 +135,9 @@ export function VideoRecorder({
           ${state === "recording" ? "border-2 border-brand-red shadow-[0_0_30px_rgba(255,61,0,0.15)]" : "border border-border"}`}
       >
         {state === "done" && blobUrl ? (
-          <video src={blobUrl} className="w-full h-full object-cover" controls />
+          <video src={blobUrl} className="w-full h-full object-cover" controls aria-label="Your recorded trick video" />
         ) : (
-          <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
+          <video ref={videoRef} className="w-full h-full object-cover" muted playsInline aria-label="Camera preview" />
         )}
 
         {state === "recording" && (
@@ -138,8 +159,18 @@ export function VideoRecorder({
         </div>
       </div>
 
+      {/* Camera error */}
+      {cameraError && (
+        <div className="w-full max-w-[360px] p-3 rounded-xl bg-[rgba(255,61,0,0.08)] border border-brand-red text-center">
+          <p className="font-body text-sm text-brand-red mb-2">{cameraError}</p>
+          <Btn onClick={openCamera} variant="secondary">
+            Retry Camera
+          </Btn>
+        </div>
+      )}
+
       {/* Controls */}
-      {state === "idle" && (
+      {state === "idle" && !cameraError && (
         <Btn onClick={openCamera} variant="secondary">
           📷 Open Camera
         </Btn>
@@ -150,9 +181,16 @@ export function VideoRecorder({
         </Btn>
       )}
       {state === "recording" && (
-        <Btn onClick={stopRec} variant="danger" className="text-2xl py-5 animate-rec-ring">
-          ⏹ Stop Recording
-        </Btn>
+        <>
+          <Btn onClick={stopRec} variant="danger" className="text-2xl py-5 animate-rec-ring">
+            ⏹ Stop Recording
+          </Btn>
+          {seconds >= MAX_RECORDING_SECONDS - 10 && (
+            <span className="font-body text-xs text-brand-red animate-pulse">
+              Auto-stop in {MAX_RECORDING_SECONDS - seconds}s
+            </span>
+          )}
+        </>
       )}
       {state === "done" && (
         <div className="flex items-center gap-2 px-5 py-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green">

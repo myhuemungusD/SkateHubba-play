@@ -7,11 +7,11 @@ describe("analytics service", () => {
   beforeEach(() => {
     vaSpy = vi.fn();
 
-    (window as any).va = vaSpy;
+    (window as unknown as Record<string, unknown>).va = vaSpy;
   });
 
   afterEach(() => {
-    delete (window as any).va;
+    delete (window as unknown as Record<string, unknown>).va;
   });
 
   describe("trackEvent", () => {
@@ -26,7 +26,7 @@ describe("analytics service", () => {
     });
 
     it("does not throw when window.va is not defined", () => {
-      delete (window as any).va;
+      delete (window as unknown as Record<string, unknown>).va;
       expect(() => trackEvent("no_va")).not.toThrow();
     });
 

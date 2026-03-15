@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   runTransaction,
   query,
   where,
@@ -11,6 +12,8 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
+import { withRetry } from "../utils/retry";
+import { metrics } from "./logger";
 
 /* ────────────────────────────────────────────
  * Types
@@ -44,6 +47,15 @@ export interface GameDoc {
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+/** Parse a Firestore document snapshot into a typed GameDoc. */
+function toGameDoc(snap: { id: string; data: () => Record<string, unknown> }): GameDoc {
+  return { id: snap.id, ...snap.data() } as GameDoc;
+}
+
+function getOpponent(game: GameDoc, playerUid: string): string {
+  return playerUid === game.player1Uid ? game.player2Uid : game.player1Uid;
+}
 function gamesRef() {
   return collection(requireDb(), "games");
 }
@@ -95,8 +107,13 @@ export async function createGame(
     updatedAt: serverTimestamp(),
   };
 
-  const docRef = await addDoc(gamesRef(), gameData);
+  const docRef = await withRetry(() => addDoc(gamesRef(), gameData));
   lastGameCreatedAt = Date.now();
+  metrics.gameCreated(docRef.id, challengerUid);
+  // Update rate-limit timestamp on user profile (best effort — game is already created).
+  setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true }).catch(
+    () => {},
+  );
   return docRef.id;
 }
 
@@ -111,15 +128,17 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
 
   const gameRef = doc(requireDb(), "games", gameId);
 
+  // Firestore transactions have built-in retry for transient conflicts;
+  // withRetry is not needed here and would incorrectly retry app-logic errors.
   await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
-    const game = { id: snap.id, ...snap.data() } as GameDoc;
+    const game = toGameDoc(snap);
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "setting") throw new Error("Not in setting phase");
 
-    const matcherUid = game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const matcherUid = getOpponent(game, game.currentSetter);
 
     tx.update(gameRef, {
       phase: "matching",
@@ -148,11 +167,11 @@ export async function submitMatchResult(
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
-    const game = { id: snap.id, ...snap.data() } as GameDoc;
+    const game = toGameDoc(snap);
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "matching") throw new Error("Not in matching phase");
 
-    const matcherUid = game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const matcherUid = getOpponent(game, game.currentSetter);
     const isP1Matcher = matcherUid === game.player1Uid;
 
     let newP1Letters = game.p1Letters;
@@ -205,7 +224,7 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
     const snap = await tx.get(gameRef);
     if (!snap.exists()) return { forfeited: false, winner: null };
 
-    const game = { id: snap.id, ...snap.data() } as GameDoc;
+    const game = toGameDoc(snap);
     if (game.status !== "active") return { forfeited: false, winner: null };
 
     const deadline = game.turnDeadline?.toMillis?.() ?? 0;
@@ -214,7 +233,7 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
     }
 
     // The player whose turn it is forfeits — opponent wins
-    const winner = game.currentTurn === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const winner = getOpponent(game, game.currentTurn);
 
     tx.update(gameRef, {
       status: "forfeit",
@@ -222,6 +241,7 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
       updatedAt: serverTimestamp(),
     });
 
+    metrics.gameForfeit(gameId, winner);
     return { forfeited: true, winner };
   });
 }
@@ -263,7 +283,7 @@ export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => 
   const unsub1 = onSnapshot(
     q1,
     (snap) => {
-      p1Games = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as GameDoc);
+      p1Games = snap.docs.map((d) => toGameDoc(d));
       merge();
     },
     handleError,
@@ -272,7 +292,7 @@ export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => 
   const unsub2 = onSnapshot(
     q2,
     (snap) => {
-      p2Games = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as GameDoc);
+      p2Games = snap.docs.map((d) => toGameDoc(d));
       merge();
     },
     handleError,
@@ -295,7 +315,7 @@ export function subscribeToGame(gameId: string, onUpdate: (game: GameDoc | null)
         onUpdate(null);
         return;
       }
-      onUpdate({ id: snap.id, ...snap.data() } as GameDoc);
+      onUpdate(toGameDoc(snap));
     },
     (err) => {
       console.warn("Game subscription error:", err.message);

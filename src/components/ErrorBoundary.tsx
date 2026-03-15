@@ -31,11 +31,13 @@ export class ErrorBoundary extends Component<Props, State> {
           <h1 className="font-display text-3xl text-white mb-2">Something broke</h1>
           <p className="font-body text-sm text-[#888] mb-6 text-center max-w-sm">{this.state.error.message}</p>
           <button
+            type="button"
+            aria-label="Reload the application"
             onClick={() => {
               this.setState({ error: null });
               window.location.reload();
             }}
-            className="px-6 py-3 rounded-xl bg-brand-orange text-white font-display tracking-wider"
+            className="px-6 py-3 rounded-xl bg-brand-orange text-white font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             Reload App
           </button>

@@ -13,7 +13,7 @@ export function Landing({
   googleLoading: boolean;
 }) {
   return (
-    <div
+    <main
       className="min-h-dvh flex flex-col items-center justify-center px-6"
       style={{ background: `radial-gradient(ellipse at 50% 0%, rgba(255,107,0,0.06) 0%, transparent 60%), ${BG}` }}
     >
@@ -39,18 +39,20 @@ export function Landing({
         </Btn>
         <InviteButton className="mt-2" />
       </div>
-      <div className="flex gap-5 mt-12 flex-wrap justify-center">
+      <ul className="flex gap-5 mt-12 flex-wrap justify-center list-none p-0 m-0" aria-label="Key features">
         {[
           { icon: "📹", text: "One-take video" },
           { icon: "⏱", text: "24hr turns" },
           { icon: "🔥", text: "No trick-farming" },
         ].map((f) => (
-          <div key={f.text} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border">
-            <span className="text-base">{f.icon}</span>
+          <li key={f.text} className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border">
+            <span className="text-base" aria-hidden="true">
+              {f.icon}
+            </span>
             <span className="font-body text-xs text-[#555]">{f.text}</span>
-          </div>
+          </li>
         ))}
-      </div>
-    </div>
+      </ul>
+    </main>
   );
 }
