@@ -345,7 +345,7 @@ describe("Smoke Test: Game E2E", () => {
       p1Letters: 2,
       p2Letters: 5,
     });
-    renderLobby([game]);
+    renderVerifiedLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByText(/vs @rival/));
@@ -379,7 +379,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("rematch from game over creates a new game", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
-    renderLobby([game]);
+    renderVerifiedLobby([game]);
     withGameSub(game);
     mockCreateGame.mockResolvedValueOnce("game2");
 
@@ -1439,7 +1439,7 @@ describe("Smoke Test: Game E2E", () => {
   it("challenge screen shows error when createGame fails", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     mockCreateGame.mockRejectedValueOnce(new Error("Network error"));
-    renderLobby([]);
+    renderVerifiedLobby([]);
 
     await userEvent.click(screen.getByRole("button", { name: /challenge/i }));
 

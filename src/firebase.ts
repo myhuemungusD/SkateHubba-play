@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { getStorage, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import * as Sentry from "@sentry/react";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -60,10 +61,10 @@ if (firebaseReady) {
       isTokenAutoRefreshEnabled: true,
     });
   } else if (!import.meta.env.DEV) {
-    // Warn in production so the ops team knows App Check is inactive.
-    // Not a console.error (would surface in Sentry) — this is an ops notice.
-    /* v8 ignore next 1 */
-    console.warn("⚠️ App Check is disabled: set VITE_RECAPTCHA_SITE_KEY to protect against API abuse.");
+    // Error in production so the ops team is alerted App Check is inactive.
+    /* v8 ignore next 2 */
+    console.error("⚠️ App Check is disabled: set VITE_RECAPTCHA_SITE_KEY to protect against API abuse.");
+    Sentry.captureMessage("App Check disabled in production — set VITE_RECAPTCHA_SITE_KEY", "error");
   }
 
   // Connect to emulators in development (if running)
