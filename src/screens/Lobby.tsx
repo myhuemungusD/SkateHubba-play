@@ -1,6 +1,9 @@
+import { useState } from "react";
 import type { UserProfile } from "../services/users";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
+import { Btn } from "../components/ui/Btn";
+import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 
@@ -10,6 +13,7 @@ export function Lobby({
   onChallenge,
   onOpenGame,
   onSignOut,
+  onDeleteAccount,
   user,
 }: {
   profile: UserProfile;
@@ -17,8 +21,12 @@ export function Lobby({
   onChallenge: () => void;
   onOpenGame: (g: GameDoc) => void;
   onSignOut: () => void;
+  onDeleteAccount: () => Promise<void>;
   user: { emailVerified?: boolean } | null;
 }) {
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
 
@@ -298,7 +306,66 @@ export function Lobby({
             ))}
           </div>
         </div>
+
+        {/* Danger Zone */}
+        <div className="mt-6 p-5 rounded-2xl border border-[rgba(255,61,0,0.2)] bg-surface">
+          <h3 className="font-display text-sm tracking-[0.15em] text-[#555] mb-3">DANGER ZONE</h3>
+          <Btn onClick={() => setShowDeleteModal(true)} variant="danger">
+            Delete Account
+          </Btn>
+        </div>
       </div>
+
+      {/* Delete Account Modal */}
+      {showDeleteModal && (
+        <div
+          className="fixed inset-0 bg-black/80 flex items-center justify-center p-6 z-50"
+          onClick={() => {
+            if (!deleting) setShowDeleteModal(false);
+          }}
+        >
+          <div
+            className="bg-surface border border-border rounded-2xl p-6 max-w-sm w-full animate-fade-in"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-display text-xl text-white mb-2">Delete Account?</h3>
+            <p className="font-body text-sm text-[#888] mb-4">
+              This permanently deletes your profile and sign-in credentials. Your game history is retained for your
+              opponents.
+              <strong className="text-brand-red"> This cannot be undone.</strong>
+            </p>
+            {deleteError && <ErrorBanner message={deleteError} onDismiss={() => setDeleteError("")} />}
+            <div className="flex gap-3">
+              <Btn
+                onClick={() => {
+                  setDeleteError("");
+                  setShowDeleteModal(false);
+                }}
+                variant="secondary"
+                disabled={deleting}
+              >
+                Cancel
+              </Btn>
+              <Btn
+                onClick={async () => {
+                  setDeleting(true);
+                  setDeleteError("");
+                  try {
+                    await onDeleteAccount();
+                  } catch (err: unknown) {
+                    setDeleteError(err instanceof Error ? err.message : "Deletion failed — try again");
+                    setDeleting(false);
+                  }
+                }}
+                variant="danger"
+                disabled={deleting}
+              >
+                {deleting ? "Deleting..." : "Delete Forever"}
+              </Btn>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -19,12 +19,7 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
-import {
-  getUserProfile,
-  isUsernameAvailable,
-  createProfile,
-  getUidByUsername,
-} from "../users";
+import { getUserProfile, isUsernameAvailable, createProfile, getUidByUsername, deleteUserData } from "../users";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -114,9 +109,24 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      await expect(createProfile("u1", "a@b.com", "sk8r", "regular")).rejects.toThrow(
-        "Username is already taken"
-      );
+      await expect(createProfile("u1", "a@b.com", "sk8r", "regular")).rejects.toThrow("Username is already taken");
+    });
+  });
+
+  describe("deleteUserData", () => {
+    it("runs a transaction that deletes user and username docs", async () => {
+      const mockTx = { delete: vi.fn() };
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+
+      await deleteUserData("u1", "sk8r");
+
+      expect(mockRunTransaction).toHaveBeenCalled();
+      expect(mockTx.delete).toHaveBeenCalledTimes(2);
+    });
+
+    it("re-throws transaction errors", async () => {
+      mockRunTransaction.mockRejectedValueOnce(new Error("Transaction failed"));
+      await expect(deleteUserData("u1", "sk8r")).rejects.toThrow("Transaction failed");
     });
   });
 

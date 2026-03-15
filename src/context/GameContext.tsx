@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useAuth } from "../hooks/useAuth";
-import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect } from "../services/auth";
+import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
+import { deleteUserData } from "../services/users";
 import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
 import { newGameShell } from "../utils/helpers";
@@ -21,6 +22,7 @@ interface GameContextValue {
   googleError: string;
   setGoogleError: (e: string) => void;
   handleSignOut: () => Promise<void>;
+  handleDeleteAccount: () => Promise<void>;
 
   // Games
   games: GameDoc[];
@@ -140,6 +142,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setScreen("landing");
   }, []);
 
+  const handleDeleteAccount = useCallback(async () => {
+    if (!activeProfile) return;
+    await deleteUserData(activeProfile.uid, activeProfile.username);
+    try {
+      await deleteAccount();
+    } catch (err) {
+      const code = (err as { code?: string })?.code ?? "";
+      if (code === "auth/requires-recent-login") {
+        throw new Error("For security, please sign out and sign back in before deleting your account.", { cause: err });
+      }
+      throw err;
+    }
+    setActiveProfile(null);
+    setGames([]);
+    setActiveGame(null);
+    setScreen("landing");
+  }, [activeProfile]);
+
   const openGame = useCallback((g: GameDoc) => {
     setActiveGame(g);
     if (g.status === "complete" || g.status === "forfeit") {
@@ -173,6 +193,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     googleError,
     setGoogleError,
     handleSignOut,
+    handleDeleteAccount,
     games,
     activeGame,
     setActiveGame,

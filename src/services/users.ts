@@ -1,9 +1,4 @@
-import {
-  doc,
-  getDoc,
-  runTransaction,
-  serverTimestamp,
-} from "firebase/firestore";
+import { doc, getDoc, runTransaction, serverTimestamp, type FieldValue } from "firebase/firestore";
 import { requireDb } from "../firebase";
 
 export interface UserProfile {
@@ -11,7 +6,9 @@ export interface UserProfile {
   email: string;
   username: string;
   stance: string;
-  createdAt: unknown;
+  // serverTimestamp() on write; Firestore Timestamp on read — typed as FieldValue
+  // to match what we pass in. The value is never consumed client-side.
+  createdAt: FieldValue | null;
   emailVerified: boolean;
 }
 
@@ -47,13 +44,14 @@ export async function createProfile(
   email: string,
   username: string,
   stance: string,
-  emailVerified = false
+  emailVerified = false,
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
 
-  const profile = await runTransaction(requireDb(), async (tx) => {
+  const db = requireDb();
+  const profile = await runTransaction(db, async (tx) => {
     // Check username availability inside transaction
-    const usernameRef = doc(requireDb(), "usernames", normalized);
+    const usernameRef = doc(db, "usernames", normalized);
     const usernameSnap = await tx.get(usernameRef);
 
     if (usernameSnap.exists()) {
@@ -64,7 +62,7 @@ export async function createProfile(
     tx.set(usernameRef, { uid, reservedAt: serverTimestamp() });
 
     // Create the user profile
-    const userRef = doc(requireDb(), "users", uid);
+    const userRef = doc(db, "users", uid);
     const profileData: UserProfile = {
       uid,
       email,
@@ -79,6 +77,27 @@ export async function createProfile(
   });
 
   return profile;
+}
+
+/**
+ * Delete a user's Firestore profile and username reservation atomically.
+ * Uses a transaction so both documents are deleted together — if one fails
+ * neither is deleted, preventing orphaned username reservations.
+ *
+ * Call this BEFORE deleteAccount() from auth.ts so Firestore cleanup
+ * succeeds while the auth token is still valid.
+ *
+ * Note: game documents and Storage videos are intentionally retained for
+ * opponent history. A Cloud Function can handle deeper cleanup if needed.
+ */
+export async function deleteUserData(uid: string, username: string): Promise<void> {
+  const db = requireDb();
+  const userRef = doc(db, "users", uid);
+  const usernameRef = doc(db, "usernames", username.toLowerCase().trim());
+  await runTransaction(db, async (tx) => {
+    tx.delete(userRef);
+    tx.delete(usernameRef);
+  });
 }
 
 /**

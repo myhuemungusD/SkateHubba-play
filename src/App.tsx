@@ -82,6 +82,7 @@ function AppScreens() {
           onChallenge={() => ctx.setScreen("challenge")}
           onOpenGame={ctx.openGame}
           onSignOut={ctx.handleSignOut}
+          onDeleteAccount={ctx.handleDeleteAccount}
         />
       )}
 

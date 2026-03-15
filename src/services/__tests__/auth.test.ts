@@ -10,6 +10,7 @@ const mockSignOut = vi.fn().mockResolvedValue(undefined);
 const mockSendReset = vi.fn().mockResolvedValue(undefined);
 const mockSendVerify = vi.fn().mockResolvedValue(undefined);
 const mockOnAuthStateChanged = vi.fn();
+const mockDeleteUser = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("firebase/auth", () => ({
   createUserWithEmailAndPassword: (...args: unknown[]) => mockCreateUser(...args),
@@ -18,11 +19,12 @@ vi.mock("firebase/auth", () => ({
   sendPasswordResetEmail: (...args: unknown[]) => mockSendReset(...args),
   sendEmailVerification: (...args: unknown[]) => mockSendVerify(...args),
   onAuthStateChanged: (...args: unknown[]) => mockOnAuthStateChanged(...args),
+  deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
 }));
 
 vi.mock("../../firebase");
 
-import { signUp, signIn, signOut, resetPassword, resendVerification, onAuthChange } from "../auth";
+import { signUp, signIn, signOut, resetPassword, resendVerification, onAuthChange, deleteAccount } from "../auth";
 import { auth } from "../../firebase";
 
 beforeEach(() => {
@@ -85,10 +87,13 @@ describe("auth service", () => {
     it("sends verification when there is a current user", async () => {
       (auth as any).currentUser = { uid: "u1" };
       await resendVerification();
-      expect(mockSendVerify).toHaveBeenCalledWith({ uid: "u1" }, {
-        url: expect.any(String),
-        handleCodeInApp: false,
-      });
+      expect(mockSendVerify).toHaveBeenCalledWith(
+        { uid: "u1" },
+        {
+          url: expect.any(String),
+          handleCodeInApp: false,
+        },
+      );
     });
 
     it("does nothing when there is no current user", async () => {
@@ -103,6 +108,20 @@ describe("auth service", () => {
       const cb = vi.fn();
       onAuthChange(cb);
       expect(mockOnAuthStateChanged).toHaveBeenCalledWith(auth, cb);
+    });
+  });
+
+  describe("deleteAccount", () => {
+    it("deletes the current user when signed in", async () => {
+      const mockUser = { uid: "u1" };
+      (auth as any).currentUser = mockUser;
+      await deleteAccount();
+      expect(mockDeleteUser).toHaveBeenCalledWith(mockUser);
+    });
+
+    it("throws when no user is signed in", async () => {
+      (auth as any).currentUser = null;
+      await expect(deleteAccount()).rejects.toThrow("Not signed in");
     });
   });
 });

@@ -13,6 +13,9 @@ export interface UploadProgress {
  *
  * Path: games/{gameId}/turn-{turnNumber}/{role}.webm
  * role = "set" | "match"
+ *
+ * Uses uploadBytesResumable for real-time progress tracking.
+ * Retries with exponential backoff on transient failures.
  */
 export async function uploadVideo(
   gameId: string,
@@ -36,6 +39,9 @@ export async function uploadVideo(
             turn: String(turnNumber),
             role,
             uploadedAt: new Date().toISOString(),
+            // Retention hint: videos older than 90 days may be purged by a
+            // scheduled Cloud Function or a Storage lifecycle rule.
+            retainUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
           },
         });
 
