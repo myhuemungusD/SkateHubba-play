@@ -117,6 +117,57 @@ describe("storage service", () => {
       expect(callCount).toBe(3);
     });
 
+    it("reports 0 percent when totalBytes is 0", async () => {
+      const progressFn = vi.fn();
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn(
+          (
+            _event: string,
+            onProgress: (s: { bytesTransferred: number; totalBytes: number }) => void,
+            _error: unknown,
+            complete: () => void,
+          ) => {
+            onProgress({ bytesTransferred: 0, totalBytes: 0 });
+            complete();
+          },
+        ),
+      }));
+
+      const blob = new Blob(["video"], { type: "video/webm" });
+      await uploadVideo("game1", 1, "set", blob, progressFn);
+
+      expect(progressFn).toHaveBeenCalledWith({ bytesTransferred: 0, totalBytes: 0, percent: 0 });
+    });
+
+    it("skips progress callback when not provided", async () => {
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn(
+          (
+            _event: string,
+            onProgress: (s: { bytesTransferred: number; totalBytes: number }) => void,
+            _error: unknown,
+            complete: () => void,
+          ) => {
+            // Trigger the progress handler — it should not throw when no callback
+            onProgress({ bytesTransferred: 50, totalBytes: 100 });
+            complete();
+          },
+        ),
+      }));
+
+      const blob = new Blob(["video"], { type: "video/webm" });
+      // No progress callback passed
+      await expect(uploadVideo("game1", 1, "set", blob)).resolves.toBe("https://cdn.example.com/video.webm");
+    });
+
+    it("rejects when getDownloadURL fails after upload completes", async () => {
+      mockGetDownloadURL.mockRejectedValueOnce(new Error("URL fetch failed"));
+      const blob = new Blob(["video"], { type: "video/webm" });
+      await expect(uploadVideo("game1", 1, "set", blob, undefined, 0)).rejects.toThrow("URL fetch failed");
+    });
+
     it("throws after exhausting retries", async () => {
       mockUploadBytesResumable.mockImplementation(() => ({
         snapshot: { ref: "mock-ref" },
