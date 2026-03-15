@@ -15,12 +15,11 @@ if (import.meta.env.VITE_SENTRY_DSN) {
     tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
     // Strip PII from breadcrumbs / event data.
     beforeSend(event) {
-      // Remove any user email accidentally captured in request URLs.
+      // Strip email query params from URLs wherever they appear.
+      // Using a global replace (not anchored to ?/&) catches edge cases like
+      // email= at the start of a query string or after a hash.
       if (event.request?.url) {
-        event.request.url = event.request.url.replace(
-          /([?&]email=)[^&]*/gi,
-          "$1[REDACTED]"
-        );
+        event.request.url = event.request.url.replace(/email=[^&]*/gi, "email=[REDACTED]");
       }
       return event;
     },

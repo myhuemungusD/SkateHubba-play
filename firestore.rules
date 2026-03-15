@@ -26,6 +26,8 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isOwner(uid)
+        // One profile per UID — prevent a race condition from overwriting an existing profile
+        && !exists(/databases/$(database)/documents/users/$(uid))
         && request.resource.data.uid == uid
         && request.resource.data.username is string
         && request.resource.data.username.size() >= 3
@@ -64,8 +66,11 @@ service cloud.firestore {
       // Both players can read their game
       allow read: if isSignedIn() && isPlayer(resource.data);
 
-      // Any signed-in user can create a game (as player1)
+      // Any signed-in user with a verified email can create a game (as player1).
+      // Email verification is enforced server-side here so it can't be bypassed
+      // by calling the Firestore API directly (e.g. from the browser console).
       allow create: if isSignedIn()
+        && request.auth.token.email_verified == true
         && request.resource.data.player1Uid == request.auth.uid
         // Prevent self-challenge: player2 must be a different account
         && request.resource.data.player2Uid != request.auth.uid

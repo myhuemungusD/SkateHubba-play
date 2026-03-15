@@ -14,6 +14,7 @@ import {
   type ActionCodeSettings,
 } from "firebase/auth";
 import { auth, requireAuth } from "../firebase";
+import * as Sentry from "@sentry/react";
 
 export type AuthUser = User;
 
@@ -36,8 +37,11 @@ export function onAuthChange(cb: (user: User | null) => void) {
 
 export async function signUp(email: string, password: string): Promise<User> {
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
-  // Fire-and-forget verification email
-  sendEmailVerification(cred.user, getActionCodeSettings()).catch(() => {});
+  // Fire-and-forget verification email — failure is non-blocking (user can
+  // resend from the lobby banner) but we want visibility in Sentry.
+  sendEmailVerification(cred.user, getActionCodeSettings()).catch((err) => {
+    Sentry.captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
+  });
   return cred.user;
 }
 

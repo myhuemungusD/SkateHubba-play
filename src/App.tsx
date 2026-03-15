@@ -76,10 +76,12 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function isFirebaseStorageUrl(url: string): boolean {
   try {
     const { protocol, hostname } = new URL(url);
+    // Use exact match or strict subdomain regex — .endsWith() is bypassable via
+    // domains like "firebasestorage.googleapis.com.evil.com"
     return (
       protocol === "https:" &&
       (hostname === "firebasestorage.googleapis.com" ||
-        hostname.endsWith(".firebasestorage.app"))
+        /^[a-z0-9-]+\.firebasestorage\.app$/.test(hostname))
     );
   } catch {
     return false;
@@ -161,10 +163,10 @@ function Btn({
 }
 
 function Field({
-  label, value, onChange, placeholder, type = "text", maxLength, note, icon, autoComplete, autoFocus,
+  label, value, onChange, placeholder, type = "text", maxLength, note, fieldError, icon, autoComplete, autoFocus,
 }: {
   label?: string; value: string; onChange: (v: string) => void;
-  placeholder?: string; type?: string; maxLength?: number; note?: string; icon?: string;
+  placeholder?: string; type?: string; maxLength?: number; note?: string; fieldError?: string; icon?: string;
   autoComplete?: string; autoFocus?: boolean;
 }) {
   const id = useId();
@@ -193,12 +195,14 @@ function Field({
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
+          className={`w-full bg-surface-alt border rounded-xl text-white text-base font-body outline-none
             focus:border-brand-orange transition-colors duration-200
+            ${fieldError ? "border-red-500" : "border-border"}
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />
       </div>
-      {note && <span className="text-xs text-[#777] mt-1 block">{note}</span>}
+      {fieldError && <span className="text-xs text-red-400 mt-1 block">{fieldError}</span>}
+      {!fieldError && note && <span className="text-xs text-[#777] mt-1 block">{note}</span>}
     </div>
   );
 }
@@ -1000,6 +1004,7 @@ function ProfileSetup({
     .replace(/[^a-z0-9_]/g, "")
     .slice(0, 20);
   const [username, setUsername] = useState(suggested);
+  const [usernameFieldError, setUsernameFieldError] = useState("");
   const [stance, setStance] = useState("Regular");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1057,20 +1062,30 @@ function ProfileSetup({
           <Field
             label="Username"
             value={username}
-            onChange={(v) => setUsername(v.replace(/[^a-zA-Z0-9_]/g, ""))}
+            onChange={(v) => {
+              setUsername(v);
+              if (v && /[^a-zA-Z0-9_]/.test(v)) {
+                setUsernameFieldError("Only letters, numbers, and _ allowed");
+              } else {
+                setUsernameFieldError("");
+              }
+            }}
             placeholder="sk8legend"
             maxLength={20}
             icon="@"
             autoComplete="username"
             autoFocus
+            fieldError={usernameFieldError}
             note={
-              username.length >= 3
-                ? available === null
-                  ? "Checking..."
-                  : available
-                    ? `@${username.toLowerCase()} is available ✓`
-                    : `@${username.toLowerCase()} is taken ✗`
-                : "Min 3 characters, letters/numbers/underscore"
+              !usernameFieldError
+                ? username.length >= 3
+                  ? available === null
+                    ? "Checking..."
+                    : available
+                      ? `@${username.toLowerCase()} is available ✓`
+                      : `@${username.toLowerCase()} is taken ✗`
+                  : "Min 3 characters, letters/numbers/underscore"
+                : undefined
             }
           />
 
@@ -1375,6 +1390,7 @@ function ChallengeScreen({
   profile: UserProfile; onSend: (opponentUid: string, opponentUsername: string) => void; onBack: () => void;
 }) {
   const [opponent, setOpponent] = useState("");
+  const [opponentFieldError, setOpponentFieldError] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1410,11 +1426,19 @@ function ChallengeScreen({
           <Field
             label="Opponent Username"
             value={opponent}
-            onChange={(v) => setOpponent(v.replace(/[^a-zA-Z0-9_]/g, ""))}
+            onChange={(v) => {
+              setOpponent(v);
+              if (v && /[^a-zA-Z0-9_]/.test(v)) {
+                setOpponentFieldError("Only letters, numbers, and _ allowed");
+              } else {
+                setOpponentFieldError("");
+              }
+            }}
             placeholder="their_handle"
             icon="@"
             maxLength={20}
             autoFocus
+            fieldError={opponentFieldError}
           />
 
           <InviteButton username={profile.username} className="mb-6" />
@@ -1432,7 +1456,7 @@ function ChallengeScreen({
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-          <Btn onClick={submit} disabled={loading || opponent.length < 3}>
+          <Btn onClick={submit} disabled={loading || opponent.length < 3 || !!opponentFieldError}>
             {loading ? "Finding..." : "🔥 Send Challenge"}
           </Btn>
         </form>
@@ -1454,19 +1478,20 @@ function GamePlayScreen({
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [forfeitChecked, setForfeitChecked] = useState(false);
-
-  // Check for expired turn on mount
+  // Check for an expired turn whenever the game or its deadline changes.
+  // No one-time guard: if the deadline is updated via a real-time listener
+  // (e.g. opponent's turn begins), we re-evaluate immediately.
+  // forfeitExpiredTurn is idempotent — calling it on an already-forfeited game
+  // is a no-op (the transaction checks game.status === 'active' first).
   useEffect(() => {
-    if (forfeitChecked || game.status !== "active") return;
+    if (game.status !== "active") return;
     const deadline = game.turnDeadline?.toMillis?.() ?? 0;
     if (deadline > 0 && Date.now() >= deadline) {
       forfeitExpiredTurn(game.id).catch((err) => {
         console.warn("Forfeit check failed:", err instanceof Error ? err.message : err);
       });
     }
-    setForfeitChecked(true);
-  }, [game.id, game.status, forfeitChecked, game.turnDeadline]);
+  }, [game.id, game.status, game.turnDeadline]);
 
   const isSetter = game.phase === "setting" && game.currentSetter === profile.uid;
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
@@ -1761,10 +1786,29 @@ function AppInner() {
 
   const handleDeleteAccount = useCallback(async () => {
     if (!activeProfile) return;
-    // Clean up Firestore first while auth token is still valid, then delete Auth account
-    await deleteUserData(activeProfile.uid, activeProfile.username);
-    await deleteAccount();
-    // Local state cleanup — onAuthStateChanged will fire, routing to landing
+    try {
+      // 1. Delete Firestore data first (atomically) while the token is still valid.
+      await deleteUserData(activeProfile.uid, activeProfile.username);
+    } catch (err) {
+      // Firestore delete failed — Auth account is untouched, nothing is orphaned.
+      Sentry.captureException(err, { extra: { stage: "deleteUserData", uid: activeProfile.uid } });
+      throw err;
+    }
+    try {
+      // 2. Delete the Firebase Auth account.
+      await deleteAccount();
+    } catch (err) {
+      // Auth delete failed after Firestore data was already removed.
+      // The user's profile is gone but the Auth account lingers.
+      // Translate auth/requires-recent-login into a clear user message.
+      const code = (err as { code?: string })?.code ?? "";
+      Sentry.captureException(err, { extra: { stage: "deleteAccount", uid: activeProfile.uid } });
+      if (code === "auth/requires-recent-login") {
+        throw new Error("For security, please sign out and sign back in before deleting your account.", { cause: err });
+      }
+      throw err;
+    }
+    // Local state cleanup — onAuthStateChanged will fire and route to landing.
     setActiveProfile(null);
     setGames([]);
     setActiveGame(null);
@@ -1943,11 +1987,11 @@ function AppInner() {
         />
       )}
       {screen === "privacy" && (
-        <PrivacyPolicyScreen onBack={() => setScreen(user ? "lobby" : "landing")} />
+        <PrivacyPolicyScreen onBack={() => setScreen(user && activeProfile ? "lobby" : user ? "profile" : "landing")} />
       )}
 
       {screen === "terms" && (
-        <TermsOfServiceScreen onBack={() => setScreen(user ? "lobby" : "landing")} />
+        <TermsOfServiceScreen onBack={() => setScreen(user && activeProfile ? "lobby" : user ? "profile" : "landing")} />
       )}
 
       {/* Vercel Analytics — only initialised after user consent */}

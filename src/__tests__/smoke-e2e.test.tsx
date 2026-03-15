@@ -1191,4 +1191,89 @@ describe("Smoke Test: Game E2E", () => {
       expect(screen.getByText(/@rival/)).toBeInTheDocument();
     });
   });
+
+  /* ── 46–50. Delete Account flow (H7) ──────── */
+
+  it("shows delete account modal when Delete Account is clicked", async () => {
+    renderLobby([]);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+    expect(screen.getByText(/This cannot be undone/)).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
+    expect(screen.getByText("Delete Forever")).toBeInTheDocument();
+  });
+
+  it("cancel button closes the delete modal without calling delete", async () => {
+    renderLobby([]);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Cancel"));
+
+    expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument();
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
+  });
+
+  it("successful delete calls deleteUserData then deleteAccount and navigates to landing", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
+    // After deleteAccount resolves, make useAuth return no user (simulating Firebase sign-out)
+    mockDeleteAccount.mockImplementationOnce(async () => {
+      mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    });
+
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(<App />);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
+      expect(mockDeleteAccount).toHaveBeenCalled();
+      // After deletion, app navigates to landing
+      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+    });
+  });
+
+  it("shows error when deleteUserData fails and does not call deleteAccount", async () => {
+    mockDeleteUserData.mockRejectedValueOnce(new Error("Firestore write failed"));
+    renderLobby([]);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Firestore write failed")).toBeInTheDocument();
+    });
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
+    // Modal stays open so user can retry
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  it("shows friendly message when deleteAccount requires recent login", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
+    const err = new Error("auth/requires-recent-login");
+    (err as unknown as { code: string }).code = "auth/requires-recent-login";
+    mockDeleteAccount.mockRejectedValueOnce(err);
+    renderLobby([]);
+
+    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
+    });
+    // Modal stays open
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
 });

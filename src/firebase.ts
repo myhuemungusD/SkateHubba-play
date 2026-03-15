@@ -64,6 +64,10 @@ if (firebaseReady) {
       ),
       isTokenAutoRefreshEnabled: true,
     });
+  } else if (!import.meta.env.DEV) {
+    // Warn in production so the ops team knows App Check is inactive.
+    // Not a console.error (would surface in Sentry) — this is an ops notice.
+    console.warn("⚠️ App Check is disabled: set VITE_RECAPTCHA_SITE_KEY to protect against API abuse.");
   }
 
   // Connect to emulators in development (if running)
@@ -75,11 +79,10 @@ if (firebaseReady) {
     connectStorageEmulator(storage, "localhost", 9199);
   }
 } else {
-  const isVercel = typeof import.meta.env.VERCEL !== "undefined";
-  const message = isVercel
-    ? "Firebase config missing. Add VITE_FIREBASE_* environment variables in Vercel Dashboard → Project Settings → Environment Variables (scope: Preview and/or Production)."
-    : "Firebase config missing. Copy .env.example to .env.local and fill in your Firebase project values.";
-  console.error(`⚠️ ${message}`);
+  // Use a single generic message regardless of environment to avoid leaking
+  // deployment context (Vercel vs local) to attackers reading the console.
+  // The .env.example file documents the setup steps for developers.
+  console.error("⚠️ Firebase configuration is missing. Check environment variables (see .env.example).");
 }
 
 function requireDb(): Firestore {

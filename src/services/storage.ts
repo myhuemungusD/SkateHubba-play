@@ -7,6 +7,12 @@ import { withRetry } from "../utils/retry";
  *
  * Path: games/{gameId}/turn-{turnNumber}/{role}.webm
  * role = "set" | "match"
+ *
+ * The upload and the URL fetch are kept as separate retry scopes:
+ * - If the upload itself fails transiently, we retry the full upload.
+ * - If the upload succeeds but getDownloadURL fails, we retry only the URL
+ *   fetch — the blob is already safely in Storage and we don't re-upload it.
+ * This prevents a double-upload when only the URL fetch was flaky.
  */
 export async function uploadVideo(
   gameId: string,
@@ -17,7 +23,8 @@ export async function uploadVideo(
   const path = `games/${gameId}/turn-${turnNumber}/${role}.webm`;
   const storageRef = ref(requireStorage(), path);
 
-  // Retry up to 3 times with exponential backoff — mobile networks are unreliable
+  // Retry the upload up to 3 times with exponential backoff.
+  // Mobile networks are unreliable; Storage write is idempotent for the same path.
   await withRetry(() =>
     uploadBytes(storageRef, blob, {
       contentType: "video/webm",
@@ -33,5 +40,8 @@ export async function uploadVideo(
     })
   );
 
+  // The blob is now in Storage regardless of what happens next.
+  // Retry getDownloadURL separately — if this fails the video is not lost;
+  // the caller can re-derive the URL from the known path if needed.
   return withRetry(() => getDownloadURL(storageRef));
 }

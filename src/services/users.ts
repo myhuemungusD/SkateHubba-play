@@ -2,7 +2,6 @@ import {
   doc,
   getDoc,
   runTransaction,
-  deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
@@ -83,7 +82,10 @@ export async function createProfile(
 }
 
 /**
- * Delete a user's Firestore profile and username reservation.
+ * Delete a user's Firestore profile and username reservation atomically.
+ * Uses a transaction so both documents are deleted together — if one fails
+ * neither is deleted, preventing orphaned username reservations.
+ *
  * Call this BEFORE deleteAccount() from auth.ts so Firestore cleanup
  * succeeds while the auth token is still valid.
  *
@@ -92,10 +94,12 @@ export async function createProfile(
  */
 export async function deleteUserData(uid: string, username: string): Promise<void> {
   const db = requireDb();
-  await Promise.all([
-    deleteDoc(doc(db, "users", uid)),
-    deleteDoc(doc(db, "usernames", username.toLowerCase().trim())),
-  ]);
+  const userRef = doc(db, "users", uid);
+  const usernameRef = doc(db, "usernames", username.toLowerCase().trim());
+  await runTransaction(db, async (tx) => {
+    tx.delete(userRef);
+    tx.delete(usernameRef);
+  });
 }
 
 /**
