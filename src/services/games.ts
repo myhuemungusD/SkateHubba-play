@@ -52,12 +52,23 @@ function gamesRef() {
  * Create a new game (challenge)
  * ──────────────────────────────────────────── */
 
+// Client-side rate limit: one game creation per 10 seconds (defense-in-depth)
+let lastGameCreatedAt = 0;
+const GAME_CREATE_COOLDOWN_MS = 10_000;
+
+/** @internal Reset rate-limit state (for tests only) */
+export function _resetCreateGameRateLimit() { lastGameCreatedAt = 0; }
+
 export async function createGame(
   challengerUid: string,
   challengerUsername: string,
   opponentUid: string,
   opponentUsername: string
 ): Promise<string> {
+  if (Date.now() - lastGameCreatedAt < GAME_CREATE_COOLDOWN_MS) {
+    throw new Error("Please wait before creating another game");
+  }
+
   const deadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
 
   const gameData = {
@@ -83,6 +94,7 @@ export async function createGame(
   };
 
   const docRef = await addDoc(gamesRef(), gameData);
+  lastGameCreatedAt = Date.now();
   return docRef.id;
 }
 

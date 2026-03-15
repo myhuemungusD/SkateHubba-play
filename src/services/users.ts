@@ -1,6 +1,11 @@
 import {
+  collection,
   doc,
+  deleteDoc,
   getDoc,
+  getDocs,
+  query,
+  where,
   runTransaction,
   serverTimestamp,
   type FieldValue,
@@ -86,18 +91,37 @@ export async function createProfile(
 }
 
 /**
- * Delete a user's Firestore profile and username reservation atomically.
- * Uses a transaction so both documents are deleted together — if one fails
- * neither is deleted, preventing orphaned username reservations.
+ * Delete a user's Firestore data: game documents, profile, and username reservation.
  *
  * Call this BEFORE deleteAccount() from auth.ts so Firestore cleanup
  * succeeds while the auth token is still valid.
  *
- * Note: game documents and Storage videos are intentionally retained for
- * opponent history. A Cloud Function can handle deeper cleanup if needed.
+ * Phase 1: Delete all game documents where the user is a player.
+ * Phase 2: Atomically delete profile + username reservation.
+ *
+ * Storage videos are orphaned and can be garbage-collected by a lifecycle
+ * rule or Cloud Function.
  */
 export async function deleteUserData(uid: string, username: string): Promise<void> {
   const db = requireDb();
+
+  // Phase 1: Delete game documents where user is a player
+  const gamesCol = collection(db, "games");
+  const [asP1, asP2] = await Promise.all([
+    getDocs(query(gamesCol, where("player1Uid", "==", uid))),
+    getDocs(query(gamesCol, where("player2Uid", "==", uid))),
+  ]);
+  const seen = new Set<string>();
+  const deletions: Promise<void>[] = [];
+  for (const snap of [...asP1.docs, ...asP2.docs]) {
+    if (!seen.has(snap.id)) {
+      seen.add(snap.id);
+      deletions.push(deleteDoc(doc(db, "games", snap.id)));
+    }
+  }
+  await Promise.all(deletions);
+
+  // Phase 2: Delete profile + username atomically
   const userRef = doc(db, "users", uid);
   const usernameRef = doc(db, "usernames", username.toLowerCase().trim());
   await runTransaction(db, async (tx) => {

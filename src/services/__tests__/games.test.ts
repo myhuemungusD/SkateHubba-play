@@ -44,6 +44,7 @@ vi.mock("../../firebase");
 
 import {
   createGame,
+  _resetCreateGameRateLimit,
   setTrick,
   submitMatchResult,
   forfeitExpiredTurn,
@@ -53,6 +54,7 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetCreateGameRateLimit();
   // Default: runTransaction calls the callback with a mock tx object
   mockRunTransaction.mockImplementation(async (_db: unknown, cb: Function) => {
     const tx = { get: mockTxGet, update: mockTxUpdate, set: vi.fn() };

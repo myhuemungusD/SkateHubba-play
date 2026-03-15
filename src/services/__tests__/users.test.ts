@@ -1,17 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ── mock firebase/firestore ────────────────── */
-const { mockGetDoc, mockSetDoc, mockRunTransaction, mockDoc, mockServerTimestamp } = vi.hoisted(() => ({
+const { mockGetDoc, mockGetDocs, mockSetDoc, mockDeleteDoc, mockRunTransaction, mockDoc, mockCollection, mockQuery, mockWhere, mockServerTimestamp } = vi.hoisted(() => ({
   mockGetDoc: vi.fn(),
+  mockGetDocs: vi.fn(),
   mockSetDoc: vi.fn(),
+  mockDeleteDoc: vi.fn(),
   mockRunTransaction: vi.fn(),
   mockDoc: vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/")),
+  mockCollection: vi.fn((_db: unknown, name: string) => name),
+  mockQuery: vi.fn((...args: unknown[]) => args),
+  mockWhere: vi.fn((...args: unknown[]) => args),
   mockServerTimestamp: vi.fn(() => "SERVER_TS"),
 }));
 
 vi.mock("firebase/firestore", () => ({
+  collection: mockCollection,
   doc: mockDoc,
+  deleteDoc: mockDeleteDoc,
   getDoc: mockGetDoc,
+  getDocs: mockGetDocs,
+  query: mockQuery,
+  where: mockWhere,
   setDoc: mockSetDoc,
   runTransaction: mockRunTransaction,
   serverTimestamp: () => mockServerTimestamp(),
@@ -122,17 +132,51 @@ describe("users service", () => {
   });
 
   describe("deleteUserData", () => {
-    it("runs a transaction that deletes user and username docs", async () => {
+    it("deletes game docs then profile and username atomically", async () => {
+      // Phase 1: getDocs returns game docs for both queries
+      const gameDoc1 = { id: "g1" };
+      const gameDoc2 = { id: "g2" };
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [gameDoc1] })   // player1Uid query
+        .mockResolvedValueOnce({ docs: [gameDoc2] });   // player2Uid query
+      mockDeleteDoc.mockResolvedValue(undefined);
+
+      // Phase 2: transaction for profile + username
       const mockTx = { delete: vi.fn() };
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
 
       await deleteUserData("u1", "sk8r");
 
+      // Game docs deleted
+      expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
+      // Profile + username deleted in transaction
       expect(mockRunTransaction).toHaveBeenCalled();
       expect(mockTx.delete).toHaveBeenCalledTimes(2);
     });
 
+    it("deduplicates game docs appearing in both queries", async () => {
+      const gameDoc = { id: "g1" };
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [gameDoc] })
+        .mockResolvedValueOnce({ docs: [gameDoc] }); // same game in both
+      mockDeleteDoc.mockResolvedValue(undefined);
+
+      const mockTx = { delete: vi.fn() };
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+
+      await deleteUserData("u1", "sk8r");
+
+      // Only one deleteDoc call despite game appearing twice
+      expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+    });
+
     it("re-throws transaction errors", async () => {
+      // Phase 1 succeeds
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+
+      // Phase 2 fails
       mockRunTransaction.mockRejectedValueOnce(new Error("Transaction failed"));
       await expect(deleteUserData("u1", "sk8r")).rejects.toThrow("Transaction failed");
     });

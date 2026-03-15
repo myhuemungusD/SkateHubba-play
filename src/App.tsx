@@ -1294,8 +1294,9 @@ function Lobby({
         {/* Primary CTA — Challenge */}
         <button
           type="button"
-          onClick={onChallenge}
-          className="w-full flex items-center justify-center gap-2.5 bg-brand-orange text-white rounded-xl py-[15px] mb-3 font-display tracking-wider text-xl transition-all duration-200 active:scale-[0.98] hover:bg-[#FF7A1A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          onClick={user?.emailVerified ? onChallenge : undefined}
+          disabled={!user?.emailVerified}
+          className={`w-full flex items-center justify-center gap-2.5 rounded-xl py-[15px] mb-1 font-display tracking-wider text-xl transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "bg-brand-orange text-white active:scale-[0.98] hover:bg-[#FF7A1A]" : "bg-brand-orange/40 text-white/60 cursor-not-allowed"}`}
         >
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <circle cx="12" cy="12" r="10"/>
@@ -1307,6 +1308,9 @@ function Lobby({
           </svg>
           Challenge Someone
         </button>
+        {!user?.emailVerified && (
+          <p className="text-[11px] text-[#888] text-center mb-2 font-body">Verify your email to start challenging</p>
+        )}
 
         <InviteButton username={profile.username} className="mb-8" />
 
@@ -1789,13 +1793,13 @@ function GamePlayScreen({
 function GameOverScreen({
   game, profile, onRematch, onBack,
 }: {
-  game: GameDoc; profile: UserProfile; onRematch: () => Promise<void>; onBack: () => void;
+  game: GameDoc; profile: UserProfile; onRematch?: () => Promise<void>; onBack: () => void;
 }) {
   const [rematching, setRematching] = useState(false);
   const rematchingRef = useRef(false);
 
   const handleRematch = async () => {
-    if (rematchingRef.current) return;
+    if (!onRematch || rematchingRef.current) return;
     rematchingRef.current = true;
     setRematching(true);
     try {
@@ -1843,8 +1847,8 @@ function GameOverScreen({
         </div>
 
         <div className="flex flex-col gap-3 w-full">
-          <Btn onClick={handleRematch} disabled={rematching}>
-            {rematching ? "Starting..." : "🔥 Rematch"}
+          <Btn onClick={handleRematch} disabled={rematching || !onRematch}>
+            {rematching ? "Starting..." : !onRematch ? "Verify email to rematch" : "🔥 Rematch"}
           </Btn>
           <InviteButton username={profile.username} />
           <Btn onClick={onBack} variant="ghost">Back to Lobby</Btn>
@@ -2087,7 +2091,7 @@ function AppInner() {
         />
       )}
 
-      {screen === "challenge" && activeProfile && user && (
+      {screen === "challenge" && activeProfile && user && user.emailVerified && (
         <ChallengeScreen
           profile={activeProfile}
           onSend={async (opponentUid, opponentUsername) => {
@@ -2116,7 +2120,7 @@ function AppInner() {
         <GameOverScreen
           game={activeGame}
           profile={activeProfile}
-          onRematch={async (): Promise<void> => {
+          onRematch={user.emailVerified ? async (): Promise<void> => {
             const opponentUid =
               activeGame.player1Uid === user.uid ? activeGame.player2Uid : activeGame.player1Uid;
             const opponentName =
@@ -2124,7 +2128,7 @@ function AppInner() {
             const gameId = await createGame(user.uid, activeProfile.username, opponentUid, opponentName);
             setActiveGame(newGameShell(gameId, user.uid, activeProfile.username, opponentUid, opponentName));
             setScreen("game");
-          }}
+          } : undefined}
           onBack={() => { setActiveGame(null); setScreen("lobby"); }}
         />
       )}
