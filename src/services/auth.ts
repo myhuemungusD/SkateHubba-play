@@ -35,8 +35,10 @@ export function onAuthChange(cb: (user: User | null) => void) {
 
 export async function signUp(email: string, password: string): Promise<User> {
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
-  // Fire-and-forget verification email
-  sendEmailVerification(cred.user, getActionCodeSettings()).catch(() => {});
+  // Fire-and-forget verification email — failure is non-fatal (user can resend)
+  sendEmailVerification(cred.user, getActionCodeSettings()).catch((err: unknown) => {
+    console.warn("Verification email send failed:", (err as Error)?.message);
+  });
   return cred.user;
 }
 
