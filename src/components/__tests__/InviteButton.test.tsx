@@ -286,6 +286,21 @@ describe("InviteButton", () => {
     delete (navigator as any).contacts;
   });
 
+  it("copied state clears after 2 seconds", async () => {
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
+
+    render(<InviteButton />);
+    await userEvent.click(screen.getByText("Invite a Friend"));
+    await userEvent.click(screen.getByText("Copy Link"));
+
+    await waitFor(() => expect(screen.getByText("Copied")).toBeInTheDocument());
+
+    vi.advanceTimersByTime(2000);
+    await waitFor(() => expect(screen.queryByText("Copied")).not.toBeInTheDocument());
+  });
+
   it("status message auto-clears after timeout", async () => {
     (navigator as any).contacts = {
       select: vi.fn().mockResolvedValue([{ name: ["J"], tel: [] }]),

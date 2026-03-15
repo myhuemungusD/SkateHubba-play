@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChallengeScreen } from "../ChallengeScreen";
 
@@ -90,7 +90,7 @@ describe("ChallengeScreen", () => {
     mockGetUidByUsername.mockImplementation(() => new Promise(() => {}));
     render(<ChallengeScreen {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = screen.getByPlaceholderText("their_handle") as HTMLInputElement;
     await userEvent.type(input, "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
@@ -98,8 +98,11 @@ describe("ChallengeScreen", () => {
       expect(screen.getByText("Finding...")).toBeInTheDocument();
     });
 
-    // Try to type while loading — input onChange checks `if (!loading)`
-    // Since loading=true, typing should be blocked
+    // Fire onChange while loading — the `if (!loading)` guard prevents state update
+    const valueBefore = input.value;
+    fireEvent.change(input, { target: { value: "rival_extra" } });
+    // Controlled input value unchanged since setOpponent was not called
+    expect(input.value).toBe(valueBefore);
   });
 
   it("error banner can be dismissed", async () => {
