@@ -15,6 +15,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [trickName, setTrickName] = useState("");
   const trickNameRef = useRef(trickName);
   trickNameRef.current = trickName;
+  const recorderRevealedRef = useRef(false);
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -35,6 +36,9 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const isSetter = game.phase === "setting" && game.currentSetter === profile.uid;
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
+
+  if (isSetter && trickName.trim()) recorderRevealedRef.current = true;
+  const showRecorder = !isSetter || recorderRevealedRef.current;
 
   const submittedRef = useRef(false);
   const submitSetterTrick = useCallback(
@@ -169,14 +173,12 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             placeholder="e.g. Kickflip, 360 Flip"
             maxLength={60}
             disabled={videoRecorded}
+            autoCapitalize="words"
+            note={!showRecorder ? "Name your trick to start recording" : undefined}
           />
         )}
 
-        {isSetter && !trickName.trim() && (
-          <p className="font-body text-sm text-[#888] text-center mb-4">Name your trick to start recording</p>
-        )}
-
-        {(!isSetter || trickName.trim()) && (
+        {showRecorder && (
           <VideoRecorder
             onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
             label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}

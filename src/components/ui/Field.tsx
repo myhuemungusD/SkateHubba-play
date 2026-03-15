@@ -12,6 +12,7 @@ export function Field({
   autoComplete,
   autoFocus,
   disabled,
+  autoCapitalize = "none",
 }: {
   label?: string;
   value: string;
@@ -24,6 +25,7 @@ export function Field({
   autoComplete?: string;
   autoFocus?: boolean;
   disabled?: boolean;
+  autoCapitalize?: string;
 }) {
   const id = useId();
   return (
@@ -49,7 +51,7 @@ export function Field({
           autoComplete={autoComplete}
           autoFocus={autoFocus}
           disabled={disabled}
-          autoCapitalize="none"
+          autoCapitalize={autoCapitalize}
           autoCorrect="off"
           spellCheck={false}
           className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none

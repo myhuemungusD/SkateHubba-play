@@ -283,15 +283,23 @@ describe("Smoke Test: Game E2E", () => {
       expect(screen.getByText("Name your trick")).toBeInTheDocument();
     });
 
-    // Trick name input is shown and recorder is hidden until name is entered
-    expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
+    // Trick name input is shown with hint; recorder is hidden until name is entered
+    const trickInput = screen.getByLabelText("TRICK NAME");
+    expect(trickInput).toBeInTheDocument();
+    expect(trickInput).toBeEnabled();
     expect(screen.getByText("Name your trick to start recording")).toBeInTheDocument();
 
     // Type a trick name to reveal the recorder
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await userEvent.type(trickInput, "Kickflip");
 
     // Phase banner updates to show the trick name
     expect(screen.getByText("Set your Kickflip")).toBeInTheDocument();
+
+    // Input remains editable until recording finishes
+    expect(trickInput).toBeEnabled();
+
+    // Hint disappears once recorder is revealed
+    expect(screen.queryByText("Name your trick to start recording")).not.toBeInTheDocument();
 
     // Camera auto-opens for setter, so record button should appear in preview state
     await waitFor(() => {
@@ -1498,6 +1506,43 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => {
       expect(mockSetTrick).toHaveBeenCalledWith("game1", "Kickflip", null);
     });
+
+    // Input locks after recording completes
+    expect(screen.getByLabelText("TRICK NAME")).toBeDisabled();
+  });
+
+  /* ── 54b. Recorder stays mounted if trick name would be cleared ── */
+
+  it("trick name input locks after recording and recorder stays mounted", async () => {
+    const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
+    mockSetTrick.mockResolvedValueOnce(undefined);
+    renderLobby([game]);
+    withGameSub(game);
+
+    await userEvent.click(screen.getByText(/vs @rival/));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
+    });
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Hardflip");
+
+    // Recorder is revealed
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
+    });
+
+    // Record and stop
+    await userEvent.click(screen.getByRole("button", { name: /record/i }));
+    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
+    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+
+    await waitFor(() => {
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Hardflip", null);
+    });
+
+    // Input is disabled and recorder done state is visible (not unmounted)
+    expect(screen.getByLabelText("TRICK NAME")).toBeDisabled();
+    expect(screen.getByText(/Recorded/)).toBeInTheDocument();
   });
 
   /* ── 55. Setter auto-submit fails → retry button shown ── */
