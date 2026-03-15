@@ -7,7 +7,7 @@ import type { UserProfile } from "../services/users";
 import { newGameShell, getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
-import * as Sentry from "@sentry/react";
+import { captureException } from "../lib/sentry";
 
 export type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover";
 
@@ -99,7 +99,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         logger.info("google_sign_in_dismissed", { code });
       } else if (code === "auth/account-exists-with-different-credential") {
         logger.warn("google_sign_in_credential_conflict", { code });
-        Sentry.captureException(err, { extra: { context: "handleGoogleSignIn", code } });
+        captureException(err, { extra: { context: "handleGoogleSignIn", code } });
         setGoogleError("This email is linked to a password account. Sign in with email/password instead.");
         if (screen !== "auth") {
           setAuthMode("signin");
@@ -107,8 +107,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         }
       } else {
         logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
-        Sentry.captureException(err, { extra: { context: "handleGoogleSignIn", code } });
-        setGoogleError(err instanceof Error ? err.message : "Google sign-in failed");
+        captureException(err, { extra: { context: "handleGoogleSignIn", code } });
+        setGoogleError(parseFirebaseError(err));
         if (screen !== "auth") {
           setAuthMode("signin");
           setScreen("auth");

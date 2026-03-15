@@ -12,7 +12,7 @@
  *   logger.error("upload_failed", { gameId, error: err.message });
  */
 
-import * as Sentry from "@sentry/react";
+import { addBreadcrumb } from "../lib/sentry";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -46,7 +46,7 @@ function emit(level: LogLevel, event: string, data?: Record<string, unknown>): v
 
   // Forward info+ events to Sentry as breadcrumbs for context in error reports
   if (level !== "debug") {
-    Sentry.addBreadcrumb({
+    addBreadcrumb({
       category: "app",
       message: event,
       level: level === "info" ? "info" : level === "warn" ? "warning" : "error",

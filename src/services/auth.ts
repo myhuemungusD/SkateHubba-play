@@ -14,7 +14,7 @@ import {
   type ActionCodeSettings,
 } from "firebase/auth";
 import { auth, requireAuth } from "../firebase";
-import * as Sentry from "@sentry/react";
+import { captureException } from "../lib/sentry";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
 
@@ -54,7 +54,7 @@ export async function signUp(email: string, password: string): Promise<User> {
   // resend from the lobby banner) but we want visibility in Sentry.
   sendEmailVerification(cred.user, getActionCodeSettings()).catch((err) => {
     logger.error("sign_up_verification_email_failed", { uid: cred.user.uid, error: getErrorCode(err) || String(err) });
-    Sentry.captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
+    captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
   });
   return cred.user;
 }
@@ -161,7 +161,7 @@ export async function resolveGoogleRedirect(): Promise<User | null> {
     logger.error("resolve_google_redirect_error", { code, message: parseFirebaseError(err) });
     // Log redirect errors so they're visible in production — previously these
     // were silently swallowed, making Google-redirect failures impossible to debug.
-    Sentry.captureException(err, { extra: { context: "resolveGoogleRedirect" } });
+    captureException(err, { extra: { context: "resolveGoogleRedirect" } });
     return null;
   }
 }

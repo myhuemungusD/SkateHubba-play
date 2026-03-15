@@ -2544,7 +2544,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Google sign-in failed")).toBeInTheDocument();
+      expect(screen.getByText("string error")).toBeInTheDocument();
     });
   });
 
