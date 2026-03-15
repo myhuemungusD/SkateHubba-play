@@ -51,13 +51,13 @@ if (firebaseReady) {
   // automatically so Firestore still works without a real reCAPTCHA key.
   if (import.meta.env.DEV) {
     // Expose debug token so the App Check debug provider works locally.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    // Firebase App Check reads this off the global scope at init time.
+    (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   }
   /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
   if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
     initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY as string),
+      provider: new ReCaptchaV3Provider(String(import.meta.env.VITE_RECAPTCHA_SITE_KEY)),
       isTokenAutoRefreshEnabled: true,
     });
   } else if (!import.meta.env.DEV) {

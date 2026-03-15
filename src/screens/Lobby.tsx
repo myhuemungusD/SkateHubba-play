@@ -324,15 +324,23 @@ export function Lobby({
       {showDeleteModal && (
         <div
           className="fixed inset-0 bg-black/80 flex items-center justify-center p-6 z-50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-modal-title"
           onClick={() => {
             if (!deleting) setShowDeleteModal(false);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !deleting) setShowDeleteModal(false);
           }}
         >
           <div
             className="bg-surface border border-border rounded-2xl p-6 max-w-sm w-full animate-fade-in"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-display text-xl text-white mb-2">Delete Account?</h3>
+            <h3 id="delete-modal-title" className="font-display text-xl text-white mb-2">
+              Delete Account?
+            </h3>
             <p className="font-body text-sm text-[#888] mb-4">
               This permanently deletes your profile and sign-in credentials. Your game history is retained for your
               opponents.

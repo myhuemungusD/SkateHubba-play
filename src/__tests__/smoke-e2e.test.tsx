@@ -79,6 +79,8 @@ vi.mock("../services/analytics", () => ({
 vi.mock("@sentry/react", () => ({
   init: vi.fn(),
   captureException: vi.fn(),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }));
 
 import App from "../App";

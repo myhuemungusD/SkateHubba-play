@@ -194,5 +194,13 @@ describe("users service", () => {
       mockGetDoc.mockResolvedValueOnce({ exists: () => false });
       expect(await getUidByUsername("sk8r")).toBeNull();
     });
+
+    it("returns null when uid field is not a string", async () => {
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: 12345 }),
+      });
+      expect(await getUidByUsername("sk8r")).toBeNull();
+    });
   });
 });
