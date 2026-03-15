@@ -45,7 +45,7 @@ vi.mock("./firebase", () => ({
   default: {},
 }));
 
-import App from "./App";
+import App, { ErrorBoundary, isFirebaseStorageUrl } from "./App";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -123,5 +123,69 @@ describe("App", () => {
     });
     render(<App />);
     expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
+  });
+});
+
+describe("ErrorBoundary", () => {
+  it("renders children when no error", () => {
+    render(<ErrorBoundary><div>hello</div></ErrorBoundary>);
+    expect(screen.getByText("hello")).toBeInTheDocument();
+  });
+
+  it("renders error UI when a child throws", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const Bomb = (): never => { throw new Error("test error"); };
+    render(<ErrorBoundary><Bomb /></ErrorBoundary>);
+    expect(screen.getByText("Something broke")).toBeInTheDocument();
+    expect(screen.getByText("test error")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reload App" })).toBeInTheDocument();
+    consoleError.mockRestore();
+  });
+
+  it("reload button calls window.location.reload", async () => {
+    const user = userEvent.setup();
+    const reload = vi.fn();
+    Object.defineProperty(window, "location", { value: { ...window.location, reload }, writable: true });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const Bomb = (): never => { throw new Error("boom"); };
+    render(<ErrorBoundary><Bomb /></ErrorBoundary>);
+    await user.click(screen.getByRole("button", { name: "Reload App" }));
+    expect(reload).toHaveBeenCalled();
+    consoleError.mockRestore();
+  });
+});
+
+describe("isFirebaseStorageUrl", () => {
+  it("accepts a googleapis.com storage URL matching the configured bucket", () => {
+    vi.stubEnv("VITE_FIREBASE_STORAGE_BUCKET", "mybucket.firebasestorage.app");
+    const url = "https://firebasestorage.googleapis.com/v0/b/mybucket.firebasestorage.app/o/games%2Fclip.webm?alt=media";
+    expect(isFirebaseStorageUrl(url)).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
+  it("rejects a googleapis.com URL for a different bucket", () => {
+    vi.stubEnv("VITE_FIREBASE_STORAGE_BUCKET", "mybucket.firebasestorage.app");
+    const url = "https://firebasestorage.googleapis.com/v0/b/otherbucket.firebasestorage.app/o/clip.webm";
+    expect(isFirebaseStorageUrl(url)).toBe(false);
+    vi.unstubAllEnvs();
+  });
+
+  it("accepts a .firebasestorage.app CDN URL matching the configured bucket", () => {
+    vi.stubEnv("VITE_FIREBASE_STORAGE_BUCKET", "mybucket.firebasestorage.app");
+    const url = "https://mybucket.firebasestorage.app/v0/b/mybucket.firebasestorage.app/o/clip.webm";
+    expect(isFirebaseStorageUrl(url)).toBe(true);
+    vi.unstubAllEnvs();
+  });
+
+  it("rejects http:// URLs", () => {
+    expect(isFirebaseStorageUrl("http://firebasestorage.googleapis.com/v0/b/x/o/y")).toBe(false);
+  });
+
+  it("rejects arbitrary https URLs", () => {
+    expect(isFirebaseStorageUrl("https://evil.com/video.webm")).toBe(false);
+  });
+
+  it("rejects javascript: URIs", () => {
+    expect(isFirebaseStorageUrl("javascript:alert(1)")).toBe(false);
   });
 });

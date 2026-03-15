@@ -26,7 +26,7 @@ import { firebaseReady } from "./firebase";
  *  ERROR BOUNDARY
  * ═══════════════════════════════════════════ */
 
-class ErrorBoundary extends Component<
+export class ErrorBoundary extends Component<
   { children: ReactNode },
   { error: Error | null }
 > {
@@ -72,16 +72,23 @@ const BG = "#0A0A0A";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Guard against open-redirect or XSS via crafted video URLs stored in Firestore. */
-function isFirebaseStorageUrl(url: string): boolean {
+export function isFirebaseStorageUrl(url: string): boolean {
   try {
-    const { protocol, hostname } = new URL(url);
-    // Use exact match or strict subdomain regex — .endsWith() is bypassable via
-    // domains like "firebasestorage.googleapis.com.evil.com"
-    return (
-      protocol === "https:" &&
-      (hostname === "firebasestorage.googleapis.com" ||
-        /^[a-z0-9-]+\.firebasestorage\.app$/.test(hostname))
-    );
+    const bucket = import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined;
+    const { protocol, hostname, pathname } = new URL(url);
+    if (protocol !== "https:") return false;
+    if (hostname === "firebasestorage.googleapis.com") {
+      if (!bucket) return true;
+      const m = pathname.match(/^\/v0\/b\/([^/]+)\//);
+      return m != null && decodeURIComponent(m[1]) === bucket;
+    }
+    // Use strict subdomain regex — .endsWith() is bypassable via domains like
+    // "firebasestorage.googleapis.com.evil.app"
+    if (/^[a-z0-9-]+\.firebasestorage\.app$/.test(hostname)) {
+      if (!bucket) return true;
+      return hostname === bucket;
+    }
+    return false;
   } catch {
     return false;
   }

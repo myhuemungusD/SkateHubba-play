@@ -1156,16 +1156,17 @@ describe("Smoke Test: Game E2E", () => {
       currentTurn: "u1",
       currentSetter: "u2",
       currentTrickName: "Heelflip",
-      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/proj/o/trick.webm?alt=media",
+      currentTrickVideoUrl: `https://firebasestorage.googleapis.com/v0/b/${import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sk8hub-d7806.firebasestorage.app"}/o/trick.webm?alt=media`,
     });
     renderLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByText(/vs @rival/));
 
+    const videoUrl = `https://firebasestorage.googleapis.com/v0/b/${import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sk8hub-d7806.firebasestorage.app"}/o/trick.webm?alt=media`;
     await waitFor(() => {
       expect(screen.getByText("THEIR ATTEMPT")).toBeInTheDocument();
-      const video = document.querySelector("video[src='https://firebasestorage.googleapis.com/v0/b/proj/o/trick.webm?alt=media']");
+      const video = document.querySelector(`video[src='${videoUrl}']`);
       expect(video).toBeTruthy();
     });
   });
