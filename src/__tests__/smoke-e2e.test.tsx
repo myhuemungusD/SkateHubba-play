@@ -1752,6 +1752,17 @@ describe("Smoke Test: Game E2E", () => {
     });
   });
 
+  it("handles Google redirect resolution non-Error rejection gracefully", async () => {
+    mockResolveGoogleRedirect.mockRejectedValueOnce("string error");
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    renderApp();
+
+    // No crash — app still renders, String(err) branch is covered
+    await waitFor(() => {
+      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+    });
+  });
+
   /* ── 63. Google sign-in succeeds (popup) ── */
 
   it("Google sign-in via popup tracks analytics on success", async () => {
@@ -2533,7 +2544,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Google sign-in failed")).toBeInTheDocument();
+      expect(screen.getByText("string error")).toBeInTheDocument();
     });
   });
 

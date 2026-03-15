@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GamePlayScreen } from "../GamePlayScreen";
@@ -46,6 +46,30 @@ function makeGame(overrides: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => vi.clearAllMocks());
+
+afterEach(() => {
+  (globalThis as unknown as Record<string, unknown>).MediaRecorder = OriginalMR;
+});
+
+const OriginalMR = (globalThis as unknown as Record<string, unknown>).MediaRecorder;
+
+/** A MediaRecorder that fires ondataavailable before onstop. */
+class DataProducingMR {
+  static isTypeSupported = vi.fn().mockReturnValue(false);
+  ondataavailable: ((e: { data: Blob }) => void) | null = null;
+  onstop: (() => void) | null = null;
+  state = "inactive";
+  start = vi.fn().mockImplementation(function (this: DataProducingMR) {
+    this.state = "recording";
+  });
+  stop = vi.fn().mockImplementation(function (this: DataProducingMR) {
+    this.state = "inactive";
+    if (this.ondataavailable) {
+      this.ondataavailable({ data: new Blob(["video-data"], { type: "video/webm" }) });
+    }
+    this.onstop?.();
+  });
+}
 
 describe("GamePlayScreen", () => {
   it("shows waiting screen when not setter or matcher", () => {
@@ -168,6 +192,47 @@ describe("GamePlayScreen", () => {
     expect(screen.getByLabelText(/Video of Kickflip/)).toBeInTheDocument();
   });
 
+  it("deadline fallback fires when turnDeadline is null", () => {
+    const game = makeGame({ currentTurn: "u2", currentSetter: "u2", turnDeadline: null });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    expect(screen.getByText(/Waiting on @rival/)).toBeInTheDocument();
+  });
+
+  it("matcher banner uses player1Username when player1 is setter", () => {
+    const game = makeGame({
+      currentTurn: "u2",
+      currentSetter: "u1",
+      phase: "matching",
+      currentTrickName: "Kickflip",
+    });
+    const p2Profile = { ...profile, uid: "u2", username: "rival" };
+    render(<GamePlayScreen game={game} profile={p2Profile} onBack={vi.fn()} />);
+    expect(screen.getByText(/Match @sk8r/)).toBeInTheDocument();
+  });
+
+  it("matcher banner shows 'trick' fallback when no trick name set", () => {
+    const game = makeGame({
+      currentTurn: "u1",
+      currentSetter: "u2",
+      phase: "matching",
+      currentTrickName: null,
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    expect(screen.getByText(/'s trick/)).toBeInTheDocument();
+  });
+
+  it("matcher video aria-label uses 'trick' fallback when no trick name", () => {
+    const game = makeGame({
+      currentTurn: "u1",
+      currentSetter: "u2",
+      phase: "matching",
+      currentTrickName: null,
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/video.mp4",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    expect(screen.getByLabelText(/Video of trick set by opponent/)).toBeInTheDocument();
+  });
+
   it("shows player2 perspective correctly", () => {
     const game = makeGame({
       currentTurn: "u2",
@@ -178,5 +243,133 @@ describe("GamePlayScreen", () => {
     render(<GamePlayScreen game={game} profile={p2Profile} onBack={vi.fn()} />);
 
     expect(screen.getByText("Name your trick")).toBeInTheDocument();
+  });
+
+  it("setter uploads video blob when recording produces data (covers uploadVideo line)", async () => {
+    (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
+    mockUploadVideo.mockResolvedValueOnce("https://firebasestorage.googleapis.com/v0/b/test/o/video.webm");
+    mockSetTrick.mockResolvedValueOnce(undefined);
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    // Type a trick name to reveal the VideoRecorder (autoOpen=true for setter)
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+
+    // Wait for VideoRecorder to auto-open and show Record button
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => {
+      expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "set", expect.any(Blob));
+    });
+  });
+
+  it("matcher uploads video blob and submits result (covers uploadVideo line)", async () => {
+    (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
+    mockUploadVideo.mockResolvedValueOnce("https://firebasestorage.googleapis.com/v0/b/test/o/video.webm");
+    mockSubmitMatchResult.mockResolvedValueOnce(undefined);
+
+    const matcherGame = makeGame({
+      currentTurn: "u1",
+      currentSetter: "u2",
+      phase: "matching",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={matcherGame} profile={profile} onBack={vi.fn()} />);
+
+    // Open camera (matcher doesn't auto-open)
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
+
+    // "Did you land it?" buttons appear after recording
+    await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByText(/Landed/));
+
+    await waitFor(() => {
+      expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "match", expect.any(Blob));
+    });
+  });
+
+  it("forfeit check logs correctly for non-Error rejection", async () => {
+    mockForfeitExpiredTurn.mockRejectedValueOnce("string error");
+    const game = makeGame({
+      currentTurn: "u2",
+      currentSetter: "u2",
+      turnDeadline: { toMillis: () => Date.now() - 1000 },
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    await waitFor(() => {
+      expect(mockForfeitExpiredTurn).toHaveBeenCalled();
+    });
+  });
+
+  it("setTrick uses 'Trick' fallback when trickName is cleared before recording", async () => {
+    mockSetTrick.mockResolvedValueOnce(undefined);
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    // Type a trick name to show the recorder
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    // Clear the trick name — recorder stays visible via ref
+    await userEvent.clear(screen.getByLabelText("TRICK NAME"));
+
+    // Record and stop (default MockMediaRecorder → null blob → no upload)
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => {
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Trick", null);
+    });
+  });
+
+  it("non-Error thrown from setTrick shows fallback error message", async () => {
+    mockSetTrick.mockRejectedValueOnce("plain string error");
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => expect(screen.getByText("Failed to send trick")).toBeInTheDocument());
+  });
+
+  it("error banner dismiss clears error after setter submission failure", async () => {
+    mockSetTrick.mockRejectedValueOnce(new Error("Network error"));
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    // Type a trick name to reveal VideoRecorder
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    // setTrick fails → error is shown
+    await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
+
+    // Dismiss the error banner (covers the onDismiss lambda on ErrorBanner line)
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
+    expect(screen.queryByText("Network error")).not.toBeInTheDocument();
   });
 });

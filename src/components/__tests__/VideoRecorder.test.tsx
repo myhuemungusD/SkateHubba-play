@@ -267,6 +267,98 @@ describe("VideoRecorder", () => {
     await waitFor(() => expect(screen.getByText("✓ Sent!")).toBeInTheDocument());
   });
 
+  it("uses video/webm;codecs=vp9 mime type when isTypeSupported returns true for vp9", async () => {
+    const originalMR = (globalThis as any).MediaRecorder;
+    class Vp9MR {
+      static isTypeSupported = vi.fn().mockImplementation((mime: string) => mime === "video/webm;codecs=vp9");
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      state = "inactive";
+      start = vi.fn().mockImplementation(function (this: Vp9MR) {
+        this.state = "recording";
+      });
+      stop = vi.fn().mockImplementation(function (this: Vp9MR) {
+        this.state = "inactive";
+        if (this.ondataavailable) this.ondataavailable({ data: new Blob(["x"], { type: "video/webm" }) });
+        this.onstop?.();
+      });
+    }
+    (globalThis as any).MediaRecorder = Vp9MR;
+
+    const onRecorded = vi.fn();
+    render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
+
+    (globalThis as any).MediaRecorder = originalMR;
+  });
+
+  it("uses video/webm mime type when vp9 unsupported but webm supported", async () => {
+    const originalMR = (globalThis as any).MediaRecorder;
+    class WebmMR {
+      static isTypeSupported = vi.fn().mockImplementation((mime: string) => mime === "video/webm");
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      state = "inactive";
+      start = vi.fn().mockImplementation(function (this: WebmMR) {
+        this.state = "recording";
+      });
+      stop = vi.fn().mockImplementation(function (this: WebmMR) {
+        this.state = "inactive";
+        if (this.ondataavailable) this.ondataavailable({ data: new Blob(["x"], { type: "video/webm" }) });
+        this.onstop?.();
+      });
+    }
+    (globalThis as any).MediaRecorder = WebmMR;
+
+    const onRecorded = vi.fn();
+    render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
+
+    (globalThis as any).MediaRecorder = originalMR;
+  });
+
+  it("startRec uses no-stream fallback path when camera returned null", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    // Override getUserMedia to return null so streamRef.current stays null
+    Object.defineProperty(navigator, "mediaDevices", {
+      writable: true,
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockResolvedValue(null) },
+    });
+
+    const onRecorded = vi.fn();
+    render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByText(/Open Camera/));
+    });
+
+    // With null stream, component enters preview state but streamRef.current is null
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    // Clicking record hits the !streamRef.current path (lines 58-61) and sets a setInterval
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+
+    // Advance the setInterval callback to cover the (s) => s + 1 updater at line 62
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+  });
+
   it("shows recording timer and auto-stop warning near end", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
 

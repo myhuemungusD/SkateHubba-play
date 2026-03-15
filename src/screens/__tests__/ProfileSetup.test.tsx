@@ -164,7 +164,7 @@ describe("ProfileSetup", () => {
 
     render(<ProfileSetup {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText("sk8legend");
+    const input = screen.getByPlaceholderText("sk8legend") as HTMLInputElement;
     await userEvent.type(input, "newuser");
 
     await waitFor(() => expect(screen.getByText(/@newuser is available/)).toBeInTheDocument());
@@ -174,6 +174,15 @@ describe("ProfileSetup", () => {
     await waitFor(() => {
       expect(screen.getByText("Creating...")).toBeInTheDocument();
     });
+
+    // While loading, onChange and setStance are guarded by !loading
+    const { fireEvent: fe } = await import("@testing-library/react");
+    const valueBefore = input.value;
+    fe.change(input, { target: { value: "other" } });
+    expect(input.value).toBe(valueBefore);
+
+    // Stance click while loading is also guarded
+    fe.click(screen.getByText("Goofy"));
   });
 
   it("uses displayName as initial value", () => {

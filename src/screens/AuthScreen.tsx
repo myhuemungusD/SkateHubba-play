@@ -70,7 +70,10 @@ export function AuthScreen({
         setError("Invalid email or password");
       else if (code === "auth/user-not-found") setError("No account with that email. Need to sign up?");
       else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
-      else setError(parseFirebaseError(err));
+      else if (err instanceof Error) setError(err.message);
+      else if (typeof err === "object" && err !== null && typeof (err as { message?: unknown }).message === "string")
+        setError((err as { message: string }).message);
+      else setError("Something went wrong");
     } finally {
       setLoading(false);
     }

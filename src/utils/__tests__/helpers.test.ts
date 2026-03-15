@@ -1,5 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { getErrorCode, EMAIL_RE, LETTERS, isFirebaseStorageUrl, pwStrength, newGameShell } from "../helpers";
+import {
+  getErrorCode,
+  parseFirebaseError,
+  EMAIL_RE,
+  LETTERS,
+  isFirebaseStorageUrl,
+  pwStrength,
+  newGameShell,
+} from "../helpers";
 
 describe("getErrorCode", () => {
   it("extracts code from Firebase-like error objects", () => {
@@ -20,6 +28,28 @@ describe("getErrorCode", () => {
 
   it("returns empty string for object without code", () => {
     expect(getErrorCode({ message: "no code" })).toBe("");
+  });
+});
+
+describe("parseFirebaseError", () => {
+  it("returns message from Error instances", () => {
+    expect(parseFirebaseError(new Error("boom"))).toBe("boom");
+  });
+
+  it("returns message field from objects with message", () => {
+    expect(parseFirebaseError({ message: "firebase error" })).toBe("firebase error");
+  });
+
+  it("returns code field from objects without message but with code", () => {
+    expect(parseFirebaseError({ code: "auth/error" })).toBe("auth/error");
+  });
+
+  it("returns JSON.stringify for objects without message or code", () => {
+    expect(parseFirebaseError({ foo: "bar" })).toBe('{"foo":"bar"}');
+  });
+
+  it("returns String() for primitive non-object values", () => {
+    expect(parseFirebaseError("string error")).toBe("string error");
   });
 });
 

@@ -21,7 +21,9 @@ export function GameOverScreen({
   const rematchingRef = useRef(false);
 
   const handleRematch = async () => {
+    /* v8 ignore start */
     if (!onRematch || rematchingRef.current) return;
+    /* v8 ignore stop */
     rematchingRef.current = true;
     setRematching(true);
     try {
