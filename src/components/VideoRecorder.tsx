@@ -41,8 +41,9 @@ export function VideoRecorder({
       }
       setState("preview");
     } catch (err) {
+      const isPermission =
+        err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
       const msg = err instanceof Error ? err.message : String(err);
-      const isPermission = msg.includes("Permission") || msg.includes("NotAllowed");
       setCameraError(
         isPermission
           ? "Camera access denied. Check your browser permissions and try again."

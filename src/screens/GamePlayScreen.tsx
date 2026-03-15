@@ -17,6 +17,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [error, setError] = useState("");
   const [forfeitChecked, setForfeitChecked] = useState(false);
   const [trickName, setTrickName] = useState("");
+  const trickNameRef = useRef(trickName);
+  trickNameRef.current = trickName;
 
   useEffect(() => {
     if (forfeitChecked || game.status !== "active") return;
@@ -45,7 +47,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         if (blob) {
           videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob);
         }
-        await setTrick(game.id, trickName || "Trick", videoUrl);
+        await setTrick(game.id, trickNameRef.current || "Trick", videoUrl);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to send trick");
         submittedRef.current = false;
@@ -53,7 +55,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         setSubmitting(false);
       }
     },
-    [game.id, game.turnNumber, trickName],
+    [game.id, game.turnNumber],
   );
 
   const handleSetterRecorded = useCallback(
@@ -151,7 +153,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <input
               type="text"
               value={trickName}
-              onChange={(e) => setTrickName(e.target.value.slice(0, 100))}
+              onChange={(e) => setTrickName(e.target.value)}
               placeholder="e.g. Kickflip"
               maxLength={100}
               disabled={videoRecorded}

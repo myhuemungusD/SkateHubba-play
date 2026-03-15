@@ -46,6 +46,10 @@ export interface GameDoc {
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function getOpponent(game: GameDoc, playerUid: string): string {
+  return playerUid === game.player1Uid ? game.player2Uid : game.player1Uid;
+}
 function gamesRef() {
   return collection(requireDb(), "games");
 }
@@ -113,7 +117,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "setting") throw new Error("Not in setting phase");
 
-    const matcherUid = game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const matcherUid = getOpponent(game, game.currentSetter);
 
     tx.update(gameRef, {
       phase: "matching",
@@ -146,7 +150,7 @@ export async function submitMatchResult(
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "matching") throw new Error("Not in matching phase");
 
-    const matcherUid = game.currentSetter === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const matcherUid = getOpponent(game, game.currentSetter);
     const isP1Matcher = matcherUid === game.player1Uid;
 
     let newP1Letters = game.p1Letters;
@@ -208,7 +212,7 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
     }
 
     // The player whose turn it is forfeits — opponent wins
-    const winner = game.currentTurn === game.player1Uid ? game.player2Uid : game.player1Uid;
+    const winner = getOpponent(game, game.currentTurn);
 
     tx.update(gameRef, {
       status: "forfeit",

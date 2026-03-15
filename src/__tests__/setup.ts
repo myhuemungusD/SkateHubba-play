@@ -2,10 +2,11 @@ import "@testing-library/jest-dom/vitest";
 
 // Mock navigator.mediaDevices with a fake stream so VideoRecorder enters
 // preview state normally. The stream has no real tracks but satisfies the API.
+const mockStop = vi.fn();
 const mockStream = {
-  getTracks: () => [{ stop: vi.fn() }],
-  getVideoTracks: () => [{ stop: vi.fn() }],
-  getAudioTracks: () => [{ stop: vi.fn() }],
+  getTracks: () => [{ stop: mockStop }],
+  getVideoTracks: () => [{ stop: mockStop }],
+  getAudioTracks: () => [{ stop: mockStop }],
 };
 Object.defineProperty(globalThis.navigator, "mediaDevices", {
   writable: true,
