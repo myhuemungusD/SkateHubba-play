@@ -123,7 +123,7 @@ export function VideoRecorder({
     // openCamera is async (awaits getUserMedia before setState) — not a synchronous setState
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (autoOpenRef.current) openCamera();
-  }, []);
+  }, [openCamera]);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 

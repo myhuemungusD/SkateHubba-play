@@ -588,7 +588,7 @@ describe("games service", () => {
 
       // Should not throw — error is swallowed with a console.warn
       expect(() => subscribeToMyGames("u1", vi.fn())).not.toThrow();
-      expect(warnSpy).toHaveBeenCalledWith("Game subscription error:", "network error");
+      expect(warnSpy).toHaveBeenCalledWith("Game subscription error for uid:", "u1", "network error");
       warnSpy.mockRestore();
     });
   });

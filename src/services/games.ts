@@ -50,7 +50,12 @@ const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 /** Parse a Firestore document snapshot into a typed GameDoc. */
 function toGameDoc(snap: { id: string; data: () => Record<string, unknown> }): GameDoc {
-  return { id: snap.id, ...snap.data() } as GameDoc;
+  const raw = snap.data();
+  // Validate required fields exist to prevent undefined-as-typed runtime errors
+  if (typeof raw.player1Uid !== "string" || typeof raw.player2Uid !== "string" || typeof raw.status !== "string") {
+    throw new Error(`Malformed game document: ${snap.id}`);
+  }
+  return { id: snap.id, ...raw } as GameDoc;
 }
 
 function getOpponent(game: GameDoc, playerUid: string): string {
@@ -277,7 +282,7 @@ export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => 
   const q2 = query(gamesRef(), where("player2Uid", "==", uid));
 
   const handleError = (err: Error) => {
-    console.warn("Game subscription error:", err.message);
+    console.warn("Game subscription error for uid:", uid, err.message);
   };
 
   const unsub1 = onSnapshot(
@@ -318,7 +323,7 @@ export function subscribeToGame(gameId: string, onUpdate: (game: GameDoc | null)
       onUpdate(toGameDoc(snap));
     },
     (err) => {
-      console.warn("Game subscription error:", err.message);
+      console.warn("Game subscription error for game:", gameId, err.message);
       onUpdate(null);
     },
   );
