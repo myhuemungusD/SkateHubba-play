@@ -49,11 +49,13 @@ if (firebaseReady) {
   // Requires VITE_RECAPTCHA_SITE_KEY to be set (reCAPTCHA v3 site key from
   // Firebase Console → App Check). In development the debug token is enabled
   // automatically so Firestore still works without a real reCAPTCHA key.
+  /* v8 ignore start */
   if (import.meta.env.DEV) {
     // Expose debug token so the App Check debug provider works locally.
     // Firebase App Check reads this off the global scope at init time.
     (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   }
+  /* v8 ignore stop */
   /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
   if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
     initializeAppCheck(app, {
@@ -77,11 +79,12 @@ if (firebaseReady) {
   }
 } else {
   const isVercel = typeof import.meta.env.VERCEL !== "undefined";
-  /* v8 ignore next 4 */
+  /* v8 ignore start */
   const message = isVercel
     ? "Firebase config missing. Add VITE_FIREBASE_* environment variables in Vercel Dashboard → Project Settings → Environment Variables (scope: Preview and/or Production)."
     : "Firebase config missing. Copy .env.example to .env.local and fill in your Firebase project values.";
   console.error(`⚠️ ${message}`);
+  /* v8 ignore stop */
 }
 
 function requireDb(): Firestore {

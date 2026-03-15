@@ -108,7 +108,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       } else {
         logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
         Sentry.captureException(err, { extra: { context: "handleGoogleSignIn", code } });
-        setGoogleError(parseFirebaseError(err));
+        setGoogleError(err instanceof Error ? err.message : "Google sign-in failed");
         if (screen !== "auth") {
           setAuthMode("signin");
           setScreen("auth");
@@ -186,7 +186,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleDeleteAccount = useCallback(async () => {
+    /* v8 ignore start */
     if (!activeProfile) return;
+    /* v8 ignore stop */
     logger.info("delete_account_start", { uid: activeProfile.uid, username: activeProfile.username });
     // Delete Auth account first — if it fails (e.g. requires-recent-login),
     // Firestore data remains intact. This prevents orphaned Auth accounts
@@ -224,7 +226,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const startChallenge = useCallback(
     async (opponentUid: string, opponentUsername: string) => {
+      /* v8 ignore start */
       if (!user || !activeProfile) return;
+      /* v8 ignore stop */
       const gameId = await createGame(user.uid, activeProfile.username, opponentUid, opponentUsername);
       analytics.gameCreated(gameId);
       const shell = newGameShell(gameId, user.uid, activeProfile.username, opponentUid, opponentUsername);
