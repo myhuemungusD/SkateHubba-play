@@ -31,8 +31,8 @@ export function useAuth(): AuthState {
       const p = await getUserProfile(u.uid);
       setProfile(p);
     } catch {
-      // Firestore read may fail transiently
-      setProfile(null);
+      // Firestore read may fail transiently — keep the existing profile rather
+      // than clearing it, which would wrongly route the user to profile setup.
     }
   }, []);
 

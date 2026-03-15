@@ -106,6 +106,7 @@ export async function setTrick(
     if (!snap.exists()) throw new Error("Game not found");
 
     const game = { id: snap.id, ...snap.data() } as GameDoc;
+    if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "setting") throw new Error("Not in setting phase");
 
     const matcherUid =
@@ -139,6 +140,7 @@ export async function submitMatchResult(
     if (!snap.exists()) throw new Error("Game not found");
 
     const game = { id: snap.id, ...snap.data() } as GameDoc;
+    if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "matching") throw new Error("Not in matching phase");
 
     const matcherUid =

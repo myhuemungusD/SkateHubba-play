@@ -103,6 +103,9 @@ function newGameShell(
   opponentUid: string,
   opponentUsername: string,
 ): GameDoc {
+  // Capture deadline at shell-creation time so the Timer counts down correctly
+  // while waiting for the real Firestore document to arrive.
+  const shellDeadline = Date.now() + 86400000;
   return {
     id: gameId,
     player1Uid: myUid,
@@ -118,7 +121,7 @@ function newGameShell(
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    turnDeadline: { toMillis: () => Date.now() + 86400000 } as unknown as GameDoc["turnDeadline"],
+    turnDeadline: { toMillis: () => shellDeadline } as unknown as GameDoc["turnDeadline"],
     turnNumber: 1,
     winner: null,
     createdAt: null,
@@ -947,7 +950,7 @@ function ProfileSetup({
           <Field
             label="Username"
             value={username}
-            onChange={(v) => setUsername(v.replace(/[^a-zA-Z0-9_]/g, ""))}
+            onChange={(v) => { if (!loading) setUsername(v.replace(/[^a-zA-Z0-9_]/g, "")); }}
             placeholder="sk8legend"
             maxLength={20}
             icon="@"
@@ -971,8 +974,9 @@ function ProfileSetup({
                 <button
                   key={s}
                   type="button"
-                  onClick={() => setStance(s)}
-                  className={`flex-1 py-3 rounded-xl font-display text-lg tracking-wider cursor-pointer transition-all
+                  onClick={() => { if (!loading) setStance(s); }}
+                  disabled={loading}
+                  className={`flex-1 py-3 rounded-xl font-display text-lg tracking-wider cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed
                     ${stance === s
                       ? "bg-[rgba(255,107,0,0.08)] border border-brand-orange text-brand-orange"
                       : "bg-surface-alt border border-border text-[#888]"
@@ -1286,7 +1290,7 @@ function Lobby({
 function ChallengeScreen({
   profile, onSend, onBack,
 }: {
-  profile: UserProfile; onSend: (opponentUid: string, opponentUsername: string) => void; onBack: () => void;
+  profile: UserProfile; onSend: (opponentUid: string, opponentUsername: string) => Promise<void>; onBack: () => void;
 }) {
   const [opponent, setOpponent] = useState("");
   const [error, setError] = useState("");
@@ -1302,9 +1306,12 @@ function ChallengeScreen({
     try {
       const uid = await getUidByUsername(normalized);
       if (!uid) { setError(`@${normalized} doesn't exist yet. They need to sign up first.`); return; }
-      onSend(uid, normalized);
+      // Awaiting onSend keeps loading=true for the full createGame round-trip,
+      // preventing a second challenge from being sent while the first is in-flight,
+      // and surfaces any createGame errors back to this screen.
+      await onSend(uid, normalized);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not find user");
+      setError(err instanceof Error ? err.message : "Could not start game");
     } finally {
       setLoading(false);
     }
@@ -1324,7 +1331,7 @@ function ChallengeScreen({
           <Field
             label="Opponent Username"
             value={opponent}
-            onChange={(v) => setOpponent(v.replace(/[^a-zA-Z0-9_]/g, ""))}
+            onChange={(v) => { if (!loading) setOpponent(v.replace(/[^a-zA-Z0-9_]/g, "")); }}
             placeholder="their_handle"
             icon="@"
             maxLength={20}
@@ -1554,8 +1561,23 @@ function GamePlayScreen({
 function GameOverScreen({
   game, profile, onRematch, onBack,
 }: {
-  game: GameDoc; profile: UserProfile; onRematch: () => void; onBack: () => void;
+  game: GameDoc; profile: UserProfile; onRematch: () => Promise<void>; onBack: () => void;
 }) {
+  const [rematching, setRematching] = useState(false);
+  const rematchingRef = useRef(false);
+
+  const handleRematch = async () => {
+    if (rematchingRef.current) return;
+    rematchingRef.current = true;
+    setRematching(true);
+    try {
+      await onRematch();
+    } finally {
+      rematchingRef.current = false;
+      setRematching(false);
+    }
+  };
+
   const isWinner = game.winner === profile.uid;
   const isForfeit = game.status === "forfeit";
   const opponentName =
@@ -1593,7 +1615,9 @@ function GameOverScreen({
         </div>
 
         <div className="flex flex-col gap-3 w-full">
-          <Btn onClick={onRematch}>🔥 Rematch</Btn>
+          <Btn onClick={handleRematch} disabled={rematching}>
+            {rematching ? "Starting..." : "🔥 Rematch"}
+          </Btn>
           <InviteButton username={profile.username} />
           <Btn onClick={onBack} variant="ghost">Back to Lobby</Btn>
         </div>
@@ -1809,7 +1833,7 @@ function AppInner() {
         <GameOverScreen
           game={activeGame}
           profile={activeProfile}
-          onRematch={async () => {
+          onRematch={async (): Promise<void> => {
             const opponentUid =
               activeGame.player1Uid === user.uid ? activeGame.player2Uid : activeGame.player1Uid;
             const opponentName =
