@@ -280,7 +280,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Record your trick")).toBeInTheDocument();
+      expect(screen.getByText("Name your trick")).toBeInTheDocument();
     });
 
     // Trick name input is shown and recorder is hidden until name is entered
@@ -289,6 +289,9 @@ describe("Smoke Test: Game E2E", () => {
 
     // Type a trick name to reveal the recorder
     await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+
+    // Phase banner updates to show the trick name
+    expect(screen.getByText("Set your Kickflip")).toBeInTheDocument();
 
     // Camera auto-opens for setter, so record button should appear in preview state
     await waitFor(() => {
@@ -305,11 +308,11 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Record your trick")).toBeInTheDocument();
+      expect(screen.getByText("Name your trick")).toBeInTheDocument();
     });
 
     // Verify the phase banner shows correct text for setter
-    expect(screen.getByText("Record your trick")).toBeInTheDocument();
+    expect(screen.getByText("Name your trick")).toBeInTheDocument();
   });
 
   /* ── 7. Gameplay — Waiting on opponent ────── */
@@ -964,7 +967,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Record your trick")).toBeInTheDocument();
+      expect(screen.getByText("Name your trick")).toBeInTheDocument();
     });
 
     // Re-setup lobby for return
@@ -1032,7 +1035,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Record your trick")).toBeInTheDocument();
+      expect(screen.getByText("Name your trick")).toBeInTheDocument();
     });
 
     // Simulate realtime update: game completed

@@ -6,12 +6,15 @@ import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { Btn } from "../components/ui/Btn";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { Field } from "../components/ui/Field";
 import { LetterDisplay } from "../components/LetterDisplay";
 import { Timer } from "../components/Timer";
 import { VideoRecorder } from "../components/VideoRecorder";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [trickName, setTrickName] = useState("");
+  const trickNameRef = useRef(trickName);
+  trickNameRef.current = trickName;
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -45,7 +48,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         if (blob) {
           videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob);
         }
-        await setTrick(game.id, trickName.trim() || "Trick", videoUrl);
+        await setTrick(game.id, trickNameRef.current.trim() || "Trick", videoUrl);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to send trick");
         submittedRef.current = false;
@@ -53,7 +56,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         setSubmitting(false);
       }
     },
-    [game.id, game.turnNumber, trickName],
+    [game.id, game.turnNumber],
   );
 
   const handleSetterRecorded = useCallback(
@@ -140,7 +143,9 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             className={`font-display text-xl tracking-wider ${isSetter ? "text-brand-orange" : "text-brand-green"}`}
           >
             {isSetter
-              ? "Record your trick"
+              ? trickName.trim()
+                ? `Set your ${trickName.trim()}`
+                : "Name your trick"
               : `Match @${game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}'s ${game.currentTrickName || "trick"}`}
           </span>
         </div>
@@ -157,21 +162,14 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         )}
 
         {isSetter && (
-          <div className="mb-5">
-            <label htmlFor="trick-name" className="font-display text-sm tracking-wider text-[#888] block mb-2">
-              TRICK NAME
-            </label>
-            <input
-              id="trick-name"
-              type="text"
-              value={trickName}
-              onChange={(e) => setTrickName(e.target.value)}
-              placeholder="e.g. Kickflip, 360 Flip"
-              maxLength={60}
-              disabled={videoRecorded}
-              className="w-full px-4 py-3 rounded-xl bg-[#1A1A1A] border border-border text-white font-body text-base placeholder:text-[#555] focus:outline-none focus:border-brand-orange disabled:opacity-50 disabled:cursor-not-allowed"
-            />
-          </div>
+          <Field
+            label="TRICK NAME"
+            value={trickName}
+            onChange={setTrickName}
+            placeholder="e.g. Kickflip, 360 Flip"
+            maxLength={60}
+            disabled={videoRecorded}
+          />
         )}
 
         {isSetter && !trickName.trim() && (

@@ -11,6 +11,7 @@ export function Field({
   icon,
   autoComplete,
   autoFocus,
+  disabled,
 }: {
   label?: string;
   value: string;
@@ -22,6 +23,7 @@ export function Field({
   icon?: string;
   autoComplete?: string;
   autoFocus?: boolean;
+  disabled?: boolean;
 }) {
   const id = useId();
   return (
@@ -46,11 +48,13 @@ export function Field({
           maxLength={maxLength}
           autoComplete={autoComplete}
           autoFocus={autoFocus}
+          disabled={disabled}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
           className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
             focus:border-brand-orange transition-colors duration-200
+            disabled:opacity-40 disabled:cursor-not-allowed
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />
       </div>
