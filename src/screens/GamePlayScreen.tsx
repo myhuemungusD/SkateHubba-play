@@ -168,17 +168,24 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               onChange={(e) => setTrickName(e.target.value)}
               placeholder="e.g. Kickflip, 360 Flip"
               maxLength={60}
-              className="w-full px-4 py-3 rounded-xl bg-[#1A1A1A] border border-border text-white font-body text-base placeholder:text-[#555] focus:outline-none focus:border-brand-orange"
+              disabled={videoRecorded}
+              className="w-full px-4 py-3 rounded-xl bg-[#1A1A1A] border border-border text-white font-body text-base placeholder:text-[#555] focus:outline-none focus:border-brand-orange disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
         )}
 
-        <VideoRecorder
-          onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
-          label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
-          autoOpen={isSetter}
-          doneLabel={isSetter ? "Recorded — Sending..." : "Recorded"}
-        />
+        {isSetter && !trickName.trim() && (
+          <p className="font-body text-sm text-[#888] text-center mb-4">Name your trick to start recording</p>
+        )}
+
+        {(!isSetter || trickName.trim()) && (
+          <VideoRecorder
+            onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
+            label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
+            autoOpen={isSetter}
+            doneLabel={isSetter ? "Recorded — Sending..." : "Recorded"}
+          />
+        )}
 
         <ErrorBanner message={error} onDismiss={() => setError("")} />
 
