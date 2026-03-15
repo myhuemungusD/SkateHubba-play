@@ -5,6 +5,7 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   onAuthStateChanged,
+  deleteUser,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
@@ -88,6 +89,19 @@ export async function signInWithGoogle(): Promise<User | null> {
     }
     throw err;
   }
+}
+
+/**
+ * Permanently delete the currently signed-in Firebase Auth account.
+ *
+ * IMPORTANT: Call deleteUserData() from users.ts first to clean up Firestore.
+ * Firebase requires recent authentication; if this throws auth/requires-recent-login
+ * the caller should sign the user out and ask them to re-authenticate.
+ */
+export async function deleteAccount(): Promise<void> {
+  const user = requireAuth().currentUser;
+  if (!user) throw new Error("Not signed in");
+  await deleteUser(user);
 }
 
 /**

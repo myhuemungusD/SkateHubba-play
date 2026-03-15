@@ -19,11 +19,53 @@ jobs:
 
       - run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Type check
         run: npx tsc -b
 
-      - name: Run tests
-        run: npm test
+      - name: Run tests with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 14
 
       - name: Build
         run: npm run build
+
+  lighthouse:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    # Only run Lighthouse on pushes to main (not on every PR to save minutes)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build for Lighthouse
+        run: npm run build
+        env:
+          # Use placeholder env vars so Vite build succeeds without real Firebase config
+          VITE_FIREBASE_API_KEY: placeholder
+          VITE_FIREBASE_AUTH_DOMAIN: placeholder.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID: placeholder
+          VITE_FIREBASE_STORAGE_BUCKET: placeholder.appspot.com
+          VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+          VITE_FIREBASE_APP_ID: "1:000000000000:web:placeholder"
+
+      - name: Run Lighthouse CI
+        run: npx @lhci/cli@0.14.x autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}

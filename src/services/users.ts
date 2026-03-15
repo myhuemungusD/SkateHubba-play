@@ -2,6 +2,7 @@ import {
   doc,
   getDoc,
   runTransaction,
+  deleteDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
@@ -79,6 +80,22 @@ export async function createProfile(
   });
 
   return profile;
+}
+
+/**
+ * Delete a user's Firestore profile and username reservation.
+ * Call this BEFORE deleteAccount() from auth.ts so Firestore cleanup
+ * succeeds while the auth token is still valid.
+ *
+ * Note: game documents and Storage videos are intentionally retained for
+ * opponent history. A Cloud Function can handle deeper cleanup if needed.
+ */
+export async function deleteUserData(uid: string, username: string): Promise<void> {
+  const db = requireDb();
+  await Promise.all([
+    deleteDoc(doc(db, "users", uid)),
+    deleteDoc(doc(db, "usernames", username.toLowerCase().trim())),
+  ]);
 }
 
 /**

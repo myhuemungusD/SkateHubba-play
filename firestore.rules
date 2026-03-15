@@ -36,7 +36,8 @@ service cloud.firestore {
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid;
-      allow delete: if false;
+      // Users may delete their own profile (account deletion flow)
+      allow delete: if isOwner(uid);
     }
 
     // ── Usernames (reservation docs for uniqueness) ──
@@ -48,8 +49,9 @@ service cloud.firestore {
         && username.size() <= 20
         // Reservation key must be a valid username (lowercase alphanum + underscore)
         && username.matches('[a-z0-9_]+');
-      // Once reserved, cannot be changed or deleted
-      allow update, delete: if false;
+      // Cannot be updated; only the owning user can delete (account deletion flow)
+      allow update: if false;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
     }
 
     // ── Helper: determine the opponent of a player ──

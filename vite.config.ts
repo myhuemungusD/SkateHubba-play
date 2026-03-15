@@ -25,5 +25,21 @@ export default defineConfig({
     setupFiles: "./src/__tests__/setup.ts",
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "lcov", "html"],
+      exclude: [
+        "src/__mocks__/**",
+        "src/__tests__/setup.ts",
+        "src/vite-env.d.ts",
+        "eslint.config.js",
+        "vite.config.ts",
+      ],
+      thresholds: {
+        lines: 70,
+        functions: 70,
+        branches: 60,
+      },
+    },
   },
 });

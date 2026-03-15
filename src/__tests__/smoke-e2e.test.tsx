@@ -14,6 +14,7 @@ const mockResetPassword = vi.fn();
 const mockCreateProfile = vi.fn();
 const mockIsUsernameAvailable = vi.fn();
 const mockGetUidByUsername = vi.fn();
+const mockDeleteUserData = vi.fn();
 
 const mockCreateGame = vi.fn();
 const mockSetTrick = vi.fn();
@@ -25,6 +26,7 @@ const mockSubscribeToGame = vi.fn(() => vi.fn());
 const mockUploadVideo = vi.fn();
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
+const mockDeleteAccount = vi.fn();
 const mockResendVerification = vi.fn();
 const mockSignInWithGoogle = vi.fn();
 const mockResolveGoogleRedirect = vi.fn().mockResolvedValue(null);
@@ -36,11 +38,13 @@ vi.mock("../services/auth", () => ({
   resendVerification: (...args: unknown[]) => mockResendVerification(...args),
   signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
   resolveGoogleRedirect: (...args: unknown[]) => mockResolveGoogleRedirect(...args),
+  deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
 }));
 vi.mock("../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
   isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
   getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
+  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
 }));
 vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),
@@ -116,6 +120,18 @@ function renderLobby(games: ReturnType<typeof activeGame>[] = []) {
   mockUseAuth.mockReturnValue({
     loading: false,
     user: authedUser,
+    profile,
+    refreshProfile: vi.fn(),
+  });
+  withGames(games);
+  return render(<App />);
+}
+
+/** Renders the lobby with a verified email user (required to access challenge screen). */
+function renderVerifiedLobby(games: ReturnType<typeof activeGame>[] = []) {
+  mockUseAuth.mockReturnValue({
+    loading: false,
+    user: verifiedUser,
     profile,
     refreshProfile: vi.fn(),
   });
@@ -202,7 +218,7 @@ describe("Smoke Test: Game E2E", () => {
   /* ── 5. Challenge flow ────────────────────── */
 
   it("navigates to challenge screen and sends a challenge", async () => {
-    renderLobby([]);
+    renderVerifiedLobby([]);
     withGameSub(activeGame());
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     mockCreateGame.mockResolvedValueOnce("game1");
@@ -223,7 +239,7 @@ describe("Smoke Test: Game E2E", () => {
   });
 
   it("challenge screen prevents self-challenge", async () => {
-    renderLobby([]);
+    renderVerifiedLobby([]);
 
     await userEvent.click(screen.getByText(/Challenge Someone/));
 
@@ -851,7 +867,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("challenge shows error when opponent not found", async () => {
     mockGetUidByUsername.mockResolvedValueOnce(null);
-    renderLobby([]);
+    renderVerifiedLobby([]);
 
     await userEvent.click(screen.getByText(/Challenge Someone/));
 
@@ -868,7 +884,7 @@ describe("Smoke Test: Game E2E", () => {
   /* ── 29. Challenge: short username ── */
 
   it("challenge disables send button with short username", async () => {
-    renderLobby([]);
+    renderVerifiedLobby([]);
 
     await userEvent.click(screen.getByText(/Challenge Someone/));
 
@@ -882,7 +898,7 @@ describe("Smoke Test: Game E2E", () => {
   /* ── 30. Challenge: back button ── */
 
   it("challenge back button returns to lobby", async () => {
-    renderLobby([]);
+    renderVerifiedLobby([]);
 
     await userEvent.click(screen.getByText(/Challenge Someone/));
     expect(screen.getByText("Challenge")).toBeInTheDocument();
