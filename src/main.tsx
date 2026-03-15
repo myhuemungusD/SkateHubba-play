@@ -32,5 +32,5 @@ if (!rootEl) throw new Error("Missing #root element in index.html");
 createRoot(rootEl).render(
   <StrictMode>
     <App />
-  </StrictMode>
+  </StrictMode>,
 );

@@ -2,10 +2,10 @@
 
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| Latest (`main`) | Yes |
-| Older branches | No |
+| Version         | Supported |
+| --------------- | --------- |
+| Latest (`main`) | Yes       |
+| Older branches  | No        |
 
 We only maintain the latest version on `main`. Security patches are applied there and deployed to production.
 

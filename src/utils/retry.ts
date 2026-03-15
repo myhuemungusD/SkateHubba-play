@@ -40,11 +40,7 @@ function isRetryable(err: unknown): boolean {
  * @param maxAttempts - Total number of attempts (default 3).
  * @param baseDelayMs - Initial delay between attempts in ms (doubles each retry).
  */
-export async function withRetry<T>(
-  fn: () => Promise<T>,
-  maxAttempts = 3,
-  baseDelayMs = 1000
-): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 3, baseDelayMs = 1000): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
@@ -54,9 +50,7 @@ export async function withRetry<T>(
       // Don't retry permanent errors
       if (!isRetryable(err)) throw err;
       if (attempt < maxAttempts - 1) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, baseDelayMs * Math.pow(2, attempt))
-        );
+        await new Promise((resolve) => setTimeout(resolve, baseDelayMs * Math.pow(2, attempt)));
       }
     }
   }

@@ -7,10 +7,7 @@ interface ContactInfo {
 }
 
 interface ContactsManager {
-  select(
-    properties: string[],
-    options?: { multiple?: boolean }
-  ): Promise<ContactInfo[]>;
+  select(properties: string[], options?: { multiple?: boolean }): Promise<ContactInfo[]>;
   getProperties(): Promise<string[]>;
 }
 
@@ -27,6 +24,7 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_APP_ID: string;
   readonly VITE_USE_EMULATORS?: string;
   readonly VITE_APP_URL?: string;
+  readonly VITE_SENTRY_DSN?: string;
   readonly VERCEL?: string;
 }
 

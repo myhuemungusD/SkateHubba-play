@@ -10,13 +10,13 @@ The goal of the test suite is confidence that the full screen flow works as expe
 
 ## Test Stack
 
-| Package | Role |
-|---------|------|
-| Vitest | Test runner (Vite-native, compatible with `vite.config.ts`) |
-| `@testing-library/react` | `render`, `screen`, `waitFor`, `within`, `act` |
-| `@testing-library/user-event` | Realistic user interactions (type, click, etc.) |
-| `@testing-library/jest-dom` | DOM matchers (`toBeInTheDocument`, `toHaveValue`, etc.) |
-| jsdom | Browser environment simulation |
+| Package                       | Role                                                        |
+| ----------------------------- | ----------------------------------------------------------- |
+| Vitest                        | Test runner (Vite-native, compatible with `vite.config.ts`) |
+| `@testing-library/react`      | `render`, `screen`, `waitFor`, `within`, `act`              |
+| `@testing-library/user-event` | Realistic user interactions (type, click, etc.)             |
+| `@testing-library/jest-dom`   | DOM matchers (`toBeInTheDocument`, `toHaveValue`, etc.)     |
+| jsdom                         | Browser environment simulation                              |
 
 ---
 
@@ -86,13 +86,13 @@ Factory function that returns a default `GameDoc`-shaped object. Pass overrides 
 
 ```ts
 // A game where player 1 has won
-activeGame({ status: "complete", winner: "u1", p2Letters: 5 })
+activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
 
 // Matching phase — player 1 is matcher, player 2 is setter
-activeGame({ phase: "matching", currentTurn: "u1", currentSetter: "u2" })
+activeGame({ phase: "matching", currentTurn: "u1", currentSetter: "u2" });
 
 // Forfeit — player 2's turn expired
-activeGame({ status: "forfeit", winner: "u1" })
+activeGame({ status: "forfeit", winner: "u1" });
 ```
 
 ### `withGames(games[])`
@@ -100,7 +100,7 @@ activeGame({ status: "forfeit", winner: "u1" })
 Configures `mockSubscribeToMyGames` to synchronously call its callback with the given games array when the lobby mounts:
 
 ```ts
-withGames([activeGame(), activeGame({ status: "complete", winner: "u1" })])
+withGames([activeGame(), activeGame({ status: "complete", winner: "u1" })]);
 ```
 
 ### `withGameSub(game)`
@@ -108,7 +108,7 @@ withGames([activeGame(), activeGame({ status: "complete", winner: "u1" })])
 Configures `mockSubscribeToGame` to synchronously call its callback with the given game when a game card is clicked:
 
 ```ts
-withGameSub(activeGame({ phase: "matching" }))
+withGameSub(activeGame({ phase: "matching" }));
 ```
 
 ### `renderLobby(games?)`
@@ -137,6 +137,7 @@ npx vitest run --reporter=verbose
 The 45+ smoke tests in `smoke-e2e.test.tsx` cover:
 
 **Authentication**
+
 - Sign-up form validation and submission
 - Sign-in errors mapped to user-friendly messages
 - Google OAuth path (mock returns user immediately)
@@ -145,12 +146,14 @@ The 45+ smoke tests in `smoke-e2e.test.tsx` cover:
 - Resend verification — 60-second cooldown enforced
 
 **Profile setup**
+
 - Username availability check (debounced)
 - Username length and format validation
 - Stance toggle (Regular / Goofy)
 - Successful profile creation calls `createProfile` then `refreshProfile`
 
 **Lobby**
+
 - Game list rendered from `subscribeToMyGames`
 - Empty state ("No games yet")
 - Active games sorted before completed
@@ -159,18 +162,21 @@ The 45+ smoke tests in `smoke-e2e.test.tsx` cover:
 - Forfeit label on forfeited games
 
 **Challenge**
+
 - Self-challenge blocked
 - Opponent not found
 - Username too short
 - Successful challenge creates a game and returns to lobby
 
 **Gameplay**
+
 - Setter UI: trick name input, record button
 - Matcher UI: setter's video displayed, landed/missed buttons
 - Waiting screen (two contexts: waiting for matcher, waiting for setter)
 - Turn timer countdown displayed
 
 **Game over**
+
 - Winner screen
 - Loser screen
 - Forfeit win / forfeit loss
@@ -178,9 +184,11 @@ The 45+ smoke tests in `smoke-e2e.test.tsx` cover:
 - Back to lobby navigation
 
 **Real-time updates**
+
 - Active game transitions to game-over when `subscribeToGame` fires with a completed game
 
 **Error handling**
+
 - Firebase error codes (`auth/email-already-in-use`, etc.) shown as user-facing messages
 - Error banner dismissal
 

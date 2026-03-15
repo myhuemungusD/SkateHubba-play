@@ -29,7 +29,16 @@ vi.mock("firebase/auth", () => ({
 
 vi.mock("../../firebase");
 
-import { signUp, signIn, signOut, resetPassword, resendVerification, onAuthChange, deleteAccount, resolveGoogleRedirect } from "../auth";
+import {
+  signUp,
+  signIn,
+  signOut,
+  resetPassword,
+  resendVerification,
+  onAuthChange,
+  deleteAccount,
+  resolveGoogleRedirect,
+} from "../auth";
 import { auth } from "../../firebase";
 
 beforeEach(() => {
@@ -92,10 +101,13 @@ describe("auth service", () => {
     it("sends verification when there is a current user", async () => {
       (auth as any).currentUser = { uid: "u1" };
       await resendVerification();
-      expect(mockSendVerify).toHaveBeenCalledWith({ uid: "u1" }, {
-        url: expect.any(String),
-        handleCodeInApp: false,
-      });
+      expect(mockSendVerify).toHaveBeenCalledWith(
+        { uid: "u1" },
+        {
+          url: expect.any(String),
+          handleCodeInApp: false,
+        },
+      );
     });
 
     it("does nothing when there is no current user", async () => {

@@ -10,11 +10,11 @@ All Firebase operations are contained in `src/services/`. Components and hooks i
 
 ```ts
 interface UserProfile {
-  uid: string;           // Firebase Auth UID — matches Firestore document ID
-  email: string;         // From Firebase Auth at profile creation time
-  username: string;      // Normalized lowercase, 3–20 chars, [a-z0-9_]+
-  stance: string;        // "Regular" | "Goofy"
-  createdAt: unknown;    // Firestore serverTimestamp() — type widened intentionally
+  uid: string; // Firebase Auth UID — matches Firestore document ID
+  email: string; // From Firebase Auth at profile creation time
+  username: string; // Normalized lowercase, 3–20 chars, [a-z0-9_]+
+  stance: string; // "Regular" | "Goofy"
+  createdAt: unknown; // Firestore serverTimestamp() — type widened intentionally
   emailVerified: boolean;
 }
 ```
@@ -23,29 +23,29 @@ interface UserProfile {
 
 ```ts
 interface GameDoc {
-  id: string;                        // Firestore document ID
-  player1Uid: string;                // Challenger's UID
-  player2Uid: string;                // Opponent's UID
-  player1Username: string;           // Denormalized for display
-  player2Username: string;           // Denormalized for display
-  p1Letters: number;                 // 0–5; 5 = spelled S.K.A.T.E. = loss
-  p2Letters: number;                 // 0–5
-  status: GameStatus;                // "active" | "complete" | "forfeit"
-  currentTurn: string;               // UID of the player who must act next
-  phase: GamePhase;                  // "setting" | "matching"
-  currentSetter: string;             // UID of the current trick setter
-  currentTrickName: string | null;   // null during setting phase, set after setTrick()
+  id: string; // Firestore document ID
+  player1Uid: string; // Challenger's UID
+  player2Uid: string; // Opponent's UID
+  player1Username: string; // Denormalized for display
+  player2Username: string; // Denormalized for display
+  p1Letters: number; // 0–5; 5 = spelled S.K.A.T.E. = loss
+  p2Letters: number; // 0–5
+  status: GameStatus; // "active" | "complete" | "forfeit"
+  currentTurn: string; // UID of the player who must act next
+  phase: GamePhase; // "setting" | "matching"
+  currentSetter: string; // UID of the current trick setter
+  currentTrickName: string | null; // null during setting phase, set after setTrick()
   currentTrickVideoUrl: string | null; // Storage download URL, or null
-  matchVideoUrl: string | null;      // Matcher's video URL, or null
-  turnDeadline: Timestamp;           // 24h from last phase transition
-  turnNumber: number;                // Increments each time a full trick round completes
-  winner: string | null;             // UID of winner when status !== "active", else null
+  matchVideoUrl: string | null; // Matcher's video URL, or null
+  turnDeadline: Timestamp; // 24h from last phase transition
+  turnNumber: number; // Increments each time a full trick round completes
+  winner: string | null; // UID of winner when status !== "active", else null
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
 }
 
 type GameStatus = "active" | "complete" | "forfeit";
-type GamePhase  = "setting" | "matching";
+type GamePhase = "setting" | "matching";
 ```
 
 ---
@@ -235,10 +235,10 @@ submitMatchResult(
 
 Runs a transaction to record the match result. Letter assignment and next-turn logic:
 
-| `landed` | Letter assigned | Next setter |
-|----------|----------------|-------------|
-| `true`   | None | Matcher becomes setter (roles swap) |
-| `false`  | Matcher earns one letter | Same setter keeps setting |
+| `landed` | Letter assigned          | Next setter                         |
+| -------- | ------------------------ | ----------------------------------- |
+| `true`   | None                     | Matcher becomes setter (roles swap) |
+| `false`  | Matcher earns one letter | Same setter keeps setting           |
 
 If either player reaches 5 letters, the transaction sets `status: "complete"` and `winner` to the opponent of the 5-letter player. Returns `{ gameOver: true, winner }`.
 
@@ -318,11 +318,11 @@ useAuth(): {
 
 React hook that wraps `onAuthChange` and Firestore profile fetching.
 
-| Property | Description |
-|----------|-------------|
-| `loading` | `true` until the first `onAuthStateChanged` event fires |
-| `user` | Firebase `User` object, or `null` if not signed in |
-| `profile` | Firestore `UserProfile`, or `null` if not loaded or not created yet |
+| Property           | Description                                                                |
+| ------------------ | -------------------------------------------------------------------------- |
+| `loading`          | `true` until the first `onAuthStateChanged` event fires                    |
+| `user`             | Firebase `User` object, or `null` if not signed in                         |
+| `profile`          | Firestore `UserProfile`, or `null` if not loaded or not created yet        |
 | `refreshProfile()` | Re-fetches the profile for the current user — call after `createProfile()` |
 
 **Implementation note:** `refreshProfile` uses a `useRef` to track the current user, avoiding stale closure issues that would occur if it captured `user` from state at the time the callback was created.

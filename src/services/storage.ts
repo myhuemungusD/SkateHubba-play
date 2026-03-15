@@ -1,47 +1,83 @@
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { requireStorage } from "../firebase";
-import { withRetry } from "../utils/retry";
+import { analytics } from "./analytics";
+
+export interface UploadProgress {
+  bytesTransferred: number;
+  totalBytes: number;
+  percent: number;
+}
 
 /**
- * Upload a video blob to Firebase Storage and return the download URL.
+ * Upload a video blob to Firebase Storage with progress tracking and retry.
  *
  * Path: games/{gameId}/turn-{turnNumber}/{role}.webm
  * role = "set" | "match"
  *
- * The upload and the URL fetch are kept as separate retry scopes:
- * - If the upload itself fails transiently, we retry the full upload.
- * - If the upload succeeds but getDownloadURL fails, we retry only the URL
- *   fetch — the blob is already safely in Storage and we don't re-upload it.
- * This prevents a double-upload when only the URL fetch was flaky.
+ * Uses uploadBytesResumable for real-time progress tracking.
+ * Retries with exponential backoff on transient failures.
  */
 export async function uploadVideo(
   gameId: string,
   turnNumber: number,
   role: "set" | "match",
-  blob: Blob
+  blob: Blob,
+  onProgress?: (progress: UploadProgress) => void,
+  maxRetries = 2,
 ): Promise<string> {
   const path = `games/${gameId}/turn-${turnNumber}/${role}.webm`;
   const storageRef = ref(requireStorage(), path);
+  const startTime = Date.now();
 
-  // Retry the upload up to 3 times with exponential backoff.
-  // Mobile networks are unreliable; Storage write is idempotent for the same path.
-  await withRetry(() =>
-    uploadBytes(storageRef, blob, {
-      contentType: "video/webm",
-      customMetadata: {
-        gameId,
-        turn: String(turnNumber),
-        role,
-        uploadedAt: new Date().toISOString(),
-        // Retention hint: videos older than 90 days may be purged by a
-        // scheduled Cloud Function or a Storage lifecycle rule.
-        retainUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-      },
-    })
-  );
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const url = await new Promise<string>((resolve, reject) => {
+        const task = uploadBytesResumable(storageRef, blob, {
+          contentType: "video/webm",
+          customMetadata: {
+            gameId,
+            turn: String(turnNumber),
+            role,
+            uploadedAt: new Date().toISOString(),
+            // Retention hint: videos older than 90 days may be purged by a
+            // scheduled Cloud Function or a Storage lifecycle rule.
+            retainUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        });
 
-  // The blob is now in Storage regardless of what happens next.
-  // Retry getDownloadURL separately — if this fails the video is not lost;
-  // the caller can re-derive the URL from the known path if needed.
-  return withRetry(() => getDownloadURL(storageRef));
+        task.on(
+          "state_changed",
+          (snapshot) => {
+            if (onProgress) {
+              onProgress({
+                bytesTransferred: snapshot.bytesTransferred,
+                totalBytes: snapshot.totalBytes,
+                percent:
+                  snapshot.totalBytes > 0 ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100) : 0,
+              });
+            }
+          },
+          (error) => reject(error),
+          async () => {
+            try {
+              const downloadUrl = await getDownloadURL(task.snapshot.ref);
+              resolve(downloadUrl);
+            } catch (err) {
+              reject(err);
+            }
+          },
+        );
+      });
+
+      analytics.videoUploaded(Date.now() - startTime, blob.size);
+      return url;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      // Exponential backoff: 1s, 2s
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+    }
+  }
+
+  // Unreachable, but satisfies TypeScript
+  throw new Error("Upload failed after retries");
 }

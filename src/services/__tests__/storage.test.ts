@@ -1,23 +1,47 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ── mock firebase/storage ──────────────────── */
-const { mockRef, mockUploadBytes, mockGetDownloadURL } = vi.hoisted(() => ({
+
+// Create a mock upload task that simulates uploadBytesResumable behavior
+function createMockTask(_downloadUrl: string) {
+  const task = {
+    snapshot: { ref: "mock-ref" },
+    on: vi.fn((_event: string, _progress: unknown, _error: unknown, complete: () => void) => {
+      // Immediately call complete
+      complete();
+    }),
+  };
+  return task;
+}
+
+const { mockRef, mockUploadBytesResumable, mockGetDownloadURL } = vi.hoisted(() => ({
   mockRef: vi.fn((_storage: unknown, path: string) => path),
-  mockUploadBytes: vi.fn().mockResolvedValue({}),
+  mockUploadBytesResumable: vi.fn(),
   mockGetDownloadURL: vi.fn().mockResolvedValue("https://cdn.example.com/video.webm"),
 }));
 
 vi.mock("firebase/storage", () => ({
   ref: mockRef,
-  uploadBytes: mockUploadBytes,
+  uploadBytesResumable: mockUploadBytesResumable,
   getDownloadURL: mockGetDownloadURL,
 }));
 
 vi.mock("../../firebase");
 
+vi.mock("../analytics", () => ({
+  trackEvent: vi.fn(),
+  analytics: {
+    videoUploaded: vi.fn(),
+  },
+}));
+
 import { uploadVideo } from "../storage";
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Default: mock task that completes immediately
+  mockUploadBytesResumable.mockImplementation(() => createMockTask("https://cdn.example.com/video.webm"));
+});
 
 /* ── Tests ──────────────────────────────────── */
 
@@ -27,14 +51,11 @@ describe("storage service", () => {
       const blob = new Blob(["video"], { type: "video/webm" });
       const url = await uploadVideo("game1", 3, "set", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(
-        expect.anything(),
-        "games/game1/turn-3/set.webm"
-      );
-      expect(mockUploadBytes).toHaveBeenCalledWith(
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-3/set.webm");
+      expect(mockUploadBytesResumable).toHaveBeenCalledWith(
         "games/game1/turn-3/set.webm",
         blob,
-        expect.objectContaining({ contentType: "video/webm" })
+        expect.objectContaining({ contentType: "video/webm" }),
       );
       expect(url).toBe("https://cdn.example.com/video.webm");
     });
@@ -43,10 +64,120 @@ describe("storage service", () => {
       const blob = new Blob(["video"], { type: "video/webm" });
       await uploadVideo("game1", 2, "match", blob);
 
-      const metadata = mockUploadBytes.mock.calls[0][2];
+      const metadata = mockUploadBytesResumable.mock.calls[0][2];
       expect(metadata.customMetadata.gameId).toBe("game1");
       expect(metadata.customMetadata.turn).toBe("2");
       expect(metadata.customMetadata.role).toBe("match");
+    });
+
+    it("calls onProgress callback during upload", async () => {
+      const progressFn = vi.fn();
+      // Mock task that reports progress before completing
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn(
+          (
+            _event: string,
+            onProgress: (s: { bytesTransferred: number; totalBytes: number }) => void,
+            _error: unknown,
+            complete: () => void,
+          ) => {
+            onProgress({ bytesTransferred: 50, totalBytes: 100 });
+            onProgress({ bytesTransferred: 100, totalBytes: 100 });
+            complete();
+          },
+        ),
+      }));
+
+      const blob = new Blob(["video"], { type: "video/webm" });
+      await uploadVideo("game1", 1, "set", blob, progressFn);
+
+      expect(progressFn).toHaveBeenCalledWith({ bytesTransferred: 50, totalBytes: 100, percent: 50 });
+      expect(progressFn).toHaveBeenCalledWith({ bytesTransferred: 100, totalBytes: 100, percent: 100 });
+    });
+
+    it("retries on failure up to maxRetries", async () => {
+      let callCount = 0;
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn((_event: string, _progress: unknown, onError: (err: Error) => void, complete: () => void) => {
+          callCount++;
+          if (callCount < 3) {
+            onError(new Error("Network error"));
+          } else {
+            complete();
+          }
+        }),
+      }));
+
+      const blob = new Blob(["video"], { type: "video/webm" });
+      const url = await uploadVideo("game1", 1, "set", blob, undefined, 2);
+
+      expect(url).toBe("https://cdn.example.com/video.webm");
+      expect(callCount).toBe(3);
+    });
+
+    it("reports 0 percent when totalBytes is 0", async () => {
+      const progressFn = vi.fn();
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn(
+          (
+            _event: string,
+            onProgress: (s: { bytesTransferred: number; totalBytes: number }) => void,
+            _error: unknown,
+            complete: () => void,
+          ) => {
+            onProgress({ bytesTransferred: 0, totalBytes: 0 });
+            complete();
+          },
+        ),
+      }));
+
+      const blob = new Blob(["video"], { type: "video/webm" });
+      await uploadVideo("game1", 1, "set", blob, progressFn);
+
+      expect(progressFn).toHaveBeenCalledWith({ bytesTransferred: 0, totalBytes: 0, percent: 0 });
+    });
+
+    it("skips progress callback when not provided", async () => {
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn(
+          (
+            _event: string,
+            onProgress: (s: { bytesTransferred: number; totalBytes: number }) => void,
+            _error: unknown,
+            complete: () => void,
+          ) => {
+            // Trigger the progress handler — it should not throw when no callback
+            onProgress({ bytesTransferred: 50, totalBytes: 100 });
+            complete();
+          },
+        ),
+      }));
+
+      const blob = new Blob(["video"], { type: "video/webm" });
+      // No progress callback passed
+      await expect(uploadVideo("game1", 1, "set", blob)).resolves.toBe("https://cdn.example.com/video.webm");
+    });
+
+    it("rejects when getDownloadURL fails after upload completes", async () => {
+      mockGetDownloadURL.mockRejectedValueOnce(new Error("URL fetch failed"));
+      const blob = new Blob(["video"], { type: "video/webm" });
+      await expect(uploadVideo("game1", 1, "set", blob, undefined, 0)).rejects.toThrow("URL fetch failed");
+    });
+
+    it("throws after exhausting retries", async () => {
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn((_event: string, _progress: unknown, onError: (err: Error) => void) => {
+          onError(new Error("Persistent failure"));
+        }),
+      }));
+
+      const blob = new Blob(["video"], { type: "video/webm" });
+      await expect(uploadVideo("game1", 1, "set", blob, undefined, 0)).rejects.toThrow("Persistent failure");
     });
   });
 });

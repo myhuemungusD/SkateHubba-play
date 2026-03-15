@@ -19,13 +19,7 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
-import {
-  getUserProfile,
-  isUsernameAvailable,
-  createProfile,
-  getUidByUsername,
-  deleteUserData,
-} from "../users";
+import { getUserProfile, isUsernameAvailable, createProfile, getUidByUsername, deleteUserData } from "../users";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -115,9 +109,7 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      await expect(createProfile("u1", "a@b.com", "sk8r", "regular")).rejects.toThrow(
-        "Username is already taken"
-      );
+      await expect(createProfile("u1", "a@b.com", "sk8r", "regular")).rejects.toThrow("Username is already taken");
     });
   });
 

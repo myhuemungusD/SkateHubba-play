@@ -11,6 +11,7 @@ This app brings that format to mobile, async. You set your trick whenever you wa
 ## Player Setup
 
 **Username:**
+
 - 3–20 characters, lowercase letters, numbers, and underscores only (`[a-z0-9_]+`)
 - Normalized to lowercase at the service boundary (input is case-insensitive)
 - Permanently reserved — usernames cannot be changed or deleted after creation
@@ -38,6 +39,7 @@ The current setter must:
 3. Submit
 
 On submit (`setTrick`):
+
 - The game transitions to `phase: "matching"`
 - `currentTurn` switches to the matcher (the other player)
 - A fresh 24-hour deadline starts for the matcher
@@ -53,10 +55,10 @@ The matcher must:
 
 On submit (`submitMatchResult`):
 
-| Result | Letter assigned | Next setter |
-|--------|----------------|-------------|
-| Landed | None | Matcher becomes the new setter (roles swap) |
-| Missed | Matcher earns one letter | Setter keeps setting |
+| Result | Letter assigned          | Next setter                                 |
+| ------ | ------------------------ | ------------------------------------------- |
+| Landed | None                     | Matcher becomes the new setter (roles swap) |
+| Missed | Matcher earns one letter | Setter keeps setting                        |
 
 The `turnNumber` increments after every completed trick round (one full set → match cycle).
 

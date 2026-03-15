@@ -33,13 +33,13 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Available Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start Vite dev server at `localhost:5173` with HMR |
-| `npm run build` | TypeScript check + production build → `dist/` |
-| `npm run preview` | Serve the production build locally |
-| `npm test` | Run the full test suite once (CI mode) |
-| `npm run test:watch` | Run tests in watch mode while editing |
+| Command              | Description                                        |
+| -------------------- | -------------------------------------------------- |
+| `npm run dev`        | Start Vite dev server at `localhost:5173` with HMR |
+| `npm run build`      | TypeScript check + production build → `dist/`      |
+| `npm run preview`    | Serve the production build locally                 |
+| `npm test`           | Run the full test suite once (CI mode)             |
+| `npm run test:watch` | Run tests in watch mode while editing              |
 
 ---
 
@@ -84,12 +84,12 @@ firebase emulators:start
 
 Default ports:
 
-| Service | Port |
-|---------|------|
+| Service        | Port |
+| -------------- | ---- |
 | Authentication | 9099 |
-| Firestore | 8080 |
-| Storage | 9199 |
-| Emulator UI | 4000 |
+| Firestore      | 8080 |
+| Storage        | 9199 |
+| Emulator UI    | 4000 |
 
 ### Connect the app to the emulators
 

@@ -2,11 +2,11 @@
 
 ## Architecture
 
-| Concern | Service |
-|---------|---------|
-| Code hosting | Vercel (auto-deploys from GitHub) |
+| Concern                   | Service                                     |
+| ------------------------- | ------------------------------------------- |
+| Code hosting              | Vercel (auto-deploys from GitHub)           |
 | Auth + Database + Storage | Firebase (manual rules deployment required) |
-| CI gate | GitHub Actions (type check → test → build) |
+| CI gate                   | GitHub Actions (type check → test → build)  |
 
 ---
 
@@ -164,14 +164,14 @@ Keep rules changes in small, focused commits so reverting is straightforward.
 
 ## Firebase Free Tier Limits (Spark plan)
 
-| Resource | Free limit |
-|----------|-----------|
-| Firestore reads | 50,000 / day |
-| Firestore writes | 20,000 / day |
-| Firestore deletes | 20,000 / day |
-| Storage stored | 5 GB |
-| Storage downloaded | 1 GB / day |
-| Authentication | Unlimited |
+| Resource           | Free limit   |
+| ------------------ | ------------ |
+| Firestore reads    | 50,000 / day |
+| Firestore writes   | 20,000 / day |
+| Firestore deletes  | 20,000 / day |
+| Storage stored     | 5 GB         |
+| Storage downloaded | 1 GB / day   |
+| Authentication     | Unlimited    |
 
 If you approach these limits, upgrade to the Blaze (pay-as-you-go) plan. Blaze has no fixed free tier but charges only for usage above the same thresholds.
 
@@ -196,6 +196,7 @@ Run `npm test` locally. All 45+ tests must pass before CI will approve the build
 ### Firestore `permission-denied` error in production
 
 Possible causes:
+
 - Rules have not been deployed after a recent change: run `firebase deploy --only firestore:rules`
 - The write violates a rule constraint: use the Rules Playground in the Firebase Console to simulate the write and check which rule is failing
 - Wrong Firebase project: verify `firebase use` points to the correct project

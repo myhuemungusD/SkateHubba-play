@@ -99,13 +99,13 @@ Service helper functions (`requireDb()`, `requireAuth()`, `requireStorage()`) th
 
 All Firebase SDK calls live in `src/services/`. Components and hooks import from services — never from the Firebase SDK directly. This keeps Firebase logic testable (services are easily mocked) and keeps `App.tsx` readable.
 
-| File | Responsibility |
-|------|---------------|
-| `src/services/auth.ts` | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
-| `src/services/users.ts` | User profile CRUD, atomic username reservation |
-| `src/services/games.ts` | Game creation, turn actions, real-time subscriptions |
-| `src/services/storage.ts` | Video upload to Firebase Storage |
-| `src/hooks/useAuth.ts` | React hook that wraps `onAuthChange` + profile fetch |
+| File                      | Responsibility                                                               |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| `src/services/auth.ts`    | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
+| `src/services/users.ts`   | User profile CRUD, atomic username reservation                               |
+| `src/services/games.ts`   | Game creation, turn actions, real-time subscriptions                         |
+| `src/services/storage.ts` | Video upload to Firebase Storage                                             |
+| `src/hooks/useAuth.ts`    | React hook that wraps `onAuthChange` + profile fetch                         |
 
 ### Why all write operations use transactions
 

@@ -7,11 +7,7 @@ import {
   persistentMultipleTabManager,
   type Firestore,
 } from "firebase/firestore";
-import {
-  getStorage,
-  connectStorageEmulator,
-  type FirebaseStorage,
-} from "firebase/storage";
+import { getStorage, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
@@ -42,7 +38,7 @@ if (firebaseReady) {
         tabManager: persistentMultipleTabManager(),
       }),
     },
-    "skatehubba"
+    "skatehubba",
   );
 
   auth = getAuth(app);
@@ -60,9 +56,7 @@ if (firebaseReady) {
   if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
     /* v8 ignore next 6 */
     initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(
-        import.meta.env.VITE_RECAPTCHA_SITE_KEY as string
-      ),
+      provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY as string),
       isTokenAutoRefreshEnabled: true,
     });
   } else if (!import.meta.env.DEV) {

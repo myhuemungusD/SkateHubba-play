@@ -1,10 +1,4 @@
-import {
-  doc,
-  getDoc,
-  runTransaction,
-  serverTimestamp,
-  type FieldValue,
-} from "firebase/firestore";
+import { doc, getDoc, runTransaction, serverTimestamp, type FieldValue } from "firebase/firestore";
 import { requireDb } from "../firebase";
 
 export interface UserProfile {
@@ -50,7 +44,7 @@ export async function createProfile(
   email: string,
   username: string,
   stance: string,
-  emailVerified = false
+  emailVerified = false,
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
 

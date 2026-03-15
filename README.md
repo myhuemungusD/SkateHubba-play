@@ -16,16 +16,16 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, TypeScript, Vite |
-| Styling | Tailwind CSS (dark theme, custom brand tokens) |
-| Auth | Firebase Authentication (email/password + Google OAuth) |
-| Database | Cloud Firestore (real-time, offline-capable) |
-| Storage | Firebase Storage (trick videos in WebM) |
-| Hosting | Vercel |
-| Testing | Vitest, @testing-library/react |
-| CI | GitHub Actions |
+| Layer    | Technology                                              |
+| -------- | ------------------------------------------------------- |
+| Frontend | React 18, TypeScript, Vite                              |
+| Styling  | Tailwind CSS (dark theme, custom brand tokens)          |
+| Auth     | Firebase Authentication (email/password + Google OAuth) |
+| Database | Cloud Firestore (real-time, offline-capable)            |
+| Storage  | Firebase Storage (trick videos in WebM)                 |
+| Hosting  | Vercel                                                  |
+| Testing  | Vitest, @testing-library/react                          |
+| CI       | GitHub Actions                                          |
 
 No custom backend. No serverless functions. The client talks directly to Firebase with security enforced by Firestore rules.
 
@@ -48,18 +48,18 @@ No custom backend. No serverless functions. The client talks directly to Firebas
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, emulators, dev workflow |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deploy to Vercel + Firebase |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, decisions |
-| [docs/DATABASE.md](docs/DATABASE.md) | Firestore schema and security rules |
-| [docs/API.md](docs/API.md) | Service layer function reference |
-| [docs/TESTING.md](docs/TESTING.md) | Test suite overview and how to run |
-| [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md) | Game rules and turn flow |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
-| [SECURITY.md](SECURITY.md) | Security policy and vulnerability reporting |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
+| Document                                         | Description                                 |
+| ------------------------------------------------ | ------------------------------------------- |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)       | Local setup, emulators, dev workflow        |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)         | Production deploy to Vercel + Firebase      |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)     | System design, data flow, decisions         |
+| [docs/DATABASE.md](docs/DATABASE.md)             | Firestore schema and security rules         |
+| [docs/API.md](docs/API.md)                       | Service layer function reference            |
+| [docs/TESTING.md](docs/TESTING.md)               | Test suite overview and how to run          |
+| [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md) | Game rules and turn flow                    |
+| [CONTRIBUTING.md](CONTRIBUTING.md)               | How to contribute                           |
+| [SECURITY.md](SECURITY.md)                       | Security policy and vulnerability reporting |
+| [CHANGELOG.md](CHANGELOG.md)                     | Version history                             |
 
 ---
 
