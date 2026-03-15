@@ -11,6 +11,7 @@ import { Timer } from "../components/Timer";
 import { VideoRecorder } from "../components/VideoRecorder";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
+  const [trickName, setTrickName] = useState("");
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -44,7 +45,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         if (blob) {
           videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob);
         }
-        await setTrick(game.id, "Trick", videoUrl);
+        await setTrick(game.id, trickName.trim() || "Trick", videoUrl);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to send trick");
         submittedRef.current = false;
@@ -52,7 +53,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         setSubmitting(false);
       }
     },
-    [game.id, game.turnNumber],
+    [game.id, game.turnNumber, trickName],
   );
 
   const handleSetterRecorded = useCallback(
@@ -151,6 +152,23 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               src={game.currentTrickVideoUrl}
               controls
               className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+            />
+          </div>
+        )}
+
+        {isSetter && (
+          <div className="mb-5">
+            <label htmlFor="trick-name" className="font-display text-sm tracking-wider text-[#888] block mb-2">
+              TRICK NAME
+            </label>
+            <input
+              id="trick-name"
+              type="text"
+              value={trickName}
+              onChange={(e) => setTrickName(e.target.value)}
+              placeholder="e.g. Kickflip, 360 Flip"
+              maxLength={60}
+              className="w-full px-4 py-3 rounded-xl bg-[#1A1A1A] border border-border text-white font-body text-base placeholder:text-[#555] focus:outline-none focus:border-brand-orange"
             />
           </div>
         )}
