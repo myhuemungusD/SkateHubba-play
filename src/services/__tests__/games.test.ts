@@ -205,6 +205,17 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
       await expect(setTrick("g1", "Kickflip", null)).rejects.toThrow("Game not found");
     });
+
+    it("throws when game document is malformed (missing required fields)", async () => {
+      // toGameDoc validates player1Uid, player2Uid, and status are strings
+      const malformedSnap = {
+        exists: () => true,
+        id: "bad-doc",
+        data: () => ({ phase: "setting" }), // missing player1Uid, player2Uid, status
+      };
+      mockTxGet.mockResolvedValueOnce(malformedSnap);
+      await expect(setTrick("bad-doc", "Kickflip", null)).rejects.toThrow("Malformed game document: bad-doc");
+    });
   });
 
   describe("submitMatchResult", () => {
