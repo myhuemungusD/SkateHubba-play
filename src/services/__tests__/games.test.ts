@@ -112,6 +112,14 @@ describe("games service", () => {
       expect(docData.currentSetter).toBe("p1");
     });
 
+    it("throws when called again within the cooldown period", async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: "game1" });
+      await createGame("p1", "alice", "p2", "bob");
+
+      // Second call without resetting — should hit rate limit
+      await expect(createGame("p1", "alice", "p2", "bob")).rejects.toThrow("Please wait before creating another game");
+    });
+
     it("sets initial scores, turn, and timestamps", async () => {
       mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob");
