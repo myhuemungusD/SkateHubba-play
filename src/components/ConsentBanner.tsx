@@ -21,7 +21,7 @@ export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") 
 
   return (
     <div
-      role="dialog"
+      role="region"
       aria-label="Cookie and analytics notice"
       className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-safe-bottom"
     >

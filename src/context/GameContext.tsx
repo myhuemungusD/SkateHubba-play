@@ -107,9 +107,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
           setScreen("auth");
         }
       } else {
+        const userMessage = err instanceof Error ? err.message : "Google sign-in failed";
         logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
         captureException(err, { extra: { context: "handleGoogleSignIn", code } });
-        setGoogleError(parseFirebaseError(err));
+        setGoogleError(userMessage);
         if (screen !== "auth") {
           setAuthMode("signin");
           setScreen("auth");

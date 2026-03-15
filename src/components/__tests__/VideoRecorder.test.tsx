@@ -32,7 +32,7 @@ describe("VideoRecorder", () => {
   it("renders idle state with open camera button", () => {
     render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
     expect(screen.getByText(/Open Camera/)).toBeInTheDocument();
-    expect(screen.getByText("Camera preview")).toBeInTheDocument();
+    expect(screen.getByText("Tap to open camera")).toBeInTheDocument();
   });
 
   it("opens camera on button click and shows preview state", async () => {
