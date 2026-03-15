@@ -282,11 +282,31 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Set your trick")).toBeInTheDocument();
+      expect(screen.getByText("Name your trick")).toBeInTheDocument();
     });
 
+    // Trick name input is shown with hint; recorder is hidden until name is entered
+    const trickInput = screen.getByLabelText("TRICK NAME");
+    expect(trickInput).toBeInTheDocument();
+    expect(trickInput).toBeEnabled();
+    expect(screen.getByText("Name your trick to start recording")).toBeInTheDocument();
+
+    // Type a trick name to reveal the recorder
+    await userEvent.type(trickInput, "Kickflip");
+
+    // Phase banner updates to show the trick name
+    expect(screen.getByText("Set your Kickflip")).toBeInTheDocument();
+
+    // Input remains editable until recording finishes
+    expect(trickInput).toBeEnabled();
+
+    // Hint disappears once recorder is revealed
+    expect(screen.queryByText("Name your trick to start recording")).not.toBeInTheDocument();
+
     // Camera auto-opens for setter, so record button should appear in preview state
-    expect(screen.getByRole("button", { name: /Record — Land Your Trick/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Record — Land Your Trick/ })).toBeInTheDocument();
+    });
   });
 
   it("setter auto-submits trick after recording", async () => {
@@ -298,11 +318,11 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Set your trick")).toBeInTheDocument();
+      expect(screen.getByText("Name your trick")).toBeInTheDocument();
     });
 
     // Verify the phase banner shows correct text for setter
-    expect(screen.getByText("Set your trick")).toBeInTheDocument();
+    expect(screen.getByText("Name your trick")).toBeInTheDocument();
   });
 
   /* ── 7. Gameplay — Waiting on opponent ────── */
@@ -957,7 +977,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Set your trick")).toBeInTheDocument();
+      expect(screen.getByText("Name your trick")).toBeInTheDocument();
     });
 
     // Re-setup lobby for return
@@ -1025,7 +1045,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Set your trick")).toBeInTheDocument();
+      expect(screen.getByText("Name your trick")).toBeInTheDocument();
     });
 
     // Simulate realtime update: game completed
@@ -1463,6 +1483,12 @@ describe("Smoke Test: Game E2E", () => {
 
     await userEvent.click(screen.getByText(/vs @rival/));
 
+    // Type a trick name to reveal the recorder
+    await waitFor(() => {
+      expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
+    });
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+
     // Wait for camera to open and VideoRecorder to reach "preview" state
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
@@ -1477,10 +1503,47 @@ describe("Smoke Test: Game E2E", () => {
     });
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
-    // setTrick should have been called automatically
+    // setTrick should have been called with the custom trick name
     await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Trick", null);
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Kickflip", null);
     });
+
+    // Input locks after recording completes
+    expect(screen.getByLabelText("TRICK NAME")).toBeDisabled();
+  });
+
+  /* ── 54b. Recorder stays mounted if trick name would be cleared ── */
+
+  it("trick name input locks after recording and recorder stays mounted", async () => {
+    const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
+    mockSetTrick.mockResolvedValueOnce(undefined);
+    renderLobby([game]);
+    withGameSub(game);
+
+    await userEvent.click(screen.getByText(/vs @rival/));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
+    });
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Hardflip");
+
+    // Recorder is revealed
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
+    });
+
+    // Record and stop
+    await userEvent.click(screen.getByRole("button", { name: /record/i }));
+    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
+    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+
+    await waitFor(() => {
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Hardflip", null);
+    });
+
+    // Input is disabled and recorder done state is visible (not unmounted)
+    expect(screen.getByLabelText("TRICK NAME")).toBeDisabled();
+    expect(screen.getByText(/Recorded/)).toBeInTheDocument();
   });
 
   /* ── 55. Setter auto-submit fails → retry button shown ── */
@@ -1494,6 +1557,12 @@ describe("Smoke Test: Game E2E", () => {
 
     await userEvent.click(screen.getByText(/vs @rival/));
 
+    // Type trick name to reveal recorder
+    await waitFor(() => {
+      expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
+    });
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "360 Flip");
+
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
     });
@@ -1504,7 +1573,7 @@ describe("Smoke Test: Game E2E", () => {
 
     // Confirms submitSetterTrick ran without upload (blob=null in demo mode)
     await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Trick", null);
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "360 Flip", null);
       expect(mockUploadVideo).not.toHaveBeenCalled();
     });
   });
@@ -1638,6 +1707,12 @@ describe("Smoke Test: Game E2E", () => {
 
     await userEvent.click(screen.getByText(/vs @rival/));
 
+    // Type trick name to reveal recorder
+    await waitFor(() => {
+      expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
+    });
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Heelflip");
+
     // Wait for camera to fail → preview
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
@@ -1649,7 +1724,7 @@ describe("Smoke Test: Game E2E", () => {
     // setTrick should still be called even without video (no blob in demo mode)
     await waitFor(() => {
       // Either error shows OR setTrick was called (no upload since blob=null in demo mode)
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Trick", null);
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Heelflip", null);
     });
   });
 });

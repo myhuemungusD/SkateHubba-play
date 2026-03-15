@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useId } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { GameDoc } from "../services/games";
 import { setTrick, submitMatchResult, forfeitExpiredTurn } from "../services/games";
 import { uploadVideo } from "../services/storage";
@@ -6,20 +6,21 @@ import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { Btn } from "../components/ui/Btn";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { Field } from "../components/ui/Field";
 import { LetterDisplay } from "../components/LetterDisplay";
 import { Timer } from "../components/Timer";
 import { VideoRecorder } from "../components/VideoRecorder";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
+  const [trickName, setTrickName] = useState("");
+  const trickNameRef = useRef(trickName);
+  trickNameRef.current = trickName;
+  const recorderRevealedRef = useRef(false);
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [forfeitChecked, setForfeitChecked] = useState(false);
-  const [trickName, setTrickName] = useState("");
-  const trickNameId = useId();
-  const trickNameRef = useRef(trickName);
-  trickNameRef.current = trickName;
 
   useEffect(() => {
     if (forfeitChecked || game.status !== "active") return;
@@ -36,6 +37,10 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
 
+  const trimmedTrickName = trickName.trim();
+  if (isSetter && trimmedTrickName) recorderRevealedRef.current = true;
+  const showRecorder = !isSetter || recorderRevealedRef.current;
+
   const submittedRef = useRef(false);
   const submitSetterTrick = useCallback(
     async (blob: Blob | null) => {
@@ -48,7 +53,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         if (blob) {
           videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob);
         }
-        await setTrick(game.id, trickNameRef.current || "Trick", videoUrl);
+        await setTrick(game.id, trickNameRef.current.trim() || "Trick", videoUrl);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to send trick");
         submittedRef.current = false;
@@ -143,28 +148,12 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             className={`font-display text-xl tracking-wider ${isSetter ? "text-brand-orange" : "text-brand-green"}`}
           >
             {isSetter
-              ? "Set your trick"
+              ? trimmedTrickName
+                ? `Set your ${trimmedTrickName}`
+                : "Name your trick"
               : `Match @${game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}'s ${game.currentTrickName || "trick"}`}
           </span>
         </div>
-
-        {isSetter && (
-          <div className="mb-5">
-            <label htmlFor={trickNameId} className="block font-display text-sm tracking-wider text-[#888] mb-1.5">
-              TRICK NAME
-            </label>
-            <input
-              id={trickNameId}
-              type="text"
-              value={trickName}
-              onChange={(e) => setTrickName(e.target.value)}
-              placeholder="e.g. Kickflip"
-              maxLength={100}
-              disabled={videoRecorded}
-              className="w-full bg-surface-alt border border-border rounded-xl px-4 py-3 font-body text-white placeholder:text-[#444] focus:outline-none focus:border-brand-orange disabled:opacity-50 transition-colors"
-            />
-          </div>
-        )}
 
         {isMatcher && game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) && (
           <div className="mb-5">
@@ -178,12 +167,27 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           </div>
         )}
 
-        <VideoRecorder
-          onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
-          label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
-          autoOpen={isSetter}
-          doneLabel={isSetter ? "Recorded — Sending..." : "Recorded"}
-        />
+        {isSetter && (
+          <Field
+            label="TRICK NAME"
+            value={trickName}
+            onChange={setTrickName}
+            placeholder="e.g. Kickflip, 360 Flip"
+            maxLength={60}
+            disabled={videoRecorded}
+            autoCapitalize="words"
+            note={!showRecorder ? "Name your trick to start recording" : undefined}
+          />
+        )}
+
+        {showRecorder && (
+          <VideoRecorder
+            onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
+            label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
+            autoOpen={isSetter}
+            doneLabel={isSetter ? "Recorded — Sending..." : "Recorded"}
+          />
+        )}
 
         <ErrorBanner message={error} onDismiss={() => setError("")} />
 

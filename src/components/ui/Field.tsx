@@ -11,6 +11,8 @@ export function Field({
   icon,
   autoComplete,
   autoFocus,
+  disabled,
+  autoCapitalize = "none",
 }: {
   label?: string;
   value: string;
@@ -22,8 +24,11 @@ export function Field({
   icon?: string;
   autoComplete?: string;
   autoFocus?: boolean;
+  disabled?: boolean;
+  autoCapitalize?: string;
 }) {
   const id = useId();
+  const noteId = note ? `${id}-note` : undefined;
   return (
     <div className="mb-4 w-full">
       {label && (
@@ -46,15 +51,22 @@ export function Field({
           maxLength={maxLength}
           autoComplete={autoComplete}
           autoFocus={autoFocus}
-          autoCapitalize="none"
+          disabled={disabled}
+          autoCapitalize={autoCapitalize}
           autoCorrect="off"
           spellCheck={false}
+          aria-describedby={noteId}
           className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
             focus:border-brand-orange transition-colors duration-200
+            disabled:opacity-40 disabled:cursor-not-allowed
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />
       </div>
-      {note && <span className="text-xs text-[#777] mt-1 block">{note}</span>}
+      {note && (
+        <span id={noteId} className="text-xs text-[#777] mt-1 block">
+          {note}
+        </span>
+      )}
     </div>
   );
 }
