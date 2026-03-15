@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("@sentry/react", () => ({
+vi.mock("../../lib/sentry", () => ({
   addBreadcrumb: vi.fn(),
 }));
 
-import * as Sentry from "@sentry/react";
+import { addBreadcrumb } from "../../lib/sentry";
 import { logger, metrics } from "../logger";
 
 beforeEach(() => {
@@ -17,7 +17,7 @@ describe("logger", () => {
       const spy = vi.spyOn(console, "debug").mockImplementation(() => {});
       logger.debug("test_debug", { key: "val" });
       expect(spy).toHaveBeenCalled();
-      expect(Sentry.addBreadcrumb).not.toHaveBeenCalled();
+      expect(addBreadcrumb).not.toHaveBeenCalled();
       spy.mockRestore();
     });
   });
@@ -27,7 +27,7 @@ describe("logger", () => {
       const spy = vi.spyOn(console, "info").mockImplementation(() => {});
       logger.info("test_info", { key: "val" });
       expect(spy).toHaveBeenCalled();
-      expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+      expect(addBreadcrumb).toHaveBeenCalledWith(
         expect.objectContaining({ category: "app", message: "test_info", level: "info", data: { key: "val" } }),
       );
       spy.mockRestore();
@@ -37,9 +37,7 @@ describe("logger", () => {
       const spy = vi.spyOn(console, "info").mockImplementation(() => {});
       logger.info("no_data");
       expect(spy).toHaveBeenCalled();
-      expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
-        expect.objectContaining({ message: "no_data", data: undefined }),
-      );
+      expect(addBreadcrumb).toHaveBeenCalledWith(expect.objectContaining({ message: "no_data", data: undefined }));
       spy.mockRestore();
     });
   });
@@ -49,9 +47,7 @@ describe("logger", () => {
       const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
       logger.warn("test_warn");
       expect(spy).toHaveBeenCalled();
-      expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
-        expect.objectContaining({ level: "warning", message: "test_warn" }),
-      );
+      expect(addBreadcrumb).toHaveBeenCalledWith(expect.objectContaining({ level: "warning", message: "test_warn" }));
       spy.mockRestore();
     });
   });
@@ -61,7 +57,7 @@ describe("logger", () => {
       const spy = vi.spyOn(console, "error").mockImplementation(() => {});
       logger.error("test_error", { code: 500 });
       expect(spy).toHaveBeenCalled();
-      expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+      expect(addBreadcrumb).toHaveBeenCalledWith(
         expect.objectContaining({ level: "error", message: "test_error", data: { code: 500 } }),
       );
       spy.mockRestore();
@@ -79,14 +75,14 @@ describe("metrics", () => {
 
   it("gameCreated", () => {
     metrics.gameCreated("g1", "u1");
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+    expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({ message: "metric.game_created", data: { gameId: "g1", challengerUid: "u1" } }),
     );
   });
 
   it("trickSet", () => {
     metrics.trickSet("g1", "kickflip", true);
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+    expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({
         message: "metric.trick_set",
         data: { gameId: "g1", trickName: "kickflip", hasVideo: true },
@@ -96,14 +92,14 @@ describe("metrics", () => {
 
   it("matchSubmitted", () => {
     metrics.matchSubmitted("g1", false);
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+    expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({ message: "metric.match_submitted", data: { gameId: "g1", landed: false } }),
     );
   });
 
   it("gameCompleted", () => {
     metrics.gameCompleted("g1", "u2", 5);
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+    expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({
         message: "metric.game_completed",
         data: { gameId: "g1", winnerUid: "u2", totalTurns: 5 },
@@ -113,14 +109,14 @@ describe("metrics", () => {
 
   it("gameForfeit", () => {
     metrics.gameForfeit("g1", "u2");
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+    expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({ message: "metric.game_forfeit", data: { gameId: "g1", winnerUid: "u2" } }),
     );
   });
 
   it("videoUploaded", () => {
     metrics.videoUploaded("g1", 1024, 3000);
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+    expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({
         message: "metric.video_uploaded",
         data: { gameId: "g1", sizeBytes: 1024, durationMs: 3000 },
@@ -130,21 +126,21 @@ describe("metrics", () => {
 
   it("signUp", () => {
     metrics.signUp("email", "u1");
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+    expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({ message: "metric.sign_up", data: { method: "email", uid: "u1" } }),
     );
   });
 
   it("signIn", () => {
     metrics.signIn("google", "u1");
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+    expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({ message: "metric.sign_in", data: { method: "google", uid: "u1" } }),
     );
   });
 
   it("accountDeleted", () => {
     metrics.accountDeleted("u1");
-    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+    expect(addBreadcrumb).toHaveBeenCalledWith(
       expect.objectContaining({ message: "metric.account_deleted", data: { uid: "u1" } }),
     );
   });

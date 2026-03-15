@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ErrorBoundary } from "../ErrorBoundary";
 
-vi.mock("@sentry/react", () => ({
+vi.mock("../../lib/sentry", () => ({
   captureException: vi.fn(),
 }));
 
@@ -54,7 +54,7 @@ describe("ErrorBoundary", () => {
   });
 
   it("reports error to Sentry via componentDidCatch", async () => {
-    const { captureException } = await import("@sentry/react");
+    const { captureException } = await import("../../lib/sentry");
     render(
       <ErrorBoundary>
         <ThrowingChild error={new Error("sentry test")} />
