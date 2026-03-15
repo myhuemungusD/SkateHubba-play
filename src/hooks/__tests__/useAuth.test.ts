@@ -131,11 +131,27 @@ describe("useAuth hook", () => {
     expect(mockGetUserProfile).not.toHaveBeenCalled();
   });
 
+  it("refreshProfile handles null profile (new user without profile)", async () => {
+    mockGetUserProfile.mockResolvedValueOnce({ uid: "u1", username: "sk8r" }).mockResolvedValueOnce(null);
+
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      authChangeCallback?.({ uid: "u1" });
+    });
+
+    await waitFor(() => expect(result.current.profile).toEqual({ uid: "u1", username: "sk8r" }));
+
+    await act(async () => {
+      await result.current.refreshProfile();
+    });
+
+    await waitFor(() => expect(result.current.profile).toBeNull());
+  });
+
   it("refreshProfile preserves existing profile on transient error", async () => {
     const profile = { uid: "u1", username: "sk8r" };
-    mockGetUserProfile
-      .mockResolvedValueOnce(profile)
-      .mockRejectedValueOnce(new Error("network error"));
+    mockGetUserProfile.mockResolvedValueOnce(profile).mockRejectedValueOnce(new Error("network error"));
 
     const { result } = renderHook(() => useAuth());
 

@@ -4,7 +4,7 @@ import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAc
 import { deleteUserData } from "../services/users";
 import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
-import { newGameShell, getErrorCode } from "../utils/helpers";
+import { newGameShell, getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import * as Sentry from "@sentry/react";
@@ -106,9 +106,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
           setScreen("auth");
         }
       } else {
-        logger.error("google_sign_in_error", { code, message: err instanceof Error ? err.message : String(err) });
+        logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
         Sentry.captureException(err, { extra: { context: "handleGoogleSignIn", code } });
-        setGoogleError(err instanceof Error ? err.message : "Google sign-in failed");
+        setGoogleError(parseFirebaseError(err));
         if (screen !== "auth") {
           setAuthMode("signin");
           setScreen("auth");
@@ -126,16 +126,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // Route based on auth state
   useEffect(() => {
-    if (loading) return;
+    if (loading) {
+      logger.debug("auth_router_waiting", { loading: true });
+      return;
+    }
     if (!user) {
+      logger.debug("auth_router_no_user", { target: "landing" });
       setScreen("landing");
       return;
     }
     if (!activeProfile) {
+      logger.debug("auth_router_no_profile", { uid: user.uid, target: "profile" });
       setScreen("profile");
       return;
     }
-    setScreen((prev) => (prev === "landing" || prev === "auth" || prev === "profile" ? "lobby" : prev));
+    setScreen((prev) => {
+      const next = prev === "landing" || prev === "auth" || prev === "profile" ? "lobby" : prev;
+      logger.debug("auth_router_resolved", { uid: user.uid, username: activeProfile.username, from: prev, to: next });
+      return next;
+    });
   }, [loading, user, activeProfile]);
 
   // Subscribe to games list
@@ -178,6 +187,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const handleDeleteAccount = useCallback(async () => {
     if (!activeProfile) return;
+    logger.info("delete_account_start", { uid: activeProfile.uid, username: activeProfile.username });
     // Delete Auth account first — if it fails (e.g. requires-recent-login),
     // Firestore data remains intact. This prevents orphaned Auth accounts
     // when Firestore cleanup succeeds but Auth deletion fails.
@@ -185,14 +195,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
       await deleteAccount();
     } catch (err) {
       const code = getErrorCode(err);
+      logger.error("delete_account_auth_failed", { uid: activeProfile.uid, code });
       if (code === "auth/requires-recent-login") {
         throw new Error("For security, please sign out and sign back in before deleting your account.", { cause: err });
       }
       throw err;
     }
+    logger.info("delete_account_auth_done", { uid: activeProfile.uid });
     // Auth account is gone — clean up Firestore (best effort; no auth token
     // issues since Firestore SDK caches credentials briefly after deletion).
     await deleteUserData(activeProfile.uid, activeProfile.username);
+    logger.info("delete_account_firestore_done", { uid: activeProfile.uid });
     metrics.accountDeleted(activeProfile.uid);
     setActiveProfile(null);
     setGames([]);

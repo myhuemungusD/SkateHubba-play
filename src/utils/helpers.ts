@@ -11,6 +11,22 @@ export function getErrorCode(err: unknown): string {
   }
   return "";
 }
+/**
+ * Extract a human-readable message from a Firebase Auth error (or any unknown error).
+ * Firebase errors may be plain objects with `code` + `message` fields rather than
+ * Error instances, which causes `String(err)` to produce `[object Object]`.
+ */
+export function parseFirebaseError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null) {
+    const obj = err as Record<string, unknown>;
+    if (typeof obj.message === "string" && obj.message) return obj.message;
+    if (typeof obj.code === "string" && obj.code) return obj.code;
+    return JSON.stringify(err);
+  }
+  return String(err);
+}
+
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export const LETTERS = ["S", "K", "A", "T", "E"];
 

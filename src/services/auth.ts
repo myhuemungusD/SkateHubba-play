@@ -15,7 +15,8 @@ import {
 } from "firebase/auth";
 import { auth, requireAuth } from "../firebase";
 import * as Sentry from "@sentry/react";
-import { getErrorCode } from "../utils/helpers";
+import { getErrorCode, parseFirebaseError } from "../utils/helpers";
+import { logger } from "./logger";
 
 export type AuthUser = User;
 
@@ -30,39 +31,61 @@ function getActionCodeSettings(): ActionCodeSettings {
 
 export function onAuthChange(cb: (user: User | null) => void) {
   if (!auth) {
+    logger.warn("auth_change_no_firebase", { reason: "auth instance is null" });
     cb(null);
     return () => {};
   }
-  return onAuthStateChanged(auth, cb);
+  return onAuthStateChanged(auth, (user) => {
+    logger.debug("auth_state_changed", {
+      uid: user?.uid ?? null,
+      email: user?.email ?? null,
+      emailVerified: user?.emailVerified ?? null,
+      providerId: user?.providerData?.[0]?.providerId ?? null,
+    });
+    cb(user);
+  });
 }
 
 export async function signUp(email: string, password: string): Promise<User> {
+  logger.info("sign_up_attempt", { email });
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
+  logger.info("sign_up_success", { uid: cred.user.uid, email: cred.user.email });
   // Fire-and-forget verification email — failure is non-blocking (user can
   // resend from the lobby banner) but we want visibility in Sentry.
   sendEmailVerification(cred.user, getActionCodeSettings()).catch((err) => {
+    logger.error("sign_up_verification_email_failed", { uid: cred.user.uid, error: getErrorCode(err) || String(err) });
     Sentry.captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
   });
   return cred.user;
 }
 
 export async function signIn(email: string, password: string): Promise<User> {
+  logger.info("sign_in_attempt", { email });
   const cred = await signInWithEmailAndPassword(requireAuth(), email, password);
+  logger.info("sign_in_success", { uid: cred.user.uid, emailVerified: cred.user.emailVerified });
   return cred.user;
 }
 
 export async function signOut(): Promise<void> {
+  logger.info("sign_out");
   await fbSignOut(requireAuth());
+  logger.info("sign_out_success");
 }
 
 export async function resetPassword(email: string): Promise<void> {
+  logger.info("password_reset_attempt", { email });
   await sendPasswordResetEmail(requireAuth(), email, getActionCodeSettings());
+  logger.info("password_reset_sent", { email });
 }
 
 export async function resendVerification(): Promise<void> {
   const user = requireAuth().currentUser;
   if (user) {
+    logger.info("resend_verification", { uid: user.uid });
     await sendEmailVerification(user, getActionCodeSettings());
+    logger.info("resend_verification_sent", { uid: user.uid });
+  } else {
+    logger.warn("resend_verification_no_user");
   }
 }
 
@@ -82,16 +105,20 @@ function makeGoogleProvider(): GoogleAuthProvider {
 export async function signInWithGoogle(): Promise<User | null> {
   const a = requireAuth();
   const provider = makeGoogleProvider();
+  logger.info("google_sign_in_popup_attempt");
   try {
     const cred = await signInWithPopup(a, provider);
+    logger.info("google_sign_in_popup_success", { uid: cred.user.uid, email: cred.user.email });
     return cred.user;
   } catch (err: unknown) {
     const code = getErrorCode(err);
     if (code === "auth/popup-blocked") {
+      logger.info("google_sign_in_popup_blocked_fallback_redirect");
       // Redirect flow: page navigates to Google; onAuthStateChanged resolves on return
       await signInWithRedirect(a, provider);
       return null;
     }
+    logger.error("google_sign_in_popup_error", { code, message: parseFirebaseError(err) });
     throw err;
   }
 }
@@ -106,7 +133,9 @@ export async function signInWithGoogle(): Promise<User | null> {
 export async function deleteAccount(): Promise<void> {
   const user = requireAuth().currentUser;
   if (!user) throw new Error("Not signed in");
+  logger.info("delete_account_attempt", { uid: user.uid });
   await deleteUser(user);
+  logger.info("delete_account_success", { uid: user.uid });
 }
 
 /**
@@ -114,11 +143,22 @@ export async function deleteAccount(): Promise<void> {
  * Safe to call when no redirect is in progress (returns null).
  */
 export async function resolveGoogleRedirect(): Promise<User | null> {
-  if (!auth) return null;
+  if (!auth) {
+    logger.warn("resolve_google_redirect_no_auth");
+    return null;
+  }
+  logger.debug("resolve_google_redirect_start");
   try {
     const result = await getRedirectResult(auth);
+    if (result?.user) {
+      logger.info("resolve_google_redirect_success", { uid: result.user.uid, email: result.user.email });
+    } else {
+      logger.debug("resolve_google_redirect_no_pending");
+    }
     return result?.user ?? null;
   } catch (err) {
+    const code = getErrorCode(err);
+    logger.error("resolve_google_redirect_error", { code, message: parseFirebaseError(err) });
     // Log redirect errors so they're visible in production — previously these
     // were silently swallowed, making Google-redirect failures impossible to debug.
     Sentry.captureException(err, { extra: { context: "resolveGoogleRedirect" } });
