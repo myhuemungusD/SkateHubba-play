@@ -1,218 +1,158 @@
-# SkateHubba™ S.K.A.T.E. Game — Deployable MVP
+# SkateHubba S.K.A.T.E.
 
-A clean, standalone async S.K.A.T.E. trick battle game. No Express backend, no PostgreSQL, no path alias issues. Just React + Vite + Firebase — ships in 15 minutes.
+An async multiplayer trick battle game for skateboarders. Challenge friends, set tricks on video, and see if they can match you — one letter at a time.
 
-## Architecture
-
-```
-React + Vite (SPA)          ←  Frontend
-Firebase Auth               ←  Email signup/signin/verify/reset
-Firestore                   ←  Users, usernames, games (real-time)
-Firebase Storage             ←  One-take trick videos
-Vercel                       ←  Hosting (skatehubba.com or subdomain)
-```
-
-Zero serverless functions. Zero custom API layer. The client talks directly to Firebase with Firestore security rules enforcing all access control.
-
-## What's Built
-
-**Complete game loop:**
-1. Sign up / sign in (email + password)
-2. Create profile (unique username + stance)
-3. Challenge an opponent by username
-4. Set a trick (name it, record one-take video, submit)
-5. Opponent matches (watches your video, records their attempt, self-judges)
-6. Missed trick = earn a letter (S → K → A → T → E)
-7. First to spell S.K.A.T.E. loses
-8. Rematch
-
-**Production features:**
-- Firebase Auth with email verification
-- Atomic username reservation (Firestore transaction)
-- Real-time game updates (both players see changes instantly)
-- 24-hour turn timer
-- One-take video recording (MediaRecorder API)
-- Video upload to Firebase Storage
-- Firestore security rules (players can only modify their own games)
-- Offline persistence (Firestore local cache)
-- "Coming Soon" roadmap section
+**Live:** [skatehubba.com](https://skatehubba.com)
 
 ---
 
-## Deploy in 15 Minutes
+## What is S.K.A.T.E.?
 
-### Step 1: Firebase Setup (5 min)
+S.K.A.T.E. is the skateboarding version of HORSE. One player sets a trick; the other must land it. Miss and you earn a letter — S, then K, then A, then T, then E. First to spell it out loses.
 
-1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Open your existing **Skatehubba** project (or create one)
-3. Enable these services:
+This app brings that to your phone, async. Set your trick whenever, opponent matches whenever. No need to be at the same spot or online at the same time.
 
-**Authentication:**
-- Go to Authentication → Sign-in method
-- Enable **Email/Password**
-- Go to Settings → Authorized domains
-- Add: `skatehubba.com`, `www.skatehubba.com`, and your Vercel preview domain
+---
 
-**Firestore Database:**
-- Go to Firestore Database
-- Create database (production mode)
-- Start in **nam5 (us-central)** or your preferred region
+## Tech Stack
 
-**Storage:**
-- Go to Storage
-- Set up (production mode)
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 18, TypeScript, Vite |
+| Styling | Tailwind CSS (dark theme, custom brand tokens) |
+| Auth | Firebase Authentication (email/password + Google OAuth) |
+| Database | Cloud Firestore (real-time, offline-capable) |
+| Storage | Firebase Storage (trick videos in WebM) |
+| Hosting | Vercel |
+| Testing | Vitest, @testing-library/react |
+| CI | GitHub Actions |
 
-4. Get your Firebase config:
-- Go to Project Settings → General → Your Apps
-- If no web app exists, click "Add app" → Web → register it
-- Copy the `firebaseConfig` object values
+No custom backend. No serverless functions. The client talks directly to Firebase with security enforced by Firestore rules.
 
-### Step 2: Create New GitHub Repo (2 min)
+---
+
+## Features
+
+- **Async gameplay** — players take turns on their own schedule
+- **Video tricks** — record one-take WebM videos in-browser
+- **Real-time updates** — both players see game state the moment it changes
+- **24-hour turn timer** — games don't stall; expired turns auto-forfeit
+- **Google OAuth** — popup sign-in with redirect fallback for mobile/Safari
+- **Email verification** — required before play; resend from the app
+- **Atomic username reservation** — no two players share a handle (Firestore transaction)
+- **Offline support** — Firestore local cache lets you read games without internet
+- **PWA-ready** — installable on iOS and Android
+- **Security rules** — all game logic validated server-side; client can't cheat scores
+
+---
+
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Local setup, emulators, dev workflow |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production deploy to Vercel + Firebase |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, decisions |
+| [docs/DATABASE.md](docs/DATABASE.md) | Firestore schema and security rules |
+| [docs/API.md](docs/API.md) | Service layer function reference |
+| [docs/TESTING.md](docs/TESTING.md) | Test suite overview and how to run |
+| [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md) | Game rules and turn flow |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | How to contribute |
+| [SECURITY.md](SECURITY.md) | Security policy and vulnerability reporting |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+
+---
+
+## Quick Start
 
 ```bash
-# Extract the project
-tar xzf skatehubba-play.tar.gz -C skatehubba-play
+git clone https://github.com/myhuemungusD/skatehubba-play.git
 cd skatehubba-play
-
-# Initialize git
-git init
-git add -A
-git commit -m "feat: skatehubba async s.k.a.t.e. game mvp"
-
-# Create repo on GitHub (name it skatehubba-play or whatever you want)
-# Then push:
-git remote add origin https://github.com/myhuemungusD/skatehubba-play.git
-git branch -M main
-git push -u origin main
-```
-
-### Step 3: Deploy to Vercel (5 min)
-
-1. Go to [vercel.com/new](https://vercel.com/new)
-2. Import the `skatehubba-play` repo
-3. Framework: **Vite** (auto-detected)
-4. Add environment variables — paste your Firebase config values:
-
-```
-VITE_FIREBASE_API_KEY=AIzaSy...
-VITE_FIREBASE_AUTH_DOMAIN=sk8hub-d7806.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=sk8hub-d7806
-VITE_FIREBASE_STORAGE_BUCKET=sk8hub-d7806.firebasestorage.app
-VITE_FIREBASE_MESSAGING_SENDER_ID=123456789
-VITE_FIREBASE_APP_ID=1:123456789:web:abc123
-```
-
-5. Click **Deploy**
-
-### Step 4: Deploy Firestore Rules (3 min)
-
-```bash
-# Install Firebase CLI if you don't have it
-npm install -g firebase-tools
-
-# Login
-firebase login
-
-# Set your project
-firebase use sk8hub-d7806
-
-# Deploy security rules
-firebase deploy --only firestore:rules,storage
-```
-
-### Step 5: Assign Domain (optional)
-
-If you want this on `skate.skatehubba.com` or a subdomain:
-- Vercel → Project Settings → Domains → Add `skate.skatehubba.com`
-- Add the CNAME record in your DNS
-- Add the domain to Firebase Auth → Authorized domains
-
----
-
-## File Structure
-
-```
-skatehubba-play/
-├── index.html              # Entry point
-├── package.json            # Dependencies (React, Firebase, Vite)
-├── vercel.json             # Vercel SPA routing
-├── firebase.json           # Firebase rules config
-├── firestore.rules         # Firestore security rules
-├── storage.rules           # Storage security rules
-├── tailwind.config.js      # SkateHubba brand tokens
-├── vite.config.ts
-├── tsconfig.json
-├── .env.example            # Environment variable template
-└── src/
-    ├── main.tsx            # React entry
-    ├── App.tsx             # All screens + state machine
-    ├── firebase.ts         # Firebase init
-    ├── index.css           # Tailwind + animations
-    ├── vite-env.d.ts       # Type declarations
-    ├── hooks/
-    │   └── useAuth.ts      # Auth state management
-    └── services/
-        ├── auth.ts         # Signup/signin/reset/verify
-        ├── users.ts        # Profile + username reservation
-        ├── games.ts        # Game CRUD + real-time subscriptions
-        └── storage.ts      # Video upload
-```
-
-## Firestore Collections
-
-```
-users/{uid}
-  ├── uid: string
-  ├── email: string
-  ├── username: string
-  ├── stance: string
-  ├── createdAt: timestamp
-  └── emailVerified: boolean
-
-usernames/{username}
-  ├── uid: string
-  └── reservedAt: timestamp
-
-games/{gameId}
-  ├── player1Uid: string
-  ├── player2Uid: string
-  ├── player1Username: string
-  ├── player2Username: string
-  ├── p1Letters: number (0-5)
-  ├── p2Letters: number (0-5)
-  ├── status: "active" | "complete" | "forfeit"
-  ├── currentTurn: string (uid)
-  ├── phase: "setting" | "matching"
-  ├── currentSetter: string (uid)
-  ├── currentTrickName: string | null
-  ├── currentTrickVideoUrl: string | null
-  ├── matchVideoUrl: string | null
-  ├── turnDeadline: timestamp
-  ├── turnNumber: number
-  ├── winner: string | null (uid)
-  ├── createdAt: timestamp
-  └── updatedAt: timestamp
-```
-
-## What's NOT in this MVP (by design)
-
-- No Express backend
-- No PostgreSQL / Neon / Drizzle
-- No path aliases (@shared/*)
-- No serverless functions
-- No payments / subscriptions
-- No spot map
-- No AR / streaming / bounties / shop
-
-These stay as "Coming Soon" placeholders in the lobby.
-
-## Local Development
-
-```bash
 npm install
-cp .env.example .env
-# Fill in your Firebase config in .env
+cp .env.example .env.local
+# Fill in your Firebase config values in .env.local
 npm run dev
 ```
 
-Opens at http://localhost:5173
+Open [http://localhost:5173](http://localhost:5173).
+
+For full setup instructions including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+---
+
+## Project Structure
+
+```
+skatehubba-play/
+├── src/
+│   ├── App.tsx              # All screens + state machine (~1700 lines)
+│   ├── firebase.ts          # Firebase initialization
+│   ├── main.tsx             # React entry point
+│   ├── index.css            # Tailwind + custom animations
+│   ├── hooks/
+│   │   └── useAuth.ts       # Auth state + profile hook
+│   ├── services/
+│   │   ├── auth.ts          # Sign up, sign in, Google OAuth, password reset
+│   │   ├── users.ts         # Profiles + atomic username reservation
+│   │   ├── games.ts         # Game CRUD + real-time subscriptions
+│   │   └── storage.ts       # Video upload to Firebase Storage
+│   └── __tests__/
+│       └── smoke-e2e.test.tsx  # 45+ end-to-end smoke tests
+├── firestore.rules          # Firestore security rules
+├── storage.rules            # Storage security rules
+├── vercel.json              # Vercel SPA config
+├── firebase.json            # Firebase CLI config
+├── .env.example             # Environment variable template
+└── docs/                    # Full documentation suite
+```
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env.local` and fill in values from your Firebase project:
+
+```
+VITE_FIREBASE_API_KEY=
+VITE_FIREBASE_AUTH_DOMAIN=
+VITE_FIREBASE_PROJECT_ID=
+VITE_FIREBASE_STORAGE_BUCKET=
+VITE_FIREBASE_MESSAGING_SENDER_ID=
+VITE_FIREBASE_APP_ID=
+VITE_FIREBASE_MEASUREMENT_ID=   # optional, for Analytics
+
+VITE_USE_EMULATORS=true         # optional, enable local emulators
+VITE_APP_URL=https://...        # optional, for email action link redirects
+```
+
+---
+
+## Scripts
+
+```bash
+npm run dev        # Start dev server at localhost:5173
+npm run build      # Type check + production build → dist/
+npm run preview    # Preview the production build locally
+npm test           # Run test suite once
+npm run test:watch # Run tests in watch mode
+```
+
+---
+
+## Deployment
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
+
+1. Create a Firebase project with Auth, Firestore, and Storage enabled
+2. Deploy the app to Vercel — import the repo, add env vars, deploy
+3. Deploy security rules: `firebase deploy --only firestore:rules,storage`
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## License
+
+MIT
