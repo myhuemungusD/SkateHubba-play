@@ -47,6 +47,13 @@ describe("auth service", () => {
         handleCodeInApp: false,
       });
     });
+
+    it("swallows verification email errors silently", async () => {
+      mockSendVerify.mockRejectedValueOnce(new Error("email quota exceeded"));
+      // signUp should still succeed — the email is fire-and-forget
+      const user = await signUp("a@b.com", "pass123");
+      expect(user).toEqual(mockUserCredential.user);
+    });
   });
 
   describe("signIn", () => {

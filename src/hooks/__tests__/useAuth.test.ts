@@ -99,4 +99,57 @@ describe("useAuth hook", () => {
 
     await waitFor(() => expect(result.current.profile).toEqual(profile2));
   });
+
+  it("sets profile to null when profile fetch fails for a new user", async () => {
+    mockGetUserProfile.mockRejectedValueOnce(new Error("not found"));
+
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      authChangeCallback?.({ uid: "u1" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.profile).toBeNull();
+      expect(result.current.user).toEqual({ uid: "u1" });
+    });
+  });
+
+  it("refreshProfile does nothing when there is no user", async () => {
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      authChangeCallback?.(null);
+    });
+
+    await act(async () => {
+      await result.current.refreshProfile();
+    });
+
+    expect(result.current.profile).toBeNull();
+    expect(mockGetUserProfile).not.toHaveBeenCalled();
+  });
+
+  it("refreshProfile preserves existing profile on transient error", async () => {
+    const profile = { uid: "u1", username: "sk8r" };
+    mockGetUserProfile
+      .mockResolvedValueOnce(profile)
+      .mockRejectedValueOnce(new Error("network error"));
+
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      authChangeCallback?.({ uid: "u1" });
+    });
+
+    await waitFor(() => expect(result.current.profile).toEqual(profile));
+
+    await act(async () => {
+      await result.current.refreshProfile();
+    });
+
+    // Profile should still be the original value — not cleared
+    expect(result.current.profile).toEqual(profile);
+  });
 });
