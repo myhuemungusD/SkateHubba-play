@@ -11,7 +11,6 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: "hidden",
     rollupOptions: {
-      maxParallelFileOps: 1,
       output: {
         manualChunks: {
           firebase: ["firebase/app", "firebase/auth", "firebase/firestore", "firebase/storage", "firebase/app-check"],
