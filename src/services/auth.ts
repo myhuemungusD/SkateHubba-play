@@ -15,7 +15,7 @@ import {
 } from "firebase/auth";
 import { auth, requireAuth } from "../firebase";
 import * as Sentry from "@sentry/react";
-import { getErrorCode } from "../utils/helpers";
+import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
 
 export type AuthUser = User;
@@ -118,7 +118,7 @@ export async function signInWithGoogle(): Promise<User | null> {
       await signInWithRedirect(a, provider);
       return null;
     }
-    logger.error("google_sign_in_popup_error", { code, message: err instanceof Error ? err.message : String(err) });
+    logger.error("google_sign_in_popup_error", { code, message: parseFirebaseError(err) });
     throw err;
   }
 }
@@ -158,7 +158,7 @@ export async function resolveGoogleRedirect(): Promise<User | null> {
     return result?.user ?? null;
   } catch (err) {
     const code = getErrorCode(err);
-    logger.error("resolve_google_redirect_error", { code, message: err instanceof Error ? err.message : String(err) });
+    logger.error("resolve_google_redirect_error", { code, message: parseFirebaseError(err) });
     // Log redirect errors so they're visible in production — previously these
     // were silently swallowed, making Google-redirect failures impossible to debug.
     Sentry.captureException(err, { extra: { context: "resolveGoogleRedirect" } });

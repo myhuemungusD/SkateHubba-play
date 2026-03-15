@@ -3,6 +3,7 @@ import type { User } from "firebase/auth";
 import { onAuthChange } from "../services/auth";
 import { getUserProfile, type UserProfile } from "../services/users";
 import { logger } from "../services/logger";
+import { parseFirebaseError } from "../utils/helpers";
 
 interface AuthState {
   loading: boolean;
@@ -37,7 +38,7 @@ export function useAuth(): AuthState {
     } catch (err) {
       // Firestore read may fail transiently — keep the existing profile rather
       // than clearing it, which would wrongly route the user to profile setup.
-      logger.warn("refresh_profile_error", { uid: u.uid, error: err instanceof Error ? err.message : String(err) });
+      logger.warn("refresh_profile_error", { uid: u.uid, error: parseFirebaseError(err) });
     }
   }, []);
 
@@ -56,7 +57,7 @@ export function useAuth(): AuthState {
           // Profile may not exist yet (new user) or Firestore not ready
           logger.warn("use_auth_profile_fetch_error", {
             uid: u.uid,
-            error: err instanceof Error ? err.message : String(err),
+            error: parseFirebaseError(err),
           });
           setProfile(null);
         }

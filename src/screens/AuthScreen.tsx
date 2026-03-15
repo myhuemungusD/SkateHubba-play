@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { signUp, signIn, resetPassword } from "../services/auth";
-import { EMAIL_RE, pwStrength, getErrorCode } from "../utils/helpers";
+import { EMAIL_RE, pwStrength, getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -61,7 +61,7 @@ export function AuthScreen({
       logger.warn("auth_screen_submit_error", {
         mode: isSignup ? "signup" : "signin",
         code,
-        message: err instanceof Error ? err.message : String(err),
+        message: parseFirebaseError(err),
       });
       if (code === "auth/email-already-in-use") setError("Email already in use. Try signing in, or use Google below.");
       else if (code === "auth/account-exists-with-different-credential")
@@ -70,7 +70,7 @@ export function AuthScreen({
         setError("Invalid email or password");
       else if (code === "auth/user-not-found") setError("No account with that email. Need to sign up?");
       else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
-      else setError(err instanceof Error ? err.message : "Something went wrong");
+      else setError(parseFirebaseError(err));
     } finally {
       setLoading(false);
     }
@@ -86,7 +86,7 @@ export function AuthScreen({
       await resetPassword(email);
       setResetSent(true);
     } catch (err) {
-      logger.warn("auth_screen_password_reset_error", { error: err instanceof Error ? err.message : String(err) });
+      logger.warn("auth_screen_password_reset_error", { error: parseFirebaseError(err) });
       setResetSent(true); // Don't reveal if email exists
     }
   };

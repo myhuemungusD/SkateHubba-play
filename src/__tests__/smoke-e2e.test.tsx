@@ -1330,7 +1330,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+      expect(screen.getByText("Unknown auth error")).toBeInTheDocument();
     });
   });
 
