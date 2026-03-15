@@ -1,13 +1,15 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import * as Sentry from "@sentry/react";
+import { initSentry } from "./lib/sentry";
 import App from "./App";
 import "./index.css";
 
 // Initialise Sentry only when a DSN is provided (set VITE_SENTRY_DSN in
 // Vercel → Project Settings → Environment Variables).
+// initSentry() dynamically imports @sentry/react so the SDK is never
+// bundled or fetched when no DSN is configured.
 if (import.meta.env.VITE_SENTRY_DSN) {
-  Sentry.init({
+  initSentry({
     dsn: String(import.meta.env.VITE_SENTRY_DSN),
     environment: import.meta.env.MODE,
     // Capture 100% of transactions in development; 10% in production to
