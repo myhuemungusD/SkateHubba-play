@@ -344,11 +344,11 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
 
   const socials = [
     { name: "X", icon: "𝕏", href: `https://twitter.com/intent/tweet?text=${encodedText}` },
-    { name: "WhatsApp", icon: "💬", href: `https://wa.me/?text=${encodedText}` },
-    { name: "Snapchat", icon: "👻", href: `https://www.snapchat.com/scan?attachmentUrl=${encodedUrl}` },
-    { name: "Facebook", icon: "f", href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}` },
-    { name: "Reddit", icon: "🤙", href: `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodeURIComponent(text)}` },
-    { name: "Telegram", icon: "✈", href: `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(text)}` },
+    { name: "WhatsApp", icon: "WA", href: `https://wa.me/?text=${encodedText}` },
+    { name: "Snapchat", icon: "SC", href: `https://www.snapchat.com/scan?attachmentUrl=${encodedUrl}` },
+    { name: "Facebook", icon: "FB", href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}` },
+    { name: "Reddit", icon: "Re", href: `https://www.reddit.com/submit?url=${encodedUrl}&title=${encodeURIComponent(text)}` },
+    { name: "Telegram", icon: "TG", href: `https://t.me/share/url?url=${encodedUrl}&text=${encodeURIComponent(text)}` },
   ];
 
   const tileBase =
@@ -356,9 +356,29 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
 
   return (
     <div className={className}>
-      <Btn onClick={() => setShowPanel(!showPanel)} variant="ghost" className="w-full">
-        {showPanel ? "Close" : "📲 Invite a Friend"}
-      </Btn>
+      <button
+        type="button"
+        onClick={() => setShowPanel(!showPanel)}
+        className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-border text-[#666] hover:text-white hover:border-[#3A3A3A] rounded-xl py-[13px] font-display tracking-wider text-lg transition-all duration-200 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+      >
+        {showPanel ? (
+          <>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            Close
+          </>
+        ) : (
+          <>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/>
+              <polyline points="16 6 12 2 8 6"/>
+              <line x1="12" y1="2" x2="12" y2="15"/>
+            </svg>
+            Invite a Friend
+          </>
+        )}
+      </button>
 
       {showPanel && (
         <div className="mt-3 p-4 rounded-2xl bg-surface border border-border animate-fade-in space-y-4">
@@ -371,7 +391,11 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
               className={`w-full flex items-center gap-3 p-3.5 text-left ${tileBase}
                 border-[rgba(255,107,0,0.25)] bg-[rgba(255,107,0,0.04)]`}
             >
-              <span className="text-2xl leading-none">📱</span>
+              <div className="w-9 h-9 rounded-lg bg-[rgba(255,107,0,0.1)] flex items-center justify-center shrink-0">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#FF6B00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+                </svg>
+              </div>
               <div>
                 <span className="font-display text-sm tracking-wider text-white block">FROM YOUR CONTACTS</span>
                 <span className="font-body text-xs text-[#666]">Pick people & send via SMS</span>
@@ -393,10 +417,10 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
                   href={s.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`flex flex-col items-center gap-1.5 py-3 ${tileBase}`}
+                  className={`flex flex-col items-center gap-2 py-3 ${tileBase}`}
                 >
-                  <span className="text-xl leading-none">{s.icon}</span>
-                  <span className="font-body text-[10px] text-[#777] leading-none">{s.name}</span>
+                  <span className="font-display text-sm text-white tracking-wide leading-none">{s.icon}</span>
+                  <span className="font-body text-[10px] text-[#555] leading-none">{s.name}</span>
                 </a>
               ))}
             </div>
@@ -404,18 +428,38 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
 
           {/* ── Copy & Share ── */}
           <div className="flex gap-2">
-            <button type="button" onClick={handleCopy} className={`flex-1 py-2.5 font-body text-xs ${tileBase} ${
+            <button type="button" onClick={handleCopy} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 font-body text-xs ${tileBase} ${
               copied ? "border-brand-green text-brand-green" : "text-[#888]"
             }`}>
-              {copied ? "Copied!" : "📋 Copy Link"}
+              {copied ? (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                  Copied
+                </>
+              ) : (
+                <>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  Copy Link
+                </>
+              )}
             </button>
             {typeof navigator.share === "function" && (
               <button
                 type="button"
                 onClick={handleNativeShare}
-                className={`flex-1 py-2.5 font-body text-xs text-[#888] ${tileBase}`}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 font-body text-xs text-[#888] ${tileBase}`}
               >
-                🔗 More Options
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>
+                  <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+                Share
               </button>
             )}
           </div>
@@ -1036,108 +1080,199 @@ function Lobby({
     <div className="min-h-dvh bg-[#0A0A0A] pb-24">
       {/* Header */}
       <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-border">
-        <div>
-          <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
-          <div className="font-body text-xs text-[#555] mt-0.5">@{profile.username}</div>
+        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
+              <span className="font-display text-[11px] text-brand-orange leading-none">
+                {profile.username[0].toUpperCase()}
+              </span>
+            </div>
+            <span className="font-body text-xs text-[#555]">@{profile.username}</span>
+          </div>
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="font-body text-xs text-[#555] hover:text-white transition-colors duration-200 px-2.5 py-1.5 rounded-lg border border-border hover:border-[#3A3A3A]"
+          >
+            Sign Out
+          </button>
         </div>
-        <button type="button" onClick={onSignOut} className="font-body text-xs text-[#555] hover:text-[#888] transition-colors">
-          Sign Out
-        </button>
       </div>
 
       <VerifyEmailBanner emailVerified={user?.emailVerified ?? false} />
 
-      <div className="px-5 pt-6 max-w-lg mx-auto">
-        <h1 className="font-display text-[42px] text-white mb-6">Your Games</h1>
+      <div className="px-5 pt-7 max-w-lg mx-auto">
+        {/* Page header */}
+        <div className="mb-7">
+          <h1 className="font-display text-[44px] leading-none text-white tracking-wide">Your Games</h1>
+          {games.length > 0 && (
+            <p className="font-body text-xs text-[#555] mt-1.5">
+              {active.length > 0 ? `${active.length} active` : "No active games"}
+              {done.length > 0 ? ` · ${done.length} completed` : ""}
+            </p>
+          )}
+        </div>
 
-        <Btn onClick={onChallenge} className="mb-3">🎯 Challenge Someone</Btn>
+        {/* Primary CTA — Challenge */}
+        <button
+          type="button"
+          onClick={onChallenge}
+          className="w-full flex items-center justify-center gap-2.5 bg-brand-orange text-white rounded-xl py-[15px] mb-3 font-display tracking-wider text-xl transition-all duration-200 active:scale-[0.98] hover:bg-[#FF7A1A] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        >
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/>
+            <circle cx="12" cy="12" r="3"/>
+            <line x1="12" y1="2" x2="12" y2="4.5"/>
+            <line x1="12" y1="19.5" x2="12" y2="22"/>
+            <line x1="2" y1="12" x2="4.5" y2="12"/>
+            <line x1="19.5" y1="12" x2="22" y2="12"/>
+          </svg>
+          Challenge Someone
+        </button>
+
         <InviteButton username={profile.username} className="mb-8" />
 
-        {/* Active */}
+        {/* Active games */}
         {active.length > 0 && (
-          <>
-            <h3 className="font-display text-sm tracking-[0.15em] text-[#888] mb-3">ACTIVE</h3>
-            {active.map((g) => (
-              <div
-                key={g.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => onOpenGame(g)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
-                className={`p-4 rounded-2xl mb-3 bg-surface border cursor-pointer transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange
-                  ${isMyTurn(g) ? "border-brand-orange shadow-[0_0_20px_rgba(255,107,0,0.08)]" : "border-border"}`}
-              >
-                <div className="flex justify-between items-center mb-2.5">
-                  <div>
-                    <span className="font-display text-xl text-white">vs @{opponent(g)}</span>
-                    <span className={`block font-body text-xs mt-0.5 ${isMyTurn(g) ? "text-brand-orange" : "text-[#555]"}`}>
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-[#444]">ACTIVE</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-[#555] leading-none tabular-nums">
+                {active.length}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {active.map((g) => (
+                <div
+                  key={g.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpenGame(g)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
+                  className={`relative flex items-center justify-between p-4 rounded-2xl bg-surface cursor-pointer transition-all duration-200 overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange
+                    ${isMyTurn(g)
+                      ? "border border-[rgba(255,107,0,0.35)] shadow-[0_0_28px_rgba(255,107,0,0.07)]"
+                      : "border border-border hover:border-[#3A3A3A]"
+                    }`}
+                >
+                  {/* Left accent bar */}
+                  {isMyTurn(g) && (
+                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-brand-orange rounded-l-2xl" aria-hidden="true" />
+                  )}
+                  <div className="pl-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-display text-[19px] text-white leading-none">vs @{opponent(g)}</span>
+                      {isMyTurn(g) && (
+                        <span className="px-2 py-0.5 rounded bg-brand-orange font-display text-[10px] text-white tracking-wider leading-none shrink-0">
+                          PLAY
+                        </span>
+                      )}
+                    </div>
+                    <span className={`font-body text-[11px] ${isMyTurn(g) ? "text-brand-orange" : "text-[#555]"}`}>
                       {isMyTurn(g) ? "Your turn" : "Waiting on opponent"}
                     </span>
-                  </div>
-                  {isMyTurn(g) && (
-                    <div className="px-3 py-1 rounded-md bg-brand-orange">
-                      <span className="font-display text-xs text-white tracking-wider">PLAY</span>
+                    {/* Letter scores */}
+                    <div className="flex items-center gap-3 mt-2.5">
+                      <div className="flex items-center gap-1">
+                        <span className="font-body text-[10px] text-[#444] uppercase tracking-wider mr-0.5">You</span>
+                        {LETTERS.map((l, i) => (
+                          <span
+                            key={i}
+                            className={`font-display text-[13px] leading-none tracking-wide ${i < myLetters(g) ? "text-brand-red" : "text-[#2E2E2E]"}`}
+                          >{l}</span>
+                        ))}
+                      </div>
+                      <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
+                      <div className="flex items-center gap-1">
+                        <span className="font-body text-[10px] text-[#444] uppercase tracking-wider mr-0.5">Them</span>
+                        {LETTERS.map((l, i) => (
+                          <span
+                            key={i}
+                            className={`font-display text-[13px] leading-none tracking-wide ${i < theirLetters(g) ? "text-brand-red" : "text-[#2E2E2E]"}`}
+                          >{l}</span>
+                        ))}
+                      </div>
                     </div>
-                  )}
-                </div>
-                <div className="flex gap-4">
-                  <div className="flex items-center gap-1">
-                    <span className="font-body text-[11px] text-[#555] mr-1">You:</span>
-                    {LETTERS.map((l, i) => (
-                      <span key={i} className={`font-display text-sm ${i < myLetters(g) ? "text-brand-red" : "text-[#555]"}`}>{l}</span>
-                    ))}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-body text-[11px] text-[#555] mr-1">Them:</span>
-                    {LETTERS.map((l, i) => (
-                      <span key={i} className={`font-display text-sm ${i < theirLetters(g) ? "text-brand-red" : "text-[#555]"}`}>{l}</span>
-                    ))}
-                  </div>
+                  {/* Chevron */}
+                  <svg
+                    className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-[#2E2E2E]"}`}
+                    width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"
+                  >
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
                 </div>
-              </div>
-            ))}
-          </>
-        )}
-
-        {/* Completed */}
-        {done.length > 0 && (
-          <>
-            <h3 className="font-display text-sm tracking-[0.15em] text-[#888] mt-6 mb-3">COMPLETED</h3>
-            {done.map((g) => (
-              <div
-                key={g.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => onOpenGame(g)}
-                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
-                className="p-4 rounded-2xl mb-3 bg-surface border border-border cursor-pointer transition-all opacity-70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-              >
-                <span className="font-display text-xl text-white">vs @{opponent(g)}</span>
-                <span className={`block font-body text-xs mt-0.5 ${g.winner === profile.uid ? "text-brand-green" : "text-brand-red"}`}>
-                  {g.winner === profile.uid ? "You won!" : "You lost"}
-                  {g.status === "forfeit" && " (forfeit)"}
-                </span>
-              </div>
-            ))}
-          </>
-        )}
-
-        {games.length === 0 && (
-          <div className="text-center py-12 border border-dashed border-border rounded-2xl">
-            <span className="text-4xl block mb-3">🛹</span>
-            <p className="font-body text-sm text-[#888]">No games yet. Challenge someone to start.</p>
+              ))}
+            </div>
           </div>
         )}
 
-        {/* Roadmap */}
-        <div className="mt-10 p-5 rounded-2xl border border-border bg-surface">
-          <h3 className="font-display text-sm tracking-[0.15em] text-[#555] mb-3">COMING SOON</h3>
-          {["Spot Map & Discovery", "Trick Clips Feed", "Leaderboards", "Crew Challenges"].map((f) => (
-            <div key={f} className="flex items-center gap-2.5 py-2 border-b border-border last:border-0">
-              <div className="w-1.5 h-1.5 rounded-full bg-[#555]" />
-              <span className="font-body text-sm text-[#555]">{f}</span>
+        {/* Completed games */}
+        {done.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-[#444]">COMPLETED</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-[#555] leading-none tabular-nums">
+                {done.length}
+              </span>
             </div>
-          ))}
+            <div className="space-y-2">
+              {done.map((g) => (
+                <div
+                  key={g.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onOpenGame(g)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpenGame(g); } }}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border cursor-pointer transition-all duration-200 hover:border-[#3A3A3A] opacity-60 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                >
+                  <div>
+                    <span className="font-display text-[19px] text-white leading-none block mb-1">vs @{opponent(g)}</span>
+                    <span className={`font-body text-[11px] ${g.winner === profile.uid ? "text-brand-green" : "text-brand-red"}`}>
+                      {g.winner === profile.uid ? "You won" : "You lost"}{g.status === "forfeit" ? " · forfeit" : ""}
+                    </span>
+                  </div>
+                  <svg className="text-[#2E2E2E] shrink-0" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {games.length === 0 && (
+          <div className="flex flex-col items-center py-14 border border-dashed border-border rounded-2xl mb-6">
+            <svg className="text-[#2E2E2E] mb-4" width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="7.5" cy="17.5" r="2.5"/>
+              <circle cx="17.5" cy="17.5" r="2.5"/>
+              <path d="M2 7h1.5l2.1 7.5h10.8l2.1-6H7.5"/>
+            </svg>
+            <p className="font-body text-sm text-[#555]">No games yet.</p>
+            <p className="font-body text-xs text-[#333] mt-1">Challenge someone to get started.</p>
+          </div>
+        )}
+
+        {/* Coming Soon */}
+        <div className="p-5 rounded-2xl border border-border bg-surface">
+          <h3 className="font-display text-[10px] tracking-[0.25em] text-[#3A3A3A] mb-4">COMING SOON</h3>
+          <div>
+            {["Spot Map & Discovery", "Trick Clips Feed", "Leaderboards", "Crew Challenges"].map((f, i) => (
+              <div key={f} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
+                <div className="flex items-center gap-3">
+                  <span className="font-display text-[10px] text-[#2E2E2E] w-4 leading-none tabular-nums">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="font-body text-sm text-[#555]">{f}</span>
+                </div>
+                <svg className="text-[#2A2A2A]" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
