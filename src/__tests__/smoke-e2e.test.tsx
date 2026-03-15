@@ -26,12 +26,14 @@ const mockUploadVideo = vi.fn();
 
 vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
 const mockResendVerification = vi.fn();
+const mockSignInWithGoogle = vi.fn();
 vi.mock("../services/auth", () => ({
   signUp: (...args: unknown[]) => mockSignUp(...args),
   signIn: (...args: unknown[]) => mockSignIn(...args),
   signOut: (...args: unknown[]) => mockSignOut(...args),
   resetPassword: (...args: unknown[]) => mockResetPassword(...args),
   resendVerification: (...args: unknown[]) => mockResendVerification(...args),
+  signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
 }));
 vi.mock("../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
@@ -839,7 +841,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "sk8r@test.com", "newsk8r", "Regular");
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "sk8r@test.com", "newsk8r", "Regular", false);
     });
   });
 
