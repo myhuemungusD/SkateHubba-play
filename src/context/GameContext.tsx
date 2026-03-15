@@ -9,7 +9,7 @@ import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException } from "../lib/sentry";
 
-export type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover";
+export type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover" | "privacy" | "terms";
 
 interface GameContextValue {
   // Auth
@@ -76,6 +76,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         logger.warn("google_redirect_resolve_error", {
           message: err instanceof Error ? err.message : String(err),
         });
+        captureException(err, { extra: { context: "resolveGoogleRedirect" } });
       });
   }, []);
 

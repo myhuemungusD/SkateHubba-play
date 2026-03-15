@@ -14,6 +14,7 @@ import {
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { metrics } from "./logger";
+import { captureException } from "../lib/sentry";
 
 /* ────────────────────────────────────────────
  * Types
@@ -283,6 +284,7 @@ export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => 
 
   const handleError = (err: Error) => {
     console.warn("Game subscription error for uid:", uid, err.message);
+    captureException(err, { extra: { context: "subscribeToMyGames", uid } });
   };
 
   const unsub1 = onSnapshot(
@@ -324,6 +326,7 @@ export function subscribeToGame(gameId: string, onUpdate: (game: GameDoc | null)
     },
     (err) => {
       console.warn("Game subscription error for game:", gameId, err.message);
+      captureException(err, { extra: { context: "subscribeToGame", gameId } });
       onUpdate(null);
     },
   );

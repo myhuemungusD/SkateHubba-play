@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { initSentry } from "./lib/sentry";
+import { initSentry, captureException } from "./lib/sentry";
 import App from "./App";
 import "./index.css";
 
@@ -27,6 +27,12 @@ if (import.meta.env.VITE_SENTRY_DSN) {
     },
   });
 }
+
+// Catch unhandled promise rejections that escape try/catch blocks and report
+// them to Sentry so they are never silently lost in production.
+window.addEventListener("unhandledrejection", (event) => {
+  captureException(event.reason, { extra: { type: "unhandledrejection" } });
+});
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Missing #root element in index.html");

@@ -7,10 +7,12 @@ export function Landing({
   onGo,
   onGoogle,
   googleLoading,
+  onNav,
 }: {
   onGo: (mode: "signup" | "signin") => void;
   onGoogle: () => void;
   googleLoading: boolean;
+  onNav: (screen: "privacy" | "terms") => void;
 }) {
   return (
     <main
@@ -53,6 +55,23 @@ export function Landing({
           </li>
         ))}
       </ul>
+
+      <nav className="mt-10 flex gap-5 flex-wrap justify-center" aria-label="Legal">
+        <button
+          type="button"
+          onClick={() => onNav("privacy")}
+          className="font-body text-xs text-[#555] hover:text-[#888] transition-colors"
+        >
+          Privacy Policy
+        </button>
+        <button
+          type="button"
+          onClick={() => onNav("terms")}
+          className="font-body text-xs text-[#555] hover:text-[#888] transition-colors"
+        >
+          Terms of Service
+        </button>
+      </nav>
     </main>
   );
 }
