@@ -86,7 +86,7 @@ function AppScreens() {
         />
       )}
 
-      {ctx.screen === "challenge" && ctx.activeProfile && (
+      {ctx.screen === "challenge" && ctx.activeProfile && ctx.user?.emailVerified && (
         <ChallengeScreen
           profile={ctx.activeProfile}
           onSend={ctx.startChallenge}
@@ -109,15 +109,21 @@ function AppScreens() {
         <GameOverScreen
           game={ctx.activeGame}
           profile={ctx.activeProfile}
-          onRematch={async (): Promise<void> => {
-            const opponentUid =
-              ctx.activeGame!.player1Uid === ctx.user!.uid ? ctx.activeGame!.player2Uid : ctx.activeGame!.player1Uid;
-            const opponentName =
-              ctx.activeGame!.player1Uid === ctx.user!.uid
-                ? ctx.activeGame!.player2Username
-                : ctx.activeGame!.player1Username;
-            await ctx.startChallenge(opponentUid, opponentName);
-          }}
+          onRematch={
+            ctx.user.emailVerified
+              ? async (): Promise<void> => {
+                  const opponentUid =
+                    ctx.activeGame!.player1Uid === ctx.user!.uid
+                      ? ctx.activeGame!.player2Uid
+                      : ctx.activeGame!.player1Uid;
+                  const opponentName =
+                    ctx.activeGame!.player1Uid === ctx.user!.uid
+                      ? ctx.activeGame!.player2Username
+                      : ctx.activeGame!.player1Username;
+                  await ctx.startChallenge(opponentUid, opponentName);
+                }
+              : undefined
+          }
           onBack={() => {
             ctx.setActiveGame(null);
             ctx.setScreen("lobby");

@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 import { getStorage, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import * as Sentry from "@sentry/react";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -53,18 +54,18 @@ if (firebaseReady) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (self as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   }
+  /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
   if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
-    /* v8 ignore next 6 */
     initializeAppCheck(app, {
       provider: new ReCaptchaV3Provider(import.meta.env.VITE_RECAPTCHA_SITE_KEY as string),
       isTokenAutoRefreshEnabled: true,
     });
   } else if (!import.meta.env.DEV) {
-    // Warn in production so the ops team knows App Check is inactive.
-    // Not a console.error (would surface in Sentry) — this is an ops notice.
-    /* v8 ignore next 1 */
-    console.warn("⚠️ App Check is disabled: set VITE_RECAPTCHA_SITE_KEY to protect against API abuse.");
+    // Error in production so the ops team is alerted App Check is inactive.
+    console.error("⚠️ App Check is disabled: set VITE_RECAPTCHA_SITE_KEY to protect against API abuse.");
+    Sentry.captureMessage("App Check disabled in production — set VITE_RECAPTCHA_SITE_KEY", "error");
   }
+  /* v8 ignore stop */
 
   // Connect to emulators in development (if running)
   if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {

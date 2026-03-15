@@ -14,14 +14,14 @@ export function GameOverScreen({
 }: {
   game: GameDoc;
   profile: UserProfile;
-  onRematch: () => Promise<void>;
+  onRematch?: () => Promise<void>;
   onBack: () => void;
 }) {
   const [rematching, setRematching] = useState(false);
   const rematchingRef = useRef(false);
 
   const handleRematch = async () => {
-    if (rematchingRef.current) return;
+    if (!onRematch || rematchingRef.current) return;
     rematchingRef.current = true;
     setRematching(true);
     try {
@@ -68,8 +68,8 @@ export function GameOverScreen({
         </div>
 
         <div className="flex flex-col gap-3 w-full">
-          <Btn onClick={handleRematch} disabled={rematching}>
-            {rematching ? "Starting..." : "🔥 Rematch"}
+          <Btn onClick={handleRematch} disabled={rematching || !onRematch}>
+            {rematching ? "Starting..." : !onRematch ? "Verify email to rematch" : "🔥 Rematch"}
           </Btn>
           <InviteButton username={profile.username} />
           <Btn onClick={onBack} variant="ghost">

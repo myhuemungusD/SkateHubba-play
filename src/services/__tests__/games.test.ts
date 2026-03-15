@@ -47,6 +47,7 @@ vi.mock("../../firebase");
 
 import {
   createGame,
+  _resetCreateGameRateLimit,
   setTrick,
   submitMatchResult,
   forfeitExpiredTurn,
@@ -56,6 +57,7 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetCreateGameRateLimit();
   // Default: runTransaction calls the callback with a mock tx object
   mockRunTransaction.mockImplementation(async (_db: unknown, cb: Function) => {
     const tx = { get: mockTxGet, update: mockTxUpdate, set: vi.fn() };
@@ -111,6 +113,14 @@ describe("games service", () => {
       expect(docData.status).toBe("active");
       expect(docData.phase).toBe("setting");
       expect(docData.currentSetter).toBe("p1");
+    });
+
+    it("throws when called again within the cooldown period", async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: "game1" });
+      await createGame("p1", "alice", "p2", "bob");
+
+      // Second call without resetting — should hit rate limit
+      await expect(createGame("p1", "alice", "p2", "bob")).rejects.toThrow("Please wait before creating another game");
     });
 
     it("sets initial scores, turn, and timestamps", async () => {

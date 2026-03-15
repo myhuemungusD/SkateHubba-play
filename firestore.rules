@@ -144,7 +144,8 @@ service cloud.firestore {
         // Winner must be the opponent of the current-turn player (who timed out)
         && request.resource.data.winner == opponentUid(resource.data, resource.data.currentTurn);
 
-      allow delete: if false;
+      // Players may delete their own games (account deletion flow)
+      allow delete: if isSignedIn() && isPlayer(resource.data);
     }
   }
 }
