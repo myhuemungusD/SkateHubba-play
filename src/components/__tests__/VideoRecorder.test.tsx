@@ -1,0 +1,333 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { VideoRecorder } from "../VideoRecorder";
+
+// Helper to set up a proper mock stream that enables MediaRecorder code path
+function setupMockStream() {
+  const mockStop = vi.fn();
+  const mockStream = {
+    getTracks: () => [{ stop: mockStop }],
+    getVideoTracks: () => [{ stop: mockStop }],
+    getAudioTracks: () => [{ stop: mockStop }],
+  };
+  Object.defineProperty(navigator, "mediaDevices", {
+    writable: true,
+    configurable: true,
+    value: { getUserMedia: vi.fn().mockResolvedValue(mockStream) },
+  });
+  return { mockStop, mockStream };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  setupMockStream();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("VideoRecorder", () => {
+  it("renders idle state with open camera button", () => {
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    expect(screen.getByText(/Open Camera/)).toBeInTheDocument();
+    expect(screen.getByText("Camera preview")).toBeInTheDocument();
+  });
+
+  it("opens camera on button click and shows preview state", async () => {
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    await userEvent.click(screen.getByText(/Open Camera/));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument();
+    });
+  });
+
+  it("auto-opens camera when autoOpen is true", async () => {
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" autoOpen />);
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument();
+    });
+  });
+
+  it("handles camera permission denied error", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      writable: true,
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockRejectedValueOnce(new DOMException("Not allowed", "NotAllowedError")) },
+    });
+
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    await userEvent.click(screen.getByText(/Open Camera/));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Camera access denied/)).toBeInTheDocument();
+      expect(screen.getByText("Retry Camera")).toBeInTheDocument();
+    });
+  });
+
+  it("handles SecurityError camera error as permission error", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      writable: true,
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockRejectedValueOnce(new DOMException("Security", "SecurityError")) },
+    });
+
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    await userEvent.click(screen.getByText(/Open Camera/));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Camera access denied/)).toBeInTheDocument();
+    });
+  });
+
+  it("handles generic camera error", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      writable: true,
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockRejectedValueOnce(new Error("Device not found")) },
+    });
+
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    await userEvent.click(screen.getByText(/Open Camera/));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Camera unavailable: Device not found/)).toBeInTheDocument();
+    });
+  });
+
+  it("handles non-Error camera rejection", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      writable: true,
+      configurable: true,
+      value: { getUserMedia: vi.fn().mockRejectedValueOnce("string error") },
+    });
+
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    await userEvent.click(screen.getByText(/Open Camera/));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Camera unavailable: string error/)).toBeInTheDocument();
+    });
+  });
+
+  it("starts and stops recording — empty blob calls onRecorded(null)", async () => {
+    const onRecorded = vi.fn();
+    render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
+
+    // Empty blob → onRecorded(null)
+    expect(onRecorded).toHaveBeenCalledWith(null);
+  });
+
+  it("records non-empty blob and calls onRecorded with blob", async () => {
+    // Override MockMediaRecorder to produce data before stopping
+    const originalMR = (globalThis as any).MediaRecorder;
+    class DataProducingMR {
+      static isTypeSupported = vi.fn().mockReturnValue(false);
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      state = "inactive";
+      start = vi.fn().mockImplementation(function (this: DataProducingMR) {
+        this.state = "recording";
+      });
+      stop = vi.fn().mockImplementation(function (this: DataProducingMR) {
+        this.state = "inactive";
+        // Simulate data being available before stop
+        if (this.ondataavailable) {
+          this.ondataavailable({ data: new Blob(["video-data"], { type: "video/webm" }) });
+        }
+        this.onstop?.();
+      });
+    }
+    (globalThis as any).MediaRecorder = DataProducingMR;
+
+    const onRecorded = vi.fn();
+    render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
+
+    // Non-empty blob → onRecorded called with a Blob
+    expect(onRecorded).toHaveBeenCalledWith(expect.any(Blob));
+
+    // Playback video should be shown
+    expect(screen.getByLabelText("Your recorded trick video")).toBeInTheDocument();
+
+    (globalThis as any).MediaRecorder = originalMR;
+  });
+
+  it("auto-stops recording at MAX_RECORDING_SECONDS", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    // Use a MediaRecorder that tracks state properly
+    const originalMR = (globalThis as any).MediaRecorder;
+    class TimedMR {
+      static isTypeSupported = vi.fn().mockReturnValue(false);
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      state = "inactive";
+      start = vi.fn().mockImplementation(function (this: TimedMR) {
+        this.state = "recording";
+      });
+      stop = vi.fn().mockImplementation(function (this: TimedMR) {
+        this.state = "inactive";
+        this.onstop?.();
+      });
+    }
+    (globalThis as any).MediaRecorder = TimedMR;
+
+    const onRecorded = vi.fn();
+    render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByText(/Open Camera/));
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    });
+
+    // Advance past MAX_RECORDING_SECONDS (60s) to trigger auto-stop
+    act(() => {
+      vi.advanceTimersByTime(60000);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Recorded/)).toBeInTheDocument();
+    });
+
+    (globalThis as any).MediaRecorder = originalMR;
+  });
+
+  it("stopRec when MediaRecorder.state is 'recording' calls stop()", async () => {
+    // Use a MediaRecorder that has state = "recording" when stop is pressed
+    const originalMR = (globalThis as any).MediaRecorder;
+    const stopFn = vi.fn();
+    class RecordingMR {
+      static isTypeSupported = vi.fn().mockReturnValue(false);
+      ondataavailable: ((e: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      state = "inactive";
+      start = vi.fn().mockImplementation(function (this: RecordingMR) {
+        this.state = "recording";
+      });
+      stop = vi.fn().mockImplementation(function (this: RecordingMR) {
+        stopFn();
+        this.state = "inactive";
+        this.onstop?.();
+      });
+    }
+    (globalThis as any).MediaRecorder = RecordingMR;
+
+    const onRecorded = vi.fn();
+    render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
+
+    expect(stopFn).toHaveBeenCalled();
+
+    (globalThis as any).MediaRecorder = originalMR;
+  });
+
+  it("shows custom done label", async () => {
+    const onRecorded = vi.fn();
+    render(<VideoRecorder onRecorded={onRecorded} label="Land It" doneLabel="Sent!" />);
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await waitFor(() => expect(screen.getByText("✓ Sent!")).toBeInTheDocument());
+  });
+
+  it("shows recording timer and auto-stop warning near end", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+
+    const onRecorded = vi.fn();
+    render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByText(/Open Camera/));
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    });
+
+    // Advance to 51 seconds (within 10s of MAX_RECORDING_SECONDS=60)
+    act(() => {
+      vi.advanceTimersByTime(51000);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Auto-stop in/)).toBeInTheDocument();
+    });
+  });
+
+  it("retries camera after error", async () => {
+    Object.defineProperty(navigator, "mediaDevices", {
+      writable: true,
+      configurable: true,
+      value: {
+        getUserMedia: vi
+          .fn()
+          .mockRejectedValueOnce(new Error("fail"))
+          .mockResolvedValueOnce({
+            getTracks: () => [{ stop: vi.fn() }],
+            getVideoTracks: () => [],
+            getAudioTracks: () => [],
+          }),
+      },
+    });
+
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    await userEvent.click(screen.getByText(/Open Camera/));
+
+    await waitFor(() => expect(screen.getByText("Retry Camera")).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Retry Camera"));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+  });
+
+  it("cleans up on unmount (revokes blob URL and stops tracks)", async () => {
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
+    const { mockStop } = setupMockStream();
+
+    const { unmount } = render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    unmount();
+    expect(mockStop).toHaveBeenCalled();
+    revokeObjectURL.mockRestore();
+  });
+});
