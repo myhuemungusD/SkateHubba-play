@@ -1140,7 +1140,7 @@ describe("Smoke Test: Game E2E", () => {
       currentTurn: "u1",
       currentSetter: "u2",
       currentTrickName: "Heelflip",
-      currentTrickVideoUrl: "https://storage.example.com/trick.webm",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/proj/o/trick.webm?alt=media",
     });
     renderLobby([game]);
     withGameSub(game);
@@ -1149,7 +1149,7 @@ describe("Smoke Test: Game E2E", () => {
 
     await waitFor(() => {
       expect(screen.getByText("THEIR ATTEMPT")).toBeInTheDocument();
-      const video = document.querySelector("video[src='https://storage.example.com/trick.webm']");
+      const video = document.querySelector("video[src='https://firebasestorage.googleapis.com/v0/b/proj/o/trick.webm?alt=media']");
       expect(video).toBeTruthy();
     });
   });

@@ -6,13 +6,18 @@ service firebase.storage {
     // Path: games/{gameId}/turn-{turnNumber}/{role}.webm
     // NOTE: Storage rules cannot cross-reference Firestore docs to verify
     // game membership. Firestore game rules enforce player validation.
-    // Storage restricts to auth + size + content type.
+    // Storage restricts to auth + size bounds + content type + exact filename.
     match /games/{gameId}/{turnPath}/{fileName} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
-        && request.resource.size < 50 * 1024 * 1024  // 50MB max per video
-        && request.resource.contentType.matches('video/.*')
-        && fileName.matches('.*\\.webm$');  // Only .webm files
+        // Minimum 1 KB — prevents empty/stub uploads
+        && request.resource.size > 1024
+        // Maximum 50 MB per video
+        && request.resource.size < 50 * 1024 * 1024
+        // Must be declared as video/webm (enforced by the client SDK upload call)
+        && request.resource.contentType == 'video/webm'
+        // Only the two known roles are valid filenames (rejects path traversal attempts)
+        && fileName.matches('(set|match)\\.webm');
     }
 
     // Default: deny everything else

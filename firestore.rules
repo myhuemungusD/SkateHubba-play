@@ -29,7 +29,9 @@ service cloud.firestore {
         && request.resource.data.uid == uid
         && request.resource.data.username is string
         && request.resource.data.username.size() >= 3
-        && request.resource.data.username.size() <= 20;
+        && request.resource.data.username.size() <= 20
+        // Enforce lowercase alphanumeric + underscore only (matches client-side normalisation)
+        && request.resource.data.username.matches('[a-z0-9_]+');
       allow update: if isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
@@ -43,7 +45,9 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.uid == request.auth.uid
         && username.size() >= 3
-        && username.size() <= 20;
+        && username.size() <= 20
+        // Reservation key must be a valid username (lowercase alphanum + underscore)
+        && username.matches('[a-z0-9_]+');
       // Once reserved, cannot be changed or deleted
       allow update, delete: if false;
     }
@@ -61,6 +65,8 @@ service cloud.firestore {
       // Any signed-in user can create a game (as player1)
       allow create: if isSignedIn()
         && request.resource.data.player1Uid == request.auth.uid
+        // Prevent self-challenge: player2 must be a different account
+        && request.resource.data.player2Uid != request.auth.uid
         && request.resource.data.status == 'active'
         && request.resource.data.p1Letters == 0
         && request.resource.data.p2Letters == 0
@@ -75,11 +81,24 @@ service cloud.firestore {
         // Cannot change player UIDs
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
-        // Letters can only increase, max 1 per update
-        && request.resource.data.p1Letters >= resource.data.p1Letters
-        && request.resource.data.p1Letters <= resource.data.p1Letters + 1
-        && request.resource.data.p2Letters >= resource.data.p2Letters
-        && request.resource.data.p2Letters <= resource.data.p2Letters + 1
+        // currentTurn must always be one of the two players after the update
+        && (
+          request.resource.data.currentTurn == resource.data.player1Uid ||
+          request.resource.data.currentTurn == resource.data.player2Uid
+        )
+        // Scores never decrease; at most ONE player gains a letter per update
+        // (prevents double-incrementing and score manipulation)
+        && (
+          // p1 gets a letter, p2 unchanged
+          (request.resource.data.p1Letters == resource.data.p1Letters + 1
+            && request.resource.data.p2Letters == resource.data.p2Letters)
+          // p2 gets a letter, p1 unchanged
+          || (request.resource.data.p2Letters == resource.data.p2Letters + 1
+            && request.resource.data.p1Letters == resource.data.p1Letters)
+          // No letter this update (trick set phase, or successful match)
+          || (request.resource.data.p1Letters == resource.data.p1Letters
+            && request.resource.data.p2Letters == resource.data.p2Letters)
+        )
         && (
           // Normal update (game stays active, no winner yet)
           (request.resource.data.status == 'active' && request.resource.data.winner == null)

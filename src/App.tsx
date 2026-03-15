@@ -69,6 +69,20 @@ const BG = "#0A0A0A";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
+/** Guard against open-redirect or XSS via crafted video URLs stored in Firestore. */
+function isFirebaseStorageUrl(url: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return (
+      protocol === "https:" &&
+      (hostname === "firebasestorage.googleapis.com" ||
+        hostname.endsWith(".firebasestorage.app"))
+    );
+  } catch {
+    return false;
+  }
+}
+
 function pwStrength(pw: string): 1 | 2 | 3 {
   if (pw.length < 8) return 1;
   const hasUpper = /[A-Z]/.test(pw);
@@ -293,7 +307,13 @@ function InviteButton({ username, className = "" }: { username?: string; classNa
       );
       if (!contacts.length) return;
 
-      const phones = contacts.flatMap((c) => c.tel || []).filter(Boolean);
+      const phones = contacts
+        .flatMap((c) => c.tel || [])
+        .filter(Boolean)
+        // Strip any char that can't appear in a valid phone number to prevent
+        // SMS URI injection (e.g. "?" or "&" would break the body parameter)
+        .map((p) => p.replace(/[^0-9+\-().# ]/g, "").trim())
+        .filter((p) => p.length > 0);
       if (phones.length === 0) {
         flash("Selected contacts have no phone numbers.");
         return;
@@ -856,6 +876,8 @@ function ProfileSetup({
     setError("");
     const normalized = username.toLowerCase().trim();
     if (normalized.length < 3) { setError("Username must be 3+ characters"); return; }
+    if (normalized.length > 20) { setError("Username too long (max 20)"); return; }
+    if (!/^[a-z0-9_]+$/.test(normalized)) { setError("Only letters, numbers, and _ allowed"); return; }
     if (available === false) { setError("Username is taken"); return; }
     if (available === null) { setError("Still checking username — wait a moment"); return; }
 
@@ -1336,7 +1358,7 @@ function GamePlayScreen({
         </div>
 
         {/* Setter's video to watch (matcher) */}
-        {isMatcher && game.currentTrickVideoUrl && (
+        {isMatcher && game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) && (
           <div className="mb-5">
             <p className="font-display text-sm tracking-wider text-[#888] mb-2">THEIR ATTEMPT</p>
             <video
