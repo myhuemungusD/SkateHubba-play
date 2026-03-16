@@ -459,4 +459,44 @@ describe("GamePlayScreen", () => {
     // Should NOT have called setTrick (the Landed path)
     expect(mockSetTrick).not.toHaveBeenCalled();
   });
+
+  it("shows 'Passing turn...' during missed submission", async () => {
+    mockFailSetTrick.mockImplementation(() => new Promise(() => {}));
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Missed/));
+
+    await waitFor(() => {
+      expect(screen.getByText("Passing turn...")).toBeInTheDocument();
+    });
+  });
+
+  it("shows 'Sending to @rival...' during landed submission", async () => {
+    mockSetTrick.mockImplementation(() => new Promise(() => {}));
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sending to @rival/)).toBeInTheDocument();
+    });
+  });
 });

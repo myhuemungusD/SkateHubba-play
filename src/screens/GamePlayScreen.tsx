@@ -224,7 +224,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         {isSetter && submitting && (
           <div className="mt-5 text-center">
             <span className="font-display text-lg text-brand-orange tracking-wider animate-pulse">
-              Sending to @{opponentName}...
+              {setterAction === "missed" ? "Passing turn..." : `Sending to @${opponentName}...`}
             </span>
           </div>
         )}
