@@ -8,3 +8,7 @@ dist
 *.tsbuildinfo
 .vercel
 coverage
+
+playwright-report
+playwright/.auth
+test-results

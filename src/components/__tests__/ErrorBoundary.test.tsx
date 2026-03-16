@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ErrorBoundary } from "../ErrorBoundary";
@@ -14,13 +14,18 @@ const ThrowingChild = ({ error }: { error: Error }) => {
 beforeEach(() => vi.clearAllMocks());
 
 describe("ErrorBoundary", () => {
-  // Suppress React error boundary console.error noise
+  // React 18 re-throws caught errors to the global error event in dev mode.
+  // Suppress both console.error noise and the window error event so Vitest
+  // doesn't count them as unhandled test failures.
   const originalError = console.error;
+  const suppressWindowError = (e: ErrorEvent) => e.preventDefault();
   beforeEach(() => {
     console.error = vi.fn();
+    window.addEventListener("error", suppressWindowError);
   });
   afterEach(() => {
     console.error = originalError;
+    window.removeEventListener("error", suppressWindowError);
   });
 
   it("renders children when no error", () => {
