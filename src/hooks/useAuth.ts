@@ -49,6 +49,10 @@ export function useAuth(): AuthState {
       setUser(u);
       userRef.current = u;
       if (u) {
+        // Keep loading=true while we fetch the profile so the routing effect
+        // doesn't see a user with no profile and prematurely navigate to
+        // ProfileSetup (causes a visible flicker for returning Google users).
+        setLoading(true);
         try {
           const p = await getUserProfile(u.uid);
           logger.debug("use_auth_profile_loaded", { uid: u.uid, hasProfile: !!p, username: p?.username ?? null });

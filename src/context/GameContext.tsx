@@ -87,6 +87,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
           message: err instanceof Error ? err.message : String(err),
         });
         captureException(err, { extra: { context: "resolveGoogleRedirect" } });
+        // Surface the error to the user instead of silently swallowing it.
+        // Navigate to the auth screen so the error banner is visible.
+        setGoogleError("Google sign-in failed. Please try again.");
+        setAuthMode("signin");
+        setScreen("auth");
       });
   }, []);
 
@@ -123,6 +128,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
           "This domain isn't authorized for Google sign-in. " +
             "Add it in Firebase Console → Authentication → Settings → Authorized domains.",
         );
+        if (screen !== "auth") {
+          setAuthMode("signin");
+          setScreen("auth");
+        }
       } else {
         logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
         captureException(err, { extra: { context: "handleGoogleSignIn", code } });

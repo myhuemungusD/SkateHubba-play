@@ -62,6 +62,7 @@ function AppScreens() {
           onGoogle={ctx.handleGoogleSignIn}
           googleLoading={ctx.googleLoading}
           googleError={ctx.googleError}
+          onGoogleErrorDismiss={() => ctx.setGoogleError("")}
         />
       )}
 
