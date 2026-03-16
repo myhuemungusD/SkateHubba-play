@@ -167,6 +167,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <video
               src={game.currentTrickVideoUrl}
               controls
+              playsInline
+              preload="auto"
               aria-label={`Video of ${game.currentTrickName || "trick"} set by opponent`}
               className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
             />
