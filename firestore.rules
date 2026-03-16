@@ -153,11 +153,13 @@ service cloud.firestore {
           // Setter voting (setterConfirm changes from null to bool, matcherConfirm unchanged)
           (request.auth.uid == resource.data.currentSetter
             && resource.data.setterConfirm == null
-            && request.resource.data.setterConfirm is bool)
+            && request.resource.data.setterConfirm is bool
+            && request.resource.data.matcherConfirm == resource.data.matcherConfirm)
           // Matcher voting (matcherConfirm changes from null to bool, setterConfirm unchanged)
           || (request.auth.uid == opponentUid(resource.data, resource.data.currentSetter)
             && resource.data.matcherConfirm == null
-            && request.resource.data.matcherConfirm is bool)
+            && request.resource.data.matcherConfirm is bool
+            && request.resource.data.setterConfirm == resource.data.setterConfirm)
         )
         // Scores: same rules as normal update (no change, or +1 for one player when resolving)
         && (

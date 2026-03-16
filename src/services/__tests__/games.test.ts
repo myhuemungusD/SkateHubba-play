@@ -50,7 +50,6 @@ import {
   _resetCreateGameRateLimit,
   setTrick,
   failSetTrick,
-  submitMatchResult,
   submitMatchAttempt,
   submitConfirmation,
   forfeitExpiredTurn,
@@ -265,36 +264,6 @@ describe("games service", () => {
     it("throws when not in setting phase", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "matching" }));
       await expect(failSetTrick("g1")).rejects.toThrow("Not in setting phase");
-    });
-  });
-
-  describe("submitMatchResult (wrapper)", () => {
-    it("transitions to confirming phase via submitMatchAttempt", async () => {
-      const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
-
-      const result = await submitMatchResult("g1", false, null);
-      // submitMatchResult is now a wrapper — always returns not-resolved
-      expect(result.gameOver).toBe(false);
-      expect(result.winner).toBeNull();
-
-      const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.phase).toBe("confirming");
-    });
-
-    it("throws when not in matching phase", async () => {
-      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
-      await expect(submitMatchResult("g1", true, null)).rejects.toThrow("Not in matching phase");
-    });
-
-    it("throws when game is already over", async () => {
-      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, status: "forfeit", phase: "matching" }));
-      await expect(submitMatchResult("g1", true, null)).rejects.toThrow("Game is already over");
-    });
-
-    it("throws when game is not found", async () => {
-      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
-      await expect(submitMatchResult("g1", true, null)).rejects.toThrow("Game not found");
     });
   });
 

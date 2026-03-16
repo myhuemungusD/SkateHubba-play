@@ -199,18 +199,6 @@ export async function failSetTrick(gameId: string): Promise<void> {
  * Submit match attempt (transitions to confirming)
  * ──────────────────────────────────────────── */
 
-export async function submitMatchResult(
-  gameId: string,
-  _landed: boolean,
-  matchVideoUrl: string | null,
-): Promise<{ gameOver: boolean; winner: string | null }> {
-  // Now transitions to confirming phase instead of resolving immediately.
-  // The _landed parameter is kept for backward-compat but ignored;
-  // both players vote during the confirming phase.
-  await submitMatchAttempt(gameId, matchVideoUrl);
-  return { gameOver: false, winner: null };
-}
-
 export async function submitMatchAttempt(gameId: string, matchVideoUrl: string | null): Promise<void> {
   const gameRef = doc(requireDb(), "games", gameId);
 

@@ -97,7 +97,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
   // Submit match attempt (upload video, transition to confirming phase)
   const matchSubmittedRef = useRef(false);
-  const submitMatchVideo = async () => {
+  const submitMatchVideo = useCallback(async () => {
     /* v8 ignore start */
     if (matchSubmittedRef.current) return;
     /* v8 ignore stop */
@@ -116,24 +116,27 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [game.id, game.turnNumber, videoBlob]);
 
   // Submit confirmation vote
   const confirmSubmittedRef = useRef(false);
-  const submitVote = async (landed: boolean) => {
-    if (confirmSubmittedRef.current) return;
-    confirmSubmittedRef.current = true;
-    setSubmitting(true);
-    setError("");
-    try {
-      await submitConfirmation(game.id, profile.uid, landed);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to submit vote");
-      confirmSubmittedRef.current = false;
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const submitVote = useCallback(
+    async (landed: boolean) => {
+      if (confirmSubmittedRef.current) return;
+      confirmSubmittedRef.current = true;
+      setSubmitting(true);
+      setError("");
+      try {
+        await submitConfirmation(game.id, profile.uid, landed);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to submit vote");
+        confirmSubmittedRef.current = false;
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [game.id, profile.uid],
+  );
 
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
@@ -179,7 +182,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                 src={game.currentTrickVideoUrl}
                 controls
                 playsInline
-                preload="auto"
+                preload="metadata"
                 aria-label={`Video of ${game.currentTrickName || "trick"} set by ${setterUsername}`}
                 className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
               />
@@ -194,7 +197,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                 src={game.matchVideoUrl}
                 controls
                 playsInline
-                preload="auto"
+                preload="metadata"
                 aria-label={`Video of ${game.currentTrickName || "trick"} attempted by ${matcherUsername}`}
                 className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
               />
