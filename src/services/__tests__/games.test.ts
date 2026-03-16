@@ -280,6 +280,21 @@ describe("games service", () => {
       expect(updates.setterConfirm).toBeNull();
       expect(updates.matcherConfirm).toBeNull();
     });
+
+    it("throws when game is not found", async () => {
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+      await expect(submitMatchAttempt("g1", null)).rejects.toThrow("Game not found");
+    });
+
+    it("throws when game is already over", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, status: "forfeit", phase: "matching" }));
+      await expect(submitMatchAttempt("g1", null)).rejects.toThrow("Game is already over");
+    });
+
+    it("throws when not in matching phase", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await expect(submitMatchAttempt("g1", null)).rejects.toThrow("Not in matching phase");
+    });
   });
 
   describe("submitConfirmation", () => {
@@ -389,10 +404,21 @@ describe("games service", () => {
       expect(updates.phase).toBe("setting");
     });
 
-    it("throws when player already voted", async () => {
+    it("throws when setter already voted", async () => {
       const game = { ...confirmingGame, setterConfirm: true };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
       await expect(submitConfirmation("g1", "p1", true)).rejects.toThrow("You already voted");
+    });
+
+    it("throws when matcher already voted", async () => {
+      const game = { ...confirmingGame, matcherConfirm: false };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+      await expect(submitConfirmation("g1", "p2", true)).rejects.toThrow("You already voted");
+    });
+
+    it("throws when game is not found", async () => {
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+      await expect(submitConfirmation("g1", "p1", true)).rejects.toThrow("Game not found");
     });
 
     it("throws when not in confirming phase", async () => {
