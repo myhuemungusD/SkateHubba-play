@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { GameDoc } from "../services/games";
-import { setTrick, submitMatchResult, forfeitExpiredTurn } from "../services/games";
+import { setTrick, failSetTrick, submitMatchResult, forfeitExpiredTurn } from "../services/games";
 import { uploadVideo } from "../services/storage";
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
@@ -72,15 +72,29 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     (blob: Blob | null) => {
       setVideoBlob(blob);
       setVideoRecorded(true);
-      submitSetterTrick(blob);
     },
-    [submitSetterTrick],
+    [],
   );
 
   const handleRecorded = useCallback((blob: Blob | null) => {
     setVideoBlob(blob);
     setVideoRecorded(true);
   }, []);
+
+  const submitSetterMissed = async () => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    setSubmitting(true);
+    setError("");
+    try {
+      await failSetTrick(game.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to submit result");
+      submittedRef.current = false;
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const matchSubmittedRef = useRef(false);
   const submitResult = async (landed: boolean) => {
@@ -193,12 +207,25 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
             label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
             autoOpen={isSetter}
-            doneLabel={isSetter ? "Recorded — Sending..." : "Recorded"}
+            doneLabel="Recorded"
           />
         )}
 
         <ErrorBanner message={error} onDismiss={() => setError("")} />
 
+        {isSetter && videoRecorded && !submitting && !error && (
+          <div className="mt-5" role="group" aria-label="Did you land the trick?">
+            <p className="font-display text-xl text-white text-center mb-4">Did you land it?</p>
+            <div className="flex gap-3">
+              <Btn onClick={() => submitSetterTrick(videoBlob)} variant="success" disabled={submitting}>
+                ✓ Landed
+              </Btn>
+              <Btn onClick={submitSetterMissed} variant="danger" disabled={submitting}>
+                ✗ Missed
+              </Btn>
+            </div>
+          </div>
+        )}
         {isSetter && submitting && (
           <div className="mt-5 text-center">
             <span className="font-display text-lg text-brand-orange tracking-wider animate-pulse">

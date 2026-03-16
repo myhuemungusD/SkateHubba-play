@@ -159,6 +159,37 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
 }
 
 /* ────────────────────────────────────────────
+ * Setter failed to land their trick — turn passes
+ * ──────────────────────────────────────────── */
+
+export async function failSetTrick(gameId: string): Promise<void> {
+  const gameRef = doc(requireDb(), "games", gameId);
+
+  await runTransaction(requireDb(), async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) throw new Error("Game not found");
+
+    const game = toGameDoc(snap);
+    if (game.status !== "active") throw new Error("Game is already over");
+    if (game.phase !== "setting") throw new Error("Not in setting phase");
+
+    const nextSetter = getOpponent(game, game.currentSetter);
+
+    tx.update(gameRef, {
+      phase: "setting",
+      currentSetter: nextSetter,
+      currentTurn: nextSetter,
+      currentTrickName: null,
+      currentTrickVideoUrl: null,
+      matchVideoUrl: null,
+      turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+      turnNumber: game.turnNumber + 1,
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+/* ────────────────────────────────────────────
  * Submit match result (matcher self-judges)
  * ──────────────────────────────────────────── */
 
