@@ -4,12 +4,12 @@ import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAc
 import { deleteUserData } from "../services/users";
 import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
-import { newGameShell, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
+import { newGameShell, getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException } from "../lib/sentry";
 
-export type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover";
+export type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover" | "privacy" | "terms";
 
 interface GameContextValue {
   // Auth
@@ -76,6 +76,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         logger.warn("google_redirect_resolve_error", {
           message: err instanceof Error ? err.message : String(err),
         });
+        captureException(err, { extra: { context: "resolveGoogleRedirect" } });
       });
   }, []);
 
@@ -108,7 +109,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       } else {
         logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
         captureException(err, { extra: { context: "handleGoogleSignIn", code } });
-        setGoogleError(getUserMessage(err, "Google sign-in failed"));
+        setGoogleError(err instanceof Error ? parseFirebaseError(err) : "Google sign-in failed");
         if (screen !== "auth") {
           setAuthMode("signin");
           setScreen("auth");

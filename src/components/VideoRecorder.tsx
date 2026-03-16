@@ -153,10 +153,10 @@ export function VideoRecorder({
           </div>
         )}
 
-        {state === "idle" && (
+        {state === "idle" && !cameraError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <span className="text-5xl opacity-30">📹</span>
-            <span className="font-body text-sm text-[#555]">Camera preview</span>
+            <span className="font-body text-sm text-[#555]">Tap to open camera</span>
           </div>
         )}
 
