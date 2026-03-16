@@ -5,14 +5,16 @@ import { GamePlayScreen } from "../GamePlayScreen";
 
 const mockSetTrick = vi.fn();
 const mockFailSetTrick = vi.fn();
-const mockSubmitMatchResult = vi.fn();
+const mockSubmitMatchAttempt = vi.fn();
+const mockSubmitConfirmation = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 const mockUploadVideo = vi.fn();
 
 vi.mock("../../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
   failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
-  submitMatchResult: (...args: unknown[]) => mockSubmitMatchResult(...args),
+  submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
+  submitConfirmation: (...args: unknown[]) => mockSubmitConfirmation(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
 }));
 
@@ -38,6 +40,8 @@ function makeGame(overrides: Record<string, unknown> = {}) {
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
+    setterConfirm: null,
+    matcherConfirm: null,
     turnDeadline: { toMillis: () => Date.now() + 86400000 },
     turnNumber: 1,
     winner: null,
@@ -274,10 +278,10 @@ describe("GamePlayScreen", () => {
     });
   });
 
-  it("matcher uploads video blob and submits result (covers uploadVideo line)", async () => {
+  it("matcher uploads video blob and submits attempt (covers uploadVideo line)", async () => {
     (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
     mockUploadVideo.mockResolvedValueOnce("https://firebasestorage.googleapis.com/v0/b/test/o/video.webm");
-    mockSubmitMatchResult.mockResolvedValueOnce(undefined);
+    mockSubmitMatchAttempt.mockResolvedValueOnce(undefined);
 
     const matcherGame = makeGame({
       currentTurn: "u1",
@@ -297,10 +301,10 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
     await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
 
-    // "Did you land it?" buttons appear after recording
-    await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
+    // "Submit your attempt for review" appears after recording
+    await waitFor(() => expect(screen.getByRole("group", { name: "Submit your attempt" })).toBeInTheDocument());
 
-    await userEvent.click(screen.getByText(/Landed/));
+    await userEvent.click(screen.getByText(/Submit Attempt/));
 
     await waitFor(() => {
       expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "match", expect.any(Blob));
@@ -497,6 +501,66 @@ describe("GamePlayScreen", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Sending to @rival/)).toBeInTheDocument();
+    });
+  });
+
+  it("confirming phase shows both clips and vote buttons", () => {
+    const game = makeGame({
+      phase: "confirming",
+      currentSetter: "u2",
+      currentTurn: "u1",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
+      setterConfirm: null,
+      matcherConfirm: null,
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText(/Review: Kickflip/)).toBeInTheDocument();
+    expect(screen.getByText(/@rival's TRICK/)).toBeInTheDocument();
+    expect(screen.getByText(/@sk8r's ATTEMPT/)).toBeInTheDocument();
+    expect(screen.getByText(/Did @sk8r land it/)).toBeInTheDocument();
+    expect(screen.getByText(/✓ Landed/)).toBeInTheDocument();
+    expect(screen.getByText(/✗ Missed/)).toBeInTheDocument();
+  });
+
+  it("confirming phase shows waiting state after player votes", () => {
+    const game = makeGame({
+      phase: "confirming",
+      currentSetter: "u2",
+      currentTurn: "u1",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
+      setterConfirm: null,
+      matcherConfirm: true, // matcher (u1/sk8r) already voted
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText(/You voted: ✓ Landed/)).toBeInTheDocument();
+    expect(screen.getByText(/Waiting for @rival to vote/)).toBeInTheDocument();
+  });
+
+  it("confirming phase vote calls submitConfirmation", async () => {
+    mockSubmitConfirmation.mockResolvedValueOnce({ gameOver: false, winner: null, resolved: false });
+
+    const game = makeGame({
+      phase: "confirming",
+      currentSetter: "u2",
+      currentTurn: "u1",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
+      setterConfirm: null,
+      matcherConfirm: null,
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText(/✓ Landed/));
+
+    await waitFor(() => {
+      expect(mockSubmitConfirmation).toHaveBeenCalledWith("game1", "u1", true);
     });
   });
 });

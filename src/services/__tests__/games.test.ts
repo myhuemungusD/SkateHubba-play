@@ -50,7 +50,8 @@ import {
   _resetCreateGameRateLimit,
   setTrick,
   failSetTrick,
-  submitMatchResult,
+  submitMatchAttempt,
+  submitConfirmation,
   forfeitExpiredTurn,
   subscribeToGame,
   subscribeToMyGames,
@@ -94,6 +95,8 @@ const baseGame = {
   currentTrickName: null,
   currentTrickVideoUrl: null,
   matchVideoUrl: null,
+  setterConfirm: null,
+  matcherConfirm: null,
   turnNumber: 1,
   winner: null,
 };
@@ -264,59 +267,102 @@ describe("games service", () => {
     });
   });
 
-  describe("submitMatchResult", () => {
-    it("adds a letter when the matcher misses", async () => {
+  describe("submitMatchAttempt", () => {
+    it("transitions to confirming phase with match video URL", async () => {
       const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      const result = await submitMatchResult("g1", false, null);
-      expect(result.gameOver).toBe(false);
+      await submitMatchAttempt("g1", "https://cdn.example.com/match.webm");
 
       const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.p2Letters).toBe(1);
+      expect(updates.phase).toBe("confirming");
+      expect(updates.matchVideoUrl).toBe("https://cdn.example.com/match.webm");
+      expect(updates.setterConfirm).toBeNull();
+      expect(updates.matcherConfirm).toBeNull();
     });
 
-    it("does not add a letter when the matcher lands it", async () => {
-      const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
+    it("throws when game is not found", async () => {
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+      await expect(submitMatchAttempt("g1", null)).rejects.toThrow("Game not found");
+    });
+
+    it("throws when game is already over", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, status: "forfeit", phase: "matching" }));
+      await expect(submitMatchAttempt("g1", null)).rejects.toThrow("Game is already over");
+    });
+
+    it("throws when not in matching phase", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await expect(submitMatchAttempt("g1", null)).rejects.toThrow("Not in matching phase");
+    });
+  });
+
+  describe("submitConfirmation", () => {
+    const confirmingGame = {
+      ...baseGame,
+      phase: "confirming",
+      currentSetter: "p1",
+      setterConfirm: null,
+      matcherConfirm: null,
+    };
+
+    it("records setter vote without resolving", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(confirmingGame));
+
+      const result = await submitConfirmation("g1", "p1", true);
+      expect(result.resolved).toBe(false);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.setterConfirm).toBe(true);
+      expect(updates.matcherConfirm).toBeNull();
+    });
+
+    it("records matcher vote without resolving", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(confirmingGame));
+
+      const result = await submitConfirmation("g1", "p2", false);
+      expect(result.resolved).toBe(false);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.matcherConfirm).toBe(false);
+      expect(updates.setterConfirm).toBeNull();
+    });
+
+    it("resolves with no letter when both agree landed", async () => {
+      const game = { ...confirmingGame, setterConfirm: true };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      await submitMatchResult("g1", true, null);
+      const result = await submitConfirmation("g1", "p2", true);
+      expect(result.resolved).toBe(true);
+      expect(result.gameOver).toBe(false);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.p1Letters).toBe(0);
       expect(updates.p2Letters).toBe(0);
-    });
-
-    it("switches setter to matcher when trick is landed", async () => {
-      const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
-
-      await submitMatchResult("g1", true, null);
-
-      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.phase).toBe("setting");
+      // Matcher landed, so matcher becomes next setter
       expect(updates.currentSetter).toBe("p2");
     });
 
-    it("keeps same setter when trick is missed", async () => {
-      const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
+    it("adds letter to matcher when either votes missed", async () => {
+      const game = { ...confirmingGame, setterConfirm: false };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      await submitMatchResult("g1", false, null);
+      const result = await submitConfirmation("g1", "p2", true);
+      expect(result.resolved).toBe(true);
 
       const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.currentSetter).toBe("p1");
+      // p2 is matcher and gets a letter since setter said missed
+      expect(updates.p2Letters).toBe(1);
+      expect(updates.p1Letters).toBe(0);
+      expect(updates.currentSetter).toBe("p1"); // Same setter stays
     });
 
-    it("ends the game when a player reaches 5 letters", async () => {
-      const game = {
-        ...baseGame,
-        phase: "matching",
-        currentSetter: "p1",
-        p2Letters: 4,
-      };
+    it("ends game when matcher reaches 5 letters", async () => {
+      const game = { ...confirmingGame, setterConfirm: false, p2Letters: 4 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      const result = await submitMatchResult("g1", false, null);
+      const result = await submitConfirmation("g1", "p2", false);
       expect(result.gameOver).toBe(true);
       expect(result.winner).toBe("p1");
 
@@ -325,83 +371,64 @@ describe("games service", () => {
       expect(updates.winner).toBe("p1");
     });
 
-    it("throws when not in matching phase", async () => {
-      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
-      await expect(submitMatchResult("g1", true, null)).rejects.toThrow("Not in matching phase");
-    });
-
-    it("throws when game is already over", async () => {
-      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, status: "forfeit", phase: "matching" }));
-      await expect(submitMatchResult("g1", true, null)).rejects.toThrow("Game is already over");
-    });
-
-    it("throws when game is not found", async () => {
-      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
-      await expect(submitMatchResult("g1", true, null)).rejects.toThrow("Game not found");
-    });
-
-    it("adds a letter to p1 when p1 is the matcher and misses", async () => {
-      const game = { ...baseGame, phase: "matching", currentSetter: "p2" };
+    it("ends game when p1 reaches 5 letters (p2 wins)", async () => {
+      const game = { ...confirmingGame, currentSetter: "p2", matcherConfirm: false, p1Letters: 4 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      const result = await submitMatchResult("g1", false, null);
-      expect(result.gameOver).toBe(false);
-
-      const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.p1Letters).toBe(1);
-      expect(updates.p2Letters).toBe(0);
-    });
-
-    it("stores match video URL when game ends", async () => {
-      // When game ends, matchVideoUrl is stored as-is (no reset to null)
-      const game = { ...baseGame, phase: "matching", currentSetter: "p1", p2Letters: 4 };
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
-
-      await submitMatchResult("g1", false, "https://cdn.example.com/match.webm");
-
-      const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.matchVideoUrl).toBe("https://cdn.example.com/match.webm");
-    });
-
-    it("ends the game when p1 reaches 5 letters (p2 wins)", async () => {
-      const game = {
-        ...baseGame,
-        phase: "matching",
-        currentSetter: "p2",
-        p1Letters: 4,
-      };
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
-
-      const result = await submitMatchResult("g1", false, null);
+      const result = await submitConfirmation("g1", "p2", false);
       expect(result.gameOver).toBe(true);
       expect(result.winner).toBe("p2");
-
-      const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.status).toBe("complete");
-      expect(updates.winner).toBe("p2");
     });
 
     it("increments turn number when game continues", async () => {
-      const game = { ...baseGame, phase: "matching", currentSetter: "p1", turnNumber: 3 };
+      const game = { ...confirmingGame, setterConfirm: false, turnNumber: 3 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      await submitMatchResult("g1", false, null);
+      const result = await submitConfirmation("g1", "p2", false);
+      expect(result.resolved).toBe(true);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.turnNumber).toBe(4);
     });
 
-    it("clears trick data when transitioning back to setting phase", async () => {
-      const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
+    it("clears trick data when resolving back to setting phase", async () => {
+      const game = { ...confirmingGame, setterConfirm: true };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      await submitMatchResult("g1", false, null);
+      await submitConfirmation("g1", "p2", true);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.currentTrickName).toBeNull();
       expect(updates.currentTrickVideoUrl).toBeNull();
       expect(updates.matchVideoUrl).toBeNull();
       expect(updates.phase).toBe("setting");
+    });
+
+    it("throws when setter already voted", async () => {
+      const game = { ...confirmingGame, setterConfirm: true };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+      await expect(submitConfirmation("g1", "p1", true)).rejects.toThrow("You already voted");
+    });
+
+    it("throws when matcher already voted", async () => {
+      const game = { ...confirmingGame, matcherConfirm: false };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+      await expect(submitConfirmation("g1", "p2", true)).rejects.toThrow("You already voted");
+    });
+
+    it("throws when game is not found", async () => {
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+      await expect(submitConfirmation("g1", "p1", true)).rejects.toThrow("Game not found");
+    });
+
+    it("throws when not in confirming phase", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await expect(submitConfirmation("g1", "p1", true)).rejects.toThrow("Not in confirming phase");
+    });
+
+    it("throws when game is already over", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, status: "complete", phase: "confirming" }));
+      await expect(submitConfirmation("g1", "p1", true)).rejects.toThrow("Game is already over");
     });
   });
 

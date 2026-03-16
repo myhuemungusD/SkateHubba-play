@@ -134,6 +134,57 @@ service cloud.firestore {
           )
         );
 
+      // Confirmation phase: either player can submit their vote on the match
+      allow update: if isSignedIn()
+        && isPlayer(resource.data)
+        && resource.data.status == 'active'
+        && resource.data.phase == 'confirming'
+        // Cannot change player UIDs or usernames
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        // Videos must not change during confirmation
+        && request.resource.data.currentTrickVideoUrl == resource.data.currentTrickVideoUrl
+        && request.resource.data.matchVideoUrl == resource.data.matchVideoUrl
+        && request.resource.data.currentTrickName == resource.data.currentTrickName
+        // Setter can only set setterConfirm, matcher can only set matcherConfirm
+        && (
+          // Setter voting (setterConfirm changes from null to bool, matcherConfirm unchanged)
+          (request.auth.uid == resource.data.currentSetter
+            && resource.data.setterConfirm == null
+            && request.resource.data.setterConfirm is bool
+            && request.resource.data.matcherConfirm == resource.data.matcherConfirm)
+          // Matcher voting (matcherConfirm changes from null to bool, setterConfirm unchanged)
+          || (request.auth.uid == opponentUid(resource.data, resource.data.currentSetter)
+            && resource.data.matcherConfirm == null
+            && request.resource.data.matcherConfirm is bool
+            && request.resource.data.setterConfirm == resource.data.setterConfirm)
+        )
+        // Scores: same rules as normal update (no change, or +1 for one player when resolving)
+        && (
+          (request.resource.data.p1Letters == resource.data.p1Letters + 1
+            && request.resource.data.p2Letters == resource.data.p2Letters)
+          || (request.resource.data.p2Letters == resource.data.p2Letters + 1
+            && request.resource.data.p1Letters == resource.data.p1Letters)
+          || (request.resource.data.p1Letters == resource.data.p1Letters
+            && request.resource.data.p2Letters == resource.data.p2Letters)
+        )
+        && (
+          // Vote only (game stays active in confirming phase)
+          (request.resource.data.status == 'active' && request.resource.data.winner == null)
+          // Resolution: game complete
+          || (
+            request.resource.data.status == 'complete'
+            && (request.resource.data.p1Letters >= 5 || request.resource.data.p2Letters >= 5)
+            && request.resource.data.winner == (
+              request.resource.data.p1Letters >= 5
+                ? resource.data.player2Uid
+                : resource.data.player1Uid
+            )
+          )
+        );
+
       // Either player can forfeit the current-turn player's expired turn
       // Winner must be the opponent of the player whose turn it is
       allow update: if isSignedIn()
