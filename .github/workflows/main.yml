@@ -63,6 +63,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -74,7 +79,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/firebase/emulators
-          key: firebase-emulators-${{ runner.os }}-v1
+          key: firebase-emulators-${{ runner.os }}-v2
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps

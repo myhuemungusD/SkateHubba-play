@@ -16,6 +16,9 @@ export default defineConfig({
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
+  // CI runners are slower — give multi-browser game tests enough headroom.
+  timeout: process.env.CI ? 60_000 : 30_000,
+  expect: { timeout: process.env.CI ? 10_000 : 5_000 },
   reporter: [["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: "http://localhost:5173",
