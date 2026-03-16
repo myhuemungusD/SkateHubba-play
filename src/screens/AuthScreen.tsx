@@ -14,6 +14,7 @@ export function AuthScreen({
   onGoogle,
   googleLoading,
   googleError,
+  onGoogleErrorDismiss,
 }: {
   mode: "signup" | "signin";
   onDone: () => void;
@@ -21,6 +22,7 @@ export function AuthScreen({
   onGoogle: () => void;
   googleLoading: boolean;
   googleError: string;
+  onGoogleErrorDismiss: () => void;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -180,7 +182,13 @@ export function AuthScreen({
             />
           )}
 
-          <ErrorBanner message={displayError} onDismiss={() => setError("")} />
+          <ErrorBanner
+            message={displayError}
+            onDismiss={() => {
+              setError("");
+              onGoogleErrorDismiss();
+            }}
+          />
 
           {resetSent && (
             <div className="w-full p-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green mb-4">

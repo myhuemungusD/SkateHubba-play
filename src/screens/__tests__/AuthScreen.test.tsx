@@ -22,6 +22,7 @@ const defaultProps = {
   onGoogle: vi.fn(),
   googleLoading: false,
   googleError: "",
+  onGoogleErrorDismiss: vi.fn(),
 };
 
 describe("AuthScreen", () => {
