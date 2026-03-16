@@ -7,7 +7,7 @@ vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
 }));
 
-const profile = { uid: "u1", username: "sk8r", stance: "regular", email: "a@b.com", emailVerified: true };
+const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
 
 function makeGame(overrides: Record<string, unknown> = {}) {
   return {

@@ -869,7 +869,7 @@ describe("Smoke Test: Game E2E", () => {
 
   it("profile setup creates profile and transitions to lobby", async () => {
     const refreshProfile = vi.fn();
-    const newProfile = { uid: "u1", email: "sk8r@test.com", username: "newsk8r", stance: "Goofy" };
+    const newProfile = { uid: "u1", username: "newsk8r", stance: "Goofy", emailVerified: false, createdAt: null };
     mockCreateProfile.mockResolvedValueOnce(newProfile);
     mockIsUsernameAvailable.mockResolvedValue(true);
 

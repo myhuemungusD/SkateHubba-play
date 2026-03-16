@@ -95,8 +95,9 @@ export async function createProfile(
 /**
  * Delete a user's Firestore data: game documents, profile, and username reservation.
  *
- * Call this BEFORE deleteAccount() from auth.ts so Firestore cleanup
- * succeeds while the auth token is still valid.
+ * Called AFTER deleteAccount() from auth.ts. If this fails, the auth
+ * account is already gone and Firestore data is orphaned — the caller
+ * should log/alert so it can be cleaned up manually or via a Cloud Function.
  *
  * Phase 1: Delete all game documents where the user is a player.
  * Phase 2: Atomically delete profile + username reservation.
