@@ -21,6 +21,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [setterAction, setSetterAction] = useState<"landed" | "missed" | null>(null);
   const [forfeitChecked, setForfeitChecked] = useState(false);
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
       if (submittedRef.current) return;
       /* v8 ignore stop */
       submittedRef.current = true;
+      setSetterAction("landed");
       setSubmitting(true);
       setError("");
       try {
@@ -68,22 +70,10 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     [game.id, game.turnNumber],
   );
 
-  const handleSetterRecorded = useCallback(
-    (blob: Blob | null) => {
-      setVideoBlob(blob);
-      setVideoRecorded(true);
-    },
-    [],
-  );
-
-  const handleRecorded = useCallback((blob: Blob | null) => {
-    setVideoBlob(blob);
-    setVideoRecorded(true);
-  }, []);
-
-  const submitSetterMissed = async () => {
+  const submitSetterMissed = useCallback(async () => {
     if (submittedRef.current) return;
     submittedRef.current = true;
+    setSetterAction("missed");
     setSubmitting(true);
     setError("");
     try {
@@ -94,7 +84,12 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [game.id]);
+
+  const handleRecorded = useCallback((blob: Blob | null) => {
+    setVideoBlob(blob);
+    setVideoRecorded(true);
+  }, []);
 
   const matchSubmittedRef = useRef(false);
   const submitResult = async (landed: boolean) => {
@@ -204,7 +199,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
         {showRecorder && (
           <VideoRecorder
-            onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
+            onRecorded={handleRecorded}
             label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
             autoOpen={isSetter}
             doneLabel="Recorded"
@@ -235,8 +230,11 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         )}
         {isSetter && !submitting && error && videoRecorded && (
           <div className="mt-5">
-            <Btn onClick={() => submitSetterTrick(videoBlob)} variant="secondary">
-              Retry Send
+            <Btn
+              onClick={setterAction === "missed" ? submitSetterMissed : () => submitSetterTrick(videoBlob)}
+              variant="secondary"
+            >
+              Retry
             </Btn>
           </div>
         )}

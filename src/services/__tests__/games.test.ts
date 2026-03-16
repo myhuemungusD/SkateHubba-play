@@ -49,6 +49,7 @@ import {
   createGame,
   _resetCreateGameRateLimit,
   setTrick,
+  failSetTrick,
   submitMatchResult,
   forfeitExpiredTurn,
   subscribeToGame,
@@ -215,6 +216,51 @@ describe("games service", () => {
       };
       mockTxGet.mockResolvedValueOnce(malformedSnap);
       await expect(setTrick("bad-doc", "Kickflip", null)).rejects.toThrow("Malformed game document: bad-doc");
+    });
+  });
+
+  describe("failSetTrick", () => {
+    it("switches setter to opponent and stays in setting phase", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting", currentSetter: "p1" }));
+
+      await failSetTrick("g1");
+
+      expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.phase).toBe("setting");
+      expect(updates.currentSetter).toBe("p2");
+      expect(updates.currentTurn).toBe("p2");
+      expect(updates.currentTrickName).toBeNull();
+      expect(updates.currentTrickVideoUrl).toBeNull();
+      expect(updates.matchVideoUrl).toBeNull();
+      expect(updates.turnNumber).toBe(2);
+    });
+
+    it("switches setter from p2 to p1", async () => {
+      mockTxGet.mockResolvedValueOnce(
+        makeGameSnap({ ...baseGame, phase: "setting", currentSetter: "p2", currentTurn: "p2" }),
+      );
+
+      await failSetTrick("g1");
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.currentSetter).toBe("p1");
+      expect(updates.currentTurn).toBe("p1");
+    });
+
+    it("throws when game is not found", async () => {
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+      await expect(failSetTrick("g1")).rejects.toThrow("Game not found");
+    });
+
+    it("throws when game is already over", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, status: "complete", phase: "setting" }));
+      await expect(failSetTrick("g1")).rejects.toThrow("Game is already over");
+    });
+
+    it("throws when not in setting phase", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "matching" }));
+      await expect(failSetTrick("g1")).rejects.toThrow("Not in setting phase");
     });
   });
 
