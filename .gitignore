@@ -13,12 +13,7 @@ playwright-report
 playwright/.auth
 test-results
 
-# Capacitor / Android
-android/app/build
-android/.gradle
-android/build
-android/local.properties
-android/app/src/main/assets/public
-android/app/src/main/assets/capacitor.config.json
+# Capacitor / Android — regenerate with: npx cap add android && npm run cap:sync
+android/
 *.keystore
 *.jks

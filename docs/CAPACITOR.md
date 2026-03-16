@@ -11,14 +11,19 @@ Step-by-step roadmap for building and shipping SkateHubba as a native Android ap
 ## Project Setup (already done)
 
 ```bash
-npm install @capacitor/core @capacitor/cli
-npm install @capacitor/android
-npm install @capacitor/camera @capacitor/filesystem @capacitor/splash-screen
+npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/splash-screen
 npx cap init  # appId: com.designmainline.skatehubba, webDir: dist
 npx cap add android
 ```
 
 Configuration lives in `capacitor.config.ts` at the project root.
+
+The `android/` directory is **gitignored** — it's generated boilerplate. Regenerate it on first clone:
+
+```bash
+npx cap add android
+npm run cap:sync
+```
 
 ## Daily Workflow
 
@@ -57,7 +62,23 @@ versionCode 1        // increment on every release
 versionName "1.0.0"  // semver shown to users
 ```
 
-### 3. Build the release AAB
+### 3. Add camera and audio permissions
+
+The app uses the MediaRecorder web API for video capture. Add these permissions to `android/app/src/main/AndroidManifest.xml`:
+
+```xml
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+```
+
+If you later adopt `@capacitor/camera` for native capture, install it then:
+
+```bash
+npm install @capacitor/camera
+npm run cap:sync
+```
+
+### 4. Build the release AAB
 
 In Android Studio:
 
@@ -68,7 +89,7 @@ In Android Studio:
 
 **Keep the keystore file safe.** If you lose it, you cannot update the app. Back it up outside the repo. Never commit `.keystore` or `.jks` files.
 
-### 4. Upload to Play Console
+### 5. Upload to Play Console
 
 1. Go to [Google Play Console](https://play.google.com/console)
 2. Create app > fill in listing details
@@ -86,20 +107,9 @@ In Android Studio:
 | Full description | Max 4000 chars |
 | Content rating | Complete the questionnaire (~5 min) |
 
-### 5. Firebase Auth — Authorized Domains
+### 6. Firebase Auth — Authorized Domains
 
 Capacitor loads your app from `localhost` internally. Verify that `localhost` is in your Firebase Console > Authentication > Settings > Authorized domains. It's usually there by default.
-
-### 6. Permissions
-
-The Android manifest at `android/app/src/main/AndroidManifest.xml` is auto-configured by Capacitor plugins. The camera and filesystem plugins add their required permissions automatically.
-
-If you use the MediaRecorder API (current approach) instead of `@capacitor/camera`, you may need to manually add:
-
-```xml
-<uses-permission android:name="android.permission.CAMERA" />
-<uses-permission android:name="android.permission.RECORD_AUDIO" />
-```
 
 ## Troubleshooting
 
