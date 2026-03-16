@@ -101,6 +101,7 @@ function AppScreens() {
 
       {ctx.screen === "game" && ctx.activeGame && ctx.activeProfile && (
         <GamePlayScreen
+          key={ctx.activeGame.turnNumber}
           game={ctx.activeGame}
           profile={ctx.activeProfile}
           onBack={() => {

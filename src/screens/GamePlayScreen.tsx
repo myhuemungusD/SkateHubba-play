@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { GameDoc } from "../services/games";
-import { setTrick, submitMatchResult, forfeitExpiredTurn } from "../services/games";
+import { setTrick, failSetTrick, submitMatchResult, forfeitExpiredTurn } from "../services/games";
 import { uploadVideo } from "../services/storage";
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
@@ -21,6 +21,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [videoRecorded, setVideoRecorded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [setterAction, setSetterAction] = useState<"landed" | "missed" | null>(null);
   const [forfeitChecked, setForfeitChecked] = useState(false);
 
   useEffect(() => {
@@ -50,6 +51,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
       if (submittedRef.current) return;
       /* v8 ignore stop */
       submittedRef.current = true;
+      setSetterAction("landed");
       setSubmitting(true);
       setError("");
       try {
@@ -68,14 +70,21 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     [game.id, game.turnNumber],
   );
 
-  const handleSetterRecorded = useCallback(
-    (blob: Blob | null) => {
-      setVideoBlob(blob);
-      setVideoRecorded(true);
-      submitSetterTrick(blob);
-    },
-    [submitSetterTrick],
-  );
+  const submitSetterMissed = useCallback(async () => {
+    if (submittedRef.current) return;
+    submittedRef.current = true;
+    setSetterAction("missed");
+    setSubmitting(true);
+    setError("");
+    try {
+      await failSetTrick(game.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to submit result");
+      submittedRef.current = false;
+    } finally {
+      setSubmitting(false);
+    }
+  }, [game.id]);
 
   const handleRecorded = useCallback((blob: Blob | null) => {
     setVideoBlob(blob);
@@ -167,6 +176,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <video
               src={game.currentTrickVideoUrl}
               controls
+              playsInline
+              preload="auto"
               aria-label={`Video of ${game.currentTrickName || "trick"} set by opponent`}
               className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
             />
@@ -188,26 +199,42 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
         {showRecorder && (
           <VideoRecorder
-            onRecorded={isSetter ? handleSetterRecorded : handleRecorded}
+            onRecorded={handleRecorded}
             label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
             autoOpen={isSetter}
-            doneLabel={isSetter ? "Recorded — Sending..." : "Recorded"}
+            doneLabel="Recorded"
           />
         )}
 
         <ErrorBanner message={error} onDismiss={() => setError("")} />
 
+        {isSetter && videoRecorded && !submitting && !error && (
+          <div className="mt-5" role="group" aria-label="Did you land the trick?">
+            <p className="font-display text-xl text-white text-center mb-4">Did you land it?</p>
+            <div className="flex gap-3">
+              <Btn onClick={() => submitSetterTrick(videoBlob)} variant="success" disabled={submitting}>
+                ✓ Landed
+              </Btn>
+              <Btn onClick={submitSetterMissed} variant="danger" disabled={submitting}>
+                ✗ Missed
+              </Btn>
+            </div>
+          </div>
+        )}
         {isSetter && submitting && (
           <div className="mt-5 text-center">
             <span className="font-display text-lg text-brand-orange tracking-wider animate-pulse">
-              Sending to @{opponentName}...
+              {setterAction === "missed" ? "Passing turn..." : `Sending to @${opponentName}...`}
             </span>
           </div>
         )}
         {isSetter && !submitting && error && videoRecorded && (
           <div className="mt-5">
-            <Btn onClick={() => submitSetterTrick(videoBlob)} variant="secondary">
-              Retry Send
+            <Btn
+              onClick={setterAction === "missed" ? submitSetterMissed : () => submitSetterTrick(videoBlob)}
+              variant="secondary"
+            >
+              Retry
             </Btn>
           </div>
         )}

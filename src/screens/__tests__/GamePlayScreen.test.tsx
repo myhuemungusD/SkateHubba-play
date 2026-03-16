@@ -4,12 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { GamePlayScreen } from "../GamePlayScreen";
 
 const mockSetTrick = vi.fn();
+const mockFailSetTrick = vi.fn();
 const mockSubmitMatchResult = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 const mockUploadVideo = vi.fn();
 
 vi.mock("../../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
+  failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
   submitMatchResult: (...args: unknown[]) => mockSubmitMatchResult(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
 }));
@@ -263,6 +265,10 @@ describe("GamePlayScreen", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
+    // "Did you land it?" appears — click Landed to submit
+    await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
+
     await waitFor(() => {
       expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "set", expect.any(Blob));
     });
@@ -331,6 +337,10 @@ describe("GamePlayScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
+    // "Did you land it?" appears — click Landed to submit
+    await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
+
     await waitFor(() => {
       expect(mockSetTrick).toHaveBeenCalledWith("game1", "Trick", null);
     });
@@ -347,6 +357,10 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    // "Did you land it?" appears — click Landed to trigger setTrick
+    await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
 
     await waitFor(() => expect(screen.getByText("Failed to send trick")).toBeInTheDocument());
   });
@@ -365,11 +379,124 @@ describe("GamePlayScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
+    // "Did you land it?" appears — click Landed to trigger setTrick
+    await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
+
     // setTrick fails → error is shown
     await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
 
     // Dismiss the error banner (covers the onDismiss lambda on ErrorBanner line)
     await userEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
     expect(screen.queryByText("Network error")).not.toBeInTheDocument();
+  });
+
+  it("setter 'Did you land it?' buttons appear after recording", async () => {
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument();
+      expect(screen.getByText(/Landed/)).toBeInTheDocument();
+      expect(screen.getByText(/Missed/)).toBeInTheDocument();
+    });
+  });
+
+  it("setter clicking Missed calls failSetTrick", async () => {
+    mockFailSetTrick.mockResolvedValueOnce(undefined);
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Missed/));
+
+    await waitFor(() => {
+      expect(mockFailSetTrick).toHaveBeenCalledWith("game1");
+    });
+    expect(mockSetTrick).not.toHaveBeenCalled();
+    expect(mockUploadVideo).not.toHaveBeenCalled();
+  });
+
+  it("retry button calls failSetTrick after a missed attempt failure", async () => {
+    mockFailSetTrick.mockRejectedValueOnce(new Error("Network error"));
+    mockFailSetTrick.mockResolvedValueOnce(undefined);
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Missed/));
+
+    // failSetTrick fails → error + Retry button
+    await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
+    expect(screen.getByText("Retry")).toBeInTheDocument();
+
+    // Dismiss error so "Did you land it?" re-appears, but click Retry first
+    await userEvent.click(screen.getByText("Retry"));
+
+    await waitFor(() => {
+      expect(mockFailSetTrick).toHaveBeenCalledTimes(2);
+    });
+    // Should NOT have called setTrick (the Landed path)
+    expect(mockSetTrick).not.toHaveBeenCalled();
+  });
+
+  it("shows 'Passing turn...' during missed submission", async () => {
+    mockFailSetTrick.mockImplementation(() => new Promise(() => {}));
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Missed/));
+
+    await waitFor(() => {
+      expect(screen.getByText("Passing turn...")).toBeInTheDocument();
+    });
+  });
+
+  it("shows 'Sending to @rival...' during landed submission", async () => {
+    mockSetTrick.mockImplementation(() => new Promise(() => {}));
+
+    render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+
+    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sending to @rival/)).toBeInTheDocument();
+    });
   });
 });

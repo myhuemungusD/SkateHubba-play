@@ -141,7 +141,13 @@ export function VideoRecorder({
           ${state === "recording" ? "border-2 border-brand-red shadow-[0_0_30px_rgba(255,61,0,0.15)]" : "border border-border"}`}
       >
         {state === "done" && blobUrl ? (
-          <video src={blobUrl} className="w-full h-full object-cover" controls aria-label="Your recorded trick video" />
+          <video
+            src={blobUrl}
+            className="w-full h-full object-cover"
+            controls
+            playsInline
+            aria-label="Your recorded trick video"
+          />
         ) : (
           <video ref={videoRef} className="w-full h-full object-cover" muted playsInline aria-label="Camera preview" />
         )}

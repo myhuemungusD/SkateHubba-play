@@ -18,6 +18,7 @@ const mockDeleteUserData = vi.fn();
 
 const mockCreateGame = vi.fn();
 const mockSetTrick = vi.fn();
+const mockFailSetTrick = vi.fn();
 const mockSubmitMatchResult = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 const mockSubscribeToMyGames = vi.fn(() => vi.fn());
@@ -49,6 +50,7 @@ vi.mock("../services/users", () => ({
 vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
+  failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
   submitMatchResult: (...args: unknown[]) => mockSubmitMatchResult(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
@@ -1473,9 +1475,9 @@ describe("Smoke Test: Game E2E", () => {
     });
   });
 
-  /* ── 54. Setter auto-submits via VideoRecorder ── */
+  /* ── 54. Setter submits trick after recording and confirming landed ── */
 
-  it("setter's trick is auto-submitted after video is recorded", async () => {
+  it("setter's trick is submitted after recording and clicking Landed", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockResolvedValueOnce(undefined);
     renderLobby([game]);
@@ -1502,6 +1504,12 @@ describe("Smoke Test: Game E2E", () => {
       expect(screen.getByRole("button", { name: /stop recording/i })).toBeInTheDocument();
     });
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+
+    // "Did you land it?" appears — click Landed to submit
+    await waitFor(() => {
+      expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByText(/Landed/));
 
     // setTrick should have been called with the custom trick name
     await waitFor(() => {
@@ -1537,18 +1545,22 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
-    await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Hardflip", null);
-    });
-
     // Input is disabled and recorder done state is visible (not unmounted)
     expect(screen.getByLabelText("TRICK NAME")).toBeDisabled();
     expect(screen.getByText(/Recorded/)).toBeInTheDocument();
+
+    // "Did you land it?" appears — click Landed to submit
+    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
+
+    await waitFor(() => {
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Hardflip", null);
+    });
   });
 
   /* ── 55. Setter auto-submit fails → retry button shown ── */
 
-  it("setter auto-submit records video and submits trick without upload (demo mode)", async () => {
+  it("setter submits trick without upload after confirming landed (demo mode)", async () => {
     // Covers the submitSetterTrick code path when blob is null (demo mode recording)
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockResolvedValue(undefined);
@@ -1570,6 +1582,10 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /record/i }));
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+
+    // "Did you land it?" appears — click Landed to submit
+    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
 
     // Confirms submitSetterTrick ran without upload (blob=null in demo mode)
     await waitFor(() => {
@@ -1699,9 +1715,9 @@ describe("Smoke Test: Game E2E", () => {
 
   /* ── 61. Setter auto-submit with upload error shows error banner ── */
 
-  it("setter auto-submit fails with upload error and shows error message", async () => {
+  it("setter submits trick after confirming landed (upload skipped in demo mode)", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    mockUploadVideo.mockRejectedValueOnce(new Error("Storage quota exceeded"));
+    mockSetTrick.mockResolvedValueOnce(undefined);
     renderLobby([game]);
     withGameSub(game);
 
@@ -1713,7 +1729,7 @@ describe("Smoke Test: Game E2E", () => {
     });
     await userEvent.type(screen.getByLabelText("TRICK NAME"), "Heelflip");
 
-    // Wait for camera to fail → preview
+    // Wait for camera → preview
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
     });
@@ -1721,9 +1737,12 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
-    // setTrick should still be called even without video (no blob in demo mode)
+    // "Did you land it?" appears — click Landed to submit
+    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
+
+    // setTrick called (no upload since blob=null in demo mode)
     await waitFor(() => {
-      // Either error shows OR setTrick was called (no upload since blob=null in demo mode)
       expect(mockSetTrick).toHaveBeenCalledWith("game1", "Heelflip", null);
     });
   });
@@ -2119,7 +2138,7 @@ describe("Smoke Test: Game E2E", () => {
 
   /* ── 79. GamePlayScreen — setter setTrick fails shows retry button ── */
 
-  it("setter auto-submit failure shows error and retry button", async () => {
+  it("setter landed failure shows error and retry button", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockRejectedValueOnce(new Error("Network error"));
     renderLobby([game]);
@@ -2135,14 +2154,18 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
+    // "Did you land it?" appears — click Landed (which will fail)
+    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
+
     await waitFor(() => {
       expect(screen.getByText("Network error")).toBeInTheDocument();
-      expect(screen.getByText("Retry Send")).toBeInTheDocument();
+      expect(screen.getByText("Retry")).toBeInTheDocument();
     });
 
     // Retry should attempt again
     mockSetTrick.mockResolvedValueOnce(undefined);
-    await userEvent.click(screen.getByText("Retry Send"));
+    await userEvent.click(screen.getByText("Retry"));
 
     await waitFor(() => {
       expect(mockSetTrick).toHaveBeenCalledTimes(2);
@@ -2167,6 +2190,10 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /record/i }));
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+
+    // "Did you land it?" appears — click Landed (which will hang)
+    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
 
     await waitFor(() => {
       expect(screen.getByText(/Sending to @rival/)).toBeInTheDocument();
@@ -2349,7 +2376,7 @@ describe("Smoke Test: Game E2E", () => {
 
   /* ── 90. Setter setTrick error with non-Error thrown ── */
 
-  it("setter auto-submit shows fallback error for non-Error thrown", async () => {
+  it("setter landed shows fallback error for non-Error thrown", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockRejectedValueOnce("string error");
     renderLobby([game]);
@@ -2363,6 +2390,10 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /record/i }));
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+
+    // "Did you land it?" appears — click Landed (which will fail)
+    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
 
     await waitFor(() => {
       expect(screen.getByText("Failed to send trick")).toBeInTheDocument();
