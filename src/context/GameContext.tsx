@@ -9,7 +9,17 @@ import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException } from "../lib/sentry";
 
-export type Screen = "landing" | "auth" | "profile" | "lobby" | "challenge" | "game" | "gameover" | "privacy" | "terms";
+export type Screen =
+  | "landing"
+  | "auth"
+  | "profile"
+  | "lobby"
+  | "challenge"
+  | "game"
+  | "gameover"
+  | "privacy"
+  | "terms"
+  | "notfound";
 
 interface GameContextValue {
   // Auth
@@ -106,6 +116,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
           setAuthMode("signin");
           setScreen("auth");
         }
+      } else if (code === "auth/unauthorized-domain") {
+        logger.error("google_sign_in_unauthorized_domain", { code, origin: window.location.origin });
+        captureException(err, { extra: { context: "handleGoogleSignIn", code, origin: window.location.origin } });
+        setGoogleError(
+          "This domain isn't authorized for Google sign-in. " +
+            "Add it in Firebase Console → Authentication → Settings → Authorized domains.",
+        );
       } else {
         logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
         captureException(err, { extra: { context: "handleGoogleSignIn", code } });
