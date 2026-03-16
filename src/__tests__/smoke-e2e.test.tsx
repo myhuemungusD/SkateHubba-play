@@ -900,7 +900,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "sk8r@test.com", "newsk8r", "Regular", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false);
     });
   });
 

@@ -72,6 +72,9 @@ export function AuthScreen({
         setError("Invalid email or password");
       else if (code === "auth/user-not-found") setError("No account with that email. Need to sign up?");
       else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
+      else if (code === "auth/too-many-requests")
+        setError("Too many attempts. Please wait a few minutes and try again.");
+      else if (code === "auth/network-request-failed") setError("Network error — check your connection and try again.");
       else setError(getUserMessage(err, "Something went wrong"));
     } finally {
       setLoading(false);

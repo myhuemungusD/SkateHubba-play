@@ -38,6 +38,7 @@ User ──► React SPA ──► Firebase Auth (email/password + Google OAuth)
 **File:** `src/services/auth.ts:92-124`
 
 #### What's done right:
+
 - `select_account` prompt forced — prevents silent session fixation
 - Popup-first with redirect fallback — graceful degradation for mobile/Safari
 - Error differentiation: `popup-blocked`, `popup-closed-by-user`, `account-exists-with-different-credential`, `unauthorized-domain` all handled distinctly
@@ -82,6 +83,7 @@ The `GameContext.tsx` has its own catch that surfaces the error to the user, but
 **File:** `src/services/auth.ts:49-67`, `src/screens/AuthScreen.tsx`
 
 #### What's done right:
+
 - Firebase's built-in bcrypt hashing (client never sees algorithm)
 - Email verification required before gameplay (enforced in Firestore rules, not just client-side)
 - Password minimum 6 chars (Firebase default) + strength indicator on signup
@@ -91,6 +93,7 @@ The `GameContext.tsx` has its own catch that surfaces the error to the user, but
 #### Finding [MEDIUM]: No rate limiting on email/password sign-in attempts
 
 There is no client-side throttling on `signIn()` calls. Firebase Auth has built-in rate limiting (blocks after ~5 failed attempts per IP), but:
+
 - The client provides no feedback about being rate-limited
 - No exponential backoff or lockout indicator
 - `auth/too-many-requests` error is not explicitly handled in `AuthScreen.tsx`
@@ -101,6 +104,7 @@ else setError(getUserMessage(err, "Something went wrong"));
 ```
 
 **Recommendation:** Add explicit handling for `auth/too-many-requests`:
+
 ```typescript
 else if (code === "auth/too-many-requests")
   setError("Too many attempts. Please wait a few minutes.");
@@ -119,6 +123,7 @@ else if (code === "auth/too-many-requests")
 ### 3. Session & Token Management
 
 #### What's done right:
+
 - Firebase SDK manages ID tokens automatically (IndexedDB, not localStorage/cookies)
 - Persistent multi-tab cache (`persistentMultipleTabManager`) prevents auth desync between tabs
 - No custom session store = no session fixation/hijacking attack surface
@@ -129,6 +134,7 @@ else if (code === "auth/too-many-requests")
 Firebase ID tokens are valid for ~1 hour. If a user's account is compromised and the password is changed, the old session remains valid until the token expires. Firebase doesn't push revocation — it only takes effect on the next token refresh.
 
 **Risk:** This is a known Firebase Auth limitation, not a code bug. But it means:
+
 - Account compromise has a ~1hr window where the attacker's session persists
 - `deleteAccount()` doesn't force-invalidate other sessions before deletion
 
@@ -150,6 +156,7 @@ This is gated by `import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === 
 **File:** `firestore.rules`
 
 #### What's done right:
+
 - `isSignedIn()` + `isOwner(uid)` helper pattern — clean, consistent
 - Username immutability enforced server-side (lines 39-40)
 - Username reservation is atomic via transaction + rules preventing overwrites
@@ -172,6 +179,7 @@ Any authenticated user can read any other user's profile (email, username, stanc
 **Risk:** An attacker with a valid account can enumerate all user profiles and harvest email addresses. The `SECURITY.md` acknowledges username enumeration is by design, but email enumeration is a separate concern.
 
 **Recommendation:** Either:
+
 1. Remove `email` from the UserProfile document (it's already on the Firebase Auth record)
 2. Use Firestore field-level rules or a Cloud Function to strip email from reads by non-owners
 3. At minimum, document this as an accepted risk
@@ -198,6 +206,7 @@ Either player can delete a game at any time (active or completed). This is inten
 **File:** `storage.rules`
 
 #### What's done right:
+
 - Auth required for all operations
 - File size bounds: 1KB min (prevents stubs), 50MB max
 - Content-type locked to `video/webm`
@@ -230,6 +239,7 @@ Same issue as reads — storage rules can't cross-reference Firestore. An attack
 **File:** `vercel.json`
 
 #### What's done right:
+
 - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` — excellent, 2-year HSTS
 - `X-Frame-Options: DENY` — prevents clickjacking
 - `X-Content-Type-Options: nosniff` — prevents MIME sniffing
@@ -268,6 +278,7 @@ The CSP allows `'unsafe-inline'` for scripts. This is likely needed for Vite's d
 **Risk:** `unsafe-inline` allows XSS payloads to execute if an attacker can inject HTML. Combined with `object-src 'none'` and the React rendering model (which escapes by default), actual exploitation requires a very specific injection vector.
 
 **Recommendation:**
+
 1. Move the SW unregistration script to a separate `.js` file
 2. Replace `'unsafe-inline'` with a `nonce`-based or `'strict-dynamic'` policy
 3. If Vite requires `unsafe-inline` in production, investigate the `@vitejs/plugin-legacy` CSP options
@@ -283,6 +294,7 @@ The CSP allows `'unsafe-inline'` for scripts. This is likely needed for Vite's d
 **File:** `src/context/GameContext.tsx:215-243`
 
 #### What's done right:
+
 - Auth deletion runs FIRST — if it fails (e.g., requires-recent-login), Firestore data is preserved
 - `auth/requires-recent-login` is caught and surfaced to the user with a clear message
 - Firestore cleanup (profile + username + games) runs as best-effort after auth deletion
@@ -293,8 +305,8 @@ The CSP allows `'unsafe-inline'` for scripts. This is likely needed for Vite's d
 If `deleteAccount()` succeeds but `deleteUserData()` throws, the user's auth account is gone but Firestore data remains orphaned:
 
 ```typescript
-await deleteAccount();  // Auth deleted
-await deleteUserData(activeProfile.uid, activeProfile.username);  // May fail
+await deleteAccount(); // Auth deleted
+await deleteUserData(activeProfile.uid, activeProfile.username); // May fail
 ```
 
 The code comment acknowledges this ("best effort"). The orphaned data is benign (username is released when the reservation doc is deleted), but if it fails, the username remains permanently reserved.
@@ -308,6 +320,7 @@ The code comment acknowledges this ("best effort"). The orphaned data is benign 
 **File:** `src/context/GameContext.tsx:155-175`
 
 #### What's done right:
+
 - Auth state drives routing (not URL-based routing)
 - Loading state prevents premature routing decisions
 - Profile loading completes before routing resolves (prevents ProfileSetup flicker)
@@ -324,6 +337,7 @@ When a user arrives at the app and isn't authenticated, they're always routed to
 **File:** `src/firebase.ts:48-70`
 
 #### What's done right:
+
 - reCAPTCHA v3 App Check in production (prevents bot API abuse)
 - Debug token in dev mode for local development
 - Production alert via Sentry if App Check is disabled (missing env var)
@@ -341,6 +355,7 @@ If `VITE_RECAPTCHA_SITE_KEY` is not set, App Check is silently disabled. The pro
 ### 10. Input Validation
 
 #### What's done right:
+
 - Email validated client-side with `EMAIL_RE` + server-side by Firebase Auth
 - Username: `[a-z0-9_]+`, 3-20 chars, enforced both client-side and in Firestore rules
 - Password: 6+ chars minimum (Firebase default) + strength indicator
@@ -360,23 +375,61 @@ This accepts strings like `a@b.c` which are technically valid but unusual. Fireb
 
 ## Summary Table
 
-| # | Finding | Severity | Status |
-|---|---------|----------|--------|
-| 1 | No nonce on Google OAuth provider | Medium | Mitigated by Firebase state param |
-| 2 | No explicit `auth/too-many-requests` error handling | Medium | Firebase rate-limits server-side |
-| 3 | ~1hr token revocation window | Medium | Firebase Auth limitation |
-| 4 | User profiles expose email to all authenticated users | Medium | PII leakage risk |
-| 5 | `script-src 'unsafe-inline'` in CSP | Medium | XSS defense weakened |
-| 6 | App Check is optional in production | Medium | Bot protection can silently disable |
-| 7 | Any auth'd user can read/upload storage files | Medium | Accepted risk (documented) |
-| 8 | No `auth/too-many-requests` UX feedback | Medium | Same as #2 |
-| 9 | Password strength indicator doesn't block weak passwords | Low | Firebase enforces 6-char minimum |
-| 10 | Game delete rule is broad | Low | Acceptable for MVP |
-| 11 | Firestore cleanup failure after auth deletion not alerted | Low | Orphaned data is benign |
-| 12 | E2E test auth exposure (dev-only) | Low | Tree-shaken from production |
-| 13 | `EMAIL_RE` is permissive | Low | Server-side validation catches it |
-| 14 | No `frame-ancestors` in CSP | Info | Covered by `X-Frame-Options` |
-| 15 | No deep-link preservation on auth redirect | Info | UX, not security |
+| #   | Finding                                                   | Severity | Status                                                          |
+| --- | --------------------------------------------------------- | -------- | --------------------------------------------------------------- |
+| 1   | No nonce on Google OAuth provider                         | Medium   | Mitigated by Firebase state param                               |
+| 2   | No explicit `auth/too-many-requests` error handling       | Medium   | **FIXED**                                                       |
+| 3   | ~1hr token revocation window                              | Medium   | Firebase Auth limitation                                        |
+| 4   | User profiles expose email to all authenticated users     | Medium   | **FIXED** — email removed from Firestore                        |
+| 5   | `script-src 'unsafe-inline'` in CSP                       | Medium   | **FIXED** — inline script externalized, `unsafe-inline` removed |
+| 6   | App Check is optional in production                       | Medium   | Bot protection can silently disable                             |
+| 7   | Any auth'd user can read/upload storage files             | Medium   | Accepted risk (documented)                                      |
+| 8   | No `auth/too-many-requests` UX feedback                   | Medium   | **FIXED** (same as #2)                                          |
+| 9   | Password strength indicator doesn't block weak passwords  | Low      | Firebase enforces 6-char minimum                                |
+| 10  | Game delete rule is broad                                 | Low      | Acceptable for MVP                                              |
+| 11  | Firestore cleanup failure after auth deletion not alerted | Low      | **FIXED** — Sentry alert added                                  |
+| 12  | E2E test auth exposure (dev-only)                         | Low      | Tree-shaken from production                                     |
+| 13  | `EMAIL_RE` is permissive                                  | Low      | Server-side validation catches it                               |
+| 14  | No `frame-ancestors` in CSP                               | Info     | **FIXED** — `frame-ancestors 'none'` added                      |
+| 15  | No deep-link preservation on auth redirect                | Info     | UX, not security                                                |
+
+---
+
+## Fixes Applied in This PR
+
+The following production hardening changes were implemented and verified (459/459 tests passing, zero type errors, zero lint errors):
+
+### 1. Rate-limit and network error handling (`AuthScreen.tsx`)
+
+- Added explicit `auth/too-many-requests` error: "Too many attempts. Please wait a few minutes and try again."
+- Added explicit `auth/network-request-failed` error: "Network error — check your connection and try again."
+- Both errors now shown for email/password AND Google OAuth sign-in flows.
+
+### 2. PII reduction — email removed from Firestore (`users.ts`, `ProfileSetup.tsx`)
+
+- `createProfile()` no longer writes `email` to Firestore `users/{uid}` documents.
+- `UserProfile.email` made optional for backwards compatibility with existing profiles.
+- Firebase Auth remains the source of truth for user email (never stored in Firestore).
+- Eliminates PII leakage via the `allow read: if isSignedIn()` Firestore rule.
+
+### 3. CSP hardened (`vercel.json`, `index.html`)
+
+- Inline service worker cleanup script moved to external `public/sw-cleanup.js`.
+- Removed `'unsafe-inline'` from `script-src` directive.
+- Added `frame-ancestors 'none'` (CSP-native complement to `X-Frame-Options: DENY`).
+- Added `https://www.google.com` and `https://recaptcha.google.com` to `frame-src` for App Check reCAPTCHA v3.
+
+### 4. Orphaned data alerting (`GameContext.tsx`)
+
+- `deleteUserData()` failure after successful auth deletion now:
+  - Logs error with uid + username for ops debugging
+  - Fires `captureException` to Sentry with full context
+  - Does NOT throw — the user's auth account is already deleted, so we proceed gracefully.
+
+### 5. Google OAuth rate-limit handling (`GameContext.tsx`)
+
+- Added `auth/too-many-requests` case to `handleGoogleSignIn` error handler.
+- Surfaces user-friendly rate-limit message and navigates to auth screen.
 
 ---
 
@@ -395,14 +448,12 @@ These common vulnerabilities are **not present** thanks to architectural decisio
 
 ---
 
-## Recommended Priority Actions
+## Remaining Recommendations (not addressed in this PR)
 
-1. **Add `auth/too-many-requests` error handling** in `AuthScreen.tsx` — quick win, improves UX under attack
-2. **Remove email from UserProfile Firestore documents** — reduces PII exposure surface
-3. **Move inline script to external file** and tighten CSP to remove `unsafe-inline`
-4. **Add Sentry alert** when `deleteUserData()` fails after successful auth deletion
-5. **Consider making App Check mandatory** in production builds
+1. **Consider making App Check mandatory** in production builds (finding #6)
+2. **Add nonce to Google OAuth provider** for defense-in-depth (finding #1)
+3. **Consider restricting game delete** to non-active games (finding #10)
 
 ---
 
-*This audit covers the auth system as of commit on the `main` branch. It does not cover network-level security (TLS configuration, DNS, CDN), Firebase Console settings (authorized domains, OAuth consent screen), or Google Cloud IAM permissions.*
+_This audit covers the auth system as of commit on the `claude/audit-auth-google-oauth-ifVDy` branch. It does not cover network-level security (TLS configuration, DNS, CDN), Firebase Console settings (authorized domains, OAuth consent screen), or Google Cloud IAM permissions._

@@ -15,13 +15,15 @@ import { withRetry } from "../utils/retry";
 
 export interface UserProfile {
   uid: string;
-  email: string;
   username: string;
   stance: string;
   // serverTimestamp() on write; Firestore Timestamp on read — typed as FieldValue
   // to match what we pass in. The value is never consumed client-side.
   createdAt: FieldValue | null;
   emailVerified: boolean;
+  // DEPRECATED: email is no longer written to new profiles to reduce PII exposure.
+  // Existing profiles may still have this field; use Firebase Auth for email lookup.
+  email?: string;
 }
 
 /**
@@ -53,7 +55,6 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
  */
 export async function createProfile(
   uid: string,
-  email: string,
   username: string,
   stance: string,
   emailVerified = false,
@@ -73,11 +74,11 @@ export async function createProfile(
     // Reserve the username
     tx.set(usernameRef, { uid, reservedAt: serverTimestamp() });
 
-    // Create the user profile
+    // Create the user profile — email is intentionally omitted to reduce PII
+    // stored in Firestore.  Use Firebase Auth for email lookups instead.
     const userRef = doc(db, "users", uid);
     const profileData: UserProfile = {
       uid,
-      email,
       username: normalized,
       stance,
       createdAt: serverTimestamp(),

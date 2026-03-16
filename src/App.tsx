@@ -69,7 +69,6 @@ function AppScreens() {
       {ctx.screen === "profile" && ctx.user && (
         <ProfileSetup
           uid={ctx.user.uid}
-          email={ctx.user.email || ""}
           emailVerified={ctx.user.emailVerified}
           displayName={ctx.user.displayName}
           onDone={async (p) => {

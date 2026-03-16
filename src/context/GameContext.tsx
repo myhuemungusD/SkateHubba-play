@@ -121,6 +121,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
           setAuthMode("signin");
           setScreen("auth");
         }
+      } else if (code === "auth/too-many-requests") {
+        logger.warn("google_sign_in_rate_limited", { code });
+        setGoogleError("Too many attempts. Please wait a few minutes and try again.");
+        if (screen !== "auth") {
+          setAuthMode("signin");
+          setScreen("auth");
+        }
       } else if (code === "auth/unauthorized-domain") {
         logger.error("google_sign_in_unauthorized_domain", { code, origin: window.location.origin });
         captureException(err, { extra: { context: "handleGoogleSignIn", code, origin: window.location.origin } });
@@ -233,8 +240,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
     logger.info("delete_account_auth_done", { uid: activeProfile.uid });
     // Auth account is gone — clean up Firestore (best effort; no auth token
     // issues since Firestore SDK caches credentials briefly after deletion).
-    await deleteUserData(activeProfile.uid, activeProfile.username);
-    logger.info("delete_account_firestore_done", { uid: activeProfile.uid });
+    try {
+      await deleteUserData(activeProfile.uid, activeProfile.username);
+      logger.info("delete_account_firestore_done", { uid: activeProfile.uid });
+    } catch (firestoreErr) {
+      // Auth is already deleted — Firestore data is orphaned.  Alert ops so
+      // the username reservation + profile can be cleaned up manually.
+      logger.error("delete_account_firestore_orphaned", {
+        uid: activeProfile.uid,
+        username: activeProfile.username,
+        error: firestoreErr instanceof Error ? firestoreErr.message : String(firestoreErr),
+      });
+      captureException(firestoreErr, {
+        extra: {
+          context: "deleteUserData after auth deletion — data orphaned",
+          uid: activeProfile.uid,
+          username: activeProfile.username,
+        },
+      });
+    }
     metrics.accountDeleted(activeProfile.uid);
     setActiveProfile(null);
     setGames([]);
