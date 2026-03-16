@@ -20,6 +20,8 @@ const mockCreateGame = vi.fn();
 const mockSetTrick = vi.fn();
 const mockFailSetTrick = vi.fn();
 const mockSubmitMatchResult = vi.fn();
+const mockSubmitMatchAttempt = vi.fn();
+const mockSubmitConfirmation = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 const mockSubscribeToMyGames = vi.fn(() => vi.fn());
 const mockSubscribeToGame = vi.fn(() => vi.fn());
@@ -52,6 +54,8 @@ vi.mock("../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
   failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
   submitMatchResult: (...args: unknown[]) => mockSubmitMatchResult(...args),
+  submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
+  submitConfirmation: (...args: unknown[]) => mockSubmitConfirmation(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
@@ -1594,16 +1598,16 @@ describe("Smoke Test: Game E2E", () => {
     });
   });
 
-  /* ── 56. Matcher submits "Landed" after recording ── */
+  /* ── 56. Matcher submits attempt after recording ── */
 
-  it("matcher submits landed result after recording", async () => {
+  it("matcher submits attempt after recording", async () => {
     const game = activeGame({
       phase: "matching",
       currentTurn: "u1",
       currentSetter: "u2",
       currentTrickName: "Heelflip",
     });
-    mockSubmitMatchResult.mockResolvedValueOnce({ gameOver: false, winner: null });
+    mockSubmitMatchAttempt.mockResolvedValueOnce(undefined);
     renderLobby([game]);
     withGameSub(game);
 
@@ -1626,46 +1630,14 @@ describe("Smoke Test: Game E2E", () => {
     });
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
-    // Demo mode: onRecorded(null) → videoRecorded=true → judge buttons appear
+    // Demo mode: onRecorded(null) → videoRecorded=true → submit attempt button appears
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /landed/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /submit attempt/i })).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByRole("button", { name: /landed/i }));
-
-    await waitFor(() => {
-      expect(mockSubmitMatchResult).toHaveBeenCalledWith("game1", true, null);
-    });
-  });
-
-  /* ── 57. Matcher submits "Missed" ── */
-
-  it("matcher submits missed result", async () => {
-    const game = activeGame({
-      phase: "matching",
-      currentTurn: "u1",
-      currentSetter: "u2",
-      currentTrickName: "Kickflip",
-    });
-    mockSubmitMatchResult.mockResolvedValueOnce({ gameOver: false, winner: null });
-    renderLobby([game]);
-    withGameSub(game);
-
-    await userEvent.click(screen.getByText(/vs @rival/));
-
-    await waitFor(() => screen.getByRole("button", { name: /open camera/i }));
-    await userEvent.click(screen.getByRole("button", { name: /open camera/i }));
-
-    await waitFor(() => screen.getByRole("button", { name: /record/i }));
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-
-    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    await waitFor(() => screen.getByRole("button", { name: /missed/i }));
-    await userEvent.click(screen.getByRole("button", { name: /missed/i }));
+    await userEvent.click(screen.getByRole("button", { name: /submit attempt/i }));
 
     await waitFor(() => {
-      expect(mockSubmitMatchResult).toHaveBeenCalledWith("game1", false, null);
+      expect(mockSubmitMatchAttempt).toHaveBeenCalledWith("game1", null);
     });
   });
 
@@ -2106,14 +2078,14 @@ describe("Smoke Test: Game E2E", () => {
 
   /* ── 78. GamePlayScreen — matcher submit fails ── */
 
-  it("matcher submit error shows error banner and allows retry", async () => {
+  it("matcher submit error shows error banner", async () => {
     const game = activeGame({
       phase: "matching",
       currentTurn: "u1",
       currentSetter: "u2",
       currentTrickName: "Kickflip",
     });
-    mockSubmitMatchResult.mockRejectedValueOnce(new Error("Submit failed"));
+    mockSubmitMatchAttempt.mockRejectedValueOnce(new Error("Submit failed"));
     renderLobby([game]);
     withGameSub(game);
 
@@ -2128,8 +2100,8 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
-    await waitFor(() => screen.getByRole("button", { name: /landed/i }));
-    await userEvent.click(screen.getByRole("button", { name: /landed/i }));
+    await waitFor(() => screen.getByRole("button", { name: /submit attempt/i }));
+    await userEvent.click(screen.getByRole("button", { name: /submit attempt/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Submit failed")).toBeInTheDocument();
@@ -2348,14 +2320,14 @@ describe("Smoke Test: Game E2E", () => {
 
   /* ── 89. Matcher submit non-Error thrown ── */
 
-  it("matcher shows fallback error when submitMatchResult throws non-Error", async () => {
+  it("matcher shows fallback error when submitMatchAttempt throws non-Error", async () => {
     const game = activeGame({
       phase: "matching",
       currentTurn: "u1",
       currentSetter: "u2",
       currentTrickName: "Kickflip",
     });
-    mockSubmitMatchResult.mockRejectedValueOnce("string error");
+    mockSubmitMatchAttempt.mockRejectedValueOnce("string error");
     renderLobby([game]);
     withGameSub(game);
 
@@ -2366,11 +2338,11 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /record/i }));
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-    await waitFor(() => screen.getByRole("button", { name: /landed/i }));
-    await userEvent.click(screen.getByRole("button", { name: /landed/i }));
+    await waitFor(() => screen.getByRole("button", { name: /submit attempt/i }));
+    await userEvent.click(screen.getByRole("button", { name: /submit attempt/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Failed to submit result")).toBeInTheDocument();
+      expect(screen.getByText("Failed to submit attempt")).toBeInTheDocument();
     });
   });
 

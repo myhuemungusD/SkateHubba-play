@@ -21,7 +21,7 @@ import { captureException } from "../lib/sentry";
  * ──────────────────────────────────────────── */
 
 export type GameStatus = "active" | "complete" | "forfeit";
-export type GamePhase = "setting" | "matching";
+export type GamePhase = "setting" | "matching" | "confirming";
 
 export interface GameDoc {
   id: string;
@@ -40,6 +40,10 @@ export interface GameDoc {
   currentTrickName: string | null;
   currentTrickVideoUrl: string | null;
   matchVideoUrl: string | null;
+  /** Setter's vote on whether the matcher landed (null = not yet voted) */
+  setterConfirm: boolean | null;
+  /** Matcher's vote on whether they landed (null = not yet voted) */
+  matcherConfirm: boolean | null;
   turnDeadline: Timestamp;
   turnNumber: number;
   winner: string | null;
@@ -106,6 +110,8 @@ export async function createGame(
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
+    setterConfirm: null,
+    matcherConfirm: null,
     turnDeadline: deadline,
     turnNumber: 1,
     winner: null,
@@ -190,14 +196,54 @@ export async function failSetTrick(gameId: string): Promise<void> {
 }
 
 /* ────────────────────────────────────────────
- * Submit match result (matcher self-judges)
+ * Submit match attempt (transitions to confirming)
  * ──────────────────────────────────────────── */
 
 export async function submitMatchResult(
   gameId: string,
-  landed: boolean,
+  _landed: boolean,
   matchVideoUrl: string | null,
 ): Promise<{ gameOver: boolean; winner: string | null }> {
+  // Now transitions to confirming phase instead of resolving immediately.
+  // The _landed parameter is kept for backward-compat but ignored;
+  // both players vote during the confirming phase.
+  await submitMatchAttempt(gameId, matchVideoUrl);
+  return { gameOver: false, winner: null };
+}
+
+export async function submitMatchAttempt(gameId: string, matchVideoUrl: string | null): Promise<void> {
+  const gameRef = doc(requireDb(), "games", gameId);
+
+  await runTransaction(requireDb(), async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) throw new Error("Game not found");
+
+    const game = toGameDoc(snap);
+    if (game.status !== "active") throw new Error("Game is already over");
+    if (game.phase !== "matching") throw new Error("Not in matching phase");
+
+    // Transition to confirming phase — both players review clips and vote
+    tx.update(gameRef, {
+      phase: "confirming",
+      matchVideoUrl,
+      setterConfirm: null,
+      matcherConfirm: null,
+      // currentTurn stays the same (matcher) — but in confirming, either player can act
+      turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+/* ────────────────────────────────────────────
+ * Submit confirmation vote (both players vote)
+ * ──────────────────────────────────────────── */
+
+export async function submitConfirmation(
+  gameId: string,
+  playerUid: string,
+  landed: boolean,
+): Promise<{ gameOver: boolean; winner: string | null; resolved: boolean }> {
   const gameRef = doc(requireDb(), "games", gameId);
 
   return runTransaction(requireDb(), async (tx) => {
@@ -206,47 +252,72 @@ export async function submitMatchResult(
 
     const game = toGameDoc(snap);
     if (game.status !== "active") throw new Error("Game is already over");
-    if (game.phase !== "matching") throw new Error("Not in matching phase");
+    if (game.phase !== "confirming") throw new Error("Not in confirming phase");
 
+    const isSetter = playerUid === game.currentSetter;
     const matcherUid = getOpponent(game, game.currentSetter);
-    const isP1Matcher = matcherUid === game.player1Uid;
 
-    let newP1Letters = game.p1Letters;
-    let newP2Letters = game.p2Letters;
+    // Determine which field to set
+    let newSetterConfirm = game.setterConfirm;
+    let newMatcherConfirm = game.matcherConfirm;
 
-    if (!landed) {
-      if (isP1Matcher) newP1Letters++;
-      else newP2Letters++;
+    if (isSetter) {
+      if (game.setterConfirm !== null) throw new Error("You already voted");
+      newSetterConfirm = landed;
+    } else {
+      if (game.matcherConfirm !== null) throw new Error("You already voted");
+      newMatcherConfirm = landed;
     }
 
-    const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
-    const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
-
-    const nextSetter = landed ? matcherUid : game.currentSetter;
-
     const updates: Record<string, unknown> = {
-      p1Letters: newP1Letters,
-      p2Letters: newP2Letters,
-      matchVideoUrl,
+      setterConfirm: newSetterConfirm,
+      matcherConfirm: newMatcherConfirm,
       updatedAt: serverTimestamp(),
     };
 
-    if (gameOver) {
-      updates.status = "complete";
-      updates.winner = winner;
-    } else {
-      updates.phase = "setting";
-      updates.currentSetter = nextSetter;
-      updates.currentTurn = nextSetter;
-      updates.currentTrickName = null;
-      updates.currentTrickVideoUrl = null;
-      updates.matchVideoUrl = null;
-      updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
-      updates.turnNumber = game.turnNumber + 1;
+    // If both votes are in, resolve the turn
+    if (newSetterConfirm !== null && newMatcherConfirm !== null) {
+      // Trick is landed only if BOTH players agree
+      const trickLanded = newSetterConfirm && newMatcherConfirm;
+
+      const isP1Matcher = matcherUid === game.player1Uid;
+      let newP1Letters = game.p1Letters;
+      let newP2Letters = game.p2Letters;
+
+      if (!trickLanded) {
+        if (isP1Matcher) newP1Letters++;
+        else newP2Letters++;
+      }
+
+      const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
+      const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
+      const nextSetter = trickLanded ? matcherUid : game.currentSetter;
+
+      updates.p1Letters = newP1Letters;
+      updates.p2Letters = newP2Letters;
+
+      if (gameOver) {
+        updates.status = "complete";
+        updates.winner = winner;
+      } else {
+        updates.phase = "setting";
+        updates.currentSetter = nextSetter;
+        updates.currentTurn = nextSetter;
+        updates.currentTrickName = null;
+        updates.currentTrickVideoUrl = null;
+        updates.matchVideoUrl = null;
+        updates.setterConfirm = null;
+        updates.matcherConfirm = null;
+        updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
+        updates.turnNumber = game.turnNumber + 1;
+      }
+
+      tx.update(gameRef, updates);
+      return { gameOver, winner, resolved: true };
     }
 
     tx.update(gameRef, updates);
-    return { gameOver, winner };
+    return { gameOver: false, winner: null, resolved: false };
   });
 }
 
