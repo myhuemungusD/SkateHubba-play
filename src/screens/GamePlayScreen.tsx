@@ -4,6 +4,7 @@ import { setTrick, submitMatchResult, forfeitExpiredTurn } from "../services/gam
 import { uploadVideo } from "../services/storage";
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
+import { captureException } from "../lib/sentry";
 import { Btn } from "../components/ui/Btn";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { Field } from "../components/ui/Field";
@@ -28,6 +29,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     if (deadline > 0 && Date.now() >= deadline) {
       forfeitExpiredTurn(game.id).catch((err) => {
         console.warn("Forfeit check failed:", err instanceof Error ? err.message : err);
+        captureException(err, { extra: { context: "forfeitExpiredTurn", gameId: game.id } });
       });
     }
     setForfeitChecked(true);

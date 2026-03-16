@@ -11,6 +11,9 @@ import { Lobby } from "./screens/Lobby";
 import { ChallengeScreen } from "./screens/ChallengeScreen";
 import { GamePlayScreen } from "./screens/GamePlayScreen";
 import { GameOverScreen } from "./screens/GameOverScreen";
+import { PrivacyPolicy } from "./screens/PrivacyPolicy";
+import { TermsOfService } from "./screens/TermsOfService";
+import { ConsentBanner } from "./components/ConsentBanner";
 
 function FirebaseMissing() {
   return (
@@ -40,6 +43,7 @@ function AppScreens() {
           }}
           onGoogle={ctx.handleGoogleSignIn}
           googleLoading={ctx.googleLoading}
+          onNav={ctx.setScreen}
         />
       )}
 
@@ -130,6 +134,11 @@ function AppScreens() {
           }}
         />
       )}
+      {ctx.screen === "privacy" && <PrivacyPolicy onBack={() => ctx.setScreen("landing")} />}
+
+      {ctx.screen === "terms" && <TermsOfService onBack={() => ctx.setScreen("landing")} />}
+
+      <ConsentBanner onNav={ctx.setScreen} />
       <Analytics />
     </>
   );
