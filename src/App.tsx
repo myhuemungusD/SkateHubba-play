@@ -13,6 +13,7 @@ import { GamePlayScreen } from "./screens/GamePlayScreen";
 import { GameOverScreen } from "./screens/GameOverScreen";
 import { PrivacyPolicy } from "./screens/PrivacyPolicy";
 import { TermsOfService } from "./screens/TermsOfService";
+import { NotFound } from "./screens/NotFound";
 import { ConsentBanner } from "./components/ConsentBanner";
 
 function FirebaseMissing() {
@@ -137,6 +138,8 @@ function AppScreens() {
       {ctx.screen === "privacy" && <PrivacyPolicy onBack={() => ctx.setScreen("landing")} />}
 
       {ctx.screen === "terms" && <TermsOfService onBack={() => ctx.setScreen("landing")} />}
+
+      {ctx.screen === "notfound" && <NotFound onBack={() => ctx.setScreen(ctx.user ? "lobby" : "landing")} />}
 
       <ConsentBanner onNav={ctx.setScreen} />
       <Analytics />

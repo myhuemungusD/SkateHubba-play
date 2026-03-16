@@ -189,7 +189,16 @@ export function AuthScreen({
           )}
 
           <Btn type="submit" disabled={anyLoading}>
-            {loading ? "..." : isSignup ? "Create Account" : "Sign In"}
+            {loading ? (
+              <span className="inline-flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                {isSignup ? "Creating Account…" : "Signing In…"}
+              </span>
+            ) : isSignup ? (
+              "Create Account"
+            ) : (
+              "Sign In"
+            )}
           </Btn>
         </form>
 

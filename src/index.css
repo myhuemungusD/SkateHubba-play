@@ -17,24 +17,46 @@ body {
 
 /* One-take recording pulse */
 @keyframes rec-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 @keyframes rec-ring {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 61, 0, 0.4); }
-  50% { box-shadow: 0 0 0 10px rgba(255, 61, 0, 0); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 61, 0, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 61, 0, 0);
+  }
 }
 
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes letter-pop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.4); }
-  100% { transform: scale(1.1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1.1);
+  }
 }
 
 .animate-fade-in {
@@ -53,6 +75,33 @@ body {
   animation: letter-pop 0.3s ease-out forwards;
 }
 
+@keyframes board-roll {
+  0% {
+    transform: translateX(-40px) rotate(0deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  50% {
+    transform: translateX(0px) rotate(0deg);
+  }
+  60% {
+    transform: translateX(0px) rotate(-8deg) translateY(-12px);
+  }
+  75% {
+    transform: translateX(0px) rotate(0deg) translateY(0px);
+  }
+  100% {
+    transform: translateX(0px) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.animate-board-roll {
+  animation: board-roll 1.2s ease-out forwards;
+}
+
 /* Hide scrollbar but allow scroll */
 .no-scrollbar::-webkit-scrollbar {
   display: none;
@@ -64,6 +113,6 @@ body {
 
 /* Input autofill override */
 input:-webkit-autofill {
-  -webkit-box-shadow: 0 0 0 1000px #1A1A1A inset !important;
-  -webkit-text-fill-color: #F5F5F5 !important;
+  -webkit-box-shadow: 0 0 0 1000px #1a1a1a inset !important;
+  -webkit-text-fill-color: #f5f5f5 !important;
 }
