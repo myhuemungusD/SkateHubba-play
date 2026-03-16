@@ -17,6 +17,7 @@ import {
   createGame,
   verifyEmail,
   expireGameDeadline,
+  forceTokenRefresh,
 } from "./helpers/emulator";
 import { MEDIA_MOCK_SCRIPT } from "./helpers/media-mock";
 
@@ -68,9 +69,12 @@ async function mockMedia(page: Page) {
  *  4. Wait for the "done" state to indicate the blob was captured
  */
 async function recordVideo(page: Page, recordLabel: string, doneLabel = "Recorded") {
-  // autoOpen=true (setter) skips the "Open Camera" button
+  // For matchers (autoOpen=false) the "Open Camera" button must be clicked.
+  // For setters (autoOpen=true) the camera opens automatically — the button
+  // is absent or disappears very quickly.  We use a generous 5 s timeout so
+  // CI latency doesn't cause the check to time-out and skip the click.
   const openBtn = page.getByRole("button", { name: /Open Camera/i });
-  if (await openBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+  if (await openBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
     await openBtn.click();
   }
 
@@ -102,6 +106,7 @@ test("player 1 challenges player 2 → waiting screen shown", async ({ browser }
   await signUpAndSetupProfile(p1, P1.email, P1.password, P1.username);
   await verifyEmail(P1.email);
   await p1.reload();
+  await forceTokenRefresh(p1);
 
   // Challenge P2
   await p1.getByRole("button", { name: "Challenge Someone" }).click();
@@ -128,6 +133,7 @@ test("setter records trick → game moves to matching phase", async ({ browser }
   await signUpAndSetupProfile(p1, P1.email, P1.password, P1.username);
   await verifyEmail(P1.email);
   await p1.reload();
+  await forceTokenRefresh(p1);
 
   // Challenge P2 to create a game
   await p1.getByRole("button", { name: "Challenge Someone" }).click();
@@ -167,6 +173,7 @@ test("matcher records response and misses → earns a letter", async ({ browser 
   await signUpAndSetupProfile(p1, P1.email, P1.password, P1.username);
   await verifyEmail(P1.email);
   await p1.reload();
+  await forceTokenRefresh(p1);
 
   await p1.getByRole("button", { name: "Challenge Someone" }).click();
   await p1.getByPlaceholder("their_handle").fill(P2.username);
@@ -266,9 +273,7 @@ test("expired turn deadline → forfeit screen shown to both players", async ({ 
 
 // ─── Full game → game over ────────────────────────────────────────────────────
 
-test("completing a game shows game over screen with winner and rematch option", async ({
-  browser,
-}) => {
+test("completing a game shows game over screen with winner and rematch option", async ({ browser }) => {
   // Create both users
   const p1 = await createUser(P1.email, P1.password);
   await createProfile(p1.uid, P1.username, P1.email, true);

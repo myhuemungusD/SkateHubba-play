@@ -76,6 +76,10 @@ if (firebaseReady) {
     });
     connectFirestoreEmulator(db, "localhost", 8080);
     connectStorageEmulator(storage, "localhost", 9199);
+    // Expose auth for E2E tests to force-refresh the ID token after email
+    // verification.  Only set when running against the local emulators so it
+    // never leaks to production builds.
+    (globalThis as Record<string, unknown>).__e2eFirebaseAuth = auth;
   }
 } else {
   const isVercel = typeof import.meta.env.VERCEL !== "undefined";

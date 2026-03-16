@@ -8,6 +8,8 @@
  *  - Write arbitrary Firestore documents for timeout / game-over scenarios
  */
 
+import type { Page } from "@playwright/test";
+
 const PROJECT_ID = "demo-skatehubba";
 const DB_NAME = "skatehubba";
 const API_KEY = "demo-key";
@@ -205,4 +207,30 @@ export async function expireGameDeadline(gameId: string): Promise<void> {
     body: JSON.stringify({ fields: { turnDeadline: { timestampValue: past.toISOString() } } }),
   });
   if (!res.ok) throw new Error(`expireGameDeadline failed: ${res.status} ${await res.text()}`);
+}
+
+/**
+ * Force-refresh the Firebase ID token in the browser so that Firestore
+ * security rules see the latest token claims (e.g. email_verified: true).
+ *
+ * Background: after verifyEmail() the Auth emulator marks the user as
+ * verified, and Firebase SDK updates user.emailVerified from accounts:lookup.
+ * However the JWT (used by Firestore) is only updated on an explicit refresh.
+ * Without this call, Firestore rules that check
+ * `request.auth.token.email_verified == true` will deny writes even though
+ * the app considers the email verified.
+ *
+ * Requires `window.__e2eFirebaseAuth` to be exposed by the app when
+ * `VITE_USE_EMULATORS=true` (set in src/firebase.ts).
+ */
+export async function forceTokenRefresh(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    type E2EAuth = {
+      currentUser?: { getIdToken: (forceRefresh: boolean) => Promise<string> };
+    };
+    const auth = (globalThis as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
+    if (auth?.currentUser) {
+      await auth.currentUser.getIdToken(/* forceRefresh= */ true);
+    }
+  });
 }
