@@ -112,9 +112,11 @@ export async function signInWithGoogle(): Promise<User | null> {
     return cred.user;
   } catch (err: unknown) {
     const code = getErrorCode(err);
-    if (code === "auth/popup-blocked") {
-      logger.info("google_sign_in_popup_blocked_fallback_redirect");
-      // Redirect flow: page navigates to Google; onAuthStateChanged resolves on return
+    // Safari/WebKit throws popup-closed-by-user or cancelled-popup-request
+    // instead of popup-blocked — fall back to redirect for all of these.
+    const redirectCodes = new Set(["auth/popup-blocked", "auth/popup-closed-by-user", "auth/cancelled-popup-request"]);
+    if (code && redirectCodes.has(code)) {
+      logger.info("google_sign_in_popup_fallback_redirect", { code });
       await signInWithRedirect(a, provider);
       return null;
     }
