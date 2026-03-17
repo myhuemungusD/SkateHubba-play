@@ -97,63 +97,6 @@ describe("ProfileSetup", () => {
     expect(screen.getByText("Still checking username — wait a moment")).toBeInTheDocument();
   });
 
-  it("successful submission calls onDone", async () => {
-    const onDone = vi.fn();
-    const createdProfile = { uid: "u1", username: "newuser", stance: "Regular" };
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockCreateProfile.mockResolvedValueOnce(createdProfile);
-
-    render(<ProfileSetup {...defaultProps} onDone={onDone} />);
-
-    const input = screen.getByPlaceholderText("sk8legend");
-    await userEvent.type(input, "newuser");
-
-    await waitFor(() => expect(screen.getByText(/@newuser is available/)).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText("Lock It In"));
-
-    await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false);
-      expect(onDone).toHaveBeenCalledWith(createdProfile);
-    });
-  });
-
-  it("shows error when createProfile fails", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockCreateProfile.mockRejectedValueOnce(new Error("Write failed"));
-
-    render(<ProfileSetup {...defaultProps} />);
-
-    const input = screen.getByPlaceholderText("sk8legend");
-    await userEvent.type(input, "newuser");
-
-    await waitFor(() => expect(screen.getByText(/@newuser is available/)).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText("Lock It In"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Write failed")).toBeInTheDocument();
-    });
-  });
-
-  it("shows fallback error when createProfile throws non-Error", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockCreateProfile.mockRejectedValueOnce("string error");
-
-    render(<ProfileSetup {...defaultProps} />);
-
-    const input = screen.getByPlaceholderText("sk8legend");
-    await userEvent.type(input, "newuser");
-
-    await waitFor(() => expect(screen.getByText(/@newuser is available/)).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText("Lock It In"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Could not create profile")).toBeInTheDocument();
-    });
-  });
-
   it("username availability check failure shows error", async () => {
     mockIsUsernameAvailable.mockRejectedValue(new Error("Network"));
 
@@ -236,7 +179,7 @@ describe("ProfileSetup", () => {
 
   it("successful submission calls onDone from step 3", async () => {
     const onDone = vi.fn();
-    const createdProfile = { uid: "u1", email: "test@test.com", username: "newuser", stance: "Regular" };
+    const createdProfile = { uid: "u1", username: "newuser", stance: "Regular" };
     mockIsUsernameAvailable.mockResolvedValue(true);
     mockCreateProfile.mockResolvedValueOnce(createdProfile);
 
@@ -250,7 +193,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "test@test.com", "newuser", "Regular", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -302,7 +245,7 @@ describe("ProfileSetup", () => {
 
   it("selects Goofy stance and submits correctly", async () => {
     const onDone = vi.fn();
-    const createdProfile = { uid: "u1", email: "test@test.com", username: "newuser", stance: "Goofy" };
+    const createdProfile = { uid: "u1", username: "newuser", stance: "Goofy" };
     mockIsUsernameAvailable.mockResolvedValue(true);
     mockCreateProfile.mockResolvedValueOnce(createdProfile);
 
@@ -320,7 +263,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "test@test.com", "newuser", "Goofy", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });

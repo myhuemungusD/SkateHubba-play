@@ -13,7 +13,7 @@ const STANCES = [
 
 const DEBOUNCE_MS = 400;
 const USERNAME_RE = /^[a-z0-9_]+$/;
-const SANITIZE_RE = /[^a-zA-Z0-9_]/g;
+const SANITIZE_RE = /[^a-z0-9_]/g;
 
 /* ── Shared ───────────────────────────────────────────────────── */
 
@@ -88,7 +88,7 @@ function NavButtons({
 function usernameNote(name: string, available: boolean | null): string {
   if (name.length < 3) return "Min 3 characters, letters/numbers/underscore";
   if (available === null) return "Checking...";
-  const handle = `@${name.toLowerCase()}`;
+  const handle = `@${name}`;
   return available ? `${handle} is available ✓` : `${handle} is taken ✗`;
 }
 
@@ -123,7 +123,7 @@ function StepUsername({
         label="Username"
         value={username}
         onChange={(v) => {
-          if (!loading) setUsername(v.replace(SANITIZE_RE, ""));
+          if (!loading) setUsername(v.toLowerCase().replace(SANITIZE_RE, ""));
         }}
         placeholder="sk8legend"
         maxLength={20}
@@ -232,7 +232,7 @@ function StepReview({
             <span className="font-display text-2xl text-brand-orange">{username[0].toUpperCase()}</span>
           </div>
           <div>
-            <div className="font-display text-xl text-white tracking-wide">@{username.toLowerCase()}</div>
+            <div className="font-display text-xl text-white tracking-wide">@{username}</div>
             <div className="font-body text-xs text-[#666]">Ready to skate</div>
           </div>
         </div>
@@ -290,7 +290,7 @@ export function ProfileSetup({
 
   useEffect(() => {
     setAvailable(null);
-    const normalized = username.toLowerCase().trim();
+    const normalized = username.trim();
     if (normalized.length < 3) return;
 
     const id = ++checkRef.current;
@@ -313,7 +313,7 @@ export function ProfileSetup({
   const goNext = useCallback(() => {
     setError("");
     if (step === 1) {
-      const normalized = username.toLowerCase().trim();
+      const normalized = username.trim();
       if (normalized.length < 3) {
         setError("Username must be 3+ characters");
         return;
@@ -349,7 +349,7 @@ export function ProfileSetup({
     setError("");
     setLoading(true);
     try {
-      const normalized = username.toLowerCase().trim();
+      const normalized = username.trim();
       const profile = await createProfile(uid, normalized, stance, emailVerified);
       onDone(profile);
     } catch (err: unknown) {
