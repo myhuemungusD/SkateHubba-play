@@ -8,6 +8,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
+import { LobbyTimer } from "../components/LobbyTimer";
 
 function relativeJoinDate(createdAt: FieldValue | null): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -200,9 +201,14 @@ export function Lobby({
                         </span>
                       )}
                     </div>
-                    <span className={`font-body text-[11px] ${isMyTurn(g) ? "text-brand-orange" : "text-brand-green"}`}>
-                      {isMyTurn(g) ? "Your turn" : "Waiting on opponent"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`font-body text-[11px] ${isMyTurn(g) ? "text-brand-orange" : "text-brand-green"}`}
+                      >
+                        {isMyTurn(g) ? "Your turn" : "Waiting on opponent"}
+                      </span>
+                      <LobbyTimer deadline={g.turnDeadline?.toMillis?.() ?? 0} isMyTurn={isMyTurn(g)} />
+                    </div>
                     <div className="flex items-center gap-3 mt-2.5">
                       <div className="flex items-center gap-1">
                         <span className="font-body text-[10px] text-brand-orange uppercase tracking-wider mr-0.5">
@@ -249,6 +255,25 @@ export function Lobby({
                   </svg>
                 </button>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Active empty state */}
+        {active.length === 0 && done.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">ACTIVE</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
+                0
+              </span>
+            </div>
+            <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
+              <span className="text-2xl mb-2 opacity-40" aria-hidden="true">
+                🛹
+              </span>
+              <p className="font-body text-xs text-[#666]">No active games right now</p>
+              <p className="font-body text-[11px] text-[#555] mt-0.5">Challenge someone to start a new round</p>
             </div>
           </div>
         )}
@@ -301,7 +326,26 @@ export function Lobby({
           </div>
         )}
 
-        {/* Empty state */}
+        {/* Completed empty state */}
+        {done.length === 0 && active.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">COMPLETED</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
+                0
+              </span>
+            </div>
+            <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
+              <span className="text-2xl mb-2 opacity-40" aria-hidden="true">
+                🏆
+              </span>
+              <p className="font-body text-xs text-[#666]">No finished games yet</p>
+              <p className="font-body text-[11px] text-[#555] mt-0.5">Complete a game to see your results here</p>
+            </div>
+          </div>
+        )}
+
+        {/* Empty state — no games at all */}
         {games.length === 0 && (
           <div className="flex flex-col items-center py-14 border border-dashed border-border rounded-2xl mb-6">
             <svg

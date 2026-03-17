@@ -274,7 +274,7 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByText(/Landed/));
 
     await waitFor(() => {
-      expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "set", expect.any(Blob));
+      expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "set", expect.any(Blob), expect.any(Function));
     });
   });
 
@@ -307,7 +307,7 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByText(/Submit Attempt/));
 
     await waitFor(() => {
-      expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "match", expect.any(Blob));
+      expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "match", expect.any(Blob), expect.any(Function));
     });
   });
 
