@@ -20,6 +20,12 @@ vi.mock("../../services/auth", () => ({
   resendVerification: vi.fn(),
 }));
 
+vi.mock("../../services/users", () => ({
+  getPlayerDirectory: vi.fn(),
+}));
+
+import { getPlayerDirectory } from "../../services/users";
+
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
 
 function makeGame(overrides: Record<string, unknown> = {}) {
@@ -58,7 +64,10 @@ const defaultProps = {
   user: { emailVerified: true },
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  (getPlayerDirectory as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+});
 
 describe("Lobby", () => {
   it("helper functions compute correct values", () => {
@@ -262,5 +271,79 @@ describe("Lobby", () => {
     await userEvent.click(screen.getByText("Delete Account?"));
 
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  it("renders player directory with usernames", async () => {
+    const fakePlayers = [
+      {
+        uid: "u2",
+        username: "kickflip_king",
+        stance: "Regular",
+        createdAt: { toMillis: () => Date.now() - 3600000 * 2 },
+        emailVerified: true,
+      },
+      {
+        uid: "u3",
+        username: "heelflip_hero",
+        stance: "Goofy",
+        createdAt: { toMillis: () => Date.now() - 86400000 * 3 },
+        emailVerified: true,
+      },
+      {
+        uid: "u4",
+        username: "treflip_pro",
+        stance: "Regular",
+        createdAt: { toMillis: () => Date.now() - 86400000 * 10 },
+        emailVerified: true,
+      },
+    ];
+    (getPlayerDirectory as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { uid: "u1", username: "sk8r", stance: "regular", createdAt: null, emailVerified: true },
+      ...fakePlayers,
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
+      expect(screen.getByText("@heelflip_hero")).toBeInTheDocument();
+      expect(screen.getByText("@treflip_pro")).toBeInTheDocument();
+    });
+  });
+
+  it("filters out current user from player directory", async () => {
+    (getPlayerDirectory as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { uid: "u1", username: "sk8r", stance: "regular", createdAt: null, emailVerified: true },
+      { uid: "u2", username: "other_skater", stance: "Goofy", createdAt: null, emailVerified: true },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("@other_skater")).toBeInTheDocument();
+    });
+
+    // Current user should not appear in the player directory
+    // The header shows @sk8r, but there should be no player card for sk8r
+    const playerCards = screen.getAllByText("@sk8r");
+    // Only the header avatar shows @sk8r, not a player card
+    expect(playerCards).toHaveLength(1);
+  });
+
+  it("clicking a player triggers onChallengeUser with their username", async () => {
+    const onChallengeUser = vi.fn();
+    (getPlayerDirectory as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { uid: "u2", username: "kickflip_king", stance: "Regular", createdAt: null, emailVerified: true },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} onChallengeUser={onChallengeUser} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("@kickflip_king"));
+
+    expect(onChallengeUser).toHaveBeenCalledWith("kickflip_king");
   });
 });

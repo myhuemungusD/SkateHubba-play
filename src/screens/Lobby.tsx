@@ -1,5 +1,6 @@
-import { useState } from "react";
-import type { UserProfile } from "../services/users";
+import { useState, useEffect } from "react";
+import { type UserProfile, getPlayerDirectory } from "../services/users";
+import type { FieldValue } from "firebase/firestore";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
 import { Btn } from "../components/ui/Btn";
@@ -7,6 +8,22 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
+
+function relativeJoinDate(createdAt: FieldValue | null): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (!createdAt || typeof (createdAt as any).toMillis !== "function") return "Joined";
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const millis = (createdAt as any).toMillis() as number;
+  const ms = Date.now() - millis;
+  const hours = ms / 3_600_000;
+  if (hours < 1) return "Just joined";
+  if (hours < 24) return `Joined ${Math.floor(hours)}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Joined ${days}d ago`;
+  const d = new Date(millis);
+  const month = d.toLocaleString("en-US", { month: "short" });
+  return `Joined ${month} ${d.getDate()}`;
+}
 
 export function Lobby({
   profile,
@@ -30,6 +47,16 @@ export function Lobby({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [players, setPlayers] = useState<UserProfile[]>([]);
+  const [playersLoading, setPlayersLoading] = useState(true);
+
+  useEffect(() => {
+    getPlayerDirectory()
+      .then((all) => setPlayers(all.filter((p) => p.uid !== profile.uid)))
+      .catch(() => setPlayers([]))
+      .finally(() => setPlayersLoading(false));
+  }, [profile.uid]);
+
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
 
@@ -283,11 +310,51 @@ export function Lobby({
           </div>
         )}
 
+        {/* Player Directory */}
+        {playersLoading && <p className="font-body text-xs text-[#555] text-center mb-6">Loading skaters...</p>}
+        {!playersLoading && players.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-[#444]">SKATERS</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-[#555] leading-none tabular-nums">
+                {players.length}
+              </span>
+            </div>
+            <div className="space-y-2">
+              {players.map((p) => (
+                <button
+                  type="button"
+                  key={p.uid}
+                  onClick={() => onChallengeUser(p.username)}
+                  disabled={!user?.emailVerified}
+                  className={`flex items-center justify-between p-4 rounded-2xl bg-surface border border-border transition-all duration-200 text-left w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "cursor-pointer hover:border-[#3A3A3A]" : "cursor-not-allowed opacity-60"}`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
+                      <span className="font-display text-[11px] text-brand-orange leading-none">
+                        {p.username[0].toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="font-display text-base text-white block leading-none">@{p.username}</span>
+                      <span className="font-body text-[11px] text-[#555] block mt-1">
+                        {p.stance}
+                        {p.createdAt ? ` \u00B7 ${relativeJoinDate(p.createdAt)}` : ""}
+                      </span>
+                    </div>
+                  </div>
+                  <span className="font-display text-xs text-brand-orange shrink-0 ml-3">Challenge &rarr;</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Coming Soon */}
         <div className="p-5 rounded-2xl border border-border bg-surface">
           <h3 className="font-display text-[10px] tracking-[0.25em] text-[#3A3A3A] mb-4">COMING SOON</h3>
           <div>
-            {["Spot Map & Discovery", "Trick Clips Feed", "Leaderboards", "Crew Challenges"].map((f, i) => (
+            {["Spot Map & Discovery", "Trick Clips Feed", "Crew Challenges"].map((f, i) => (
               <div key={f} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
                 <div className="flex items-center gap-3">
                   <span className="font-display text-[10px] text-[#2E2E2E] w-4 leading-none tabular-nums">
