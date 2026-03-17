@@ -29,6 +29,8 @@ export function VideoRecorder({
 
   const openCamera = useCallback(async () => {
     setCameraError(null);
+    // Stop any existing tracks before acquiring a new stream
+    streamRef.current?.getTracks().forEach((t) => t.stop());
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
@@ -166,9 +168,11 @@ export function VideoRecorder({
           </div>
         )}
 
-        <div className="absolute top-4 right-4 bg-brand-orange/90 px-2.5 py-1 rounded-md">
-          <span className="font-display text-[11px] text-white tracking-[0.1em]">ONE TAKE</span>
-        </div>
+        {state !== "done" && (
+          <div className="absolute top-4 right-4 bg-brand-orange/90 px-2.5 py-1 rounded-md">
+            <span className="font-display text-[11px] text-white tracking-[0.1em]">ONE TAKE</span>
+          </div>
+        )}
       </div>
 
       {/* Camera error */}
@@ -197,7 +201,7 @@ export function VideoRecorder({
           <Btn onClick={stopRec} variant="danger" className="text-2xl py-5 animate-rec-ring">
             ⏹ Stop Recording
           </Btn>
-          {seconds >= MAX_RECORDING_SECONDS - 10 && (
+          {seconds >= MAX_RECORDING_SECONDS - 10 && MAX_RECORDING_SECONDS - seconds > 0 && (
             <span className="font-body text-xs text-brand-red animate-pulse">
               Auto-stop in {MAX_RECORDING_SECONDS - seconds}s
             </span>
