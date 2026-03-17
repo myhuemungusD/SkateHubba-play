@@ -1,7 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, type RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Lobby } from "../Lobby";
+import { NotificationProvider } from "../../context/NotificationContext";
+import type { ReactNode } from "react";
+
+function Wrapper({ children }: { children: ReactNode }) {
+  return <NotificationProvider uid="u1">{children}</NotificationProvider>;
+}
+
+const renderWithProviders = (ui: ReactNode, options?: Omit<RenderOptions, "wrapper">) =>
+  render(ui, { wrapper: Wrapper, ...options });
 
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
@@ -42,6 +51,7 @@ const defaultProps = {
   profile,
   games: [] as any[],
   onChallenge: vi.fn(),
+  onChallengeUser: vi.fn(),
   onOpenGame: vi.fn(),
   onSignOut: vi.fn(),
   onDeleteAccount: vi.fn(),
@@ -53,7 +63,7 @@ beforeEach(() => vi.clearAllMocks());
 describe("Lobby", () => {
   it("helper functions compute correct values", () => {
     const game = makeGame({ player1Uid: "u1", player2Uid: "u2", currentTurn: "u2", p1Letters: 1, p2Letters: 3 });
-    render(<Lobby {...defaultProps} games={[game]} />);
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
 
     // opponent name is rival
     expect(screen.getByText(/vs @rival/)).toBeInTheDocument();
@@ -64,7 +74,7 @@ describe("Lobby", () => {
   it("shows completed game with You won/lost labels", () => {
     const won = makeGame({ status: "complete", winner: "u1" });
     const lost = makeGame({ id: "g2", status: "complete", winner: "u2", player2Username: "winner" });
-    render(<Lobby {...defaultProps} games={[won, lost]} />);
+    renderWithProviders(<Lobby {...defaultProps} games={[won, lost]} />);
 
     expect(screen.getByText("You won")).toBeInTheDocument();
     expect(screen.getByText("You lost")).toBeInTheDocument();
@@ -72,13 +82,13 @@ describe("Lobby", () => {
 
   it("shows forfeit label on forfeit game", () => {
     const game = makeGame({ status: "forfeit", winner: "u1" });
-    render(<Lobby {...defaultProps} games={[game]} />);
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
 
     expect(screen.getByText(/forfeit/)).toBeInTheDocument();
   });
 
   it("delete modal overlay click closes modal", async () => {
-    render(<Lobby {...defaultProps} />);
+    renderWithProviders(<Lobby {...defaultProps} />);
 
     await userEvent.click(screen.getByText("Delete Account"));
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
@@ -95,7 +105,7 @@ describe("Lobby", () => {
   });
 
   it("delete modal Escape key closes modal", async () => {
-    render(<Lobby {...defaultProps} />);
+    renderWithProviders(<Lobby {...defaultProps} />);
 
     await userEvent.click(screen.getByText("Delete Account"));
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
@@ -112,7 +122,7 @@ describe("Lobby", () => {
 
   it("delete modal does not close during deleting", async () => {
     defaultProps.onDeleteAccount.mockImplementation(() => new Promise(() => {}));
-    render(<Lobby {...defaultProps} />);
+    renderWithProviders(<Lobby {...defaultProps} />);
 
     await userEvent.click(screen.getByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
@@ -140,7 +150,7 @@ describe("Lobby", () => {
   it("active game card keyboard Enter opens game", async () => {
     const onOpenGame = vi.fn();
     const game = makeGame();
-    render(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
 
     const card = screen.getByRole("button", { name: /vs @rival/i });
     card.focus();
@@ -152,7 +162,7 @@ describe("Lobby", () => {
   it("active game card keyboard Space opens game", async () => {
     const onOpenGame = vi.fn();
     const game = makeGame();
-    render(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
 
     const card = screen.getByRole("button", { name: /vs @rival/i });
     card.focus();
@@ -164,7 +174,7 @@ describe("Lobby", () => {
   it("completed game card keyboard Enter opens game", async () => {
     const onOpenGame = vi.fn();
     const game = makeGame({ status: "complete", winner: "u1" });
-    render(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
 
     const card = screen.getByRole("button", { name: /vs @rival/i });
     card.focus();
@@ -176,7 +186,7 @@ describe("Lobby", () => {
   it("completed game card keyboard Space opens game", async () => {
     const onOpenGame = vi.fn();
     const game = makeGame({ status: "complete", winner: "u1" });
-    render(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
 
     const card = screen.getByRole("button", { name: /vs @rival/i });
     card.focus();
@@ -187,7 +197,7 @@ describe("Lobby", () => {
 
   it("delete error shows in modal and can be dismissed", async () => {
     defaultProps.onDeleteAccount.mockRejectedValueOnce(new Error("Delete failed"));
-    render(<Lobby {...defaultProps} />);
+    renderWithProviders(<Lobby {...defaultProps} />);
 
     await userEvent.click(screen.getByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
@@ -202,7 +212,7 @@ describe("Lobby", () => {
 
   it("delete non-Error shows fallback message", async () => {
     defaultProps.onDeleteAccount.mockRejectedValueOnce("string error");
-    render(<Lobby {...defaultProps} />);
+    renderWithProviders(<Lobby {...defaultProps} />);
 
     await userEvent.click(screen.getByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
@@ -222,7 +232,7 @@ describe("Lobby", () => {
       p1Letters: 2,
       p2Letters: 4,
     });
-    render(<Lobby {...defaultProps} games={[game]} />);
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
 
     // opponent should be player1's username since profile is player2
     expect(screen.getByText(/vs @someone/)).toBeInTheDocument();
@@ -233,7 +243,7 @@ describe("Lobby", () => {
   it("non-matching key on done game card does not open game", async () => {
     const onOpenGame = vi.fn();
     const game = makeGame({ status: "complete", winner: "u1" });
-    render(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
 
     const card = screen.getByRole("button", { name: /vs @rival/i });
     card.focus();
@@ -243,7 +253,7 @@ describe("Lobby", () => {
   });
 
   it("inner modal click stops propagation", async () => {
-    render(<Lobby {...defaultProps} />);
+    renderWithProviders(<Lobby {...defaultProps} />);
 
     await userEvent.click(screen.getByText("Delete Account"));
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();

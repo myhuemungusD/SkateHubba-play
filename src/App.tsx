@@ -1,7 +1,11 @@
+import { useState } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { useGameContext, GameProvider } from "./context/GameContext";
+import { NotificationProvider } from "./context/NotificationContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
+import { ToastContainer } from "./components/ToastContainer";
+import { GameNotificationWatcher } from "./components/GameNotificationWatcher";
 import { firebaseReady } from "./firebase";
 
 import { Landing } from "./screens/Landing";
@@ -33,6 +37,19 @@ function AppScreens() {
   const ctx = useGameContext();
 
   if (ctx.loading) return <Spinner />;
+
+  return (
+    <NotificationProvider uid={ctx.user?.uid ?? null}>
+      <GameNotificationWatcher />
+      <AppRoutes />
+      <ToastContainer />
+    </NotificationProvider>
+  );
+}
+
+function AppRoutes() {
+  const ctx = useGameContext();
+  const [challengeTarget, setChallengeTarget] = useState("");
 
   return (
     <>
@@ -84,7 +101,14 @@ function AppScreens() {
           profile={ctx.activeProfile}
           games={ctx.games}
           user={ctx.user}
-          onChallenge={() => ctx.setScreen("challenge")}
+          onChallenge={() => {
+            setChallengeTarget("");
+            ctx.setScreen("challenge");
+          }}
+          onChallengeUser={(username: string) => {
+            setChallengeTarget(username);
+            ctx.setScreen("challenge");
+          }}
           onOpenGame={ctx.openGame}
           onSignOut={ctx.handleSignOut}
           onDeleteAccount={ctx.handleDeleteAccount}
@@ -96,6 +120,7 @@ function AppScreens() {
           profile={ctx.activeProfile}
           onSend={ctx.startChallenge}
           onBack={() => ctx.setScreen("lobby")}
+          initialOpponent={challengeTarget}
         />
       )}
 

@@ -1484,7 +1484,7 @@ describe("Smoke Test: Game E2E", () => {
     mockCreateGame.mockRejectedValueOnce(new Error("Network error"));
     renderVerifiedLobby([]);
 
-    await userEvent.click(screen.getByRole("button", { name: /challenge/i }));
+    await userEvent.click(screen.getByText(/Challenge Someone/));
 
     const input = screen.getByPlaceholderText("their_handle");
     await userEvent.type(input, "rival");
