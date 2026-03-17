@@ -90,13 +90,13 @@ export function Lobby({
                 {profile.username[0].toUpperCase()}
               </span>
             </div>
-            <span className="font-body text-xs text-[#555]">@{profile.username}</span>
+            <span className="font-body text-xs text-brand-orange">@{profile.username}</span>
           </div>
           <NotificationBell />
           <button
             type="button"
             onClick={onSignOut}
-            className="font-body text-xs text-[#555] hover:text-white transition-colors duration-200 px-2.5 py-1.5 rounded-lg border border-border hover:border-[#3A3A3A]"
+            className="font-body text-xs text-[#999] hover:text-white transition-colors duration-200 px-2.5 py-1.5 rounded-lg border border-border hover:border-[#3A3A3A]"
           >
             Sign Out
           </button>
@@ -110,7 +110,7 @@ export function Lobby({
         <div className="mb-7">
           <h1 className="font-display text-[44px] leading-none text-white tracking-wide">Your Games</h1>
           {games.length > 0 && (
-            <p className="font-body text-xs text-[#555] mt-1.5">
+            <p className="font-body text-xs text-brand-green mt-1.5">
               {active.length > 0 ? `${active.length} active` : "No active games"}
               {done.length > 0 ? ` · ${done.length} completed` : ""}
             </p>
@@ -151,7 +151,7 @@ export function Lobby({
         <InviteButton username={profile.username} className="mb-3" />
 
         {user?.emailVerified && (
-          <p className="font-body text-xs text-[#444] text-center mb-8">
+          <p className="font-body text-xs text-[#999] text-center mb-8">
             No one to play?{" "}
             <button
               type="button"
@@ -167,8 +167,8 @@ export function Lobby({
         {active.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
-              <h3 className="font-display text-[11px] tracking-[0.2em] text-[#444]">ACTIVE</h3>
-              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-[#555] leading-none tabular-nums">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">ACTIVE</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
                 {active.length}
               </span>
             </div>
@@ -200,16 +200,18 @@ export function Lobby({
                         </span>
                       )}
                     </div>
-                    <span className={`font-body text-[11px] ${isMyTurn(g) ? "text-brand-orange" : "text-[#555]"}`}>
+                    <span className={`font-body text-[11px] ${isMyTurn(g) ? "text-brand-orange" : "text-brand-green"}`}>
                       {isMyTurn(g) ? "Your turn" : "Waiting on opponent"}
                     </span>
                     <div className="flex items-center gap-3 mt-2.5">
                       <div className="flex items-center gap-1">
-                        <span className="font-body text-[10px] text-[#444] uppercase tracking-wider mr-0.5">You</span>
+                        <span className="font-body text-[10px] text-brand-orange uppercase tracking-wider mr-0.5">
+                          You
+                        </span>
                         {LETTERS.map((l, i) => (
                           <span
                             key={i}
-                            className={`font-display text-[13px] leading-none tracking-wide ${i < myLetters(g) ? "text-brand-red" : "text-[#2E2E2E]"}`}
+                            className={`font-display text-[13px] leading-none tracking-wide ${i < myLetters(g) ? "text-brand-red" : "text-[#666]"}`}
                           >
                             {l}
                           </span>
@@ -217,7 +219,9 @@ export function Lobby({
                       </div>
                       <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
                       <div className="flex items-center gap-1">
-                        <span className="font-body text-[10px] text-[#444] uppercase tracking-wider mr-0.5">Them</span>
+                        <span className="font-body text-[10px] text-brand-orange uppercase tracking-wider mr-0.5">
+                          Them
+                        </span>
                         {LETTERS.map((l, i) => (
                           <span
                             key={i}
@@ -230,7 +234,7 @@ export function Lobby({
                     </div>
                   </div>
                   <svg
-                    className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-[#2E2E2E]"}`}
+                    className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-[#666]"}`}
                     width="15"
                     height="15"
                     viewBox="0 0 24 24"
@@ -253,8 +257,8 @@ export function Lobby({
         {done.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
-              <h3 className="font-display text-[11px] tracking-[0.2em] text-[#444]">COMPLETED</h3>
-              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-[#555] leading-none tabular-nums">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">COMPLETED</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
                 {done.length}
               </span>
             </div>
@@ -278,7 +282,7 @@ export function Lobby({
                     </span>
                   </div>
                   <svg
-                    className="text-[#2E2E2E] shrink-0"
+                    className="text-[#666] shrink-0"
                     width="15"
                     height="15"
                     viewBox="0 0 24 24"
@@ -301,7 +305,7 @@ export function Lobby({
         {games.length === 0 && (
           <div className="flex flex-col items-center py-14 border border-dashed border-border rounded-2xl mb-6">
             <svg
-              className="text-[#2E2E2E] mb-4"
+              className="text-brand-orange mb-4"
               width="38"
               height="38"
               viewBox="0 0 24 24"
@@ -316,18 +320,18 @@ export function Lobby({
               <circle cx="17.5" cy="17.5" r="2.5" />
               <path d="M2 7h1.5l2.1 7.5h10.8l2.1-6H7.5" />
             </svg>
-            <p className="font-body text-sm text-[#555]">No games yet.</p>
-            <p className="font-body text-xs text-[#333] mt-1">Challenge someone to get started.</p>
+            <p className="font-body text-sm text-[#999]">No games yet.</p>
+            <p className="font-body text-xs text-[#777] mt-1">Challenge someone to get started.</p>
           </div>
         )}
 
         {/* Player Directory */}
-        {playersLoading && <p className="font-body text-xs text-[#555] text-center mb-6">Loading skaters...</p>}
+        {playersLoading && <p className="font-body text-xs text-brand-orange text-center mb-6">Loading skaters...</p>}
         {!playersLoading && players.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
-              <h3 className="font-display text-[11px] tracking-[0.2em] text-[#444]">SKATERS</h3>
-              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-[#555] leading-none tabular-nums">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">SKATERS</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
                 {players.length}
               </span>
             </div>
@@ -348,7 +352,7 @@ export function Lobby({
                     </div>
                     <div className="min-w-0">
                       <span className="font-display text-base text-white block leading-none">@{p.username}</span>
-                      <span className="font-body text-[11px] text-[#555] block mt-1">
+                      <span className="font-body text-[11px] text-brand-green block mt-1">
                         {p.stance}
                         {p.createdAt ? ` \u00B7 ${relativeJoinDate(p.createdAt)}` : ""}
                       </span>
@@ -367,18 +371,18 @@ export function Lobby({
 
         {/* Coming Soon */}
         <div className="p-5 rounded-2xl border border-border bg-surface">
-          <h3 className="font-display text-[10px] tracking-[0.25em] text-[#3A3A3A] mb-4">COMING SOON</h3>
+          <h3 className="font-display text-[10px] tracking-[0.25em] text-brand-orange mb-4">COMING SOON</h3>
           <div>
             {["Spot Map & Discovery", "Trick Clips Feed", "Crew Challenges"].map((f, i) => (
               <div key={f} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
                 <div className="flex items-center gap-3">
-                  <span className="font-display text-[10px] text-[#2E2E2E] w-4 leading-none tabular-nums">
+                  <span className="font-display text-[10px] text-brand-orange w-4 leading-none tabular-nums">
                     {String(i + 1).padStart(2, "0")}
                   </span>
-                  <span className="font-body text-sm text-[#555]">{f}</span>
+                  <span className="font-body text-sm text-[#999]">{f}</span>
                 </div>
                 <svg
-                  className="text-[#2A2A2A]"
+                  className="text-brand-orange"
                   width="11"
                   height="11"
                   viewBox="0 0 24 24"
@@ -400,7 +404,7 @@ export function Lobby({
         <div className="mt-8 flex justify-center">
           <button
             onClick={() => setShowDeleteModal(true)}
-            className="font-body text-xs text-[#555] underline underline-offset-2 hover:text-brand-red transition-colors"
+            className="font-body text-xs text-[#999] underline underline-offset-2 hover:text-brand-red transition-colors"
           >
             Delete Account
           </button>
