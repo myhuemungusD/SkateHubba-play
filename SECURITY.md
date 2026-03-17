@@ -81,6 +81,16 @@ The Firestore security rules treat the client as untrusted. Any attempt to manip
 
 ---
 
+## Future Hardening
+
+These are low-priority improvements identified during the auth security audit (March 2026). None are vulnerabilities — they are defense-in-depth opportunities:
+
+- **Make App Check mandatory in production** — currently env-var gated; if `VITE_RECAPTCHA_SITE_KEY` is missing, the app runs without bot protection silently
+- **Add nonce to Google OAuth provider** — Firebase's state parameter already prevents CSRF, but a nonce would add an extra replay-protection layer
+- **Restrict game deletion to non-active games** — currently either player can delete any game at any time; consider limiting to completed/forfeited games
+
+---
+
 ## Out of Scope
 
 The following are not considered security vulnerabilities for this project:
