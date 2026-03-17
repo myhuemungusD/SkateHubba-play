@@ -6,6 +6,7 @@ import { Btn } from "../components/ui/Btn";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
+import { NotificationBell } from "../components/NotificationBell";
 
 export function Lobby({
   profile,
@@ -51,6 +52,7 @@ export function Lobby({
             </div>
             <span className="font-body text-xs text-[#555]">@{profile.username}</span>
           </div>
+          <NotificationBell />
           <button
             type="button"
             onClick={onSignOut}

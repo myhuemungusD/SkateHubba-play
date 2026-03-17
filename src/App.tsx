@@ -1,7 +1,10 @@
 import { Analytics } from "@vercel/analytics/react";
 import { useGameContext, GameProvider } from "./context/GameContext";
+import { NotificationProvider } from "./context/NotificationContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
+import { ToastContainer } from "./components/ToastContainer";
+import { GameNotificationWatcher } from "./components/GameNotificationWatcher";
 import { firebaseReady } from "./firebase";
 
 import { Landing } from "./screens/Landing";
@@ -33,6 +36,18 @@ function AppScreens() {
   const ctx = useGameContext();
 
   if (ctx.loading) return <Spinner />;
+
+  return (
+    <NotificationProvider uid={ctx.user?.uid ?? null}>
+      <GameNotificationWatcher />
+      <AppRoutes />
+      <ToastContainer />
+    </NotificationProvider>
+  );
+}
+
+function AppRoutes() {
+  const ctx = useGameContext();
 
   return (
     <>
