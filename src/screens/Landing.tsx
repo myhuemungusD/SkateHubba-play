@@ -1,5 +1,3 @@
-import { useState, useEffect } from "react";
-
 import { Btn } from "../components/ui/Btn";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
@@ -180,8 +178,6 @@ const FEATURES = [
   },
 ] as const;
 
-const SKATE_LETTERS = ["S", "K", "A", "T", "E"];
-
 /* ── Component ───────────────────────────────────────────── */
 
 export function Landing({
@@ -195,21 +191,6 @@ export function Landing({
   googleLoading: boolean;
   onNav: (screen: "privacy" | "terms") => void;
 }) {
-  const [visibleLetters, setVisibleLetters] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setVisibleLetters((prev) => {
-        if (prev >= SKATE_LETTERS.length) {
-          clearInterval(id);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, 120);
-    return () => clearInterval(id);
-  }, []);
-
   return (
     <div className="min-h-dvh">
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
@@ -257,25 +238,6 @@ export function Landing({
         />
 
         <div className="relative max-w-5xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col items-center text-center">
-          {/* Animated SKATE letters */}
-          <h1 className="sr-only">S.K.A.T.E.</h1>
-          <div className="flex gap-3 md:gap-5 mb-6" aria-hidden="true">
-            {SKATE_LETTERS.map((letter, i) => (
-              <span
-                key={letter}
-                className="font-display text-[clamp(60px,14vw,110px)] leading-none transition-all duration-300"
-                style={{
-                  color: i < visibleLetters ? "#FF6B00" : "#1A1A1A",
-                  textShadow: i < visibleLetters ? "0 0 40px rgba(255,107,0,0.3)" : "none",
-                  transform: i < visibleLetters ? "translateY(0) scale(1)" : "translateY(12px) scale(0.9)",
-                  opacity: i < visibleLetters ? 1 : 0.2,
-                }}
-              >
-                {letter}
-              </span>
-            ))}
-          </div>
-
           <p className="font-body text-lg md:text-xl text-[#888] max-w-md leading-relaxed mb-4">
             The first async trick battle game.
             <br />
