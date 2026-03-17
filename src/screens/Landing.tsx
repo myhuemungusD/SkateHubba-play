@@ -6,19 +6,6 @@ import { InviteButton } from "../components/InviteButton";
 
 /* ── Inline SVG icons ────────────────────────────────────── */
 
-function BrandLogo({ className }: { className?: string }) {
-  return (
-    <img
-      src="/SHlogo12.png"
-      alt="SkateHubba"
-      className={className}
-      width="280"
-      height="200"
-      style={{ objectFit: "contain" }}
-    />
-  );
-}
-
 function VideoIcon() {
   return (
     <svg
@@ -270,8 +257,6 @@ export function Landing({
         />
 
         <div className="relative max-w-5xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col items-center text-center">
-          <BrandLogo className="animate-board-roll mb-6 drop-shadow-[0_0_30px_rgba(255,107,0,0.4)] max-w-[280px]" />
-
           {/* Animated SKATE letters */}
           <h1 className="sr-only">S.K.A.T.E.</h1>
           <div className="flex gap-3 md:gap-5 mb-6" aria-hidden="true">
