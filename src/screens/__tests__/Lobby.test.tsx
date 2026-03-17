@@ -51,6 +51,7 @@ const defaultProps = {
   profile,
   games: [] as any[],
   onChallenge: vi.fn(),
+  onChallengeUser: vi.fn(),
   onOpenGame: vi.fn(),
   onSignOut: vi.fn(),
   onDeleteAccount: vi.fn(),

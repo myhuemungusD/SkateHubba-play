@@ -12,6 +12,7 @@ export function Lobby({
   profile,
   games,
   onChallenge,
+  onChallengeUser,
   onOpenGame,
   onSignOut,
   onDeleteAccount,
@@ -20,6 +21,7 @@ export function Lobby({
   profile: UserProfile;
   games: GameDoc[];
   onChallenge: () => void;
+  onChallengeUser: (username: string) => void;
   onOpenGame: (g: GameDoc) => void;
   onSignOut: () => void;
   onDeleteAccount: () => Promise<void>;
@@ -108,7 +110,20 @@ export function Lobby({
           <p className="text-[11px] text-[#888] text-center mb-2 font-body">Verify your email to start challenging</p>
         )}
 
-        <InviteButton username={profile.username} className="mb-8" />
+        <InviteButton username={profile.username} className="mb-3" />
+
+        {user?.emailVerified && (
+          <p className="font-body text-xs text-[#444] text-center mb-8">
+            No one to play?{" "}
+            <button
+              type="button"
+              onClick={() => onChallengeUser("mikewhite")}
+              className="text-brand-orange hover:text-[#FF7A1A] transition-colors underline underline-offset-2"
+            >
+              Challenge @mikewhite
+            </button>
+          </p>
+        )}
 
         {/* Active games */}
         {active.length > 0 && (

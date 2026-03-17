@@ -9,12 +9,14 @@ export function ChallengeScreen({
   profile,
   onSend,
   onBack,
+  initialOpponent = "",
 }: {
   profile: UserProfile;
   onSend: (opponentUid: string, opponentUsername: string) => Promise<void>;
   onBack: () => void;
+  initialOpponent?: string;
 }) {
-  const [opponent, setOpponent] = useState("");
+  const [opponent, setOpponent] = useState(initialOpponent);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
