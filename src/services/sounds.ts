@@ -14,7 +14,7 @@ let ctx: AudioContext | null = null;
 function getCtx(): AudioContext {
   if (!ctx) ctx = new AudioContext();
   // Resume if suspended (autoplay policy)
-  if (ctx.state === "suspended") ctx.resume();
+  if (ctx.state === "suspended") ctx.resume().catch(() => {});
   return ctx;
 }
 

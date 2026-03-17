@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNotifications } from "../context/NotificationContext";
+import { notificationIcon, notificationAccentText } from "../lib/notificationMeta";
 
 function relativeTime(ts: number): string {
   const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -9,46 +10,29 @@ function relativeTime(ts: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-const typeIcon: Record<string, string> = {
-  game_event: "🎯",
-  success: "✓",
-  error: "✗",
-  info: "ℹ",
-};
-
-const typeColor: Record<string, string> = {
-  game_event: "text-brand-orange",
-  success: "text-brand-green",
-  error: "text-brand-red",
-  info: "text-[#888]",
-};
-
 export function NotificationBell() {
   const { notifications, unreadCount, notifyKey, markAllRead, clearAll, soundEnabled, toggleSound } =
     useNotifications();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
+  // Close on outside click or Escape
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
+    const onMouseDown = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         setOpen(false);
       }
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: KeyboardEvent) => {
+    const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
+    document.addEventListener("mousedown", onMouseDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onMouseDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [open]);
 
   const handleToggle = useCallback(() => {
@@ -177,7 +161,9 @@ export function NotificationBell() {
                   key={n.id}
                   className={`flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 transition-colors ${n.read ? "opacity-60" : ""}`}
                 >
-                  <span className={`shrink-0 text-sm mt-0.5 ${typeColor[n.type]}`}>{typeIcon[n.type]}</span>
+                  <span className={`shrink-0 text-sm mt-0.5 ${notificationAccentText[n.type]}`}>
+                    {notificationIcon[n.type]}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <p className={`font-body text-xs leading-tight ${n.read ? "text-[#888]" : "text-white"}`}>
                       <span className="font-semibold">{n.title}</span>

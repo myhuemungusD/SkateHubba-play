@@ -1,39 +1,26 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { AppNotification } from "../context/NotificationContext";
+import { notificationIcon, notificationAccentBg, notificationAccentText } from "../lib/notificationMeta";
 
 const TOAST_DURATION = 4000;
 const SWIPE_THRESHOLD = 80;
 
-const accentColor: Record<AppNotification["type"], string> = {
-  game_event: "bg-brand-orange",
-  success: "bg-brand-green",
-  error: "bg-brand-red",
-  info: "bg-[#888]",
-};
-
-const iconMap: Record<AppNotification["type"], string> = {
-  game_event: "🎯",
-  success: "✓",
-  error: "✗",
-  info: "ℹ",
-};
-
-const iconTextColor: Record<AppNotification["type"], string> = {
-  game_event: "text-brand-orange",
-  success: "text-brand-green",
-  error: "text-brand-red",
-  info: "text-[#888]",
-};
-
 export function Toast({ notification, onDismiss }: { notification: AppNotification; onDismiss: (id: string) => void }) {
   const [exiting, setExiting] = useState(false);
   const [dragX, setDragX] = useState(0);
+  const dragXRef = useRef(0);
   const startXRef = useRef<number | null>(null);
 
   const dismiss = useCallback(() => {
     setExiting(true);
-    setTimeout(() => onDismiss(notification.id), 250);
-  }, [notification.id, onDismiss]);
+  }, []);
+
+  // Run onDismiss after exit animation completes
+  useEffect(() => {
+    if (!exiting) return;
+    const timer = setTimeout(() => onDismiss(notification.id), 250);
+    return () => clearTimeout(timer);
+  }, [exiting, notification.id, onDismiss]);
 
   // Touch / pointer swipe-to-dismiss
   const onPointerDown = useCallback((e: React.PointerEvent) => {
@@ -44,17 +31,21 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (startXRef.current === null) return;
     const dx = e.clientX - startXRef.current;
-    if (dx > 0) setDragX(dx);
+    if (dx > 0) {
+      dragXRef.current = dx;
+      setDragX(dx);
+    }
   }, []);
 
   const onPointerUp = useCallback(() => {
-    if (dragX > SWIPE_THRESHOLD) {
+    if (dragXRef.current > SWIPE_THRESHOLD) {
       dismiss();
     } else {
       setDragX(0);
     }
+    dragXRef.current = 0;
     startXRef.current = null;
-  }, [dragX, dismiss]);
+  }, [dismiss]);
 
   return (
     <div
@@ -70,11 +61,13 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
       onPointerUp={onPointerUp}
     >
       {/* Left accent bar */}
-      <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${accentColor[notification.type]} rounded-l-xl`} />
+      <div
+        className={`absolute left-0 top-0 bottom-0 w-[3px] ${notificationAccentBg[notification.type]} rounded-l-xl`}
+      />
 
       {/* Icon */}
-      <span className={`shrink-0 text-lg leading-none mt-0.5 ${iconTextColor[notification.type]}`}>
-        {iconMap[notification.type]}
+      <span className={`shrink-0 text-lg leading-none mt-0.5 ${notificationAccentText[notification.type]}`}>
+        {notificationIcon[notification.type]}
       </span>
 
       {/* Content */}
@@ -96,7 +89,7 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
       {/* Progress bar */}
       <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-border">
         <div
-          className={`h-full ${accentColor[notification.type]}`}
+          className={`h-full origin-left ${notificationAccentBg[notification.type]}`}
           style={{ animation: `progress-shrink ${TOAST_DURATION}ms linear forwards` }}
         />
       </div>

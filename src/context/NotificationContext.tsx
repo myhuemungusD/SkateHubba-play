@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { playChime, isSoundEnabled, setSoundEnabled, type ChimeType } from "../services/sounds";
 
 /* ── Types ─────────────────────────────────── */
@@ -84,6 +84,16 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
   const [soundEnabled, setSoundEnabledState] = useState(isSoundEnabled);
   const uidRef = useRef(uid);
   uidRef.current = uid;
+  const toastTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Clear all toast timers on unmount
+  useEffect(() => {
+    const timers = toastTimers.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      timers.clear();
+    };
+  }, []);
 
   // Load persisted notifications when uid changes
   useEffect(() => {
@@ -125,12 +135,19 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
     if (opts.chime) playChime(opts.chime);
 
     // Auto-dismiss toast
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== n.id));
+      toastTimers.current.delete(n.id);
     }, TOAST_DURATION);
+    toastTimers.current.set(n.id, timer);
   }, []);
 
   const dismissToast = useCallback((id: string) => {
+    const timer = toastTimers.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimers.current.delete(id);
+    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
@@ -154,21 +171,36 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
     });
   }, []);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 
-  const value: NotificationContextValue = {
-    notifications,
-    toasts,
-    unreadCount,
-    notifyKey,
-    notify,
-    dismissToast,
-    markRead,
-    markAllRead,
-    clearAll,
-    soundEnabled,
-    toggleSound,
-  };
+  const value = useMemo<NotificationContextValue>(
+    () => ({
+      notifications,
+      toasts,
+      unreadCount,
+      notifyKey,
+      notify,
+      dismissToast,
+      markRead,
+      markAllRead,
+      clearAll,
+      soundEnabled,
+      toggleSound,
+    }),
+    [
+      notifications,
+      toasts,
+      unreadCount,
+      notifyKey,
+      notify,
+      dismissToast,
+      markRead,
+      markAllRead,
+      clearAll,
+      soundEnabled,
+      toggleSound,
+    ],
+  );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;
 }
