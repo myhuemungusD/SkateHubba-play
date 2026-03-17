@@ -88,7 +88,9 @@ The complication: when both votes are in, the resolving write legitimately chang
 
 1. **Vote-only:** Lock all game-state fields (phase stays `confirming`, turn/setter/deadline/turnNumber unchanged)
 2. **Resolution → complete:** Game ends (existing logic)
-3. **Resolution → continue:** Phase resets to `setting`, turnNumber increments by exactly 1
+3. **Resolution → continue:** Phase resets to `setting`, turnNumber increments by exactly 1, currentSetter/currentTurn validated
+
+**Post-fix bug found (F2b):** The initial F2 fix introduced a subtle rule/client mismatch. The confirmation rule locks `currentTrickVideoUrl`, `matchVideoUrl`, `currentTrickName`, and requires confirms to be bools (lines 148-162). But the client's resolution-continues path reset all of these to `null`, violating the locks. This would cause **all resolution-continues writes to be rejected by Firestore**, permanently sticking games in the confirming phase. Fixed by removing the null resets from the client — stale values are cleaned up by subsequent phase transitions (`setTrick`, `submitMatchAttempt`). Additionally, `currentSetter` and `currentTurn` are now validated in the resolution-continues rule branch.
 
 ---
 

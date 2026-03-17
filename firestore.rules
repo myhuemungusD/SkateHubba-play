@@ -196,6 +196,13 @@ service cloud.firestore {
             && request.resource.data.winner == null
             && request.resource.data.phase == 'setting'
             && request.resource.data.turnNumber == resource.data.turnNumber + 1
+            // currentSetter must be one of the two players
+            && (
+              request.resource.data.currentSetter == resource.data.player1Uid
+              || request.resource.data.currentSetter == resource.data.player2Uid
+            )
+            // In setting phase the setter always has the turn
+            && request.resource.data.currentTurn == request.resource.data.currentSetter
           )
         );
 
