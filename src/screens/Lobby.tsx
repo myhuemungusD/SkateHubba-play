@@ -15,6 +15,7 @@ function relativeJoinDate(createdAt: FieldValue | null): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const millis = (createdAt as any).toMillis() as number;
   const ms = Date.now() - millis;
+  if (ms < 0) return "Just joined"; // future timestamp (clock skew)
   const hours = ms / 3_600_000;
   if (hours < 1) return "Just joined";
   if (hours < 24) return `Joined ${Math.floor(hours)}h ago`;
@@ -51,10 +52,20 @@ export function Lobby({
   const [playersLoading, setPlayersLoading] = useState(true);
 
   useEffect(() => {
+    let stale = false;
     getPlayerDirectory()
-      .then((all) => setPlayers(all.filter((p) => p.uid !== profile.uid)))
-      .catch(() => setPlayers([]))
-      .finally(() => setPlayersLoading(false));
+      .then((all) => {
+        if (!stale) setPlayers(all.filter((p) => p.uid !== profile.uid));
+      })
+      .catch(() => {
+        if (!stale) setPlayers([]);
+      })
+      .finally(() => {
+        if (!stale) setPlayersLoading(false);
+      });
+    return () => {
+      stale = true;
+    };
   }, [profile.uid]);
 
   const active = games.filter((g) => g.status === "active");
@@ -343,7 +354,11 @@ export function Lobby({
                       </span>
                     </div>
                   </div>
-                  <span className="font-display text-xs text-brand-orange shrink-0 ml-3">Challenge &rarr;</span>
+                  <span
+                    className={`font-display text-xs shrink-0 ml-3 ${user?.emailVerified ? "text-brand-orange" : "text-[#555]"}`}
+                  >
+                    Challenge &rarr;
+                  </span>
                 </button>
               ))}
             </div>

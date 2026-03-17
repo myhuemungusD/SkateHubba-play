@@ -142,7 +142,7 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
  */
 export async function getPlayerDirectory(): Promise<UserProfile[]> {
   const q = query(collection(requireDb(), "users"), orderBy("createdAt", "desc"), limit(100));
-  const snap = await getDocs(q);
+  const snap = await withRetry(() => getDocs(q));
   return snap.docs.map((d) => d.data() as UserProfile);
 }
 
