@@ -95,7 +95,7 @@ describe("App", () => {
     });
     renderApp();
     await waitFor(() => {
-      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
       expect(screen.getByText("Get Started with Email")).toBeInTheDocument();
       expect(screen.getByText("I Have an Account")).toBeInTheDocument();
     });

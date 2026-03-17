@@ -119,18 +119,11 @@ export function Lobby({
             </div>
             <div className="space-y-2">
               {active.map((g) => (
-                <div
+                <button
+                  type="button"
                   key={g.id}
-                  role="button"
-                  tabIndex={0}
                   onClick={() => onOpenGame(g)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onOpenGame(g);
-                    }
-                  }}
-                  className={`relative flex items-center justify-between p-4 rounded-2xl bg-surface cursor-pointer transition-all duration-200 overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange
+                  className={`relative flex items-center justify-between p-4 rounded-2xl bg-surface cursor-pointer transition-all duration-200 overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
                     ${
                       isMyTurn(g)
                         ? "border border-[rgba(255,107,0,0.35)] shadow-[0_0_28px_rgba(255,107,0,0.07)]"
@@ -195,7 +188,7 @@ export function Lobby({
                   >
                     <polyline points="9 18 15 12 9 6" />
                   </svg>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -212,18 +205,11 @@ export function Lobby({
             </div>
             <div className="space-y-2">
               {done.map((g) => (
-                <div
+                <button
+                  type="button"
                   key={g.id}
-                  role="button"
-                  tabIndex={0}
                   onClick={() => onOpenGame(g)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onOpenGame(g);
-                    }
-                  }}
-                  className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border cursor-pointer transition-all duration-200 hover:border-[#3A3A3A] opacity-60 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                  className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border cursor-pointer transition-all duration-200 hover:border-[#3A3A3A] opacity-60 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
                 >
                   <div>
                     <span className="font-display text-[19px] text-white leading-none block mb-1">
@@ -250,7 +236,7 @@ export function Lobby({
                   >
                     <polyline points="9 18 15 12 9 6" />
                   </svg>
-                </div>
+                </button>
               ))}
             </div>
           </div>
