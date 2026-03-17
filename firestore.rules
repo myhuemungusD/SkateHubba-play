@@ -172,8 +172,15 @@ service cloud.firestore {
         )
         && (
           // Vote only (game stays active in confirming phase)
-          (request.resource.data.status == 'active' && request.resource.data.winner == null)
-          // Resolution: game complete
+          // Lock all game-state fields that must not change during a vote-only write
+          (request.resource.data.status == 'active'
+            && request.resource.data.winner == null
+            && request.resource.data.phase == 'confirming'
+            && request.resource.data.currentTurn == resource.data.currentTurn
+            && request.resource.data.currentSetter == resource.data.currentSetter
+            && request.resource.data.turnDeadline == resource.data.turnDeadline
+            && request.resource.data.turnNumber == resource.data.turnNumber)
+          // Resolution: game complete (a player reached 5 letters)
           || (
             request.resource.data.status == 'complete'
             && (request.resource.data.p1Letters >= 5 || request.resource.data.p2Letters >= 5)
@@ -183,6 +190,13 @@ service cloud.firestore {
                 : resource.data.player1Uid
             )
           )
+          // Resolution: game continues (both votes resolved, back to setting)
+          || (
+            request.resource.data.status == 'active'
+            && request.resource.data.winner == null
+            && request.resource.data.phase == 'setting'
+            && request.resource.data.turnNumber == resource.data.turnNumber + 1
+          )
         );
 
       // Either player can forfeit the current-turn player's expired turn
@@ -191,6 +205,8 @@ service cloud.firestore {
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.resource.data.status == 'forfeit'
+        // Turn deadline must have actually expired (prevents premature forfeits)
+        && request.time > resource.data.turnDeadline
         // Cannot change player UIDs, usernames, or letters
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid

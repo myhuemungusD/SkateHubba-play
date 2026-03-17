@@ -6,6 +6,7 @@ import {
   runTransaction,
   query,
   where,
+  limit,
   onSnapshot,
   serverTimestamp,
   Timestamp,
@@ -369,8 +370,8 @@ export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => 
     onUpdate(sorted);
   };
 
-  const q1 = query(gamesRef(), where("player1Uid", "==", uid));
-  const q2 = query(gamesRef(), where("player2Uid", "==", uid));
+  const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(50));
+  const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(50));
 
   const handleError = (err: Error) => {
     console.warn("Game subscription error for uid:", uid, err.message);
