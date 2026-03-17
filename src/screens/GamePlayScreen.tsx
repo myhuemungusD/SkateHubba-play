@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { GameDoc } from "../services/games";
 import { setTrick, failSetTrick, submitMatchAttempt, submitConfirmation, forfeitExpiredTurn } from "../services/games";
-import { uploadVideo } from "../services/storage";
+import { uploadVideo, type UploadProgress as UploadProgressData } from "../services/storage";
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { captureException } from "../lib/sentry";
@@ -11,6 +11,7 @@ import { Field } from "../components/ui/Field";
 import { LetterDisplay } from "../components/LetterDisplay";
 import { Timer } from "../components/Timer";
 import { VideoRecorder } from "../components/VideoRecorder";
+import { UploadProgress } from "../components/UploadProgress";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [trickName, setTrickName] = useState("");
@@ -22,6 +23,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [setterAction, setSetterAction] = useState<"landed" | "missed" | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<UploadProgressData | null>(null);
   const [forfeitChecked, setForfeitChecked] = useState(false);
 
   useEffect(() => {
@@ -61,11 +63,14 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
       try {
         let videoUrl: string | null = null;
         if (blob) {
-          videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob);
+          setUploadProgress({ bytesTransferred: 0, totalBytes: blob.size, percent: 0 });
+          videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob, setUploadProgress);
         }
+        setUploadProgress(null);
         await setTrick(game.id, trickNameRef.current.trim() || "Trick", videoUrl);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to send trick");
+        setUploadProgress(null);
         submittedRef.current = false;
       } finally {
         setSubmitting(false);
@@ -107,11 +112,14 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     try {
       let videoUrl: string | null = null;
       if (videoBlob) {
-        videoUrl = await uploadVideo(game.id, game.turnNumber, "match", videoBlob);
+        setUploadProgress({ bytesTransferred: 0, totalBytes: videoBlob.size, percent: 0 });
+        videoUrl = await uploadVideo(game.id, game.turnNumber, "match", videoBlob, setUploadProgress);
       }
+      setUploadProgress(null);
       await submitMatchAttempt(game.id, videoUrl);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to submit attempt");
+      setUploadProgress(null);
       matchSubmittedRef.current = false;
     } finally {
       setSubmitting(false);
@@ -351,9 +359,13 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         )}
         {isSetter && submitting && (
           <div className="mt-5 text-center">
-            <span className="font-display text-lg text-brand-orange tracking-wider animate-pulse">
-              {setterAction === "missed" ? "Passing turn..." : `Sending to @${opponentName}...`}
-            </span>
+            {uploadProgress ? (
+              <UploadProgress progress={uploadProgress} />
+            ) : (
+              <span className="font-display text-lg text-brand-orange tracking-wider animate-pulse">
+                {setterAction === "missed" ? "Passing turn..." : `Sending to @${opponentName}...`}
+              </span>
+            )}
           </div>
         )}
         {isSetter && !submitting && error && videoRecorded && (
@@ -369,10 +381,16 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
         {isMatcher && videoRecorded && (
           <div className="mt-5" role="group" aria-label="Submit your attempt">
-            <p className="font-display text-xl text-white text-center mb-4">Submit your attempt for review</p>
-            <Btn onClick={submitMatchVideo} variant="success" disabled={submitting}>
-              {submitting ? "Submitting..." : "Submit Attempt"}
-            </Btn>
+            {uploadProgress ? (
+              <UploadProgress progress={uploadProgress} />
+            ) : (
+              <>
+                <p className="font-display text-xl text-white text-center mb-4">Submit your attempt for review</p>
+                <Btn onClick={submitMatchVideo} variant="success" disabled={submitting}>
+                  {submitting ? "Submitting..." : "Submit Attempt"}
+                </Btn>
+              </>
+            )}
           </div>
         )}
       </div>
