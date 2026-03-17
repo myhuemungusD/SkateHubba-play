@@ -154,4 +154,30 @@ describe("AuthScreen", () => {
 
     expect(screen.getByText("Strong")).toBeInTheDocument();
   });
+
+  it("shows rate-limit error for auth/too-many-requests", async () => {
+    mockSignIn.mockRejectedValueOnce({ code: "auth/too-many-requests" });
+    render(<AuthScreen {...defaultProps} />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Too many attempts/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows network error for auth/network-request-failed", async () => {
+    mockSignIn.mockRejectedValueOnce({ code: "auth/network-request-failed" });
+    render(<AuthScreen {...defaultProps} />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Network error/)).toBeInTheDocument();
+    });
+  });
 });

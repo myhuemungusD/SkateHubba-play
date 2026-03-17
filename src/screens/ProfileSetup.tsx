@@ -6,13 +6,11 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 
 export function ProfileSetup({
   uid,
-  email,
   emailVerified = false,
   displayName,
   onDone,
 }: {
   uid: string;
-  email: string;
   emailVerified?: boolean;
   displayName?: string | null;
   onDone: (p: UserProfile) => void;
@@ -78,7 +76,7 @@ export function ProfileSetup({
 
     setLoading(true);
     try {
-      const profile = await createProfile(uid, email, normalized, stance, emailVerified);
+      const profile = await createProfile(uid, normalized, stance, emailVerified);
       onDone(profile);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not create profile");

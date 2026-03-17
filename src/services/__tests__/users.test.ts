@@ -95,15 +95,6 @@ describe("users service", () => {
 
   describe("createProfile", () => {
     it("runs a transaction that reserves the username and creates the profile", async () => {
-      const profileData = {
-        uid: "u1",
-        email: "a@b.com",
-        username: "sk8r",
-        stance: "regular",
-        createdAt: "SERVER_TS",
-        emailVerified: false,
-      };
-
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
           get: vi.fn().mockResolvedValue({ exists: () => false }),
@@ -112,13 +103,14 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      const result = await createProfile("u1", "a@b.com", "SK8R", "regular");
+      const result = await createProfile("u1", "SK8R", "regular");
       expect(result).toMatchObject({
         uid: "u1",
-        email: "a@b.com",
         username: "sk8r",
         stance: "regular",
       });
+      // email should not be stored in the profile (PII reduction)
+      expect(result).not.toHaveProperty("email");
     });
 
     it("throws when username is already taken", async () => {
@@ -130,7 +122,7 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      await expect(createProfile("u1", "a@b.com", "sk8r", "regular")).rejects.toThrow("Username is already taken");
+      await expect(createProfile("u1", "sk8r", "regular")).rejects.toThrow("Username is already taken");
     });
   });
 

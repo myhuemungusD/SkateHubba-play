@@ -16,7 +16,6 @@ beforeEach(() => vi.clearAllMocks());
 describe("ProfileSetup", () => {
   const defaultProps = {
     uid: "u1",
-    email: "test@test.com",
     emailVerified: false,
     displayName: null,
     onDone: vi.fn(),
@@ -83,7 +82,7 @@ describe("ProfileSetup", () => {
 
   it("successful submission calls onDone", async () => {
     const onDone = vi.fn();
-    const createdProfile = { uid: "u1", email: "test@test.com", username: "newuser", stance: "Regular" };
+    const createdProfile = { uid: "u1", username: "newuser", stance: "Regular" };
     mockIsUsernameAvailable.mockResolvedValue(true);
     mockCreateProfile.mockResolvedValueOnce(createdProfile);
 
@@ -97,7 +96,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "test@test.com", "newuser", "Regular", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
