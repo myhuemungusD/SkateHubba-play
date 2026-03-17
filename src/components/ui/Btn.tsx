@@ -10,7 +10,7 @@ export function Btn({
 }: {
   children: ReactNode;
   onClick?: () => void;
-  variant?: string;
+  variant?: "primary" | "secondary" | "success" | "danger" | "ghost";
   disabled?: boolean;
   className?: string;
   type?: "button" | "submit";

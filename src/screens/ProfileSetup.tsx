@@ -370,7 +370,7 @@ export function ProfileSetup({
   );
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
+    <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div
         className="w-full max-w-sm p-8 rounded-2xl bg-surface border border-border animate-fade-in"
         onKeyDown={handleKeyDown}

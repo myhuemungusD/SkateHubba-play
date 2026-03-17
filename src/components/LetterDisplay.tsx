@@ -13,8 +13,7 @@ export function LetterDisplay({ count, name, active }: { count: number; name: st
           <span
             key={i}
             className={`font-display text-xl transition-all duration-300
-              ${i < count ? "text-brand-red scale-110" : "text-[#555]"}`}
-            style={i < count ? { textShadow: "0 0 10px rgba(255,61,0,0.4)" } : {}}
+              ${i < count ? "text-brand-red scale-110 drop-shadow-[0_0_10px_rgba(255,61,0,0.4)]" : "text-[#555]"}`}
           >
             {l}
           </span>

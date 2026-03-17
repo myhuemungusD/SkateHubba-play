@@ -149,7 +149,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   // ── Confirming phase: both players review clips and vote ──
   if (isConfirming) {
     return (
-      <div className="min-h-dvh bg-[#0A0A0A] pb-10">
+      <div className="min-h-dvh bg-[#0A0A0A]/80 pb-10">
         <div className="px-5 py-4 border-b border-border flex justify-between items-center">
           <button type="button" onClick={onBack} className="font-body text-sm text-[#888]">
             ← Games
@@ -247,7 +247,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   // ── Waiting screen (not your turn in setting/matching) ──
   if (!isSetter && !isMatcher) {
     return (
-      <div className="min-h-dvh bg-[#0A0A0A] flex flex-col items-center justify-center px-6">
+      <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center justify-center px-6">
         <div className="text-center max-w-sm animate-fade-in">
           <span className="text-5xl block mb-4">⏳</span>
           <h2 className="font-display text-3xl text-white mb-2">Waiting on @{opponentName}</h2>
@@ -268,7 +268,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   }
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0A] pb-10">
+    <div className="min-h-dvh bg-[#0A0A0A]/80 pb-10">
       <div className="px-5 py-4 border-b border-border flex justify-between items-center">
         <button type="button" onClick={onBack} className="font-body text-sm text-[#888]">
           ← Games

@@ -176,7 +176,7 @@ describe("Smoke Test: Game E2E", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+    expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
     expect(screen.getByText("Get Started with Email")).toBeInTheDocument();
     expect(screen.getByText("I Have an Account")).toBeInTheDocument();
 
@@ -1044,7 +1044,7 @@ describe("Smoke Test: Game E2E", () => {
     // Here we test that the normal flow works when firebase IS ready.
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
-    expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+    expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
   });
 
   /* ── 37. Realtime game update transitions to game over ── */
@@ -1300,7 +1300,7 @@ describe("Smoke Test: Game E2E", () => {
       expect(mockDeleteAccount).toHaveBeenCalled();
       expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
       // After deletion, app navigates to landing
-      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
     });
   });
 
@@ -1755,7 +1755,7 @@ describe("Smoke Test: Game E2E", () => {
 
     // No crash — app still renders
     await waitFor(() => {
-      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
     });
   });
 
@@ -1766,7 +1766,7 @@ describe("Smoke Test: Game E2E", () => {
 
     // No crash — app still renders, String(err) branch is covered
     await waitFor(() => {
-      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
     });
   });
 
@@ -1833,7 +1833,7 @@ describe("Smoke Test: Game E2E", () => {
 
     // Despite error, app navigates to landing (sign-out clears state even on error)
     await waitFor(() => {
-      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
     });
   });
 
@@ -2619,7 +2619,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText("Sign Out"));
 
     await waitFor(() => {
-      expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
+      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
     });
   });
 

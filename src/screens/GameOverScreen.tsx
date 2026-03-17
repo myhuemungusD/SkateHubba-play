@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
-import { BG } from "../utils/helpers";
+
 import { Btn } from "../components/ui/Btn";
 import { LetterDisplay } from "../components/LetterDisplay";
 import { InviteButton } from "../components/InviteButton";
@@ -45,8 +45,8 @@ export function GameOverScreen({
       className="min-h-dvh flex flex-col items-center justify-center px-6"
       style={{
         background: isWinner
-          ? `radial-gradient(ellipse at 50% 30%, rgba(0,230,118,0.05) 0%, transparent 60%), ${BG}`
-          : `radial-gradient(ellipse at 50% 30%, rgba(255,61,0,0.05) 0%, transparent 60%), ${BG}`,
+          ? "radial-gradient(ellipse at 50% 30%, rgba(0,230,118,0.08) 0%, transparent 60%), rgba(10,10,10,0.8)"
+          : "radial-gradient(ellipse at 50% 30%, rgba(255,61,0,0.08) 0%, transparent 60%), rgba(10,10,10,0.8)",
       }}
     >
       <div className="text-center max-w-sm animate-fade-in">

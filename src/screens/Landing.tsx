@@ -1,47 +1,8 @@
-import { useState, useEffect } from "react";
-import { BG } from "../utils/helpers";
 import { Btn } from "../components/ui/Btn";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
 
 /* ── Inline SVG icons ────────────────────────────────────── */
-
-function SkateboardHero({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="120"
-      height="120"
-      viewBox="0 0 120 120"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-hidden="true"
-    >
-      {/* Deck with kicktail */}
-      <path d="M15 52 C10 52 8 48 12 44 L18 44 L102 44 L108 44 C112 48 110 52 105 52 Z" fill="#FF6B00" />
-      {/* Grip tape */}
-      <rect x="20" y="45" width="80" height="5" rx="2.5" fill="#CC5500" opacity="0.4" />
-      {/* Left truck */}
-      <rect x="26" y="53" width="14" height="4" rx="2" fill="#666" />
-      {/* Right truck */}
-      <rect x="80" y="53" width="14" height="4" rx="2" fill="#666" />
-      {/* Left wheels */}
-      <circle cx="29" cy="63" r="6" fill="#333" />
-      <circle cx="29" cy="63" r="3.5" fill="#555" />
-      <circle cx="29" cy="63" r="1.5" fill="#777" />
-      <circle cx="37" cy="63" r="6" fill="#333" />
-      <circle cx="37" cy="63" r="3.5" fill="#555" />
-      <circle cx="37" cy="63" r="1.5" fill="#777" />
-      {/* Right wheels */}
-      <circle cx="83" cy="63" r="6" fill="#333" />
-      <circle cx="83" cy="63" r="3.5" fill="#555" />
-      <circle cx="83" cy="63" r="1.5" fill="#777" />
-      <circle cx="91" cy="63" r="6" fill="#333" />
-      <circle cx="91" cy="63" r="3.5" fill="#555" />
-      <circle cx="91" cy="63" r="1.5" fill="#777" />
-    </svg>
-  );
-}
 
 function VideoIcon() {
   return (
@@ -217,8 +178,6 @@ const FEATURES = [
   },
 ] as const;
 
-const SKATE_LETTERS = ["S", "K", "A", "T", "E"];
-
 /* ── Component ───────────────────────────────────────────── */
 
 export function Landing({
@@ -232,23 +191,8 @@ export function Landing({
   googleLoading: boolean;
   onNav: (screen: "privacy" | "terms") => void;
 }) {
-  const [visibleLetters, setVisibleLetters] = useState(0);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      setVisibleLetters((prev) => {
-        if (prev >= SKATE_LETTERS.length) {
-          clearInterval(id);
-          return prev;
-        }
-        return prev + 1;
-      });
-    }, 120);
-    return () => clearInterval(id);
-  }, []);
-
   return (
-    <div className="min-h-dvh" style={{ background: BG }}>
+    <div className="min-h-dvh">
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
       <nav className="sticky top-0 z-50 backdrop-blur-md bg-[#0A0A0A]/80 border-b border-border">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -294,27 +238,6 @@ export function Landing({
         />
 
         <div className="relative max-w-5xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col items-center text-center">
-          <SkateboardHero className="animate-board-roll mb-6 drop-shadow-[0_0_30px_rgba(255,107,0,0.2)]" />
-
-          {/* Animated SKATE letters */}
-          <h1 className="sr-only">S.K.A.T.E.</h1>
-          <div className="flex gap-3 md:gap-5 mb-6" aria-hidden="true">
-            {SKATE_LETTERS.map((letter, i) => (
-              <span
-                key={letter}
-                className="font-display text-[clamp(60px,14vw,110px)] leading-none transition-all duration-300"
-                style={{
-                  color: i < visibleLetters ? "#FF6B00" : "#1A1A1A",
-                  textShadow: i < visibleLetters ? "0 0 40px rgba(255,107,0,0.3)" : "none",
-                  transform: i < visibleLetters ? "translateY(0) scale(1)" : "translateY(12px) scale(0.9)",
-                  opacity: i < visibleLetters ? 1 : 0.2,
-                }}
-              >
-                {letter}
-              </span>
-            ))}
-          </div>
-
           <p className="font-body text-lg md:text-xl text-[#888] max-w-md leading-relaxed mb-4">
             The first async trick battle game.
             <br />
@@ -390,7 +313,7 @@ export function Landing({
               <div className="absolute inset-3 top-8 rounded-2xl bg-[#111] flex flex-col items-center justify-center gap-4 p-4">
                 <span className="font-display text-sm tracking-[0.2em] text-brand-orange">GAME ON</span>
                 <div className="flex gap-2">
-                  {SKATE_LETTERS.map((l, i) => (
+                  {["S", "K", "A", "T", "E"].map((l, i) => (
                     <span key={l} className="font-display text-2xl" style={{ color: i < 2 ? "#FF3D00" : "#2A2A2A" }}>
                       {l}
                     </span>
@@ -522,6 +445,55 @@ export function Landing({
               SKATEHUBBA<span className="text-[#555]">™</span>
             </span>
             <span className="font-body text-xs text-[#444]">The first async S.K.A.T.E. trick battle game.</span>
+          </div>
+
+          {/* Social Links */}
+          <div className="flex gap-5 items-center justify-center mb-4" aria-label="Social media">
+            <a
+              href="https://x.com/skatehubba_"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#555] hover:text-white transition-colors"
+              aria-label="Follow on X"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+            </a>
+            <a
+              href="https://www.instagram.com/skatehubba_app"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#555] hover:text-white transition-colors"
+              aria-label="Follow on Instagram"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+              </svg>
+            </a>
+            <a
+              href="https://www.facebook.com/profile.php?id=61578731058004"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#555] hover:text-white transition-colors"
+              aria-label="Follow on Facebook"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+              </svg>
+            </a>
           </div>
 
           <nav className="flex gap-6 flex-wrap justify-center" aria-label="Legal">
