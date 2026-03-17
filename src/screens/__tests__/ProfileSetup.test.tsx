@@ -21,6 +21,24 @@ describe("ProfileSetup", () => {
     onDone: vi.fn(),
   };
 
+  /** Helper: fill username and advance past Step 1 */
+  async function fillUsernameAndAdvance(username = "newuser") {
+    mockIsUsernameAvailable.mockResolvedValue(true);
+    const input = screen.getByPlaceholderText("sk8legend");
+    await userEvent.type(input, username);
+    await waitFor(() => expect(screen.getByText(new RegExp(`@${username} is available`))).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Next"));
+  }
+
+  // ─── Step 1: Username ──────────────────────────────────────
+
+  it("renders step 1 by default with progress bar", () => {
+    render(<ProfileSetup {...defaultProps} />);
+    expect(screen.getByText("STEP 1 OF 3")).toBeInTheDocument();
+    expect(screen.getByText("Pick your handle")).toBeInTheDocument();
+    expect(screen.getByRole("progressbar")).toBeInTheDocument();
+  });
+
   it("submits with short username shows error", async () => {
     render(<ProfileSetup {...defaultProps} />);
 
@@ -39,9 +57,6 @@ describe("ProfileSetup", () => {
   it("submits with too long username shows error (validation path)", async () => {
     render(<ProfileSetup {...defaultProps} />);
 
-    // The maxLength attribute prevents typing > 20 chars via UI, but we can test
-    // the code path by manipulating state. Instead, test that the form enforces
-    // the max 20 length correctly.
     const input = screen.getByPlaceholderText("sk8legend") as HTMLInputElement;
     expect(input.maxLength).toBe(20);
   });
@@ -55,6 +70,7 @@ describe("ProfileSetup", () => {
 
     await waitFor(() => expect(screen.getByText(/@takenuser is taken/)).toBeInTheDocument());
 
+    // Button is disabled when taken, so submit via form
     const form = input.closest("form")!;
     await act(async () => {
       form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -72,69 +88,13 @@ describe("ProfileSetup", () => {
 
     expect(screen.getByText("Checking...")).toBeInTheDocument();
 
+    // Button is disabled while checking, so submit via form
     const form = input.closest("form")!;
     await act(async () => {
       form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
 
     expect(screen.getByText("Still checking username — wait a moment")).toBeInTheDocument();
-  });
-
-  it("successful submission calls onDone", async () => {
-    const onDone = vi.fn();
-    const createdProfile = { uid: "u1", username: "newuser", stance: "Regular" };
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockCreateProfile.mockResolvedValueOnce(createdProfile);
-
-    render(<ProfileSetup {...defaultProps} onDone={onDone} />);
-
-    const input = screen.getByPlaceholderText("sk8legend");
-    await userEvent.type(input, "newuser");
-
-    await waitFor(() => expect(screen.getByText(/@newuser is available/)).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText("Lock It In"));
-
-    await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false);
-      expect(onDone).toHaveBeenCalledWith(createdProfile);
-    });
-  });
-
-  it("shows error when createProfile fails", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockCreateProfile.mockRejectedValueOnce(new Error("Write failed"));
-
-    render(<ProfileSetup {...defaultProps} />);
-
-    const input = screen.getByPlaceholderText("sk8legend");
-    await userEvent.type(input, "newuser");
-
-    await waitFor(() => expect(screen.getByText(/@newuser is available/)).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText("Lock It In"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Write failed")).toBeInTheDocument();
-    });
-  });
-
-  it("shows fallback error when createProfile throws non-Error", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockCreateProfile.mockRejectedValueOnce("string error");
-
-    render(<ProfileSetup {...defaultProps} />);
-
-    const input = screen.getByPlaceholderText("sk8legend");
-    await userEvent.type(input, "newuser");
-
-    await waitFor(() => expect(screen.getByText(/@newuser is available/)).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText("Lock It In"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Could not create profile")).toBeInTheDocument();
-    });
   });
 
   it("username availability check failure shows error", async () => {
@@ -148,40 +108,6 @@ describe("ProfileSetup", () => {
     await waitFor(() => {
       expect(screen.getByText("Could not check username — try again")).toBeInTheDocument();
     });
-  });
-
-  it("stance toggle works", async () => {
-    render(<ProfileSetup {...defaultProps} />);
-
-    await userEvent.click(screen.getByText("Goofy"));
-    expect(screen.getByText("Goofy").className).toContain("brand-orange");
-  });
-
-  it("input is disabled during submission", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockCreateProfile.mockImplementation(() => new Promise(() => {}));
-
-    render(<ProfileSetup {...defaultProps} />);
-
-    const input = screen.getByPlaceholderText("sk8legend") as HTMLInputElement;
-    await userEvent.type(input, "newuser");
-
-    await waitFor(() => expect(screen.getByText(/@newuser is available/)).toBeInTheDocument());
-
-    await userEvent.click(screen.getByText("Lock It In"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Creating...")).toBeInTheDocument();
-    });
-
-    // While loading, onChange and setStance are guarded by !loading
-    const { fireEvent: fe } = await import("@testing-library/react");
-    const valueBefore = input.value;
-    fe.change(input, { target: { value: "other" } });
-    expect(input.value).toBe(valueBefore);
-
-    // Stance click while loading is also guarded
-    fe.click(screen.getByText("Goofy"));
   });
 
   it("uses displayName as initial value", () => {
@@ -207,20 +133,150 @@ describe("ProfileSetup", () => {
     expect(screen.getByText("Username too long (max 20)")).toBeInTheDocument();
   });
 
-  it("error banner can be dismissed", async () => {
+  // ─── Step 2: Stance ────────────────────────────────────────
+
+  it("advances to step 2 when username is valid", async () => {
+    render(<ProfileSetup {...defaultProps} />);
+    await fillUsernameAndAdvance();
+
+    expect(screen.getByText("STEP 2 OF 3")).toBeInTheDocument();
+    expect(screen.getByText("What's your stance?")).toBeInTheDocument();
+  });
+
+  it("stance toggle works on step 2", async () => {
+    render(<ProfileSetup {...defaultProps} />);
+    await fillUsernameAndAdvance();
+
+    await userEvent.click(screen.getByText("Goofy"));
+    expect(screen.getByText("Goofy").closest("button")!.className).toContain("brand-orange");
+  });
+
+  it("back button on step 2 returns to step 1", async () => {
+    render(<ProfileSetup {...defaultProps} />);
+    await fillUsernameAndAdvance();
+
+    expect(screen.getByText("STEP 2 OF 3")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Back"));
+
+    expect(screen.getByText("STEP 1 OF 3")).toBeInTheDocument();
+  });
+
+  // ─── Step 3: Review & Submit ───────────────────────────────
+
+  it("advances to step 3 with profile preview", async () => {
+    render(<ProfileSetup {...defaultProps} />);
+    await fillUsernameAndAdvance();
+
+    // Step 2 → Step 3
+    await userEvent.click(screen.getByText("Next"));
+
+    expect(screen.getByText("STEP 3 OF 3")).toBeInTheDocument();
+    expect(screen.getByText("Looking good")).toBeInTheDocument();
+    expect(screen.getByText("@newuser")).toBeInTheDocument();
+    expect(screen.getByText("Regular")).toBeInTheDocument();
+  });
+
+  it("successful submission calls onDone from step 3", async () => {
+    const onDone = vi.fn();
+    const createdProfile = { uid: "u1", username: "newuser", stance: "Regular" };
+    mockIsUsernameAvailable.mockResolvedValue(true);
+    mockCreateProfile.mockResolvedValueOnce(createdProfile);
+
+    render(<ProfileSetup {...defaultProps} onDone={onDone} />);
+
+    // Step 1 → 2
+    await fillUsernameAndAdvance();
+    // Step 2 → 3
+    await userEvent.click(screen.getByText("Next"));
+    // Submit
+    await userEvent.click(screen.getByText("Lock It In"));
+
+    await waitFor(() => {
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false);
+      expect(onDone).toHaveBeenCalledWith(createdProfile);
+    });
+  });
+
+  it("shows error when createProfile fails", async () => {
+    mockIsUsernameAvailable.mockResolvedValue(true);
+    mockCreateProfile.mockRejectedValueOnce(new Error("Write failed"));
+
     render(<ProfileSetup {...defaultProps} />);
 
-    const input = screen.getByPlaceholderText("sk8legend");
-    await userEvent.type(input, "ab");
+    await fillUsernameAndAdvance();
+    await userEvent.click(screen.getByText("Next"));
+    await userEvent.click(screen.getByText("Lock It In"));
 
-    const form = input.closest("form")!;
-    await act(async () => {
-      form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    await waitFor(() => {
+      expect(screen.getByText("Write failed")).toBeInTheDocument();
     });
+  });
 
-    expect(screen.getByText("Username must be 3+ characters")).toBeInTheDocument();
+  it("shows fallback error when createProfile throws non-Error", async () => {
+    mockIsUsernameAvailable.mockResolvedValue(true);
+    mockCreateProfile.mockRejectedValueOnce("string error");
 
-    await userEvent.click(screen.getByText("×"));
-    expect(screen.queryByText("Username must be 3+ characters")).not.toBeInTheDocument();
+    render(<ProfileSetup {...defaultProps} />);
+
+    await fillUsernameAndAdvance();
+    await userEvent.click(screen.getByText("Next"));
+    await userEvent.click(screen.getByText("Lock It In"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Could not create profile")).toBeInTheDocument();
+    });
+  });
+
+  it("shows Creating... state during submission", async () => {
+    mockIsUsernameAvailable.mockResolvedValue(true);
+    mockCreateProfile.mockImplementation(() => new Promise(() => {}));
+
+    render(<ProfileSetup {...defaultProps} />);
+
+    await fillUsernameAndAdvance();
+    await userEvent.click(screen.getByText("Next"));
+    await userEvent.click(screen.getByText("Lock It In"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Creating...")).toBeInTheDocument();
+    });
+  });
+
+  it("selects Goofy stance and submits correctly", async () => {
+    const onDone = vi.fn();
+    const createdProfile = { uid: "u1", username: "newuser", stance: "Goofy" };
+    mockIsUsernameAvailable.mockResolvedValue(true);
+    mockCreateProfile.mockResolvedValueOnce(createdProfile);
+
+    render(<ProfileSetup {...defaultProps} onDone={onDone} />);
+
+    await fillUsernameAndAdvance();
+
+    // Pick Goofy on step 2
+    await userEvent.click(screen.getByText("Goofy"));
+    await userEvent.click(screen.getByText("Next"));
+
+    // Step 3 shows Goofy
+    expect(screen.getByText("Goofy")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Lock It In"));
+
+    await waitFor(() => {
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false);
+      expect(onDone).toHaveBeenCalledWith(createdProfile);
+    });
+  });
+
+  it("back button on step 3 returns to step 2", async () => {
+    render(<ProfileSetup {...defaultProps} />);
+    await fillUsernameAndAdvance();
+    await userEvent.click(screen.getByText("Next"));
+
+    expect(screen.getByText("STEP 3 OF 3")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Back"));
+
+    expect(screen.getByText("STEP 2 OF 3")).toBeInTheDocument();
   });
 });
