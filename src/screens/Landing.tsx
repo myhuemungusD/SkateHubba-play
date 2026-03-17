@@ -313,7 +313,7 @@ export function Landing({
               <div className="absolute inset-3 top-8 rounded-2xl bg-[#111] flex flex-col items-center justify-center gap-4 p-4">
                 <span className="font-display text-sm tracking-[0.2em] text-brand-orange">GAME ON</span>
                 <div className="flex gap-2">
-                  {SKATE_LETTERS.map((l, i) => (
+                  {["S", "K", "A", "T", "E"].map((l, i) => (
                     <span key={l} className="font-display text-2xl" style={{ color: i < 2 ? "#FF3D00" : "#2A2A2A" }}>
                       {l}
                     </span>
