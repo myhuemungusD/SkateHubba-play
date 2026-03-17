@@ -6,6 +6,8 @@ import {
   getDocs,
   query,
   where,
+  orderBy,
+  limit,
   runTransaction,
   serverTimestamp,
   type FieldValue,
@@ -131,6 +133,17 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
     tx.delete(userRef);
     tx.delete(usernameRef);
   });
+}
+
+/**
+ * Fetch all user profiles for the player directory.
+ * Capped at 100 for MVP. No real-time listener needed —
+ * this is fetched once when the Lobby mounts.
+ */
+export async function getPlayerDirectory(): Promise<UserProfile[]> {
+  const q = query(collection(requireDb(), "users"), orderBy("createdAt", "desc"), limit(100));
+  const snap = await withRetry(() => getDocs(q));
+  return snap.docs.map((d) => d.data() as UserProfile);
 }
 
 /**

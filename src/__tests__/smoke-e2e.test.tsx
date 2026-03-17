@@ -47,6 +47,7 @@ vi.mock("../services/users", () => ({
   isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
   getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
   deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
+  getPlayerDirectory: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),

@@ -20,6 +20,14 @@ vi.mock("../../services/auth", () => ({
   resendVerification: vi.fn(),
 }));
 
+vi.mock("../../services/users", () => ({
+  getPlayerDirectory: vi.fn(),
+}));
+
+import { getPlayerDirectory } from "../../services/users";
+
+const mockGetPlayerDirectory = getPlayerDirectory as ReturnType<typeof vi.fn>;
+
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
 
 function makeGame(overrides: Record<string, unknown> = {}) {
@@ -58,7 +66,10 @@ const defaultProps = {
   user: { emailVerified: true },
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockGetPlayerDirectory.mockResolvedValue([]);
+});
 
 describe("Lobby", () => {
   it("helper functions compute correct values", () => {
@@ -262,5 +273,212 @@ describe("Lobby", () => {
     await userEvent.click(screen.getByText("Delete Account?"));
 
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  it("renders player directory with usernames", async () => {
+    const fakePlayers = [
+      {
+        uid: "u2",
+        username: "kickflip_king",
+        stance: "Regular",
+        createdAt: { toMillis: () => Date.now() - 3600000 * 2 },
+        emailVerified: true,
+      },
+      {
+        uid: "u3",
+        username: "heelflip_hero",
+        stance: "Goofy",
+        createdAt: { toMillis: () => Date.now() - 86400000 * 3 },
+        emailVerified: true,
+      },
+      {
+        uid: "u4",
+        username: "treflip_pro",
+        stance: "Regular",
+        createdAt: { toMillis: () => Date.now() - 86400000 * 10 },
+        emailVerified: true,
+      },
+    ];
+    mockGetPlayerDirectory.mockResolvedValue([
+      { uid: "u1", username: "sk8r", stance: "regular", createdAt: null, emailVerified: true },
+      ...fakePlayers,
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
+      expect(screen.getByText("@heelflip_hero")).toBeInTheDocument();
+      expect(screen.getByText("@treflip_pro")).toBeInTheDocument();
+    });
+  });
+
+  it("filters out current user from player directory", async () => {
+    mockGetPlayerDirectory.mockResolvedValue([
+      { uid: "u1", username: "sk8r", stance: "regular", createdAt: null, emailVerified: true },
+      { uid: "u2", username: "other_skater", stance: "Goofy", createdAt: null, emailVerified: true },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("@other_skater")).toBeInTheDocument();
+    });
+
+    // Current user should not appear in the player directory
+    // The header shows @sk8r, but there should be no player card for sk8r
+    const playerCards = screen.getAllByText("@sk8r");
+    // Only the header avatar shows @sk8r, not a player card
+    expect(playerCards).toHaveLength(1);
+  });
+
+  it("clicking a player triggers onChallengeUser with their username", async () => {
+    const onChallengeUser = vi.fn();
+    mockGetPlayerDirectory.mockResolvedValue([
+      { uid: "u2", username: "kickflip_king", stance: "Regular", createdAt: null, emailVerified: true },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} onChallengeUser={onChallengeUser} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("@kickflip_king"));
+
+    expect(onChallengeUser).toHaveBeenCalledWith("kickflip_king");
+  });
+
+  it("shows loading state while fetching players", async () => {
+    let resolve!: (v: unknown[]) => void;
+    mockGetPlayerDirectory.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    expect(screen.getByText("Loading skaters...")).toBeInTheDocument();
+
+    await act(async () => {
+      resolve([]);
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText("Loading skaters...")).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides SKATERS section when no other users exist", async () => {
+    mockGetPlayerDirectory.mockResolvedValue([
+      { uid: "u1", username: "sk8r", stance: "regular", createdAt: null, emailVerified: true },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Loading skaters...")).not.toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("SKATERS")).not.toBeInTheDocument();
+  });
+
+  it("disables player challenge buttons when email not verified", async () => {
+    mockGetPlayerDirectory.mockResolvedValue([
+      { uid: "u2", username: "kickflip_king", stance: "Regular", createdAt: null, emailVerified: true },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} user={{ emailVerified: false }} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
+    });
+
+    const card = screen.getByText("@kickflip_king").closest("button")!;
+    expect(card).toBeDisabled();
+  });
+
+  it("displays relative join dates correctly", async () => {
+    const now = Date.now();
+    mockGetPlayerDirectory.mockResolvedValue([
+      {
+        uid: "u2",
+        username: "just_now",
+        stance: "Regular",
+        createdAt: { toMillis: () => now - 1000 * 60 * 30 },
+        emailVerified: true,
+      },
+      {
+        uid: "u3",
+        username: "hours_ago",
+        stance: "Goofy",
+        createdAt: { toMillis: () => now - 1000 * 60 * 60 * 5 },
+        emailVerified: true,
+      },
+      {
+        uid: "u4",
+        username: "days_ago",
+        stance: "Regular",
+        createdAt: { toMillis: () => now - 1000 * 60 * 60 * 24 * 3 },
+        emailVerified: true,
+      },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Just joined/)).toBeInTheDocument();
+      expect(screen.getByText(/Joined 5h ago/)).toBeInTheDocument();
+      expect(screen.getByText(/Joined 3d ago/)).toBeInTheDocument();
+    });
+  });
+
+  it("handles future timestamps gracefully", async () => {
+    mockGetPlayerDirectory.mockResolvedValue([
+      {
+        uid: "u2",
+        username: "time_traveler",
+        stance: "Regular",
+        createdAt: { toMillis: () => Date.now() + 60000 },
+        emailVerified: true,
+      },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Just joined/)).toBeInTheDocument();
+    });
+  });
+
+  it("handles getPlayerDirectory fetch failure gracefully", async () => {
+    mockGetPlayerDirectory.mockRejectedValue(new Error("Network error"));
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Loading skaters...")).not.toBeInTheDocument();
+    });
+
+    // No SKATERS section, no crash
+    expect(screen.queryByText("SKATERS")).not.toBeInTheDocument();
+  });
+
+  it("shows player count badge with correct number", async () => {
+    mockGetPlayerDirectory.mockResolvedValue([
+      { uid: "u2", username: "player_one", stance: "Regular", createdAt: null, emailVerified: true },
+      { uid: "u3", username: "player_two", stance: "Goofy", createdAt: null, emailVerified: true },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("SKATERS")).toBeInTheDocument();
+    });
+
+    // Badge should show "2" (both players, current user filtered out)
+    const badge = screen.getByText("SKATERS").parentElement!.querySelector(".tabular-nums")!;
+    expect(badge.textContent).toBe("2");
   });
 });
