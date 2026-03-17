@@ -3,7 +3,7 @@ import { useGameContext, GameProvider } from "./context/GameContext";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
 import { firebaseReady } from "./firebase";
-import { BG } from "./utils/helpers";
+
 import { Landing } from "./screens/Landing";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ProfileSetup } from "./screens/ProfileSetup";
@@ -18,7 +18,7 @@ import { ConsentBanner } from "./components/ConsentBanner";
 
 function FirebaseMissing() {
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center" style={{ background: BG }}>
+    <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-2">SKATEHUBBA™</span>
       <h2 className="font-display text-3xl text-white mt-4">Setup Required</h2>
       <p className="font-body text-base text-[#888] max-w-sm mt-4 leading-relaxed">

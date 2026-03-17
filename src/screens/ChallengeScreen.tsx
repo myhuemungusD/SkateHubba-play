@@ -46,7 +46,7 @@ export function ChallengeScreen({
   };
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0A] px-6 pt-6">
+    <div className="min-h-dvh bg-[#0A0A0A]/80 px-6 pt-6">
       <div className="max-w-md mx-auto">
         <button type="button" onClick={onBack} className="font-body text-sm text-[#888] mb-6 flex items-center gap-1.5">
           ← Back

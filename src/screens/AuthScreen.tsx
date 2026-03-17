@@ -99,7 +99,7 @@ export function AuthScreen({
   const displayError = error || googleError;
 
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
+    <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm p-8 rounded-2xl bg-surface border border-border animate-fade-in">
         <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-2">SKATEHUBBA™</span>
         <h2 className="font-display text-4xl text-white mb-1">{isSignup ? "Create Account" : "Welcome Back"}</h2>
