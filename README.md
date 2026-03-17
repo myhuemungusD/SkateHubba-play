@@ -1,23 +1,28 @@
 <div align="center">
 
-<img src="public/logoblack.png" alt="SkateHubba Logo" width="200">
+<!-- GitHub dark mode: show white logo; light mode: show black logo -->
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logo-white.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/logo-black.png">
+  <img src="docs/screenshots/logo-black.png" alt="SkateHubba" width="200">
+</picture>
 
-# SkateHubba S.K.A.T.E.
+### Own the spot. Play S.K.A.T.E. anywhere.
 
-**Own the spot. Play S.K.A.T.E. anywhere.**
+An async multiplayer trick battle game for skateboarders.
+Challenge friends, set tricks on video, and see if they can match you — one letter at a time.
 
-An async multiplayer trick battle game for skateboarders. Challenge friends, set tricks on video, and see if they can match you — one letter at a time.
-
-[![Live](https://img.shields.io/badge/Play_Now-skatehubba.com-FF6B00?style=for-the-badge&logo=firebase&logoColor=white)](https://skatehubba.com)
+[![Play Now](https://img.shields.io/badge/Play_Now-skatehubba.com-FF6B00?style=for-the-badge&logo=firebase&logoColor=white)](https://skatehubba.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-black?style=for-the-badge)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)](CONTRIBUTING.md)
 
 <br>
 
-<img src="public/shgrafittibackground.png" alt="SkateHubba - Graffiti Branding" width="600">
+<img src="docs/screenshots/graffiti-banner.png" alt="SkateHubba graffiti branding — stacked skateboards against a tagged wall" width="600">
 
 </div>
 
----
+<br>
 
 ## What is S.K.A.T.E.?
 
@@ -37,9 +42,9 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 <td align="center"><strong>Forfeit Screen</strong></td>
 </tr>
 <tr>
-<td><img src="public/landing.png" alt="Landing Page" width="320"></td>
-<td><img src="public/Homescreenscreenshot.png" alt="Home Screen - Your Games" width="320"></td>
-<td><img src="public/forfiettime.png" alt="Forfeit Screen" width="320"></td>
+<td><img src="docs/screenshots/landing.png" alt="SkateHubba landing page — hero with 'Own The Spot' tagline" width="320"></td>
+<td><img src="docs/screenshots/home-screen.png" alt="Your Games dashboard showing active and completed matches" width="320"></td>
+<td><img src="docs/screenshots/forfeit-screen.png" alt="Forfeit screen with skull icon and rematch button" width="320"></td>
 </tr>
 </table>
 </div>
@@ -78,28 +83,11 @@ No custom backend. No serverless functions. The client talks directly to Firebas
 
 ---
 
-## Documentation
-
-| Document                                         | Description                                 |
-| ------------------------------------------------ | ------------------------------------------- |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)       | Local setup, emulators, dev workflow        |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)         | Production deploy to Vercel + Firebase      |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)     | System design, data flow, decisions         |
-| [docs/DATABASE.md](docs/DATABASE.md)             | Firestore schema and security rules         |
-| [docs/API.md](docs/API.md)                       | Service layer function reference            |
-| [docs/TESTING.md](docs/TESTING.md)               | Test suite overview and how to run          |
-| [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md) | Game rules and turn flow                    |
-| [CONTRIBUTING.md](CONTRIBUTING.md)               | How to contribute                           |
-| [SECURITY.md](SECURITY.md)                       | Security policy and vulnerability reporting |
-| [CHANGELOG.md](CHANGELOG.md)                     | Version history                             |
-
----
-
 ## Quick Start
 
 ```bash
-git clone https://github.com/myhuemungusD/skatehubba-play.git
-cd skatehubba-play
+git clone https://github.com/myhuemungusD/SkateHubba-play.git
+cd SkateHubba-play
 npm install
 cp .env.example .env.local
 # Fill in your Firebase config values in .env.local
@@ -108,7 +96,19 @@ npm run dev
 
 Open [http://localhost:5173](http://localhost:5173).
 
-For full setup instructions including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+---
+
+## Scripts
+
+| Command              | Description                            |
+| -------------------- | -------------------------------------- |
+| `npm run dev`        | Start dev server at localhost:5173     |
+| `npm run build`      | Type-check + production build → dist/  |
+| `npm run preview`    | Preview the production build locally   |
+| `npm test`           | Run test suite once                    |
+| `npm run test:watch` | Run tests in watch mode                |
 
 ---
 
@@ -116,10 +116,11 @@ For full setup instructions including Firebase emulators, see [docs/DEVELOPMENT.
 
 ```
 skatehubba-play/
+├── public/                  # Static assets served at /
 ├── src/
-│   ├── App.tsx              # All screens + state machine (~1700 lines)
-│   ├── firebase.ts          # Firebase initialization
-│   ├── main.tsx             # React entry point
+│   ├── App.tsx              # Screens + state machine
+│   ├── firebase.ts          # Firebase init
+│   ├── main.tsx             # React entry
 │   ├── index.css            # Tailwind + custom animations
 │   ├── hooks/
 │   │   └── useAuth.ts       # Auth state + profile hook
@@ -129,13 +130,13 @@ skatehubba-play/
 │   │   ├── games.ts         # Game CRUD + real-time subscriptions
 │   │   └── storage.ts       # Video upload to Firebase Storage
 │   └── __tests__/
-│       └── smoke-e2e.test.tsx  # 45+ end-to-end smoke tests
+│       └── smoke-e2e.test.tsx
+├── docs/                    # Documentation suite
+│   └── screenshots/         # README images + brand assets
 ├── firestore.rules          # Firestore security rules
 ├── storage.rules            # Storage security rules
-├── vercel.json              # Vercel SPA config
-├── firebase.json            # Firebase CLI config
 ├── .env.example             # Environment variable template
-└── docs/                    # Full documentation suite
+└── vercel.json              # Vercel SPA config
 ```
 
 ---
@@ -151,23 +152,27 @@ VITE_FIREBASE_PROJECT_ID=
 VITE_FIREBASE_STORAGE_BUCKET=
 VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
-VITE_FIREBASE_MEASUREMENT_ID=   # optional, for Analytics
-
-VITE_USE_EMULATORS=true         # optional, enable local emulators
-VITE_APP_URL=https://...        # optional, for email action link redirects
+VITE_FIREBASE_MEASUREMENT_ID=   # optional — Analytics
+VITE_USE_EMULATORS=true         # optional — local emulators
+VITE_APP_URL=https://...        # optional — email action redirects
 ```
 
 ---
 
-## Scripts
+## Documentation
 
-```bash
-npm run dev        # Start dev server at localhost:5173
-npm run build      # Type check + production build → dist/
-npm run preview    # Preview the production build locally
-npm test           # Run test suite once
-npm run test:watch # Run tests in watch mode
-```
+| Document                                         | Description                                 |
+| ------------------------------------------------ | ------------------------------------------- |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)       | Local setup, emulators, dev workflow        |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)         | Production deploy to Vercel + Firebase      |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)     | System design, data flow, decisions         |
+| [docs/DATABASE.md](docs/DATABASE.md)             | Firestore schema and security rules         |
+| [docs/API.md](docs/API.md)                       | Service layer function reference            |
+| [docs/TESTING.md](docs/TESTING.md)               | Test suite overview and how to run          |
+| [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md) | Game rules and turn flow                    |
+| [CONTRIBUTING.md](CONTRIBUTING.md)               | How to contribute                           |
+| [SECURITY.md](SECURITY.md)                       | Security policy and vulnerability reporting |
+| [CHANGELOG.md](CHANGELOG.md)                     | Version history                             |
 
 ---
 
@@ -189,14 +194,16 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 <div align="center">
 
-<img src="public/SHwhitelogo.png" alt="SkateHubba" width="80">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logo-white.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/logo-black.png">
+  <img src="docs/screenshots/logo-black.png" alt="SkateHubba" width="80">
+</picture>
 
 **Built for skaters, by skaters.**
 
 [skatehubba.com](https://skatehubba.com)
 
+MIT License
+
 </div>
-
-## License
-
-MIT
