@@ -28,7 +28,8 @@ vi.mock("../services/users", () => ({
 vi.mock("../services/games", () => ({
   createGame: vi.fn(),
   setTrick: vi.fn(),
-  submitMatchResult: vi.fn(),
+  submitMatchAttempt: vi.fn(),
+  submitConfirmation: vi.fn(),
   forfeitExpiredTurn: vi.fn(),
   subscribeToMyGames: vi.fn(() => vi.fn()),
   subscribeToGame: vi.fn(() => vi.fn()),

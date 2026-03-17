@@ -311,12 +311,14 @@ export function Lobby({
           </div>
         </div>
 
-        {/* Danger Zone */}
-        <div className="mt-6 p-5 rounded-2xl border border-[rgba(255,61,0,0.2)] bg-surface">
-          <h3 className="font-display text-sm tracking-[0.15em] text-[#555] mb-3">DANGER ZONE</h3>
-          <Btn onClick={() => setShowDeleteModal(true)} variant="danger">
+        {/* Delete Account */}
+        <div className="mt-8 flex justify-center">
+          <button
+            onClick={() => setShowDeleteModal(true)}
+            className="font-body text-xs text-[#555] underline underline-offset-2 hover:text-brand-red transition-colors"
+          >
             Delete Account
-          </Btn>
+          </button>
         </div>
       </div>
 
