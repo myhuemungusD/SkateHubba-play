@@ -140,7 +140,7 @@ describe("App", () => {
     });
     renderApp();
     await waitFor(() => {
-      expect(screen.getByText("Lock in your handle")).toBeInTheDocument();
+      expect(screen.getByText("Pick your handle")).toBeInTheDocument();
     });
   });
 

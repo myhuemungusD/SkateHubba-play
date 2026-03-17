@@ -47,6 +47,17 @@ body {
   }
 }
 
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes letter-pop {
   0% {
     transform: scale(1);
@@ -61,6 +72,10 @@ body {
 
 .animate-fade-in {
   animation: fade-in 0.4s ease-out forwards;
+}
+
+.animate-step-in {
+  animation: step-in 0.3s ease-out forwards;
 }
 
 .animate-rec-pulse {

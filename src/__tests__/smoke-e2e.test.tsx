@@ -221,7 +221,7 @@ describe("Smoke Test: Game E2E", () => {
       refreshProfile: vi.fn(),
     });
     renderApp();
-    expect(screen.getByText("Lock in your handle")).toBeInTheDocument();
+    expect(screen.getByText("Pick your handle")).toBeInTheDocument();
   });
 
   /* ── 4. Lobby with games ──────────────────── */
@@ -798,7 +798,7 @@ describe("Smoke Test: Game E2E", () => {
     const usernameInput = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "ab");
 
-    const submitBtn = screen.getByText("Lock It In");
+    const submitBtn = screen.getByText("Next");
     expect(submitBtn).toBeDisabled();
     // Also shows the minimum character hint
     expect(screen.getByText(/Min 3 characters/)).toBeInTheDocument();
@@ -845,6 +845,7 @@ describe("Smoke Test: Game E2E", () => {
   /* ── 26. Profile setup: stance toggle ── */
 
   it("profile setup allows toggling stance", async () => {
+    mockIsUsernameAvailable.mockResolvedValue(true);
     mockUseAuth.mockReturnValue({
       loading: false,
       user: authedUser,
@@ -852,6 +853,12 @@ describe("Smoke Test: Game E2E", () => {
       refreshProfile: vi.fn(),
     });
     renderApp();
+
+    // First advance to step 2 (stance is on step 2)
+    const usernameInput = screen.getByPlaceholderText("sk8legend");
+    await userEvent.type(usernameInput, "testuser");
+    await waitFor(() => expect(screen.getByText(/@testuser is available/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText("Next"));
 
     // Default is Regular
     const regularBtn = screen.getByText("Regular");
@@ -864,14 +871,14 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(goofyBtn);
 
     // Goofy should now be highlighted (has brand-orange in class)
-    expect(goofyBtn.className).toContain("brand-orange");
+    expect(goofyBtn.closest("button")!.className).toContain("brand-orange");
   });
 
   /* ── 27. Profile setup: successful submission ── */
 
   it("profile setup creates profile and transitions to lobby", async () => {
     const refreshProfile = vi.fn();
-    const newProfile = { uid: "u1", username: "newsk8r", stance: "Goofy", emailVerified: false, createdAt: null };
+    const newProfile = { uid: "u1", username: "newsk8r", stance: "Regular", emailVerified: false, createdAt: null };
     mockCreateProfile.mockResolvedValueOnce(newProfile);
     mockIsUsernameAvailable.mockResolvedValue(true);
 
@@ -883,12 +890,19 @@ describe("Smoke Test: Game E2E", () => {
     });
     renderApp();
 
+    // Step 1: Username
     const usernameInput = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "newsk8r");
 
     await waitFor(() => {
       expect(screen.getByText(/@newsk8r is available/)).toBeInTheDocument();
     });
+
+    // Advance to Step 2
+    await userEvent.click(screen.getByText("Next"));
+
+    // Step 2: Stance (keep Regular default) → Advance to Step 3
+    await userEvent.click(screen.getByText("Next"));
 
     // Mock the auth to return profile after creation
     mockUseAuth.mockReturnValue({
@@ -899,6 +913,7 @@ describe("Smoke Test: Game E2E", () => {
     });
     withGames([]);
 
+    // Step 3: Review → Lock It In
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
@@ -1393,7 +1408,10 @@ describe("Smoke Test: Game E2E", () => {
 
     await waitFor(() => expect(screen.getByText(/available/i)).toBeInTheDocument());
 
-    await userEvent.click(screen.getByRole("button", { name: /Lock It In/i }));
+    // Advance through steps to reach Lock It In
+    await userEvent.click(screen.getByText("Next"));
+    await userEvent.click(screen.getByText("Next"));
+    await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
       expect(screen.getByText("Firestore write failed")).toBeInTheDocument();
@@ -1924,11 +1942,7 @@ describe("Smoke Test: Game E2E", () => {
     // Check shows "Checking..."
     expect(screen.getByText("Checking...")).toBeInTheDocument();
 
-    // Try to submit — should show "Still checking username"
-    await userEvent.click(screen.getByRole("button", { name: /Lock It In/i }));
-
-    // Button should be disabled because available !== true, but let's also submit the form
-    // The button is disabled so we need to submit via form
+    // Button is disabled because available !== true, so submit via form
     const form = input.closest("form")!;
     await act(async () => {
       form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -2635,7 +2649,7 @@ describe("Smoke Test: Game E2E", () => {
     });
     renderApp();
 
-    await waitFor(() => expect(screen.getByText("Lock in your handle")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Pick your handle")).toBeInTheDocument());
   });
 
   /* ── 93c. rematch from player2 perspective (App.tsx lines 116-120) ── */
