@@ -38,7 +38,7 @@ export function Lobby({
   const theirLetters = (g: GameDoc) => (g.player1Uid === profile.uid ? g.p2Letters : g.p1Letters);
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0A]/80 pb-24">
+    <div className="min-h-dvh bg-[#0A0A0A]/60 pb-24">
       {/* Header */}
       <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-border">
         <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
