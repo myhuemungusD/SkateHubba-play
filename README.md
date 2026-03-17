@@ -1,16 +1,48 @@
+<div align="center">
+
+<img src="public/logoblack.png" alt="SkateHubba Logo" width="200">
+
 # SkateHubba S.K.A.T.E.
+
+**Own the spot. Play S.K.A.T.E. anywhere.**
 
 An async multiplayer trick battle game for skateboarders. Challenge friends, set tricks on video, and see if they can match you — one letter at a time.
 
-**Live:** [skatehubba.com](https://skatehubba.com)
+[![Live](https://img.shields.io/badge/Play_Now-skatehubba.com-FF6B00?style=for-the-badge&logo=firebase&logoColor=white)](https://skatehubba.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-black?style=for-the-badge)](LICENSE)
+
+<br>
+
+<img src="public/shgrafittibackground.png" alt="SkateHubba - Graffiti Branding" width="600">
+
+</div>
 
 ---
 
 ## What is S.K.A.T.E.?
 
-S.K.A.T.E. is the skateboarding version of HORSE. One player sets a trick; the other must land it. Miss and you earn a letter — S, then K, then A, then T, then E. First to spell it out loses.
+S.K.A.T.E. is the skateboarding version of HORSE. One player sets a trick; the other must land it. Miss and you earn a letter — **S**, then **K**, then **A**, then **T**, then **E**. First to spell it out loses.
 
 This app brings that to your phone, async. Set your trick whenever, opponent matches whenever. No need to be at the same spot or online at the same time.
+
+---
+
+## Screenshots
+
+<div align="center">
+<table>
+<tr>
+<td align="center"><strong>Landing Page</strong></td>
+<td align="center"><strong>Your Games</strong></td>
+<td align="center"><strong>Forfeit Screen</strong></td>
+</tr>
+<tr>
+<td><img src="public/landing.png" alt="Landing Page" width="320"></td>
+<td><img src="public/Homescreenscreenshot.png" alt="Home Screen - Your Games" width="320"></td>
+<td><img src="public/forfiettime.png" alt="Forfeit Screen" width="320"></td>
+</tr>
+</table>
+</div>
 
 ---
 
@@ -152,6 +184,18 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+<div align="center">
+
+<img src="public/SHwhitelogo.png" alt="SkateHubba" width="80">
+
+**Built for skaters, by skaters.**
+
+[skatehubba.com](https://skatehubba.com)
+
+</div>
 
 ## License
 
