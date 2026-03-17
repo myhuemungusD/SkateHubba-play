@@ -10,6 +10,7 @@ const {
   mockCollection,
   mockQuery,
   mockWhere,
+  mockLimit,
   mockOrderBy,
   mockTxGet,
   mockTxUpdate,
@@ -22,6 +23,7 @@ const {
   mockCollection: vi.fn((...args: any[]) => args[1]),
   mockQuery: vi.fn((...args: any[]) => args),
   mockWhere: vi.fn((...args: any[]) => args),
+  mockLimit: vi.fn((...args: any[]) => args),
   mockOrderBy: vi.fn((...args: any[]) => args),
   mockTxGet: vi.fn(),
   mockTxUpdate: vi.fn(),
@@ -35,6 +37,7 @@ vi.mock("firebase/firestore", () => ({
   runTransaction: mockRunTransaction,
   query: mockQuery,
   where: mockWhere,
+  limit: mockLimit,
   orderBy: mockOrderBy,
   onSnapshot: mockOnSnapshot,
   serverTimestamp: () => "SERVER_TS",
@@ -391,17 +394,23 @@ describe("games service", () => {
       expect(updates.turnNumber).toBe(4);
     });
 
-    it("clears trick data when resolving back to setting phase", async () => {
+    it("does not reset locked fields when resolving back to setting phase", async () => {
       const game = { ...confirmingGame, setterConfirm: true };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       await submitConfirmation("g1", "p2", true);
 
       const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.currentTrickName).toBeNull();
-      expect(updates.currentTrickVideoUrl).toBeNull();
-      expect(updates.matchVideoUrl).toBeNull();
       expect(updates.phase).toBe("setting");
+      // These fields are intentionally NOT reset here — the Firestore confirmation
+      // rule locks them, so resetting them would violate the rule. They are cleaned
+      // up by subsequent phase transitions (setTrick / submitMatchAttempt).
+      expect(updates).not.toHaveProperty("currentTrickName");
+      expect(updates).not.toHaveProperty("currentTrickVideoUrl");
+      expect(updates).not.toHaveProperty("matchVideoUrl");
+      // Confirms retain their vote values (bools) to satisfy Firestore rule validation
+      expect(updates.setterConfirm).toBe(true);
+      expect(updates.matcherConfirm).toBe(true);
     });
 
     it("throws when setter already voted", async () => {

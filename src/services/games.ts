@@ -6,6 +6,7 @@ import {
   runTransaction,
   query,
   where,
+  limit,
   onSnapshot,
   serverTimestamp,
   Timestamp,
@@ -288,14 +289,16 @@ export async function submitConfirmation(
         updates.status = "complete";
         updates.winner = winner;
       } else {
+        // Reset to setting phase for the next trick round.
+        // Note: we intentionally do NOT reset currentTrickName, currentTrickVideoUrl,
+        // matchVideoUrl, setterConfirm, or matcherConfirm here. The Firestore
+        // confirmation rule locks those fields to prevent manipulation during votes,
+        // and resetting them would violate those locks. These stale values are harmless
+        // in the setting phase and are properly cleared by subsequent phase transitions
+        // (setTrick resets videos/trick, submitMatchAttempt resets confirms).
         updates.phase = "setting";
         updates.currentSetter = nextSetter;
         updates.currentTurn = nextSetter;
-        updates.currentTrickName = null;
-        updates.currentTrickVideoUrl = null;
-        updates.matchVideoUrl = null;
-        updates.setterConfirm = null;
-        updates.matcherConfirm = null;
         updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
         updates.turnNumber = game.turnNumber + 1;
       }
@@ -369,8 +372,8 @@ export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => 
     onUpdate(sorted);
   };
 
-  const q1 = query(gamesRef(), where("player1Uid", "==", uid));
-  const q2 = query(gamesRef(), where("player2Uid", "==", uid));
+  const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(50));
+  const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(50));
 
   const handleError = (err: Error) => {
     console.warn("Game subscription error for uid:", uid, err.message);
