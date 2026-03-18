@@ -11,6 +11,8 @@ const {
   mockCollection,
   mockQuery,
   mockWhere,
+  mockOrderBy,
+  mockLimit,
   mockServerTimestamp,
 } = vi.hoisted(() => ({
   mockGetDoc: vi.fn(),
@@ -22,6 +24,8 @@ const {
   mockCollection: vi.fn((_db: unknown, name: string) => name),
   mockQuery: vi.fn((...args: unknown[]) => args),
   mockWhere: vi.fn((...args: unknown[]) => args),
+  mockOrderBy: vi.fn((...args: unknown[]) => args),
+  mockLimit: vi.fn((...args: unknown[]) => args),
   mockServerTimestamp: vi.fn(() => "SERVER_TS"),
 }));
 
@@ -33,6 +37,8 @@ vi.mock("firebase/firestore", () => ({
   getDocs: mockGetDocs,
   query: mockQuery,
   where: mockWhere,
+  orderBy: mockOrderBy,
+  limit: mockLimit,
   setDoc: mockSetDoc,
   runTransaction: mockRunTransaction,
   serverTimestamp: () => mockServerTimestamp(),
@@ -40,7 +46,16 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
-import { getUserProfile, isUsernameAvailable, createProfile, getUidByUsername, deleteUserData } from "../users";
+import {
+  getUserProfile,
+  isUsernameAvailable,
+  createProfile,
+  getUidByUsername,
+  deleteUserData,
+  updatePlayerStats,
+  getLeaderboard,
+  getPlayerDirectory,
+} from "../users";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -193,6 +208,137 @@ describe("users service", () => {
         data: () => ({ uid: 12345 }),
       });
       expect(await getUidByUsername("sk8r")).toBeNull();
+    });
+  });
+
+  describe("updatePlayerStats", () => {
+    it("increments wins when player won", async () => {
+      const mockTx = {
+        get: vi.fn().mockResolvedValue({
+          exists: () => true,
+          data: () => ({ uid: "u1", username: "sk8r", wins: 3, losses: 1, lastStatsGameId: "old-game" }),
+        }),
+        update: vi.fn(),
+      };
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+
+      await updatePlayerStats("u1", "game-123", true);
+
+      expect(mockTx.update).toHaveBeenCalledWith(expect.anything(), {
+        wins: 4,
+        losses: 1,
+        lastStatsGameId: "game-123",
+      });
+    });
+
+    it("increments losses when player lost", async () => {
+      const mockTx = {
+        get: vi.fn().mockResolvedValue({
+          exists: () => true,
+          data: () => ({ uid: "u1", username: "sk8r", wins: 2, losses: 5, lastStatsGameId: "old-game" }),
+        }),
+        update: vi.fn(),
+      };
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+
+      await updatePlayerStats("u1", "game-456", false);
+
+      expect(mockTx.update).toHaveBeenCalledWith(expect.anything(), {
+        wins: 2,
+        losses: 6,
+        lastStatsGameId: "game-456",
+      });
+    });
+
+    it("defaults wins/losses to 0 when fields are missing", async () => {
+      const mockTx = {
+        get: vi.fn().mockResolvedValue({
+          exists: () => true,
+          data: () => ({ uid: "u1", username: "sk8r" }),
+        }),
+        update: vi.fn(),
+      };
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+
+      await updatePlayerStats("u1", "game-789", true);
+
+      expect(mockTx.update).toHaveBeenCalledWith(expect.anything(), {
+        wins: 1,
+        losses: 0,
+        lastStatsGameId: "game-789",
+      });
+    });
+
+    it("skips update when lastStatsGameId matches (idempotency)", async () => {
+      const mockTx = {
+        get: vi.fn().mockResolvedValue({
+          exists: () => true,
+          data: () => ({ uid: "u1", wins: 3, losses: 1, lastStatsGameId: "game-123" }),
+        }),
+        update: vi.fn(),
+      };
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+
+      await updatePlayerStats("u1", "game-123", true);
+
+      expect(mockTx.update).not.toHaveBeenCalled();
+    });
+
+    it("skips update when profile does not exist", async () => {
+      const mockTx = {
+        get: vi.fn().mockResolvedValue({ exists: () => false }),
+        update: vi.fn(),
+      };
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+
+      await updatePlayerStats("u1", "game-123", true);
+
+      expect(mockTx.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getPlayerDirectory", () => {
+    it("returns profiles sorted by createdAt desc", async () => {
+      const profiles = [
+        { uid: "u1", username: "alice", stance: "regular", createdAt: null, emailVerified: true },
+        { uid: "u2", username: "bob", stance: "goofy", createdAt: null, emailVerified: true },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getPlayerDirectory();
+      expect(result).toEqual(profiles);
+      expect(mockQuery).toHaveBeenCalled();
+    });
+  });
+
+  describe("getLeaderboard", () => {
+    it("returns profiles sorted by wins descending", async () => {
+      const profiles = [
+        { uid: "u1", username: "alice", wins: 2, losses: 1, createdAt: null, emailVerified: true, stance: "regular" },
+        { uid: "u2", username: "bob", wins: 5, losses: 0, createdAt: null, emailVerified: true, stance: "goofy" },
+        { uid: "u3", username: "charlie", wins: 2, losses: 3, createdAt: null, emailVerified: true, stance: "regular" },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getLeaderboard();
+
+      expect(result[0].username).toBe("bob"); // 5 wins
+      expect(result[1].username).toBe("alice"); // 2 wins, 66% rate
+      expect(result[2].username).toBe("charlie"); // 2 wins, 40% rate
+    });
+
+    it("defaults missing wins/losses to 0 and sorts alphabetically as tiebreaker", async () => {
+      const profiles = [
+        { uid: "u1", username: "zorro", createdAt: null, emailVerified: true, stance: "regular" },
+        { uid: "u2", username: "alice", createdAt: null, emailVerified: true, stance: "goofy" },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getLeaderboard();
+
+      // Both have 0 wins, 0 losses, 0% rate — alphabetical
+      expect(result[0].username).toBe("alice");
+      expect(result[1].username).toBe("zorro");
     });
   });
 });
