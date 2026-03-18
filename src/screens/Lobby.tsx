@@ -8,6 +8,7 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
+import { PushPermissionBanner } from "../components/PushPermissionBanner";
 import { LobbyTimer } from "../components/LobbyTimer";
 
 function relativeJoinDate(createdAt: FieldValue | null): string {
@@ -105,6 +106,7 @@ export function Lobby({
       </div>
 
       <VerifyEmailBanner emailVerified={user?.emailVerified ?? false} />
+      <PushPermissionBanner uid={profile.uid} />
 
       <div className="px-5 pt-7 max-w-lg mx-auto">
         {/* Page header */}

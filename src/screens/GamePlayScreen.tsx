@@ -5,6 +5,7 @@ import { uploadVideo, type UploadProgress as UploadProgressData } from "../servi
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { captureException } from "../lib/sentry";
+import { sendNudge, canNudge } from "../services/nudge";
 import { Btn } from "../components/ui/Btn";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { Field } from "../components/ui/Field";
@@ -26,6 +27,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [setterAction, setSetterAction] = useState<"landed" | "missed" | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressData | null>(null);
   const [forfeitChecked, setForfeitChecked] = useState(false);
+  const [nudgeStatus, setNudgeStatus] = useState<"idle" | "pending" | "sent" | "error">("idle");
+  const [nudgeError, setNudgeError] = useState("");
 
   useEffect(() => {
     if (forfeitChecked || game.status !== "active") return;
@@ -258,6 +261,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   }
 
   // ── Waiting screen (not your turn in setting/matching) ──
+  const nudgeAvailable = nudgeStatus !== "sent" && canNudge(game.id);
+
   if (!isSetter && !isMatcher) {
     return (
       <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center justify-center px-6">
@@ -270,6 +275,42 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               : "They're attempting to match your trick."}
           </p>
           <Timer deadline={deadline} />
+
+          {game.status === "active" && (
+            <div className="mt-6">
+              <Btn
+                onClick={async () => {
+                  setNudgeStatus("pending");
+                  setNudgeError("");
+                  try {
+                    const opponentUid = game.player1Uid === profile.uid ? game.player2Uid : game.player1Uid;
+                    await sendNudge({
+                      gameId: game.id,
+                      senderUid: profile.uid,
+                      senderUsername: profile.username,
+                      recipientUid: opponentUid,
+                    });
+                    setNudgeStatus("sent");
+                  } catch (err: unknown) {
+                    setNudgeError(err instanceof Error ? err.message : "Failed to nudge");
+                    setNudgeStatus("error");
+                  }
+                }}
+                variant="secondary"
+                disabled={nudgeStatus === "pending" || !nudgeAvailable}
+              >
+                {nudgeStatus === "sent" ? "Nudge Sent" : nudgeStatus === "pending" ? "Nudging..." : "Nudge"}
+              </Btn>
+              {nudgeError && <p className="font-body text-xs text-brand-red mt-2 text-center">{nudgeError}</p>}
+              {nudgeStatus === "sent" && (
+                <p className="font-body text-xs text-[#888] mt-2 text-center">They&apos;ll get a push notification</p>
+              )}
+              {!nudgeAvailable && nudgeStatus !== "sent" && (
+                <p className="font-body text-xs text-[#666] mt-2 text-center">Nudge available every 4 hours</p>
+              )}
+            </div>
+          )}
+
           <div className="mt-8">
             <Btn onClick={onBack} variant="ghost">
               ← Back to Games

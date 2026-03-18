@@ -245,5 +245,44 @@ service cloud.firestore {
       // Players may delete their own games (account deletion flow)
       allow delete: if isSignedIn() && isPlayer(resource.data);
     }
+
+    // ── Nudges ──
+    // A nudge is a push-notification poke sent to an idle opponent.
+    match /nudges/{nudgeId} {
+      allow create: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.recipientUid is string
+        && request.resource.data.recipientUid != request.auth.uid
+        && request.resource.data.gameId is string
+        && request.resource.data.senderUsername is string
+        && request.resource.data.delivered == false;
+
+      // Only the Admin SDK (Cloud Function) can update delivered status
+      allow update: if false;
+
+      // Sender or recipient can read nudges
+      allow read: if isSignedIn()
+        && (resource.data.senderUid == request.auth.uid
+            || resource.data.recipientUid == request.auth.uid);
+
+      allow delete: if false;
+    }
+
+    // ── Nudge rate limits ──
+    // One doc per sender+game pair, enforces 4-hour cooldown server-side.
+    match /nudge_limits/{limitId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.senderUid
+        && limitId == (request.auth.uid + '_' + request.resource.data.gameId);
+
+      allow update: if isSignedIn()
+        && request.auth.uid == resource.data.senderUid
+        && request.time > resource.data.lastNudgedAt + duration.value(4, 'h');
+
+      allow delete: if false;
+    }
   }
 }

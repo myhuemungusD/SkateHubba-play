@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { collection, query, where, onSnapshot, orderBy, limit } from "firebase/firestore";
+import { db } from "../firebase";
 import { useGameContext } from "../context/GameContext";
 import { useNotifications } from "../context/NotificationContext";
 import type { GameDoc } from "../services/games";
@@ -206,6 +208,64 @@ export function GameNotificationWatcher() {
 
     prevGamesMapRef.current = new Map(games.map((g) => [g.id, g]));
   }, [uid, games, activeGame, notify]);
+
+  // ── Listen for incoming nudges ──
+  const nudgeReadyRef = useRef(false);
+  const initialNudgeIdsRef = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!uid || !db) {
+      nudgeReadyRef.current = false;
+      initialNudgeIdsRef.current = null;
+      return;
+    }
+
+    let unsub: (() => void) | undefined;
+    try {
+      const q = query(
+        collection(db, "nudges"),
+        where("recipientUid", "==", uid),
+        orderBy("createdAt", "desc"),
+        limit(5),
+      );
+
+      unsub = onSnapshot(q, (snap) => {
+        // Seed on first snapshot to avoid notifying for old nudges
+        if (initialNudgeIdsRef.current === null) {
+          initialNudgeIdsRef.current = new Set(snap.docs.map((d) => d.id));
+          setTimeout(() => {
+            nudgeReadyRef.current = true;
+          }, 0);
+          return;
+        }
+
+        if (!nudgeReadyRef.current) return;
+
+        for (const change of snap.docChanges()) {
+          if (change.type === "added" && !initialNudgeIdsRef.current.has(change.doc.id)) {
+            const data = change.doc.data();
+            notify({
+              type: "game_event",
+              title: "You got nudged!",
+              message: `@${data.senderUsername} is waiting for your move`,
+              chime: "general",
+              gameId: data.gameId,
+            });
+            initialNudgeIdsRef.current.add(change.doc.id);
+            // Cap tracked IDs to prevent unbounded growth in long sessions
+            if (initialNudgeIdsRef.current.size > 50) {
+              const ids: string[] = Array.from(initialNudgeIdsRef.current);
+              initialNudgeIdsRef.current = new Set(ids.slice(-25));
+            }
+          }
+        }
+      });
+    } catch {
+      // Firestore not initialized (e.g. in tests) — skip nudge listener
+    }
+
+    return () => unsub?.();
+  }, [uid, notify]);
 
   return null;
 }
