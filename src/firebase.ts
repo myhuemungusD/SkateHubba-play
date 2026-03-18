@@ -63,8 +63,8 @@ if (firebaseReady) {
       isTokenAutoRefreshEnabled: true,
     });
   } else if (!import.meta.env.DEV) {
-    // Error in production so the ops team is alerted App Check is inactive.
-    console.error("⚠️ App Check is disabled: set VITE_RECAPTCHA_SITE_KEY to protect against API abuse.");
+    // Warn in production so the ops team is alerted App Check is inactive.
+    console.warn("⚠️ App Check is disabled: set VITE_RECAPTCHA_SITE_KEY to protect against API abuse.");
     captureMessage("App Check disabled in production — set VITE_RECAPTCHA_SITE_KEY", "error");
   }
   /* v8 ignore stop */
