@@ -254,7 +254,7 @@ export function GameNotificationWatcher() {
             initialNudgeIdsRef.current.add(change.doc.id);
             // Cap tracked IDs to prevent unbounded growth in long sessions
             if (initialNudgeIdsRef.current.size > 50) {
-              const ids = Array.from(initialNudgeIdsRef.current);
+              const ids: string[] = Array.from(initialNudgeIdsRef.current);
               initialNudgeIdsRef.current = new Set(ids.slice(-25));
             }
           }
