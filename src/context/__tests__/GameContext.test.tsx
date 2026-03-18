@@ -13,6 +13,7 @@ vi.mock("../../services/auth", () => ({
 }));
 vi.mock("../../services/users", () => ({
   deleteUserData: vi.fn(),
+  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../services/games", () => ({
   createGame: vi.fn(),

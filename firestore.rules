@@ -37,7 +37,20 @@ service cloud.firestore {
       allow update: if isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
-        && request.resource.data.uid == resource.data.uid;
+        && request.resource.data.uid == resource.data.uid
+        // Wins/losses can only increment by 0 or 1 per write (prevents stat inflation)
+        && (
+          !('wins' in request.resource.data)
+          || !('wins' in resource.data)
+          || request.resource.data.wins == resource.data.wins
+          || request.resource.data.wins == resource.data.wins + 1
+        )
+        && (
+          !('losses' in request.resource.data)
+          || !('losses' in resource.data)
+          || request.resource.data.losses == resource.data.losses
+          || request.resource.data.losses == resource.data.losses + 1
+        );
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
     }

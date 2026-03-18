@@ -26,8 +26,12 @@ export interface UserProfile {
   // DEPRECATED: email is no longer written to new profiles to reduce PII exposure.
   // Existing profiles may still have this field; use Firebase Auth for email lookup.
   email?: string;
-  // FCM push notification tokens (one per device/browser)
-  fcmTokens?: string[];
+  // Denormalized leaderboard stats — updated client-side when games complete.
+  // Optional because existing profiles won't have these fields.
+  wins?: number;
+  losses?: number;
+  /** ID of the last game that updated this user's stats (idempotency key). */
+  lastStatsGameId?: string;
 }
 
 /**
@@ -157,4 +161,57 @@ export async function getUidByUsername(username: string): Promise<string | null>
   if (!snap.exists()) return null;
   const data = snap.data();
   return typeof data.uid === "string" ? data.uid : null;
+}
+
+/**
+ * Atomically update a player's win/loss stats after a game completes.
+ * Uses lastStatsGameId as an idempotency key to prevent double-counting
+ * when subscriptions fire multiple times for the same game.
+ *
+ * Each player's client calls this for their OWN profile only.
+ */
+export async function updatePlayerStats(uid: string, gameId: string, won: boolean): Promise<void> {
+  const db = requireDb();
+  const userRef = doc(db, "users", uid);
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(userRef);
+    if (!snap.exists()) return; // profile deleted
+
+    const data = snap.data();
+    // Idempotency: skip if this game already counted
+    if (data.lastStatsGameId === gameId) return;
+
+    const currentWins = typeof data.wins === "number" ? data.wins : 0;
+    const currentLosses = typeof data.losses === "number" ? data.losses : 0;
+
+    tx.update(userRef, {
+      wins: won ? currentWins + 1 : currentWins,
+      losses: won ? currentLosses : currentLosses + 1,
+      lastStatsGameId: gameId,
+    });
+  });
+}
+
+/**
+ * Fetch all user profiles for the leaderboard, sorted by wins descending.
+ * Falls back to client-side sorting since existing users may lack the wins field.
+ * Capped at 50 for the leaderboard display.
+ */
+export async function getLeaderboard(): Promise<UserProfile[]> {
+  const q = query(collection(requireDb(), "users"), orderBy("createdAt", "desc"), limit(100));
+  const snap = await withRetry(() => getDocs(q));
+  const profiles = snap.docs.map((d) => d.data() as UserProfile);
+
+  return profiles.sort((a, b) => {
+    const aWins = a.wins ?? 0;
+    const bWins = b.wins ?? 0;
+    if (bWins !== aWins) return bWins - aWins;
+    const aTotal = aWins + (a.losses ?? 0);
+    const bTotal = bWins + (b.losses ?? 0);
+    const aRate = aTotal > 0 ? aWins / aTotal : 0;
+    const bRate = bTotal > 0 ? bWins / bTotal : 0;
+    if (bRate !== aRate) return bRate - aRate;
+    return a.username.localeCompare(b.username);
+  });
 }
