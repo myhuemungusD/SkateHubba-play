@@ -12,6 +12,7 @@ import { LetterDisplay } from "../components/LetterDisplay";
 import { Timer } from "../components/Timer";
 import { VideoRecorder } from "../components/VideoRecorder";
 import { UploadProgress } from "../components/UploadProgress";
+import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [trickName, setTrickName] = useState("");
@@ -247,6 +248,10 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               </span>
             </div>
           )}
+
+          {(game.turnHistory?.length ?? 0) > 0 && (
+            <TurnHistoryViewer turns={game.turnHistory!} currentUserUid={profile.uid} />
+          )}
         </div>
       </div>
     );
@@ -270,6 +275,12 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               ← Back to Games
             </Btn>
           </div>
+
+          {(game.turnHistory?.length ?? 0) > 0 && (
+            <div className="mt-4 text-left w-full max-w-sm">
+              <TurnHistoryViewer turns={game.turnHistory!} currentUserUid={profile.uid} />
+            </div>
+          )}
         </div>
       </div>
     );
@@ -392,6 +403,10 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               </>
             )}
           </div>
+        )}
+
+        {(game.turnHistory?.length ?? 0) > 0 && (
+          <TurnHistoryViewer turns={game.turnHistory!} currentUserUid={profile.uid} />
         )}
       </div>
     </div>

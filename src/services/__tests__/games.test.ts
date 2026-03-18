@@ -41,6 +41,7 @@ vi.mock("firebase/firestore", () => ({
   orderBy: mockOrderBy,
   onSnapshot: mockOnSnapshot,
   serverTimestamp: () => "SERVER_TS",
+  arrayUnion: (...elements: unknown[]) => ({ _arrayUnion: elements }),
   Timestamp: {
     fromMillis: (ms: number) => ({ _ms: ms, toMillis: () => ms }),
   },
