@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
-import { deleteUserData } from "../services/users";
+import { deleteUserData, updatePlayerStats } from "../services/users";
 import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
 import { newGameShell, getErrorCode, parseFirebaseError } from "../utils/helpers";
@@ -184,9 +184,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Subscribe to games list
   useEffect(() => {
     if (!user || !activeProfile) return;
-    const unsub = subscribeToMyGames(user.uid, setGames);
+    const unsub = subscribeToMyGames(user.uid, (updatedGames) => {
+      setGames(updatedGames);
+      // Catch up on stats for games that completed while user was away
+      for (const g of updatedGames) {
+        if ((g.status === "complete" || g.status === "forfeit") && g.winner && !processedStatsRef.current.has(g.id)) {
+          processedStatsRef.current.add(g.id);
+          const won = g.winner === user.uid;
+          updatePlayerStats(user.uid, g.id, won).catch((err) => {
+            logger.warn("stats_catchup_failed", {
+              gameId: g.id,
+              error: err instanceof Error ? err.message : String(err),
+            });
+            processedStatsRef.current.delete(g.id);
+          });
+        }
+      }
+    });
     return unsub;
   }, [user, activeProfile]);
+
+  // Track which games have already had stats recorded this session
+  const processedStatsRef = useRef(new Set<string>());
 
   // Real-time single game subscription
   const screenRef = useRef(screen);
@@ -199,6 +218,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setActiveGame(updated);
       if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
         setScreen("gameover");
+      }
+      // Update leaderboard stats when a game completes
+      if (
+        (updated.status === "complete" || updated.status === "forfeit") &&
+        user &&
+        updated.winner &&
+        !processedStatsRef.current.has(updated.id)
+      ) {
+        processedStatsRef.current.add(updated.id);
+        const won = updated.winner === user.uid;
+        updatePlayerStats(user.uid, updated.id, won).catch((err) => {
+          logger.warn("stats_update_failed", {
+            gameId: updated.id,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          processedStatsRef.current.delete(updated.id); // allow retry on next update
+        });
       }
     });
     return unsub;

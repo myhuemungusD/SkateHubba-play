@@ -7,6 +7,7 @@ const mockGetUidByUsername = vi.fn();
 
 vi.mock("../../services/users", () => ({
   getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
+  getLeaderboard: () => Promise.resolve([]),
 }));
 
 vi.mock("../../services/analytics", () => ({

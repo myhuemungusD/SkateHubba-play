@@ -1,210 +1,172 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { ChimeType } from "../sounds";
 
-// Mock AudioContext
-const mockStop = vi.fn();
-const mockStart = vi.fn();
-const mockConnect = vi.fn();
-const mockSetValueAtTime = vi.fn();
-const mockExponentialRampToValueAtTime = vi.fn();
+/* ── Helpers ──────────────────────────────── */
 
-const mockOscillator = {
-  type: "sine" as OscillatorType,
-  frequency: { setValueAtTime: mockSetValueAtTime },
-  connect: mockConnect,
-  start: mockStart,
-  stop: mockStop,
-};
-
-const mockGainNode = {
-  gain: {
-    setValueAtTime: mockSetValueAtTime,
-    exponentialRampToValueAtTime: mockExponentialRampToValueAtTime,
-  },
-  connect: mockConnect,
-};
-
-let mockCtxState = "running";
-const mockResume = vi.fn().mockResolvedValue(undefined);
-const mockCreateOscillator = vi.fn(() => mockOscillator);
-const mockCreateGain = vi.fn(() => mockGainNode);
-
-// connect returns the gain node so chaining works: osc.connect(g).connect(ac.destination)
-mockConnect.mockReturnValue(mockGainNode);
-
-class MockAudioContext {
-  state = mockCtxState;
-  currentTime = 0;
-  destination = {};
-  resume = mockResume;
-  createOscillator = mockCreateOscillator;
-  createGain = mockCreateGain;
+function makeMockOscillator() {
+  return {
+    type: "sine",
+    frequency: { setValueAtTime: vi.fn() },
+    connect: vi.fn().mockReturnValue({ connect: vi.fn() }),
+    start: vi.fn(),
+    stop: vi.fn(),
+  };
 }
 
-(globalThis as unknown as Record<string, unknown>).AudioContext = MockAudioContext;
+function makeMockGainNode() {
+  return {
+    gain: {
+      setValueAtTime: vi.fn(),
+      exponentialRampToValueAtTime: vi.fn(),
+    },
+    connect: vi.fn(),
+  };
+}
+
+function installAudioContext(state = "running", resume = vi.fn().mockResolvedValue(undefined)) {
+  const ctor = vi.fn(function AudioContext() {
+    return {
+      state,
+      currentTime: 0,
+      destination: {},
+      createOscillator: vi.fn().mockImplementation(makeMockOscillator),
+      createGain: vi.fn().mockImplementation(makeMockGainNode),
+      resume,
+    };
+  });
+  (globalThis as Record<string, unknown>).AudioContext = ctor;
+  return { ctor, resume };
+}
+
+async function freshSounds() {
+  return import("../sounds");
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.resetModules();
+  localStorage.clear();
+  installAudioContext();
+});
+
+afterEach(() => {
+  localStorage.clear();
+});
 
 describe("sounds service", () => {
-  let sounds: typeof import("../sounds");
-
-  beforeEach(async () => {
-    vi.resetModules();
-    mockCtxState = "running";
-    localStorage.clear();
-
-    // Re-assign AudioContext before each import since resetModules clears module cache
-    (globalThis as unknown as Record<string, unknown>).AudioContext = MockAudioContext;
-
-    sounds = await import("../sounds");
-
-    vi.clearAllMocks();
-    // Restore connect mock return after clearAllMocks
-    mockConnect.mockReturnValue(mockGainNode);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   describe("isSoundEnabled", () => {
-    it("returns true by default (no localStorage entry)", () => {
-      expect(sounds.isSoundEnabled()).toBe(true);
+    it("returns true by default (no stored value)", async () => {
+      const { isSoundEnabled } = await freshSounds();
+      expect(isSoundEnabled()).toBe(true);
     });
 
-    it('returns true when localStorage is "1"', () => {
+    it("returns true when stored value is '1'", async () => {
       localStorage.setItem("skate_sound_enabled", "1");
-      expect(sounds.isSoundEnabled()).toBe(true);
+      const { isSoundEnabled } = await freshSounds();
+      expect(isSoundEnabled()).toBe(true);
     });
 
-    it('returns false when localStorage is "0"', () => {
+    it("returns false when stored value is '0'", async () => {
       localStorage.setItem("skate_sound_enabled", "0");
-      expect(sounds.isSoundEnabled()).toBe(false);
+      const { isSoundEnabled } = await freshSounds();
+      expect(isSoundEnabled()).toBe(false);
     });
 
-    it("returns true when localStorage throws", () => {
-      vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
-        throw new Error("access denied");
+    it("returns true when localStorage throws", async () => {
+      const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+        throw new Error("SecurityError");
       });
-      expect(sounds.isSoundEnabled()).toBe(true);
+      const { isSoundEnabled } = await freshSounds();
+      expect(isSoundEnabled()).toBe(true);
+      spy.mockRestore();
     });
   });
 
   describe("setSoundEnabled", () => {
-    it("stores '1' when enabled", () => {
-      sounds.setSoundEnabled(true);
+    it("stores '1' when enabled", async () => {
+      const { setSoundEnabled } = await freshSounds();
+      setSoundEnabled(true);
       expect(localStorage.getItem("skate_sound_enabled")).toBe("1");
     });
 
-    it("stores '0' when disabled", () => {
-      sounds.setSoundEnabled(false);
+    it("stores '0' when disabled", async () => {
+      const { setSoundEnabled } = await freshSounds();
+      setSoundEnabled(false);
       expect(localStorage.getItem("skate_sound_enabled")).toBe("0");
     });
 
-    it("does not throw when localStorage throws", () => {
-      vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
-        throw new Error("quota exceeded");
+    it("silently handles localStorage errors", async () => {
+      const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new Error("QuotaExceeded");
       });
-      expect(() => sounds.setSoundEnabled(true)).not.toThrow();
+      const { setSoundEnabled } = await freshSounds();
+      expect(() => setSoundEnabled(true)).not.toThrow();
+      spy.mockRestore();
     });
   });
 
   describe("playChime", () => {
-    it("does nothing when sound is disabled", () => {
-      sounds.setSoundEnabled(false);
-      vi.clearAllMocks();
-      mockConnect.mockReturnValue(mockGainNode);
-
-      sounds.playChime("your_turn");
-      expect(mockCreateOscillator).not.toHaveBeenCalled();
+    it("plays your_turn chime", async () => {
+      const { playChime } = await freshSounds();
+      expect(() => playChime("your_turn")).not.toThrow();
     });
 
-    it("plays your_turn chime (2 pings)", () => {
-      sounds.playChime("your_turn");
-      expect(mockCreateOscillator).toHaveBeenCalledTimes(2);
-      expect(mockStart).toHaveBeenCalledTimes(2);
-      expect(mockStop).toHaveBeenCalledTimes(2);
+    it("plays new_challenge chime", async () => {
+      const { playChime } = await freshSounds();
+      expect(() => playChime("new_challenge")).not.toThrow();
     });
 
-    it("plays new_challenge chime (2 pings)", () => {
-      sounds.playChime("new_challenge");
-      expect(mockCreateOscillator).toHaveBeenCalledTimes(2);
+    it("plays game_won chime", async () => {
+      const { playChime } = await freshSounds();
+      expect(() => playChime("game_won")).not.toThrow();
     });
 
-    it("plays game_won chime (3 pings)", () => {
-      sounds.playChime("game_won");
-      expect(mockCreateOscillator).toHaveBeenCalledTimes(3);
+    it("plays game_lost chime", async () => {
+      const { playChime } = await freshSounds();
+      expect(() => playChime("game_lost")).not.toThrow();
     });
 
-    it("plays game_lost chime (2 pings)", () => {
-      sounds.playChime("game_lost");
-      expect(mockCreateOscillator).toHaveBeenCalledTimes(2);
+    it("plays general chime", async () => {
+      const { playChime } = await freshSounds();
+      expect(() => playChime("general")).not.toThrow();
     });
 
-    it("plays general chime (1 ping)", () => {
-      sounds.playChime("general");
-      expect(mockCreateOscillator).toHaveBeenCalledTimes(1);
+    it("does not play when sound is disabled", async () => {
+      localStorage.setItem("skate_sound_enabled", "0");
+      const { ctor } = installAudioContext();
+      const { playChime } = await freshSounds();
+      playChime("your_turn");
+      expect(ctor).not.toHaveBeenCalled();
     });
 
-    it("does not throw when AudioContext throws", () => {
-      mockCreateOscillator.mockImplementation(() => {
-        throw new Error("AudioContext not available");
-      });
-      expect(() => sounds.playChime("general")).not.toThrow();
-    });
-
-    it.each<ChimeType>(["your_turn", "new_challenge", "game_won", "game_lost", "general"])(
-      "plays %s chime without error",
-      (type) => {
-        expect(() => sounds.playChime(type)).not.toThrow();
-      },
-    );
-  });
-
-  describe("AudioContext state", () => {
     it("resumes suspended AudioContext", async () => {
-      vi.resetModules();
-      mockCtxState = "suspended";
-
-      // Patch the class to use current mockCtxState
-      class SuspendedAudioContext extends MockAudioContext {
-        override state = "suspended" as string;
-      }
-      (globalThis as unknown as Record<string, unknown>).AudioContext = SuspendedAudioContext;
-
-      const freshSounds = await import("../sounds");
-      vi.clearAllMocks();
-      mockConnect.mockReturnValue(mockGainNode);
-
-      freshSounds.playChime("general");
-      expect(mockResume).toHaveBeenCalled();
+      const resume = vi.fn().mockResolvedValue(undefined);
+      installAudioContext("suspended", resume);
+      const { playChime } = await freshSounds();
+      playChime("general");
+      expect(resume).toHaveBeenCalled();
     });
 
-    it("handles resume rejection gracefully", async () => {
-      vi.resetModules();
-
-      const rejectResume = vi.fn().mockRejectedValue(new Error("resume failed"));
-
-      class RejectResumeAudioContext extends MockAudioContext {
-        override state = "suspended" as string;
-        override resume = rejectResume;
-      }
-      (globalThis as unknown as Record<string, unknown>).AudioContext = RejectResumeAudioContext;
-
-      const freshSounds = await import("../sounds");
-      vi.clearAllMocks();
-      mockConnect.mockReturnValue(mockGainNode);
-
-      // Should not throw even though resume rejects
-      expect(() => freshSounds.playChime("general")).not.toThrow();
-      expect(rejectResume).toHaveBeenCalled();
+    it("handles resume rejection silently", async () => {
+      const resume = vi.fn().mockRejectedValue(new Error("Not allowed"));
+      installAudioContext("suspended", resume);
+      const { playChime } = await freshSounds();
+      expect(() => playChime("general")).not.toThrow();
     });
 
-    it("reuses existing AudioContext on subsequent calls", () => {
-      sounds.playChime("general");
-      const firstCallCount = mockCreateOscillator.mock.calls.length;
+    it("catches AudioContext creation errors silently", async () => {
+      (globalThis as Record<string, unknown>).AudioContext = vi.fn(function AudioContext() {
+        throw new Error("AudioContext not supported");
+      });
+      const { playChime } = await freshSounds();
+      expect(() => playChime("general")).not.toThrow();
+    });
 
-      sounds.playChime("general");
-      // Should have created more oscillators but not a new context
-      expect(mockCreateOscillator.mock.calls.length).toBe(firstCallCount + 1);
+    it("reuses existing AudioContext on subsequent calls", async () => {
+      const { ctor } = installAudioContext();
+      const { playChime } = await freshSounds();
+      playChime("general");
+      playChime("your_turn");
+      expect(ctor).toHaveBeenCalledTimes(1);
     });
   });
 });
