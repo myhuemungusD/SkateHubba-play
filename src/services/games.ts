@@ -10,6 +10,7 @@ import {
   onSnapshot,
   serverTimestamp,
   Timestamp,
+  arrayUnion,
   type Unsubscribe,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
@@ -23,6 +24,21 @@ import { captureException } from "../lib/sentry";
 
 export type GameStatus = "active" | "complete" | "forfeit";
 export type GamePhase = "setting" | "matching" | "confirming";
+
+/** A snapshot of a completed turn, stored in the game's turnHistory array. */
+export interface TurnRecord {
+  turnNumber: number;
+  trickName: string;
+  setterUid: string;
+  setterUsername: string;
+  matcherUid: string;
+  matcherUsername: string;
+  setVideoUrl: string | null;
+  matchVideoUrl: string | null;
+  landed: boolean;
+  /** UID of the player who received a letter, or null if the trick was landed. */
+  letterTo: string | null;
+}
 
 export interface GameDoc {
   id: string;
@@ -50,6 +66,8 @@ export interface GameDoc {
   winner: string | null;
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
+  /** Accumulated history of completed turns (for clips replay). */
+  turnHistory?: TurnRecord[];
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -116,6 +134,7 @@ export async function createGame(
     turnDeadline: deadline,
     turnNumber: 1,
     winner: null,
+    turnHistory: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -284,6 +303,24 @@ export async function submitConfirmation(
 
       updates.p1Letters = newP1Letters;
       updates.p2Letters = newP2Letters;
+
+      // Record this turn in the history for clips replay
+      const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
+      const matcherUsernameVal = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
+
+      const turnRecord: TurnRecord = {
+        turnNumber: game.turnNumber,
+        trickName: game.currentTrickName || "Trick",
+        setterUid: game.currentSetter,
+        setterUsername,
+        matcherUid,
+        matcherUsername: matcherUsernameVal,
+        setVideoUrl: game.currentTrickVideoUrl,
+        matchVideoUrl: game.matchVideoUrl,
+        landed: trickLanded,
+        letterTo: trickLanded ? null : matcherUid,
+      };
+      updates.turnHistory = arrayUnion(turnRecord);
 
       if (gameOver) {
         updates.status = "complete";

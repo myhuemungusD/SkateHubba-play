@@ -100,6 +100,7 @@ export function newGameShell(
     turnDeadline: Timestamp.fromMillis(Date.now() + 86400000),
     turnNumber: 1,
     winner: null,
+    turnHistory: [],
     createdAt: null,
     updatedAt: null,
   };
