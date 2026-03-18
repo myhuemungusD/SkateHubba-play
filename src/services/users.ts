@@ -26,6 +26,8 @@ export interface UserProfile {
   // DEPRECATED: email is no longer written to new profiles to reduce PII exposure.
   // Existing profiles may still have this field; use Firebase Auth for email lookup.
   email?: string;
+  // FCM push notification tokens (one per device/browser)
+  fcmTokens?: string[];
 }
 
 /**
