@@ -1,6 +1,6 @@
 # Dependency Audit Report
 
-**Date:** 2026-03-15
+**Date:** 2026-03-18
 **Project:** SkateHubba-play v1.0.0
 **Package Manager:** npm (lock file v3)
 
@@ -29,6 +29,20 @@ npm audit: 0 vulnerabilities found
 
 No known security vulnerabilities in the current dependency tree.
 
+### Vulnerabilities Fixed (2026-03-18)
+
+The previous audit (2026-03-15) missed 8 vulnerabilities introduced via `firebase-tools@^13.0.0` (devDependency only — no production impact):
+
+| Severity | Count | Package                    | Advisory                                                                                              |
+| -------- | ----- | -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| High     | 2     | `tar` <=7.5.10             | Path traversal & symlink poisoning (GHSA-34x7, GHSA-8qq5, GHSA-83g3, GHSA-qffp, GHSA-9ppj, GHSA-r6q2) |
+| Low      | 6     | `@tootallnate/once` <3.0.1 | Incorrect Control Flow Scoping (GHSA-vpq2)                                                            |
+
+**Fixes applied:**
+
+1. Upgraded `firebase-tools` from `^13.0.0` to `^15.10.1` (resolved `tar` vulnerabilities)
+2. Added `overrides` in `package.json` to force `http-proxy-agent@^7.0.2` (resolved `@tootallnate/once` chain — v7 drops the dependency entirely)
+
 ---
 
 ## 2. Outdated Packages
@@ -38,7 +52,7 @@ No known security vulnerabilities in the current dependency tree.
 | Package         | Current  | Wanted  | Latest  | Notes                    |
 | --------------- | -------- | ------- | ------- | ------------------------ |
 | `firebase`      | ^11.0.0  | 11.10.0 | 12.10.0 | Minor updates within v11 |
-| `@sentry/react` | ^10.43.0 | 10.43.0 | 10.43.0 | Up to date within range  |
+| `@sentry/react` | ^10.43.0 | 10.44.0 | 10.44.0 | Patch update available   |
 
 ### Major Version Upgrades Available
 
