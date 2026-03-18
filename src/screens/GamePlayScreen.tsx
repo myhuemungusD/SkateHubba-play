@@ -27,8 +27,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [setterAction, setSetterAction] = useState<"landed" | "missed" | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressData | null>(null);
   const [forfeitChecked, setForfeitChecked] = useState(false);
-  const [nudging, setNudging] = useState(false);
-  const [nudgeSent, setNudgeSent] = useState(false);
+  const [nudgeStatus, setNudgeStatus] = useState<"idle" | "pending" | "sent" | "error">("idle");
   const [nudgeError, setNudgeError] = useState("");
 
   useEffect(() => {
@@ -262,7 +261,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   }
 
   // ── Waiting screen (not your turn in setting/matching) ──
-  const nudgeAvailable = !nudgeSent && canNudge(game.id);
+  const nudgeAvailable = nudgeStatus !== "sent" && canNudge(game.id);
 
   if (!isSetter && !isMatcher) {
     return (
@@ -281,28 +280,32 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <div className="mt-6">
               <Btn
                 onClick={async () => {
-                  setNudging(true);
+                  setNudgeStatus("pending");
                   setNudgeError("");
                   try {
                     const opponentUid = game.player1Uid === profile.uid ? game.player2Uid : game.player1Uid;
-                    await sendNudge(game.id, profile.uid, profile.username, opponentUid);
-                    setNudgeSent(true);
+                    await sendNudge({
+                      gameId: game.id,
+                      senderUid: profile.uid,
+                      senderUsername: profile.username,
+                      recipientUid: opponentUid,
+                    });
+                    setNudgeStatus("sent");
                   } catch (err: unknown) {
                     setNudgeError(err instanceof Error ? err.message : "Failed to nudge");
-                  } finally {
-                    setNudging(false);
+                    setNudgeStatus("error");
                   }
                 }}
                 variant="secondary"
-                disabled={nudging || !nudgeAvailable}
+                disabled={nudgeStatus === "pending" || !nudgeAvailable}
               >
-                {nudgeSent ? "Nudge Sent" : nudging ? "Nudging..." : "Nudge"}
+                {nudgeStatus === "sent" ? "Nudge Sent" : nudgeStatus === "pending" ? "Nudging..." : "Nudge"}
               </Btn>
               {nudgeError && <p className="font-body text-xs text-brand-red mt-2 text-center">{nudgeError}</p>}
-              {nudgeSent && (
+              {nudgeStatus === "sent" && (
                 <p className="font-body text-xs text-[#888] mt-2 text-center">They&apos;ll get a push notification</p>
               )}
-              {!nudgeAvailable && !nudgeSent && (
+              {!nudgeAvailable && nudgeStatus !== "sent" && (
                 <p className="font-body text-xs text-[#666] mt-2 text-center">Nudge available every 4 hours</p>
               )}
             </div>

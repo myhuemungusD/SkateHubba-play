@@ -21,7 +21,7 @@ messaging.onBackgroundMessage(function (payload) {
   var notification = payload.notification || {};
   var title = notification.title || "SkateHubba";
   var options = {
-    body: notification.body || "You got nudged!",
+    body: notification.body || "You have a new notification",
     icon: "/logoblack.png",
     badge: "/logoblack.png",
     data: payload.data,

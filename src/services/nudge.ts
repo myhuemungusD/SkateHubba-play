@@ -1,7 +1,14 @@
-import { addDoc, collection, doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
 
 const COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours
+
+interface SendNudgeParams {
+  gameId: string;
+  senderUid: string;
+  senderUsername: string;
+  recipientUid: string;
+}
 
 /**
  * Send a nudge to an opponent. Writes to Firestore which triggers
@@ -9,12 +16,7 @@ const COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours
  *
  * Rate-limited both client-side (localStorage) and server-side (Firestore rules).
  */
-export async function sendNudge(
-  gameId: string,
-  senderUid: string,
-  senderUsername: string,
-  recipientUid: string,
-): Promise<void> {
+export async function sendNudge({ gameId, senderUid, senderUsername, recipientUid }: SendNudgeParams): Promise<void> {
   // Client-side cooldown check
   const key = `nudge_${gameId}`;
   const last = parseInt(localStorage.getItem(key) || "0", 10);
@@ -24,18 +26,9 @@ export async function sendNudge(
 
   const db = requireDb();
 
-  // Update the rate-limit doc (Firestore rules enforce 4h cooldown server-side)
+  // Upsert the rate-limit doc (Firestore rules enforce 4h cooldown server-side)
   const limitId = `${senderUid}_${gameId}`;
-  const limitRef = doc(db, "nudge_limits", limitId);
-  const limitSnap = await getDoc(limitRef);
-
-  if (limitSnap.exists()) {
-    // Update existing — rules enforce time check
-    await setDoc(limitRef, { senderUid, gameId, lastNudgedAt: serverTimestamp() });
-  } else {
-    // Create new
-    await setDoc(limitRef, { senderUid, gameId, lastNudgedAt: serverTimestamp() });
-  }
+  await setDoc(doc(db, "nudge_limits", limitId), { senderUid, gameId, lastNudgedAt: serverTimestamp() });
 
   // Create the nudge document (triggers Cloud Function)
   await addDoc(collection(db, "nudges"), {
