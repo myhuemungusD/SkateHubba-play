@@ -43,6 +43,8 @@ export function GameOverScreen({
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
   const myUsername = profile.username;
 
+  const [shareLabel, setShareLabel] = useState("Share Game Recap");
+
   const handleShareGame = useCallback(async () => {
     const turns = game.turnHistory ?? [];
     const lines = ["SkateHubba Game Recap", `@${myUsername} vs @${opponentName}`, ""];
@@ -75,6 +77,8 @@ export function GameOverScreen({
 
     try {
       await navigator.clipboard.writeText(text);
+      setShareLabel("Copied!");
+      setTimeout(() => setShareLabel("Share Game Recap"), 2000);
     } catch {
       // Clipboard not available
     }
@@ -126,7 +130,7 @@ export function GameOverScreen({
         <div className="flex flex-col gap-3 w-full">
           {hasTurns && (
             <Btn onClick={handleShareGame} variant="secondary">
-              Share Game Recap
+              {shareLabel}
             </Btn>
           )}
           <Btn onClick={handleRematch} disabled={rematching || !onRematch}>

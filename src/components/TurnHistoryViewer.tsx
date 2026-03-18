@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, memo } from "react";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 
@@ -36,7 +36,7 @@ function ClipVideo({ url, label }: { url: string; label: string }) {
   );
 }
 
-export function TurnHistoryViewer({
+export const TurnHistoryViewer = memo(function TurnHistoryViewer({
   turns,
   currentUserUid,
   defaultExpanded = false,
@@ -50,6 +50,7 @@ export function TurnHistoryViewer({
     <div className="mt-6">
       <button
         type="button"
+        aria-expanded={expanded}
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center justify-between py-2 px-3 rounded-lg border border-border bg-[#111] hover:bg-[#181818] transition-colors"
       >
@@ -126,36 +127,53 @@ export function TurnHistoryViewer({
       )}
     </div>
   );
-}
+});
 
 function DownloadBtn({ url, filename }: { url: string; filename: string }) {
-  const [downloading, setDownloading] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
 
   const handleDownload = async () => {
-    setDownloading(true);
+    setStatus("saving");
     try {
       const res = await fetch(url);
+      if (!res.ok) throw new Error("Download failed");
       const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
+      a.href = objectUrl;
       a.download = filename;
       a.click();
-      URL.revokeObjectURL(a.href);
+      // Delay revocation so the browser has time to start the download
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+      setStatus("saved");
+      setTimeout(() => setStatus("idle"), 2000);
     } catch {
-      // Silently fail — clip may have expired
-    } finally {
-      setDownloading(false);
+      setStatus("failed");
+      setTimeout(() => setStatus("idle"), 2000);
     }
   };
+
+  const label = {
+    idle: "Save clip",
+    saving: "Saving...",
+    saved: "Saved!",
+    failed: "Save failed",
+  }[status];
 
   return (
     <button
       type="button"
       onClick={handleDownload}
-      disabled={downloading}
-      className="mt-1 w-full text-center font-body text-xs text-[#666] hover:text-[#aaa] transition-colors disabled:opacity-50"
+      disabled={status === "saving"}
+      className={`mt-1 w-full text-center font-body text-xs transition-colors disabled:opacity-50 ${
+        status === "saved"
+          ? "text-brand-green"
+          : status === "failed"
+            ? "text-brand-red"
+            : "text-[#666] hover:text-[#aaa]"
+      }`}
     >
-      {downloading ? "Saving..." : "Save clip"}
+      {label}
     </button>
   );
 }
