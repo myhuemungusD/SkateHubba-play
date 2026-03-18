@@ -37,13 +37,11 @@ vi.mock("firebase/firestore", () => ({
   getDocs: mockGetDocs,
   query: mockQuery,
   where: mockWhere,
-  orderBy: vi.fn((...args: unknown[]) => args),
-  limit: vi.fn((...args: unknown[]) => args),
+  orderBy: mockOrderBy,
+  limit: mockLimit,
   setDoc: mockSetDoc,
   runTransaction: mockRunTransaction,
   serverTimestamp: () => mockServerTimestamp(),
-  orderBy: mockOrderBy,
-  limit: mockLimit,
 }));
 
 vi.mock("../../firebase");
