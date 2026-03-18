@@ -48,6 +48,8 @@ vi.mock("../services/users", () => ({
   getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
   deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
+  getLeaderboard: vi.fn().mockResolvedValue([]),
+  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),

@@ -4,6 +4,7 @@ import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
+import { Leaderboard } from "../components/Leaderboard";
 
 export function ChallengeScreen({
   profile,
@@ -95,6 +96,8 @@ export function ChallengeScreen({
             {loading ? "Finding..." : "🔥 Send Challenge"}
           </Btn>
         </form>
+
+        <Leaderboard currentUserUid={profile.uid} onChallengeUser={(username) => setOpponent(username)} />
       </div>
     </div>
   );
