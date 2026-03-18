@@ -12,6 +12,8 @@ const {
   mockQuery,
   mockWhere,
   mockServerTimestamp,
+  mockOrderBy,
+  mockLimit,
 } = vi.hoisted(() => ({
   mockGetDoc: vi.fn(),
   mockGetDocs: vi.fn(),
@@ -23,6 +25,8 @@ const {
   mockQuery: vi.fn((...args: unknown[]) => args),
   mockWhere: vi.fn((...args: unknown[]) => args),
   mockServerTimestamp: vi.fn(() => "SERVER_TS"),
+  mockOrderBy: vi.fn((...args: unknown[]) => args),
+  mockLimit: vi.fn((...args: unknown[]) => args),
 }));
 
 vi.mock("firebase/firestore", () => ({
@@ -36,11 +40,20 @@ vi.mock("firebase/firestore", () => ({
   setDoc: mockSetDoc,
   runTransaction: mockRunTransaction,
   serverTimestamp: () => mockServerTimestamp(),
+  orderBy: mockOrderBy,
+  limit: mockLimit,
 }));
 
 vi.mock("../../firebase");
 
-import { getUserProfile, isUsernameAvailable, createProfile, getUidByUsername, deleteUserData } from "../users";
+import {
+  getUserProfile,
+  isUsernameAvailable,
+  createProfile,
+  getUidByUsername,
+  deleteUserData,
+  getPlayerDirectory,
+} from "../users";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -170,6 +183,30 @@ describe("users service", () => {
       // Phase 2 fails
       mockRunTransaction.mockRejectedValueOnce(new Error("Transaction failed"));
       await expect(deleteUserData("u1", "sk8r")).rejects.toThrow("Transaction failed");
+    });
+  });
+
+  describe("getPlayerDirectory", () => {
+    it("returns all user profiles ordered by createdAt desc", async () => {
+      const profiles = [
+        { uid: "u1", username: "sk8r1", stance: "regular" },
+        { uid: "u2", username: "sk8r2", stance: "goofy" },
+      ];
+      mockGetDocs.mockResolvedValueOnce({
+        docs: profiles.map((p) => ({ data: () => p })),
+      });
+
+      const result = await getPlayerDirectory();
+      expect(result).toEqual(profiles);
+      expect(mockCollection).toHaveBeenCalledWith(expect.anything(), "users");
+      expect(mockOrderBy).toHaveBeenCalledWith("createdAt", "desc");
+      expect(mockLimit).toHaveBeenCalledWith(100);
+    });
+
+    it("returns empty array when no users exist", async () => {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] });
+      const result = await getPlayerDirectory();
+      expect(result).toEqual([]);
     });
   });
 

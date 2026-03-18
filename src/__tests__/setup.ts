@@ -27,3 +27,17 @@ class MockMediaRecorder {
   });
 }
 (globalThis as unknown as Record<string, unknown>).MediaRecorder = MockMediaRecorder;
+
+// Mock HTMLMediaElement.play() — jsdom does not implement it.
+Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
+  configurable: true,
+  writable: true,
+  value: vi.fn().mockResolvedValue(undefined),
+});
+
+// Mock HTMLMediaElement.pause() — jsdom does not implement it.
+Object.defineProperty(window.HTMLMediaElement.prototype, "pause", {
+  configurable: true,
+  writable: true,
+  value: vi.fn(),
+});
