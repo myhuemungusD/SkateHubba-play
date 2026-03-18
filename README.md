@@ -2,7 +2,7 @@
 
 <!-- GitHub dark mode: show white logo; light mode: show black logo -->
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logo-white.png">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logo-white.webp">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/logo-black.png">
   <img src="docs/screenshots/logo-black.png" alt="SkateHubba" width="200">
 </picture>
@@ -18,7 +18,7 @@ Challenge friends, set tricks on video, and see if they can match you — one le
 
 <br>
 
-<img src="docs/screenshots/graffiti-banner.png" alt="SkateHubba graffiti branding — stacked skateboards against a tagged wall" width="600">
+<img src="docs/screenshots/graffiti-banner.webp" alt="SkateHubba graffiti branding — stacked skateboards against a tagged wall" width="600">
 
 </div>
 
@@ -42,9 +42,9 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 <td align="center"><strong>Forfeit Screen</strong></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/landing.png" alt="SkateHubba landing page — hero with 'Own The Spot' tagline" width="320"></td>
-<td><img src="docs/screenshots/home-screen.png" alt="Your Games dashboard showing active and completed matches" width="320"></td>
-<td><img src="docs/screenshots/forfeit-screen.png" alt="Forfeit screen with skull icon and rematch button" width="320"></td>
+<td><img src="docs/screenshots/landing.webp" alt="SkateHubba landing page — hero with 'Own The Spot' tagline" width="320"></td>
+<td><img src="docs/screenshots/home-screen.webp" alt="Your Games dashboard showing active and completed matches" width="320"></td>
+<td><img src="docs/screenshots/forfeit-screen.webp" alt="Forfeit screen with skull icon and rematch button" width="320"></td>
 </tr>
 </table>
 </div>
@@ -102,13 +102,13 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 
 ## Scripts
 
-| Command              | Description                            |
-| -------------------- | -------------------------------------- |
-| `npm run dev`        | Start dev server at localhost:5173     |
-| `npm run build`      | Type-check + production build → dist/  |
-| `npm run preview`    | Preview the production build locally   |
-| `npm test`           | Run test suite once                    |
-| `npm run test:watch` | Run tests in watch mode                |
+| Command              | Description                           |
+| -------------------- | ------------------------------------- |
+| `npm run dev`        | Start dev server at localhost:5173    |
+| `npm run build`      | Type-check + production build → dist/ |
+| `npm run preview`    | Preview the production build locally  |
+| `npm test`           | Run test suite once                   |
+| `npm run test:watch` | Run tests in watch mode               |
 
 ---
 
@@ -195,7 +195,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logo-white.png">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/logo-white.webp">
   <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/logo-black.png">
   <img src="docs/screenshots/logo-black.png" alt="SkateHubba" width="80">
 </picture>
