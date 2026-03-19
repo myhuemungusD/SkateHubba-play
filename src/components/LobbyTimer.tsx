@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { ClockIcon } from "./icons";
 
 /**
  * Compact countdown timer shown on active game cards in the lobby.
@@ -46,7 +47,8 @@ export function LobbyTimer({ deadline, isMyTurn }: { deadline: number; isMyTurn:
       }`}
       aria-label={`Time remaining: ${label}`}
     >
-      ⏱ {label}
+      <ClockIcon size={10} className="inline -mt-px mr-0.5" />
+      {label}
     </span>
   );
 }

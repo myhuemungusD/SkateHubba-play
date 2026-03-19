@@ -10,6 +10,7 @@ import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
 import { PushPermissionBanner } from "../components/PushPermissionBanner";
 import { LobbyTimer } from "../components/LobbyTimer";
+import { SkateboardIcon, TrophyIcon } from "../components/icons";
 
 function relativeJoinDate(createdAt: FieldValue | null): string {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -283,9 +284,7 @@ export function Lobby({
               </span>
             </div>
             <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
-              <span className="text-2xl mb-2 opacity-40" aria-hidden="true">
-                🛹
-              </span>
+              <SkateboardIcon size={24} className="mb-2 opacity-40 text-[#555]" />
               <p className="font-body text-xs text-[#666]">No active games right now</p>
               <p className="font-body text-[11px] text-[#555] mt-0.5">Challenge someone to start a new round</p>
             </div>
@@ -350,9 +349,7 @@ export function Lobby({
               </span>
             </div>
             <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
-              <span className="text-2xl mb-2 opacity-40" aria-hidden="true">
-                🏆
-              </span>
+              <TrophyIcon size={24} className="mb-2 opacity-40 text-[#555]" />
               <p className="font-body text-xs text-[#666]">No finished games yet</p>
               <p className="font-body text-[11px] text-[#555] mt-0.5">Complete a game to see your results here</p>
             </div>

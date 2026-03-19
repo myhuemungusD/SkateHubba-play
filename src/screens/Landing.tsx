@@ -1,128 +1,11 @@
 import { Btn } from "../components/ui/Btn";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
-
-/* ── Inline SVG icons ────────────────────────────────────── */
-
-function VideoIcon() {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#FF6B00"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <polygon points="23 7 16 12 23 17 23 7" />
-      <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-    </svg>
-  );
-}
-
-function ClockIcon() {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#FF6B00"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
-    </svg>
-  );
-}
-
-function FlameIcon() {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#FF6B00"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z" />
-    </svg>
-  );
-}
-
-function ShieldIcon() {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#FF6B00"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    </svg>
-  );
-}
-
-function TrophyIcon() {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#FF6B00"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-      <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-      <path d="M4 22h16" />
-      <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20 7 22" />
-      <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20 17 22" />
-      <path d="M18 2H6v7a6 6 0 0 0 12 0V2Z" />
-    </svg>
-  );
-}
-
-function UsersIcon() {
-  return (
-    <svg
-      width="28"
-      height="28"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="#FF6B00"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}
+import { VideoIcon, ClockIcon, FlameIcon, ShieldIcon, TrophyIcon, UsersIcon } from "../components/icons";
 
 /* ── Data ────────────────────────────────────────────────── */
+
+const BRAND_ICON_CLASS = "text-brand-orange";
 
 const HOW_IT_WORKS = [
   {
@@ -147,32 +30,32 @@ const HOW_IT_WORKS = [
 
 const FEATURES = [
   {
-    icon: <VideoIcon />,
+    icon: <VideoIcon size={28} className={BRAND_ICON_CLASS} />,
     title: "One-Take Video",
     desc: "No editing. No second chances. Film your trick in one continuous take to keep it real.",
   },
   {
-    icon: <ClockIcon />,
+    icon: <ClockIcon size={28} className={BRAND_ICON_CLASS} />,
     title: "24hr Async Turns",
     desc: "Play on your schedule. Each player gets a full day to film and submit their trick.",
   },
   {
-    icon: <FlameIcon />,
+    icon: <FlameIcon size={28} className={BRAND_ICON_CLASS} />,
     title: "No Trick Farming",
     desc: "Every trick counts. No spamming easy tricks — the game rewards creativity and skill.",
   },
   {
-    icon: <ShieldIcon />,
+    icon: <ShieldIcon size={28} className={BRAND_ICON_CLASS} />,
     title: "Fair Play",
     desc: "One take only means what you see is what you get. No room for faking it.",
   },
   {
-    icon: <TrophyIcon />,
+    icon: <TrophyIcon size={28} className={BRAND_ICON_CLASS} />,
     title: "Competitive Rankings",
     desc: "Build your reputation. Win games, climb the leaderboard, become the GOAT.",
   },
   {
-    icon: <UsersIcon />,
+    icon: <UsersIcon size={28} className={BRAND_ICON_CLASS} />,
     title: "Challenge Anyone",
     desc: "Invite your crew or battle strangers. All you need is a board and a phone.",
   },

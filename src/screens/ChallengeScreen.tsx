@@ -5,6 +5,23 @@ import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { Leaderboard } from "../components/Leaderboard";
+import {
+  TargetIcon,
+  FilmIcon,
+  ClockIcon,
+  XCircleIcon,
+  SkullIcon,
+  FlameIcon,
+  type IconProps,
+} from "../components/icons";
+
+const RULES: { Icon: (props: IconProps) => JSX.Element; text: string; color: string }[] = [
+  { Icon: TargetIcon, text: "You set the first trick", color: "text-brand-orange" },
+  { Icon: FilmIcon, text: "One-take video only — no retries", color: "text-brand-orange" },
+  { Icon: ClockIcon, text: "24 hours per turn or forfeit", color: "text-brand-orange" },
+  { Icon: XCircleIcon, text: "Miss a match = earn a letter", color: "text-brand-red" },
+  { Icon: SkullIcon, text: "Spell S.K.A.T.E. = you lose", color: "text-brand-red" },
+];
 
 export function ChallengeScreen({
   profile,
@@ -81,19 +98,25 @@ export function ChallengeScreen({
 
           <div className="p-4 rounded-xl bg-surface-alt border border-border mb-6">
             <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
-            <div className="font-body text-sm text-[#888] leading-7">
-              <div>🎯 You set the first trick</div>
-              <div>📹 One-take video only — no retries</div>
-              <div>⏱ 24 hours per turn or forfeit</div>
-              <div>❌ Miss a match = earn a letter</div>
-              <div>💀 Spell S.K.A.T.E. = you lose</div>
+            <div className="font-body text-sm text-[#888] space-y-2">
+              {RULES.map(({ Icon, text, color }) => (
+                <div key={text} className="flex items-center gap-2">
+                  <Icon size={15} className={`${color} shrink-0`} /> {text}
+                </div>
+              ))}
             </div>
           </div>
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
           <Btn onClick={submit} disabled={loading || opponent.length < 3}>
-            {loading ? "Finding..." : "🔥 Send Challenge"}
+            {loading ? (
+              "Finding..."
+            ) : (
+              <>
+                <FlameIcon size={16} className="inline -mt-0.5" /> Send Challenge
+              </>
+            )}
           </Btn>
         </form>
 

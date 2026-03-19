@@ -14,6 +14,7 @@ import { Timer } from "../components/Timer";
 import { VideoRecorder } from "../components/VideoRecorder";
 import { UploadProgress } from "../components/UploadProgress";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
+import { HourglassIcon } from "../components/icons";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [trickName, setTrickName] = useState("");
@@ -27,8 +28,20 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [setterAction, setSetterAction] = useState<"landed" | "missed" | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressData | null>(null);
   const [forfeitChecked, setForfeitChecked] = useState(false);
-  const [nudgeStatus, setNudgeStatus] = useState<"idle" | "pending" | "sent" | "error">("idle");
+  const [nudgeStatus, setNudgeStatus] = useState<"idle" | "pending" | "sent" | "error">(() =>
+    canNudge(game.id) ? "idle" : "sent",
+  );
   const [nudgeError, setNudgeError] = useState("");
+
+  // Re-check nudge cooldown periodically so the button re-enables after 4 hours
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (canNudge(game.id)) {
+        setNudgeStatus((prev) => (prev === "sent" ? "idle" : prev));
+      }
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [game.id]);
 
   useEffect(() => {
     if (forfeitChecked || game.status !== "active") return;
@@ -267,9 +280,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   }
 
   // ── Waiting screen (not your turn in setting/matching) ──
-  const nudgeAvailable = nudgeStatus !== "sent" && canNudge(game.id);
-
   if (!isSetter && !isMatcher) {
+    const nudgeAvailable = nudgeStatus === "idle";
     return (
       <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
         <div className="text-center w-full max-w-sm animate-fade-in">
@@ -279,7 +291,9 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <LetterDisplay count={theirLetters} name={`@${opponentName}`} active={false} />
           </div>
 
-          <span className="text-5xl block mb-4">⏳</span>
+          <div className="flex justify-center mb-4">
+            <HourglassIcon size={48} className="text-[#555]" />
+          </div>
           <h2 className="font-display text-3xl text-white mb-2">Waiting on @{opponentName}</h2>
           <p className="font-body text-sm text-[#888] mb-2">
             {game.phase === "setting"
