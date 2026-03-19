@@ -34,10 +34,11 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [nudgeError, setNudgeError] = useState("");
 
   // Re-check nudge cooldown periodically so the button re-enables after 4 hours
+  // Also recovers from error state so the user can retry
   useEffect(() => {
     const id = window.setInterval(() => {
       if (canNudge(game.id)) {
-        setNudgeStatus((prev) => (prev === "sent" ? "idle" : prev));
+        setNudgeStatus((prev) => (prev === "sent" || prev === "error" ? "idle" : prev));
       }
     }, 60_000);
     return () => clearInterval(id);
@@ -275,7 +276,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
   // ── Waiting screen (not your turn in setting/matching) ──
   if (!isSetter && !isMatcher) {
-    const nudgeAvailable = nudgeStatus === "idle";
+    const nudgeAvailable = nudgeStatus === "idle" || nudgeStatus === "error";
     return (
       <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
         <div className="text-center w-full max-w-sm animate-fade-in">
@@ -343,14 +344,20 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                 variant="secondary"
                 disabled={nudgeStatus === "pending" || !nudgeAvailable}
               >
-                {nudgeStatus === "sent" ? "Nudge Sent" : nudgeStatus === "pending" ? "Nudging..." : "Nudge"}
+                {nudgeStatus === "sent"
+                  ? "Nudge Sent"
+                  : nudgeStatus === "pending"
+                    ? "Nudging..."
+                    : nudgeStatus === "error"
+                      ? "Retry Nudge"
+                      : "Nudge"}
               </Btn>
               {nudgeError && <p className="font-body text-xs text-brand-red mt-2 text-center">{nudgeError}</p>}
               {nudgeStatus === "sent" && (
                 <p className="font-body text-xs text-[#888] mt-2 text-center">They&apos;ll get a push notification</p>
               )}
               {!nudgeAvailable && nudgeStatus !== "sent" && (
-                <p className="font-body text-xs text-[#666] mt-2 text-center">Nudge available every 4 hours</p>
+                <p className="font-body text-xs text-[#888] mt-2 text-center">Nudge available every 4 hours</p>
               )}
             </div>
           )}

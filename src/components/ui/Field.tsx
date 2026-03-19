@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 
 export function Field({
   label,
@@ -21,7 +21,7 @@ export function Field({
   type?: string;
   maxLength?: number;
   note?: string;
-  icon?: string;
+  icon?: ReactNode;
   autoComplete?: string;
   autoFocus?: boolean;
   disabled?: boolean;

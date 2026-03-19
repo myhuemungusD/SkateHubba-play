@@ -347,22 +347,7 @@ export function Lobby({
         {/* Empty state — no games at all */}
         {games.length === 0 && (
           <div className="flex flex-col items-center py-14 border border-dashed border-border rounded-2xl mb-6">
-            <svg
-              className="text-brand-orange mb-4"
-              width="38"
-              height="38"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="7.5" cy="17.5" r="2.5" />
-              <circle cx="17.5" cy="17.5" r="2.5" />
-              <path d="M2 7h1.5l2.1 7.5h10.8l2.1-6H7.5" />
-            </svg>
+            <SkateboardIcon size={38} className="text-brand-orange mb-4" />
             <p className="font-body text-sm text-[#999]">No games yet.</p>
             <p className="font-body text-xs text-[#777] mt-1">Challenge someone to get started.</p>
           </div>

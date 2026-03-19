@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getLeaderboard, type UserProfile } from "../services/users";
+import { TrophyIcon } from "./icons";
 
 const RANK_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"] as const; // gold, silver, bronze
 
@@ -67,9 +68,7 @@ export function Leaderboard({
           <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">LEADERBOARD</h3>
         </div>
         <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
-          <span className="text-2xl mb-2 opacity-40" aria-hidden="true">
-            🏆
-          </span>
+          <TrophyIcon size={24} className="mb-2 opacity-40 text-[#555]" />
           <p className="font-body text-xs text-[#666]">No ranked players yet</p>
           <p className="font-body text-[11px] text-[#555] mt-0.5">Complete a game to appear on the leaderboard</p>
         </div>

@@ -5,6 +5,7 @@ import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { Leaderboard } from "../components/Leaderboard";
+import type { ComponentType } from "react";
 import {
   TargetIcon,
   FilmIcon,
@@ -15,7 +16,7 @@ import {
   type IconProps,
 } from "../components/icons";
 
-const RULES: { Icon: (props: IconProps) => JSX.Element; text: string; color: string }[] = [
+const RULES: { Icon: ComponentType<IconProps>; text: string; color: string }[] = [
   { Icon: TargetIcon, text: "You set the first trick", color: "text-brand-orange" },
   { Icon: FilmIcon, text: "One-take video only — no retries", color: "text-brand-orange" },
   { Icon: ClockIcon, text: "24 hours per turn or forfeit", color: "text-brand-orange" },

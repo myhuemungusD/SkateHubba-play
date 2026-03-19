@@ -5,6 +5,7 @@ import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { GoogleButton } from "../components/GoogleButton";
+import { LockIcon } from "../components/icons";
 import { logger } from "../services/logger";
 
 export function AuthScreen({
@@ -137,7 +138,7 @@ export function AuthScreen({
             value={password}
             onChange={setPassword}
             placeholder="••••••••"
-            icon="🔒"
+            icon={<LockIcon size={16} />}
             type="password"
             autoComplete={isSignup ? "new-password" : "current-password"}
           />
@@ -179,7 +180,7 @@ export function AuthScreen({
               value={confirm}
               onChange={setConfirm}
               placeholder="••••••••"
-              icon="🔒"
+              icon={<LockIcon size={16} />}
               type="password"
               autoComplete="new-password"
             />
