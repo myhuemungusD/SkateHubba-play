@@ -193,3 +193,20 @@ export function StopIcon(props: IconProps) {
     </SvgIcon>
   );
 }
+
+export function PlayIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props} fill="currentColor" stroke="none">
+      <polygon points="5 3 19 12 5 21 5 3" />
+    </SvgIcon>
+  );
+}
+
+export function ReplayIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+    </SvgIcon>
+  );
+}
