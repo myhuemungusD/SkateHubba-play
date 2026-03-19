@@ -12,7 +12,7 @@
 An async multiplayer trick battle game for skateboarders.
 Challenge friends, set tricks on video, and see if they can match you — one letter at a time.
 
-[![Play Now](https://img.shields.io/badge/Play_Now-skatehubba.com-FF6B00?style=for-the-badge&logo=firebase&logoColor=white)](https://skatehubba.com)
+[![Play Now](https://img.shields.io/badge/Play_Now-skatehubba.com-FF6B00?style=for-the-badge&logo=vercel&logoColor=white)](https://skatehubba.com)
 [![CI](https://img.shields.io/github/actions/workflow/status/myhuemungusD/SkateHubba-play/main.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white)](https://github.com/myhuemungusD/SkateHubba-play/actions/workflows/main.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-black?style=for-the-badge)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)](CONTRIBUTING.md)
@@ -194,6 +194,12 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 
 ---
 
+## Live Demo
+
+**[skatehubba.com](https://skatehubba.com)** — create an account and start a game in under 30 seconds.
+
+---
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -212,6 +218,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 [skatehubba.com](https://skatehubba.com)
 
-MIT License
+[MIT License](LICENSE)
 
 </div>
