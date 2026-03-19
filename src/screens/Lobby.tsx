@@ -207,7 +207,21 @@ export function Lobby({
                       <span
                         className={`font-body text-[11px] ${isMyTurn(g) ? "text-brand-orange" : "text-brand-green"}`}
                       >
-                        {isMyTurn(g) ? "Your turn" : "Waiting on opponent"}
+                        {isMyTurn(g)
+                          ? g.phase === "setting"
+                            ? "Your turn to set"
+                            : g.phase === "matching"
+                              ? `Match: ${g.currentTrickName || "Trick"}`
+                              : g.phase === "confirming"
+                                ? "Vote on attempt"
+                                : "Your turn"
+                          : g.phase === "setting"
+                            ? "They're setting a trick"
+                            : g.phase === "matching"
+                              ? `Matching: ${g.currentTrickName || "Trick"}`
+                              : g.phase === "confirming"
+                                ? "Vote on attempt"
+                                : "Waiting on opponent"}
                       </span>
                       <LobbyTimer deadline={g.turnDeadline?.toMillis?.() ?? 0} isMyTurn={isMyTurn(g)} />
                     </div>

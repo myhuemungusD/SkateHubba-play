@@ -78,8 +78,8 @@ describe("Lobby", () => {
 
     // opponent name is rival
     expect(screen.getByText(/vs @rival/)).toBeInTheDocument();
-    // not my turn → "Waiting on opponent"
-    expect(screen.getByText("Waiting on opponent")).toBeInTheDocument();
+    // not my turn → phase-specific waiting text
+    expect(screen.getByText("They're setting a trick")).toBeInTheDocument();
   });
 
   it("shows completed game with You won/lost labels", () => {
@@ -247,8 +247,8 @@ describe("Lobby", () => {
 
     // opponent should be player1's username since profile is player2
     expect(screen.getByText(/vs @someone/)).toBeInTheDocument();
-    // my turn → "Your turn"
-    expect(screen.getByText("Your turn")).toBeInTheDocument();
+    // my turn → phase-specific turn text
+    expect(screen.getByText("Your turn to set")).toBeInTheDocument();
   });
 
   it("non-matching key on done game card does not open game", async () => {
