@@ -274,9 +274,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   }
 
   // ── Waiting screen (not your turn in setting/matching) ──
-  const nudgeAvailable = nudgeStatus !== "sent" && canNudge(game.id);
-
   if (!isSetter && !isMatcher) {
+    const nudgeAvailable = nudgeStatus === "idle";
     return (
       <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
         <div className="text-center w-full max-w-sm animate-fade-in">

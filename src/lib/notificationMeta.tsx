@@ -3,7 +3,7 @@ import type { NotificationType } from "../context/NotificationContext";
 import { TargetIcon } from "../components/icons";
 
 export const notificationIcon: Record<NotificationType, ReactNode> = {
-  game_event: TargetIcon({ size: 14 }),
+  game_event: <TargetIcon size={14} />,
   success: "✓",
   error: "✗",
   info: "ℹ",

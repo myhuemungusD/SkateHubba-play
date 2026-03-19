@@ -5,7 +5,23 @@ import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { Leaderboard } from "../components/Leaderboard";
-import { TargetIcon, FilmIcon, ClockIcon, XCircleIcon, SkullIcon, FlameIcon } from "../components/icons";
+import {
+  TargetIcon,
+  FilmIcon,
+  ClockIcon,
+  XCircleIcon,
+  SkullIcon,
+  FlameIcon,
+  type IconProps,
+} from "../components/icons";
+
+const RULES: { Icon: (props: IconProps) => JSX.Element; text: string; color: string }[] = [
+  { Icon: TargetIcon, text: "You set the first trick", color: "text-brand-orange" },
+  { Icon: FilmIcon, text: "One-take video only — no retries", color: "text-brand-orange" },
+  { Icon: ClockIcon, text: "24 hours per turn or forfeit", color: "text-brand-orange" },
+  { Icon: XCircleIcon, text: "Miss a match = earn a letter", color: "text-brand-red" },
+  { Icon: SkullIcon, text: "Spell S.K.A.T.E. = you lose", color: "text-brand-red" },
+];
 
 export function ChallengeScreen({
   profile,
@@ -83,21 +99,11 @@ export function ChallengeScreen({
           <div className="p-4 rounded-xl bg-surface-alt border border-border mb-6">
             <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
             <div className="font-body text-sm text-[#888] space-y-2">
-              <div className="flex items-center gap-2">
-                <TargetIcon size={15} className="text-brand-orange shrink-0" /> You set the first trick
-              </div>
-              <div className="flex items-center gap-2">
-                <FilmIcon size={15} className="text-brand-orange shrink-0" /> One-take video only — no retries
-              </div>
-              <div className="flex items-center gap-2">
-                <ClockIcon size={15} className="text-brand-orange shrink-0" /> 24 hours per turn or forfeit
-              </div>
-              <div className="flex items-center gap-2">
-                <XCircleIcon size={15} className="text-brand-red shrink-0" /> Miss a match = earn a letter
-              </div>
-              <div className="flex items-center gap-2">
-                <SkullIcon size={15} className="text-brand-red shrink-0" /> Spell S.K.A.T.E. = you lose
-              </div>
+              {RULES.map(({ Icon, text, color }) => (
+                <div key={text} className="flex items-center gap-2">
+                  <Icon size={15} className={`${color} shrink-0`} /> {text}
+                </div>
+              ))}
             </div>
           </div>
 
