@@ -556,6 +556,59 @@ describe("GamePlayScreen", () => {
     expect(screen.getByText(/Round 1: Kickflip/)).toBeInTheDocument();
   });
 
+  it("waiting screen hides video when URL is not a Firebase Storage URL", () => {
+    const game = makeGame({
+      currentTurn: "u2",
+      currentSetter: "u1",
+      phase: "matching",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://example.com/video.mp4",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.queryByLabelText(/Video of Kickflip you set/)).not.toBeInTheDocument();
+  });
+
+  it("waiting screen shows 'Trick' fallback when currentTrickName is null", () => {
+    const game = makeGame({
+      currentTurn: "u2",
+      currentSetter: "u1",
+      phase: "matching",
+      currentTrickName: null,
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText(/Your Trick: Trick/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Video of trick you set/)).toBeInTheDocument();
+  });
+
+  it("waiting screen does not show Game Clips when turnHistory is undefined", () => {
+    const game = makeGame({
+      currentTurn: "u2",
+      currentSetter: "u2",
+      phase: "setting",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.queryByRole("button", { name: /Game Clips/ })).not.toBeInTheDocument();
+  });
+
+  it("waiting screen shows letter scores for both players", () => {
+    const game = makeGame({
+      currentTurn: "u2",
+      currentSetter: "u2",
+      phase: "setting",
+      p1Letters: 2,
+      p2Letters: 3,
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText("VS")).toBeInTheDocument();
+    expect(screen.getByText("@sk8r")).toBeInTheDocument();
+    expect(screen.getByText("@rival")).toBeInTheDocument();
+  });
+
   it("confirming phase shows both clips and vote buttons", () => {
     const game = makeGame({
       phase: "confirming",
