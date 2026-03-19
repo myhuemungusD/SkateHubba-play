@@ -10,6 +10,7 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: "hidden",
+    modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
         manualChunks: {
