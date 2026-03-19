@@ -265,7 +265,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
   if (!isSetter && !isMatcher) {
     return (
-      <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center justify-center px-6">
+      <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
         <div className="text-center max-w-sm animate-fade-in">
           <span className="text-5xl block mb-4">⏳</span>
           <h2 className="font-display text-3xl text-white mb-2">Waiting on @{opponentName}</h2>
@@ -317,9 +317,27 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             </Btn>
           </div>
 
+          {game.phase === "matching" &&
+            game.currentTrickVideoUrl &&
+            isFirebaseStorageUrl(game.currentTrickVideoUrl) && (
+              <div className="mt-6 w-full max-w-sm">
+                <p className="font-display text-sm tracking-wider text-brand-orange mb-2">
+                  Your Trick: {game.currentTrickName || "Trick"}
+                </p>
+                <video
+                  src={game.currentTrickVideoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  aria-label={`Video of ${game.currentTrickName || "trick"} you set`}
+                  className="w-full max-w-[280px] mx-auto aspect-[9/16] rounded-xl bg-black object-cover border border-border"
+                />
+              </div>
+            )}
+
           {(game.turnHistory?.length ?? 0) > 0 && (
             <div className="mt-4 text-left w-full max-w-sm">
-              <TurnHistoryViewer turns={game.turnHistory!} currentUserUid={profile.uid} />
+              <TurnHistoryViewer turns={game.turnHistory!} currentUserUid={profile.uid} defaultExpanded />
             </div>
           )}
         </div>

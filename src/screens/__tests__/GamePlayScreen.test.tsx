@@ -504,6 +504,58 @@ describe("GamePlayScreen", () => {
     });
   });
 
+  it("waiting screen shows current trick video in matching phase", () => {
+    const game = makeGame({
+      currentTurn: "u2",
+      currentSetter: "u1",
+      phase: "matching",
+      currentTrickName: "Heelflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText(/Your Trick: Heelflip/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Video of Heelflip you set/)).toBeInTheDocument();
+  });
+
+  it("waiting screen does not show trick video in setting phase", () => {
+    const game = makeGame({
+      currentTurn: "u2",
+      currentSetter: "u2",
+      phase: "setting",
+      currentTrickVideoUrl: null,
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.queryByText(/Your Trick/)).not.toBeInTheDocument();
+  });
+
+  it("waiting screen shows turn history expanded by default", () => {
+    const game = makeGame({
+      currentTurn: "u2",
+      currentSetter: "u2",
+      phase: "setting",
+      turnHistory: [
+        {
+          turnNumber: 1,
+          trickName: "Kickflip",
+          setterUid: "u1",
+          setterUsername: "sk8r",
+          matcherUid: "u2",
+          matcherUsername: "rival",
+          setVideoUrl: null,
+          matchVideoUrl: null,
+          landed: true,
+          letterTo: null,
+        },
+      ],
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByRole("button", { name: /Game Clips/ })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/Round 1: Kickflip/)).toBeInTheDocument();
+  });
+
   it("confirming phase shows both clips and vote buttons", () => {
     const game = makeGame({
       phase: "confirming",
