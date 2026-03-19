@@ -7,6 +7,7 @@ import { Btn } from "../components/ui/Btn";
 import { LetterDisplay } from "../components/LetterDisplay";
 import { InviteButton } from "../components/InviteButton";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
+import { TrophyIcon, SkullIcon } from "../components/icons";
 
 export function GameOverScreen({
   game,
@@ -96,7 +97,13 @@ export function GameOverScreen({
       }}
     >
       <div className="text-center w-full max-w-md animate-fade-in">
-        <span className="text-6xl block mb-4">{isWinner ? "🏆" : "💀"}</span>
+        <div className="flex justify-center mb-4">
+          {isWinner ? (
+            <TrophyIcon size={56} className="text-brand-green" />
+          ) : (
+            <SkullIcon size={56} className="text-brand-red" />
+          )}
+        </div>
         <h1 className={`font-display text-5xl mb-2 ${isWinner ? "text-brand-green" : "text-brand-red"}`}>
           {isWinner ? "You Win" : isForfeit ? "Forfeit" : "S.K.A.T.E."}
         </h1>

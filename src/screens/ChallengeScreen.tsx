@@ -5,6 +5,7 @@ import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { Leaderboard } from "../components/Leaderboard";
+import { TargetIcon, FilmIcon, ClockIcon, XCircleIcon, SkullIcon, FlameIcon } from "../components/icons";
 
 export function ChallengeScreen({
   profile,
@@ -81,19 +82,35 @@ export function ChallengeScreen({
 
           <div className="p-4 rounded-xl bg-surface-alt border border-border mb-6">
             <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
-            <div className="font-body text-sm text-[#888] leading-7">
-              <div>🎯 You set the first trick</div>
-              <div>📹 One-take video only — no retries</div>
-              <div>⏱ 24 hours per turn or forfeit</div>
-              <div>❌ Miss a match = earn a letter</div>
-              <div>💀 Spell S.K.A.T.E. = you lose</div>
+            <div className="font-body text-sm text-[#888] space-y-2">
+              <div className="flex items-center gap-2">
+                <TargetIcon size={15} className="text-brand-orange shrink-0" /> You set the first trick
+              </div>
+              <div className="flex items-center gap-2">
+                <FilmIcon size={15} className="text-brand-orange shrink-0" /> One-take video only — no retries
+              </div>
+              <div className="flex items-center gap-2">
+                <ClockIcon size={15} className="text-brand-orange shrink-0" /> 24 hours per turn or forfeit
+              </div>
+              <div className="flex items-center gap-2">
+                <XCircleIcon size={15} className="text-brand-red shrink-0" /> Miss a match = earn a letter
+              </div>
+              <div className="flex items-center gap-2">
+                <SkullIcon size={15} className="text-brand-red shrink-0" /> Spell S.K.A.T.E. = you lose
+              </div>
             </div>
           </div>
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
           <Btn onClick={submit} disabled={loading || opponent.length < 3}>
-            {loading ? "Finding..." : "🔥 Send Challenge"}
+            {loading ? (
+              "Finding..."
+            ) : (
+              <>
+                <FlameIcon size={16} className="inline -mt-0.5" /> Send Challenge
+              </>
+            )}
           </Btn>
         </form>
 

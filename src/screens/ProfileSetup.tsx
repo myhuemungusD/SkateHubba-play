@@ -3,6 +3,7 @@ import { createProfile, isUsernameAvailable, type UserProfile } from "../service
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { SkateboardIcon } from "../components/icons";
 
 type Step = 1 | 2 | 3;
 
@@ -190,8 +191,8 @@ function StepStance({
                   : "bg-surface-alt border-2 border-border text-[#666] hover:border-[#3A3A3A] hover:text-[#888]"
               }`}
             >
-              <div className="text-3xl mb-2" aria-hidden="true">
-                🛹
+              <div className="flex justify-center mb-2" aria-hidden="true">
+                <SkateboardIcon size={28} className={selected ? "text-brand-orange" : "text-[#666]"} />
               </div>
               <div>{value}</div>
               <div className="font-body text-[10px] text-[#555] mt-1 tracking-normal">{foot}</div>

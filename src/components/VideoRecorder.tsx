@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Btn } from "./ui/Btn";
+import { FilmIcon, CameraIcon, RecordIcon, StopIcon } from "./icons";
 
 const MAX_RECORDING_SECONDS = 60;
 
@@ -163,7 +164,7 @@ export function VideoRecorder({
 
         {state === "idle" && !cameraError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <span className="text-5xl opacity-30">📹</span>
+            <FilmIcon size={48} className="opacity-30 text-[#555]" />
             <span className="font-body text-sm text-[#555]">Tap to open camera</span>
           </div>
         )}
@@ -188,18 +189,18 @@ export function VideoRecorder({
       {/* Controls */}
       {state === "idle" && !cameraError && (
         <Btn onClick={openCamera} variant="secondary">
-          📷 Open Camera
+          <CameraIcon size={16} className="inline -mt-0.5" /> Open Camera
         </Btn>
       )}
       {state === "preview" && (
         <Btn onClick={startRec} variant="danger" className="text-2xl py-5">
-          ⏺ Record — {label}
+          <RecordIcon size={16} className="inline -mt-0.5" /> Record — {label}
         </Btn>
       )}
       {state === "recording" && (
         <>
           <Btn onClick={stopRec} variant="danger" className="text-2xl py-5 animate-rec-ring">
-            ⏹ Stop Recording
+            <StopIcon size={16} className="inline -mt-0.5" /> Stop Recording
           </Btn>
           {seconds >= MAX_RECORDING_SECONDS - 10 && MAX_RECORDING_SECONDS - seconds > 0 && (
             <span className="font-body text-xs text-brand-red animate-pulse">

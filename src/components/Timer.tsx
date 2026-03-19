@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { ClockIcon } from "./icons";
 
 export function Timer({ deadline }: { deadline: number }) {
   const [text, setText] = useState("");
@@ -26,9 +27,7 @@ export function Timer({ deadline }: { deadline: number }) {
       className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-alt border border-border"
       aria-live="polite"
     >
-      <span className="text-[#555] text-sm" aria-hidden="true">
-        ⏱
-      </span>
+      <ClockIcon size={14} className="text-[#555]" />
       <span className="font-display text-sm text-brand-orange tracking-wider" aria-label={`Turn timer: ${text}`}>
         {text}
       </span>
