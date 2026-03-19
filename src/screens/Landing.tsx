@@ -121,6 +121,14 @@ export function Landing({
         />
 
         <div className="relative max-w-5xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col items-center text-center">
+          <img
+            src="/logonew.png"
+            alt="SkateHubba"
+            width={1536}
+            height={1024}
+            draggable={false}
+            className="w-52 md:w-72 mb-8 drop-shadow-[0_0_40px_rgba(255,107,0,0.15)] select-none"
+          />
           <p className="font-body text-lg md:text-xl text-[#888] max-w-md leading-relaxed mb-4">
             The first async trick battle game.
             <br />
