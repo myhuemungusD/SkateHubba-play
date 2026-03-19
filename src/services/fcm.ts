@@ -5,7 +5,9 @@ import app, { requireDb } from "../firebase";
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
 
 function getMessagingInstance() {
+  /* v8 ignore start -- guard for null Firebase app; always truthy when firebase.ts init succeeds */
   if (!app) throw new Error("Firebase not initialized");
+  /* v8 ignore stop */
   if (!messagingInstance) {
     messagingInstance = getMessaging(app);
   }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
+import { Component, type ReactNode } from "react";
 import { useGameContext } from "../GameContext";
 
 vi.mock("../../hooks/useAuth", () => ({
@@ -33,14 +34,33 @@ vi.mock("../../lib/sentry", () => ({
   addBreadcrumb: vi.fn(),
 }));
 
+/** Error boundary that captures the error for assertions. */
+class ErrorCatcher extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    return this.state.error ? <span data-testid="error">{this.state.error.message}</span> : this.props.children;
+  }
+}
+
 describe("useGameContext", () => {
   it("throws when used outside GameProvider", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+
     function TestComponent() {
       useGameContext();
       return null;
     }
-    expect(() => render(<TestComponent />)).toThrow("useGameContext must be used within GameProvider");
+
+    const { getByTestId } = render(
+      <ErrorCatcher>
+        <TestComponent />
+      </ErrorCatcher>,
+    );
+
+    expect(getByTestId("error").textContent).toBe("useGameContext must be used within GameProvider");
     spy.mockRestore();
   });
 });
