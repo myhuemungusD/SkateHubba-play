@@ -210,3 +210,13 @@ export function ReplayIcon(props: IconProps) {
     </SvgIcon>
   );
 }
+
+export function FisheyeIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <ellipse cx="12" cy="12" rx="10" ry="6" />
+      <line x1="12" y1="2" x2="12" y2="22" />
+    </SvgIcon>
+  );
+}

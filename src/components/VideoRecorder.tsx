@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Btn } from "./ui/Btn";
-import { FilmIcon, CameraIcon, RecordIcon, StopIcon } from "./icons";
+import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon } from "./icons";
+import { FisheyeRenderer } from "./FisheyeRenderer";
 
 const MAX_RECORDING_SECONDS = 60;
 
@@ -16,6 +17,11 @@ export function VideoRecorder({
   doneLabel?: string;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+  const videoCallbackRef = useCallback((el: HTMLVideoElement | null) => {
+    videoRef.current = el;
+    setVideoEl(el);
+  }, []);
   const mrRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -27,6 +33,15 @@ export function VideoRecorder({
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
+
+  // Fisheye state
+  const [fisheyeOn, setFisheyeOn] = useState(false);
+  const fisheyeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fisheyeStreamRef = useRef<MediaStream | null>(null);
+
+  const handleFisheyeCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
+    fisheyeCanvasRef.current = canvas;
+  }, []);
 
   const openCamera = useCallback(async () => {
     setCameraError(null);
@@ -65,13 +80,35 @@ export function VideoRecorder({
       timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
       return;
     }
+
     chunksRef.current = [];
+
+    // Determine the stream to record: fisheye canvas + audio, or raw camera
+    let recordStream = streamRef.current;
+    /* v8 ignore start */
+    if (fisheyeOn && fisheyeCanvasRef.current) {
+      try {
+        const canvasStream = fisheyeCanvasRef.current.captureStream(30);
+        // Add audio tracks from the camera stream to the canvas stream
+        const audioTracks = streamRef.current.getAudioTracks();
+        for (const track of audioTracks) {
+          canvasStream.addTrack(track);
+        }
+        fisheyeStreamRef.current = canvasStream;
+        recordStream = canvasStream;
+      } catch {
+        // captureStream not supported — fall back to raw stream
+        console.warn("captureStream not supported, recording without fisheye");
+      }
+    }
+    /* v8 ignore stop */
+
     const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
       ? "video/webm;codecs=vp9"
       : MediaRecorder.isTypeSupported("video/webm")
         ? "video/webm"
         : "";
-    const mr = new MediaRecorder(streamRef.current, mimeType ? { mimeType } : undefined);
+    const mr = new MediaRecorder(recordStream, mimeType ? { mimeType } : undefined);
     mr.ondataavailable = (e) => {
       /* v8 ignore start */
       if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -90,6 +127,7 @@ export function VideoRecorder({
       setState("done");
       onRecorded(blob);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      fisheyeStreamRef.current = null;
     };
     mrRef.current = mr;
     mr.start();
@@ -105,7 +143,7 @@ export function VideoRecorder({
       }
     }, MAX_RECORDING_SECONDS * 1000);
     /* v8 ignore stop */
-  }, [onRecorded]);
+  }, [onRecorded, fisheyeOn]);
 
   const stopRec = useCallback(() => {
     clearInterval(timerRef.current);
@@ -123,6 +161,7 @@ export function VideoRecorder({
       clearInterval(timerRef.current);
       clearTimeout(maxTimerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      fisheyeStreamRef.current = null;
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
     };
   }, []);
@@ -135,6 +174,9 @@ export function VideoRecorder({
   }, [openCamera]);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+  const showFisheyeToggle = state === "preview" || state === "recording";
+  const showFisheyeOverlay = fisheyeOn && (state === "preview" || state === "recording");
 
   return (
     <div className="w-full flex flex-col items-center gap-4">
@@ -152,7 +194,24 @@ export function VideoRecorder({
             aria-label="Your recorded trick video"
           />
         ) : (
-          <video ref={videoRef} className="w-full h-full object-cover" muted playsInline aria-label="Camera preview" />
+          <>
+            <video
+              ref={videoCallbackRef}
+              className={`w-full h-full object-cover ${showFisheyeOverlay ? "invisible" : ""}`}
+              muted
+              playsInline
+              aria-label="Camera preview"
+            />
+            {showFisheyeOverlay && (
+              <FisheyeRenderer
+                videoEl={videoEl}
+                active={true}
+                strength={2.0}
+                onCanvas={handleFisheyeCanvas}
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            )}
+          </>
         )}
 
         {state === "recording" && (
@@ -170,8 +229,25 @@ export function VideoRecorder({
         )}
 
         {state !== "done" && (
-          <div className="absolute top-4 right-4 bg-brand-orange/90 px-2.5 py-1 rounded-md">
-            <span className="font-display text-[11px] text-white tracking-[0.1em]">ONE TAKE</span>
+          <div className="absolute top-4 right-4 flex items-center gap-2">
+            {showFisheyeToggle && (
+              <button
+                type="button"
+                onClick={() => setFisheyeOn((v) => !v)}
+                aria-label={fisheyeOn ? "Disable fisheye" : "Enable fisheye"}
+                aria-pressed={fisheyeOn}
+                className={`px-2.5 py-1 rounded-md transition-all duration-200 ${
+                  fisheyeOn
+                    ? "bg-purple-500/90 shadow-[0_0_12px_rgba(147,51,234,0.4)]"
+                    : "bg-[#333]/80 hover:bg-[#444]/80"
+                }`}
+              >
+                <FisheyeIcon size={16} className="text-white" />
+              </button>
+            )}
+            <div className="bg-brand-orange/90 px-2.5 py-1 rounded-md">
+              <span className="font-display text-[11px] text-white tracking-[0.1em]">ONE TAKE</span>
+            </div>
           </div>
         )}
       </div>
