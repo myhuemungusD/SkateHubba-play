@@ -13,8 +13,16 @@ An async multiplayer trick battle game for skateboarders.
 Challenge friends, set tricks on video, and see if they can match you — one letter at a time.
 
 [![Play Now](https://img.shields.io/badge/Play_Now-skatehubba.com-FF6B00?style=for-the-badge&logo=firebase&logoColor=white)](https://skatehubba.com)
+[![CI](https://img.shields.io/github/actions/workflow/status/myhuemungusD/SkateHubba-play/main.yml?branch=main&style=for-the-badge&label=CI&logo=githubactions&logoColor=white)](https://github.com/myhuemungusD/SkateHubba-play/actions/workflows/main.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-black?style=for-the-badge)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)](CONTRIBUTING.md)
+
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=white)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org)
+[![Vite](https://img.shields.io/badge/Vite-6-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vite.dev)
+[![Firebase](https://img.shields.io/badge/Firebase-11-DD2C00?style=flat-square&logo=firebase&logoColor=white)](https://firebase.google.com)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
+[![GitHub Release](https://img.shields.io/github/v/release/myhuemungusD/SkateHubba-play?style=flat-square&label=release&color=FF6B00)](https://github.com/myhuemungusD/SkateHubba-play/releases)
 
 <br>
 
