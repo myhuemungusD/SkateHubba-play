@@ -236,7 +236,7 @@ describe("Smoke Test: Game E2E", () => {
     expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
     expect(screen.getByText("Your Games")).toBeInTheDocument();
     expect(screen.getByText(/vs @rival/)).toBeInTheDocument();
-    expect(screen.getByText("Your turn")).toBeInTheDocument();
+    expect(screen.getByText("Your turn to set")).toBeInTheDocument();
   });
 
   it("shows empty state when no games exist", () => {
@@ -977,7 +977,7 @@ describe("Smoke Test: Game E2E", () => {
     const game = activeGame({ currentTurn: "u2" });
     renderLobby([game]);
 
-    expect(screen.getByText("Waiting on opponent")).toBeInTheDocument();
+    expect(screen.getByText("They're setting a trick")).toBeInTheDocument();
   });
 
   /* ── 32. Lobby: PLAY badge for your-turn games ── */
@@ -1226,7 +1226,7 @@ describe("Smoke Test: Game E2E", () => {
 
     const videoUrl = `https://firebasestorage.googleapis.com/v0/b/${import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sk8hub-d7806.firebasestorage.app"}/o/trick.webm?alt=media`;
     await waitFor(() => {
-      expect(screen.getByText("THEIR ATTEMPT")).toBeInTheDocument();
+      expect(screen.getByText(/@rival's TRICK/)).toBeInTheDocument();
       const video = document.querySelector(`video[src='${videoUrl}']`);
       expect(video).toBeTruthy();
     });

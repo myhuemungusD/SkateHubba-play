@@ -80,6 +80,18 @@ export function Lobby({
   const myLetters = (g: GameDoc) => (g.player1Uid === profile.uid ? g.p1Letters : g.p2Letters);
   const theirLetters = (g: GameDoc) => (g.player1Uid === profile.uid ? g.p2Letters : g.p1Letters);
 
+  const turnLabel = (g: GameDoc) => {
+    const trick = g.currentTrickName || "Trick";
+    if (isMyTurn(g)) {
+      if (g.phase === "matching") return `Match: ${trick}`;
+      if (g.phase === "confirming") return "Vote on attempt";
+      return "Your turn to set";
+    }
+    if (g.phase === "matching") return `Matching: ${trick}`;
+    if (g.phase === "confirming") return "Vote on attempt";
+    return "They're setting a trick";
+  };
+
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/60 pb-24">
       {/* Header */}
@@ -207,7 +219,7 @@ export function Lobby({
                       <span
                         className={`font-body text-[11px] ${isMyTurn(g) ? "text-brand-orange" : "text-brand-green"}`}
                       >
-                        {isMyTurn(g) ? "Your turn" : "Waiting on opponent"}
+                        {turnLabel(g)}
                       </span>
                       <LobbyTimer deadline={g.turnDeadline?.toMillis?.() ?? 0} isMyTurn={isMyTurn(g)} />
                     </div>

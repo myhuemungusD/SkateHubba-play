@@ -236,7 +236,7 @@ describe("GamePlayScreen", () => {
       currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/video.mp4",
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
-    expect(screen.getByLabelText(/Video of trick set by opponent/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Video of trick set by rival/)).toBeInTheDocument();
   });
 
   it("shows player2 perspective correctly", () => {

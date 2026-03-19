@@ -187,9 +187,9 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           </p>
 
           {/* Setter's clip */}
-          {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) && (
-            <div className="mb-5">
-              <p className="font-display text-sm tracking-wider text-brand-orange mb-2">@{setterUsername}'s TRICK</p>
+          <div className="mb-5">
+            <p className="font-display text-sm tracking-wider text-brand-orange mb-2">@{setterUsername}&apos;s TRICK</p>
+            {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
               <video
                 src={game.currentTrickVideoUrl}
                 controls
@@ -198,13 +198,17 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                 aria-label={`Video of ${game.currentTrickName || "trick"} set by ${setterUsername}`}
                 className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
               />
-            </div>
-          )}
+            ) : (
+              <p className="font-body text-sm text-[#555] text-center py-4">No video recorded</p>
+            )}
+          </div>
 
           {/* Matcher's clip */}
-          {game.matchVideoUrl && isFirebaseStorageUrl(game.matchVideoUrl) && (
-            <div className="mb-5">
-              <p className="font-display text-sm tracking-wider text-brand-green mb-2">@{matcherUsername}'s ATTEMPT</p>
+          <div className="mb-5">
+            <p className="font-display text-sm tracking-wider text-brand-green mb-2">
+              @{matcherUsername}&apos;s ATTEMPT
+            </p>
+            {game.matchVideoUrl && isFirebaseStorageUrl(game.matchVideoUrl) ? (
               <video
                 src={game.matchVideoUrl}
                 controls
@@ -213,8 +217,10 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                 aria-label={`Video of ${game.currentTrickName || "trick"} attempted by ${matcherUsername}`}
                 className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
               />
-            </div>
-          )}
+            ) : (
+              <p className="font-body text-sm text-[#555] text-center py-4">No video recorded</p>
+            )}
+          </div>
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
@@ -282,13 +288,12 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           </p>
           <Timer deadline={deadline} />
 
-          {game.phase === "matching" &&
-            game.currentTrickVideoUrl &&
-            isFirebaseStorageUrl(game.currentTrickVideoUrl) && (
-              <div className="mt-6 w-full">
-                <p className="font-display text-sm tracking-wider text-brand-orange mb-2">
-                  Your Trick: {game.currentTrickName || "Trick"}
-                </p>
+          {game.phase === "matching" && (
+            <div className="mt-6 w-full">
+              <p className="font-display text-sm tracking-wider text-brand-orange mb-2">
+                Your Trick: {game.currentTrickName || "Trick"}
+              </p>
+              {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
                 <video
                   src={game.currentTrickVideoUrl}
                   controls
@@ -297,8 +302,11 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                   aria-label={`Video of ${game.currentTrickName || "trick"} you set`}
                   className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
                 />
-              </div>
-            )}
+              ) : (
+                <p className="font-body text-sm text-[#555] text-center py-4">No video recorded</p>
+              )}
+            </div>
+          )}
 
           {(game.turnHistory?.length ?? 0) > 0 && (
             <div className="mt-6 text-left w-full">
@@ -382,17 +390,23 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           </span>
         </div>
 
-        {isMatcher && game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) && (
+        {isMatcher && (
           <div className="mb-5">
-            <p className="font-display text-sm tracking-wider text-[#888] mb-2">THEIR ATTEMPT</p>
-            <video
-              src={game.currentTrickVideoUrl}
-              controls
-              playsInline
-              preload="metadata"
-              aria-label={`Video of ${game.currentTrickName || "trick"} set by opponent`}
-              className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
-            />
+            <p className="font-display text-sm tracking-wider text-brand-orange mb-2">@{setterUsername}&apos;s TRICK</p>
+            {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
+              <video
+                src={game.currentTrickVideoUrl}
+                controls
+                playsInline
+                preload="metadata"
+                aria-label={`Video of ${game.currentTrickName || "trick"} set by ${setterUsername}`}
+                className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+              />
+            ) : (
+              <p className="font-body text-sm text-[#555] text-center py-4">
+                No video recorded — just match the trick!
+              </p>
+            )}
           </div>
         )}
 
