@@ -7,6 +7,7 @@ import { Btn } from "../components/ui/Btn";
 import { LetterDisplay } from "../components/LetterDisplay";
 import { InviteButton } from "../components/InviteButton";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
+import { GameReplay } from "../components/GameReplay";
 import { TrophyIcon, SkullIcon } from "../components/icons";
 
 export function GameOverScreen({
@@ -121,6 +122,13 @@ export function GameOverScreen({
           <LetterDisplay count={myLetters} name={`@${profile.username}`} active={isWinner} />
           <LetterDisplay count={theirLetters} name={`@${opponentName}`} active={!isWinner} />
         </div>
+
+        {/* Full game replay */}
+        {hasTurns && (
+          <div className="w-full mb-4">
+            <GameReplay turns={game.turnHistory!} />
+          </div>
+        )}
 
         {/* Game clips recap */}
         {hasTurns && (

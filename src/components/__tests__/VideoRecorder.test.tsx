@@ -409,6 +409,29 @@ describe("VideoRecorder", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
   });
 
+  it("shows fisheye toggle in preview and recording states", async () => {
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    // No fisheye toggle in idle state
+    expect(screen.queryByLabelText(/fisheye/i)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    // Fisheye toggle visible in preview
+    const toggle = screen.getByLabelText("Enable fisheye");
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    // Toggle fisheye on
+    await userEvent.click(toggle);
+    expect(screen.getByLabelText("Disable fisheye")).toHaveAttribute("aria-pressed", "true");
+
+    // Toggle fisheye off
+    await userEvent.click(screen.getByLabelText("Disable fisheye"));
+    expect(screen.getByLabelText("Enable fisheye")).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("cleans up on unmount (revokes blob URL and stops tracks)", async () => {
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
     const { mockStop } = setupMockStream();
