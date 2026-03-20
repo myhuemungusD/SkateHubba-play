@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Btn } from "./ui/Btn";
 import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon } from "./icons";
 import { FisheyeRenderer } from "./FisheyeRenderer";
+import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
 
 const MAX_RECORDING_SECONDS = 60;
 
@@ -166,12 +167,35 @@ export function VideoRecorder({
     };
   }, []);
 
+  // --- Native (Capacitor) recording path ---
+  const isNative = isNativePlatform();
+
+  const handleNativeRecord = useCallback(async () => {
+    setCameraError(null);
+    try {
+      const result = await recordNativeVideo();
+      const url = URL.createObjectURL(result.blob);
+      blobUrlRef.current = url;
+      setBlobUrl(url);
+      setState("done");
+      onRecorded(result.blob);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes("cancel")) {
+        // User cancelled — stay on idle
+        return;
+      }
+      setCameraError(`Native camera error: ${msg}`);
+      console.warn("Native camera failed:", msg);
+    }
+  }, [onRecorded]);
+
   const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
     // openCamera is async (awaits getUserMedia before setState) — not a synchronous setState
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (autoOpenRef.current) openCamera();
-  }, [openCamera]);
+    if (autoOpenRef.current && !isNative) openCamera();
+  }, [openCamera, isNative]);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
@@ -264,8 +288,8 @@ export function VideoRecorder({
 
       {/* Controls */}
       {state === "idle" && !cameraError && (
-        <Btn onClick={openCamera} variant="secondary">
-          <CameraIcon size={16} className="inline -mt-0.5" /> Open Camera
+        <Btn onClick={isNative ? handleNativeRecord : openCamera} variant="secondary">
+          <CameraIcon size={16} className="inline -mt-0.5" /> {isNative ? "Record Video" : "Open Camera"}
         </Btn>
       )}
       {state === "preview" && (

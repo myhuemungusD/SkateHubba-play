@@ -16,12 +16,21 @@
     "test:e2e": "npx firebase-tools emulators:exec --only auth,firestore,storage --project demo-skatehubba 'npx playwright test'",
     "test:e2e:ui": "npx firebase-tools emulators:exec --only auth,firestore,storage --project demo-skatehubba 'npx playwright test --ui'",
     "emulators": "npx firebase-tools emulators:start --only auth,firestore,storage --project demo-skatehubba",
+    "cap:sync": "npx cap sync",
+    "cap:open:ios": "npx cap open ios",
+    "cap:open:android": "npx cap open android",
+    "cap:run:ios": "npx cap run ios",
+    "cap:run:android": "npx cap run android",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "prepare": "husky"
   },
   "dependencies": {
+    "@capacitor/android": "^8.2.0",
+    "@capacitor/camera": "^8.0.2",
+    "@capacitor/core": "^8.2.0",
+    "@capacitor/ios": "^8.2.0",
     "@sentry/react": "^10.43.0",
     "@vercel/analytics": "^1.6.1",
     "firebase": "^11.0.0",
@@ -32,8 +41,9 @@
     "http-proxy-agent": "^7.0.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.56.1",
+    "@capacitor/cli": "^8.2.0",
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.56.1",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
