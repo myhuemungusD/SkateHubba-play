@@ -265,10 +265,6 @@ describe("GamePlayScreen", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
-    // Review step — must click through before decision buttons appear
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Landed/));
@@ -300,10 +296,6 @@ describe("GamePlayScreen", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
     await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
-
-    // Review step — must click through before self-judge buttons appear
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     // "Did you land it?" appears — matcher self-judges
     await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
@@ -350,10 +342,6 @@ describe("GamePlayScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Landed/));
@@ -380,10 +368,6 @@ describe("GamePlayScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
     // "Did you land it?" appears — click Landed to trigger setTrick
     await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Landed/));
@@ -405,10 +389,6 @@ describe("GamePlayScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
     // "Did you land it?" appears — click Landed to trigger setTrick
     await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Landed/));
@@ -421,7 +401,7 @@ describe("GamePlayScreen", () => {
     expect(screen.queryByText("Network error")).not.toBeInTheDocument();
   });
 
-  it("setter sees review step after recording, then 'Did you land it?' after review", async () => {
+  it("setter sees 'Did you land it?' immediately after recording", async () => {
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
     await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
@@ -431,12 +411,7 @@ describe("GamePlayScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
-    // Review step appears first — decision buttons are NOT yet visible
-    await waitFor(() => expect(screen.getByText("Watch what you just did")).toBeInTheDocument());
-    expect(screen.queryByRole("group", { name: "Did you land the trick?" })).not.toBeInTheDocument();
-
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
+    // Decision buttons appear immediately — no review step
     await waitFor(() => {
       expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument();
       expect(screen.getByText(/Landed/)).toBeInTheDocument();
@@ -455,10 +430,6 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Missed/));
@@ -482,10 +453,6 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Missed/));
@@ -516,10 +483,6 @@ describe("GamePlayScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
     await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Missed/));
 
@@ -539,10 +502,6 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Landed/));
@@ -657,7 +616,7 @@ describe("GamePlayScreen", () => {
     expect(screen.getByText("@rival")).toBeInTheDocument();
   });
 
-  it("matcher sees 'Did you land it?' after reviewing clip (self-judging)", async () => {
+  it("matcher sees 'Did you land it?' immediately after recording (self-judging)", async () => {
     const game = makeGame({
       currentTurn: "u1",
       currentSetter: "u2",
@@ -673,10 +632,6 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     // Self-judge buttons appear
     await waitFor(() => {
