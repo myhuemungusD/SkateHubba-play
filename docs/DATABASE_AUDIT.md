@@ -175,6 +175,12 @@ Deleted games leave orphaned videos in Storage. The codebase documents a `retain
 
 ---
 
+## Follow-Up Audit
+
+A second-pass formal audit was conducted on 2026-03-20 — see **[FIRESTORE_SECURITY_AUDIT.md](./FIRESTORE_SECURITY_AUDIT.md)**. It found that the F1 fix (forfeit deadline) was incomplete: the game *create* rule did not validate `currentTurn`, `turnDeadline`, or `phase`, enabling a variant of the instant-forfeit attack. Additional findings include leaderboard inflation via stats injection and confirmation-flow bypass. All critical/high findings have been fixed.
+
+---
+
 ## Action Items (Prioritized)
 
 1. ~~Deploy Firestore rules fix for F1 (forfeit deadline) — **immediate**~~ ✅ Fixed
