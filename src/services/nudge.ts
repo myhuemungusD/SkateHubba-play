@@ -26,7 +26,7 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
 
   const db = requireDb();
 
-  // Upsert the rate-limit doc (Firestore rules enforce 4h cooldown server-side)
+  // Upsert the rate-limit doc (Firestore rules enforce 1h cooldown server-side)
   const limitId = `${senderUid}_${gameId}`;
   await setDoc(doc(db, "nudge_limits", limitId), { senderUid, gameId, lastNudgedAt: serverTimestamp() });
 
