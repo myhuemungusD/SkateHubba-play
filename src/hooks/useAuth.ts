@@ -4,6 +4,7 @@ import { onAuthChange } from "../services/auth";
 import { getUserProfile, type UserProfile } from "../services/users";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { setUser as setSentryUser } from "../lib/sentry";
 
 interface AuthState {
   loading: boolean;
@@ -48,6 +49,7 @@ export function useAuth(): AuthState {
       logger.debug("use_auth_change", { uid: u?.uid ?? null });
       setUser(u);
       userRef.current = u;
+      setSentryUser(u ? { id: u.uid } : null);
       if (u) {
         // Keep loading=true while we fetch the profile so the routing effect
         // doesn't see a user with no profile and prematurely navigate to

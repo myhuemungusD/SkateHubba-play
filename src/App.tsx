@@ -22,6 +22,25 @@ import { TermsOfService } from "./screens/TermsOfService";
 import { NotFound } from "./screens/NotFound";
 import { ConsentBanner } from "./components/ConsentBanner";
 
+function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
+      <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-4">SKATEHUBBA™</span>
+      <h1 className="font-display text-3xl text-white mb-2">Something went wrong</h1>
+      <p className="font-body text-sm text-[#888] mb-6 text-center max-w-sm">
+        This screen crashed. Your game data is safe.
+      </p>
+      <button
+        type="button"
+        onClick={onBack}
+        className="px-6 py-3 rounded-xl bg-brand-orange text-white font-display tracking-wider focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+      >
+        Back to Lobby
+      </button>
+    </div>
+  );
+}
+
 function FirebaseMissing() {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center">
@@ -162,41 +181,63 @@ function AppRoutes() {
       )}
 
       {ctx.screen === "game" && ctx.activeGame && ctx.activeProfile && (
-        <GamePlayScreen
-          key={ctx.activeGame.turnNumber}
-          game={ctx.activeGame}
-          profile={ctx.activeProfile}
-          onBack={() => {
-            ctx.setActiveGame(null);
-            ctx.setScreen("lobby");
-          }}
-        />
+        <ErrorBoundary
+          fallback={
+            <ScreenErrorFallback
+              onBack={() => {
+                ctx.setActiveGame(null);
+                ctx.setScreen("lobby");
+              }}
+            />
+          }
+        >
+          <GamePlayScreen
+            key={ctx.activeGame.turnNumber}
+            game={ctx.activeGame}
+            profile={ctx.activeProfile}
+            onBack={() => {
+              ctx.setActiveGame(null);
+              ctx.setScreen("lobby");
+            }}
+          />
+        </ErrorBoundary>
       )}
 
       {ctx.screen === "gameover" && ctx.activeGame && ctx.activeProfile && ctx.user && (
-        <GameOverScreen
-          game={ctx.activeGame}
-          profile={ctx.activeProfile}
-          onRematch={
-            ctx.user.emailVerified
-              ? async (): Promise<void> => {
-                  const opponentUid =
-                    ctx.activeGame!.player1Uid === ctx.user!.uid
-                      ? ctx.activeGame!.player2Uid
-                      : ctx.activeGame!.player1Uid;
-                  const opponentName =
-                    ctx.activeGame!.player1Uid === ctx.user!.uid
-                      ? ctx.activeGame!.player2Username
-                      : ctx.activeGame!.player1Username;
-                  await ctx.startChallenge(opponentUid, opponentName);
-                }
-              : undefined
+        <ErrorBoundary
+          fallback={
+            <ScreenErrorFallback
+              onBack={() => {
+                ctx.setActiveGame(null);
+                ctx.setScreen("lobby");
+              }}
+            />
           }
-          onBack={() => {
-            ctx.setActiveGame(null);
-            ctx.setScreen("lobby");
-          }}
-        />
+        >
+          <GameOverScreen
+            game={ctx.activeGame}
+            profile={ctx.activeProfile}
+            onRematch={
+              ctx.user.emailVerified
+                ? async (): Promise<void> => {
+                    const opponentUid =
+                      ctx.activeGame!.player1Uid === ctx.user!.uid
+                        ? ctx.activeGame!.player2Uid
+                        : ctx.activeGame!.player1Uid;
+                    const opponentName =
+                      ctx.activeGame!.player1Uid === ctx.user!.uid
+                        ? ctx.activeGame!.player2Username
+                        : ctx.activeGame!.player1Username;
+                    await ctx.startChallenge(opponentUid, opponentName);
+                  }
+                : undefined
+            }
+            onBack={() => {
+              ctx.setActiveGame(null);
+              ctx.setScreen("lobby");
+            }}
+          />
+        </ErrorBoundary>
       )}
       {ctx.screen === "record" && ctx.activeProfile && (
         <MyRecordScreen
