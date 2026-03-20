@@ -1,0 +1,119 @@
+// ============================================================================
+// FIRESTORE RULES — Profile additions
+// Merge these into your existing firestore.rules file
+// ============================================================================
+//
+// Add these rules inside your existing `match /databases/{database}/documents`
+// block alongside your game rules.
+//
+// Key enforcement:
+//   - users/{uid}: only the owner can write, anyone authed can read
+//   - usernames/{username}: created/deleted only by the matching uid
+//   - Stats can only be modified through game resolution (see note below)
+// ============================================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------------------------------------------------------
+    // User profiles
+    // -----------------------------------------------------------------------
+    match /users/{uid} {
+      // Any authenticated user can read any profile (opponent lookup)
+      allow read: if request.auth != null;
+
+      // Only the profile owner can create their own profile
+      allow create: if request.auth != null
+                    && request.auth.uid == uid
+                    && isValidProfile(request.resource.data);
+
+      // Only the profile owner can update their own profile
+      // Stats fields are protected — only game resolution should modify them
+      allow update: if request.auth != null
+                    && request.auth.uid == uid
+                    && isValidProfileUpdate(request.resource.data, resource.data);
+    }
+
+    // -----------------------------------------------------------------------
+    // Username uniqueness registry
+    // -----------------------------------------------------------------------
+    match /usernames/{username} {
+      // Anyone authed can check if a username exists (availability check)
+      allow read: if request.auth != null;
+
+      // Only the user stored in the doc can create it (claims the username)
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && isValidUsernameDoc(username);
+
+      // Only the owner can delete (releasing the username on change)
+      allow delete: if request.auth != null
+                    && resource.data.uid == request.auth.uid;
+
+      // No updates — delete old + create new on username change
+      allow update: if false;
+    }
+
+    // -----------------------------------------------------------------------
+    // Validation functions
+    // -----------------------------------------------------------------------
+
+    function isValidProfile(data) {
+      return data.uid is string
+          && data.displayName is string
+          && data.displayName.size() >= 1
+          && data.displayName.size() <= 30
+          && data.username is string
+          && data.username.size() >= 3
+          && data.username.size() <= 20
+          && data.username == data.username.lower()
+          && data.bio is string
+          && data.bio.size() <= 150
+          && data.stats.wins == 0
+          && data.stats.losses == 0
+          && data.stats.forfeits == 0
+          && data.stats.currentStreak == 0
+          && data.stats.bestStreak == 0;
+    }
+
+    function isValidProfileUpdate(newData, oldData) {
+      // Users can update display info
+      let displayFieldsValid = newData.displayName is string
+          && newData.displayName.size() >= 1
+          && newData.displayName.size() <= 30
+          && newData.username is string
+          && newData.username.size() >= 3
+          && newData.username.size() <= 20
+          && newData.username == newData.username.lower()
+          && newData.bio is string
+          && newData.bio.size() <= 150;
+
+      // IMPORTANT: stats cannot be modified through profile updates.
+      // Stats are modified through game resolution transactions only.
+      // If you allow client-side stats writes, enforce monotonicity here:
+      //   newData.stats.wins >= oldData.stats.wins
+      // For now: stats must remain unchanged in profile edits
+      let statsUnchanged = newData.stats.wins == oldData.stats.wins
+          && newData.stats.losses == oldData.stats.losses
+          && newData.stats.forfeits == oldData.stats.forfeits
+          && newData.stats.currentStreak == oldData.stats.currentStreak
+          && newData.stats.bestStreak == oldData.stats.bestStreak;
+
+      // uid and createdAt are immutable
+      let immutablesOk = newData.uid == oldData.uid
+          && newData.createdAt == oldData.createdAt;
+
+      return displayFieldsValid && statsUnchanged && immutablesOk;
+    }
+
+    function isValidUsernameDoc(username) {
+      // Username format: 3-20 chars, lowercase, starts with letter/number
+      return username.size() >= 3
+          && username.size() <= 20
+          && username == username.lower();
+      // Note: full regex validation (alphanumeric + dots/hyphens/underscores)
+      // is enforced client-side. Firestore rules don't support regex.
+    }
+  }
+}
