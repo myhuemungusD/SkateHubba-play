@@ -107,7 +107,7 @@ export function Lobby({
             </div>
             <span className="font-body text-xs text-brand-orange">@{profile.username}</span>
           </div>
-          <NotificationBell />
+          <NotificationBell games={games} onOpenGame={onOpenGame} />
           <button
             type="button"
             onClick={onSignOut}
