@@ -2,6 +2,8 @@
 // Firebase Cloud Messaging service worker for background push notifications.
 // Must live at the root of the public directory so the browser registers it
 // with the correct scope.
+//
+// ⚠️  Keep the CDN version below in sync with the `firebase` version in package.json.
 importScripts("https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js");
 
