@@ -317,12 +317,11 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(confirmingGame));
 
       const result = await submitConfirmation("g1", "p1", true);
-      expect(result.resolved).toBe(true);
+
       expect(result.gameOver).toBe(false);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.setterConfirm).toBe(true);
-      expect(updates.matcherConfirm).toBeNull();
       expect(updates.p1Letters).toBe(0);
       expect(updates.p2Letters).toBe(0);
       expect(updates.phase).toBe("setting");
@@ -334,7 +333,6 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(confirmingGame));
 
       const result = await submitConfirmation("g1", "p1", false);
-      expect(result.resolved).toBe(true);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       // p2 is matcher and gets a letter since setter said missed
@@ -375,7 +373,6 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       const result = await submitConfirmation("g1", "p1", false);
-      expect(result.resolved).toBe(true);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.turnNumber).toBe(4);

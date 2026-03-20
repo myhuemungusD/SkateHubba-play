@@ -252,7 +252,7 @@ export async function submitConfirmation(
   gameId: string,
   playerUid: string,
   landed: boolean,
-): Promise<{ gameOver: boolean; winner: string | null; resolved: boolean }> {
+): Promise<{ gameOver: boolean; winner: string | null }> {
   const gameRef = doc(requireDb(), "games", gameId);
 
   return runTransaction(requireDb(), async (tx) => {
@@ -269,25 +269,21 @@ export async function submitConfirmation(
 
     const matcherUid = getOpponent(game, game.currentSetter);
 
-    // Setter's decision immediately resolves the turn
-    const trickLanded = landed;
-
     const isP1Matcher = matcherUid === game.player1Uid;
     let newP1Letters = game.p1Letters;
     let newP2Letters = game.p2Letters;
 
-    if (!trickLanded) {
+    if (!landed) {
       if (isP1Matcher) newP1Letters++;
       else newP2Letters++;
     }
 
     const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
     const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
-    const nextSetter = trickLanded ? matcherUid : game.currentSetter;
+    const nextSetter = landed ? matcherUid : game.currentSetter;
 
     const updates: Record<string, unknown> = {
       setterConfirm: landed,
-      matcherConfirm: null,
       updatedAt: serverTimestamp(),
     };
 
@@ -307,8 +303,8 @@ export async function submitConfirmation(
       matcherUsername: matcherUsernameVal,
       setVideoUrl: game.currentTrickVideoUrl,
       matchVideoUrl: game.matchVideoUrl,
-      landed: trickLanded,
-      letterTo: trickLanded ? null : matcherUid,
+      landed,
+      letterTo: landed ? null : matcherUid,
     };
     updates.turnHistory = arrayUnion(turnRecord);
 
@@ -316,13 +312,8 @@ export async function submitConfirmation(
       updates.status = "complete";
       updates.winner = winner;
     } else {
-      // Reset to setting phase for the next trick round.
-      // Note: we intentionally do NOT reset currentTrickName, currentTrickVideoUrl,
-      // or matchVideoUrl here. The Firestore confirmation rule locks those fields
-      // to prevent manipulation during votes, and resetting them would violate
-      // those locks. These stale values are harmless in the setting phase and are
-      // properly cleared by subsequent phase transitions (setTrick resets
-      // videos/trick, submitMatchAttempt resets confirms).
+      // Back to setting phase. Stale trick/video fields are harmless here
+      // and get cleared by the next setTrick / submitMatchAttempt call.
       updates.phase = "setting";
       updates.currentSetter = nextSetter;
       updates.currentTurn = nextSetter;
@@ -331,7 +322,7 @@ export async function submitConfirmation(
     }
 
     tx.update(gameRef, updates);
-    return { gameOver, winner, resolved: true };
+    return { gameOver, winner };
   });
 }
 

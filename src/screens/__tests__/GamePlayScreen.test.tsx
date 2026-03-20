@@ -650,7 +650,7 @@ describe("GamePlayScreen", () => {
   });
 
   it("confirming phase vote calls submitConfirmation (setter)", async () => {
-    mockSubmitConfirmation.mockResolvedValueOnce({ gameOver: false, winner: null, resolved: true });
+    mockSubmitConfirmation.mockResolvedValueOnce({ gameOver: false, winner: null });
 
     const game = makeGame({
       phase: "confirming",
