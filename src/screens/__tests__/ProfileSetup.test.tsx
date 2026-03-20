@@ -148,7 +148,7 @@ describe("ProfileSetup", () => {
     await fillUsernameAndAdvance();
 
     await userEvent.click(screen.getByText("Goofy"));
-    expect(screen.getByText("Goofy").closest("button")!.className).toContain("brand-orange");
+    expect(screen.getByRole("radio", { name: /Goofy/ })).toHaveAttribute("aria-checked", "true");
   });
 
   it("back button on step 2 returns to step 1", async () => {
