@@ -347,7 +347,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                 <p className="font-body text-xs text-[#888] mt-2 text-center">They&apos;ll get a push notification</p>
               )}
               {!nudgeAvailable && nudgeStatus !== "sent" && (
-                <p className="font-body text-xs text-[#666] mt-2 text-center">Nudge available every 4 hours</p>
+                <p className="font-body text-xs text-[#666] mt-2 text-center">Nudge available every hour</p>
               )}
             </div>
           )}

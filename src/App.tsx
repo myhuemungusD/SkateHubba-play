@@ -76,6 +76,18 @@ function AppRoutes() {
     [ctx],
   );
 
+  // Deep-link into a game when a push notification is tapped (service worker postMessage)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const gameId = (e as CustomEvent).detail?.gameId;
+      if (!gameId || !ctx.games) return;
+      const game = ctx.games.find((g) => g.id === gameId);
+      if (game) ctx.openGame(game);
+    };
+    window.addEventListener("skatehubba:open-game", handler);
+    return () => window.removeEventListener("skatehubba:open-game", handler);
+  }, [ctx.games, ctx.openGame]);
+
   return (
     <>
       {ctx.screen === "landing" && (

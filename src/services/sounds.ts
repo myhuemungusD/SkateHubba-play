@@ -5,7 +5,7 @@
  * Sound preference is persisted to localStorage.
  */
 
-export type ChimeType = "your_turn" | "new_challenge" | "game_won" | "game_lost" | "general";
+export type ChimeType = "your_turn" | "new_challenge" | "game_won" | "game_lost" | "nudge" | "general";
 
 const STORAGE_KEY = "skate_sound_enabled";
 
@@ -82,6 +82,12 @@ function chimeGameLost() {
   ping(261.63, 0.35, "sine", 0.12, 0.14);
 }
 
+function chimeNudge() {
+  // Urgent double-knock (D5, F#5) — distinct from other chimes, grabs attention
+  ping(587.33, 0.12, "triangle", 0.2, 0);
+  ping(739.99, 0.18, "triangle", 0.2, 0.14);
+}
+
 function chimeGeneral() {
   // Subtle single ping (A5)
   ping(880, 0.18, "sine", 0.13, 0);
@@ -92,6 +98,7 @@ const chimeMap: Record<ChimeType, () => void> = {
   new_challenge: chimeNewChallenge,
   game_won: chimeGameWon,
   game_lost: chimeGameLost,
+  nudge: chimeNudge,
   general: chimeGeneral,
 };
 

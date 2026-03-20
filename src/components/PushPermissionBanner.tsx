@@ -28,7 +28,7 @@ export function PushPermissionBanner({ uid }: { uid: string }) {
         <div className="min-w-0">
           <p className="font-display text-sm text-white mb-1">Enable push notifications?</p>
           <p className="font-body text-xs text-[#888]">
-            Get notified when it&apos;s your turn or when someone nudges you.
+            Get notified when it&apos;s your turn, when you receive a challenge, and when games end.
           </p>
         </div>
         <button

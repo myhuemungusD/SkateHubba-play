@@ -38,7 +38,7 @@ describe("canNudge", () => {
   });
 
   it("returns true after cooldown expires", () => {
-    localStorage.setItem("nudge_g1", String(Date.now() - 4 * 60 * 60 * 1000 - 1));
+    localStorage.setItem("nudge_g1", String(Date.now() - 1 * 60 * 60 * 1000 - 1));
     expect(canNudge("g1")).toBe(true);
   });
 });
@@ -80,7 +80,7 @@ describe("sendNudge", () => {
 
   it("throws when nudged within cooldown", async () => {
     localStorage.setItem("nudge_g1", String(Date.now()));
-    await expect(sendNudge(params)).rejects.toThrow("once every 4 hours");
+    await expect(sendNudge(params)).rejects.toThrow("once per hour");
   });
 
   it("does not write to localStorage when cooldown check fails", async () => {

@@ -64,6 +64,11 @@ vi.mock("../services/games", () => ({
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
 }));
+vi.mock("../services/fcm", () => ({
+  requestPushPermission: vi.fn().mockResolvedValue(null),
+  removeFcmToken: vi.fn().mockResolvedValue(undefined),
+  onForegroundMessage: vi.fn(() => vi.fn()),
+}));
 vi.mock("../firebase", () => ({
   firebaseReady: true,
   auth: { currentUser: null },
