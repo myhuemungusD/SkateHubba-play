@@ -353,6 +353,17 @@ describe("games service", () => {
       expect(record.letterTo).toBeNull();
     });
 
+    it("uses 'Trick' fallback when currentTrickName is null", async () => {
+      const game = { ...matchingGame, currentTrickName: null };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await submitMatchAttempt("g1", null, true);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      const record = updates.turnHistory._arrayUnion[0];
+      expect(record.trickName).toBe("Trick");
+    });
+
     it("throws when game is not found", async () => {
       mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
       await expect(submitMatchAttempt("g1", null, true)).rejects.toThrow("Game not found");
