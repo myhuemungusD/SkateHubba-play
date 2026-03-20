@@ -121,6 +121,7 @@ export function AuthScreen({
             submit();
           }}
           noValidate
+          aria-busy={googleLoading || undefined}
           className={`transition-opacity duration-200 ${googleLoading ? "opacity-40 pointer-events-none" : ""}`}
         >
           <Field

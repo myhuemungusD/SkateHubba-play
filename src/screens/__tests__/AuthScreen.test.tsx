@@ -129,7 +129,8 @@ describe("AuthScreen", () => {
   it("form has reduced opacity when googleLoading", () => {
     render(<AuthScreen {...defaultProps} googleLoading={true} />);
     const form = screen.getByPlaceholderText("you@email.com").closest("form");
-    expect(form?.className).toContain("opacity-40");
+    expect(form).toHaveAttribute("aria-busy", "true");
+    expect(form).toHaveClass("opacity-40");
   });
 
   it("displays googleError", () => {

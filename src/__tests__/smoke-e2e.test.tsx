@@ -876,8 +876,8 @@ describe("Smoke Test: Game E2E", () => {
     // Click Goofy
     await userEvent.click(goofyBtn);
 
-    // Goofy should now be highlighted (has brand-orange in class)
-    expect(goofyBtn.closest("button")!.className).toContain("brand-orange");
+    // Goofy should now be selected
+    expect(screen.getByRole("radio", { name: /Goofy/ })).toHaveAttribute("aria-checked", "true");
   });
 
   /* ── 27. Profile setup: successful submission ── */
@@ -1036,8 +1036,8 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     expect(screen.getByText("SKATEHUBBA™")).toBeInTheDocument();
-    // Spinner has a spinning div
-    expect(document.querySelector(".animate-spin")).toBeTruthy();
+    // Spinner renders an accessible loading status
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
   });
 
   /* ── 36. Firebase not configured screen ── */
