@@ -110,7 +110,7 @@ describe("GamePlayScreen", () => {
   it("setter UI shows trick name input and phase banner", () => {
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
-    expect(screen.getByText("Name your trick")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
     expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
     expect(screen.getByText("Name your trick to start recording")).toBeInTheDocument();
   });
@@ -244,7 +244,7 @@ describe("GamePlayScreen", () => {
     const p2Profile = { ...profile, uid: "u2", username: "rival" };
     render(<GamePlayScreen game={game} profile={p2Profile} onBack={vi.fn()} />);
 
-    expect(screen.getByText("Name your trick")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
   });
 
   it("setter uploads video blob when recording produces data (covers uploadVideo line)", async () => {
