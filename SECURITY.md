@@ -81,6 +81,22 @@ The Firestore security rules treat the client as untrusted. Any attempt to manip
 
 ---
 
+## CI Pipeline & Branch Protection
+
+The `main` branch is protected by GitHub branch protection rules and automated CI guards. These were introduced after unsupervised AI agents pushed unauthorized changes (rewritten game logic, unapproved Cloud Functions) directly to `main`.
+
+Key safeguards:
+
+- **All changes to `main` must go through a pull request** with at least one CODEOWNER approval
+- **Required CI checks** must pass: lint, type check, tests, build
+- **Cloud Functions guard**: a CI job rejects PRs that introduce new Cloud Functions code
+- **Workflow change detection**: modifications to `.github/workflows/` are flagged for manual review
+- **Force pushes and branch deletion are blocked** on `main`
+
+Full configuration details: [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md)
+
+---
+
 ## Future Hardening
 
 These are low-priority improvements identified during the auth security audit (March 2026). None are vulnerabilities — they are defense-in-depth opportunities:

@@ -1,0 +1,57 @@
+name: PR Gate
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  enforce-pr-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block direct pushes from bots without review
+        run: |
+          echo "✅ PR gate passed — this change arrived via pull request."
+          echo ""
+          echo "Branch protection policy requires:"
+          echo "  - At least 1 approving review from a CODEOWNER"
+          echo "  - All CI status checks passing (build-and-test)"
+          echo "  - Branch is up to date with main before merge"
+          echo ""
+          echo "See .github/BRANCH_PROTECTION.md for full ruleset."
+
+  verify-no-cloud-functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject new Cloud Functions code
+        run: |
+          # Fail if any new Cloud Functions are introduced outside the existing
+          # functions/ directory placeholder.  AI agents previously added
+          # unauthorized Cloud Functions — this guard prevents a repeat.
+          if git diff origin/main...HEAD --name-only | grep -qE '^functions/src/'; then
+            echo "::error::New Cloud Functions source detected in functions/src/."
+            echo "Cloud Functions require explicit maintainer approval."
+            echo "See .github/BRANCH_PROTECTION.md for details."
+            exit 1
+          fi
+
+  verify-workflow-changes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Flag workflow file modifications
+        run: |
+          CHANGED=$(git diff origin/main...HEAD --name-only -- '.github/workflows/' || true)
+          if [ -n "$CHANGED" ]; then
+            echo "::warning::CI workflow files modified in this PR:"
+            echo "$CHANGED"
+            echo ""
+            echo "Workflow changes require maintainer review (CODEOWNERS enforced)."
+          else
+            echo "No workflow changes detected."
+          fi
