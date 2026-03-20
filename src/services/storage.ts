@@ -25,7 +25,11 @@ export async function uploadVideo(
   onProgress?: (progress: UploadProgress) => void,
   maxRetries = 2,
 ): Promise<string> {
-  const path = `games/${gameId}/turn-${turnNumber}/${role}.webm`;
+  // Determine file extension from the blob's MIME type.
+  // Native (Capacitor) recordings produce mp4; web recordings produce webm.
+  const ext = blob.type.includes("mp4") ? "mp4" : "webm";
+  const contentType = ext === "mp4" ? "video/mp4" : "video/webm";
+  const path = `games/${gameId}/turn-${turnNumber}/${role}.${ext}`;
   const storageRef = ref(requireStorage(), path);
   const startTime = Date.now();
 
@@ -33,7 +37,7 @@ export async function uploadVideo(
     try {
       const url = await new Promise<string>((resolve, reject) => {
         const task = uploadBytesResumable(storageRef, blob, {
-          contentType: "video/webm",
+          contentType,
           customMetadata: {
             gameId,
             turn: String(turnNumber),

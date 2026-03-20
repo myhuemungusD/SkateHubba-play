@@ -13,3 +13,7 @@ coverage
 playwright-report
 playwright/.auth
 test-results
+
+# Capacitor native platforms (generated — rebuild with `npm run cap:sync`)
+ios
+android
