@@ -319,7 +319,9 @@ export function GameNotificationWatcher() {
             initialNotifIdsRef.current.add(change.doc.id);
 
             // Mark as read so it doesn't re-fire (best-effort)
-            updateDoc(firestoreDoc(db, "notifications", change.doc.id), { read: true }).catch(() => {});
+            if (db) {
+              updateDoc(firestoreDoc(db, "notifications", change.doc.id), { read: true }).catch(() => {});
+            }
           }
         }
 
