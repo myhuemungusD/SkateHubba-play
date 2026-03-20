@@ -11,6 +11,7 @@ import type * as SentryTypes from "@sentry/react";
 type SentryInitConfig = Parameters<typeof SentryTypes.init>[0];
 type AddBreadcrumbArg = Parameters<typeof SentryTypes.addBreadcrumb>[0];
 type CaptureExceptionArg = Parameters<typeof SentryTypes.captureException>[1];
+type SentryUser = Parameters<typeof SentryTypes.setUser>[0];
 
 let sdk: typeof SentryTypes | null = null;
 
@@ -29,4 +30,12 @@ export function captureMessage(msg: string, level?: SentryTypes.SeverityLevel): 
 
 export function addBreadcrumb(crumb: AddBreadcrumbArg): void {
   sdk?.addBreadcrumb(crumb);
+}
+
+export function setUser(user: SentryUser): void {
+  sdk?.setUser(user);
+}
+
+export function setTag(key: string, value: string): void {
+  sdk?.setTag(key, value);
 }
