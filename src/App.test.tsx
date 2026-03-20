@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 
 /* ── mock hooks/services ────────────────────── */
@@ -68,8 +69,12 @@ import App from "./App";
 
 beforeEach(() => vi.clearAllMocks());
 
-function renderApp() {
-  return render(<App />);
+function renderApp(initialRoute = "/") {
+  return render(
+    <MemoryRouter initialEntries={[initialRoute]}>
+      <App />
+    </MemoryRouter>,
+  );
 }
 
 /* ── Tests ──────────────────────────────────── */
@@ -154,6 +159,45 @@ describe("App", () => {
     renderApp();
     await waitFor(() => {
       expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
+    });
+  });
+
+  it("renders the privacy page at /privacy", async () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/privacy");
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /Privacy Policy/i })).toBeInTheDocument();
+    });
+  });
+
+  it("renders the terms page at /terms", async () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/terms");
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /Terms of Service/i })).toBeInTheDocument();
+    });
+  });
+
+  it("renders 404 for unknown paths", async () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/nonexistent-page");
+    await waitFor(() => {
+      expect(screen.getByText("BAIL!")).toBeInTheDocument();
     });
   });
 });

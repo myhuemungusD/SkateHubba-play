@@ -356,9 +356,14 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
 
 /**
  * Subscribe to all games where the user is a player.
+ * @param limitCount — max number of games per query (defaults to 20).
  * Returns unsubscribe function.
  */
-export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => void): Unsubscribe {
+export function subscribeToMyGames(
+  uid: string,
+  onUpdate: (games: GameDoc[]) => void,
+  limitCount: number = 20,
+): Unsubscribe {
   // Firestore doesn't support OR queries across different fields natively,
   // so we run two queries and merge.
   let p1Games: GameDoc[] = [];
@@ -377,8 +382,8 @@ export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => 
     onUpdate(sorted);
   };
 
-  const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(50));
-  const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(50));
+  const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(limitCount));
+  const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(limitCount));
 
   const handleError = (err: Error) => {
     console.warn("Game subscription error for uid:", uid, err.message);

@@ -38,6 +38,9 @@ export function Lobby({
   onDeleteAccount,
   onViewRecord,
   user,
+  hasMoreGames = false,
+  onLoadMore,
+  gamesLoading = false,
 }: {
   profile: UserProfile;
   games: GameDoc[];
@@ -48,6 +51,9 @@ export function Lobby({
   onDeleteAccount: () => Promise<void>;
   onViewRecord: () => void;
   user: { emailVerified?: boolean } | null;
+  hasMoreGames?: boolean;
+  onLoadMore?: () => void;
+  gamesLoading?: boolean;
 }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -356,6 +362,20 @@ export function Lobby({
               <p className="font-body text-xs text-[#666]">No finished games yet</p>
               <p className="font-body text-[11px] text-[#555] mt-0.5">Complete a game to see your results here</p>
             </div>
+          </div>
+        )}
+
+        {/* Load More */}
+        {hasMoreGames && games.length > 0 && (
+          <div className="flex justify-center mb-6">
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={gamesLoading}
+              className="px-6 py-2.5 rounded-xl border border-border bg-surface font-display text-sm tracking-wider text-brand-orange hover:border-[#3A3A3A] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              {gamesLoading ? "Loading..." : "Load More Games"}
+            </button>
           </div>
         )}
 

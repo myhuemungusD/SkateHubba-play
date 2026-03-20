@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
 import { deleteUserData, updatePlayerStats } from "../services/users";
@@ -24,6 +25,47 @@ export type Screen =
   | "datadeletion"
   | "notfound";
 
+/** Map screen names to URL paths. */
+const SCREEN_TO_PATH: Record<Screen, string> = {
+  landing: "/",
+  agegate: "/age-gate",
+  auth: "/auth",
+  profile: "/profile",
+  lobby: "/lobby",
+  challenge: "/challenge",
+  game: "/game",
+  gameover: "/gameover",
+  record: "/record",
+  privacy: "/privacy",
+  terms: "/terms",
+  datadeletion: "/data-deletion",
+  notfound: "/404",
+};
+
+/** Map URL paths back to screen names. */
+const PATH_TO_SCREEN: Record<string, Screen> = Object.fromEntries(
+  Object.entries(SCREEN_TO_PATH).map(([s, p]) => [p, s as Screen]),
+) as Record<string, Screen>;
+
+export function pathToScreen(pathname: string): Screen {
+  return PATH_TO_SCREEN[pathname] ?? "notfound";
+}
+
+export function screenToPath(screen: Screen): string {
+  return SCREEN_TO_PATH[screen];
+}
+
+/** Screens that don't require authentication. */
+const PUBLIC_SCREENS: ReadonlySet<Screen> = new Set([
+  "landing",
+  "agegate",
+  "auth",
+  "privacy",
+  "terms",
+  "datadeletion",
+  "notfound",
+]);
+
 interface GameContextValue {
   // Auth
   loading: boolean;
@@ -46,6 +88,11 @@ interface GameContextValue {
   openGame: (g: GameDoc) => void;
   startChallenge: (opponentUid: string, opponentUsername: string) => Promise<void>;
 
+  // Pagination
+  hasMoreGames: boolean;
+  loadMoreGames: () => void;
+  gamesLoading: boolean;
+
   // Navigation
   screen: Screen;
   setScreen: (s: Screen) => void;
@@ -66,10 +113,24 @@ export function useGameContext(): GameContextValue {
   return ctx;
 }
 
+/** How many games to load per page in the real-time subscription. */
+const GAMES_PAGE_SIZE = 20;
+
 export function GameProvider({ children }: { children: ReactNode }) {
   const { loading, user, profile, refreshProfile } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const [screen, setScreen] = useState<Screen>("landing");
+  const screen = pathToScreen(location.pathname);
+
+  const setScreen = useCallback(
+    (s: Screen) => {
+      const path = screenToPath(s);
+      navigate(path);
+    },
+    [navigate],
+  );
+
   const [games, setGames] = useState<GameDoc[]>([]);
   const [activeGame, setActiveGame] = useState<GameDoc | null>(null);
   const [activeProfile, setActiveProfile] = useState<UserProfile | null>(null);
@@ -78,6 +139,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
   const [ageGateDob, setAgeGateDob] = useState<string | null>(null);
   const [ageGateParentalConsent, setAgeGateParentalConsent] = useState(false);
+
+  // Pagination state
+  const [gamesLimit, setGamesLimit] = useState(GAMES_PAGE_SIZE);
+  const [hasMoreGames, setHasMoreGames] = useState(false);
+  const [gamesLoading, setGamesLoading] = useState(false);
+
+  const loadMoreGames = useCallback(() => {
+    setGamesLoading(true);
+    setGamesLimit((prev) => prev + GAMES_PAGE_SIZE);
+  }, []);
 
   const setAgeGateResult = useCallback((dob: string, parentalConsent: boolean) => {
     setAgeGateDob(dob);
@@ -108,6 +179,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setAuthMode("signin");
         setScreen("auth");
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, []);
 
   const handleGoogleSignIn = useCallback(async () => {
@@ -166,7 +238,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     } finally {
       setGoogleLoading(false);
     }
-  }, [screen]);
+  }, [screen, setScreen]);
 
   // Sync profile
   useEffect(() => {
@@ -179,7 +251,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       logger.debug("auth_router_waiting", { loading: true });
       return;
     }
+    const currentScreen = pathToScreen(location.pathname);
     if (!user) {
+      // Allow unauthenticated users to stay on public screens
+      if (PUBLIC_SCREENS.has(currentScreen)) {
+        logger.debug("auth_router_public_screen", { screen: currentScreen });
+        return;
+      }
       logger.debug("auth_router_no_user", { target: "landing" });
       setScreen("landing");
       return;
@@ -189,18 +267,20 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setScreen("profile");
       return;
     }
-    setScreen((prev) => {
-      const next = prev === "landing" || prev === "auth" || prev === "profile" ? "lobby" : prev;
-      logger.debug("auth_router_resolved", { uid: user.uid, username: activeProfile.username, from: prev, to: next });
-      return next;
-    });
-  }, [loading, user, activeProfile]);
+    const next = currentScreen === "landing" || currentScreen === "auth" || currentScreen === "profile" ? "lobby" : currentScreen;
+    logger.debug("auth_router_resolved", { uid: user.uid, username: activeProfile.username, from: currentScreen, to: next });
+    if (next !== currentScreen) {
+      setScreen(next);
+    }
+  }, [loading, user, activeProfile, setScreen, location.pathname]);
 
-  // Subscribe to games list
+  // Subscribe to games list with pagination
   useEffect(() => {
     if (!user || !activeProfile) return;
+    setGamesLoading(true);
     const unsub = subscribeToMyGames(user.uid, (updatedGames) => {
       setGames(updatedGames);
+      setGamesLoading(false);
       // Catch up on stats for games that completed while user was away
       for (const g of updatedGames) {
         if ((g.status === "complete" || g.status === "forfeit") && g.winner && !processedStatsRef.current.has(g.id)) {
@@ -215,9 +295,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
           });
         }
       }
-    });
+    }, gamesLimit);
     return unsub;
-  }, [user, activeProfile]);
+  }, [user, activeProfile, gamesLimit]);
+
+  // Track whether there are more games to load
+  useEffect(() => {
+    // If we received exactly the limit, there are likely more
+    setHasMoreGames(games.length >= gamesLimit);
+  }, [games.length, gamesLimit]);
 
   // Track which games have already had stats recorded this session
   const processedStatsRef = useRef(new Set<string>());
@@ -268,7 +354,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setActiveGame(null);
     setAuthMode("signup");
     setScreen("landing");
-  }, []);
+  }, [setScreen]);
 
   const handleDeleteAccount = useCallback(async () => {
     /* v8 ignore start */
@@ -315,16 +401,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setGames([]);
     setActiveGame(null);
     setScreen("landing");
-  }, [activeProfile]);
+  }, [activeProfile, setScreen]);
 
-  const openGame = useCallback((g: GameDoc) => {
-    setActiveGame(g);
-    if (g.status === "complete" || g.status === "forfeit") {
-      setScreen("gameover");
-    } else {
-      setScreen("game");
-    }
-  }, []);
+  const openGame = useCallback(
+    (g: GameDoc) => {
+      setActiveGame(g);
+      if (g.status === "complete" || g.status === "forfeit") {
+        setScreen("gameover");
+      } else {
+        setScreen("game");
+      }
+    },
+    [setScreen],
+  );
 
   const startChallenge = useCallback(
     async (opponentUid: string, opponentUsername: string) => {
@@ -337,7 +426,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setActiveGame(shell);
       setScreen("game");
     },
-    [user, activeProfile],
+    [user, activeProfile, setScreen],
   );
 
   const value: GameContextValue = {
@@ -358,6 +447,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setActiveGame,
     openGame,
     startChallenge,
+    hasMoreGames,
+    loadMoreGames,
+    gamesLoading,
     screen,
     setScreen,
     authMode,
