@@ -197,7 +197,7 @@ export function NotificationBell({
                   </button>
                 );
               }))
-            )}
+            }
           </div>
 
           {/* Footer */}

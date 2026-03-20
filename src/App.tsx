@@ -51,7 +51,7 @@ function AppScreens() {
 function AppRoutes() {
   const ctx = useGameContext();
   const [challengeTarget, setChallengeTarget] = useState("");
-  const [directChallengeError, setDirectChallengeError] = useState("");
+  const [, setDirectChallengeError] = useState("");
 
   const directChallenge = useCallback(
     async (username: string) => {
