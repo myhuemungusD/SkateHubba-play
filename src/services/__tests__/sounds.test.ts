@@ -125,6 +125,11 @@ describe("sounds service", () => {
       expect(() => playChime("game_lost")).not.toThrow();
     });
 
+    it("plays nudge chime", async () => {
+      const { playChime } = await freshSounds();
+      expect(() => playChime("nudge")).not.toThrow();
+    });
+
     it("plays general chime", async () => {
       const { playChime } = await freshSounds();
       expect(() => playChime("general")).not.toThrow();
