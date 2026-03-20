@@ -103,6 +103,23 @@ beforeEach(() => vi.clearAllMocks());
 
 /* ── Helpers ─────────────────────────────────── */
 
+/** Fill the age gate with a valid adult DOB and advance to auth. */
+async function passAgeGate() {
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
+  });
+  const monthInput = screen.getByLabelText("Birth month");
+  const dayInput = screen.getByLabelText("Birth day");
+  const yearInput = screen.getByLabelText("Birth year");
+  await userEvent.type(monthInput, "01");
+  await userEvent.type(dayInput, "15");
+  await userEvent.type(yearInput, "2000");
+  await userEvent.click(screen.getByText("Continue"));
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+  });
+}
+
 const authedUser = { uid: "u1", email: "sk8r@test.com", emailVerified: false };
 const verifiedUser = { uid: "u1", email: "sk8r@test.com", emailVerified: true };
 const profile = { uid: "u1", username: "sk8r", stance: "regular" };
@@ -178,7 +195,7 @@ function renderVerifiedLobby(games: ReturnType<typeof activeGame>[] = []) {
 describe("Smoke Test: Game E2E", () => {
   /* ── 1. Landing → Auth navigation ─────────── */
 
-  it("landing page renders and navigates to sign-up", async () => {
+  it("landing page renders and navigates to age gate then sign-up", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
@@ -187,6 +204,10 @@ describe("Smoke Test: Game E2E", () => {
     expect(screen.getByText("I Have an Account")).toBeInTheDocument();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    expect(screen.getByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
+
+    // Pass through age gate
+    await passAgeGate();
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
   });
 
@@ -205,6 +226,7 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -648,6 +670,7 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -665,6 +688,7 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -683,6 +707,7 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -725,13 +750,14 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
 
     // Toggle to sign-in
     await userEvent.click(screen.getByText("Already have an account?"));
     expect(screen.getByText("Welcome Back")).toBeInTheDocument();
 
-    // Toggle back to sign-up
+    // Toggle back to sign-up — age gate already passed, goes directly to signup
     await userEvent.click(screen.getByText("Need an account?"));
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
   });
@@ -923,7 +949,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false, undefined, false);
     });
   });
 
@@ -1125,6 +1151,7 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -1173,6 +1200,7 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     await userEvent.type(emailInput, "bad");
@@ -1197,6 +1225,7 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
@@ -2015,6 +2044,7 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "google@test.com");
     const pws = screen.getAllByPlaceholderText(/•/);
@@ -2617,8 +2647,9 @@ describe("Smoke Test: Game E2E", () => {
     mockSignInWithGoogle.mockRejectedValueOnce(new Error("Network error"));
     renderApp();
 
-    // Navigate to auth screen
+    // Navigate to auth screen via age gate
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
     await waitFor(() => expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument());
 
     // Click Google sign-in — should show error but stay on auth screen
@@ -2640,6 +2671,7 @@ describe("Smoke Test: Game E2E", () => {
     renderApp();
 
     await userEvent.click(screen.getByText("Get Started with Email"));
+    await passAgeGate();
     await waitFor(() => expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument());
 
     await userEvent.click(screen.getByText(/Continue with Google/));
