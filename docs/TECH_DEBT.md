@@ -199,11 +199,33 @@ This is a transitive dependency override likely for a security fix. If the upstr
 
 **Recommendation:** Check if the override is still needed. Remove if upstream dependency has been updated.
 
-### 15. STL Asset Storage Undocumented (DEC-002)
+### 15. Firebase Messaging SW Version Hardcoded
+
+**Location:** `public/firebase-messaging-sw.js`
+
+The service worker imports a hardcoded Firebase v11.0.0 CDN URL, but `package.json` specifies `^11.0.0` which resolves to a newer patch. This can cause version mismatch bugs between the SW and the app bundle.
+
+**Recommendation:** Dynamically inject the Firebase version at build time, or pin the SW import to match the resolved lockfile version.
+
+### 16. `.lighthouserc.json` Not Wired into CI
+
+**Location:** `.lighthouserc.json`, `.github/workflows/main.yml`
+
+A Lighthouse CI config exists (performance >=0.8, accessibility >=0.9) but the `main.yml` workflow's Lighthouse job may not be fully integrated.
+
+**Recommendation:** Verify Lighthouse CI runs on every PR and fails the gate if thresholds regress.
+
+### 17. No `.nvmrc` File
+
+No `.nvmrc` exists at the project root. CI uses Node 22 and `package.json` specifies `>=22`, but local developer environments have no enforcement.
+
+**Recommendation:** Add `.nvmrc` with `22` for consistency across developer machines.
+
+### 18. STL Asset Storage Undocumented (DEC-002)
 
 Already tracked in `docs/DECISIONS.md`. Needs resolution to prevent asset loss.
 
-### 16. Deferred Landing Page Features (DEC-001)
+### 19. Deferred Landing Page Features (DEC-001)
 
 Autoplay hero video and custom fonts. Already documented — revisit when design resources are available.
 
@@ -222,7 +244,7 @@ Autoplay hero video and custom fonts. Already documented — revisit when design
 | Husky + lint-staged | Configured for pre-commit checks |
 | CI pipeline | 3 workflows (main, PR gate, release) with lint/typecheck/test/build |
 
-**Notable:** Dependencies are reasonably up-to-date. No known critical vulnerabilities detected in the direct dependency list.
+**Notable:** Dependencies are reasonably up-to-date. `npm audit` reports 0 vulnerabilities. GitHub Dependabot flags 2 (1 moderate, 1 low) on the default branch — likely transitive. Seven major-version upgrades are available (Vite 8, Tailwind 4, ESLint 10, React 19, etc.) but none are urgent.
 
 ---
 
@@ -243,6 +265,9 @@ Autoplay hero video and custom fonts. Already documented — revisit when design
 | P3 | Add React.lazy code splitting | Small | Low — improves initial load time |
 | P3 | Type environment variables | Small | Low — prevents runtime config errors |
 | P3 | Audit package.json overrides | Small | Low — removes stale workarounds |
+| P3 | Fix Firebase Messaging SW version mismatch | Small | Low — prevents SW/app version drift |
+| P3 | Wire Lighthouse CI into PR gate | Small | Low — catches performance regressions |
+| P3 | Add `.nvmrc` file | Trivial | Low — developer environment consistency |
 
 ---
 
