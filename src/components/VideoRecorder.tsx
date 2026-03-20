@@ -16,7 +16,7 @@ export function VideoRecorder({
   autoOpen?: boolean;
   doneLabel?: string;
 }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const videoCallbackRef = useCallback((el: HTMLVideoElement | null) => {
     videoRef.current = el;
