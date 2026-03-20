@@ -84,7 +84,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob, setUploadProgress);
         }
         setUploadProgress(null);
-        await setTrick(game.id, trickNameRef.current.trim() || "Trick", videoUrl);
+        await setTrick(game.id, trickNameRef.current.trim(), videoUrl);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to send trick");
         setUploadProgress(null);
@@ -400,9 +400,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               spellCheck={false}
               className="w-full bg-transparent text-center font-display text-xl tracking-wider text-brand-orange py-2 px-5 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
             />
-            {!trimmedTrickName && (
-              <p className="font-body text-xs text-[#777] pb-1">Name your trick</p>
-            )}
+            {!trimmedTrickName && <p className="font-body text-xs text-[#777] pb-1">Name your trick</p>}
             {trimmedTrickName && (
               <p className="font-body text-xs text-brand-orange/80 pb-1">Set your {trimmedTrickName}</p>
             )}
@@ -413,7 +411,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         ) : (
           <div className="text-center py-3 px-5 mb-5 rounded-xl border bg-[rgba(0,230,118,0.06)] border-brand-green">
             <span className="font-display text-xl tracking-wider text-brand-green">
-              Match @{game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}&apos;s {game.currentTrickName || "trick"}
+              Match @{game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}&apos;s{" "}
+              {game.currentTrickName || "trick"}
             </span>
           </div>
         )}

@@ -332,8 +332,8 @@ describe("GamePlayScreen", () => {
     });
   });
 
-  it("setTrick uses 'Trick' fallback when trickName is cleared before recording", async () => {
-    mockSetTrick.mockResolvedValueOnce(undefined);
+  it("setTrick receives empty string when trickName is cleared before recording", async () => {
+    mockSetTrick.mockRejectedValueOnce(new Error("Trick name cannot be empty"));
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
@@ -358,7 +358,12 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByText(/Landed/));
 
     await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Trick", null);
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "", null);
+    });
+
+    // Service-level validation surfaces the error
+    await waitFor(() => {
+      expect(screen.getByText("Trick name cannot be empty")).toBeInTheDocument();
     });
   });
 
