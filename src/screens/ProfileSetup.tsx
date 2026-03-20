@@ -13,6 +13,8 @@ const STANCES = [
 ] as const;
 
 const DEBOUNCE_MS = 400;
+const USERNAME_MIN = 3;
+const USERNAME_MAX = 20;
 const USERNAME_RE = /^[a-z0-9_]+$/;
 const SANITIZE_RE = /[^a-z0-9_]/g;
 
@@ -87,7 +89,7 @@ function NavButtons({
 /* ── Step 1: Username ─────────────────────────────────────────── */
 
 function usernameNote(name: string, available: boolean | null): string {
-  if (name.length < 3) return "Min 3 characters, letters/numbers/underscore";
+  if (name.length < USERNAME_MIN) return `Min ${USERNAME_MIN} characters, letters/numbers/underscore`;
   if (available === null) return "Checking...";
   const handle = `@${name}`;
   return available ? `${handle} is available ✓` : `${handle} is taken ✗`;
@@ -110,7 +112,7 @@ function StepUsername({
   error: string;
   onClearError: () => void;
 }) {
-  const canProceed = username.length >= 3 && available === true && !loading;
+  const canProceed = username.length >= USERNAME_MIN && available === true && !loading;
 
   return (
     <div className="animate-step-in">
@@ -127,14 +129,14 @@ function StepUsername({
           if (!loading) setUsername(v.toLowerCase().replace(SANITIZE_RE, ""));
         }}
         placeholder="sk8legend"
-        maxLength={20}
+        maxLength={USERNAME_MAX}
         icon="@"
         autoComplete="username"
         autoFocus
         note={usernameNote(username, available)}
       />
 
-      {username.length >= 3 && available !== null && (
+      {username.length >= USERNAME_MIN && available !== null && (
         <div
           className={`flex items-center gap-2 -mt-2 mb-5 px-1 transition-all duration-300 ${
             available ? "text-brand-green" : "text-brand-red"
@@ -230,7 +232,7 @@ function StepReview({
       <div className="bg-surface-alt border border-border rounded-2xl p-6 mb-6">
         <div className="flex items-center gap-4 mb-5">
           <div className="w-14 h-14 rounded-full bg-[rgba(255,107,0,0.12)] border-2 border-brand-orange flex items-center justify-center">
-            <span className="font-display text-2xl text-brand-orange">{username[0].toUpperCase()}</span>
+            <span className="font-display text-2xl text-brand-orange">{(username[0] ?? "?").toUpperCase()}</span>
           </div>
           <div>
             <div className="font-display text-xl text-white tracking-wide">@{username}</div>
@@ -267,7 +269,7 @@ function StepReview({
 /* ── Main ProfileSetup ────────────────────────────────────────── */
 
 function sanitizeDisplayName(name: string | null | undefined): string {
-  return (name ?? "").toLowerCase().replace(SANITIZE_RE, "").slice(0, 20);
+  return (name ?? "").toLowerCase().replace(SANITIZE_RE, "").slice(0, USERNAME_MAX);
 }
 
 export function ProfileSetup({
@@ -292,7 +294,7 @@ export function ProfileSetup({
   useEffect(() => {
     setAvailable(null);
     const normalized = username.trim();
-    if (normalized.length < 3) return;
+    if (normalized.length < USERNAME_MIN) return;
 
     const id = ++checkRef.current;
     const timeout = setTimeout(async () => {
@@ -315,12 +317,12 @@ export function ProfileSetup({
     setError("");
     if (step === 1) {
       const normalized = username.trim();
-      if (normalized.length < 3) {
-        setError("Username must be 3+ characters");
+      if (normalized.length < USERNAME_MIN) {
+        setError(`Username must be ${USERNAME_MIN}+ characters`);
         return;
       }
-      if (normalized.length > 20) {
-        setError("Username too long (max 20)");
+      if (normalized.length > USERNAME_MAX) {
+        setError(`Username too long (max ${USERNAME_MAX})`);
         return;
       }
       /* v8 ignore start */

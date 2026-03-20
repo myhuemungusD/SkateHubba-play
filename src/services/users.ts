@@ -9,6 +9,7 @@ import {
   orderBy,
   limit,
   runTransaction,
+  writeBatch,
   serverTimestamp,
   type FieldValue,
 } from "firebase/firestore";
@@ -19,15 +20,10 @@ export interface UserProfile {
   uid: string;
   username: string;
   stance: string;
-  // serverTimestamp() on write; Firestore Timestamp on read — typed as FieldValue
-  // to match what we pass in. The value is never consumed client-side.
+  /** serverTimestamp() on write; Firestore Timestamp on read. */
   createdAt: FieldValue | null;
   emailVerified: boolean;
-  // DEPRECATED: email is no longer written to new profiles to reduce PII exposure.
-  // Existing profiles may still have this field; use Firebase Auth for email lookup.
-  email?: string;
-  // Denormalized leaderboard stats — updated client-side when games complete.
-  // Optional because existing profiles won't have these fields.
+  /** Denormalized leaderboard stats — updated atomically when games complete. */
   wins?: number;
   losses?: number;
   /** ID of the last game that updated this user's stats (idempotency key). */
@@ -42,13 +38,19 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   return snap.exists() ? (snap.data() as UserProfile) : null;
 }
 
+/** Username constraints — shared between validation, creation, and UI. */
+export const USERNAME_MIN = 3;
+export const USERNAME_MAX = 20;
+export const USERNAME_RE = /^[a-z0-9_]+$/;
+
 /**
- * Check if a username is available
+ * Check if a username is available.
+ * Returns false for invalid usernames without hitting Firestore.
  */
 export async function isUsernameAvailable(username: string): Promise<boolean> {
   const normalized = username.toLowerCase().trim();
-  if (normalized.length < 3 || normalized.length > 20) return false;
-  if (!/^[a-z0-9_]+$/.test(normalized)) return false;
+  if (normalized.length < USERNAME_MIN || normalized.length > USERNAME_MAX) return false;
+  if (!USERNAME_RE.test(normalized)) return false;
 
   const snap = await withRetry(() => getDoc(doc(requireDb(), "usernames", normalized)));
   return !snap.exists();
@@ -69,9 +71,15 @@ export async function createProfile(
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
 
+  if (normalized.length < USERNAME_MIN || normalized.length > USERNAME_MAX) {
+    throw new Error(`Username must be ${USERNAME_MIN}–${USERNAME_MAX} characters`);
+  }
+  if (!USERNAME_RE.test(normalized)) {
+    throw new Error("Username may only contain lowercase letters, numbers, and underscores");
+  }
+
   const db = requireDb();
   const profile = await runTransaction(db, async (tx) => {
-    // Check username availability inside transaction
     const usernameRef = doc(db, "usernames", normalized);
     const usernameSnap = await tx.get(usernameRef);
 
@@ -79,11 +87,8 @@ export async function createProfile(
       throw new Error("Username is already taken");
     }
 
-    // Reserve the username
     tx.set(usernameRef, { uid, reservedAt: serverTimestamp() });
 
-    // Create the user profile — email is intentionally omitted to reduce PII
-    // stored in Firestore.  Use Firebase Auth for email lookups instead.
     const userRef = doc(db, "users", uid);
     const profileData: UserProfile = {
       uid,
@@ -132,13 +137,11 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   }
   await Promise.all(deletions);
 
-  // Phase 2: Delete profile + username atomically
-  const userRef = doc(db, "users", uid);
-  const usernameRef = doc(db, "usernames", username.toLowerCase().trim());
-  await runTransaction(db, async (tx) => {
-    tx.delete(userRef);
-    tx.delete(usernameRef);
-  });
+  // Phase 2: Delete profile + username atomically (no reads needed, batch is cheaper)
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "users", uid));
+  batch.delete(doc(db, "usernames", username.toLowerCase().trim()));
+  await batch.commit();
 }
 
 /**
@@ -182,24 +185,22 @@ export async function updatePlayerStats(uid: string, gameId: string, won: boolea
     // Idempotency: skip if this game already counted
     if (data.lastStatsGameId === gameId) return;
 
-    const currentWins = typeof data.wins === "number" ? data.wins : 0;
-    const currentLosses = typeof data.losses === "number" ? data.losses : 0;
+    const current = typeof data[won ? "wins" : "losses"] === "number" ? (data[won ? "wins" : "losses"] as number) : 0;
 
     tx.update(userRef, {
-      wins: won ? currentWins + 1 : currentWins,
-      losses: won ? currentLosses : currentLosses + 1,
+      [won ? "wins" : "losses"]: current + 1,
       lastStatsGameId: gameId,
     });
   });
 }
 
 /**
- * Fetch all user profiles for the leaderboard, sorted by wins descending.
+ * Fetch user profiles for the leaderboard, sorted by wins descending.
  * Falls back to client-side sorting since existing users may lack the wins field.
- * Capped at 50 for the leaderboard display.
+ * Capped at 50 to keep payload and read costs low.
  */
 export async function getLeaderboard(): Promise<UserProfile[]> {
-  const q = query(collection(requireDb(), "users"), orderBy("createdAt", "desc"), limit(100));
+  const q = query(collection(requireDb(), "users"), orderBy("createdAt", "desc"), limit(50));
   const snap = await withRetry(() => getDocs(q));
   const profiles = snap.docs.map((d) => d.data() as UserProfile);
 

@@ -7,6 +7,7 @@ const {
   mockSetDoc,
   mockDeleteDoc,
   mockRunTransaction,
+  mockWriteBatch,
   mockDoc,
   mockCollection,
   mockQuery,
@@ -14,20 +15,24 @@ const {
   mockServerTimestamp,
   mockOrderBy,
   mockLimit,
-} = vi.hoisted(() => ({
-  mockGetDoc: vi.fn(),
-  mockGetDocs: vi.fn(),
-  mockSetDoc: vi.fn(),
-  mockDeleteDoc: vi.fn(),
-  mockRunTransaction: vi.fn(),
-  mockDoc: vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/")),
-  mockCollection: vi.fn((_db: unknown, name: string) => name),
-  mockQuery: vi.fn((...args: unknown[]) => args),
-  mockWhere: vi.fn((...args: unknown[]) => args),
-  mockServerTimestamp: vi.fn(() => "SERVER_TS"),
-  mockOrderBy: vi.fn((...args: unknown[]) => args),
-  mockLimit: vi.fn((...args: unknown[]) => args),
-}));
+} = vi.hoisted(() => {
+  const batchInstance = { delete: vi.fn(), commit: vi.fn().mockResolvedValue(undefined) };
+  return {
+    mockGetDoc: vi.fn(),
+    mockGetDocs: vi.fn(),
+    mockSetDoc: vi.fn(),
+    mockDeleteDoc: vi.fn(),
+    mockRunTransaction: vi.fn(),
+    mockWriteBatch: vi.fn(() => batchInstance),
+    mockDoc: vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/")),
+    mockCollection: vi.fn((_db: unknown, name: string) => name),
+    mockQuery: vi.fn((...args: unknown[]) => args),
+    mockWhere: vi.fn((...args: unknown[]) => args),
+    mockServerTimestamp: vi.fn(() => "SERVER_TS"),
+    mockOrderBy: vi.fn((...args: unknown[]) => args),
+    mockLimit: vi.fn((...args: unknown[]) => args),
+  };
+});
 
 vi.mock("firebase/firestore", () => ({
   collection: mockCollection,
@@ -41,6 +46,7 @@ vi.mock("firebase/firestore", () => ({
   limit: mockLimit,
   setDoc: mockSetDoc,
   runTransaction: mockRunTransaction,
+  writeBatch: mockWriteBatch,
   serverTimestamp: () => mockServerTimestamp(),
 }));
 
@@ -128,6 +134,20 @@ describe("users service", () => {
       expect(result).not.toHaveProperty("email");
     });
 
+    it("throws when username is too short", async () => {
+      await expect(createProfile("u1", "ab", "regular")).rejects.toThrow("Username must be");
+    });
+
+    it("throws when username is too long", async () => {
+      await expect(createProfile("u1", "a".repeat(21), "regular")).rejects.toThrow("Username must be");
+    });
+
+    it("throws when username has invalid characters", async () => {
+      await expect(createProfile("u1", "sk8r!", "regular")).rejects.toThrow(
+        "Username may only contain lowercase letters, numbers, and underscores",
+      );
+    });
+
     it("throws when username is already taken", async () => {
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
@@ -142,7 +162,7 @@ describe("users service", () => {
   });
 
   describe("deleteUserData", () => {
-    it("deletes game docs then profile and username atomically", async () => {
+    it("deletes game docs then profile and username via batch", async () => {
       // Phase 1: getDocs returns game docs for both queries
       const gameDoc1 = { id: "g1" };
       const gameDoc2 = { id: "g2" };
@@ -151,17 +171,14 @@ describe("users service", () => {
         .mockResolvedValueOnce({ docs: [gameDoc2] }); // player2Uid query
       mockDeleteDoc.mockResolvedValue(undefined);
 
-      // Phase 2: transaction for profile + username
-      const mockTx = { delete: vi.fn() };
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
-
       await deleteUserData("u1", "sk8r");
 
-      // Game docs deleted
+      // Game docs deleted individually
       expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
-      // Profile + username deleted in transaction
-      expect(mockRunTransaction).toHaveBeenCalled();
-      expect(mockTx.delete).toHaveBeenCalledTimes(2);
+      // Profile + username deleted via batch
+      const batch = mockWriteBatch();
+      expect(batch.delete).toHaveBeenCalledTimes(2);
+      expect(batch.commit).toHaveBeenCalled();
     });
 
     it("deduplicates game docs appearing in both queries", async () => {
@@ -169,22 +186,20 @@ describe("users service", () => {
       mockGetDocs.mockResolvedValueOnce({ docs: [gameDoc] }).mockResolvedValueOnce({ docs: [gameDoc] }); // same game in both
       mockDeleteDoc.mockResolvedValue(undefined);
 
-      const mockTx = { delete: vi.fn() };
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
-
       await deleteUserData("u1", "sk8r");
 
       // Only one deleteDoc call despite game appearing twice
       expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
     });
 
-    it("re-throws transaction errors", async () => {
+    it("re-throws batch commit errors", async () => {
       // Phase 1 succeeds
       mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
 
       // Phase 2 fails
-      mockRunTransaction.mockRejectedValueOnce(new Error("Transaction failed"));
-      await expect(deleteUserData("u1", "sk8r")).rejects.toThrow("Transaction failed");
+      const batch = mockWriteBatch();
+      batch.commit.mockRejectedValueOnce(new Error("Batch commit failed"));
+      await expect(deleteUserData("u1", "sk8r")).rejects.toThrow("Batch commit failed");
     });
   });
 
@@ -250,7 +265,6 @@ describe("users service", () => {
 
       expect(mockTx.update).toHaveBeenCalledWith(expect.anything(), {
         wins: 4,
-        losses: 1,
         lastStatsGameId: "game-123",
       });
     });
@@ -268,7 +282,6 @@ describe("users service", () => {
       await updatePlayerStats("u1", "game-456", false);
 
       expect(mockTx.update).toHaveBeenCalledWith(expect.anything(), {
-        wins: 2,
         losses: 6,
         lastStatsGameId: "game-456",
       });
@@ -288,7 +301,6 @@ describe("users service", () => {
 
       expect(mockTx.update).toHaveBeenCalledWith(expect.anything(), {
         wins: 1,
-        losses: 0,
         lastStatsGameId: "game-789",
       });
     });
