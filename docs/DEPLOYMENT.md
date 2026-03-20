@@ -206,3 +206,49 @@ Possible causes:
 The domain making the auth request is not in Firebase Auth's authorized list.
 
 **Fix:** Firebase Console → Authentication → Settings → Authorized domains → add the domain.
+
+---
+
+## Domain Migration: skatehubba.xyz → skatehubba.com
+
+The production domain was migrated from `skatehubba.xyz` to `skatehubba.com`. All code references already use `.com`. The checklist below tracks the infrastructure cutover.
+
+### Completed (in code)
+
+- [x] All hardcoded URLs in `index.html`, `sitemap.xml`, `robots.txt` use `skatehubba.com`
+- [x] `vercel.json` 301 redirects: `skatehubba.xyz`, `www.skatehubba.xyz`, and `www.skatehubba.com` → `skatehubba.com`
+- [x] `X-Robots-Tag: noindex` applied to all hosts except `skatehubba.com`
+- [x] `authDomain` pinned to `skatehubba.com` in production builds (prevents OAuth redirect mismatch if a user reaches the app via the old domain before the redirect fires)
+
+### Manual steps (require console / DNS access)
+
+1. **Vercel — add both domains to the project:**
+   Vercel Dashboard → Project → Settings → Domains
+   - Add `skatehubba.com` as the primary domain
+   - Add `skatehubba.xyz` (Vercel will serve the redirect rules from `vercel.json`)
+   - Add `www.skatehubba.com` and `www.skatehubba.xyz` if not already present
+
+2. **GoDaddy / DNS — point records to Vercel:**
+   - `skatehubba.com` → Vercel (A record `76.76.21.21` or CNAME `cname.vercel-dns.com`)
+   - `skatehubba.xyz` → Vercel (same target — Vercel will handle the 301)
+   - Verify both domains show a green checkmark in Vercel Dashboard → Domains
+
+3. **Firebase Auth — authorize `skatehubba.com`:**
+   Firebase Console → Authentication → Settings → Authorized domains
+   - Add `skatehubba.com` (required for OAuth popups/redirects to work on the new domain)
+   - Keep `skatehubba.xyz` authorized until traffic fully migrates (optional, but prevents errors during the transition)
+
+4. **Firebase Auth — custom domain for auth:**
+   If using a custom auth domain (`VITE_FIREBASE_AUTH_DOMAIN=skatehubba.com` instead of the default `<project>.firebaseapp.com`), verify that Firebase has provisioned the TLS certificate:
+   Firebase Console → Authentication → Settings → Authorized domains → confirm `skatehubba.com` is listed
+
+5. **Google Cloud Console — OAuth redirect URIs:**
+   Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client IDs
+   - Add `https://skatehubba.com/__/auth/handler` as an authorized redirect URI
+   - Keep the `skatehubba.xyz` URI until cutover is verified
+
+6. **Verify end-to-end:**
+   - `curl -sI https://skatehubba.xyz` → should return `301` with `Location: https://skatehubba.com/`
+   - Sign up with email on `skatehubba.com` → verification email link should point to `.com`
+   - Sign in with Google on `skatehubba.com` → OAuth popup should work without "unauthorized domain" error
+   - Confirm `skatehubba.xyz` no longer appears in Google Search Console (may take days)
