@@ -20,6 +20,14 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
+// Pin authDomain to skatehubba.com in production so that OAuth popups/redirects
+// always use the canonical domain regardless of how the user arrived (e.g. via
+// the legacy skatehubba.xyz domain).  In development or when VITE_APP_URL is not
+// set the env-var value is used as-is.
+if (import.meta.env.VITE_APP_URL === "https://skatehubba.com") {
+  firebaseConfig.authDomain = "skatehubba.com";
+}
+
 // True when all required Firebase env vars are present
 export const firebaseReady = Boolean(firebaseConfig.apiKey);
 

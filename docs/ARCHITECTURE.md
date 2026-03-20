@@ -42,6 +42,7 @@ This means:
 
 - Framework set to `vite`. Build output is `dist/`. All paths rewrite to `index.html` for SPA navigation.
 - `X-Robots-Tag: noindex, nofollow` is injected on all non-production hosts (any host that is not `skatehubba.com`) via `vercel.json`. This prevents Vercel preview deployment URLs from appearing in search engines.
+- 301 redirects are configured for `skatehubba.xyz`, `www.skatehubba.xyz`, and `www.skatehubba.com` → `skatehubba.com` to complete the domain migration and preserve SEO equity.
 - No Vercel serverless functions are used.
 
 ---
