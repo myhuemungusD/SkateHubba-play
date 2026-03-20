@@ -1,0 +1,5 @@
+# Branch protection: all changes require review from a maintainer.
+# This file is enforced by GitHub's "Require review from Code Owners" rule.
+
+# Default owner for everything
+* @myhuemungusD

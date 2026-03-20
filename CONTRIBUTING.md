@@ -100,6 +100,20 @@ Prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`
 
 ---
 
+## Branch Protection
+
+The `main` branch has protection rules that apply to all contributors, including AI agents:
+
+- **Direct pushes to `main` are blocked** — all changes must go through a pull request
+- **At least 1 approving review** from a CODEOWNER is required
+- **CI status checks must pass** before merging (lint, type check, tests, build)
+- **Cloud Functions are not allowed** — a CI guard rejects PRs adding code to `functions/src/`
+- **Workflow changes are flagged** — modifications to `.github/workflows/` require explicit maintainer review
+
+See [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md) for the full ruleset and setup checklist.
+
+---
+
 ## Pull Request Checklist
 
 Before opening a PR, confirm:
