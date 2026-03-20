@@ -12,6 +12,9 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   initSentry({
     dsn: String(import.meta.env.VITE_SENTRY_DSN),
     environment: import.meta.env.MODE,
+    // Tag each event with the deploy's git SHA so Sentry can track regressions
+    // per release.  VERCEL_GIT_COMMIT_SHA is injected by Vite at build time.
+    release: import.meta.env.VITE_GIT_SHA || undefined,
     // Capture 100% of transactions in development; 10% in production to
     // stay within the free quota. Adjust as traffic grows.
     tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,

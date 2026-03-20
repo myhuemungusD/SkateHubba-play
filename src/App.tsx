@@ -7,6 +7,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
 import { GameNotificationWatcher } from "./components/GameNotificationWatcher";
+import { OfflineBanner } from "./components/OfflineBanner";
 import { firebaseReady } from "./firebase";
 
 import { Landing } from "./screens/Landing";
@@ -63,6 +64,7 @@ function AppScreens() {
 
   return (
     <NotificationProvider uid={ctx.user?.uid ?? null}>
+      <OfflineBanner />
       <GameNotificationWatcher />
       <AppRoutes />
       <ToastContainer />
