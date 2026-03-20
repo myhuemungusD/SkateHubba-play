@@ -114,12 +114,10 @@ service cloud.firestore {
         // currentTurn to the opponent, and immediately forfeit them)
         && request.resource.data.turnDeadline is timestamp
         && request.resource.data.turnDeadline > request.time
-        // Trick/video/confirm fields must start empty
+        // Trick/video fields must start empty
         && request.resource.data.currentTrickName == null
         && request.resource.data.currentTrickVideoUrl == null
         && request.resource.data.matchVideoUrl == null
-        && request.resource.data.setterConfirm == null
-        && request.resource.data.matcherConfirm == null
         // Rate limit: at most one game creation per 30 seconds per user.
         // Checks the user's lastGameCreatedAt field — if it doesn't exist
         // (first game ever) the condition is satisfied automatically.
@@ -152,13 +150,11 @@ service cloud.firestore {
         )
         // turnDeadline must be a timestamp
         && request.resource.data.turnDeadline is timestamp
-        // Scores must not change during normal turn updates.
-        // Letters are only awarded via the confirmation rule — without this
-        // restriction, the current-turn player could bypass the set/match/confirm
-        // flow and directly give the opponent a letter (or end the game).
+        // Scores must not change during setting-phase updates.
+        // Letters are only awarded via the match resolution rule below.
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
-        // Game stays active, no winner (completion only via confirmation or forfeit)
+        // Game stays active, no winner (completion only via match resolution or forfeit)
         && request.resource.data.status == 'active'
         && request.resource.data.winner == null
         // Valid phase transitions only (prevents skipping phases)
@@ -167,13 +163,57 @@ service cloud.firestore {
           (resource.data.phase == 'setting' && request.resource.data.phase == 'matching')
           // setting → setting (setter failed to land, turn passes to opponent)
           || (resource.data.phase == 'setting' && request.resource.data.phase == 'setting')
-          // matching → confirming (matcher submits attempt for review)
-          || (resource.data.phase == 'matching' && request.resource.data.phase == 'confirming')
         )
-        // turnHistory must not change during normal updates
+        // turnHistory must not change during setting-phase updates
         && (
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory
+        );
+
+      // ── Match resolution (matcher self-judges: landed or missed) ──
+      // The matcher resolves the turn immediately.  Letters may change and the
+      // game may end, so this is a separate rule from the normal turn updates.
+      allow update: if isSignedIn()
+        && isPlayer(resource.data)
+        && resource.data.status == 'active'
+        && resource.data.phase == 'matching'
+        && request.auth.uid == resource.data.currentTurn
+        // Rate limit
+        && (
+          !('updatedAt' in resource.data)
+          || resource.data.updatedAt == null
+          || request.time > resource.data.updatedAt + duration.value(2, 's')
+        )
+        // Cannot change player UIDs or usernames
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        // currentTurn must be one of the two players
+        && (
+          request.resource.data.currentTurn == resource.data.player1Uid ||
+          request.resource.data.currentTurn == resource.data.player2Uid
+        )
+        // turnDeadline must be a timestamp
+        && request.resource.data.turnDeadline is timestamp
+        // Letters: at most one player gains exactly one letter (missed) or none change (landed)
+        && (
+          // Landed — no letter change
+          (request.resource.data.p1Letters == resource.data.p1Letters
+           && request.resource.data.p2Letters == resource.data.p2Letters)
+          // Missed — exactly one player gets +1
+          || (request.resource.data.p1Letters == resource.data.p1Letters + 1
+              && request.resource.data.p2Letters == resource.data.p2Letters)
+          || (request.resource.data.p1Letters == resource.data.p1Letters
+              && request.resource.data.p2Letters == resource.data.p2Letters + 1)
+        )
+        // Either the game continues (back to setting) or ends (complete with a winner)
+        && (
+          (request.resource.data.status == 'active'
+           && request.resource.data.phase == 'setting'
+           && request.resource.data.winner == null)
+          || (request.resource.data.status == 'complete'
+              && request.resource.data.winner != null)
         );
 
       // Either player can forfeit the current-turn player's expired turn

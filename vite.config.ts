@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   define: {
     "import.meta.env.VERCEL": JSON.stringify(process.env.VERCEL ?? ""),
+    "import.meta.env.VITE_GIT_SHA": JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? ""),
   },
   build: {
     outDir: "dist",
