@@ -147,61 +147,6 @@ service cloud.firestore {
           )
         );
 
-      // Confirmation phase: only the setter reviews and decides
-      allow update: if isSignedIn()
-        && isPlayer(resource.data)
-        && resource.data.status == 'active'
-        && resource.data.phase == 'confirming'
-        // Only the setter can confirm
-        && request.auth.uid == resource.data.currentSetter
-        // Cannot change player UIDs or usernames
-        && request.resource.data.player1Uid == resource.data.player1Uid
-        && request.resource.data.player2Uid == resource.data.player2Uid
-        && request.resource.data.player1Username == resource.data.player1Username
-        && request.resource.data.player2Username == resource.data.player2Username
-        // Videos must not change during confirmation
-        && request.resource.data.currentTrickVideoUrl == resource.data.currentTrickVideoUrl
-        && request.resource.data.matchVideoUrl == resource.data.matchVideoUrl
-        && request.resource.data.currentTrickName == resource.data.currentTrickName
-        // Setter votes (setterConfirm changes from null to bool)
-        && resource.data.setterConfirm == null
-        && request.resource.data.setterConfirm is bool
-        // Scores: no change, or +1 for one player when resolving
-        && (
-          (request.resource.data.p1Letters == resource.data.p1Letters + 1
-            && request.resource.data.p2Letters == resource.data.p2Letters)
-          || (request.resource.data.p2Letters == resource.data.p2Letters + 1
-            && request.resource.data.p1Letters == resource.data.p1Letters)
-          || (request.resource.data.p1Letters == resource.data.p1Letters
-            && request.resource.data.p2Letters == resource.data.p2Letters)
-        )
-        && (
-          // Resolution: game complete (a player reached 5 letters)
-          (
-            request.resource.data.status == 'complete'
-            && (request.resource.data.p1Letters >= 5 || request.resource.data.p2Letters >= 5)
-            && request.resource.data.winner == (
-              request.resource.data.p1Letters >= 5
-                ? resource.data.player2Uid
-                : resource.data.player1Uid
-            )
-          )
-          // Resolution: game continues (setter decided, back to setting)
-          || (
-            request.resource.data.status == 'active'
-            && request.resource.data.winner == null
-            && request.resource.data.phase == 'setting'
-            && request.resource.data.turnNumber == resource.data.turnNumber + 1
-            // currentSetter must be one of the two players
-            && (
-              request.resource.data.currentSetter == resource.data.player1Uid
-              || request.resource.data.currentSetter == resource.data.player2Uid
-            )
-            // In setting phase the setter always has the turn
-            && request.resource.data.currentTurn == request.resource.data.currentSetter
-          )
-        );
-
       // Either player can forfeit the current-turn player's expired turn
       // Winner must be the opponent of the player whose turn it is
       allow update: if isSignedIn()

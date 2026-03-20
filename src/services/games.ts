@@ -23,7 +23,7 @@ import { captureException } from "../lib/sentry";
  * ──────────────────────────────────────────── */
 
 export type GameStatus = "active" | "complete" | "forfeit";
-export type GamePhase = "setting" | "matching" | "confirming";
+export type GamePhase = "setting" | "matching";
 
 /** A snapshot of a completed turn, stored in the game's turnHistory array. */
 export interface TurnRecord {
@@ -57,10 +57,6 @@ export interface GameDoc {
   currentTrickName: string | null;
   currentTrickVideoUrl: string | null;
   matchVideoUrl: string | null;
-  /** Setter's vote on whether the matcher landed (null = not yet voted) */
-  setterConfirm: boolean | null;
-  /** Matcher's vote on whether they landed (null = not yet voted) */
-  matcherConfirm: boolean | null;
   turnDeadline: Timestamp;
   turnNumber: number;
   winner: string | null;
@@ -129,8 +125,6 @@ export async function createGame(
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    setterConfirm: null,
-    matcherConfirm: null,
     turnDeadline: deadline,
     turnNumber: 1,
     winner: null,
@@ -216,41 +210,12 @@ export async function failSetTrick(gameId: string): Promise<void> {
 }
 
 /* ────────────────────────────────────────────
- * Submit match attempt (transitions to confirming)
+ * Submit match attempt (matcher self-judges, resolves turn immediately)
  * ──────────────────────────────────────────── */
 
-export async function submitMatchAttempt(gameId: string, matchVideoUrl: string | null): Promise<void> {
-  const gameRef = doc(requireDb(), "games", gameId);
-
-  await runTransaction(requireDb(), async (tx) => {
-    const snap = await tx.get(gameRef);
-    if (!snap.exists()) throw new Error("Game not found");
-
-    const game = toGameDoc(snap);
-    if (game.status !== "active") throw new Error("Game is already over");
-    if (game.phase !== "matching") throw new Error("Not in matching phase");
-
-    // Transition to confirming phase — setter reviews and decides
-    tx.update(gameRef, {
-      phase: "confirming",
-      matchVideoUrl,
-      setterConfirm: null,
-      matcherConfirm: null,
-      // Turn passes to the setter who reviews the attempt
-      currentTurn: game.currentSetter,
-      turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
-      updatedAt: serverTimestamp(),
-    });
-  });
-}
-
-/* ────────────────────────────────────────────
- * Submit setter's confirmation (only setter decides)
- * ──────────────────────────────────────────── */
-
-export async function submitConfirmation(
+export async function submitMatchAttempt(
   gameId: string,
-  playerUid: string,
+  matchVideoUrl: string | null,
   landed: boolean,
 ): Promise<{ gameOver: boolean; winner: string | null }> {
   const gameRef = doc(requireDb(), "games", gameId);
@@ -261,14 +226,9 @@ export async function submitConfirmation(
 
     const game = toGameDoc(snap);
     if (game.status !== "active") throw new Error("Game is already over");
-    if (game.phase !== "confirming") throw new Error("Not in confirming phase");
-
-    const isSetter = playerUid === game.currentSetter;
-    if (!isSetter) throw new Error("Only the setter can confirm");
-    if (game.setterConfirm !== null) throw new Error("You already voted");
+    if (game.phase !== "matching") throw new Error("Not in matching phase");
 
     const matcherUid = getOpponent(game, game.currentSetter);
-
     const isP1Matcher = matcherUid === game.player1Uid;
     let newP1Letters = game.p1Letters;
     let newP2Letters = game.p2Letters;
@@ -282,14 +242,6 @@ export async function submitConfirmation(
     const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
     const nextSetter = landed ? matcherUid : game.currentSetter;
 
-    const updates: Record<string, unknown> = {
-      setterConfirm: landed,
-      updatedAt: serverTimestamp(),
-    };
-
-    updates.p1Letters = newP1Letters;
-    updates.p2Letters = newP2Letters;
-
     // Record this turn in the history for clips replay
     const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
     const matcherUsernameVal = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
@@ -302,18 +254,23 @@ export async function submitConfirmation(
       matcherUid,
       matcherUsername: matcherUsernameVal,
       setVideoUrl: game.currentTrickVideoUrl,
-      matchVideoUrl: game.matchVideoUrl,
+      matchVideoUrl,
       landed,
       letterTo: landed ? null : matcherUid,
     };
-    updates.turnHistory = arrayUnion(turnRecord);
+
+    const updates: Record<string, unknown> = {
+      matchVideoUrl,
+      turnHistory: arrayUnion(turnRecord),
+      p1Letters: newP1Letters,
+      p2Letters: newP2Letters,
+      updatedAt: serverTimestamp(),
+    };
 
     if (gameOver) {
       updates.status = "complete";
       updates.winner = winner;
     } else {
-      // Back to setting phase. Stale trick/video fields are harmless here
-      // and get cleared by the next setTrick / submitMatchAttempt call.
       updates.phase = "setting";
       updates.currentSetter = nextSetter;
       updates.currentTurn = nextSetter;
