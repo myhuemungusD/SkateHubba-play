@@ -63,6 +63,7 @@ const defaultProps = {
   onOpenGame: vi.fn(),
   onSignOut: vi.fn(),
   onDeleteAccount: vi.fn(),
+  onViewRecord: vi.fn(),
   user: { emailVerified: true },
 };
 

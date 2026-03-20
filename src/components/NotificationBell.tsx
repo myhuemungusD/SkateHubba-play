@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useNotifications } from "../context/NotificationContext";
 import { notificationIcon, notificationAccentText } from "../lib/notificationMeta";
+import type { GameDoc } from "../services/games";
 
 function relativeTime(ts: number): string {
   const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
@@ -10,8 +11,14 @@ function relativeTime(ts: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function NotificationBell() {
-  const { notifications, unreadCount, notifyKey, markAllRead, clearAll, soundEnabled, toggleSound } =
+export function NotificationBell({
+  games,
+  onOpenGame,
+}: {
+  games?: GameDoc[];
+  onOpenGame?: (g: GameDoc) => void;
+}) {
+  const { notifications, unreadCount, notifyKey, markRead, markAllRead, clearAll, soundEnabled, toggleSound } =
     useNotifications();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -156,28 +163,41 @@ export function NotificationBell() {
                 <p className="font-body text-xs text-[#444]">No notifications yet</p>
               </div>
             ) : (
-              notifications.map((n) => (
-                <div
-                  key={n.id}
-                  className={`flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 transition-colors ${n.read ? "opacity-60" : ""}`}
-                >
-                  <span className={`shrink-0 text-sm mt-0.5 ${notificationAccentText[n.type]}`}>
-                    {notificationIcon[n.type]}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className={`font-body text-xs leading-tight ${n.read ? "text-[#888]" : "text-white"}`}>
-                      <span className="font-semibold">{n.title}</span>
-                      {" · "}
-                      <span className="text-[#555]">{n.message}</span>
-                    </p>
-                    <p className="font-body text-[10px] text-[#444] mt-0.5">{relativeTime(n.timestamp)}</p>
-                  </div>
-                  {!n.read && (
-                    <span className="shrink-0 w-2 h-2 rounded-full bg-brand-orange mt-1.5" aria-label="Unread" />
-                  )}
-                </div>
-              ))
-            )}
+              notifications.map((n) => {
+                const game = n.gameId && games ? games.find((g) => g.id === n.gameId) : undefined;
+                const clickable = !!(game && onOpenGame);
+                return (
+                  <button
+                    type="button"
+                    key={n.id}
+                    disabled={!clickable}
+                    onClick={() => {
+                      if (!n.read) markRead(n.id);
+                      if (clickable) {
+                        onOpenGame(game);
+                        setOpen(false);
+                      }
+                    }}
+                    className={`w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 transition-colors ${n.read ? "opacity-60" : ""} ${clickable ? "hover:bg-[rgba(255,107,0,0.04)] cursor-pointer" : ""}`}
+                  >
+                    <span className={`shrink-0 text-sm mt-0.5 ${notificationAccentText[n.type]}`}>
+                      {notificationIcon[n.type]}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className={`font-body text-xs leading-tight ${n.read ? "text-[#888]" : "text-white"}`}>
+                        <span className="font-semibold">{n.title}</span>
+                        {" · "}
+                        <span className="text-[#555]">{n.message}</span>
+                      </p>
+                      <p className="font-body text-[10px] text-[#444] mt-0.5">{relativeTime(n.timestamp)}</p>
+                    </div>
+                    {!n.read && (
+                      <span className="shrink-0 w-2 h-2 rounded-full bg-brand-orange mt-1.5" aria-label="Unread" />
+                    )}
+                  </button>
+                );
+              }))
+            }
           </div>
 
           {/* Footer */}

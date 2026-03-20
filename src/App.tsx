@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { useGameContext, GameProvider } from "./context/GameContext";
 import { NotificationProvider } from "./context/NotificationContext";
+import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
@@ -15,6 +16,7 @@ import { Lobby } from "./screens/Lobby";
 import { ChallengeScreen } from "./screens/ChallengeScreen";
 import { GamePlayScreen } from "./screens/GamePlayScreen";
 import { GameOverScreen } from "./screens/GameOverScreen";
+import { MyRecordScreen } from "./screens/MyRecordScreen";
 import { PrivacyPolicy } from "./screens/PrivacyPolicy";
 import { TermsOfService } from "./screens/TermsOfService";
 import { NotFound } from "./screens/NotFound";
@@ -50,6 +52,29 @@ function AppScreens() {
 function AppRoutes() {
   const ctx = useGameContext();
   const [challengeTarget, setChallengeTarget] = useState("");
+  const [, setDirectChallengeError] = useState("");
+
+  const directChallenge = useCallback(
+    async (username: string) => {
+      setDirectChallengeError("");
+      const normalized = username.toLowerCase().trim();
+      try {
+        const uid = await getUidByUsername(normalized);
+        if (!uid) {
+          setDirectChallengeError(`@${normalized} doesn't exist yet.`);
+          setChallengeTarget(normalized);
+          ctx.setScreen("challenge");
+          return;
+        }
+        await ctx.startChallenge(uid, normalized);
+      } catch (err: unknown) {
+        setDirectChallengeError(err instanceof Error ? err.message : "Could not start game");
+        setChallengeTarget(normalized);
+        ctx.setScreen("challenge");
+      }
+    },
+    [ctx],
+  );
 
   // Deep-link into a game when a push notification is tapped (service worker postMessage)
   useEffect(() => {
@@ -118,12 +143,12 @@ function AppRoutes() {
             ctx.setScreen("challenge");
           }}
           onChallengeUser={(username: string) => {
-            setChallengeTarget(username);
-            ctx.setScreen("challenge");
+            directChallenge(username);
           }}
           onOpenGame={ctx.openGame}
           onSignOut={ctx.handleSignOut}
           onDeleteAccount={ctx.handleDeleteAccount}
+          onViewRecord={() => ctx.setScreen("record")}
         />
       )}
 
@@ -173,6 +198,15 @@ function AppRoutes() {
           }}
         />
       )}
+      {ctx.screen === "record" && ctx.activeProfile && (
+        <MyRecordScreen
+          profile={ctx.activeProfile}
+          games={ctx.games}
+          onOpenGame={ctx.openGame}
+          onBack={() => ctx.setScreen("lobby")}
+        />
+      )}
+
       {ctx.screen === "privacy" && <PrivacyPolicy onBack={() => ctx.setScreen("landing")} />}
 
       {ctx.screen === "terms" && <TermsOfService onBack={() => ctx.setScreen("landing")} />}

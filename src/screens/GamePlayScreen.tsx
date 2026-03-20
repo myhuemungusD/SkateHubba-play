@@ -8,7 +8,6 @@ import { captureException } from "../lib/sentry";
 import { sendNudge, canNudge } from "../services/nudge";
 import { Btn } from "../components/ui/Btn";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
-import { Field } from "../components/ui/Field";
 import { LetterDisplay } from "../components/LetterDisplay";
 import { Timer } from "../components/Timer";
 import { VideoRecorder } from "../components/VideoRecorder";
@@ -379,20 +378,45 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           <LetterDisplay count={theirLetters} name={`@${opponentName}`} active={isMatcher} />
         </div>
 
-        <div
-          className={`text-center py-3 px-5 mb-5 rounded-xl border
-            ${isSetter ? "bg-[rgba(255,107,0,0.06)] border-brand-orange" : "bg-[rgba(0,230,118,0.06)] border-brand-green"}`}
-        >
-          <span
-            className={`font-display text-xl tracking-wider ${isSetter ? "text-brand-orange" : "text-brand-green"}`}
-          >
-            {isSetter
-              ? trimmedTrickName
-                ? `Set your ${trimmedTrickName}`
-                : "Name your trick"
-              : `Match @${game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}'s ${game.currentTrickName || "trick"}`}
-          </span>
-        </div>
+        {isSetter ? (
+          <div className="text-center mb-5 rounded-xl border bg-[rgba(255,107,0,0.06)] border-brand-orange">
+            <label
+              htmlFor="trickNameInput"
+              className="font-display text-[11px] tracking-[0.2em] text-brand-orange block pt-3"
+            >
+              TRICK NAME
+            </label>
+            <input
+              id="trickNameInput"
+              type="text"
+              value={trickName}
+              onChange={(e) => setTrickName(e.target.value)}
+              placeholder="Name your trick"
+              maxLength={60}
+              disabled={videoRecorded}
+              autoCapitalize="words"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+              className="w-full bg-transparent text-center font-display text-xl tracking-wider text-brand-orange py-2 px-5 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
+            />
+            {!trimmedTrickName && (
+              <p className="font-body text-xs text-[#777] pb-1">Name your trick</p>
+            )}
+            {trimmedTrickName && (
+              <p className="font-body text-xs text-brand-orange/80 pb-1">Set your {trimmedTrickName}</p>
+            )}
+            {!showRecorder && (
+              <span className="text-xs text-[#777] pb-2 block">Name your trick to start recording</span>
+            )}
+          </div>
+        ) : (
+          <div className="text-center py-3 px-5 mb-5 rounded-xl border bg-[rgba(0,230,118,0.06)] border-brand-green">
+            <span className="font-display text-xl tracking-wider text-brand-green">
+              Match @{game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}&apos;s {game.currentTrickName || "trick"}
+            </span>
+          </div>
+        )}
 
         {isMatcher && (
           <div className="mb-5">
@@ -412,19 +436,6 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               </p>
             )}
           </div>
-        )}
-
-        {isSetter && (
-          <Field
-            label="TRICK NAME"
-            value={trickName}
-            onChange={setTrickName}
-            placeholder="e.g. Kickflip, 360 Flip"
-            maxLength={60}
-            disabled={videoRecorded}
-            autoCapitalize="words"
-            note={!showRecorder ? "Name your trick to start recording" : undefined}
-          />
         )}
 
         {showRecorder && (
