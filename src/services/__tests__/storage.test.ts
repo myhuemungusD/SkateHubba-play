@@ -179,5 +179,18 @@ describe("storage service", () => {
       const blob = new Blob(["video"], { type: "video/webm" });
       await expect(uploadVideo("game1", 1, "set", blob, undefined, 0)).rejects.toThrow("Persistent failure");
     });
+
+    it("uses .mp4 extension and content type for mp4 blobs", async () => {
+      const blob = new Blob(["video"], { type: "video/mp4" });
+      const url = await uploadVideo("game1", 1, "set", blob);
+
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.mp4");
+      expect(mockUploadBytesResumable).toHaveBeenCalledWith(
+        "games/game1/turn-1/set.mp4",
+        blob,
+        expect.objectContaining({ contentType: "video/mp4" }),
+      );
+      expect(url).toBe("https://cdn.example.com/video.webm");
+    });
   });
 });
