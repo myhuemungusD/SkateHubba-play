@@ -277,13 +277,12 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
-              className="w-full bg-transparent text-center font-display text-xl tracking-wider text-brand-orange py-2 px-5 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full bg-transparent text-center font-display text-base tracking-wider text-brand-orange py-1 px-4 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
             />
-            {!trimmedTrickName && <p className="font-body text-xs text-[#777] pb-1">Name your trick</p>}
             {trimmedTrickName && (
               <p className="font-body text-xs text-brand-orange/80 pb-1">Set your {trimmedTrickName}</p>
             )}
-            {!showRecorder && (
+            {!showRecorder && !trimmedTrickName && (
               <span className="text-xs text-[#777] pb-2 block">Name your trick to start recording</span>
             )}
           </div>

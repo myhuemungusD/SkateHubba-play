@@ -292,7 +292,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Name your trick")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
     });
 
     // Trick name input is shown with hint; recorder is hidden until name is entered
@@ -328,11 +328,11 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Name your trick")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
     });
 
     // Verify the phase banner shows correct text for setter
-    expect(screen.getByText("Name your trick")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
   });
 
   /* ── 7. Gameplay — Waiting on opponent ────── */
@@ -1002,7 +1002,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Name your trick")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
     });
 
     // Re-setup lobby for return
@@ -1070,7 +1070,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText(/vs @rival/));
 
     await waitFor(() => {
-      expect(screen.getByText("Name your trick")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
     });
 
     // Simulate realtime update: game completed
