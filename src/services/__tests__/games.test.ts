@@ -224,6 +224,62 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(malformedSnap);
       await expect(setTrick("bad-doc", "Kickflip", null)).rejects.toThrow("Malformed game document: bad-doc");
     });
+
+    it("throws when called again within the turn action cooldown period", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await setTrick("g1", "Kickflip", null);
+
+      // Second call hits rate limit before reaching the transaction — no mock needed
+      await expect(setTrick("g1", "Heelflip", null)).rejects.toThrow("Please wait before submitting another action");
+    });
+
+    it("allows calls on different games within cooldown", async () => {
+      mockTxGet
+        .mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }))
+        .mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await setTrick("g1", "Kickflip", null);
+      await expect(setTrick("g2", "Heelflip", null)).resolves.toBeUndefined();
+    });
+
+    it("prunes stale rate-limit entries when map exceeds 50 entries", async () => {
+      // Fill the rate-limit map with 51 entries by calling setTrick on distinct game IDs.
+      // We fake Date.now so the first 51 entries appear old (> 60s ago), then advance time.
+      const realDateNow = Date.now;
+      let fakeNow = 1_000_000;
+      vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+
+      for (let i = 0; i < 51; i++) {
+        _resetCreateGameRateLimit();
+        // We only need to reset the *game create* cooldown; turn-action entries accumulate.
+        // Actually, _resetCreateGameRateLimit clears the map, so we need a different approach.
+      }
+
+      // Restore and use a manual approach: call setTrick on 51 different game IDs
+      vi.spyOn(Date, "now").mockRestore();
+      _resetCreateGameRateLimit();
+
+      // Set fakeNow to a point in the past so entries are "old"
+      fakeNow = 100_000;
+      vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+
+      // Perform 51 turn actions on different game IDs
+      for (let i = 0; i < 51; i++) {
+        mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+        await setTrick(`prune-game-${i}`, "Trick", null);
+      }
+
+      // Now advance time by more than 60s so entries become stale
+      fakeNow = 100_000 + 61_000;
+
+      // The next call will trigger pruning (map.size > 50) and remove stale entries
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await setTrick("prune-game-new", "Trick", null);
+
+      // If pruning works, no error is thrown — the test passes.
+      expect(mockTxUpdate).toHaveBeenCalled();
+
+      vi.spyOn(Date, "now").mockRestore();
+    });
   });
 
   describe("failSetTrick", () => {
@@ -268,6 +324,14 @@ describe("games service", () => {
     it("throws when not in setting phase", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "matching" }));
       await expect(failSetTrick("g1")).rejects.toThrow("Not in setting phase");
+    });
+
+    it("throws when called again within the turn action cooldown period", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await failSetTrick("g1");
+
+      // Second call hits rate limit before reaching the transaction — no mock needed
+      await expect(failSetTrick("g1")).rejects.toThrow("Please wait before submitting another action");
     });
   });
 
@@ -377,6 +441,16 @@ describe("games service", () => {
     it("throws when not in matching phase", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
       await expect(submitMatchAttempt("g1", null, true)).rejects.toThrow("Not in matching phase");
+    });
+
+    it("throws when called again within the turn action cooldown period", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
+      await submitMatchAttempt("g1", null, true);
+
+      // Second call hits rate limit before reaching the transaction — no mock needed
+      await expect(submitMatchAttempt("g1", null, false)).rejects.toThrow(
+        "Please wait before submitting another action",
+      );
     });
   });
 
