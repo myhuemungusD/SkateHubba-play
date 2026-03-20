@@ -380,7 +380,14 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
         {isSetter ? (
           <div className="text-center mb-5 rounded-xl border bg-[rgba(255,107,0,0.06)] border-brand-orange">
+            <label
+              htmlFor="trickNameInput"
+              className="font-display text-[11px] tracking-[0.2em] text-brand-orange block pt-3"
+            >
+              TRICK NAME
+            </label>
             <input
+              id="trickNameInput"
               type="text"
               value={trickName}
               onChange={(e) => setTrickName(e.target.value)}
@@ -391,8 +398,11 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
-              className="w-full bg-transparent text-center font-display text-xl tracking-wider text-brand-orange py-3 px-5 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full bg-transparent text-center font-display text-xl tracking-wider text-brand-orange py-2 px-5 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
             />
+            {!trimmedTrickName && (
+              <p className="font-body text-xs text-[#777] pb-1">Name your trick</p>
+            )}
             {!showRecorder && (
               <span className="text-xs text-[#777] pb-2 block">Name your trick to start recording</span>
             )}
