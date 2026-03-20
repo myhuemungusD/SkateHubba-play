@@ -134,6 +134,47 @@ describe("users service", () => {
       expect(result).not.toHaveProperty("email");
     });
 
+    it("includes dob and parentalConsent when provided", async () => {
+      let capturedProfile: Record<string, unknown> | undefined;
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
+        const tx = {
+          get: vi.fn().mockResolvedValue({ exists: () => false }),
+          set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
+            // Capture the profile data (second set call)
+            if (data.uid) capturedProfile = data;
+          }),
+        };
+        return fn(tx);
+      });
+
+      const result = await createProfile("u1", "sk8r", "regular", true, "2005-06-15", true);
+      expect(result).toMatchObject({
+        uid: "u1",
+        username: "sk8r",
+        stance: "regular",
+        dob: "2005-06-15",
+        parentalConsent: true,
+      });
+      expect(capturedProfile).toMatchObject({ dob: "2005-06-15", parentalConsent: true });
+    });
+
+    it("omits dob and parentalConsent when not provided", async () => {
+      let capturedProfile: Record<string, unknown> | undefined;
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
+        const tx = {
+          get: vi.fn().mockResolvedValue({ exists: () => false }),
+          set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
+            if (data.uid) capturedProfile = data;
+          }),
+        };
+        return fn(tx);
+      });
+
+      await createProfile("u1", "sk8r", "regular");
+      expect(capturedProfile).not.toHaveProperty("dob");
+      expect(capturedProfile).not.toHaveProperty("parentalConsent");
+    });
+
     it("throws when username is too short", async () => {
       await expect(createProfile("u1", "ab", "regular")).rejects.toThrow("Username must be");
     });
