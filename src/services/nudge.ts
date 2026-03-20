@@ -26,11 +26,9 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
 
   const db = requireDb();
 
-  // Upsert the rate-limit doc (Firestore rules enforce 1h cooldown server-side)
-  const limitId = `${senderUid}_${gameId}`;
-  await setDoc(doc(db, "nudge_limits", limitId), { senderUid, gameId, lastNudgedAt: serverTimestamp() });
-
-  // Create the nudge document (triggers Cloud Function)
+  // Create the nudge document first (triggers Cloud Function).
+  // Written before the rate-limit doc so a failed nudge write doesn't
+  // poison the cooldown and block future attempts.
   await addDoc(collection(db, "nudges"), {
     senderUid,
     senderUsername,
@@ -39,6 +37,10 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
     createdAt: serverTimestamp(),
     delivered: false,
   });
+
+  // Upsert the rate-limit doc (Firestore rules enforce 1h cooldown server-side)
+  const limitId = `${senderUid}_${gameId}`;
+  await setDoc(doc(db, "nudge_limits", limitId), { senderUid, gameId, lastNudgedAt: serverTimestamp() });
 
   // Record locally for client-side cooldown
   localStorage.setItem(key, String(Date.now()));
