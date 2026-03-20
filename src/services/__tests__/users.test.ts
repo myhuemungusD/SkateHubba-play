@@ -134,6 +134,20 @@ describe("users service", () => {
       expect(result).not.toHaveProperty("email");
     });
 
+    it("throws when username is too short", async () => {
+      await expect(createProfile("u1", "ab", "regular")).rejects.toThrow("Username must be");
+    });
+
+    it("throws when username is too long", async () => {
+      await expect(createProfile("u1", "a".repeat(21), "regular")).rejects.toThrow("Username must be");
+    });
+
+    it("throws when username has invalid characters", async () => {
+      await expect(createProfile("u1", "sk8r!", "regular")).rejects.toThrow(
+        "Username may only contain lowercase letters, numbers, and underscores",
+      );
+    });
+
     it("throws when username is already taken", async () => {
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {

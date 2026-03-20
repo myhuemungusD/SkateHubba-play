@@ -63,4 +63,22 @@ describe("useGameContext", () => {
     expect(getByTestId("error").textContent).toBe("useGameContext must be used within GameProvider");
     spy.mockRestore();
   });
+
+  it("returns context value when used inside GameProvider", async () => {
+    const { GameProvider } = await import("../GameContext");
+
+    function TestComponent() {
+      const ctx = useGameContext();
+      return <span data-testid="screen">{ctx.screen}</span>;
+    }
+
+    const { getByTestId } = render(
+      <GameProvider>
+        <TestComponent />
+      </GameProvider>,
+    );
+
+    // Default screen for unauthenticated user is "landing"
+    expect(getByTestId("screen").textContent).toBe("landing");
+  });
 });
