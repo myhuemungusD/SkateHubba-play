@@ -33,23 +33,35 @@ service cloud.firestore {
         && request.resource.data.username.size() >= 3
         && request.resource.data.username.size() <= 20
         // Enforce lowercase alphanumeric + underscore only (matches client-side normalisation)
-        && request.resource.data.username.matches('[a-z0-9_]+');
+        && request.resource.data.username.matches('[a-z0-9_]+')
+        // wins/losses must start at zero if present (prevents leaderboard inflation
+        // by injecting arbitrary stats at profile creation time)
+        && (!('wins' in request.resource.data) || request.resource.data.wins == 0)
+        && (!('losses' in request.resource.data) || request.resource.data.losses == 0);
       allow update: if isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
-        // Wins/losses can only increment by 0 or 1 per write (prevents stat inflation)
+        // Wins/losses can only increment by 0 or 1 per write.
+        // When the field doesn't exist yet, only 0 or 1 is allowed
+        // (the old rule's !('wins' in resource.data) branch accepted any value).
         && (
           !('wins' in request.resource.data)
-          || !('wins' in resource.data)
-          || request.resource.data.wins == resource.data.wins
-          || request.resource.data.wins == resource.data.wins + 1
+          || (!('wins' in resource.data)
+              && request.resource.data.wins >= 0 && request.resource.data.wins <= 1)
+          || ('wins' in resource.data && (
+            request.resource.data.wins == resource.data.wins
+            || request.resource.data.wins == resource.data.wins + 1
+          ))
         )
         && (
           !('losses' in request.resource.data)
-          || !('losses' in resource.data)
-          || request.resource.data.losses == resource.data.losses
-          || request.resource.data.losses == resource.data.losses + 1
+          || (!('losses' in resource.data)
+              && request.resource.data.losses >= 0 && request.resource.data.losses <= 1)
+          || ('losses' in resource.data && (
+            request.resource.data.losses == resource.data.losses
+            || request.resource.data.losses == resource.data.losses + 1
+          ))
         );
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
@@ -93,6 +105,21 @@ service cloud.firestore {
         && request.resource.data.p2Letters == 0
         && request.resource.data.turnNumber == 1
         && request.resource.data.winner == null
+        // Challenger always has the first turn and sets first trick
+        && request.resource.data.currentTurn == request.auth.uid
+        && request.resource.data.phase == 'setting'
+        && request.resource.data.currentSetter == request.auth.uid
+        // turnDeadline must be a future timestamp (prevents instant-forfeit attack:
+        // without this, a malicious client could set turnDeadline in the past,
+        // currentTurn to the opponent, and immediately forfeit them)
+        && request.resource.data.turnDeadline is timestamp
+        && request.resource.data.turnDeadline > request.time
+        // Trick/video/confirm fields must start empty
+        && request.resource.data.currentTrickName == null
+        && request.resource.data.currentTrickVideoUrl == null
+        && request.resource.data.matchVideoUrl == null
+        && request.resource.data.setterConfirm == null
+        && request.resource.data.matcherConfirm == null
         // Rate limit: at most one game creation per 30 seconds per user.
         // Checks the user's lastGameCreatedAt field — if it doesn't exist
         // (first game ever) the condition is satisfied automatically.
@@ -119,32 +146,28 @@ service cloud.firestore {
         )
         // turnDeadline must be a timestamp
         && request.resource.data.turnDeadline is timestamp
-        // Scores never decrease; at most ONE player gains a letter per update
-        // (prevents double-incrementing and score manipulation)
+        // Scores must not change during normal turn updates.
+        // Letters are only awarded via the confirmation rule — without this
+        // restriction, the current-turn player could bypass the set/match/confirm
+        // flow and directly give the opponent a letter (or end the game).
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        // Game stays active, no winner (completion only via confirmation or forfeit)
+        && request.resource.data.status == 'active'
+        && request.resource.data.winner == null
+        // Valid phase transitions only (prevents skipping phases)
         && (
-          // p1 gets a letter, p2 unchanged
-          (request.resource.data.p1Letters == resource.data.p1Letters + 1
-            && request.resource.data.p2Letters == resource.data.p2Letters)
-          // p2 gets a letter, p1 unchanged
-          || (request.resource.data.p2Letters == resource.data.p2Letters + 1
-            && request.resource.data.p1Letters == resource.data.p1Letters)
-          // No letter this update (trick set phase, or successful match)
-          || (request.resource.data.p1Letters == resource.data.p1Letters
-            && request.resource.data.p2Letters == resource.data.p2Letters)
+          // setting → matching (setter sets a trick)
+          (resource.data.phase == 'setting' && request.resource.data.phase == 'matching')
+          // setting → setting (setter failed to land, turn passes to opponent)
+          || (resource.data.phase == 'setting' && request.resource.data.phase == 'setting')
+          // matching → confirming (matcher submits attempt for review)
+          || (resource.data.phase == 'matching' && request.resource.data.phase == 'confirming')
         )
+        // turnHistory must not change during normal updates
         && (
-          // Normal update (game stays active, no winner yet)
-          (request.resource.data.status == 'active' && request.resource.data.winner == null)
-          // Game complete: a player hit 5 letters, winner is the other player
-          || (
-            request.resource.data.status == 'complete'
-            && (request.resource.data.p1Letters >= 5 || request.resource.data.p2Letters >= 5)
-            && request.resource.data.winner == (
-              request.resource.data.p1Letters >= 5
-                ? resource.data.player2Uid
-                : resource.data.player1Uid
-            )
-          )
+          (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
+          || request.resource.data.turnHistory == resource.data.turnHistory
         );
 
       // Either player can forfeit the current-turn player's expired turn
