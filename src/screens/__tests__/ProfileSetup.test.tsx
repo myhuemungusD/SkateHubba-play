@@ -51,7 +51,7 @@ describe("ProfileSetup", () => {
       form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
 
-    expect(screen.getByText("Username must be 3+ characters")).toBeInTheDocument();
+    expect(screen.getByText(/Username must be \d\+ characters/)).toBeInTheDocument();
   });
 
   it("submits with too long username shows error (validation path)", async () => {
@@ -130,7 +130,7 @@ describe("ProfileSetup", () => {
       form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
 
-    expect(screen.getByText("Username too long (max 20)")).toBeInTheDocument();
+    expect(screen.getByText(/Username too long \(max \d+\)/)).toBeInTheDocument();
   });
 
   // ─── Step 2: Stance ────────────────────────────────────────

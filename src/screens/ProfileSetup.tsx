@@ -13,6 +13,8 @@ const STANCES = [
 ] as const;
 
 const DEBOUNCE_MS = 400;
+const USERNAME_MIN = 3;
+const USERNAME_MAX = 20;
 const USERNAME_RE = /^[a-z0-9_]+$/;
 const SANITIZE_RE = /[^a-z0-9_]/g;
 
@@ -267,7 +269,7 @@ function StepReview({
 /* ── Main ProfileSetup ────────────────────────────────────────── */
 
 function sanitizeDisplayName(name: string | null | undefined): string {
-  return (name ?? "").toLowerCase().replace(SANITIZE_RE, "").slice(0, 20);
+  return (name ?? "").toLowerCase().replace(SANITIZE_RE, "").slice(0, USERNAME_MAX);
 }
 
 export function ProfileSetup({
@@ -315,12 +317,12 @@ export function ProfileSetup({
     setError("");
     if (step === 1) {
       const normalized = username.trim();
-      if (normalized.length < 3) {
-        setError("Username must be 3+ characters");
+      if (normalized.length < USERNAME_MIN) {
+        setError(`Username must be ${USERNAME_MIN}+ characters`);
         return;
       }
-      if (normalized.length > 20) {
-        setError("Username too long (max 20)");
+      if (normalized.length > USERNAME_MAX) {
+        setError(`Username too long (max ${USERNAME_MAX})`);
         return;
       }
       /* v8 ignore start */
