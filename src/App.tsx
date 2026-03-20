@@ -16,6 +16,7 @@ import { Lobby } from "./screens/Lobby";
 import { ChallengeScreen } from "./screens/ChallengeScreen";
 import { GamePlayScreen } from "./screens/GamePlayScreen";
 import { GameOverScreen } from "./screens/GameOverScreen";
+import { MyRecordScreen } from "./screens/MyRecordScreen";
 import { PrivacyPolicy } from "./screens/PrivacyPolicy";
 import { TermsOfService } from "./screens/TermsOfService";
 import { NotFound } from "./screens/NotFound";
@@ -135,6 +136,7 @@ function AppRoutes() {
           onOpenGame={ctx.openGame}
           onSignOut={ctx.handleSignOut}
           onDeleteAccount={ctx.handleDeleteAccount}
+          onViewRecord={() => ctx.setScreen("record")}
         />
       )}
 
@@ -184,6 +186,15 @@ function AppRoutes() {
           }}
         />
       )}
+      {ctx.screen === "record" && ctx.activeProfile && (
+        <MyRecordScreen
+          profile={ctx.activeProfile}
+          games={ctx.games}
+          onOpenGame={ctx.openGame}
+          onBack={() => ctx.setScreen("lobby")}
+        />
+      )}
+
       {ctx.screen === "privacy" && <PrivacyPolicy onBack={() => ctx.setScreen("landing")} />}
 
       {ctx.screen === "terms" && <TermsOfService onBack={() => ctx.setScreen("landing")} />}

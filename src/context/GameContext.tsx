@@ -17,6 +17,7 @@ export type Screen =
   | "challenge"
   | "game"
   | "gameover"
+  | "record"
   | "privacy"
   | "terms"
   | "notfound";

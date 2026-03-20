@@ -37,6 +37,7 @@ export function Lobby({
   onOpenGame,
   onSignOut,
   onDeleteAccount,
+  onViewRecord,
   user,
 }: {
   profile: UserProfile;
@@ -46,6 +47,7 @@ export function Lobby({
   onOpenGame: (g: GameDoc) => void;
   onSignOut: () => void;
   onDeleteAccount: () => Promise<void>;
+  onViewRecord: () => void;
   user: { emailVerified?: boolean } | null;
 }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -99,14 +101,19 @@ export function Lobby({
       <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-border">
         <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onViewRecord}
+            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            title="View my record"
+          >
             <div className="w-7 h-7 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
               <span className="font-display text-[11px] text-brand-orange leading-none">
                 {profile.username[0].toUpperCase()}
               </span>
             </div>
             <span className="font-body text-xs text-brand-orange">@{profile.username}</span>
-          </div>
+          </button>
           <NotificationBell games={games} onOpenGame={onOpenGame} />
           <button
             type="button"
