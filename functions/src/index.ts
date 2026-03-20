@@ -58,28 +58,25 @@ async function sendPush(
  * Triggered when a new nudge document is created in Firestore.
  * Sends a push notification to the recipient via FCM.
  */
-export const onNudgeCreated = onDocumentCreated(
-  { document: "nudges/{nudgeId}", database: DB_NAME },
-  async (event) => {
-    const data = event.data?.data();
-    if (!data) return;
+export const onNudgeCreated = onDocumentCreated({ document: "nudges/{nudgeId}", database: DB_NAME }, async (event) => {
+  const data = event.data?.data();
+  if (!data) return;
 
-    const { recipientUid, senderUsername, gameId } = data;
-    const tokens = await getFcmTokens(recipientUid);
+  const { recipientUid, senderUsername, gameId } = data;
+  const tokens = await getFcmTokens(recipientUid);
 
-    const successCount = await sendPush(
-      recipientUid,
-      tokens,
-      {
-        title: "You got nudged! 👊",
-        body: `@${senderUsername} is waiting for your move`,
-      },
-      { gameId, type: "nudge", nudgeId: event.data?.id ?? "" },
-    );
+  const successCount = await sendPush(
+    recipientUid,
+    tokens,
+    {
+      title: "You got nudged! 👊",
+      body: `@${senderUsername} is waiting for your move`,
+    },
+    { gameId, type: "nudge", nudgeId: event.data?.id ?? "" },
+  );
 
-    await event.data?.ref.update({ delivered: successCount > 0 });
-  },
-);
+  await event.data?.ref.update({ delivered: successCount > 0 });
+});
 
 /* ── New challenge notifications ─────────────────────────────── */
 
@@ -87,27 +84,24 @@ export const onNudgeCreated = onDocumentCreated(
  * When a new game is created, notify player2 (the challenged player)
  * via push notification so they know even if the app is closed.
  */
-export const onGameCreated = onDocumentCreated(
-  { document: "games/{gameId}", database: DB_NAME },
-  async (event) => {
-    const data = event.data?.data();
-    if (!data) return;
+export const onGameCreated = onDocumentCreated({ document: "games/{gameId}", database: DB_NAME }, async (event) => {
+  const data = event.data?.data();
+  if (!data) return;
 
-    const { player2Uid, player1Username } = data;
-    const gameId = event.params.gameId;
+  const { player2Uid, player1Username } = data;
+  const gameId = event.params.gameId;
 
-    const tokens = await getFcmTokens(player2Uid);
-    await sendPush(
-      player2Uid,
-      tokens,
-      {
-        title: "New Challenge! 🛹",
-        body: `@${player1Username} challenged you to S.K.A.T.E.`,
-      },
-      { gameId, type: "new_challenge" },
-    );
-  },
-);
+  const tokens = await getFcmTokens(player2Uid);
+  await sendPush(
+    player2Uid,
+    tokens,
+    {
+      title: "New Challenge! 🛹",
+      body: `@${player1Username} challenged you to S.K.A.T.E.`,
+    },
+    { gameId, type: "new_challenge" },
+  );
+});
 
 /* ── Turn change / game completion notifications ─────────────── */
 
@@ -115,92 +109,76 @@ export const onGameCreated = onDocumentCreated(
  * When a game document is updated, detect turn changes, phase changes,
  * and game completions — then push-notify the relevant player.
  */
-export const onGameUpdated = onDocumentUpdated(
-  { document: "games/{gameId}", database: DB_NAME },
-  async (event) => {
-    const before = event.data?.before.data();
-    const after = event.data?.after.data();
-    if (!before || !after) return;
+export const onGameUpdated = onDocumentUpdated({ document: "games/{gameId}", database: DB_NAME }, async (event) => {
+  const before = event.data?.before.data();
+  const after = event.data?.after.data();
+  if (!before || !after) return;
 
-    const gameId = event.params.gameId;
+  const gameId = event.params.gameId;
 
-    const opponentName = (uid: string) =>
-      after.player1Uid === uid ? after.player2Username : after.player1Username;
+  const opponentName = (uid: string) => (after.player1Uid === uid ? after.player2Username : after.player1Username);
 
-    // ── Game completed ──
-    if (after.status !== "active" && before.status === "active") {
-      const isForfeit = after.status === "forfeit";
-      const winnerUid: string | null = after.winner;
+  // ── Game completed ──
+  if (after.status !== "active" && before.status === "active") {
+    const isForfeit = after.status === "forfeit";
+    const winnerUid: string | null = after.winner;
 
-      // Notify both players
-      const players = [
-        { uid: after.player1Uid, name: after.player1Username },
-        { uid: after.player2Uid, name: after.player2Username },
-      ];
+    // Notify both players
+    const players = [
+      { uid: after.player1Uid, name: after.player1Username },
+      { uid: after.player2Uid, name: after.player2Username },
+    ];
 
-      await Promise.all(
-        players.map(async (player) => {
-          const tokens = await getFcmTokens(player.uid);
-          const won = winnerUid === player.uid;
-          await sendPush(
-            player.uid,
-            tokens,
-            {
-              title: won
-                ? isForfeit ? "Opponent Forfeited! 🏆" : "You Won! 🏆"
-                : isForfeit ? "Time Expired ⏰" : "Game Over",
-              body: `vs @${opponentName(player.uid)}`,
-            },
-            { gameId, type: won ? "game_won" : "game_lost" },
-          );
-        }),
-      );
-      return;
-    }
-
-    // ── Turn changed ──
-    if (after.currentTurn !== before.currentTurn && after.status === "active") {
-      const recipientUid = after.currentTurn;
-      const tokens = await getFcmTokens(recipientUid);
-
-      if (after.phase === "matching") {
+    await Promise.all(
+      players.map(async (player) => {
+        const tokens = await getFcmTokens(player.uid);
+        const won = winnerUid === player.uid;
         await sendPush(
-          recipientUid,
+          player.uid,
           tokens,
           {
-            title: "Your Turn! 🎯",
-            body: `Match @${opponentName(recipientUid)}'s ${after.currentTrickName || "trick"}`,
+            title: won
+              ? isForfeit
+                ? "Opponent Forfeited! 🏆"
+                : "You Won! 🏆"
+              : isForfeit
+                ? "Time Expired ⏰"
+                : "Game Over",
+            body: `vs @${opponentName(player.uid)}`,
           },
-          { gameId, type: "your_turn" },
+          { gameId, type: won ? "game_won" : "game_lost" },
         );
-      } else if (after.phase === "setting") {
-        await sendPush(
-          recipientUid,
-          tokens,
-          {
-            title: "Your Turn to Set! 🛹",
-            body: `Set a trick for @${opponentName(recipientUid)}`,
-          },
-          { gameId, type: "your_turn" },
-        );
-      }
-      return;
-    }
+      }),
+    );
+    return;
+  }
 
-    // ── Phase changed to confirming (match attempt submitted) ──
-    if (after.phase === "confirming" && before.phase === "matching") {
-      // Notify the setter that they need to review the attempt
-      const setterUid = after.currentSetter;
-      const tokens = await getFcmTokens(setterUid);
+  // ── Turn changed ──
+  if (after.currentTurn !== before.currentTurn && after.status === "active") {
+    const recipientUid = after.currentTurn;
+    const tokens = await getFcmTokens(recipientUid);
+
+    if (after.phase === "matching") {
       await sendPush(
-        setterUid,
+        recipientUid,
         tokens,
         {
-          title: "Review Time 📹",
-          body: `@${opponentName(setterUid)} submitted their attempt — make the call`,
+          title: "Your Turn! 🎯",
+          body: `Match @${opponentName(recipientUid)}'s ${after.currentTrickName || "trick"}`,
+        },
+        { gameId, type: "your_turn" },
+      );
+    } else if (after.phase === "setting") {
+      await sendPush(
+        recipientUid,
+        tokens,
+        {
+          title: "Your Turn to Set! 🛹",
+          body: `Set a trick for @${opponentName(recipientUid)}`,
         },
         { gameId, type: "your_turn" },
       );
     }
-  },
-);
+    return;
+  }
+});

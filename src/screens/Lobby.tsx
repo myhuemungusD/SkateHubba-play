@@ -55,7 +55,6 @@ export function Lobby({
   const [deleteError, setDeleteError] = useState("");
   const [players, setPlayers] = useState<UserProfile[]>([]);
   const [playersLoading, setPlayersLoading] = useState(true);
-
   useEffect(() => {
     let stale = false;
     getPlayerDirectory()
@@ -87,11 +86,9 @@ export function Lobby({
     const trick = g.currentTrickName || "Trick";
     if (isMyTurn(g)) {
       if (g.phase === "matching") return `Match: ${trick}`;
-      if (g.phase === "confirming") return "Vote on attempt";
       return "Your turn to set";
     }
     if (g.phase === "matching") return `Matching: ${trick}`;
-    if (g.phase === "confirming") return "Vote on attempt";
     return "They're setting a trick";
   };
 
