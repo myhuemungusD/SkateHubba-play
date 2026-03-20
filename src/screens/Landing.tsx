@@ -80,13 +80,13 @@ export function Landing({
       <nav className="sticky top-0 z-50 backdrop-blur-md bg-[#0A0A0A]/80 border-b border-border">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
           <span className="font-display text-lg tracking-[0.25em] text-brand-orange">
-            SKATEHUBBA<span className="text-[#555]">™</span>
+            SKATEHUBBA<span className="text-subtle">™</span>
           </span>
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => onGo("signin")}
-              className="font-display text-sm tracking-wider text-[#888] hover:text-white transition-colors"
+              className="font-display text-sm tracking-wider text-muted hover:text-white transition-colors"
             >
               LOG IN
             </button>
@@ -129,13 +129,13 @@ export function Landing({
             draggable={false}
             className="w-52 md:w-72 mb-8 drop-shadow-[0_0_40px_rgba(255,107,0,0.15)] select-none"
           />
-          <p className="font-body text-lg md:text-xl text-[#888] max-w-md leading-relaxed mb-4">
+          <p className="font-body text-lg md:text-xl text-muted max-w-md leading-relaxed mb-4">
             The first async trick battle game.
             <br />
             <span className="text-white font-medium">Set tricks. Match tricks. One take only.</span>
           </p>
 
-          <span className="inline-block font-display text-xs tracking-[0.3em] text-[#555] border border-border rounded-full px-4 py-1.5 mb-10">
+          <span className="inline-block font-display text-xs tracking-[0.3em] text-subtle border border-border rounded-full px-4 py-1.5 mb-10">
             FREE TO PLAY
           </span>
 
@@ -163,7 +163,7 @@ export function Landing({
       {/* ─── How It Works ───────────────────────────────── */}
       <section className="max-w-5xl mx-auto px-6 py-20 md:py-28" aria-label="How it works">
         <h2 className="font-display text-3xl md:text-4xl text-white text-center tracking-wider mb-3">HOW IT WORKS</h2>
-        <p className="font-body text-sm text-[#666] text-center mb-14 max-w-sm mx-auto">
+        <p className="font-body text-sm text-faint text-center mb-14 max-w-sm mx-auto">
           Three steps to prove you&apos;re the best on the board.
         </p>
 
@@ -178,7 +178,7 @@ export function Landing({
                 {item.step}
               </span>
               <h3 className="font-display text-xl text-white tracking-wide mt-3 mb-2">{item.label}</h3>
-              <p className="font-body text-sm text-[#666] leading-relaxed">{item.desc}</p>
+              <p className="font-body text-sm text-faint leading-relaxed">{item.desc}</p>
               {/* Bottom accent line */}
               <div
                 className="absolute bottom-0 left-6 right-6 h-[2px] rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-300"
@@ -218,7 +218,7 @@ export function Landing({
                     <span className="font-display text-xs text-white tracking-wider">LANDED</span>
                   </div>
                   <div className="flex-1 h-9 rounded-lg bg-[#1A1A1A] border border-border flex items-center justify-center">
-                    <span className="font-display text-xs text-[#666] tracking-wider">MISSED</span>
+                    <span className="font-display text-xs text-faint tracking-wider">MISSED</span>
                   </div>
                 </div>
               </div>
@@ -235,7 +235,7 @@ export function Landing({
               <br />
               REAL PROOF.
             </h2>
-            <p className="font-body text-[#888] leading-relaxed mb-6 max-w-md">
+            <p className="font-body text-muted leading-relaxed mb-6 max-w-md">
               Every trick is filmed in a single uncut take. No edits, no faking it. Your opponent watches your clip and
               has to match it — or take a letter. Five letters and you&apos;re out.
             </p>
@@ -262,7 +262,7 @@ export function Landing({
                       <polyline points="20 6 9 17 4 12" />
                     </svg>
                   </span>
-                  <span className="font-body text-sm text-[#999]">{item}</span>
+                  <span className="font-body text-sm text-dim">{item}</span>
                 </li>
               ))}
             </ul>
@@ -278,7 +278,7 @@ export function Landing({
         <h2 className="font-display text-3xl md:text-4xl text-white text-center tracking-wider mb-3">
           BUILT FOR SKATERS
         </h2>
-        <p className="font-body text-sm text-[#666] text-center mb-14 max-w-sm mx-auto">
+        <p className="font-body text-sm text-faint text-center mb-14 max-w-sm mx-auto">
           Every feature designed to keep it raw, fair, and competitive.
         </p>
 
@@ -292,7 +292,7 @@ export function Landing({
                 {f.icon}
               </div>
               <h3 className="font-display text-lg text-white tracking-wide mb-2">{f.title}</h3>
-              <p className="font-body text-sm text-[#666] leading-relaxed">{f.desc}</p>
+              <p className="font-body text-sm text-faint leading-relaxed">{f.desc}</p>
             </div>
           ))}
         </div>
@@ -311,7 +311,7 @@ export function Landing({
         />
         <div className="relative max-w-5xl mx-auto px-6 py-20 md:py-28 flex flex-col items-center text-center">
           <h2 className="font-display text-4xl md:text-5xl text-white tracking-wider mb-4">READY TO PLAY?</h2>
-          <p className="font-body text-[#888] mb-10 max-w-sm leading-relaxed">
+          <p className="font-body text-muted mb-10 max-w-sm leading-relaxed">
             Grab your board, open the app, and prove you&apos;ve got what it takes.
           </p>
 
@@ -333,7 +333,7 @@ export function Landing({
         <div className="max-w-5xl mx-auto px-6 py-10 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex flex-col items-center md:items-start gap-1">
             <span className="font-display text-base tracking-[0.25em] text-brand-orange">
-              SKATEHUBBA<span className="text-[#555]">™</span>
+              SKATEHUBBA<span className="text-subtle">™</span>
             </span>
             <span className="font-body text-xs text-[#444]">The first async S.K.A.T.E. trick battle game.</span>
           </div>
@@ -344,7 +344,7 @@ export function Landing({
               href="https://x.com/skatehubba_"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#555] hover:text-white transition-colors"
+              className="text-subtle hover:text-white transition-colors"
               aria-label="Follow on X"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -355,7 +355,7 @@ export function Landing({
               href="https://www.instagram.com/skatehubba_app"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#555] hover:text-white transition-colors"
+              className="text-subtle hover:text-white transition-colors"
               aria-label="Follow on Instagram"
             >
               <svg
@@ -378,7 +378,7 @@ export function Landing({
               href="https://www.facebook.com/profile.php?id=61578731058004"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#555] hover:text-white transition-colors"
+              className="text-subtle hover:text-white transition-colors"
               aria-label="Follow on Facebook"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -391,21 +391,21 @@ export function Landing({
             <button
               type="button"
               onClick={() => onNav("privacy")}
-              className="font-body text-xs text-[#555] hover:text-[#888] transition-colors"
+              className="font-body text-xs text-subtle hover:text-muted transition-colors"
             >
               Privacy Policy
             </button>
             <button
               type="button"
               onClick={() => onNav("terms")}
-              className="font-body text-xs text-[#555] hover:text-[#888] transition-colors"
+              className="font-body text-xs text-subtle hover:text-muted transition-colors"
             >
               Terms of Service
             </button>
             <button
               type="button"
               onClick={() => onNav("datadeletion")}
-              className="font-body text-xs text-[#555] hover:text-[#888] transition-colors"
+              className="font-body text-xs text-subtle hover:text-muted transition-colors"
             >
               Data Deletion
             </button>

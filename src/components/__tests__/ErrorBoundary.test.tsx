@@ -5,6 +5,7 @@ import { ErrorBoundary } from "../ErrorBoundary";
 
 vi.mock("../../lib/sentry", () => ({
   captureException: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }));
 
 const ThrowingChild = ({ error }: { error: Error }) => {

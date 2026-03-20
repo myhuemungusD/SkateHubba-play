@@ -1,6 +1,7 @@
 import { getMessaging, getToken, onMessage, type MessagePayload } from "firebase/messaging";
 import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
+import { logger } from "./logger";
 
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
 
@@ -28,7 +29,7 @@ export async function requestPushPermission(uid: string): Promise<string | null>
     const messaging = getMessagingInstance();
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
     if (!vapidKey) {
-      console.warn("VITE_FIREBASE_VAPID_KEY not set — push notifications disabled");
+      logger.warn("vapid_key_missing", { hint: "set VITE_FIREBASE_VAPID_KEY to enable push notifications" });
       return null;
     }
 
@@ -42,7 +43,7 @@ export async function requestPushPermission(uid: string): Promise<string | null>
 
     return token;
   } catch (err) {
-    console.warn("Failed to get FCM token:", err);
+    logger.warn("fcm_token_failed", { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }

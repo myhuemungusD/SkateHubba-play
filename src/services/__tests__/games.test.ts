@@ -690,9 +690,13 @@ describe("games service", () => {
         return vi.fn();
       });
 
-      // Should not throw — error is swallowed with a console.warn
+      // Should not throw — error is swallowed with a logger.warn
       expect(() => subscribeToMyGames("u1", vi.fn())).not.toThrow();
-      expect(warnSpy).toHaveBeenCalledWith("Game subscription error for uid:", "u1", "network error");
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[WARN]",
+        "game_subscription_error",
+        expect.objectContaining({ uid: "u1", error: "network error" }),
+      );
       warnSpy.mockRestore();
     });
   });

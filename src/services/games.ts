@@ -15,7 +15,7 @@ import {
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
-import { metrics } from "./logger";
+import { logger, metrics } from "./logger";
 import { captureException } from "../lib/sentry";
 
 /* ────────────────────────────────────────────
@@ -381,7 +381,7 @@ export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => 
   const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(50));
 
   const handleError = (err: Error) => {
-    console.warn("Game subscription error for uid:", uid, err.message);
+    logger.warn("game_subscription_error", { uid, error: err.message });
     captureException(err, { extra: { context: "subscribeToMyGames", uid } });
   };
 
@@ -423,7 +423,7 @@ export function subscribeToGame(gameId: string, onUpdate: (game: GameDoc | null)
       onUpdate(toGameDoc(snap));
     },
     (err) => {
-      console.warn("Game subscription error for game:", gameId, err.message);
+      logger.warn("game_subscription_error", { gameId, error: err.message });
       captureException(err, { extra: { context: "subscribeToGame", gameId } });
       onUpdate(null);
     },
