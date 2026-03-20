@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { useGameContext, GameProvider } from "./context/GameContext";
 import { NotificationProvider } from "./context/NotificationContext";
+import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
@@ -50,6 +51,29 @@ function AppScreens() {
 function AppRoutes() {
   const ctx = useGameContext();
   const [challengeTarget, setChallengeTarget] = useState("");
+  const [directChallengeError, setDirectChallengeError] = useState("");
+
+  const directChallenge = useCallback(
+    async (username: string) => {
+      setDirectChallengeError("");
+      const normalized = username.toLowerCase().trim();
+      try {
+        const uid = await getUidByUsername(normalized);
+        if (!uid) {
+          setDirectChallengeError(`@${normalized} doesn't exist yet.`);
+          setChallengeTarget(normalized);
+          ctx.setScreen("challenge");
+          return;
+        }
+        await ctx.startChallenge(uid, normalized);
+      } catch (err: unknown) {
+        setDirectChallengeError(err instanceof Error ? err.message : "Could not start game");
+        setChallengeTarget(normalized);
+        ctx.setScreen("challenge");
+      }
+    },
+    [ctx],
+  );
 
   return (
     <>
@@ -106,8 +130,7 @@ function AppRoutes() {
             ctx.setScreen("challenge");
           }}
           onChallengeUser={(username: string) => {
-            setChallengeTarget(username);
-            ctx.setScreen("challenge");
+            directChallenge(username);
           }}
           onOpenGame={ctx.openGame}
           onSignOut={ctx.handleSignOut}
