@@ -1,5 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 
+// Mock Firebase Messaging — jsdom lacks Service Worker and Push APIs required
+// by the Firebase Messaging SDK, which throws "unsupported-browser" on init.
+vi.mock("firebase/messaging", () => ({
+  getMessaging: vi.fn(() => ({})),
+  getToken: vi.fn(() => Promise.resolve(null)),
+  onMessage: vi.fn(() => vi.fn()),
+}));
+
 // Mock navigator.mediaDevices with a fake stream so VideoRecorder enters
 // preview state normally. The stream has no real tracks but satisfies the API.
 const mockStop = vi.fn();

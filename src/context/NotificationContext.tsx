@@ -106,8 +106,6 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
   }, [uid]);
 
   // Persist when notifications change
-  const notificationsRef = useRef(notifications);
-  notificationsRef.current = notifications;
   useEffect(() => {
     if (uid) saveNotifications(uid, notifications);
   }, [uid, notifications]);
