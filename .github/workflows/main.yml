@@ -79,4 +79,4 @@ jobs:
       - name: Run Lighthouse CI
         run: npx @lhci/cli autorun
         env:
-          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
