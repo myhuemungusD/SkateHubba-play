@@ -207,7 +207,6 @@ service cloud.firestore {
     // A nudge is a push-notification poke sent to an idle opponent.
     match /nudges/{nudgeId} {
       allow create: if isSignedIn()
-        && request.auth.token.email_verified == true
         && request.resource.data.senderUid == request.auth.uid
         && request.resource.data.recipientUid is string
         && request.resource.data.recipientUid != request.auth.uid
