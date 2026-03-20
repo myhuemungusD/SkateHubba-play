@@ -13,7 +13,7 @@ import { Timer } from "../components/Timer";
 import { VideoRecorder } from "../components/VideoRecorder";
 import { UploadProgress } from "../components/UploadProgress";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
-import { HourglassIcon, PlayIcon } from "../components/icons";
+import { HourglassIcon } from "../components/icons";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [trickName, setTrickName] = useState("");
@@ -22,7 +22,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const recorderRevealedRef = useRef(false);
   const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [videoRecorded, setVideoRecorded] = useState(false);
-  const [clipReviewed, setClipReviewed] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [setterAction, setSetterAction] = useState<"landed" | "missed" | null>(null);
@@ -326,16 +326,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
         <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-        {isSetter && videoRecorded && !clipReviewed && !submitting && !error && (
-          <div className="mt-5 text-center">
-            <p className="font-display text-lg text-white mb-2">Watch what you just did</p>
-            <p className="font-body text-sm text-[#888] mb-4">Review your clip before calling it</p>
-            <Btn onClick={() => setClipReviewed(true)} variant="secondary">
-              <PlayIcon size={16} className="inline -mt-0.5" /> I&apos;ve Reviewed My Clip
-            </Btn>
-          </div>
-        )}
-        {isSetter && videoRecorded && clipReviewed && !submitting && !error && (
+        {isSetter && videoRecorded && !submitting && !error && (
           <div className="mt-5" role="group" aria-label="Did you land the trick?">
             <p className="font-display text-xl text-white text-center mb-4">Did you land it?</p>
             <div className="flex gap-3">
@@ -370,16 +361,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           </div>
         )}
 
-        {isMatcher && videoRecorded && !clipReviewed && !submitting && (
-          <div className="mt-5 text-center">
-            <p className="font-display text-lg text-white mb-2">Watch what you just did</p>
-            <p className="font-body text-sm text-[#888] mb-4">Review your clip before making the call</p>
-            <Btn onClick={() => setClipReviewed(true)} variant="secondary">
-              <PlayIcon size={16} className="inline -mt-0.5" /> I&apos;ve Reviewed My Clip
-            </Btn>
-          </div>
-        )}
-        {isMatcher && videoRecorded && clipReviewed && !submitting && !error && (
+        {isMatcher && videoRecorded && !submitting && !error && (
           <div className="mt-5" role="group" aria-label="Did you land the trick?">
             {uploadProgress ? (
               <UploadProgress progress={uploadProgress} />

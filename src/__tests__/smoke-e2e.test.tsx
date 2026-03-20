@@ -1531,10 +1531,6 @@ describe("Smoke Test: Game E2E", () => {
     });
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
-    // Review step — must click through before decision buttons appear
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => {
       expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument();
@@ -1579,10 +1575,6 @@ describe("Smoke Test: Game E2E", () => {
     expect(screen.getByLabelText("TRICK NAME")).toBeDisabled();
     expect(screen.getByText(/Recorded/)).toBeInTheDocument();
 
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Landed/));
@@ -1616,10 +1608,6 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /record/i }));
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
@@ -1663,10 +1651,6 @@ describe("Smoke Test: Game E2E", () => {
       expect(screen.getByRole("button", { name: /stop recording/i })).toBeInTheDocument();
     });
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     // Self-judging: matcher sees "Did you land it?" with Landed/Missed buttons
     await waitFor(() => {
@@ -1746,10 +1730,6 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /record/i }));
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
@@ -2138,10 +2118,6 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
     await waitFor(() => screen.getByText(/✓ Landed/));
     await userEvent.click(screen.getByText(/✓ Landed/));
 
@@ -2167,10 +2143,6 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /record/i }));
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     // "Did you land it?" appears — click Landed (which will fail)
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
@@ -2208,10 +2180,6 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /record/i }));
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     // "Did you land it?" appears — click Landed (which will hang)
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
@@ -2389,10 +2357,6 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
-
     await waitFor(() => screen.getByText(/✓ Landed/));
     await userEvent.click(screen.getByText(/✓ Landed/));
 
@@ -2417,10 +2381,6 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByRole("button", { name: /record/i }));
     await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
     await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    // Review step
-    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
     // "Did you land it?" appears — click Landed (which will fail)
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
