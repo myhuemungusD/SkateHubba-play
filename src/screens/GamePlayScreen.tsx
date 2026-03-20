@@ -403,6 +403,9 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             {!trimmedTrickName && (
               <p className="font-body text-xs text-[#777] pb-1">Name your trick</p>
             )}
+            {trimmedTrickName && (
+              <p className="font-body text-xs text-brand-orange/80 pb-1">Set your {trimmedTrickName}</p>
+            )}
             {!showRecorder && (
               <span className="text-xs text-[#777] pb-2 block">Name your trick to start recording</span>
             )}
