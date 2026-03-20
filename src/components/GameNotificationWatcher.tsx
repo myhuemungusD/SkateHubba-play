@@ -3,7 +3,20 @@ import { collection, query, where, onSnapshot, orderBy, limit } from "firebase/f
 import { db } from "../firebase";
 import { useGameContext } from "../context/GameContext";
 import { useNotifications } from "../context/NotificationContext";
+import { onForegroundMessage } from "../services/fcm";
 import type { GameDoc } from "../services/games";
+import type { ChimeType } from "../services/sounds";
+
+/**
+ * Maps FCM data.type values to chime types for foreground push messages.
+ */
+const fcmChimeMap: Record<string, ChimeType> = {
+  nudge: "nudge",
+  your_turn: "your_turn",
+  new_challenge: "new_challenge",
+  game_won: "game_won",
+  game_lost: "game_lost",
+};
 
 /**
  * Watches game state changes and triggers notifications.
@@ -233,7 +246,7 @@ export function GameNotificationWatcher() {
               type: "game_event",
               title: "You got nudged!",
               message: `@${data.senderUsername} is waiting for your move`,
-              chime: "general",
+              chime: "nudge",
               gameId: data.gameId,
             });
             initialNudgeIdsRef.current.add(change.doc.id);
@@ -250,6 +263,57 @@ export function GameNotificationWatcher() {
     }
 
     return () => unsub?.();
+  }, [uid, notify]);
+
+  // ── Handle deep-link from service worker notification tap ──
+  useEffect(() => {
+    if (!uid) return;
+
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "OPEN_GAME" && event.data.gameId) {
+        const game = games.find((g) => g.id === event.data.gameId);
+        if (game) {
+          // Use the GameContext openGame flow by dispatching a custom event
+          // that App.tsx can pick up, or directly open via the context.
+          // For simplicity, we navigate by updating the URL which the app reads.
+          window.dispatchEvent(new CustomEvent("skatehubba:open-game", { detail: { gameId: event.data.gameId } }));
+        }
+      }
+    };
+
+    navigator.serviceWorker?.addEventListener("message", handler);
+    return () => navigator.serviceWorker?.removeEventListener("message", handler);
+  }, [uid, games]);
+
+  // ── Bridge foreground FCM messages into in-app notifications ──
+  // The onForegroundMessage handler was exported but never wired up, so push
+  // messages received while the app is open were silently dropped. This bridges
+  // them into the same toast + bell system used by Firestore watchers.
+  useEffect(() => {
+    if (!uid) return;
+
+    const unsub = onForegroundMessage((payload) => {
+      const { notification, data } = payload;
+      if (!notification) return;
+
+      // Avoid duplicate: if the Firestore watcher already fired for this
+      // nudge (tracked via initialNudgeIdsRef), skip the FCM echo.
+      if (data?.type === "nudge" && data?.nudgeId && initialNudgeIdsRef.current?.has(data.nudgeId)) {
+        return;
+      }
+
+      const chime = fcmChimeMap[data?.type ?? ""] ?? "general";
+
+      notify({
+        type: data?.type === "game_won" ? "success" : "game_event",
+        title: notification.title ?? "SkateHubba",
+        message: notification.body ?? "",
+        chime,
+        gameId: data?.gameId,
+      });
+    });
+
+    return unsub;
   }, [uid, notify]);
 
   return null;

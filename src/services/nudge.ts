@@ -1,7 +1,7 @@
 import { addDoc, collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
 
-const COOLDOWN_MS = 4 * 60 * 60 * 1000; // 4 hours
+const COOLDOWN_MS = 1 * 60 * 60 * 1000; // 1 hour
 
 interface SendNudgeParams {
   gameId: string;
@@ -21,7 +21,7 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
   const key = `nudge_${gameId}`;
   const last = parseInt(localStorage.getItem(key) || "0", 10);
   if (Date.now() - last < COOLDOWN_MS) {
-    throw new Error("You can only nudge once every 4 hours per game");
+    throw new Error("You can only nudge once per hour per game");
   }
 
   const db = requireDb();

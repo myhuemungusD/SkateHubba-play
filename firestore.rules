@@ -253,7 +253,7 @@ service cloud.firestore {
     }
 
     // ── Nudge rate limits ──
-    // One doc per sender+game pair, enforces 4-hour cooldown server-side.
+    // One doc per sender+game pair, enforces 1-hour cooldown server-side.
     match /nudge_limits/{limitId} {
       allow read: if isSignedIn();
 
@@ -263,7 +263,7 @@ service cloud.firestore {
 
       allow update: if isSignedIn()
         && request.auth.uid == resource.data.senderUid
-        && request.time > resource.data.lastNudgedAt + duration.value(4, 'h');
+        && request.time > resource.data.lastNudgedAt + duration.value(1, 'h');
 
       allow delete: if false;
     }
