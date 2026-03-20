@@ -58,11 +58,16 @@ vi.mock("../services/games", () => ({
   submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
   submitConfirmation: (...args: unknown[]) => mockSubmitConfirmation(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
+  resolveDispute: vi.fn(),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
 }));
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
+}));
+vi.mock("../services/disputes", () => ({
+  subscribeToOpenDisputes: vi.fn(() => vi.fn()),
+  subscribeToDispute: vi.fn(() => vi.fn()),
 }));
 vi.mock("../services/fcm", () => ({
   requestPushPermission: vi.fn().mockResolvedValue(null),

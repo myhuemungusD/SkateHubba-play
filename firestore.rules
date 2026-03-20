@@ -147,26 +147,32 @@ service cloud.firestore {
           )
         );
 
-      // Confirmation phase: only the setter reviews and decides
+      // ── Confirmation phase: BOTH setter and matcher vote independently ──
+
+      // First vote: either player records their vote (the other field stays null)
       allow update: if isSignedIn()
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && resource.data.phase == 'confirming'
-        // Only the setter can confirm
-        && request.auth.uid == resource.data.currentSetter
-        // Cannot change player UIDs or usernames
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
         && request.resource.data.player1Username == resource.data.player1Username
         && request.resource.data.player2Username == resource.data.player2Username
-        // Videos must not change during confirmation
         && request.resource.data.currentTrickVideoUrl == resource.data.currentTrickVideoUrl
         && request.resource.data.matchVideoUrl == resource.data.matchVideoUrl
         && request.resource.data.currentTrickName == resource.data.currentTrickName
-        // Setter votes (setterConfirm changes from null to bool)
-        && resource.data.setterConfirm == null
-        && request.resource.data.setterConfirm is bool
-        // Scores: no change, or +1 for one player when resolving
+        // Exactly one of the two votes changes from null to bool
+        && (
+          // Setter voting first (matcher hasn't voted yet, or has already voted)
+          (request.auth.uid == resource.data.currentSetter
+            && resource.data.setterConfirm == null
+            && request.resource.data.setterConfirm is bool)
+          // Matcher voting first
+          || (request.auth.uid == opponentUid(resource.data, resource.data.currentSetter)
+            && resource.data.matcherConfirm == null
+            && request.resource.data.matcherConfirm is bool)
+        )
+        // Scores: no change, or +1 for one player when resolving on agreement
         && (
           (request.resource.data.p1Letters == resource.data.p1Letters + 1
             && request.resource.data.p2Letters == resource.data.p2Letters)
@@ -176,7 +182,67 @@ service cloud.firestore {
             && request.resource.data.p2Letters == resource.data.p2Letters)
         )
         && (
-          // Resolution: game complete (a player reached 5 letters)
+          // First vote: game stays active, confirming, no score change
+          (
+            request.resource.data.status == 'active'
+            && request.resource.data.winner == null
+            && request.resource.data.phase == 'confirming'
+            && request.resource.data.p1Letters == resource.data.p1Letters
+            && request.resource.data.p2Letters == resource.data.p2Letters
+          )
+          // Second vote — agreement: game complete
+          || (
+            request.resource.data.status == 'complete'
+            && (request.resource.data.p1Letters >= 5 || request.resource.data.p2Letters >= 5)
+            && request.resource.data.winner == (
+              request.resource.data.p1Letters >= 5
+                ? resource.data.player2Uid
+                : resource.data.player1Uid
+            )
+          )
+          // Second vote — agreement: game continues (back to setting)
+          || (
+            request.resource.data.status == 'active'
+            && request.resource.data.winner == null
+            && request.resource.data.phase == 'setting'
+            && request.resource.data.turnNumber == resource.data.turnNumber + 1
+            && (
+              request.resource.data.currentSetter == resource.data.player1Uid
+              || request.resource.data.currentSetter == resource.data.player2Uid
+            )
+            && request.resource.data.currentTurn == request.resource.data.currentSetter
+          )
+          // Second vote — disagreement: game transitions to disputed phase
+          || (
+            request.resource.data.status == 'active'
+            && request.resource.data.winner == null
+            && request.resource.data.phase == 'disputed'
+            && request.resource.data.p1Letters == resource.data.p1Letters
+            && request.resource.data.p2Letters == resource.data.p2Letters
+            && request.resource.data.disputeId is string
+          )
+        );
+
+      // ── Dispute resolution: either player applies the jury verdict ──
+      allow update: if isSignedIn()
+        && isPlayer(resource.data)
+        && resource.data.status == 'active'
+        && resource.data.phase == 'disputed'
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        // Scores: no change, or +1 for one player
+        && (
+          (request.resource.data.p1Letters == resource.data.p1Letters + 1
+            && request.resource.data.p2Letters == resource.data.p2Letters)
+          || (request.resource.data.p2Letters == resource.data.p2Letters + 1
+            && request.resource.data.p1Letters == resource.data.p1Letters)
+          || (request.resource.data.p1Letters == resource.data.p1Letters
+            && request.resource.data.p2Letters == resource.data.p2Letters)
+        )
+        && (
+          // Resolution: game complete
           (
             request.resource.data.status == 'complete'
             && (request.resource.data.p1Letters >= 5 || request.resource.data.p2Letters >= 5)
@@ -186,18 +252,16 @@ service cloud.firestore {
                 : resource.data.player1Uid
             )
           )
-          // Resolution: game continues (setter decided, back to setting)
+          // Resolution: game continues (back to setting)
           || (
             request.resource.data.status == 'active'
             && request.resource.data.winner == null
             && request.resource.data.phase == 'setting'
             && request.resource.data.turnNumber == resource.data.turnNumber + 1
-            // currentSetter must be one of the two players
             && (
               request.resource.data.currentSetter == resource.data.player1Uid
               || request.resource.data.currentSetter == resource.data.player2Uid
             )
-            // In setting phase the setter always has the turn
             && request.resource.data.currentTurn == request.resource.data.currentSetter
           )
         );
@@ -248,6 +312,53 @@ service cloud.firestore {
       allow read: if isSignedIn()
         && (resource.data.senderUid == request.auth.uid
             || resource.data.recipientUid == request.auth.uid);
+
+      allow delete: if false;
+    }
+
+    // ── Disputes (community jury review of disagreed confirmations) ──
+    match /disputes/{disputeId} {
+      // Any signed-in user can read disputes (needed for jury queue)
+      allow read: if isSignedIn();
+
+      // Disputes are created within a transaction by a game player
+      allow create: if isSignedIn()
+        && (request.auth.uid == request.resource.data.setterUid
+            || request.auth.uid == request.resource.data.matcherUid)
+        && request.resource.data.status == 'open'
+        && request.resource.data.resolution == null
+        && request.resource.data.jurySize == 0
+        && request.resource.data.gameId is string
+        && request.resource.data.trickName is string;
+
+      // Jury votes: only non-players can vote, max once per juror
+      // The voter adds their UID to the juryVotes map and increments jurySize
+      allow update: if isSignedIn()
+        && resource.data.status == 'open'
+        // Voter must not be a player in the dispute
+        && request.auth.uid != resource.data.setterUid
+        && request.auth.uid != resource.data.matcherUid
+        // Voter hasn't already voted (their UID is not a key in juryVotes)
+        && !(request.auth.uid in resource.data.juryVotes)
+        // New vote is being added
+        && request.resource.data.juryVotes[request.auth.uid] is bool
+        // jurySize increments by exactly 1
+        && request.resource.data.jurySize == resource.data.jurySize + 1
+        // Cannot change core dispute fields
+        && request.resource.data.gameId == resource.data.gameId
+        && request.resource.data.setterUid == resource.data.setterUid
+        && request.resource.data.matcherUid == resource.data.matcherUid
+        // All existing votes are preserved
+        && resource.data.juryVotes.keys().hasAll(resource.data.juryVotes.keys())
+        // Resolution: set when jurySize reaches 3, otherwise stays null
+        && (
+          (request.resource.data.jurySize < 3
+            && request.resource.data.status == 'open'
+            && request.resource.data.resolution == null)
+          || (request.resource.data.jurySize >= 3
+            && request.resource.data.status == 'resolved'
+            && request.resource.data.resolution is bool)
+        );
 
       allow delete: if false;
     }

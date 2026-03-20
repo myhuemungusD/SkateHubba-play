@@ -1,6 +1,14 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { GameDoc } from "../services/games";
-import { setTrick, failSetTrick, submitMatchAttempt, submitConfirmation, forfeitExpiredTurn } from "../services/games";
+import {
+  setTrick,
+  failSetTrick,
+  submitMatchAttempt,
+  submitConfirmation,
+  forfeitExpiredTurn,
+  resolveDispute,
+} from "../services/games";
+import { subscribeToDispute, type DisputeDoc } from "../services/disputes";
 import { uploadVideo, type UploadProgress as UploadProgressData } from "../services/storage";
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
@@ -32,6 +40,31 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     canNudge(game.id) ? "idle" : "sent",
   );
   const [nudgeError, setNudgeError] = useState("");
+  const [dispute, setDispute] = useState<DisputeDoc | null>(null);
+  const [resolving, setResolving] = useState(false);
+
+  // Subscribe to dispute when game is in disputed phase
+  useEffect(() => {
+    if (game.phase !== "disputed" || !game.disputeId) return;
+    const unsub = subscribeToDispute(game.disputeId, setDispute);
+    return unsub;
+  }, [game.phase, game.disputeId]);
+
+  // Auto-resolve dispute when jury reaches verdict
+  const disputeResolvedRef = useRef(false);
+  useEffect(() => {
+    if (!dispute || dispute.status !== "resolved" || dispute.resolution === null) return;
+    if (disputeResolvedRef.current || resolving) return;
+    disputeResolvedRef.current = true;
+    setResolving(true);
+    resolveDispute(game.id, dispute.id, dispute.resolution)
+      .catch((err) => {
+        console.warn("Dispute resolution failed:", err instanceof Error ? err.message : err);
+        captureException(err, { extra: { context: "resolveDispute", gameId: game.id, disputeId: dispute.id } });
+        disputeResolvedRef.current = false;
+      })
+      .finally(() => setResolving(false));
+  }, [dispute, game.id, resolving]);
 
   // Re-check nudge cooldown periodically so the button re-enables after 4 hours
   useEffect(() => {
@@ -58,7 +91,10 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const isSetter = game.phase === "setting" && game.currentSetter === profile.uid;
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
   const isConfirming = game.phase === "confirming";
+  const isDisputed = game.phase === "disputed";
   const isSetterInGame = game.currentSetter === profile.uid;
+  const myVote = isSetterInGame ? game.setterConfirm : game.matcherConfirm;
+  const hasVoted = myVote !== null;
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
   const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
   const matcherUsername = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
@@ -167,7 +203,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
   const deadline = game.turnDeadline?.toMillis?.() || Date.now() + 86400000;
 
-  // ── Confirming phase: setter reviews clips and decides ──
+  // ── Confirming phase: both players review clips and vote independently ──
   if (isConfirming) {
     return (
       <div className="min-h-dvh bg-[#0A0A0A]/80 pb-10">
@@ -229,8 +265,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-          {/* Setter's vote buttons */}
-          {isSetterInGame && game.setterConfirm === null && !submitting && (
+          {/* Vote buttons — shown to BOTH players until they vote */}
+          {!hasVoted && !submitting && (
             <div className="mt-5" role="group" aria-label="Did the matcher land the trick?">
               <p className="font-display text-xl text-white text-center mb-4">Did @{matcherUsername} land it?</p>
               <div className="flex gap-3">
@@ -244,21 +280,70 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             </div>
           )}
 
-          {/* Submitting state (setter) */}
-          {isSetterInGame && submitting && (
+          {/* Submitting state */}
+          {submitting && (
             <div className="mt-5 text-center">
               <span className="font-display text-lg text-purple-400 tracking-wider animate-pulse">Submitting...</span>
             </div>
           )}
 
-          {/* Matcher waiting for setter to decide */}
-          {!isSetterInGame && (
+          {/* Already voted — waiting for opponent */}
+          {hasVoted && !submitting && (
             <div className="mt-5 text-center">
+              <p className="font-display text-sm text-purple-400 mb-1">You called it: {myVote ? "Landed" : "Missed"}</p>
               <span className="font-display text-sm text-[#888] tracking-wider animate-pulse">
-                Waiting for @{opponentName} to make the call...
+                Waiting for @{opponentName} to make their call...
               </span>
             </div>
           )}
+
+          {(game.turnHistory?.length ?? 0) > 0 && (
+            <TurnHistoryViewer turns={game.turnHistory!} currentUserUid={profile.uid} />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Disputed phase: waiting for community jury ──
+  if (isDisputed) {
+    const juryCount = dispute?.jurySize ?? 0;
+    return (
+      <div className="min-h-dvh bg-[#0A0A0A]/80 pb-10">
+        <div className="px-5 py-4 border-b border-border flex justify-between items-center">
+          <button type="button" onClick={onBack} className="font-body text-sm text-[#888]">
+            ← Games
+          </button>
+          <Timer deadline={deadline} />
+        </div>
+
+        <div className="px-5 pt-5 max-w-md mx-auto">
+          <div className="flex justify-center gap-5 mb-6">
+            <LetterDisplay count={myLetters} name={`@${profile.username}`} active={false} />
+            <div className="flex items-center font-display text-2xl text-[#555]">VS</div>
+            <LetterDisplay count={theirLetters} name={`@${opponentName}`} active={false} />
+          </div>
+
+          <div className="text-center py-3 px-5 mb-5 rounded-xl border bg-[rgba(239,68,68,0.08)] border-red-500">
+            <span className="font-display text-xl tracking-wider text-red-400">
+              Disputed: {game.currentTrickName || "Trick"}
+            </span>
+          </div>
+
+          <div className="text-center mb-5">
+            <p className="font-body text-sm text-[#888] mb-2">You and @{opponentName} disagreed on this call.</p>
+            <p className="font-body text-sm text-[#888]">The community jury is reviewing the video evidence.</p>
+          </div>
+
+          <div className="text-center py-4 px-5 rounded-xl border border-border bg-[rgba(255,255,255,0.02)]">
+            <p className="font-display text-sm tracking-wider text-[#888] mb-1">JURY VOTES</p>
+            <p className="font-display text-3xl text-white">{juryCount} / 3</p>
+            {resolving && (
+              <p className="font-display text-sm text-purple-400 mt-2 animate-pulse">Applying verdict...</p>
+            )}
+          </div>
+
+          <ErrorBanner message={error} onDismiss={() => setError("")} />
 
           {(game.turnHistory?.length ?? 0) > 0 && (
             <TurnHistoryViewer turns={game.turnHistory!} currentUserUid={profile.uid} />
@@ -400,9 +485,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               spellCheck={false}
               className="w-full bg-transparent text-center font-display text-xl tracking-wider text-brand-orange py-2 px-5 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
             />
-            {!trimmedTrickName && (
-              <p className="font-body text-xs text-[#777] pb-1">Name your trick</p>
-            )}
+            {!trimmedTrickName && <p className="font-body text-xs text-[#777] pb-1">Name your trick</p>}
             {trimmedTrickName && (
               <p className="font-body text-xs text-brand-orange/80 pb-1">Set your {trimmedTrickName}</p>
             )}
@@ -413,7 +496,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         ) : (
           <div className="text-center py-3 px-5 mb-5 rounded-xl border bg-[rgba(0,230,118,0.06)] border-brand-green">
             <span className="font-display text-xl tracking-wider text-brand-green">
-              Match @{game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}&apos;s {game.currentTrickName || "trick"}
+              Match @{game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}&apos;s{" "}
+              {game.currentTrickName || "trick"}
             </span>
           </div>
         )}

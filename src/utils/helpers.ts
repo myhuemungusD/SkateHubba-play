@@ -101,6 +101,7 @@ export function newGameShell(
     turnNumber: 1,
     winner: null,
     turnHistory: [],
+    disputeId: null,
     createdAt: null,
     updatedAt: null,
   };

@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
 import type { FieldValue } from "firebase/firestore";
 import type { GameDoc } from "../services/games";
+import { subscribeToOpenDisputes, type DisputeDoc } from "../services/disputes";
 import { LETTERS } from "../utils/helpers";
 import { Btn } from "../components/ui/Btn";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { DisputeReview } from "../components/DisputeReview";
 import { InviteButton } from "../components/InviteButton";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
@@ -55,6 +57,7 @@ export function Lobby({
   const [deleteError, setDeleteError] = useState("");
   const [players, setPlayers] = useState<UserProfile[]>([]);
   const [playersLoading, setPlayersLoading] = useState(true);
+  const [openDisputes, setOpenDisputes] = useState<DisputeDoc[]>([]);
 
   useEffect(() => {
     let stale = false;
@@ -73,6 +76,12 @@ export function Lobby({
     };
   }, [profile.uid]);
 
+  // Subscribe to open disputes for jury duty
+  useEffect(() => {
+    const unsub = subscribeToOpenDisputes(profile.uid, setOpenDisputes);
+    return unsub;
+  }, [profile.uid]);
+
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
 
@@ -85,13 +94,13 @@ export function Lobby({
 
   const turnLabel = (g: GameDoc) => {
     const trick = g.currentTrickName || "Trick";
+    if (g.phase === "disputed") return "Disputed — jury reviewing";
+    if (g.phase === "confirming") return "Vote on attempt";
     if (isMyTurn(g)) {
       if (g.phase === "matching") return `Match: ${trick}`;
-      if (g.phase === "confirming") return "Vote on attempt";
       return "Your turn to set";
     }
     if (g.phase === "matching") return `Matching: ${trick}`;
-    if (g.phase === "confirming") return "Vote on attempt";
     return "They're setting a trick";
   };
 
@@ -384,6 +393,33 @@ export function Lobby({
             </svg>
             <p className="font-body text-sm text-[#999]">No games yet.</p>
             <p className="font-body text-xs text-[#777] mt-1">Challenge someone to get started.</p>
+          </div>
+        )}
+
+        {/* Jury Duty — review disputed calls */}
+        {openDisputes.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-red-400">JURY DUTY</h3>
+              <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-red-500/30 font-display text-[10px] text-red-400 leading-none tabular-nums">
+                {openDisputes.length}
+              </span>
+            </div>
+            <p className="font-body text-xs text-[#888] mb-3">
+              Help the community — review disputed calls and cast your vote.
+            </p>
+            <div className="space-y-3">
+              {openDisputes.map((d) => (
+                <DisputeReview
+                  key={d.id}
+                  dispute={d}
+                  currentUid={profile.uid}
+                  onVoted={() => {
+                    setOpenDisputes((prev) => prev.filter((p) => p.id !== d.id));
+                  }}
+                />
+              ))}
+            </div>
           </div>
         )}
 

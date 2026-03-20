@@ -8,6 +8,7 @@ const mockFailSetTrick = vi.fn();
 const mockSubmitMatchAttempt = vi.fn();
 const mockSubmitConfirmation = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
+const mockResolveDispute = vi.fn();
 const mockUploadVideo = vi.fn();
 
 vi.mock("../../services/games", () => ({
@@ -16,10 +17,15 @@ vi.mock("../../services/games", () => ({
   submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
   submitConfirmation: (...args: unknown[]) => mockSubmitConfirmation(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
+  resolveDispute: (...args: unknown[]) => mockResolveDispute(...args),
 }));
 
 vi.mock("../../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
+}));
+
+vi.mock("../../services/disputes", () => ({
+  subscribeToDispute: vi.fn(() => vi.fn()),
 }));
 
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
@@ -673,8 +679,8 @@ describe("GamePlayScreen", () => {
     expect(screen.getByText(/✗ Missed/)).toBeInTheDocument();
   });
 
-  it("confirming phase shows waiting state for matcher", () => {
-    // u1 is the matcher (u2 is setter) — should see waiting message
+  it("confirming phase shows vote buttons for matcher (dual-vote)", () => {
+    // u1 is the matcher (u2 is setter) — should see vote buttons too
     const game = makeGame({
       phase: "confirming",
       currentSetter: "u2",
@@ -687,7 +693,28 @@ describe("GamePlayScreen", () => {
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
-    expect(screen.getByText(/Waiting for @rival to make the call/)).toBeInTheDocument();
+    // Matcher also sees vote buttons now (dual-vote system)
+    expect(screen.getByText(/Did @sk8r land it/)).toBeInTheDocument();
+    expect(screen.getByText(/✓ Landed/)).toBeInTheDocument();
+    expect(screen.getByText(/✗ Missed/)).toBeInTheDocument();
+  });
+
+  it("confirming phase shows waiting state after matcher has voted", () => {
+    // u1 is the matcher, already voted, waiting for setter
+    const game = makeGame({
+      phase: "confirming",
+      currentSetter: "u2",
+      currentTurn: "u2",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
+      setterConfirm: null,
+      matcherConfirm: true,
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText(/Waiting for @rival to make their call/)).toBeInTheDocument();
+    expect(screen.getByText(/You called it: Landed/)).toBeInTheDocument();
     expect(screen.queryByText(/✓ Landed/)).not.toBeInTheDocument();
   });
 
