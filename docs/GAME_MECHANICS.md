@@ -50,17 +50,22 @@ The matcher must:
 
 1. Watch the setter's video
 2. Record their own one-take attempt
-3. Self-judge: **landed** or **missed**
-4. Submit
+3. Submit their attempt for review
 
-On submit (`submitMatchResult`):
+On submit (`submitMatchAttempt`), the game transitions to the **confirming** phase and it becomes the setter's turn to review.
+
+### Phase 3 — Confirming
+
+The setter reviews both videos and decides whether the matcher landed the trick. Only the setter votes — the matcher waits for the decision.
+
+On submit (`submitConfirmation`):
 
 | Result | Letter assigned          | Next setter                                 |
 | ------ | ------------------------ | ------------------------------------------- |
 | Landed | None                     | Matcher becomes the new setter (roles swap) |
 | Missed | Matcher earns one letter | Setter keeps setting                        |
 
-The `turnNumber` increments after every completed trick round (one full set → match cycle).
+The `turnNumber` increments after every completed trick round (one full set → match → confirm cycle).
 
 ---
 
@@ -124,6 +129,6 @@ From the game-over screen, either player can start a rematch. A rematch creates 
 
 ---
 
-## Honor System
+## Setter's Call
 
-Match results are self-reported. There is no video analysis, no moderation, and no dispute mechanism. Videos are stored and visible to both players. This is an explicit MVP design decision — the honor system is sufficient for the current use case.
+The setter has the final say on whether a trick was landed. After the matcher submits their attempt, the setter reviews both videos and decides. There is no opponent voting — this keeps the game flow fast and avoids delays waiting for both players to vote. Videos are stored and visible to both players for transparency.

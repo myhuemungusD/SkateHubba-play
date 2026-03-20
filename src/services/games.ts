@@ -230,13 +230,14 @@ export async function submitMatchAttempt(gameId: string, matchVideoUrl: string |
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "matching") throw new Error("Not in matching phase");
 
-    // Transition to confirming phase — both players review clips and vote
+    // Transition to confirming phase — setter reviews and decides
     tx.update(gameRef, {
       phase: "confirming",
       matchVideoUrl,
       setterConfirm: null,
       matcherConfirm: null,
-      // currentTurn stays the same (matcher) — but in confirming, either player can act
+      // Turn passes to the setter who reviews the attempt
+      currentTurn: game.currentSetter,
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
       updatedAt: serverTimestamp(),
     });
@@ -244,7 +245,7 @@ export async function submitMatchAttempt(gameId: string, matchVideoUrl: string |
 }
 
 /* ────────────────────────────────────────────
- * Submit confirmation vote (both players vote)
+ * Submit setter's confirmation (only setter decides)
  * ──────────────────────────────────────────── */
 
 export async function submitConfirmation(
@@ -263,89 +264,74 @@ export async function submitConfirmation(
     if (game.phase !== "confirming") throw new Error("Not in confirming phase");
 
     const isSetter = playerUid === game.currentSetter;
+    if (!isSetter) throw new Error("Only the setter can confirm");
+    if (game.setterConfirm !== null) throw new Error("You already voted");
+
     const matcherUid = getOpponent(game, game.currentSetter);
 
-    // Determine which field to set
-    let newSetterConfirm = game.setterConfirm;
-    let newMatcherConfirm = game.matcherConfirm;
+    // Setter's decision immediately resolves the turn
+    const trickLanded = landed;
 
-    if (isSetter) {
-      if (game.setterConfirm !== null) throw new Error("You already voted");
-      newSetterConfirm = landed;
-    } else {
-      if (game.matcherConfirm !== null) throw new Error("You already voted");
-      newMatcherConfirm = landed;
+    const isP1Matcher = matcherUid === game.player1Uid;
+    let newP1Letters = game.p1Letters;
+    let newP2Letters = game.p2Letters;
+
+    if (!trickLanded) {
+      if (isP1Matcher) newP1Letters++;
+      else newP2Letters++;
     }
 
+    const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
+    const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
+    const nextSetter = trickLanded ? matcherUid : game.currentSetter;
+
     const updates: Record<string, unknown> = {
-      setterConfirm: newSetterConfirm,
-      matcherConfirm: newMatcherConfirm,
+      setterConfirm: landed,
+      matcherConfirm: null,
       updatedAt: serverTimestamp(),
     };
 
-    // If both votes are in, resolve the turn
-    if (newSetterConfirm !== null && newMatcherConfirm !== null) {
-      // Trick is landed only if BOTH players agree
-      const trickLanded = newSetterConfirm && newMatcherConfirm;
+    updates.p1Letters = newP1Letters;
+    updates.p2Letters = newP2Letters;
 
-      const isP1Matcher = matcherUid === game.player1Uid;
-      let newP1Letters = game.p1Letters;
-      let newP2Letters = game.p2Letters;
+    // Record this turn in the history for clips replay
+    const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
+    const matcherUsernameVal = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
 
-      if (!trickLanded) {
-        if (isP1Matcher) newP1Letters++;
-        else newP2Letters++;
-      }
+    const turnRecord: TurnRecord = {
+      turnNumber: game.turnNumber,
+      trickName: game.currentTrickName || "Trick",
+      setterUid: game.currentSetter,
+      setterUsername,
+      matcherUid,
+      matcherUsername: matcherUsernameVal,
+      setVideoUrl: game.currentTrickVideoUrl,
+      matchVideoUrl: game.matchVideoUrl,
+      landed: trickLanded,
+      letterTo: trickLanded ? null : matcherUid,
+    };
+    updates.turnHistory = arrayUnion(turnRecord);
 
-      const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
-      const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
-      const nextSetter = trickLanded ? matcherUid : game.currentSetter;
-
-      updates.p1Letters = newP1Letters;
-      updates.p2Letters = newP2Letters;
-
-      // Record this turn in the history for clips replay
-      const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
-      const matcherUsernameVal = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
-
-      const turnRecord: TurnRecord = {
-        turnNumber: game.turnNumber,
-        trickName: game.currentTrickName || "Trick",
-        setterUid: game.currentSetter,
-        setterUsername,
-        matcherUid,
-        matcherUsername: matcherUsernameVal,
-        setVideoUrl: game.currentTrickVideoUrl,
-        matchVideoUrl: game.matchVideoUrl,
-        landed: trickLanded,
-        letterTo: trickLanded ? null : matcherUid,
-      };
-      updates.turnHistory = arrayUnion(turnRecord);
-
-      if (gameOver) {
-        updates.status = "complete";
-        updates.winner = winner;
-      } else {
-        // Reset to setting phase for the next trick round.
-        // Note: we intentionally do NOT reset currentTrickName, currentTrickVideoUrl,
-        // matchVideoUrl, setterConfirm, or matcherConfirm here. The Firestore
-        // confirmation rule locks those fields to prevent manipulation during votes,
-        // and resetting them would violate those locks. These stale values are harmless
-        // in the setting phase and are properly cleared by subsequent phase transitions
-        // (setTrick resets videos/trick, submitMatchAttempt resets confirms).
-        updates.phase = "setting";
-        updates.currentSetter = nextSetter;
-        updates.currentTurn = nextSetter;
-        updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
-        updates.turnNumber = game.turnNumber + 1;
-      }
-
-      tx.update(gameRef, updates);
-      return { gameOver, winner, resolved: true };
+    if (gameOver) {
+      updates.status = "complete";
+      updates.winner = winner;
+    } else {
+      // Reset to setting phase for the next trick round.
+      // Note: we intentionally do NOT reset currentTrickName, currentTrickVideoUrl,
+      // or matchVideoUrl here. The Firestore confirmation rule locks those fields
+      // to prevent manipulation during votes, and resetting them would violate
+      // those locks. These stale values are harmless in the setting phase and are
+      // properly cleared by subsequent phase transitions (setTrick resets
+      // videos/trick, submitMatchAttempt resets confirms).
+      updates.phase = "setting";
+      updates.currentSetter = nextSetter;
+      updates.currentTurn = nextSetter;
+      updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
+      updates.turnNumber = game.turnNumber + 1;
     }
 
     tx.update(gameRef, updates);
-    return { gameOver: false, winner: null, resolved: false };
+    return { gameOver, winner, resolved: true };
   });
 }
 

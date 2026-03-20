@@ -9,12 +9,13 @@ in `src/services/games.ts`.
 
 ## States
 
-| `status`   | `phase`    | Description                                     |
-| ---------- | ---------- | ----------------------------------------------- |
-| `active`   | `setting`  | Current setter must name & record a trick       |
-| `active`   | `matching` | Matcher must attempt the trick & self-judge     |
-| `complete` | —          | A player reached 5 letters; winner is recorded  |
-| `forfeit`  | —          | Turn timer expired; opponent wins automatically |
+| `status`   | `phase`      | Description                                     |
+| ---------- | ------------ | ----------------------------------------------- |
+| `active`   | `setting`    | Current setter must name & record a trick       |
+| `active`   | `matching`   | Matcher must attempt the trick                  |
+| `active`   | `confirming` | Setter reviews attempt & decides landed/missed  |
+| `complete` | —            | A player reached 5 letters; winner is recorded  |
+| `forfeit`  | —            | Turn timer expired; opponent wins automatically |
 
 ---
 
@@ -32,28 +33,34 @@ in `src/services/games.ts`.
                  ┌─────────────────┐                       │
                  │ active:matching │                       │
                  └───────┬─────────┘                       │
-                         │                                 │
-           submitMatchResult()                             │
-              ┌──────────┴──────────┐                      │
-              │                     │                      │
-         landed=true           landed=false                │
-              │                     │                      │
-              │              letters++ for matcher         │
-              │                     │                      │
-              │              letters >= 5?                  │
-              │              ┌──────┴──────┐               │
-              │              │             │               │
-              │           YES             NO               │
-              │              │             │               │
-              │              ▼             │               │
-              │        ┌──────────┐        │               │
-              │        │ complete │        │               │
-              │        └──────────┘        │               │
-              │                            │               │
-              │   next setter = current    │               │
-              │   setter (same player)     │               │
-              │              │             │               │
-              │              └─────────────┘               │
+                         │ submitMatchAttempt()            │
+                         ▼                                 │
+               ┌───────────────────┐                       │
+               │ active:confirming │                       │
+               └───────┬───────────┘                       │
+                       │                                   │
+           submitConfirmation()                            │
+           (setter decides)                                │
+              ┌────────┴──────────┐                        │
+              │                   │                        │
+         landed=true         landed=false                  │
+              │                   │                        │
+              │            letters++ for matcher           │
+              │                   │                        │
+              │            letters >= 5?                    │
+              │            ┌──────┴──────┐                 │
+              │            │             │                 │
+              │         YES             NO                 │
+              │            │             │                 │
+              │            ▼             │                 │
+              │      ┌──────────┐        │                 │
+              │      │ complete │        │                 │
+              │      └──────────┘        │                 │
+              │                          │                 │
+              │   next setter = current  │                 │
+              │   setter (same player)   │                 │
+              │            │             │                 │
+              │            └─────────────┘                 │
               │                                            │
               │   next setter = matcher (roles swap)       │
               └────────────────────────────────────────────┘
@@ -98,13 +105,28 @@ in `src/services/games.ts`.
   - `turnDeadline` → now + 24 h
 - **Result state:** `active:matching`
 
-### `submitMatchResult(gameId, landed, matchVideoUrl)`
+### `submitMatchAttempt(gameId, matchVideoUrl)`
 
-**File:** `src/services/games.ts` — `submitMatchResult()`
+**File:** `src/services/games.ts` — `submitMatchAttempt()`
 
 - **Pre-conditions (validated inside transaction):**
   - `status === "active"`
   - `phase === "matching"`
+- **Writes:**
+  - `phase: "confirming"`
+  - `matchVideoUrl` set
+  - `currentTurn` → setter (setter reviews the attempt)
+  - `turnDeadline` → now + 24 h
+- **Result state:** `active:confirming`
+
+### `submitConfirmation(gameId, playerUid, landed)`
+
+**File:** `src/services/games.ts` — `submitConfirmation()`
+
+- **Pre-conditions (validated inside transaction):**
+  - `status === "active"`
+  - `phase === "confirming"`
+  - `playerUid === currentSetter` (only the setter can decide)
 
 #### Path A — Landed (`landed === true`)
 
@@ -183,7 +205,7 @@ These are always true for a valid game document:
 ## Turn Deadline
 
 - Duration: 24 hours (`TURN_DURATION_MS`)
-- Reset on every phase transition (setTrick / submitMatchResult)
+- Reset on every phase transition (setTrick / submitMatchAttempt / submitConfirmation)
 - Enforced client-side: `forfeitExpiredTurn()` is called when any player
   opens a game whose deadline has passed
 - Firestore security rules prevent fraudulent forfeit claims

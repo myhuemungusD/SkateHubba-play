@@ -609,10 +609,11 @@ describe("GamePlayScreen", () => {
     expect(screen.getByText("@rival")).toBeInTheDocument();
   });
 
-  it("confirming phase shows both clips and vote buttons", () => {
+  it("confirming phase shows vote buttons only for setter", () => {
+    // u1 is the setter — should see vote buttons
     const game = makeGame({
       phase: "confirming",
-      currentSetter: "u2",
+      currentSetter: "u1",
       currentTurn: "u1",
       currentTrickName: "Kickflip",
       currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
@@ -623,36 +624,37 @@ describe("GamePlayScreen", () => {
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
     expect(screen.getByText(/Review: Kickflip/)).toBeInTheDocument();
-    expect(screen.getByText(/@rival's TRICK/)).toBeInTheDocument();
-    expect(screen.getByText(/@sk8r's ATTEMPT/)).toBeInTheDocument();
-    expect(screen.getByText(/Did @sk8r land it/)).toBeInTheDocument();
+    expect(screen.getByText(/@sk8r's TRICK/)).toBeInTheDocument();
+    expect(screen.getByText(/@rival's ATTEMPT/)).toBeInTheDocument();
+    expect(screen.getByText(/Did @rival land it/)).toBeInTheDocument();
     expect(screen.getByText(/✓ Landed/)).toBeInTheDocument();
     expect(screen.getByText(/✗ Missed/)).toBeInTheDocument();
   });
 
-  it("confirming phase shows waiting state after player votes", () => {
+  it("confirming phase shows waiting state for matcher", () => {
+    // u1 is the matcher (u2 is setter) — should see waiting message
     const game = makeGame({
       phase: "confirming",
       currentSetter: "u2",
-      currentTurn: "u1",
+      currentTurn: "u2",
       currentTrickName: "Kickflip",
       currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
       matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
       setterConfirm: null,
-      matcherConfirm: true, // matcher (u1/sk8r) already voted
+      matcherConfirm: null,
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
-    expect(screen.getByText(/You voted: ✓ Landed/)).toBeInTheDocument();
-    expect(screen.getByText(/Waiting for @rival to vote/)).toBeInTheDocument();
+    expect(screen.getByText(/Waiting for @rival to make the call/)).toBeInTheDocument();
+    expect(screen.queryByText(/✓ Landed/)).not.toBeInTheDocument();
   });
 
-  it("confirming phase vote calls submitConfirmation", async () => {
-    mockSubmitConfirmation.mockResolvedValueOnce({ gameOver: false, winner: null, resolved: false });
+  it("confirming phase vote calls submitConfirmation (setter)", async () => {
+    mockSubmitConfirmation.mockResolvedValueOnce({ gameOver: false, winner: null, resolved: true });
 
     const game = makeGame({
       phase: "confirming",
-      currentSetter: "u2",
+      currentSetter: "u1",
       currentTurn: "u1",
       currentTrickName: "Kickflip",
       currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",

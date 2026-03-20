@@ -167,11 +167,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
   const deadline = game.turnDeadline?.toMillis?.() || Date.now() + 86400000;
 
-  // Determine if this player already voted in confirming phase
-  const myConfirm = isSetterInGame ? game.setterConfirm : game.matcherConfirm;
-  const theirConfirm = isSetterInGame ? game.matcherConfirm : game.setterConfirm;
-
-  // ── Confirming phase: both players review clips and vote ──
+  // ── Confirming phase: setter reviews clips and decides ──
   if (isConfirming) {
     return (
       <div className="min-h-dvh bg-[#0A0A0A]/80 pb-10">
@@ -194,10 +190,6 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
               Review: {game.currentTrickName || "Trick"}
             </span>
           </div>
-
-          <p className="font-display text-sm tracking-wider text-[#888] mb-1 text-center">
-            Both players must agree the trick was landed
-          </p>
 
           {/* Setter's clip */}
           <div className="mb-5">
@@ -237,8 +229,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-          {/* Vote buttons (only if not yet voted) */}
-          {myConfirm === null && !submitting && (
+          {/* Setter's vote buttons */}
+          {isSetterInGame && game.setterConfirm === null && !submitting && (
             <div className="mt-5" role="group" aria-label="Did the matcher land the trick?">
               <p className="font-display text-xl text-white text-center mb-4">Did @{matcherUsername} land it?</p>
               <div className="flex gap-3">
@@ -252,21 +244,18 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             </div>
           )}
 
-          {/* Submitting state */}
-          {submitting && (
+          {/* Submitting state (setter) */}
+          {isSetterInGame && submitting && (
             <div className="mt-5 text-center">
-              <span className="font-display text-lg text-purple-400 tracking-wider animate-pulse">
-                Submitting vote...
-              </span>
+              <span className="font-display text-lg text-purple-400 tracking-wider animate-pulse">Submitting...</span>
             </div>
           )}
 
-          {/* Already voted, waiting for opponent */}
-          {myConfirm !== null && theirConfirm === null && (
+          {/* Matcher waiting for setter to decide */}
+          {!isSetterInGame && (
             <div className="mt-5 text-center">
-              <p className="font-display text-lg text-white mb-2">You voted: {myConfirm ? "✓ Landed" : "✗ Missed"}</p>
               <span className="font-display text-sm text-[#888] tracking-wider animate-pulse">
-                Waiting for @{opponentName} to vote...
+                Waiting for @{opponentName} to make the call...
               </span>
             </div>
           )}

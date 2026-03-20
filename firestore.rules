@@ -147,11 +147,13 @@ service cloud.firestore {
           )
         );
 
-      // Confirmation phase: either player can submit their vote on the match
+      // Confirmation phase: only the setter reviews and decides
       allow update: if isSignedIn()
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && resource.data.phase == 'confirming'
+        // Only the setter can confirm
+        && request.auth.uid == resource.data.currentSetter
         // Cannot change player UIDs or usernames
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
@@ -161,20 +163,10 @@ service cloud.firestore {
         && request.resource.data.currentTrickVideoUrl == resource.data.currentTrickVideoUrl
         && request.resource.data.matchVideoUrl == resource.data.matchVideoUrl
         && request.resource.data.currentTrickName == resource.data.currentTrickName
-        // Setter can only set setterConfirm, matcher can only set matcherConfirm
-        && (
-          // Setter voting (setterConfirm changes from null to bool, matcherConfirm unchanged)
-          (request.auth.uid == resource.data.currentSetter
-            && resource.data.setterConfirm == null
-            && request.resource.data.setterConfirm is bool
-            && request.resource.data.matcherConfirm == resource.data.matcherConfirm)
-          // Matcher voting (matcherConfirm changes from null to bool, setterConfirm unchanged)
-          || (request.auth.uid == opponentUid(resource.data, resource.data.currentSetter)
-            && resource.data.matcherConfirm == null
-            && request.resource.data.matcherConfirm is bool
-            && request.resource.data.setterConfirm == resource.data.setterConfirm)
-        )
-        // Scores: same rules as normal update (no change, or +1 for one player when resolving)
+        // Setter votes (setterConfirm changes from null to bool)
+        && resource.data.setterConfirm == null
+        && request.resource.data.setterConfirm is bool
+        // Scores: no change, or +1 for one player when resolving
         && (
           (request.resource.data.p1Letters == resource.data.p1Letters + 1
             && request.resource.data.p2Letters == resource.data.p2Letters)
@@ -184,17 +176,8 @@ service cloud.firestore {
             && request.resource.data.p2Letters == resource.data.p2Letters)
         )
         && (
-          // Vote only (game stays active in confirming phase)
-          // Lock all game-state fields that must not change during a vote-only write
-          (request.resource.data.status == 'active'
-            && request.resource.data.winner == null
-            && request.resource.data.phase == 'confirming'
-            && request.resource.data.currentTurn == resource.data.currentTurn
-            && request.resource.data.currentSetter == resource.data.currentSetter
-            && request.resource.data.turnDeadline == resource.data.turnDeadline
-            && request.resource.data.turnNumber == resource.data.turnNumber)
           // Resolution: game complete (a player reached 5 letters)
-          || (
+          (
             request.resource.data.status == 'complete'
             && (request.resource.data.p1Letters >= 5 || request.resource.data.p2Letters >= 5)
             && request.resource.data.winner == (
@@ -203,7 +186,7 @@ service cloud.firestore {
                 : resource.data.player1Uid
             )
           )
-          // Resolution: game continues (both votes resolved, back to setting)
+          // Resolution: game continues (setter decided, back to setting)
           || (
             request.resource.data.status == 'active'
             && request.resource.data.winner == null
