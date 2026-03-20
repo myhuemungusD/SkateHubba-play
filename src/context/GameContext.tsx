@@ -11,6 +11,7 @@ import { captureException } from "../lib/sentry";
 
 export type Screen =
   | "landing"
+  | "agegate"
   | "auth"
   | "profile"
   | "lobby"
@@ -20,6 +21,7 @@ export type Screen =
   | "record"
   | "privacy"
   | "terms"
+  | "datadeletion"
   | "notfound";
 
 interface GameContextValue {
@@ -49,6 +51,11 @@ interface GameContextValue {
   setScreen: (s: Screen) => void;
   authMode: "signup" | "signin";
   setAuthMode: (m: "signup" | "signin") => void;
+
+  // Age gate
+  ageGateDob: string | null;
+  ageGateParentalConsent: boolean;
+  setAgeGateResult: (dob: string, parentalConsent: boolean) => void;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -69,6 +76,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
   const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
+  const [ageGateDob, setAgeGateDob] = useState<string | null>(null);
+  const [ageGateParentalConsent, setAgeGateParentalConsent] = useState(false);
+
+  const setAgeGateResult = useCallback((dob: string, parentalConsent: boolean) => {
+    setAgeGateDob(dob);
+    setAgeGateParentalConsent(parentalConsent);
+  }, []);
 
   // Resolve any pending Google redirect on mount — this completes the OAuth
   // flow for users who were redirected to Google (mobile/Safari popup fallback).
@@ -348,6 +362,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setScreen,
     authMode,
     setAuthMode,
+    ageGateDob,
+    ageGateParentalConsent,
+    setAgeGateResult,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

@@ -277,11 +277,15 @@ export function ProfileSetup({
   emailVerified = false,
   displayName,
   onDone,
+  dob,
+  parentalConsent,
 }: {
   uid: string;
   emailVerified?: boolean;
   displayName?: string | null;
   onDone: (p: UserProfile) => void;
+  dob?: string | null;
+  parentalConsent?: boolean;
 }) {
   const [step, setStep] = useState<Step>(1);
   const [username, setUsername] = useState(() => sanitizeDisplayName(displayName));
@@ -353,7 +357,7 @@ export function ProfileSetup({
     setLoading(true);
     try {
       const normalized = username.trim();
-      const profile = await createProfile(uid, normalized, stance, emailVerified);
+      const profile = await createProfile(uid, normalized, stance, emailVerified, dob ?? undefined, parentalConsent);
       onDone(profile);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not create profile");

@@ -1,9 +1,10 @@
 import { Btn } from "../components/ui/Btn";
+import type { Screen } from "../context/GameContext";
 
-const EFFECTIVE_DATE = "March 15, 2026";
+const EFFECTIVE_DATE = "March 20, 2026";
 const CONTACT_EMAIL = "privacy@skatehubba.com";
 
-export function PrivacyPolicy({ onBack }: { onBack: () => void }) {
+export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (s: Screen) => void }) {
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/90 text-white">
       <div className="px-5 py-4 border-b border-[#222] flex items-center gap-4">
@@ -143,14 +144,97 @@ export function PrivacyPolicy({ onBack }: { onBack: () => void }) {
           </p>
         </Section>
 
-        <Section title="9. Children">
+        <Section title="9. Children's Privacy (COPPA Compliance)">
           <p>
-            SkateHubba is not directed at children under 13. We do not knowingly collect personal data from anyone under
-            13. If you believe a child has provided us with personal data, contact us and we will delete it promptly.
+            SkateHubba takes the privacy of children seriously and complies with the Children&apos;s Online Privacy
+            Protection Act (COPPA).
+          </p>
+          <ul>
+            <li>
+              <strong className="text-white">Age verification:</strong> All users must complete an age verification gate
+              before creating an account. Users under 13 are blocked from registering and no personal information is
+              collected or retained from them.
+            </li>
+            <li>
+              <strong className="text-white">Parental consent (ages 13–17):</strong> Users between 13 and 17 must
+              confirm that a parent or legal guardian has reviewed this Privacy Policy and our Terms of Service and
+              consents to their use of SkateHubba before creating an account.
+            </li>
+            <li>
+              <strong className="text-white">Data collected from minors:</strong> We collect the same categories of data
+              from users aged 13–17 as from adults (see Section 2). We do not collect more data than is reasonably
+              necessary to provide the game service.
+            </li>
+            <li>
+              <strong className="text-white">No behavioural advertising:</strong> We do not serve targeted or
+              behavioural advertising to any users, including minors.
+            </li>
+            <li>
+              <strong className="text-white">Parental rights:</strong> Parents or guardians of users under 18 may review
+              their child&apos;s personal information, request its deletion, or revoke consent by emailing{" "}
+              <span className="text-brand-orange">{CONTACT_EMAIL}</span>. We will respond within 48 hours.
+            </li>
+            <li>
+              <strong className="text-white">Deletion:</strong> If we discover that we have collected personal
+              information from a child under 13, we will delete it within 48 hours. Parents may also request deletion at
+              any time.
+            </li>
+          </ul>
+        </Section>
+
+        <Section title="10. California Privacy Rights (CCPA/CPRA)">
+          <p>
+            If you are a California resident, the California Consumer Privacy Act (CCPA), as amended by the California
+            Privacy Rights Act (CPRA), grants you additional rights:
+          </p>
+          <ul>
+            <li>
+              <strong className="text-white">Right to know:</strong> You may request details about the categories and
+              specific pieces of personal information we have collected about you.
+            </li>
+            <li>
+              <strong className="text-white">Right to delete:</strong> You may request deletion of your personal
+              information. You can do this directly in the app (Account Settings → Delete Account) or by emailing{" "}
+              <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
+            </li>
+            <li>
+              <strong className="text-white">Right to opt-out of sale:</strong> SkateHubba does{" "}
+              <strong className="text-white">not sell</strong> your personal information to third parties and has never
+              done so.
+            </li>
+            <li>
+              <strong className="text-white">Right to non-discrimination:</strong> We will not discriminate against you
+              for exercising any of your CCPA rights.
+            </li>
+            <li>
+              <strong className="text-white">Right to correct:</strong> You may request correction of inaccurate
+              personal information.
+            </li>
+          </ul>
+          <p>
+            To exercise any of these rights, email <span className="text-brand-orange">{CONTACT_EMAIL}</span>. We will
+            verify your identity and respond within 45 days.
+          </p>
+          {onNav && (
+            <p>
+              For more details, see our{" "}
+              <button type="button" onClick={() => onNav("datadeletion")} className="text-brand-orange hover:underline">
+                Data Deletion page
+              </button>
+              .
+            </p>
+          )}
+        </Section>
+
+        <Section title="11. Do Not Sell My Personal Information">
+          <p>
+            SkateHubba does <strong className="text-white">not sell</strong> personal information as defined under the
+            CCPA. We do not share personal information with third parties for monetary or other valuable consideration.
+            We only share data with our service providers (listed in Section 5) as necessary to operate the app.
           </p>
         </Section>
 
-        <Section title="10. Changes to This Policy">
+        <Section title="12. Changes to This Policy">
           <p>
             We may update this Privacy Policy from time to time. We will notify users of material changes by updating
             the effective date at the top of this page. Continued use of the app after changes constitutes acceptance of
@@ -158,7 +242,7 @@ export function PrivacyPolicy({ onBack }: { onBack: () => void }) {
           </p>
         </Section>
 
-        <Section title="11. Contact">
+        <Section title="13. Contact">
           <p>
             Questions about this Privacy Policy? Email us at <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
           </p>

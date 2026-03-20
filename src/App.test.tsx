@@ -101,7 +101,7 @@ describe("App", () => {
     });
   });
 
-  it("navigates to sign up screen when 'Get Started' is clicked", async () => {
+  it("navigates to age gate screen when 'Get Started' is clicked", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: null,
@@ -112,7 +112,7 @@ describe("App", () => {
 
     await userEvent.click(screen.getByText("Get Started with Email"));
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
     });
   });
 

@@ -193,7 +193,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, undefined, undefined);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -263,7 +263,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false, undefined, undefined);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });

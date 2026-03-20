@@ -23,6 +23,10 @@ export interface UserProfile {
   /** serverTimestamp() on write; Firestore Timestamp on read. */
   createdAt: FieldValue | null;
   emailVerified: boolean;
+  /** Date of birth in YYYY-MM-DD format (collected at age gate for COPPA/CCPA compliance). */
+  dob?: string;
+  /** Whether parental consent was given (for users 13-17 at signup). */
+  parentalConsent?: boolean;
   /** Denormalized leaderboard stats — updated atomically when games complete. */
   wins?: number;
   losses?: number;
@@ -68,6 +72,8 @@ export async function createProfile(
   username: string,
   stance: string,
   emailVerified = false,
+  dob?: string,
+  parentalConsent?: boolean,
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
 
@@ -96,6 +102,8 @@ export async function createProfile(
       stance,
       createdAt: serverTimestamp(),
       emailVerified,
+      ...(dob ? { dob } : {}),
+      ...(parentalConsent !== undefined ? { parentalConsent } : {}),
     };
     tx.set(userRef, profileData);
 

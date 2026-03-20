@@ -72,7 +72,7 @@ export function Landing({
   onGo: (mode: "signup" | "signin") => void;
   onGoogle: () => void;
   googleLoading: boolean;
-  onNav: (screen: "privacy" | "terms") => void;
+  onNav: (screen: "privacy" | "terms" | "datadeletion") => void;
 }) {
   return (
     <div className="min-h-dvh">
@@ -401,6 +401,13 @@ export function Landing({
               className="font-body text-xs text-[#555] hover:text-[#888] transition-colors"
             >
               Terms of Service
+            </button>
+            <button
+              type="button"
+              onClick={() => onNav("datadeletion")}
+              className="font-body text-xs text-[#555] hover:text-[#888] transition-colors"
+            >
+              Data Deletion
             </button>
           </nav>
         </div>

@@ -19,6 +19,8 @@ import { GameOverScreen } from "./screens/GameOverScreen";
 import { MyRecordScreen } from "./screens/MyRecordScreen";
 import { PrivacyPolicy } from "./screens/PrivacyPolicy";
 import { TermsOfService } from "./screens/TermsOfService";
+import { DataDeletion } from "./screens/DataDeletion";
+import { AgeGate } from "./screens/AgeGate";
 import { NotFound } from "./screens/NotFound";
 import { ConsentBanner } from "./components/ConsentBanner";
 
@@ -112,11 +114,27 @@ function AppRoutes() {
       {ctx.screen === "landing" && (
         <Landing
           onGo={(m) => {
-            ctx.setAuthMode(m);
-            ctx.setScreen("auth");
+            if (m === "signup") {
+              ctx.setAuthMode("signup");
+              ctx.setScreen("agegate");
+            } else {
+              ctx.setAuthMode(m);
+              ctx.setScreen("auth");
+            }
           }}
           onGoogle={ctx.handleGoogleSignIn}
           googleLoading={ctx.googleLoading}
+          onNav={ctx.setScreen}
+        />
+      )}
+
+      {ctx.screen === "agegate" && (
+        <AgeGate
+          onVerified={(dob, parentalConsent) => {
+            ctx.setAgeGateResult(dob, parentalConsent);
+            ctx.setScreen("auth");
+          }}
+          onBack={() => ctx.setScreen("landing")}
           onNav={ctx.setScreen}
         />
       )}
@@ -130,7 +148,17 @@ function AppRoutes() {
           }}
           onToggle={() => {
             ctx.setGoogleError("");
-            ctx.setAuthMode(ctx.authMode === "signup" ? "signin" : "signup");
+            if (ctx.authMode === "signin") {
+              // Switching to signup — require age gate if not already completed
+              if (ctx.ageGateDob) {
+                ctx.setAuthMode("signup");
+              } else {
+                ctx.setAuthMode("signup");
+                ctx.setScreen("agegate");
+              }
+              return;
+            }
+            ctx.setAuthMode("signin");
           }}
           onGoogle={ctx.handleGoogleSignIn}
           googleLoading={ctx.googleLoading}
@@ -144,6 +172,8 @@ function AppRoutes() {
           uid={ctx.user.uid}
           emailVerified={ctx.user.emailVerified}
           displayName={ctx.user.displayName}
+          dob={ctx.ageGateDob}
+          parentalConsent={ctx.ageGateParentalConsent}
           onDone={async (p) => {
             ctx.setActiveProfile(p);
             ctx.setScreen("lobby");
@@ -248,9 +278,11 @@ function AppRoutes() {
         />
       )}
 
-      {ctx.screen === "privacy" && <PrivacyPolicy onBack={() => ctx.setScreen("landing")} />}
+      {ctx.screen === "privacy" && <PrivacyPolicy onBack={() => ctx.setScreen("landing")} onNav={ctx.setScreen} />}
 
       {ctx.screen === "terms" && <TermsOfService onBack={() => ctx.setScreen("landing")} />}
+
+      {ctx.screen === "datadeletion" && <DataDeletion onBack={() => ctx.setScreen(ctx.user ? "lobby" : "landing")} />}
 
       {ctx.screen === "notfound" && <NotFound onBack={() => ctx.setScreen(ctx.user ? "lobby" : "landing")} />}
 

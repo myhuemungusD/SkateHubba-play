@@ -1,6 +1,6 @@
 import { Btn } from "../components/ui/Btn";
 
-const EFFECTIVE_DATE = "March 15, 2026";
+const EFFECTIVE_DATE = "March 20, 2026";
 const CONTACT_EMAIL = "legal@skatehubba.com";
 
 export function TermsOfService({ onBack }: { onBack: () => void }) {
@@ -25,10 +25,18 @@ export function TermsOfService({ onBack }: { onBack: () => void }) {
           </p>
         </Section>
 
-        <Section title="2. Eligibility">
+        <Section title="2. Eligibility &amp; Age Requirements">
           <p>
-            You must be at least 13 years old to use the App. By using the App, you represent that you meet this
-            requirement. If you are under 18, you must have permission from a parent or guardian.
+            You must be at least 13 years old to use the App. All users are required to complete an age verification
+            gate before creating an account.{" "}
+            <strong className="text-white">Users under 13 are prohibited from using SkateHubba</strong>, in compliance
+            with the Children&apos;s Online Privacy Protection Act (COPPA).
+          </p>
+          <p>
+            If you are between 13 and 17, you must have verifiable permission from a parent or legal guardian before
+            using the App. During account creation you will be asked to confirm that a parent or guardian has reviewed
+            our Privacy Policy and these Terms and consents to your use of SkateHubba. Parents or guardians may revoke
+            consent at any time by contacting <span className="text-brand-orange">{CONTACT_EMAIL}</span>.
           </p>
         </Section>
 
