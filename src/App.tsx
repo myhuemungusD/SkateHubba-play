@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect } from "react";
 import { Analytics } from "@vercel/analytics/react";
-import { useGameContext, GameProvider } from "./context/GameContext";
+import { AuthProvider, useAuthContext } from "./context/AuthContext";
+import { NavigationProvider, useNavigationContext } from "./context/NavigationContext";
+import { GameProvider, useGameContext } from "./context/GameContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -58,12 +60,12 @@ function FirebaseMissing() {
 }
 
 function AppScreens() {
-  const ctx = useGameContext();
+  const auth = useAuthContext();
 
-  if (ctx.loading) return <Spinner />;
+  if (auth.loading) return <Spinner />;
 
   return (
-    <NotificationProvider uid={ctx.user?.uid ?? null}>
+    <NotificationProvider uid={auth.user?.uid ?? null}>
       <OfflineBanner />
       <GameNotificationWatcher />
       <AppRoutes />
@@ -73,7 +75,9 @@ function AppScreens() {
 }
 
 function AppRoutes() {
-  const ctx = useGameContext();
+  const auth = useAuthContext();
+  const nav = useNavigationContext();
+  const game = useGameContext();
   const [challengeTarget, setChallengeTarget] = useState("");
   const [, setDirectChallengeError] = useState("");
 
@@ -86,209 +90,210 @@ function AppRoutes() {
         if (!uid) {
           setDirectChallengeError(`@${normalized} doesn't exist yet.`);
           setChallengeTarget(normalized);
-          ctx.setScreen("challenge");
+          nav.setScreen("challenge");
           return;
         }
-        await ctx.startChallenge(uid, normalized);
+        await game.startChallenge(uid, normalized);
       } catch (err: unknown) {
         setDirectChallengeError(err instanceof Error ? err.message : "Could not start game");
         setChallengeTarget(normalized);
-        ctx.setScreen("challenge");
+        nav.setScreen("challenge");
       }
     },
-    [ctx],
+    [nav, game],
   );
 
   // Deep-link into a game when a push notification is tapped (service worker postMessage)
   useEffect(() => {
     const handler = (e: Event) => {
       const gameId = (e as CustomEvent).detail?.gameId;
-      if (!gameId || !ctx.games) return;
-      const game = ctx.games.find((g) => g.id === gameId);
-      if (game) ctx.openGame(game);
+      if (!gameId || !game.games) return;
+      const found = game.games.find((g) => g.id === gameId);
+      if (found) game.openGame(found);
     };
     window.addEventListener("skatehubba:open-game", handler);
     return () => window.removeEventListener("skatehubba:open-game", handler);
-  }, [ctx.games, ctx.openGame]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-subscribe when games list or openGame changes
+  }, [game.games, game.openGame]);
 
   return (
     <>
-      {ctx.screen === "landing" && (
+      {nav.screen === "landing" && (
         <Landing
           onGo={(m) => {
             if (m === "signup") {
-              ctx.setAuthMode("signup");
-              ctx.setScreen("agegate");
+              nav.setAuthMode("signup");
+              nav.setScreen("agegate");
             } else {
-              ctx.setAuthMode(m);
-              ctx.setScreen("auth");
+              nav.setAuthMode(m);
+              nav.setScreen("auth");
             }
           }}
-          onGoogle={ctx.handleGoogleSignIn}
-          googleLoading={ctx.googleLoading}
-          onNav={ctx.setScreen}
+          onGoogle={auth.handleGoogleSignIn}
+          googleLoading={auth.googleLoading}
+          onNav={nav.setScreen}
         />
       )}
 
-      {ctx.screen === "agegate" && (
+      {nav.screen === "agegate" && (
         <AgeGate
           onVerified={(dob, parentalConsent) => {
-            ctx.setAgeGateResult(dob, parentalConsent);
-            ctx.setScreen("auth");
+            nav.setAgeGateResult(dob, parentalConsent);
+            nav.setScreen("auth");
           }}
-          onBack={() => ctx.setScreen("landing")}
-          onNav={ctx.setScreen}
+          onBack={() => nav.setScreen("landing")}
+          onNav={nav.setScreen}
         />
       )}
 
-      {ctx.screen === "auth" && (
+      {nav.screen === "auth" && (
         <AuthScreen
-          key={ctx.authMode}
-          mode={ctx.authMode}
+          key={nav.authMode}
+          mode={nav.authMode}
           onDone={() => {
             /* auth state change triggers auto-navigate */
           }}
           onToggle={() => {
-            ctx.setGoogleError("");
-            if (ctx.authMode === "signin") {
+            auth.setGoogleError("");
+            if (nav.authMode === "signin") {
               // Switching to signup — require age gate if not already completed
-              if (ctx.ageGateDob) {
-                ctx.setAuthMode("signup");
+              if (nav.ageGateDob) {
+                nav.setAuthMode("signup");
               } else {
-                ctx.setAuthMode("signup");
-                ctx.setScreen("agegate");
+                nav.setAuthMode("signup");
+                nav.setScreen("agegate");
               }
               return;
             }
-            ctx.setAuthMode("signin");
+            nav.setAuthMode("signin");
           }}
-          onGoogle={ctx.handleGoogleSignIn}
-          googleLoading={ctx.googleLoading}
-          googleError={ctx.googleError}
-          onGoogleErrorDismiss={() => ctx.setGoogleError("")}
+          onGoogle={auth.handleGoogleSignIn}
+          googleLoading={auth.googleLoading}
+          googleError={auth.googleError}
+          onGoogleErrorDismiss={() => auth.setGoogleError("")}
         />
       )}
 
-      {ctx.screen === "profile" && ctx.user && (
+      {nav.screen === "profile" && auth.user && (
         <ProfileSetup
-          uid={ctx.user.uid}
-          emailVerified={ctx.user.emailVerified}
-          displayName={ctx.user.displayName}
-          dob={ctx.ageGateDob}
-          parentalConsent={ctx.ageGateParentalConsent}
+          uid={auth.user.uid}
+          emailVerified={auth.user.emailVerified}
+          displayName={auth.user.displayName}
+          dob={nav.ageGateDob}
+          parentalConsent={nav.ageGateParentalConsent}
           onDone={async (p) => {
-            ctx.setActiveProfile(p);
-            ctx.setScreen("lobby");
-            await ctx.refreshProfile();
+            auth.setActiveProfile(p);
+            nav.setScreen("lobby");
+            await auth.refreshProfile();
           }}
         />
       )}
 
-      {ctx.screen === "lobby" && ctx.activeProfile && (
+      {nav.screen === "lobby" && auth.activeProfile && (
         <Lobby
-          profile={ctx.activeProfile}
-          games={ctx.games}
-          user={ctx.user}
+          profile={auth.activeProfile}
+          games={game.games}
+          user={auth.user}
           onChallenge={() => {
             setChallengeTarget("");
-            ctx.setScreen("challenge");
+            nav.setScreen("challenge");
           }}
           onChallengeUser={(username: string) => {
             directChallenge(username);
           }}
-          onOpenGame={ctx.openGame}
-          onSignOut={ctx.handleSignOut}
-          onDeleteAccount={ctx.handleDeleteAccount}
-          onViewRecord={() => ctx.setScreen("record")}
+          onOpenGame={game.openGame}
+          onSignOut={auth.handleSignOut}
+          onDeleteAccount={auth.handleDeleteAccount}
+          onViewRecord={() => nav.setScreen("record")}
         />
       )}
 
-      {ctx.screen === "challenge" && ctx.activeProfile && ctx.user?.emailVerified && (
+      {nav.screen === "challenge" && auth.activeProfile && auth.user?.emailVerified && (
         <ChallengeScreen
-          profile={ctx.activeProfile}
-          onSend={ctx.startChallenge}
-          onBack={() => ctx.setScreen("lobby")}
+          profile={auth.activeProfile}
+          onSend={game.startChallenge}
+          onBack={() => nav.setScreen("lobby")}
           initialOpponent={challengeTarget}
         />
       )}
 
-      {ctx.screen === "game" && ctx.activeGame && ctx.activeProfile && (
+      {nav.screen === "game" && game.activeGame && auth.activeProfile && (
         <ErrorBoundary
           fallback={
             <ScreenErrorFallback
               onBack={() => {
-                ctx.setActiveGame(null);
-                ctx.setScreen("lobby");
+                game.setActiveGame(null);
+                nav.setScreen("lobby");
               }}
             />
           }
         >
           <GamePlayScreen
-            key={ctx.activeGame.turnNumber}
-            game={ctx.activeGame}
-            profile={ctx.activeProfile}
+            key={game.activeGame.turnNumber}
+            game={game.activeGame}
+            profile={auth.activeProfile}
             onBack={() => {
-              ctx.setActiveGame(null);
-              ctx.setScreen("lobby");
+              game.setActiveGame(null);
+              nav.setScreen("lobby");
             }}
           />
         </ErrorBoundary>
       )}
 
-      {ctx.screen === "gameover" && ctx.activeGame && ctx.activeProfile && ctx.user && (
+      {nav.screen === "gameover" && game.activeGame && auth.activeProfile && auth.user && (
         <ErrorBoundary
           fallback={
             <ScreenErrorFallback
               onBack={() => {
-                ctx.setActiveGame(null);
-                ctx.setScreen("lobby");
+                game.setActiveGame(null);
+                nav.setScreen("lobby");
               }}
             />
           }
         >
           <GameOverScreen
-            game={ctx.activeGame}
-            profile={ctx.activeProfile}
+            game={game.activeGame}
+            profile={auth.activeProfile}
             onRematch={
-              ctx.user.emailVerified
+              auth.user.emailVerified
                 ? async (): Promise<void> => {
                     const opponentUid =
-                      ctx.activeGame!.player1Uid === ctx.user!.uid
-                        ? ctx.activeGame!.player2Uid
-                        : ctx.activeGame!.player1Uid;
+                      game.activeGame!.player1Uid === auth.user!.uid
+                        ? game.activeGame!.player2Uid
+                        : game.activeGame!.player1Uid;
                     const opponentName =
-                      ctx.activeGame!.player1Uid === ctx.user!.uid
-                        ? ctx.activeGame!.player2Username
-                        : ctx.activeGame!.player1Username;
-                    await ctx.startChallenge(opponentUid, opponentName);
+                      game.activeGame!.player1Uid === auth.user!.uid
+                        ? game.activeGame!.player2Username
+                        : game.activeGame!.player1Username;
+                    await game.startChallenge(opponentUid, opponentName);
                   }
                 : undefined
             }
             onBack={() => {
-              ctx.setActiveGame(null);
-              ctx.setScreen("lobby");
+              game.setActiveGame(null);
+              nav.setScreen("lobby");
             }}
           />
         </ErrorBoundary>
       )}
-      {ctx.screen === "record" && ctx.activeProfile && (
+      {nav.screen === "record" && auth.activeProfile && (
         <MyRecordScreen
-          profile={ctx.activeProfile}
-          games={ctx.games}
-          onOpenGame={ctx.openGame}
-          onBack={() => ctx.setScreen("lobby")}
+          profile={auth.activeProfile}
+          games={game.games}
+          onOpenGame={game.openGame}
+          onBack={() => nav.setScreen("lobby")}
         />
       )}
 
-      {ctx.screen === "privacy" && <PrivacyPolicy onBack={() => ctx.setScreen("landing")} onNav={ctx.setScreen} />}
+      {nav.screen === "privacy" && <PrivacyPolicy onBack={() => nav.setScreen("landing")} onNav={nav.setScreen} />}
 
-      {ctx.screen === "terms" && <TermsOfService onBack={() => ctx.setScreen("landing")} />}
+      {nav.screen === "terms" && <TermsOfService onBack={() => nav.setScreen("landing")} />}
 
-      {ctx.screen === "datadeletion" && <DataDeletion onBack={() => ctx.setScreen(ctx.user ? "lobby" : "landing")} />}
+      {nav.screen === "datadeletion" && <DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
 
-      {ctx.screen === "notfound" && <NotFound onBack={() => ctx.setScreen(ctx.user ? "lobby" : "landing")} />}
+      {nav.screen === "notfound" && <NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
 
-      <ConsentBanner onNav={ctx.setScreen} />
+      <ConsentBanner onNav={nav.setScreen} />
       <Analytics />
     </>
   );
@@ -298,9 +303,13 @@ function AppInner() {
   if (!firebaseReady) return <FirebaseMissing />;
 
   return (
-    <GameProvider>
-      <AppScreens />
-    </GameProvider>
+    <AuthProvider>
+      <NavigationProvider>
+        <GameProvider>
+          <AppScreens />
+        </GameProvider>
+      </NavigationProvider>
+    </AuthProvider>
   );
 }
 

@@ -1,9 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { Component, type ReactNode } from "react";
-import { useGameContext } from "../GameContext";
-import { AuthProvider } from "../AuthContext";
-import { NavigationProvider } from "../NavigationContext";
+import { useAuthContext, AuthProvider } from "../AuthContext";
 
 vi.mock("../../hooks/useAuth", () => ({
   useAuth: () => ({ loading: false, user: null, profile: null, refreshProfile: vi.fn() }),
@@ -16,15 +14,9 @@ vi.mock("../../services/auth", () => ({
 }));
 vi.mock("../../services/users", () => ({
   deleteUserData: vi.fn(),
-  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock("../../services/games", () => ({
-  createGame: vi.fn(),
-  subscribeToMyGames: vi.fn(() => vi.fn()),
-  subscribeToGame: vi.fn(() => vi.fn()),
 }));
 vi.mock("../../services/analytics", () => ({
-  analytics: { signIn: vi.fn(), gameCreated: vi.fn() },
+  analytics: { signIn: vi.fn() },
 }));
 vi.mock("../../services/logger", () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
@@ -32,11 +24,8 @@ vi.mock("../../services/logger", () => ({
 }));
 vi.mock("../../lib/sentry", () => ({
   captureException: vi.fn(),
-  captureMessage: vi.fn(),
-  addBreadcrumb: vi.fn(),
 }));
 
-/** Error boundary that captures the error for assertions. */
 class ErrorCatcher extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
   static getDerivedStateFromError(error: Error) {
@@ -47,12 +36,12 @@ class ErrorCatcher extends Component<{ children: ReactNode }, { error: Error | n
   }
 }
 
-describe("useGameContext", () => {
-  it("throws when used outside GameProvider", () => {
+describe("useAuthContext", () => {
+  it("throws when used outside AuthProvider", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     function TestComponent() {
-      useGameContext();
+      useAuthContext();
       return null;
     }
 
@@ -62,28 +51,22 @@ describe("useGameContext", () => {
       </ErrorCatcher>,
     );
 
-    expect(getByTestId("error").textContent).toBe("useGameContext must be used within GameProvider");
+    expect(getByTestId("error").textContent).toBe("useAuthContext must be used within AuthProvider");
     spy.mockRestore();
   });
 
-  it("returns context value when used inside GameProvider", async () => {
-    const { GameProvider } = await import("../GameContext");
-
+  it("returns context value when used inside AuthProvider", () => {
     function TestComponent() {
-      const ctx = useGameContext();
-      return <span data-testid="games">{ctx.games.length}</span>;
+      const ctx = useAuthContext();
+      return <span data-testid="loading">{String(ctx.loading)}</span>;
     }
 
     const { getByTestId } = render(
       <AuthProvider>
-        <NavigationProvider>
-          <GameProvider>
-            <TestComponent />
-          </GameProvider>
-        </NavigationProvider>
+        <TestComponent />
       </AuthProvider>,
     );
 
-    expect(getByTestId("games").textContent).toBe("0");
+    expect(getByTestId("loading").textContent).toBe("false");
   });
 });

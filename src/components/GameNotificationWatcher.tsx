@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { collection, query, where, onSnapshot, orderBy, limit } from "firebase/firestore";
 import { db } from "../firebase";
+import { useAuthContext } from "../context/AuthContext";
 import { useGameContext } from "../context/GameContext";
 import { useNotifications } from "../context/NotificationContext";
 import { onForegroundMessage } from "../services/fcm";
@@ -30,7 +31,8 @@ const FIRESTORE_HANDLED_TYPES = new Set(["your_turn", "new_challenge", "game_won
  * Must be rendered inside both GameProvider and NotificationProvider.
  */
 export function GameNotificationWatcher() {
-  const { user, games, activeGame } = useGameContext();
+  const { user } = useAuthContext();
+  const { games, activeGame } = useGameContext();
   const { notify } = useNotifications();
 
   const uid = user?.uid ?? null;
