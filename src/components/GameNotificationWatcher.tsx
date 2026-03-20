@@ -132,31 +132,16 @@ export function GameNotificationWatcher() {
       }
     }
 
-    // Phase changed to confirming (match attempt submitted)
+    // Phase changed to confirming (match attempt submitted — setter reviews)
     if (activeGame.phase === "confirming" && prev.phase === "matching") {
+      const isSetter = activeGame.currentSetter === uid;
       notify({
         type: "info",
-        title: "Review Time",
-        message: "Both players vote on the attempt",
+        title: isSetter ? "Review Time" : "Attempt Submitted",
+        message: isSetter ? "Review the attempt and make the call" : "Waiting for the setter to decide",
         chime: "general",
         gameId: activeGame.id,
       });
-    }
-
-    // Opponent voted in confirming phase
-    if (activeGame.phase === "confirming" && prev.phase === "confirming") {
-      const isSetter = activeGame.currentSetter === uid;
-      const theirVoteBefore = isSetter ? prev.matcherConfirm : prev.setterConfirm;
-      const theirVoteAfter = isSetter ? activeGame.matcherConfirm : activeGame.setterConfirm;
-      if (theirVoteBefore === null && theirVoteAfter !== null) {
-        notify({
-          type: "info",
-          title: "Vote Received",
-          message: `@${opponentName} has voted`,
-          chime: "general",
-          gameId: activeGame.id,
-        });
-      }
     }
 
     prevGameRef.current = activeGame;

@@ -272,8 +272,8 @@ describe("games service", () => {
   });
 
   describe("submitMatchAttempt", () => {
-    it("transitions to confirming phase with match video URL", async () => {
-      const game = { ...baseGame, phase: "matching", currentSetter: "p1" };
+    it("transitions to confirming phase with match video URL and turn to setter", async () => {
+      const game = { ...baseGame, phase: "matching", currentSetter: "p1", currentTurn: "p2" };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       await submitMatchAttempt("g1", "https://cdn.example.com/match.webm");
@@ -283,6 +283,8 @@ describe("games service", () => {
       expect(updates.matchVideoUrl).toBe("https://cdn.example.com/match.webm");
       expect(updates.setterConfirm).toBeNull();
       expect(updates.matcherConfirm).toBeNull();
+      // Turn passes to setter for review
+      expect(updates.currentTurn).toBe("p1");
     });
 
     it("throws when game is not found", async () => {
@@ -306,41 +308,20 @@ describe("games service", () => {
       ...baseGame,
       phase: "confirming",
       currentSetter: "p1",
+      currentTurn: "p1",
       setterConfirm: null,
       matcherConfirm: null,
     };
 
-    it("records setter vote without resolving", async () => {
+    it("setter confirms landed — resolves immediately, no letter", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(confirmingGame));
 
       const result = await submitConfirmation("g1", "p1", true);
-      expect(result.resolved).toBe(false);
 
-      const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.setterConfirm).toBe(true);
-      expect(updates.matcherConfirm).toBeNull();
-    });
-
-    it("records matcher vote without resolving", async () => {
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(confirmingGame));
-
-      const result = await submitConfirmation("g1", "p2", false);
-      expect(result.resolved).toBe(false);
-
-      const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.matcherConfirm).toBe(false);
-      expect(updates.setterConfirm).toBeNull();
-    });
-
-    it("resolves with no letter when both agree landed", async () => {
-      const game = { ...confirmingGame, setterConfirm: true };
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
-
-      const result = await submitConfirmation("g1", "p2", true);
-      expect(result.resolved).toBe(true);
       expect(result.gameOver).toBe(false);
 
       const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.setterConfirm).toBe(true);
       expect(updates.p1Letters).toBe(0);
       expect(updates.p2Letters).toBe(0);
       expect(updates.phase).toBe("setting");
@@ -348,12 +329,10 @@ describe("games service", () => {
       expect(updates.currentSetter).toBe("p2");
     });
 
-    it("adds letter to matcher when either votes missed", async () => {
-      const game = { ...confirmingGame, setterConfirm: false };
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+    it("setter confirms missed — matcher gets a letter", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(confirmingGame));
 
-      const result = await submitConfirmation("g1", "p2", true);
-      expect(result.resolved).toBe(true);
+      const result = await submitConfirmation("g1", "p1", false);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       // p2 is matcher and gets a letter since setter said missed
@@ -362,11 +341,16 @@ describe("games service", () => {
       expect(updates.currentSetter).toBe("p1"); // Same setter stays
     });
 
+    it("throws when matcher tries to vote", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(confirmingGame));
+      await expect(submitConfirmation("g1", "p2", true)).rejects.toThrow("Only the setter can confirm");
+    });
+
     it("ends game when matcher reaches 5 letters", async () => {
-      const game = { ...confirmingGame, setterConfirm: false, p2Letters: 4 };
+      const game = { ...confirmingGame, p2Letters: 4 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      const result = await submitConfirmation("g1", "p2", false);
+      const result = await submitConfirmation("g1", "p1", false);
       expect(result.gameOver).toBe(true);
       expect(result.winner).toBe("p1");
 
@@ -376,7 +360,7 @@ describe("games service", () => {
     });
 
     it("ends game when p1 reaches 5 letters (p2 wins)", async () => {
-      const game = { ...confirmingGame, currentSetter: "p2", matcherConfirm: false, p1Letters: 4 };
+      const game = { ...confirmingGame, currentSetter: "p2", currentTurn: "p2", p1Letters: 4 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       const result = await submitConfirmation("g1", "p2", false);
@@ -385,21 +369,19 @@ describe("games service", () => {
     });
 
     it("increments turn number when game continues", async () => {
-      const game = { ...confirmingGame, setterConfirm: false, turnNumber: 3 };
+      const game = { ...confirmingGame, turnNumber: 3 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      const result = await submitConfirmation("g1", "p2", false);
-      expect(result.resolved).toBe(true);
+      const result = await submitConfirmation("g1", "p1", false);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.turnNumber).toBe(4);
     });
 
     it("does not reset locked fields when resolving back to setting phase", async () => {
-      const game = { ...confirmingGame, setterConfirm: true };
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(confirmingGame));
 
-      await submitConfirmation("g1", "p2", true);
+      await submitConfirmation("g1", "p1", true);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.phase).toBe("setting");
@@ -409,21 +391,14 @@ describe("games service", () => {
       expect(updates).not.toHaveProperty("currentTrickName");
       expect(updates).not.toHaveProperty("currentTrickVideoUrl");
       expect(updates).not.toHaveProperty("matchVideoUrl");
-      // Confirms retain their vote values (bools) to satisfy Firestore rule validation
+      // setterConfirm retains the vote value to satisfy Firestore rule validation
       expect(updates.setterConfirm).toBe(true);
-      expect(updates.matcherConfirm).toBe(true);
     });
 
     it("throws when setter already voted", async () => {
       const game = { ...confirmingGame, setterConfirm: true };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
       await expect(submitConfirmation("g1", "p1", true)).rejects.toThrow("You already voted");
-    });
-
-    it("throws when matcher already voted", async () => {
-      const game = { ...confirmingGame, matcherConfirm: false };
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
-      await expect(submitConfirmation("g1", "p2", true)).rejects.toThrow("You already voted");
     });
 
     it("throws when game is not found", async () => {
