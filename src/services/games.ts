@@ -86,17 +86,44 @@ function gamesRef() {
 }
 
 /* ────────────────────────────────────────────
- * Create a new game (challenge)
+ * Client-side rate limiting (defense-in-depth)
  * ──────────────────────────────────────────── */
 
-// Client-side rate limit: one game creation per 10 seconds (defense-in-depth)
+// Game creation: one per 10 seconds globally
 let lastGameCreatedAt = 0;
 const GAME_CREATE_COOLDOWN_MS = 10_000;
+
+// Turn actions (setTrick, failSetTrick, submitMatchAttempt): one per 3 seconds per game
+const lastTurnActionAt = new Map<string, number>();
+const TURN_ACTION_COOLDOWN_MS = 3_000;
+
+function checkTurnActionRate(gameId: string): void {
+  const last = lastTurnActionAt.get(gameId) ?? 0;
+  if (Date.now() - last < TURN_ACTION_COOLDOWN_MS) {
+    throw new Error("Please wait before submitting another action");
+  }
+}
+
+function recordTurnAction(gameId: string): void {
+  lastTurnActionAt.set(gameId, Date.now());
+  // Prevent unbounded growth: prune entries older than 60s
+  if (lastTurnActionAt.size > 50) {
+    const cutoff = Date.now() - 60_000;
+    for (const [id, ts] of lastTurnActionAt) {
+      if (ts < cutoff) lastTurnActionAt.delete(id);
+    }
+  }
+}
 
 /** @internal Reset rate-limit state (for tests only) */
 export function _resetCreateGameRateLimit() {
   lastGameCreatedAt = 0;
+  lastTurnActionAt.clear();
 }
+
+/* ────────────────────────────────────────────
+ * Create a new game (challenge)
+ * ──────────────────────────────────────────── */
 
 export async function createGame(
   challengerUid: string,
@@ -152,6 +179,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
   const safeTrickName = trickName.trim().slice(0, 100);
   if (!safeTrickName) throw new Error("Trick name cannot be empty");
 
+  checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
 
   // Firestore transactions have built-in retry for transient conflicts;
@@ -176,6 +204,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
       updatedAt: serverTimestamp(),
     });
   });
+  recordTurnAction(gameId);
 }
 
 /* ────────────────────────────────────────────
@@ -183,6 +212,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
  * ──────────────────────────────────────────── */
 
 export async function failSetTrick(gameId: string): Promise<void> {
+  checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
 
   await runTransaction(requireDb(), async (tx) => {
@@ -207,6 +237,7 @@ export async function failSetTrick(gameId: string): Promise<void> {
       updatedAt: serverTimestamp(),
     });
   });
+  recordTurnAction(gameId);
 }
 
 /* ────────────────────────────────────────────
@@ -218,9 +249,10 @@ export async function submitMatchAttempt(
   matchVideoUrl: string | null,
   landed: boolean,
 ): Promise<{ gameOver: boolean; winner: string | null }> {
+  checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
 
-  return runTransaction(requireDb(), async (tx) => {
+  const result = await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -281,6 +313,8 @@ export async function submitMatchAttempt(
     tx.update(gameRef, updates);
     return { gameOver, winner };
   });
+  recordTurnAction(gameId);
+  return result;
 }
 
 /* ────────────────────────────────────────────

@@ -224,6 +224,22 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(malformedSnap);
       await expect(setTrick("bad-doc", "Kickflip", null)).rejects.toThrow("Malformed game document: bad-doc");
     });
+
+    it("throws when called again within the turn action cooldown period", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await setTrick("g1", "Kickflip", null);
+
+      // Second call hits rate limit before reaching the transaction — no mock needed
+      await expect(setTrick("g1", "Heelflip", null)).rejects.toThrow("Please wait before submitting another action");
+    });
+
+    it("allows calls on different games within cooldown", async () => {
+      mockTxGet
+        .mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }))
+        .mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await setTrick("g1", "Kickflip", null);
+      await expect(setTrick("g2", "Heelflip", null)).resolves.toBeUndefined();
+    });
   });
 
   describe("failSetTrick", () => {
@@ -268,6 +284,14 @@ describe("games service", () => {
     it("throws when not in setting phase", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "matching" }));
       await expect(failSetTrick("g1")).rejects.toThrow("Not in setting phase");
+    });
+
+    it("throws when called again within the turn action cooldown period", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await failSetTrick("g1");
+
+      // Second call hits rate limit before reaching the transaction — no mock needed
+      await expect(failSetTrick("g1")).rejects.toThrow("Please wait before submitting another action");
     });
   });
 
@@ -377,6 +401,16 @@ describe("games service", () => {
     it("throws when not in matching phase", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
       await expect(submitMatchAttempt("g1", null, true)).rejects.toThrow("Not in matching phase");
+    });
+
+    it("throws when called again within the turn action cooldown period", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
+      await submitMatchAttempt("g1", null, true);
+
+      // Second call hits rate limit before reaching the transaction — no mock needed
+      await expect(submitMatchAttempt("g1", null, false)).rejects.toThrow(
+        "Please wait before submitting another action",
+      );
     });
   });
 

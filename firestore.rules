@@ -134,6 +134,12 @@ service cloud.firestore {
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.auth.uid == resource.data.currentTurn
+        // Rate limit: at most one turn action per 2 seconds (prevents write flooding)
+        && (
+          !('updatedAt' in resource.data)
+          || resource.data.updatedAt == null
+          || request.time > resource.data.updatedAt + duration.value(2, 's')
+        )
         // Cannot change player UIDs or usernames
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
