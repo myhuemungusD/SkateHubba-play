@@ -1,4 +1,6 @@
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
+import { onMessagePublished } from "firebase-functions/v2/pubsub";
+import { logger } from "firebase-functions/v2";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
@@ -182,3 +184,52 @@ export const onGameUpdated = onDocumentUpdated({ document: "games/{gameId}", dat
     return;
   }
 });
+
+/* ── Billing budget alert handler ────────────────────────────── */
+
+/**
+ * Pub/Sub-triggered function that fires when a Google Cloud billing
+ * budget threshold is crossed.  Configure the budget + Pub/Sub topic
+ * via:  bash scripts/setup-billing-alerts.sh
+ *
+ * The function logs the alert and writes it to the "billingAlerts"
+ * Firestore collection so the ops team can query it from the admin
+ * dashboard or set up further notification rules.
+ */
+interface BudgetAlert {
+  budgetDisplayName: string;
+  costAmount: number;
+  budgetAmount: number;
+  currencyCode: string;
+  alertThresholdExceeded?: number;
+  costIntervalStart: string;
+}
+
+export const onBillingAlert = onMessagePublished(
+  { topic: "firebase-billing-alerts" },
+  async (event) => {
+    const data: BudgetAlert =
+      typeof event.data.message.json === "string"
+        ? JSON.parse(event.data.message.json)
+        : event.data.message.json;
+
+    const pct = data.alertThresholdExceeded
+      ? `${(data.alertThresholdExceeded * 100).toFixed(0)}%`
+      : "unknown";
+
+    logger.warn("🚨 Billing alert received", {
+      budget: data.budgetDisplayName,
+      thresholdExceeded: pct,
+      cost: `${data.costAmount} ${data.currencyCode}`,
+      budgetLimit: `${data.budgetAmount} ${data.currencyCode}`,
+    });
+
+    // Persist alert to Firestore for audit trail / admin dashboard
+    const db = getFirestore(DB_NAME);
+    await db.collection("billingAlerts").add({
+      ...data,
+      thresholdPercent: pct,
+      receivedAt: FieldValue.serverTimestamp(),
+    });
+  },
+);

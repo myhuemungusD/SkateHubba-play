@@ -220,6 +220,12 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Billing alerts (server-only) ──
+    // Written by the onBillingAlert Cloud Function; no client access.
+    match /billingAlerts/{alertId} {
+      allow read, write: if false;
+    }
+
     // ── Nudge rate limits ──
     // One doc per sender+game pair, enforces 1-hour cooldown server-side.
     match /nudge_limits/{limitId} {
