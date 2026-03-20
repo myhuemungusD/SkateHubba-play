@@ -9,6 +9,7 @@ import {
   orderBy,
   limit,
   runTransaction,
+  writeBatch,
   serverTimestamp,
   type FieldValue,
 } from "firebase/firestore";
@@ -37,10 +38,10 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   return snap.exists() ? (snap.data() as UserProfile) : null;
 }
 
-/** Username constraints — shared between validation and creation. */
-const USERNAME_MIN = 3;
-const USERNAME_MAX = 20;
-const USERNAME_RE = /^[a-z0-9_]+$/;
+/** Username constraints — shared between validation, creation, and UI. */
+export const USERNAME_MIN = 3;
+export const USERNAME_MAX = 20;
+export const USERNAME_RE = /^[a-z0-9_]+$/;
 
 /**
  * Check if a username is available.
@@ -136,13 +137,11 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   }
   await Promise.all(deletions);
 
-  // Phase 2: Delete profile + username atomically
-  const userRef = doc(db, "users", uid);
-  const usernameRef = doc(db, "usernames", username.toLowerCase().trim());
-  await runTransaction(db, async (tx) => {
-    tx.delete(userRef);
-    tx.delete(usernameRef);
-  });
+  // Phase 2: Delete profile + username atomically (no reads needed, batch is cheaper)
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "users", uid));
+  batch.delete(doc(db, "usernames", username.toLowerCase().trim()));
+  await batch.commit();
 }
 
 /**
@@ -186,12 +185,10 @@ export async function updatePlayerStats(uid: string, gameId: string, won: boolea
     // Idempotency: skip if this game already counted
     if (data.lastStatsGameId === gameId) return;
 
-    const currentWins = typeof data.wins === "number" ? data.wins : 0;
-    const currentLosses = typeof data.losses === "number" ? data.losses : 0;
+    const current = typeof data[won ? "wins" : "losses"] === "number" ? (data[won ? "wins" : "losses"] as number) : 0;
 
     tx.update(userRef, {
-      wins: won ? currentWins + 1 : currentWins,
-      losses: won ? currentLosses : currentLosses + 1,
+      [won ? "wins" : "losses"]: current + 1,
       lastStatsGameId: gameId,
     });
   });
