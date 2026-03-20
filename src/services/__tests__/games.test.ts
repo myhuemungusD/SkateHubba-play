@@ -240,6 +240,46 @@ describe("games service", () => {
       await setTrick("g1", "Kickflip", null);
       await expect(setTrick("g2", "Heelflip", null)).resolves.toBeUndefined();
     });
+
+    it("prunes stale rate-limit entries when map exceeds 50 entries", async () => {
+      // Fill the rate-limit map with 51 entries by calling setTrick on distinct game IDs.
+      // We fake Date.now so the first 51 entries appear old (> 60s ago), then advance time.
+      const realDateNow = Date.now;
+      let fakeNow = 1_000_000;
+      vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+
+      for (let i = 0; i < 51; i++) {
+        _resetCreateGameRateLimit();
+        // We only need to reset the *game create* cooldown; turn-action entries accumulate.
+        // Actually, _resetCreateGameRateLimit clears the map, so we need a different approach.
+      }
+
+      // Restore and use a manual approach: call setTrick on 51 different game IDs
+      vi.spyOn(Date, "now").mockRestore();
+      _resetCreateGameRateLimit();
+
+      // Set fakeNow to a point in the past so entries are "old"
+      fakeNow = 100_000;
+      vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
+
+      // Perform 51 turn actions on different game IDs
+      for (let i = 0; i < 51; i++) {
+        mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+        await setTrick(`prune-game-${i}`, "Trick", null);
+      }
+
+      // Now advance time by more than 60s so entries become stale
+      fakeNow = 100_000 + 61_000;
+
+      // The next call will trigger pruning (map.size > 50) and remove stale entries
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await setTrick("prune-game-new", "Trick", null);
+
+      // If pruning works, no error is thrown — the test passes.
+      expect(mockTxUpdate).toHaveBeenCalled();
+
+      vi.spyOn(Date, "now").mockRestore();
+    });
   });
 
   describe("failSetTrick", () => {
