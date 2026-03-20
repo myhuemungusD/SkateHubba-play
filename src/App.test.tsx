@@ -29,20 +29,13 @@ vi.mock("./services/games", () => ({
   createGame: vi.fn(),
   setTrick: vi.fn(),
   submitMatchAttempt: vi.fn(),
-  submitConfirmation: vi.fn(),
   forfeitExpiredTurn: vi.fn(),
-  resolveDispute: vi.fn(),
   subscribeToMyGames: vi.fn(() => vi.fn()),
   subscribeToGame: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("./services/storage", () => ({
   uploadVideo: vi.fn(),
-}));
-
-vi.mock("./services/disputes", () => ({
-  subscribeToOpenDisputes: vi.fn(() => vi.fn()),
-  subscribeToDispute: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("./services/analytics", () => ({

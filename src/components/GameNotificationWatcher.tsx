@@ -152,18 +152,6 @@ export function GameNotificationWatcher() {
       }
     }
 
-    // Phase changed to confirming (match attempt submitted — setter reviews)
-    if (activeGame.phase === "confirming" && prev.phase === "matching") {
-      const isSetter = activeGame.currentSetter === uid;
-      notify({
-        type: "info",
-        title: isSetter ? "Review Time" : "Attempt Submitted",
-        message: isSetter ? "Review the attempt and make the call" : "Waiting for the setter to decide",
-        chime: "general",
-        gameId: activeGame.id,
-      });
-    }
-
     prevGameRef.current = activeGame;
   }, [uid, activeGame, notify]);
 

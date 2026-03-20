@@ -20,7 +20,6 @@ const mockCreateGame = vi.fn();
 const mockSetTrick = vi.fn();
 const mockFailSetTrick = vi.fn();
 const mockSubmitMatchAttempt = vi.fn();
-const mockSubmitConfirmation = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 const mockSubscribeToMyGames = vi.fn(() => vi.fn());
 const mockSubscribeToGame = vi.fn(() => vi.fn());
@@ -56,18 +55,12 @@ vi.mock("../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
   failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
   submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
-  submitConfirmation: (...args: unknown[]) => mockSubmitConfirmation(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
-  resolveDispute: vi.fn(),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
 }));
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
-}));
-vi.mock("../services/disputes", () => ({
-  subscribeToOpenDisputes: vi.fn(() => vi.fn()),
-  subscribeToDispute: vi.fn(() => vi.fn()),
 }));
 vi.mock("../services/fcm", () => ({
   requestPushPermission: vi.fn().mockResolvedValue(null),
@@ -1675,14 +1668,14 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
-    // Demo mode: onRecorded(null) → videoRecorded=true → submit attempt button appears
+    // Self-judging: matcher sees "Did you land it?" with Landed/Missed buttons
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /submit attempt/i })).toBeInTheDocument();
+      expect(screen.getByText(/✓ Landed/)).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByRole("button", { name: /submit attempt/i }));
+    await userEvent.click(screen.getByText(/✓ Landed/));
 
     await waitFor(() => {
-      expect(mockSubmitMatchAttempt).toHaveBeenCalledWith("game1", null);
+      expect(mockSubmitMatchAttempt).toHaveBeenCalledWith("game1", null, true);
     });
   });
 
@@ -2149,8 +2142,8 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
-    await waitFor(() => screen.getByRole("button", { name: /submit attempt/i }));
-    await userEvent.click(screen.getByRole("button", { name: /submit attempt/i }));
+    await waitFor(() => screen.getByText(/✓ Landed/));
+    await userEvent.click(screen.getByText(/✓ Landed/));
 
     await waitFor(() => {
       expect(screen.getByText("Submit failed")).toBeInTheDocument();
@@ -2400,8 +2393,8 @@ describe("Smoke Test: Game E2E", () => {
     await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
-    await waitFor(() => screen.getByRole("button", { name: /submit attempt/i }));
-    await userEvent.click(screen.getByRole("button", { name: /submit attempt/i }));
+    await waitFor(() => screen.getByText(/✓ Landed/));
+    await userEvent.click(screen.getByText(/✓ Landed/));
 
     await waitFor(() => {
       expect(screen.getByText("Failed to submit attempt")).toBeInTheDocument();

@@ -24,10 +24,6 @@ vi.mock("../../services/users", () => ({
   getPlayerDirectory: vi.fn(),
 }));
 
-vi.mock("../../services/disputes", () => ({
-  subscribeToOpenDisputes: vi.fn(() => vi.fn()),
-}));
-
 import { getPlayerDirectory } from "../../services/users";
 
 const mockGetPlayerDirectory = getPlayerDirectory as ReturnType<typeof vi.fn>;

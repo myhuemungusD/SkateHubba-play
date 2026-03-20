@@ -6,26 +6,18 @@ import { GamePlayScreen } from "../GamePlayScreen";
 const mockSetTrick = vi.fn();
 const mockFailSetTrick = vi.fn();
 const mockSubmitMatchAttempt = vi.fn();
-const mockSubmitConfirmation = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
-const mockResolveDispute = vi.fn();
 const mockUploadVideo = vi.fn();
 
 vi.mock("../../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
   failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
   submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
-  submitConfirmation: (...args: unknown[]) => mockSubmitConfirmation(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
-  resolveDispute: (...args: unknown[]) => mockResolveDispute(...args),
 }));
 
 vi.mock("../../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
-}));
-
-vi.mock("../../services/disputes", () => ({
-  subscribeToDispute: vi.fn(() => vi.fn()),
 }));
 
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
@@ -46,8 +38,6 @@ function makeGame(overrides: Record<string, unknown> = {}) {
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    setterConfirm: null,
-    matcherConfirm: null,
     turnDeadline: { toMillis: () => Date.now() + 86400000 },
     turnNumber: 1,
     winner: null,
@@ -288,10 +278,10 @@ describe("GamePlayScreen", () => {
     });
   });
 
-  it("matcher uploads video blob and submits attempt (covers uploadVideo line)", async () => {
+  it("matcher records, reviews, and self-judges landed (uploads video and submits)", async () => {
     (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
     mockUploadVideo.mockResolvedValueOnce("https://firebasestorage.googleapis.com/v0/b/test/o/video.webm");
-    mockSubmitMatchAttempt.mockResolvedValueOnce(undefined);
+    mockSubmitMatchAttempt.mockResolvedValueOnce({ gameOver: false, winner: null });
 
     const matcherGame = makeGame({
       currentTurn: "u1",
@@ -311,17 +301,22 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
     await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
 
-    // Review step — must click through before submit button appears
+    // Review step — must click through before self-judge buttons appear
     await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
-    // "Submit your attempt for review" appears after review
-    await waitFor(() => expect(screen.getByRole("group", { name: "Submit your attempt" })).toBeInTheDocument());
+    // "Did you land it?" appears — matcher self-judges
+    await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
 
-    await userEvent.click(screen.getByText(/Submit Attempt/));
+    await userEvent.click(screen.getByText(/✓ Landed/));
 
     await waitFor(() => {
       expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "match", expect.any(Blob), expect.any(Function));
+      expect(mockSubmitMatchAttempt).toHaveBeenCalledWith(
+        "game1",
+        "https://firebasestorage.googleapis.com/v0/b/test/o/video.webm",
+        true,
+      );
     });
   });
 
@@ -657,86 +652,32 @@ describe("GamePlayScreen", () => {
     expect(screen.getByText("@rival")).toBeInTheDocument();
   });
 
-  it("confirming phase shows vote buttons only for setter", () => {
-    // u1 is the setter — should see vote buttons
+  it("matcher sees 'Did you land it?' after reviewing clip (self-judging)", async () => {
     const game = makeGame({
-      phase: "confirming",
-      currentSetter: "u1",
       currentTurn: "u1",
-      currentTrickName: "Kickflip",
-      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
-      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
-      setterConfirm: null,
-      matcherConfirm: null,
-    });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
-
-    expect(screen.getByText(/Review: Kickflip/)).toBeInTheDocument();
-    expect(screen.getByText(/@sk8r's TRICK/)).toBeInTheDocument();
-    expect(screen.getByText(/@rival's ATTEMPT/)).toBeInTheDocument();
-    expect(screen.getByText(/Did @rival land it/)).toBeInTheDocument();
-    expect(screen.getByText(/✓ Landed/)).toBeInTheDocument();
-    expect(screen.getByText(/✗ Missed/)).toBeInTheDocument();
-  });
-
-  it("confirming phase shows vote buttons for matcher (dual-vote)", () => {
-    // u1 is the matcher (u2 is setter) — should see vote buttons too
-    const game = makeGame({
-      phase: "confirming",
       currentSetter: "u2",
-      currentTurn: "u2",
+      phase: "matching",
       currentTrickName: "Kickflip",
-      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
-      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
-      setterConfirm: null,
-      matcherConfirm: null,
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
-    // Matcher also sees vote buttons now (dual-vote system)
-    expect(screen.getByText(/Did @sk8r land it/)).toBeInTheDocument();
-    expect(screen.getByText(/✓ Landed/)).toBeInTheDocument();
-    expect(screen.getByText(/✗ Missed/)).toBeInTheDocument();
-  });
+    // Open camera
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
 
-  it("confirming phase shows waiting state after matcher has voted", () => {
-    // u1 is the matcher, already voted, waiting for setter
-    const game = makeGame({
-      phase: "confirming",
-      currentSetter: "u2",
-      currentTurn: "u2",
-      currentTrickName: "Kickflip",
-      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
-      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
-      setterConfirm: null,
-      matcherConfirm: true,
-    });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 
-    expect(screen.getByText(/Waiting for @rival to make their call/)).toBeInTheDocument();
-    expect(screen.getByText(/You called it: Landed/)).toBeInTheDocument();
-    expect(screen.queryByText(/✓ Landed/)).not.toBeInTheDocument();
-  });
+    // Review step
+    await waitFor(() => expect(screen.getByText(/I've Reviewed My Clip/)).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/I've Reviewed My Clip/));
 
-  it("confirming phase vote calls submitConfirmation (setter)", async () => {
-    mockSubmitConfirmation.mockResolvedValueOnce({ gameOver: false, winner: null });
-
-    const game = makeGame({
-      phase: "confirming",
-      currentSetter: "u1",
-      currentTurn: "u1",
-      currentTrickName: "Kickflip",
-      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
-      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
-      setterConfirm: null,
-      matcherConfirm: null,
-    });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
-
-    await userEvent.click(screen.getByText(/✓ Landed/));
-
+    // Self-judge buttons appear
     await waitFor(() => {
-      expect(mockSubmitConfirmation).toHaveBeenCalledWith("game1", "u1", true);
+      expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument();
+      expect(screen.getByText(/✓ Landed/)).toBeInTheDocument();
+      expect(screen.getByText(/✗ Missed/)).toBeInTheDocument();
     });
   });
 });

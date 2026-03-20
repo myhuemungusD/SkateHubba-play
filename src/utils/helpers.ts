@@ -95,13 +95,10 @@ export function newGameShell(
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    setterConfirm: null,
-    matcherConfirm: null,
     turnDeadline: Timestamp.fromMillis(Date.now() + 86400000),
     turnNumber: 1,
     winner: null,
     turnHistory: [],
-    disputeId: null,
     createdAt: null,
     updatedAt: null,
   };
