@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act, type RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Timestamp } from "firebase/firestore";
 import { Lobby } from "../Lobby";
 import { NotificationProvider } from "../../context/NotificationContext";
 import type { ReactNode } from "react";
@@ -282,21 +283,21 @@ describe("Lobby", () => {
         uid: "u2",
         username: "kickflip_king",
         stance: "Regular",
-        createdAt: { toMillis: () => Date.now() - 3600000 * 2 },
+        createdAt: Timestamp.fromMillis(Date.now() - 3600000 * 2),
         emailVerified: true,
       },
       {
         uid: "u3",
         username: "heelflip_hero",
         stance: "Goofy",
-        createdAt: { toMillis: () => Date.now() - 86400000 * 3 },
+        createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 3),
         emailVerified: true,
       },
       {
         uid: "u4",
         username: "treflip_pro",
         stance: "Regular",
-        createdAt: { toMillis: () => Date.now() - 86400000 * 10 },
+        createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 10),
         emailVerified: true,
       },
     ];
@@ -407,21 +408,21 @@ describe("Lobby", () => {
         uid: "u2",
         username: "just_now",
         stance: "Regular",
-        createdAt: { toMillis: () => now - 1000 * 60 * 30 },
+        createdAt: Timestamp.fromMillis(now - 1000 * 60 * 30),
         emailVerified: true,
       },
       {
         uid: "u3",
         username: "hours_ago",
         stance: "Goofy",
-        createdAt: { toMillis: () => now - 1000 * 60 * 60 * 5 },
+        createdAt: Timestamp.fromMillis(now - 1000 * 60 * 60 * 5),
         emailVerified: true,
       },
       {
         uid: "u4",
         username: "days_ago",
         stance: "Regular",
-        createdAt: { toMillis: () => now - 1000 * 60 * 60 * 24 * 3 },
+        createdAt: Timestamp.fromMillis(now - 1000 * 60 * 60 * 24 * 3),
         emailVerified: true,
       },
     ]);
@@ -441,7 +442,7 @@ describe("Lobby", () => {
         uid: "u2",
         username: "time_traveler",
         stance: "Regular",
-        createdAt: { toMillis: () => Date.now() + 60000 },
+        createdAt: Timestamp.fromMillis(Date.now() + 60000),
         emailVerified: true,
       },
     ]);

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
+import { Timestamp } from "firebase/firestore";
 import type { FieldValue } from "firebase/firestore";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
@@ -13,10 +14,8 @@ import { LobbyTimer } from "../components/LobbyTimer";
 import { SkateboardIcon, TrophyIcon } from "../components/icons";
 
 function relativeJoinDate(createdAt: FieldValue | null): string {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (!createdAt || typeof (createdAt as any).toMillis !== "function") return "Joined";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const millis = (createdAt as any).toMillis() as number;
+  if (!(createdAt instanceof Timestamp)) return "Joined";
+  const millis = createdAt.toMillis();
   const ms = Date.now() - millis;
   if (ms < 0) return "Just joined"; // future timestamp (clock skew)
   const hours = ms / 3_600_000;
