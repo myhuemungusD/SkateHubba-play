@@ -113,7 +113,8 @@ describe("games service", () => {
       mockAddDoc.mockResolvedValueOnce({ id: "game123" });
       const id = await createGame("p1", "alice", "p2", "bob");
       expect(id).toBe("game123");
-      expect(mockAddDoc).toHaveBeenCalledTimes(1);
+      // First addDoc creates the game; second (fire-and-forget) writes a notification
+      expect(mockAddDoc).toHaveBeenCalledTimes(2);
 
       const docData = mockAddDoc.mock.calls[0][1];
       expect(docData.player1Uid).toBe("p1");

@@ -1,5 +1,14 @@
 import { useEffect, useRef } from "react";
-import { collection, query, where, onSnapshot, orderBy, limit } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  orderBy,
+  limit,
+  updateDoc,
+  doc as firestoreDoc,
+} from "firebase/firestore";
 import { db } from "../firebase";
 import { useGameContext } from "../context/GameContext";
 import { useNotifications } from "../context/NotificationContext";
@@ -255,6 +264,73 @@ export function GameNotificationWatcher() {
       });
     } catch {
       // Firestore not initialized (e.g. in tests) — skip nudge listener
+    }
+
+    return () => unsub?.();
+  }, [uid, notify]);
+
+  // ── Watch notifications collection for cross-client alerts ──
+  // When the opponent writes a notification doc, this listener picks it up
+  // and surfaces it as an in-app toast. Each doc is marked read after being
+  // shown so it only fires once.
+  const notifReadyRef = useRef(false);
+  const initialNotifIdsRef = useRef<Set<string> | null>(null);
+
+  useEffect(() => {
+    if (!uid || !db) {
+      notifReadyRef.current = false;
+      initialNotifIdsRef.current = null;
+      return;
+    }
+
+    let unsub: (() => void) | undefined;
+    try {
+      const q = query(
+        collection(db, "notifications"),
+        where("recipientUid", "==", uid),
+        where("read", "==", false),
+        orderBy("createdAt", "desc"),
+        limit(10),
+      );
+
+      unsub = onSnapshot(q, (snap) => {
+        // Seed on first snapshot to avoid toasting stale notifications
+        if (initialNotifIdsRef.current === null) {
+          initialNotifIdsRef.current = new Set(snap.docs.map((d) => d.id));
+          setTimeout(() => {
+            notifReadyRef.current = true;
+          }, 0);
+          return;
+        }
+
+        if (!notifReadyRef.current) return;
+
+        for (const change of snap.docChanges()) {
+          if (change.type === "added" && !initialNotifIdsRef.current.has(change.doc.id)) {
+            const data = change.doc.data();
+            const chime = fcmChimeMap[data.type] ?? "general";
+            notify({
+              type: "game_event",
+              title: data.title ?? "SkateHubba",
+              message: data.body ?? "",
+              chime,
+              gameId: data.gameId,
+            });
+            initialNotifIdsRef.current.add(change.doc.id);
+
+            // Mark as read so it doesn't re-fire (best-effort)
+            updateDoc(firestoreDoc(db, "notifications", change.doc.id), { read: true }).catch(() => {});
+          }
+        }
+
+        // Cap tracked IDs
+        if (initialNotifIdsRef.current.size > 50) {
+          const ids = Array.from(initialNotifIdsRef.current);
+          initialNotifIdsRef.current = new Set(ids.slice(-25));
+        }
+      });
+    } catch {
+      // Firestore not initialized — skip
     }
 
     return () => unsub?.();
