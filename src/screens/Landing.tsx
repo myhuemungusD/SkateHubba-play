@@ -157,6 +157,35 @@ export function Landing({
         </div>
       </section>
 
+      {/* ─── Demo Video ──────────────────────────────────── */}
+      <section className="max-w-3xl mx-auto px-6 py-12 md:py-16">
+        <div className="relative rounded-2xl overflow-hidden border border-border shadow-[0_0_60px_rgba(255,107,0,0.06)]">
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            poster="/demo-poster.webp"
+            className="w-full aspect-video object-cover bg-surface"
+            aria-label="SkateHubba gameplay demo"
+          >
+            <source src="/demo.mp4" type="video/mp4" />
+            <source src="/demo.webm" type="video/webm" />
+          </video>
+          {/* Subtle vignette overlay */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              boxShadow: "inset 0 0 60px rgba(0,0,0,0.4)",
+            }}
+          />
+        </div>
+        <p className="font-body text-xs text-faint text-center mt-3 tracking-wide">
+          See a real game in action — no edits, one take only.
+        </p>
+      </section>
+
       {/* ─── Divider ────────────────────────────────────── */}
       <div className="w-full h-px bg-gradient-to-r from-transparent via-border to-transparent" />
 
