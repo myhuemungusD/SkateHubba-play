@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
 import { LETTERS } from "../utils/helpers";
+import { trackEvent } from "../services/analytics";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
 import { GameReplay } from "../components/GameReplay";
 import { Btn } from "../components/ui/Btn";
@@ -345,6 +346,48 @@ function GameHistoryCard({
 }) {
   const won = game.winner === profileUid;
   const hasTurns = (game.turnHistory?.length ?? 0) > 0;
+  const [shareLabel, setShareLabel] = useState("Share Game");
+
+  const handleShareGame = useCallback(async () => {
+    const turns = game.turnHistory ?? [];
+    const p1Name = game.player1Username;
+    const p2Name = game.player2Username;
+    const lines = ["SkateHubba Game Recap", `@${p1Name} vs @${p2Name}`, ""];
+
+    for (const t of turns) {
+      const outcome = t.landed ? `@${t.matcherUsername} landed` : `@${t.matcherUsername} missed`;
+      lines.push(`Round ${t.turnNumber}: ${t.trickName} - Set by @${t.setterUsername}, ${outcome}`);
+    }
+
+    lines.push("");
+    const p1Score = game.p1Letters > 0 ? LETTERS.slice(0, game.p1Letters).join(".") + "." : "-";
+    const p2Score = game.p2Letters > 0 ? LETTERS.slice(0, game.p2Letters).join(".") + "." : "-";
+    lines.push(`Final: @${p1Name} ${p1Score} | @${p2Name} ${p2Score}`);
+
+    const winnerName = game.winner === game.player1Uid ? p1Name : p2Name;
+    lines.push(game.status === "forfeit" ? `@${winnerName} wins by forfeit!` : `@${winnerName} wins!`);
+
+    const text = lines.join("\n");
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ text });
+        trackEvent("game_shared", { context: "archive" });
+        return;
+      } catch {
+        // User cancelled or share failed — fall through to clipboard
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setShareLabel("Copied!");
+      trackEvent("game_shared", { context: "archive", method: "clipboard" });
+      setTimeout(() => setShareLabel("Share Game"), 2000);
+    } catch {
+      // Clipboard not available
+    }
+  }, [game]);
 
   return (
     <div
@@ -407,6 +450,7 @@ function GameHistoryCard({
                 currentUserUid={profileUid}
                 defaultExpanded={false}
                 showDownload={true}
+                showShare={true}
               />
             </>
           ) : (
@@ -417,8 +461,13 @@ function GameHistoryCard({
             </div>
           )}
 
-          <div className="mt-4">
-            <Btn onClick={() => onOpenGame(game)} variant="ghost" className="!py-2.5 !text-sm">
+          <div className="mt-4 flex gap-2">
+            {hasTurns && (
+              <Btn onClick={handleShareGame} variant="secondary" className="!py-2.5 !text-sm flex-1">
+                {shareLabel}
+              </Btn>
+            )}
+            <Btn onClick={() => onOpenGame(game)} variant="ghost" className="!py-2.5 !text-sm flex-1">
               View Full Recap
             </Btn>
           </div>

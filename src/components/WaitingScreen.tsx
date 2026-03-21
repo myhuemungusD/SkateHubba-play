@@ -242,7 +242,13 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
 
         {(game.turnHistory?.length ?? 0) > 0 && (
           <div className="mt-6 text-left w-full">
-            <TurnHistoryViewer turns={game.turnHistory!} currentUserUid={profile.uid} defaultExpanded />
+            <TurnHistoryViewer
+              turns={game.turnHistory!}
+              currentUserUid={profile.uid}
+              defaultExpanded
+              showDownload
+              showShare
+            />
           </div>
         )}
 

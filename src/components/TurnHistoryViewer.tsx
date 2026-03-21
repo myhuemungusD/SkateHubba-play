@@ -1,6 +1,7 @@
-import { useState, memo } from "react";
+import { useState, useCallback, memo } from "react";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
+import { trackEvent } from "../services/analytics";
 
 interface TurnHistoryViewerProps {
   turns: TurnRecord[];
@@ -9,6 +10,8 @@ interface TurnHistoryViewerProps {
   defaultExpanded?: boolean;
   /** Show download buttons on clips (for game over screen). */
   showDownload?: boolean;
+  /** Show share buttons on individual clips. */
+  showShare?: boolean;
 }
 
 function ClipVideo({ url, label }: { url: string; label: string }) {
@@ -41,6 +44,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
   currentUserUid,
   defaultExpanded = false,
   showDownload = false,
+  showShare = false,
 }: TurnHistoryViewerProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
@@ -93,6 +97,9 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                     {showDownload && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
                       <DownloadBtn url={turn.setVideoUrl} filename={`skatehubba-round${turn.turnNumber}-set.webm`} />
                     )}
+                    {showShare && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
+                      <ShareBtn url={turn.setVideoUrl} trickName={turn.trickName} context="turn_history" />
+                    )}
                   </div>
 
                   {/* Matcher's clip */}
@@ -109,6 +116,9 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                         url={turn.matchVideoUrl}
                         filename={`skatehubba-round${turn.turnNumber}-match.webm`}
                       />
+                    )}
+                    {showShare && turn.matchVideoUrl && isFirebaseStorageUrl(turn.matchVideoUrl) && (
+                      <ShareBtn url={turn.matchVideoUrl} trickName={turn.trickName} context="turn_history" />
                     )}
                   </div>
                 </div>
@@ -167,6 +177,71 @@ function DownloadBtn({ url, filename }: { url: string; filename: string }) {
       disabled={status === "saving"}
       className={`mt-1 w-full text-center font-body text-xs transition-colors disabled:opacity-50 ${
         status === "saved"
+          ? "text-brand-green"
+          : status === "failed"
+            ? "text-brand-red"
+            : "text-[#666] hover:text-[#aaa]"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ShareBtn({ url, trickName, context }: { url: string; trickName: string; context: string }) {
+  const [status, setStatus] = useState<"idle" | "sharing" | "shared" | "failed">("idle");
+
+  const handleShare = useCallback(async () => {
+    setStatus("sharing");
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Fetch failed");
+      const blob = await res.blob();
+      const file = new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, {
+        type: "video/webm",
+      });
+      if (typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({
+          title: `SkateHubba — ${trickName}`,
+          text: `Check out my ${trickName} on SkateHubba!`,
+          files: [file],
+        });
+        trackEvent("clip_shared", { method: "native_share", context });
+      } else if (typeof navigator.share === "function") {
+        const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+        await navigator.share({
+          title: `SkateHubba — ${trickName}`,
+          text: `Check out my ${trickName} on SkateHubba!\n${appUrl}`,
+        });
+        trackEvent("clip_shared", { method: "native_share_text", context });
+      } else {
+        const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+        const text = `Check out my ${trickName} on SkateHubba!\n${appUrl}`;
+        await navigator.clipboard.writeText(text);
+        trackEvent("clip_shared", { method: "clipboard", context });
+      }
+      setStatus("shared");
+      setTimeout(() => setStatus("idle"), 2000);
+    } catch {
+      setStatus("failed");
+      setTimeout(() => setStatus("idle"), 2000);
+    }
+  }, [url, trickName, context]);
+
+  const label = {
+    idle: "Share clip",
+    sharing: "Sharing...",
+    shared: "Shared!",
+    failed: "Share failed",
+  }[status];
+
+  return (
+    <button
+      type="button"
+      onClick={handleShare}
+      disabled={status === "sharing"}
+      className={`mt-1 w-full text-center font-body text-xs transition-colors disabled:opacity-50 ${
+        status === "shared"
           ? "text-brand-green"
           : status === "failed"
             ? "text-brand-red"
