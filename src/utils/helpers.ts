@@ -45,7 +45,7 @@ export function getUserMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 export const LETTERS = ["S", "K", "A", "T", "E"];
 
 /** Guard against open-redirect or XSS via crafted video URLs stored in Firestore. */

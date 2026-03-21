@@ -2,10 +2,31 @@ import { useState, useEffect } from "react";
 import { resendVerification } from "../services/auth";
 
 const RESEND_COOLDOWN_S = 60;
+const LS_KEY = "skatehubba_resend_cooldown_until";
+
+/** Read remaining cooldown seconds from localStorage (survives page refresh). */
+function readStoredCooldown(): number {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return 0;
+    const remaining = Math.ceil((Number(raw) - Date.now()) / 1000);
+    return remaining > 0 ? remaining : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeStoredCooldown(seconds: number): void {
+  try {
+    localStorage.setItem(LS_KEY, String(Date.now() + seconds * 1000));
+  } catch {
+    /* localStorage unavailable — in-memory cooldown still works */
+  }
+}
 
 export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
   const [sending, setSending] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
+  const [cooldown, setCooldown] = useState(readStoredCooldown);
   const [sendError, setSendError] = useState(false);
 
   useEffect(() => {
@@ -21,6 +42,7 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
     setSendError(false);
     try {
       await resendVerification();
+      writeStoredCooldown(RESEND_COOLDOWN_S);
       setCooldown(RESEND_COOLDOWN_S);
     } catch {
       setSendError(true);

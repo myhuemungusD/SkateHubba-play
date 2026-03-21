@@ -56,13 +56,14 @@ describe("parseFirebaseError", () => {
 describe("EMAIL_RE", () => {
   it("matches valid emails", () => {
     expect(EMAIL_RE.test("user@example.com")).toBe(true);
-    expect(EMAIL_RE.test("a@b.c")).toBe(true);
+    expect(EMAIL_RE.test("a@b.co")).toBe(true);
   });
 
   it("rejects invalid emails", () => {
     expect(EMAIL_RE.test("notanemail")).toBe(false);
     expect(EMAIL_RE.test("@no.com")).toBe(false);
     expect(EMAIL_RE.test("no@.com")).toBe(false);
+    expect(EMAIL_RE.test("a@b.c")).toBe(false);
   });
 });
 
