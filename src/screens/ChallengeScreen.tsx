@@ -94,19 +94,6 @@ export function ChallengeScreen({
             autoFocus
           />
 
-          <InviteButton username={profile.username} className="mb-6" />
-
-          <div className="p-4 rounded-xl bg-surface-alt border border-border mb-6">
-            <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
-            <div className="font-body text-sm text-[#888] space-y-2">
-              {RULES.map(({ Icon, text, color }) => (
-                <div key={text} className="flex items-center gap-2">
-                  <Icon size={15} className={`${color} shrink-0`} /> {text}
-                </div>
-              ))}
-            </div>
-          </div>
-
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
           <Btn onClick={submit} disabled={loading || opponent.length < 3}>
@@ -118,6 +105,19 @@ export function ChallengeScreen({
               </>
             )}
           </Btn>
+
+          <div className="p-4 rounded-xl bg-surface-alt border border-border mb-4 mt-8">
+            <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
+            <div className="font-body text-sm text-[#888] space-y-2">
+              {RULES.map(({ Icon, text, color }) => (
+                <div key={text} className="flex items-center gap-2">
+                  <Icon size={15} className={`${color} shrink-0`} /> {text}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <InviteButton username={profile.username} className="mb-6" />
         </form>
 
         <Leaderboard currentUserUid={profile.uid} onChallengeUser={(username) => setOpponent(username)} />
