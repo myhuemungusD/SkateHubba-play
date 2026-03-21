@@ -168,12 +168,10 @@ export function Landing({
             muted
             playsInline
             preload="metadata"
-            poster="/demo-poster.webp"
             className="w-full aspect-video object-cover bg-surface transition-transform duration-700 group-hover:scale-[1.02]"
             aria-label="SkateHubba gameplay demo"
           >
-            <source src="/demo.mp4" type="video/mp4" />
-            <source src="/demo.webm" type="video/webm" />
+            <source src="/AVPARKEDIT.mp4" type="video/mp4" />
           </video>
           {/* Vignette + gradient overlay */}
           <div
