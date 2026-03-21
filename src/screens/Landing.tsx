@@ -75,7 +75,7 @@ export function Landing({
   onNav: (screen: "privacy" | "terms" | "datadeletion") => void;
 }) {
   return (
-    <div className="min-h-dvh">
+    <div className="min-h-dvh pb-28 md:pb-0">
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
       <nav className="sticky top-0 z-50 backdrop-blur-md bg-[#0A0A0A]/80 border-b border-border">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
