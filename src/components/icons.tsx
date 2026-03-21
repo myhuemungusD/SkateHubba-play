@@ -211,6 +211,22 @@ export function ReplayIcon(props: IconProps) {
   );
 }
 
+export function ChevronRightIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <polyline points="9 18 15 12 9 6" />
+    </SvgIcon>
+  );
+}
+
+export function ChevronLeftIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <polyline points="15 18 9 12 15 6" />
+    </SvgIcon>
+  );
+}
+
 export function FisheyeIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>
