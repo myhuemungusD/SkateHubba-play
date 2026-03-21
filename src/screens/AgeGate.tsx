@@ -89,7 +89,7 @@ export function AgeGate({
   if (blocked) {
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center px-6">
-        <div className="w-full max-w-sm p-8 rounded-2xl bg-surface border border-border animate-fade-in text-center">
+        <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in text-center">
           <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-4">SKATEHUBBA™</span>
           <h2 className="font-display text-3xl text-white mb-3">Sorry!</h2>
           <p className="font-body text-sm text-[#888] mb-6 leading-relaxed">
@@ -107,7 +107,7 @@ export function AgeGate({
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-sm p-8 rounded-2xl bg-surface border border-border animate-fade-in">
+      <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in">
         <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-2">SKATEHUBBA™</span>
         <h2 className="font-display text-3xl text-white mb-1">Verify Your Age</h2>
         <p className="font-body text-sm text-[#888] mb-7">
@@ -132,8 +132,8 @@ export function AgeGate({
                 value={month}
                 onChange={(e) => setMonth(e.target.value.replace(/\D/g, ""))}
                 autoFocus
-                className="w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
-                  focus:border-brand-orange transition-colors duration-200 px-4 py-3.5 text-center"
+                className="w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-xl text-white text-base font-body outline-none
+                  focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1)] transition-all duration-300 px-4 py-3.5 text-center"
                 aria-label="Birth month"
               />
             </div>
@@ -145,8 +145,8 @@ export function AgeGate({
                 maxLength={2}
                 value={day}
                 onChange={(e) => setDay(e.target.value.replace(/\D/g, ""))}
-                className="w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
-                  focus:border-brand-orange transition-colors duration-200 px-4 py-3.5 text-center"
+                className="w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-xl text-white text-base font-body outline-none
+                  focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1)] transition-all duration-300 px-4 py-3.5 text-center"
                 aria-label="Birth day"
               />
             </div>
@@ -158,8 +158,8 @@ export function AgeGate({
                 maxLength={4}
                 value={year}
                 onChange={(e) => setYear(e.target.value.replace(/\D/g, ""))}
-                className="w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
-                  focus:border-brand-orange transition-colors duration-200 px-4 py-3.5 text-center"
+                className="w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-xl text-white text-base font-body outline-none
+                  focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1)] transition-all duration-300 px-4 py-3.5 text-center"
                 aria-label="Birth year"
               />
             </div>

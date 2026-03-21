@@ -34,7 +34,7 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
 
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
-      <div className="text-center w-full max-w-sm animate-fade-in">
+      <div className="text-center w-full max-w-sm animate-scale-in">
         <div className="flex justify-center gap-5 mb-4">
           <LetterDisplay count={myLetters} name={`@${profile.username}`} active={false} />
           <div className="flex items-center font-display text-2xl text-subtle">VS</div>
@@ -44,7 +44,7 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
         <div className="flex justify-center mb-4">
           <HourglassIcon size={48} className="text-subtle" />
         </div>
-        <h2 className="font-display text-3xl text-white mb-2">Waiting on @{opponentName}</h2>
+        <h2 className="font-display text-fluid-2xl text-white mb-2">Waiting on @{opponentName}</h2>
         <p className="font-body text-sm text-muted mb-2">
           {game.phase === "setting"
             ? "They're setting a trick for you to match."

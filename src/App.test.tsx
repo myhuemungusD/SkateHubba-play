@@ -88,7 +88,7 @@ describe("App", () => {
       refreshProfile: vi.fn(),
     });
     renderApp();
-    expect(screen.getByText("SKATEHUBBA™")).toBeInTheDocument();
+    expect(screen.getByText(/SKATEHUBBA/)).toBeInTheDocument();
   });
 
   it("shows the landing page when not authenticated", async () => {

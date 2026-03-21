@@ -100,16 +100,18 @@ export function Lobby({
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/60 pb-24">
       {/* Header */}
-      <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-border">
-        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">SKATEHUBBA™</span>
+      <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-white/[0.04] glass">
+        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">
+          SKATEHUBBA<span className="text-subtle">™</span>
+        </span>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onViewRecord}
-            className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+            className="flex items-center gap-2 hover:opacity-80 transition-all duration-300 group"
             title="View my record"
           >
-            <div className="w-7 h-7 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
+            <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0 group-hover:shadow-glow-sm transition-shadow duration-300">
               <span className="font-display text-[11px] text-brand-orange leading-none">
                 {profile.username[0].toUpperCase()}
               </span>
@@ -120,7 +122,7 @@ export function Lobby({
           <button
             type="button"
             onClick={onSignOut}
-            className="font-body text-xs text-dim hover:text-white transition-colors duration-200 px-2.5 py-1.5 rounded-lg border border-border hover:border-[#3A3A3A]"
+            className="font-body text-xs text-dim hover:text-white transition-all duration-300 px-2.5 py-1.5 rounded-lg border border-border hover:border-border-hover"
           >
             Sign Out
           </button>
@@ -133,7 +135,7 @@ export function Lobby({
       <div className="px-5 pt-7 max-w-lg mx-auto">
         {/* Page header */}
         <div className="mb-7">
-          <h1 className="font-display text-[44px] leading-none text-white tracking-wide">Your Games</h1>
+          <h1 className="font-display text-fluid-4xl leading-none text-white tracking-wide">Your Games</h1>
           {games.length > 0 && (
             <p className="font-body text-xs text-brand-green mt-1.5">
               {active.length > 0 ? `${active.length} active` : "No active games"}
@@ -147,7 +149,7 @@ export function Lobby({
           type="button"
           onClick={user?.emailVerified ? onChallenge : undefined}
           disabled={!user?.emailVerified}
-          className={`w-full flex items-center justify-center gap-2.5 rounded-xl py-[15px] mb-1 font-display tracking-wider text-xl transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "bg-brand-orange text-white active:scale-[0.98] hover:bg-[#FF7A1A]" : "bg-brand-orange/40 text-white/60 cursor-not-allowed"}`}
+          className={`w-full flex items-center justify-center gap-2.5 rounded-xl py-[15px] mb-1 font-display tracking-wider text-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "bg-gradient-to-r from-brand-orange to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 shadow-glow-sm hover:shadow-glow-md" : "bg-brand-orange/30 text-white/50 cursor-not-allowed"}`}
         >
           <svg
             width="17"
@@ -203,11 +205,11 @@ export function Lobby({
                   type="button"
                   key={g.id}
                   onClick={() => onOpenGame(g)}
-                  className={`relative flex items-center justify-between p-4 rounded-2xl bg-surface cursor-pointer transition-all duration-200 overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
+                  className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
                     ${
                       isMyTurn(g)
-                        ? "border border-[rgba(255,107,0,0.35)] shadow-[0_0_28px_rgba(255,107,0,0.07)]"
-                        : "border border-border hover:border-[#3A3A3A]"
+                        ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5"
+                        : "glass-card hover:border-white/[0.1] hover:-translate-y-0.5"
                     }`}
                 >
                   {isMyTurn(g) && (
@@ -282,7 +284,7 @@ export function Lobby({
                 0
               </span>
             </div>
-            <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
+            <div className="flex flex-col items-center py-8 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30 backdrop-blur-sm">
               <SkateboardIcon size={24} className="mb-2 opacity-40 text-subtle" />
               <p className="font-body text-xs text-faint">No active games right now</p>
               <p className="font-body text-[11px] text-subtle mt-0.5">Challenge someone to start a new round</p>
@@ -305,7 +307,7 @@ export function Lobby({
                   type="button"
                   key={g.id}
                   onClick={() => onOpenGame(g)}
-                  className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border cursor-pointer transition-all duration-200 hover:border-[#3A3A3A] opacity-60 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
+                  className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
                 >
                   <div>
                     <span className="font-display text-[19px] text-white leading-none block mb-1">
@@ -334,7 +336,7 @@ export function Lobby({
                 0
               </span>
             </div>
-            <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
+            <div className="flex flex-col items-center py-8 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30 backdrop-blur-sm">
               <TrophyIcon size={24} className="mb-2 opacity-40 text-subtle" />
               <p className="font-body text-xs text-faint">No finished games yet</p>
               <p className="font-body text-[11px] text-subtle mt-0.5">Complete a game to see your results here</p>
@@ -349,7 +351,7 @@ export function Lobby({
               type="button"
               onClick={onLoadMore}
               disabled={gamesLoading}
-              className="px-6 py-2.5 rounded-xl border border-border bg-surface font-display text-sm tracking-wider text-brand-orange hover:border-[#3A3A3A] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="px-6 py-2.5 rounded-xl border border-border bg-surface/60 backdrop-blur-sm font-display text-sm tracking-wider text-brand-orange hover:border-brand-orange/30 hover:shadow-glow-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               {gamesLoading ? "Loading..." : "Load More Games"}
             </button>
@@ -358,7 +360,7 @@ export function Lobby({
 
         {/* Empty state — no games at all */}
         {games.length === 0 && (
-          <div className="flex flex-col items-center py-14 border border-dashed border-border rounded-2xl mb-6">
+          <div className="flex flex-col items-center py-14 border border-dashed border-white/[0.06] rounded-2xl mb-6 bg-surface/30 backdrop-blur-sm">
             <svg
               className="text-brand-orange mb-4"
               width="38"
@@ -397,10 +399,10 @@ export function Lobby({
                   key={p.uid}
                   onClick={() => onChallengeUser(p.username)}
                   disabled={!user?.emailVerified}
-                  className={`flex items-center justify-between p-4 rounded-2xl bg-surface border border-border transition-all duration-200 text-left w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "cursor-pointer hover:border-[#3A3A3A]" : "cursor-not-allowed opacity-60"}`}
+                  className={`flex items-center justify-between p-4 rounded-2xl glass-card transition-all duration-300 ease-smooth text-left w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "cursor-pointer hover:border-white/[0.1] hover:-translate-y-0.5" : "cursor-not-allowed opacity-60"}`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
+                    <div className="w-8 h-8 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
                       <span className="font-display text-[11px] text-brand-orange leading-none">
                         {p.username[0].toUpperCase()}
                       </span>
@@ -425,7 +427,7 @@ export function Lobby({
         )}
 
         {/* Coming Soon */}
-        <div className="p-5 rounded-2xl border border-border bg-surface">
+        <div className="p-5 rounded-2xl glass-card">
           <h3 className="font-display text-[10px] tracking-[0.25em] text-brand-orange mb-4">COMING SOON</h3>
           <div>
             {["Spot Map & Discovery", "Trick Clips Feed", "Crew Challenges"].map((f, i) => (

@@ -4,7 +4,7 @@ export function GoogleButton({ onClick, loading }: { onClick: () => void; loadin
       type="button"
       onClick={onClick}
       disabled={loading}
-      className="w-full flex items-center justify-center gap-3 rounded-xl border border-border bg-white text-[#1f1f1f] font-body text-base font-medium py-3.5 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.98] hover:bg-[#f5f5f5]"
+      className="w-full flex items-center justify-center gap-3 rounded-xl border border-white/20 bg-white text-[#1f1f1f] font-body text-base font-medium py-3.5 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] hover:bg-[#f5f5f5] hover:-translate-y-0.5 hover:shadow-[0_4px_20px_rgba(255,255,255,0.1)]"
     >
       {loading ? (
         <div className="w-5 h-5 border-2 border-[#ccc] border-t-[#4285F4] rounded-full animate-spin" />

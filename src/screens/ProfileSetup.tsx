@@ -187,10 +187,10 @@ function StepStance({
               role="radio"
               aria-checked={selected}
               onClick={() => setStance(value)}
-              className={`flex-1 py-5 rounded-2xl font-display text-lg tracking-wider cursor-pointer transition-all duration-200 ${
+              className={`flex-1 py-5 rounded-2xl font-display text-lg tracking-wider cursor-pointer transition-all duration-300 ease-smooth ${
                 selected
-                  ? "bg-[rgba(255,107,0,0.1)] border-2 border-brand-orange text-brand-orange scale-[1.02] shadow-[0_0_20px_rgba(255,107,0,0.15)]"
-                  : "bg-surface-alt border-2 border-border text-faint hover:border-[#3A3A3A] hover:text-muted"
+                  ? "bg-brand-orange/10 border-2 border-brand-orange text-brand-orange scale-[1.02] shadow-glow-sm"
+                  : "bg-surface-alt/60 backdrop-blur-sm border-2 border-border text-faint hover:border-border-hover hover:text-muted hover:-translate-y-0.5"
               }`}
             >
               <div className="flex justify-center mb-2" aria-hidden="true">
@@ -229,9 +229,9 @@ function StepReview({
     <div className="animate-step-in">
       <StepHeader step={3} title="Looking good" subtitle="Double-check your profile before locking it in." />
 
-      <div className="bg-surface-alt border border-border rounded-2xl p-6 mb-6">
+      <div className="glass-card rounded-2xl p-6 mb-6">
         <div className="flex items-center gap-4 mb-5">
-          <div className="w-14 h-14 rounded-full bg-[rgba(255,107,0,0.12)] border-2 border-brand-orange flex items-center justify-center">
+          <div className="w-14 h-14 rounded-full bg-brand-orange/[0.12] border-2 border-brand-orange flex items-center justify-center shadow-glow-sm">
             <span className="font-display text-2xl text-brand-orange">{(username[0] ?? "?").toUpperCase()}</span>
           </div>
           <div>
@@ -378,10 +378,7 @@ export function ProfileSetup({
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
-      <div
-        className="w-full max-w-sm p-8 rounded-2xl bg-surface border border-border animate-fade-in"
-        onKeyDown={handleKeyDown}
-      >
+      <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in" onKeyDown={handleKeyDown}>
         <ProgressBar step={step} />
 
         <form

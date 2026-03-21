@@ -93,11 +93,11 @@ export function GameOverScreen({
       className="min-h-dvh flex flex-col items-center px-6 py-10 overflow-y-auto"
       style={{
         background: isWinner
-          ? "radial-gradient(ellipse at 50% 30%, rgba(0,230,118,0.08) 0%, transparent 60%), rgba(10,10,10,0.8)"
-          : "radial-gradient(ellipse at 50% 30%, rgba(255,61,0,0.08) 0%, transparent 60%), rgba(10,10,10,0.8)",
+          ? "radial-gradient(ellipse at 50% 20%, rgba(0,230,118,0.12) 0%, transparent 50%), radial-gradient(ellipse at 30% 60%, rgba(0,230,118,0.04) 0%, transparent 50%), rgba(10,10,10,0.85)"
+          : "radial-gradient(ellipse at 50% 20%, rgba(255,61,0,0.12) 0%, transparent 50%), radial-gradient(ellipse at 70% 60%, rgba(255,61,0,0.04) 0%, transparent 50%), rgba(10,10,10,0.85)",
       }}
     >
-      <div className="text-center w-full max-w-md animate-fade-in">
+      <div className="text-center w-full max-w-md animate-scale-in">
         <div className="flex justify-center mb-4">
           {isWinner ? (
             <TrophyIcon size={56} className="text-brand-green" />
@@ -105,7 +105,9 @@ export function GameOverScreen({
             <SkullIcon size={56} className="text-brand-red" />
           )}
         </div>
-        <h1 className={`font-display text-5xl mb-2 ${isWinner ? "text-brand-green" : "text-brand-red"}`}>
+        <h1
+          className={`font-display text-fluid-4xl mb-2 ${isWinner ? "text-brand-green drop-shadow-[0_0_20px_rgba(0,230,118,0.4)]" : "text-brand-red drop-shadow-[0_0_20px_rgba(255,61,0,0.4)]"}`}
+        >
           {isWinner ? "You Win" : isForfeit ? "Forfeit" : "S.K.A.T.E."}
         </h1>
         <p className="font-body text-base text-[#888] mb-8">

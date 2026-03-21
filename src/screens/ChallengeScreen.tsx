@@ -72,7 +72,7 @@ export function ChallengeScreen({
           ← Back
         </button>
 
-        <h1 className="font-display text-[42px] text-white mb-2">Challenge</h1>
+        <h1 className="font-display text-fluid-4xl text-white mb-2">Challenge</h1>
         <p className="font-body text-sm text-[#888] mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 
         <form

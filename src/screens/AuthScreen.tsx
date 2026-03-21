@@ -100,9 +100,9 @@ export function AuthScreen({
 
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
-      <div className="w-full max-w-sm p-8 rounded-2xl bg-surface border border-border animate-fade-in">
+      <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in">
         <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-2">SKATEHUBBA™</span>
-        <h2 className="font-display text-4xl text-white mb-1">{isSignup ? "Create Account" : "Welcome Back"}</h2>
+        <h2 className="font-display text-fluid-3xl text-white mb-1">{isSignup ? "Create Account" : "Welcome Back"}</h2>
         <p className="font-body text-sm text-[#888] mb-7">
           {isSignup ? "Join the crew. It's free." : "Sign in to continue your games."}
         </p>
@@ -110,9 +110,9 @@ export function AuthScreen({
         <GoogleButton onClick={onGoogle} loading={googleLoading} />
 
         <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px bg-border" />
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
           <span className="font-body text-xs text-[#444]">or continue with email</span>
-          <div className="flex-1 h-px bg-border" />
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
         </div>
 
         <form

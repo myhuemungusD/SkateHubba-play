@@ -11,6 +11,6 @@ describe("Spinner", () => {
 
   it("displays brand name", () => {
     render(<Spinner />);
-    expect(screen.getByText("SKATEHUBBA™")).toBeInTheDocument();
+    expect(screen.getByText(/SKATEHUBBA/)).toBeInTheDocument();
   });
 });
