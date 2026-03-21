@@ -13,6 +13,7 @@ import { db } from "../firebase";
 import { useAuthContext } from "../context/AuthContext";
 import { useGameContext } from "../context/GameContext";
 import { useNotifications } from "../context/NotificationContext";
+import { logger } from "../services/logger";
 import { onForegroundMessage } from "../services/fcm";
 import type { GameDoc } from "../services/games";
 import type { ChimeType } from "../services/sounds";
@@ -322,7 +323,12 @@ export function GameNotificationWatcher() {
 
             // Mark as read so it doesn't re-fire (best-effort)
             if (db) {
-              updateDoc(firestoreDoc(db, "notifications", change.doc.id), { read: true }).catch(() => {});
+              updateDoc(firestoreDoc(db, "notifications", change.doc.id), { read: true }).catch((err) => {
+                logger.warn("notification_mark_read_failed", {
+                  notificationId: change.doc.id,
+                  error: String(err),
+                });
+              });
             }
           }
         }

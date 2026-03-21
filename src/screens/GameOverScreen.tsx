@@ -25,7 +25,7 @@ export function GameOverScreen({
   const rematchingRef = useRef(false);
 
   const handleRematch = async () => {
-    /* v8 ignore start */
+    /* v8 ignore start -- double-submit guard; rematch button disabled while in-flight */
     if (!onRematch || rematchingRef.current) return;
     /* v8 ignore stop */
     rematchingRef.current = true;

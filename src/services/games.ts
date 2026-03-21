@@ -166,7 +166,12 @@ export async function createGame(
   metrics.gameCreated(docRef.id, challengerUid);
   // Update rate-limit timestamp on user profile (best effort — game is already created).
   setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true }).catch(
-    () => {},
+    (err) => {
+      logger.warn("rate_limit_timestamp_write_failed", {
+        uid: challengerUid,
+        error: String(err),
+      });
+    },
   );
   // Notify opponent about the new challenge (best-effort)
   writeNotification({

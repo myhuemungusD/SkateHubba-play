@@ -13,6 +13,7 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "error",
+      "no-empty": ["error", { allowEmptyCatch: false }],
     },
   },
   // Relaxed rules for test and mock files — test code commonly uses 'any',

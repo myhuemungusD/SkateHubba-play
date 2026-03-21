@@ -114,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleDeleteAccount = useCallback(async () => {
-    /* v8 ignore start */
+    /* v8 ignore start -- null guard unreachable in tests; delete button hidden when profile is null */
     if (!activeProfile) return;
     /* v8 ignore stop */
     logger.info("delete_account_start", { uid: activeProfile.uid, username: activeProfile.username });

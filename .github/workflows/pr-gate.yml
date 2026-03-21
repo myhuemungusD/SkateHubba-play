@@ -51,6 +51,21 @@ jobs:
             exit 1
           fi
 
+  guard-todo-fixme-hack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject TODO/FIXME/HACK in production code
+        run: |
+          MATCHES=$(grep -rn --include="*.ts" --include="*.tsx" -E '\b(TODO|FIXME|HACK)\b' src/ || true)
+          if [ -n "$MATCHES" ]; then
+            echo "$MATCHES"
+            echo ""
+            echo "::error::TODO/FIXME/HACK comments found in src/. Resolve before merging."
+            exit 1
+          fi
+
   verify-workflow-changes:
     runs-on: ubuntu-latest
     steps:

@@ -1,5 +1,6 @@
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
+import { logger } from "./logger";
 
 export type NotificationDocType = "your_turn" | "new_challenge" | "game_won" | "game_lost";
 
@@ -31,7 +32,12 @@ export async function writeNotification(params: WriteNotificationParams): Promis
       read: false,
       createdAt: serverTimestamp(),
     });
-  } catch {
+  } catch (err) {
     // Best-effort — don't block the game action if notification write fails
+    logger.warn("notification_write_failed", {
+      recipientUid: params.recipientUid,
+      type: params.type,
+      error: String(err),
+    });
   }
 }

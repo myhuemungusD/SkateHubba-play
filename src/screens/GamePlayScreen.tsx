@@ -57,7 +57,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const submittedRef = useRef(false);
   const submitSetterTrick = useCallback(
     async (blob: Blob | null) => {
-      /* v8 ignore start */
+      /* v8 ignore start -- double-submit guard; ref always false on first call in tests */
       if (submittedRef.current) return;
       /* v8 ignore stop */
       submittedRef.current = true;
@@ -109,7 +109,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const matchSubmittedRef = useRef(false);
   const submitMatchWithCall = useCallback(
     async (landed: boolean) => {
-      /* v8 ignore start */
+      /* v8 ignore start -- double-submit guard; ref always false on first call in tests */
       if (matchSubmittedRef.current) return;
       /* v8 ignore stop */
       matchSubmittedRef.current = true;
