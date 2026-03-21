@@ -52,13 +52,13 @@ export function NotificationBell({
       <button
         type="button"
         onClick={handleToggle}
-        className="relative p-1.5 rounded-lg border border-border hover:border-[#3A3A3A] transition-colors duration-200"
+        className="relative p-1.5 rounded-lg border border-border hover:border-border-hover transition-colors duration-200"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
         aria-expanded={open}
       >
         <svg
           key={notifyKey}
-          className={`text-[#888] hover:text-white transition-colors ${notifyKey > 0 ? "animate-bell-shake" : ""}`}
+          className={`text-muted hover:text-white transition-colors ${notifyKey > 0 ? "animate-bell-shake" : ""}`}
           width="16"
           height="16"
           viewBox="0 0 24 24"
@@ -90,7 +90,7 @@ export function NotificationBell({
               <button
                 type="button"
                 onClick={toggleSound}
-                className="text-xs text-[#555] hover:text-white transition-colors p-1"
+                className="text-xs text-subtle hover:text-white transition-colors p-1"
                 aria-label={soundEnabled ? "Mute sounds" : "Unmute sounds"}
                 title={soundEnabled ? "Mute sounds" : "Unmute sounds"}
               >
@@ -133,7 +133,7 @@ export function NotificationBell({
                 <button
                   type="button"
                   onClick={markAllRead}
-                  className="font-body text-[10px] text-[#555] hover:text-brand-orange transition-colors"
+                  className="font-body text-[10px] text-subtle hover:text-brand-orange transition-colors"
                 >
                   Mark all read
                 </button>
@@ -184,10 +184,10 @@ export function NotificationBell({
                       {notificationIcon[n.type]}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className={`font-body text-xs leading-tight ${n.read ? "text-[#888]" : "text-white"}`}>
+                      <p className={`font-body text-xs leading-tight ${n.read ? "text-muted" : "text-white"}`}>
                         <span className="font-semibold">{n.title}</span>
                         {" · "}
-                        <span className="text-[#555]">{n.message}</span>
+                        <span className="text-subtle">{n.message}</span>
                       </p>
                       <p className="font-body text-[10px] text-[#444] mt-0.5">{relativeTime(n.timestamp)}</p>
                     </div>
@@ -206,7 +206,7 @@ export function NotificationBell({
               <button
                 type="button"
                 onClick={clearAll}
-                className="font-body text-[10px] text-[#555] hover:text-brand-red transition-colors"
+                className="font-body text-[10px] text-subtle hover:text-brand-red transition-colors"
               >
                 Clear all
               </button>

@@ -29,7 +29,7 @@ export function UploadProgress({ progress }: { progress: UploadProgressData | nu
           style={{ width: `${progress.percent}%` }}
         />
       </div>
-      <p className="font-body text-[11px] text-[#666] mt-1 text-center">
+      <p className="font-body text-[11px] text-faint mt-1 text-center">
         {transferredMB} / {sizeMB} MB
       </p>
     </div>

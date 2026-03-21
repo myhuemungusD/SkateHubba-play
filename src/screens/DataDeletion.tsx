@@ -14,7 +14,7 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
 
       <article className="max-w-2xl mx-auto px-5 py-8">
         <h1 className="font-display text-4xl text-white mb-1">Data Deletion</h1>
-        <p className="font-body text-sm text-[#666] mb-8">
+        <p className="font-body text-sm text-faint mb-8">
           Your data, your choice. Here&apos;s how to delete your information.
         </p>
 
@@ -117,7 +117,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mb-8">
       <h2 className="font-display text-xl text-white tracking-wider mb-3">{title}</h2>
-      <div className="font-body text-sm text-[#999] leading-relaxed space-y-2">{children}</div>
+      <div className="font-body text-sm text-dim leading-relaxed space-y-2">{children}</div>
     </section>
   );
 }

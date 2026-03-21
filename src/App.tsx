@@ -31,7 +31,7 @@ function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-4">SKATEHUBBA™</span>
       <h1 className="font-display text-3xl text-white mb-2">Something went wrong</h1>
-      <p className="font-body text-sm text-[#888] mb-6 text-center max-w-sm">
+      <p className="font-body text-sm text-muted mb-6 text-center max-w-sm">
         This screen crashed. Your game data is safe.
       </p>
       <button
@@ -50,7 +50,7 @@ function FirebaseMissing() {
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-2">SKATEHUBBA™</span>
       <h2 className="font-display text-3xl text-white mt-4">Setup Required</h2>
-      <p className="font-body text-base text-[#888] max-w-sm mt-4 leading-relaxed">
+      <p className="font-body text-base text-muted max-w-sm mt-4 leading-relaxed">
         Firebase environment variables are missing. Add <code className="text-brand-orange">VITE_FIREBASE_*</code>{" "}
         variables in your Vercel Dashboard under Project Settings → Environment Variables.
       </p>

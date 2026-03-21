@@ -153,7 +153,7 @@ export function GameReplay({ turns }: GameReplayProps) {
               <button
                 type="button"
                 onClick={() => setClipIndex(clipIndex + 1)}
-                className="font-body text-xs text-[#888] hover:text-white transition-colors"
+                className="font-body text-xs text-muted hover:text-white transition-colors"
               >
                 Skip →
               </button>
@@ -164,7 +164,7 @@ export function GameReplay({ turns }: GameReplayProps) {
                 setPlaying(false);
                 setFinished(false);
               }}
-              className="font-body text-xs text-[#888] hover:text-white transition-colors"
+              className="font-body text-xs text-muted hover:text-white transition-colors"
             >
               Close
             </button>

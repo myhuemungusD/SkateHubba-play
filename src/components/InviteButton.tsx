@@ -89,7 +89,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
       <button
         type="button"
         onClick={() => setShowPanel(!showPanel)}
-        className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-border text-[#666] hover:text-white hover:border-[#3A3A3A] rounded-xl py-[13px] font-display tracking-wider text-lg transition-all duration-200 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-border text-faint hover:text-white hover:border-border-hover rounded-xl py-[13px] font-display tracking-wider text-lg transition-all duration-200 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         {showPanel ? (
           <>
@@ -138,7 +138,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
         >
           {/* ── Phone Contacts ── */}
           <div>
-            <h4 className="font-display text-[11px] tracking-[0.2em] text-[#555] mb-2">TEXT A FRIEND</h4>
+            <h4 className="font-display text-[11px] tracking-[0.2em] text-subtle mb-2">TEXT A FRIEND</h4>
             <button
               type="button"
               onClick={handleContacts}
@@ -162,7 +162,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
               </div>
               <div>
                 <span className="font-display text-sm tracking-wider text-white block">FROM YOUR CONTACTS</span>
-                <span className="font-body text-xs text-[#666]">Pick people & send via SMS</span>
+                <span className="font-body text-xs text-faint">Pick people & send via SMS</span>
               </div>
             </button>
           </div>
@@ -171,7 +171,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
 
           {/* ── Social Media ── */}
           <div>
-            <h4 className="font-display text-[11px] tracking-[0.2em] text-[#555] mb-2">SHARE ON SOCIALS</h4>
+            <h4 className="font-display text-[11px] tracking-[0.2em] text-subtle mb-2">SHARE ON SOCIALS</h4>
             <div className="grid grid-cols-3 gap-2">
               {socials.map((s) => (
                 <a
@@ -183,7 +183,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
                   className={`flex flex-col items-center gap-2 py-3 ${tileBase}`}
                 >
                   <span className="font-display text-sm text-white tracking-wide leading-none">{s.icon}</span>
-                  <span className="font-body text-[10px] text-[#555] leading-none">{s.name}</span>
+                  <span className="font-body text-[10px] text-subtle leading-none">{s.name}</span>
                 </a>
               ))}
             </div>
@@ -195,7 +195,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
               type="button"
               onClick={handleCopy}
               className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 font-body text-xs ${tileBase} ${
-                copied ? "border-brand-green text-brand-green" : "text-[#888]"
+                copied ? "border-brand-green text-brand-green" : "text-muted"
               }`}
             >
               {copied ? (
@@ -239,7 +239,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
               <button
                 type="button"
                 onClick={handleNativeShare}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 font-body text-xs text-[#888] ${tileBase}`}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 font-body text-xs text-muted ${tileBase}`}
               >
                 <svg
                   width="12"
