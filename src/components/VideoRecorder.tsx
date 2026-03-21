@@ -193,8 +193,7 @@ export function VideoRecorder({
 
   const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
-    // openCamera is async (awaits getUserMedia before setState) — not a synchronous setState
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- openCamera is async (awaits getUserMedia before setState), not a synchronous setState
     if (autoOpenRef.current && !isNative) openCamera();
   }, [openCamera, isNative]);
 

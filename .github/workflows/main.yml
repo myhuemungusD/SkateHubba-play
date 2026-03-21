@@ -23,6 +23,13 @@ jobs:
 
       - run: npm ci
 
+      - name: Guard against as-any in production code
+        run: |
+          if grep -rn "as any" src/ --include="*.ts" --include="*.tsx" | grep -v __tests__ | grep -v __mocks__ | grep -v ".test."; then
+            echo "::error::'as any' found in production code. Keep type casts in test files only."
+            exit 1
+          fi
+
       - name: Lint
         run: npm run lint
 

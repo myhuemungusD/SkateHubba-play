@@ -22,6 +22,18 @@ jobs:
           echo ""
           echo "See .github/BRANCH_PROTECTION.md for full ruleset."
 
+  guard-as-any-casts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject as-any in production code
+        run: |
+          if grep -rn "as any" src/ --include="*.ts" --include="*.tsx" | grep -v __tests__ | grep -v __mocks__ | grep -v ".test."; then
+            echo "::error::'as any' found in production code. Keep type casts in test files only."
+            exit 1
+          fi
+
   verify-no-cloud-functions:
     runs-on: ubuntu-latest
     steps:
