@@ -1,5 +1,5 @@
 import { Btn } from "../components/ui/Btn";
-import type { Screen } from "../context/GameContext";
+import type { Screen } from "../context/NavigationContext";
 
 const EFFECTIVE_DATE = "March 20, 2026";
 const CONTACT_EMAIL = "privacy@skatehubba.com";
