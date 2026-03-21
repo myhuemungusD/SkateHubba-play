@@ -11,13 +11,7 @@ function relativeTime(ts: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export function NotificationBell({
-  games,
-  onOpenGame,
-}: {
-  games?: GameDoc[];
-  onOpenGame?: (g: GameDoc) => void;
-}) {
+export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onOpenGame?: (g: GameDoc) => void }) {
   const { notifications, unreadCount, notifyKey, markRead, markAllRead, clearAll, soundEnabled, toggleSound } =
     useNotifications();
   const [open, setOpen] = useState(false);
@@ -196,8 +190,8 @@ export function NotificationBell({
                     )}
                   </button>
                 );
-              }))
-            }
+              })
+            )}
           </div>
 
           {/* Footer */}
