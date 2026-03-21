@@ -395,6 +395,17 @@ describe("games service", () => {
       expect(result.winner).toBe("p2");
     });
 
+    it("sends game_lost notification when setter loses", async () => {
+      // Edge case: p1 is setter but already had 5 letters (data inconsistency).
+      // The winner becomes p2 (matcher's side), so the setter gets a "game_lost" notification.
+      const game = { ...matchingGame, p1Letters: 5, currentSetter: "p1", currentTurn: "p2" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await submitMatchAttempt("g1", null, true);
+      expect(result.gameOver).toBe(true);
+      expect(result.winner).toBe("p2");
+    });
+
     it("increments turn number when game continues", async () => {
       const game = { ...matchingGame, turnNumber: 3 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));

@@ -133,6 +133,16 @@ describe("removeFcmToken", () => {
   });
 });
 
+describe("getSwRegistration caching", () => {
+  it("returns the same promise on subsequent calls", async () => {
+    const { getSwRegistration } = await import("../fcm");
+    const first = getSwRegistration();
+    const second = getSwRegistration();
+    expect(first).toBe(second);
+    await first;
+  });
+});
+
 describe("onForegroundMessage", () => {
   it("registers message listener and returns unsubscribe", () => {
     const cb = vi.fn();
