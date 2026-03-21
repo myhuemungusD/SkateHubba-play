@@ -153,6 +153,37 @@ export const onGameUpdated = onDocumentUpdated({ document: "games/{gameId}", dat
         );
       }),
     );
+
+    // ── Update win/loss stats server-side ──
+    // Covers all game-end paths including server-triggered forfeits
+    // where no client is online to call updatePlayerStats.
+    // Uses lastStatsGameId as idempotency key so client-side calls
+    // that already ran won't double-count.
+    if (winnerUid) {
+      const db = getFirestore(DB_NAME);
+      const loserUid = winnerUid === after.player1Uid ? after.player2Uid : after.player1Uid;
+
+      await Promise.all(
+        [
+          { uid: winnerUid, field: "wins" },
+          { uid: loserUid, field: "losses" },
+        ].map(async ({ uid, field }) => {
+          const userRef = db.doc(`users/${uid}`);
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(userRef);
+            if (!snap.exists) return;
+            const data = snap.data()!;
+            if (data.lastStatsGameId === gameId) return; // already counted
+            const current = typeof data[field] === "number" ? (data[field] as number) : 0;
+            tx.update(userRef, {
+              [field]: current + 1,
+              lastStatsGameId: gameId,
+            });
+          });
+        }),
+      );
+    }
+
     return;
   }
 
