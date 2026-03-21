@@ -271,6 +271,35 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ── Notifications (in-app alerts for game events) ──
+    // Written by the client when a game action occurs (e.g. your turn, challenge).
+    // Only the recipient can read their own notifications.
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn()
+        && resource.data.recipientUid == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.recipientUid is string
+        && request.resource.data.type is string
+        && request.resource.data.title is string
+        && request.resource.data.body is string
+        && request.resource.data.gameId is string
+        && request.resource.data.read == false;
+
+      // Only the recipient can mark a notification as read
+      allow update: if isSignedIn()
+        && resource.data.recipientUid == request.auth.uid
+        && request.resource.data.read == true
+        // Cannot change other fields
+        && request.resource.data.recipientUid == resource.data.recipientUid
+        && request.resource.data.type == resource.data.type
+        && request.resource.data.title == resource.data.title
+        && request.resource.data.body == resource.data.body
+        && request.resource.data.gameId == resource.data.gameId;
+
+      allow delete: if false;
+    }
+
     // ── Nudge rate limits ──
     // One doc per sender+game pair, enforces 1-hour cooldown server-side.
     match /nudge_limits/{limitId} {
