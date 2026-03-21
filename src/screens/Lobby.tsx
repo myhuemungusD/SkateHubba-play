@@ -10,7 +10,7 @@ import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
 import { PushPermissionBanner } from "../components/PushPermissionBanner";
 import { LobbyTimer } from "../components/LobbyTimer";
-import { SkateboardIcon, TrophyIcon } from "../components/icons";
+import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
 
 function relativeJoinDate(createdAt: FieldValue | null): string {
   if (!(createdAt instanceof Timestamp)) return "Joined";
@@ -260,20 +260,7 @@ export function Lobby({
                       </div>
                     </div>
                   </div>
-                  <svg
-                    className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-faint"}`}
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+                  <ChevronRightIcon size={15} className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-faint"}`} />
                 </button>
               ))}
             </div>
@@ -325,20 +312,7 @@ export function Lobby({
                       {g.status === "forfeit" ? " · forfeit" : ""}
                     </span>
                   </div>
-                  <svg
-                    className="text-faint shrink-0"
-                    width="15"
-                    height="15"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
+                  <ChevronRightIcon size={15} className="text-faint shrink-0" />
                 </button>
               ))}
             </div>
@@ -456,20 +430,7 @@ export function Lobby({
                   </span>
                   <span className="font-body text-sm text-dim">{f}</span>
                 </div>
-                <svg
-                  className="text-brand-orange"
-                  width="11"
-                  height="11"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
+                <ChevronRightIcon size={11} className="text-brand-orange" />
               </div>
             ))}
           </div>
