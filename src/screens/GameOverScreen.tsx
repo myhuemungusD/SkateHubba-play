@@ -140,6 +140,7 @@ export function GameOverScreen({
               currentUserUid={profile.uid}
               defaultExpanded={true}
               showDownload={true}
+              showShare={true}
             />
           </div>
         )}
