@@ -27,7 +27,7 @@ describe("ConsentBanner", () => {
 
   it("stores decline and hides on Decline click", async () => {
     render(<ConsentBanner onNav={vi.fn()} />);
-    await userEvent.click(screen.getByText("Decline"));
+    await userEvent.click(screen.getByText("No"));
     expect(localStorage.getItem("sh_analytics_consent")).toBe("declined");
   });
 
