@@ -109,6 +109,16 @@ describe("requestPushPermission", () => {
     expect(result).toBeNull();
     spy.mockRestore();
   });
+
+  it("returns null on non-Error throw", async () => {
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockRejectedValue("string error");
+
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await requestPushPermission("u1");
+    expect(result).toBeNull();
+    spy.mockRestore();
+  });
 });
 
 describe("removeFcmToken", () => {
