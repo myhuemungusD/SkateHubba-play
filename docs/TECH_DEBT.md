@@ -1,6 +1,6 @@
 # Technical Debt Assessment
 
-**Date:** 2026-03-20
+**Date:** 2026-03-21 (refreshed)
 **Scope:** Full codebase review of `skatehubba-play`
 **Tech Stack:** React 18 + TypeScript + Vite + Firebase (Auth/Firestore/Storage) + Tailwind CSS + Capacitor
 
@@ -159,7 +159,23 @@ The `functions/` directory contains Cloud Functions (billing alerts, nudge deliv
 
 **Recommendation:** Add a test framework for Cloud Functions (firebase-functions-test or vitest). Critical since the PR gate blocks new functions in `functions/src/`.
 
-### 11. ESLint-Disable Comments
+### 11. Duplicate `TOAST_DURATION` Constant
+
+**Location:** `src/components/Toast.tsx:5`, `src/context/NotificationContext.tsx:53`
+
+Both files independently define `const TOAST_DURATION = 4000;`. Neither imports from the other, so a future change to one won't update the other.
+
+**Recommendation:** Extract to a shared constant (e.g., `src/lib/constants.ts`) and import in both files.
+
+### 12. Inline Chevron SVG Duplicated 4x
+
+**Location:** `src/screens/Lobby.tsx` (lines 260–273, 325–338, 442–455), `src/screens/MyRecordScreen.tsx` (line ~400)
+
+The same chevron-right `<svg>` with `<polyline points="9 18 15 12 9 6" />` is copy-pasted 4 times. The codebase already has `src/components/icons.tsx` with a `SvgIcon` wrapper and 17 icon components — but no `ChevronRightIcon`.
+
+**Recommendation:** Add a `ChevronRightIcon` to `icons.tsx` and replace the 4 inline instances.
+
+### 13. ESLint-Disable Comments
 
 **Location:**
 - `src/context/GameContext.tsx:256` — `eslint-disable-next-line react-hooks/exhaustive-deps`
@@ -171,7 +187,7 @@ The `functions/` directory contains Cloud Functions (billing alerts, nudge deliv
 
 ## P3 — Low
 
-### 12. No React.lazy / Code Splitting for Screens
+### 14. No React.lazy / Code Splitting for Screens
 
 **Location:** `src/App.tsx` (lines 13–25)
 
@@ -179,7 +195,7 @@ All screens are eagerly imported. The Vite build does manual chunking for `fireb
 
 **Recommendation:** Use `React.lazy()` + `Suspense` for screens not needed at initial load (GamePlayScreen, MyRecordScreen, PrivacyPolicy, etc.).
 
-### 13. No Typed Environment Variables
+### 15. No Typed Environment Variables
 
 **Location:** `src/vite-env.d.ts`, `src/firebase.ts`
 
@@ -187,7 +203,7 @@ Firebase config reads from `import.meta.env.VITE_FIREBASE_*` without a typed sch
 
 **Recommendation:** Add a Zod/Valibot schema to validate env vars at build time or app startup.
 
-### 14. `http-proxy-agent` Override in package.json
+### 16. `http-proxy-agent` Override in package.json
 
 **Location:** `package.json` (line 41)
 
@@ -199,7 +215,7 @@ This is a transitive dependency override likely for a security fix. If the upstr
 
 **Recommendation:** Check if the override is still needed. Remove if upstream dependency has been updated.
 
-### 15. Firebase Messaging SW Version Hardcoded
+### 17. Firebase Messaging SW Version Hardcoded
 
 **Location:** `public/firebase-messaging-sw.js`
 
@@ -207,7 +223,7 @@ The service worker imports a hardcoded Firebase v11.0.0 CDN URL, but `package.js
 
 **Recommendation:** Dynamically inject the Firebase version at build time, or pin the SW import to match the resolved lockfile version.
 
-### 16. `.lighthouserc.json` Not Wired into CI
+### 18. `.lighthouserc.json` Not Wired into CI
 
 **Location:** `.lighthouserc.json`, `.github/workflows/main.yml`
 
@@ -215,17 +231,17 @@ A Lighthouse CI config exists (performance >=0.8, accessibility >=0.9) but the `
 
 **Recommendation:** Verify Lighthouse CI runs on every PR and fails the gate if thresholds regress.
 
-### 17. No `.nvmrc` File
+### 19. No `.nvmrc` File
 
 No `.nvmrc` exists at the project root. CI uses Node 22 and `package.json` specifies `>=22`, but local developer environments have no enforcement.
 
 **Recommendation:** Add `.nvmrc` with `22` for consistency across developer machines.
 
-### 18. STL Asset Storage Undocumented (DEC-002)
+### 20. STL Asset Storage Undocumented (DEC-002)
 
 Already tracked in `docs/DECISIONS.md`. Needs resolution to prevent asset loss.
 
-### 19. Deferred Landing Page Features (DEC-001)
+### 21. Deferred Landing Page Features (DEC-001)
 
 Autoplay hero video and custom fonts. Already documented — revisit when design resources are available.
 
@@ -260,6 +276,8 @@ Autoplay hero video and custom fonts. Already documented — revisit when design
 | P1 | Split smoke-e2e test file | Medium | Medium — improves test maintainability |
 | P2 | Route console.warn/error through logger | Small | Medium — improves production debugging |
 | P2 | Extract hooks from large screens | Medium | Medium — improves readability |
+| P2 | Extract shared `TOAST_DURATION` constant | Trivial | Low — prevents silent divergence |
+| P2 | Add `ChevronRightIcon` to icons.tsx | Trivial | Low — removes 4x inline SVG duplication |
 | P2 | Consolidate Tailwind theme tokens | Small | Low — reduces duplication |
 | P2 | Add Cloud Functions tests | Medium | Medium — prevents deploy regressions |
 | P3 | Add React.lazy code splitting | Small | Low — improves initial load time |
