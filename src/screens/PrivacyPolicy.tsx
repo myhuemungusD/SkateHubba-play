@@ -1,5 +1,5 @@
 import { Btn } from "../components/ui/Btn";
-import type { Screen } from "../context/GameContext";
+import type { Screen } from "../context/NavigationContext";
 
 const EFFECTIVE_DATE = "March 20, 2026";
 const CONTACT_EMAIL = "privacy@skatehubba.com";
@@ -16,7 +16,7 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
 
       <article className="max-w-2xl mx-auto px-5 py-8 prose-invert">
         <h1 className="font-display text-4xl text-white mb-1">Privacy Policy</h1>
-        <p className="font-body text-sm text-faint mb-8">Effective date: {EFFECTIVE_DATE}</p>
+        <p className="font-body text-sm text-[#666] mb-8">Effective date: {EFFECTIVE_DATE}</p>
 
         <Section title="1. Who We Are">
           <p>
@@ -262,7 +262,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mb-8">
       <h2 className="font-display text-xl text-white tracking-wider mb-3">{title}</h2>
-      <div className="font-body text-sm text-dim leading-relaxed space-y-2">{children}</div>
+      <div className="font-body text-sm text-[#999] leading-relaxed space-y-2">{children}</div>
     </section>
   );
 }

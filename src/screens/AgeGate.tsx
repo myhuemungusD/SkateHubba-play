@@ -92,11 +92,11 @@ export function AgeGate({
         <div className="w-full max-w-sm p-8 rounded-2xl bg-surface border border-border animate-fade-in text-center">
           <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-4">SKATEHUBBA™</span>
           <h2 className="font-display text-3xl text-white mb-3">Sorry!</h2>
-          <p className="font-body text-sm text-muted mb-6 leading-relaxed">
+          <p className="font-body text-sm text-[#888] mb-6 leading-relaxed">
             You must be at least {MIN_AGE} years old to use SkateHubba. This is required by the Children&apos;s Online
             Privacy Protection Act (COPPA).
           </p>
-          <p className="font-body text-xs text-faint mb-6">
+          <p className="font-body text-xs text-[#666] mb-6">
             We do not collect or store any personal information from users under {MIN_AGE}. No account has been created.
           </p>
           <Btn onClick={onBack}>Go Back</Btn>
@@ -110,7 +110,7 @@ export function AgeGate({
       <div className="w-full max-w-sm p-8 rounded-2xl bg-surface border border-border animate-fade-in">
         <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-2">SKATEHUBBA™</span>
         <h2 className="font-display text-3xl text-white mb-1">Verify Your Age</h2>
-        <p className="font-body text-sm text-muted mb-7">
+        <p className="font-body text-sm text-[#888] mb-7">
           We need your date of birth to comply with U.S. privacy laws (COPPA &amp; CCPA).
         </p>
 
@@ -121,7 +121,7 @@ export function AgeGate({
           }}
           noValidate
         >
-          <label className="block font-display text-sm tracking-[0.12em] text-dim mb-2">Date of Birth</label>
+          <label className="block font-display text-sm tracking-[0.12em] text-[#999] mb-2">Date of Birth</label>
           <div className="flex gap-3 mb-2">
             <div className="flex-1">
               <input
@@ -164,7 +164,7 @@ export function AgeGate({
               />
             </div>
           </div>
-          <p className="font-body text-xs text-subtle mb-5">
+          <p className="font-body text-xs text-[#555] mb-5">
             Your date of birth is used only for age verification and is never shared.
           </p>
 
@@ -176,7 +176,7 @@ export function AgeGate({
                 onChange={(e) => setParentConsent(e.target.checked)}
                 className="mt-0.5 w-4 h-4 accent-brand-orange cursor-pointer shrink-0"
               />
-              <span className="font-body text-sm text-dim leading-relaxed group-hover:text-[#bbb] transition-colors">
+              <span className="font-body text-sm text-[#999] leading-relaxed group-hover:text-[#bbb] transition-colors">
                 My parent or legal guardian has reviewed the{" "}
                 <button type="button" onClick={() => onNav("privacy")} className="text-brand-orange hover:underline">
                   Privacy Policy
@@ -197,7 +197,7 @@ export function AgeGate({
 
         <button
           type="button"
-          className="w-full font-body text-sm text-subtle text-center mt-5 cursor-pointer bg-transparent border-none"
+          className="w-full font-body text-sm text-[#555] text-center mt-5 cursor-pointer bg-transparent border-none"
           onClick={onBack}
         >
           <span className="text-brand-orange">← Back</span>

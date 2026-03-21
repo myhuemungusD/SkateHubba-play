@@ -39,8 +39,8 @@ export function AuthScreen({
       setError("Enter a valid email");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be 8+ characters");
+    if (password.length < 6) {
+      setError("Password must be 6+ characters");
       return;
     }
     if (isSignup && password !== confirm) {
@@ -68,9 +68,10 @@ export function AuthScreen({
       if (code === "auth/email-already-in-use") setError("Email already in use. Try signing in, or use Google below.");
       else if (code === "auth/account-exists-with-different-credential")
         setError("This email is linked to Google. Tap 'Continue with Google' below.");
-      else if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found")
+      else if (code === "auth/invalid-credential" || code === "auth/wrong-password")
         setError("Invalid email or password");
-      else if (code === "auth/weak-password") setError("Password too weak (8+ chars)");
+      else if (code === "auth/user-not-found") setError("No account with that email. Need to sign up?");
+      else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
       else if (code === "auth/too-many-requests")
         setError("Too many attempts. Please wait a few minutes and try again.");
       else if (code === "auth/network-request-failed") setError("Network error — check your connection and try again.");
@@ -102,7 +103,7 @@ export function AuthScreen({
       <div className="w-full max-w-sm p-8 rounded-2xl bg-surface border border-border animate-fade-in">
         <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-2">SKATEHUBBA™</span>
         <h2 className="font-display text-4xl text-white mb-1">{isSignup ? "Create Account" : "Welcome Back"}</h2>
-        <p className="font-body text-sm text-muted mb-7">
+        <p className="font-body text-sm text-[#888] mb-7">
           {isSignup ? "Join the crew. It's free." : "Sign in to continue your games."}
         </p>
 
@@ -216,7 +217,7 @@ export function AuthScreen({
         {!isSignup && !googleLoading && (
           <button
             type="button"
-            className="w-full font-body text-xs text-subtle text-center mt-3 cursor-pointer hover:text-muted transition-colors bg-transparent border-none"
+            className="w-full font-body text-xs text-[#555] text-center mt-3 cursor-pointer hover:text-[#888] transition-colors bg-transparent border-none"
             onClick={handleReset}
           >
             Forgot password?
@@ -225,7 +226,7 @@ export function AuthScreen({
 
         <button
           type="button"
-          className="w-full font-body text-sm text-subtle text-center mt-5 cursor-pointer bg-transparent border-none"
+          className="w-full font-body text-sm text-[#555] text-center mt-5 cursor-pointer bg-transparent border-none"
           onClick={onToggle}
         >
           {isSignup ? "Already have an account? " : "Need an account? "}

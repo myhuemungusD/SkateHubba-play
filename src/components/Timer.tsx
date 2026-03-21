@@ -27,7 +27,7 @@ export function Timer({ deadline }: { deadline: number }) {
       className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-alt border border-border"
       aria-live="polite"
     >
-      <ClockIcon size={14} className="text-subtle" />
+      <ClockIcon size={14} className="text-[#555]" />
       <span className="font-display text-sm text-brand-orange tracking-wider" aria-label={`Turn timer: ${text}`}>
         {text}
       </span>

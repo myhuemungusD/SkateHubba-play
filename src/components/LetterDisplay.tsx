@@ -7,13 +7,13 @@ export function LetterDisplay({ count, name, active }: { count: number; name: st
         ${active ? "border-brand-orange bg-[rgba(255,107,0,0.08)]" : "border-border bg-transparent"}`}
       aria-label={`${name}: ${LETTERS.slice(0, count).join(".")}${count > 0 ? "." : "no letters"}`}
     >
-      <span className={`font-body text-xs font-semibold ${active ? "text-brand-orange" : "text-muted"}`}>{name}</span>
+      <span className={`font-body text-xs font-semibold ${active ? "text-brand-orange" : "text-[#888]"}`}>{name}</span>
       <div className="flex gap-1">
         {LETTERS.map((l, i) => (
           <span
             key={i}
             className={`font-display text-xl transition-all duration-300
-              ${i < count ? "text-brand-red scale-110 drop-shadow-[0_0_10px_rgba(255,61,0,0.4)]" : "text-subtle"}`}
+              ${i < count ? "text-brand-red scale-110 drop-shadow-[0_0_10px_rgba(255,61,0,0.4)]" : "text-[#555]"}`}
           >
             {l}
           </span>

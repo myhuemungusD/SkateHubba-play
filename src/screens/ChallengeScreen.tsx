@@ -68,12 +68,12 @@ export function ChallengeScreen({
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/80 px-6 pt-6">
       <div className="max-w-md mx-auto">
-        <button type="button" onClick={onBack} className="font-body text-sm text-muted mb-6 flex items-center gap-1.5">
+        <button type="button" onClick={onBack} className="font-body text-sm text-[#888] mb-6 flex items-center gap-1.5">
           ← Back
         </button>
 
         <h1 className="font-display text-[42px] text-white mb-2">Challenge</h1>
-        <p className="font-body text-sm text-muted mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
+        <p className="font-body text-sm text-[#888] mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 
         <form
           onSubmit={(e) => {
@@ -97,8 +97,8 @@ export function ChallengeScreen({
           <InviteButton username={profile.username} className="mb-6" />
 
           <div className="p-4 rounded-xl bg-surface-alt border border-border mb-6">
-            <h4 className="font-display text-xs tracking-[0.12em] text-subtle mb-3">RULES</h4>
-            <div className="font-body text-sm text-muted space-y-2">
+            <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
+            <div className="font-body text-sm text-[#888] space-y-2">
               {RULES.map(({ Icon, text, color }) => (
                 <div key={text} className="flex items-center gap-2">
                   <Icon size={15} className={`${color} shrink-0`} /> {text}

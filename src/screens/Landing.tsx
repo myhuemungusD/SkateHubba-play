@@ -197,7 +197,7 @@ export function Landing({
         <div className="flex flex-col md:flex-row items-center gap-12 md:gap-16">
           {/* Phone mockup */}
           <div className="relative flex-shrink-0">
-            <div className="w-[240px] h-[420px] md:w-[280px] md:h-[500px] rounded-[2.5rem] border-2 border-border bg-surface overflow-hidden relative shadow-[0_0_60px_rgba(255,107,0,0.06)]">
+            <div className="w-[240px] h-[420px] md:w-[280px] md:h-[500px] rounded-[2.5rem] border-2 border-[#2A2A2A] bg-surface overflow-hidden relative shadow-[0_0_60px_rgba(255,107,0,0.06)]">
               {/* Phone notch */}
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-6 bg-[#0A0A0A] rounded-b-2xl z-10" />
               {/* Screen content mockup */}
@@ -210,14 +210,14 @@ export function Landing({
                     </span>
                   ))}
                 </div>
-                <div className="w-full h-24 rounded-xl bg-surface-alt border border-border flex items-center justify-center">
+                <div className="w-full h-24 rounded-xl bg-[#1A1A1A] border border-border flex items-center justify-center">
                   <span className="font-body text-xs text-[#444]">trick video</span>
                 </div>
                 <div className="flex gap-2 w-full">
                   <div className="flex-1 h-9 rounded-lg bg-brand-orange flex items-center justify-center">
                     <span className="font-display text-xs text-white tracking-wider">LANDED</span>
                   </div>
-                  <div className="flex-1 h-9 rounded-lg bg-surface-alt border border-border flex items-center justify-center">
+                  <div className="flex-1 h-9 rounded-lg bg-[#1A1A1A] border border-border flex items-center justify-center">
                     <span className="font-display text-xs text-faint tracking-wider">MISSED</span>
                   </div>
                 </div>

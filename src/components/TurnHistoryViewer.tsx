@@ -18,7 +18,7 @@ function ClipVideo({ url, label }: { url: string; label: string }) {
   if (failed) {
     return (
       <div className="w-full aspect-[9/16] max-w-[280px] mx-auto rounded-xl bg-[#111] border border-border flex items-center justify-center">
-        <span className="font-body text-xs text-subtle">Clip no longer available</span>
+        <span className="font-body text-xs text-[#555]">Clip no longer available</span>
       </div>
     );
   }
@@ -57,7 +57,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
         <span className="font-display text-sm tracking-wider text-[#aaa]">
           Game Clips ({turns.length} {turns.length === 1 ? "round" : "rounds"})
         </span>
-        <span className="text-subtle text-lg">{expanded ? "▲" : "▼"}</span>
+        <span className="text-[#555] text-lg">{expanded ? "▲" : "▼"}</span>
       </button>
 
       {expanded && (
@@ -115,7 +115,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
 
                 {/* Letter outcome */}
                 {!turn.landed && turn.letterTo && (
-                  <p className="font-body text-xs text-muted mt-2 text-center">
+                  <p className="font-body text-xs text-[#888] mt-2 text-center">
                     @{turn.letterTo === turn.matcherUid ? turn.matcherUsername : turn.setterUsername} gets a letter
                     {isMyLetter ? " (you)" : ""}
                   </p>
@@ -170,7 +170,7 @@ function DownloadBtn({ url, filename }: { url: string; filename: string }) {
           ? "text-brand-green"
           : status === "failed"
             ? "text-brand-red"
-            : "text-faint hover:text-[#aaa]"
+            : "text-[#666] hover:text-[#aaa]"
       }`}
     >
       {label}

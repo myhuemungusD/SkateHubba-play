@@ -72,11 +72,9 @@ if (firebaseReady) {
       isTokenAutoRefreshEnabled: true,
     });
   } else if (!import.meta.env.DEV) {
-    // Hard-fail in production — App Check is required to block bot/abuse traffic.
-    const msg = "FATAL: VITE_RECAPTCHA_SITE_KEY is not set. App Check is required in production.";
-    logger.error("appcheck_missing", { hint: "set VITE_RECAPTCHA_SITE_KEY in Vercel env vars" });
-    captureMessage(msg, "fatal");
-    throw new Error(msg);
+    // Warn in production so the ops team is alerted App Check is inactive.
+    logger.warn("appcheck_disabled", { hint: "set VITE_RECAPTCHA_SITE_KEY to protect against API abuse" });
+    captureMessage("App Check disabled in production — set VITE_RECAPTCHA_SITE_KEY", "error");
   }
   /* v8 ignore stop */
 

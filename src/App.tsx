@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
-import { useGameContext, GameProvider } from "./context/GameContext";
+import { AuthProvider, useAuthContext } from "./context/AuthContext";
+import { NavigationProvider, useNavigationContext } from "./context/NavigationContext";
+import { GameProvider, useGameContext } from "./context/GameContext";
 import { NotificationProvider } from "./context/NotificationContext";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -31,7 +33,7 @@ function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-4">SKATEHUBBA™</span>
       <h1 className="font-display text-3xl text-white mb-2">Something went wrong</h1>
-      <p className="font-body text-sm text-muted mb-6 text-center max-w-sm">
+      <p className="font-body text-sm text-[#888] mb-6 text-center max-w-sm">
         This screen crashed. Your game data is safe.
       </p>
       <button
@@ -50,7 +52,7 @@ function FirebaseMissing() {
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-2">SKATEHUBBA™</span>
       <h2 className="font-display text-3xl text-white mt-4">Setup Required</h2>
-      <p className="font-body text-base text-muted max-w-sm mt-4 leading-relaxed">
+      <p className="font-body text-base text-[#888] max-w-sm mt-4 leading-relaxed">
         Firebase environment variables are missing. Add <code className="text-brand-orange">VITE_FIREBASE_*</code>{" "}
         variables in your Vercel Dashboard under Project Settings → Environment Variables.
       </p>
@@ -59,12 +61,12 @@ function FirebaseMissing() {
 }
 
 function AppScreens() {
-  const ctx = useGameContext();
+  const auth = useAuthContext();
 
-  if (ctx.loading) return <Spinner />;
+  if (auth.loading) return <Spinner />;
 
   return (
-    <NotificationProvider uid={ctx.user?.uid ?? null}>
+    <NotificationProvider uid={auth.user?.uid ?? null}>
       <OfflineBanner />
       <GameNotificationWatcher />
       <AppRoutes />
@@ -74,7 +76,9 @@ function AppScreens() {
 }
 
 function AppRoutes() {
-  const ctx = useGameContext();
+  const auth = useAuthContext();
+  const nav = useNavigationContext();
+  const game = useGameContext();
   const [challengeTarget, setChallengeTarget] = useState("");
   const [, setDirectChallengeError] = useState("");
 
@@ -87,30 +91,31 @@ function AppRoutes() {
         if (!uid) {
           setDirectChallengeError(`@${normalized} doesn't exist yet.`);
           setChallengeTarget(normalized);
-          ctx.setScreen("challenge");
+          nav.setScreen("challenge");
           return;
         }
-        await ctx.startChallenge(uid, normalized);
+        await game.startChallenge(uid, normalized);
       } catch (err: unknown) {
         setDirectChallengeError(err instanceof Error ? err.message : "Could not start game");
         setChallengeTarget(normalized);
-        ctx.setScreen("challenge");
+        nav.setScreen("challenge");
       }
     },
-    [ctx],
+    [nav, game],
   );
 
   // Deep-link into a game when a push notification is tapped (service worker postMessage)
   useEffect(() => {
     const handler = (e: Event) => {
       const gameId = (e as CustomEvent).detail?.gameId;
-      if (!gameId || !ctx.games) return;
-      const game = ctx.games.find((g) => g.id === gameId);
-      if (game) ctx.openGame(game);
+      if (!gameId || !game.games) return;
+      const found = game.games.find((g) => g.id === gameId);
+      if (found) game.openGame(found);
     };
     window.addEventListener("skatehubba:open-game", handler);
     return () => window.removeEventListener("skatehubba:open-game", handler);
-  }, [ctx.games, ctx.openGame]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-subscribe when games list or openGame changes
+  }, [game.games, game.openGame]);
 
   return (
     <>
@@ -121,16 +126,16 @@ function AppRoutes() {
             <Landing
               onGo={(m) => {
                 if (m === "signup") {
-                  ctx.setAuthMode("signup");
-                  ctx.setScreen("agegate");
+                  nav.setAuthMode("signup");
+                  nav.setScreen("agegate");
                 } else {
-                  ctx.setAuthMode(m);
-                  ctx.setScreen("auth");
+                  nav.setAuthMode(m);
+                  nav.setScreen("auth");
                 }
               }}
-              onGoogle={ctx.handleGoogleSignIn}
-              googleLoading={ctx.googleLoading}
-              onNav={ctx.setScreen}
+              onGoogle={auth.handleGoogleSignIn}
+              googleLoading={auth.googleLoading}
+              onNav={nav.setScreen}
             />
           }
         />
@@ -140,11 +145,11 @@ function AppRoutes() {
           element={
             <AgeGate
               onVerified={(dob, parentalConsent) => {
-                ctx.setAgeGateResult(dob, parentalConsent);
-                ctx.setScreen("auth");
+                nav.setAgeGateResult(dob, parentalConsent);
+                nav.setScreen("auth");
               }}
-              onBack={() => ctx.setScreen("landing")}
-              onNav={ctx.setScreen}
+              onBack={() => nav.setScreen("landing")}
+              onNav={nav.setScreen}
             />
           }
         />
@@ -153,29 +158,29 @@ function AppRoutes() {
           path="/auth"
           element={
             <AuthScreen
-              key={ctx.authMode}
-              mode={ctx.authMode}
+              key={nav.authMode}
+              mode={nav.authMode}
               onDone={() => {
                 /* auth state change triggers auto-navigate */
               }}
               onToggle={() => {
-                ctx.setGoogleError("");
-                if (ctx.authMode === "signin") {
+                auth.setGoogleError("");
+                if (nav.authMode === "signin") {
                   // Switching to signup — require age gate if not already completed
-                  if (ctx.ageGateDob) {
-                    ctx.setAuthMode("signup");
+                  if (nav.ageGateDob) {
+                    nav.setAuthMode("signup");
                   } else {
-                    ctx.setAuthMode("signup");
-                    ctx.setScreen("agegate");
+                    nav.setAuthMode("signup");
+                    nav.setScreen("agegate");
                   }
                   return;
                 }
-                ctx.setAuthMode("signin");
+                nav.setAuthMode("signin");
               }}
-              onGoogle={ctx.handleGoogleSignIn}
-              googleLoading={ctx.googleLoading}
-              googleError={ctx.googleError}
-              onGoogleErrorDismiss={() => ctx.setGoogleError("")}
+              onGoogle={auth.handleGoogleSignIn}
+              googleLoading={auth.googleLoading}
+              googleError={auth.googleError}
+              onGoogleErrorDismiss={() => auth.setGoogleError("")}
             />
           }
         />
@@ -183,17 +188,17 @@ function AppRoutes() {
         <Route
           path="/profile"
           element={
-            ctx.user ? (
+            auth.user ? (
               <ProfileSetup
-                uid={ctx.user.uid}
-                emailVerified={ctx.user.emailVerified}
-                displayName={ctx.user.displayName}
-                dob={ctx.ageGateDob}
-                parentalConsent={ctx.ageGateParentalConsent}
+                uid={auth.user.uid}
+                emailVerified={auth.user.emailVerified}
+                displayName={auth.user.displayName}
+                dob={nav.ageGateDob}
+                parentalConsent={nav.ageGateParentalConsent}
                 onDone={async (p) => {
-                  ctx.setActiveProfile(p);
-                  ctx.setScreen("lobby");
-                  await ctx.refreshProfile();
+                  auth.setActiveProfile(p);
+                  nav.setScreen("lobby");
+                  await auth.refreshProfile();
                 }}
               />
             ) : (
@@ -205,25 +210,25 @@ function AppRoutes() {
         <Route
           path="/lobby"
           element={
-            ctx.activeProfile ? (
+            auth.activeProfile ? (
               <Lobby
-                profile={ctx.activeProfile}
-                games={ctx.games}
-                user={ctx.user}
+                profile={auth.activeProfile}
+                games={game.games}
+                user={auth.user}
                 onChallenge={() => {
                   setChallengeTarget("");
-                  ctx.setScreen("challenge");
+                  nav.setScreen("challenge");
                 }}
                 onChallengeUser={(username: string) => {
                   directChallenge(username);
                 }}
-                onOpenGame={ctx.openGame}
-                onSignOut={ctx.handleSignOut}
-                onDeleteAccount={ctx.handleDeleteAccount}
-                onViewRecord={() => ctx.setScreen("record")}
-                hasMoreGames={ctx.hasMoreGames}
-                onLoadMore={ctx.loadMoreGames}
-                gamesLoading={ctx.gamesLoading}
+                onOpenGame={game.openGame}
+                onSignOut={auth.handleSignOut}
+                onDeleteAccount={auth.handleDeleteAccount}
+                onViewRecord={() => nav.setScreen("record")}
+                hasMoreGames={game.hasMoreGames}
+                onLoadMore={game.loadMoreGames}
+                gamesLoading={game.gamesLoading}
               />
             ) : (
               <Navigate to="/" replace />
@@ -234,11 +239,11 @@ function AppRoutes() {
         <Route
           path="/challenge"
           element={
-            ctx.activeProfile && ctx.user?.emailVerified ? (
+            auth.activeProfile && auth.user?.emailVerified ? (
               <ChallengeScreen
-                profile={ctx.activeProfile}
-                onSend={ctx.startChallenge}
-                onBack={() => ctx.setScreen("lobby")}
+                profile={auth.activeProfile}
+                onSend={game.startChallenge}
+                onBack={() => nav.setScreen("lobby")}
                 initialOpponent={challengeTarget}
               />
             ) : (
@@ -250,24 +255,24 @@ function AppRoutes() {
         <Route
           path="/game"
           element={
-            ctx.activeGame && ctx.activeProfile ? (
+            game.activeGame && auth.activeProfile ? (
               <ErrorBoundary
                 fallback={
                   <ScreenErrorFallback
                     onBack={() => {
-                      ctx.setActiveGame(null);
-                      ctx.setScreen("lobby");
+                      game.setActiveGame(null);
+                      nav.setScreen("lobby");
                     }}
                   />
                 }
               >
                 <GamePlayScreen
-                  key={ctx.activeGame.turnNumber}
-                  game={ctx.activeGame}
-                  profile={ctx.activeProfile}
+                  key={game.activeGame.turnNumber}
+                  game={game.activeGame}
+                  profile={auth.activeProfile}
                   onBack={() => {
-                    ctx.setActiveGame(null);
-                    ctx.setScreen("lobby");
+                    game.setActiveGame(null);
+                    nav.setScreen("lobby");
                   }}
                 />
               </ErrorBoundary>
@@ -280,38 +285,38 @@ function AppRoutes() {
         <Route
           path="/gameover"
           element={
-            ctx.activeGame && ctx.activeProfile && ctx.user ? (
+            game.activeGame && auth.activeProfile && auth.user ? (
               <ErrorBoundary
                 fallback={
                   <ScreenErrorFallback
                     onBack={() => {
-                      ctx.setActiveGame(null);
-                      ctx.setScreen("lobby");
+                      game.setActiveGame(null);
+                      nav.setScreen("lobby");
                     }}
                   />
                 }
               >
                 <GameOverScreen
-                  game={ctx.activeGame}
-                  profile={ctx.activeProfile}
+                  game={game.activeGame}
+                  profile={auth.activeProfile}
                   onRematch={
-                    ctx.user.emailVerified
+                    auth.user.emailVerified
                       ? async (): Promise<void> => {
                           const opponentUid =
-                            ctx.activeGame!.player1Uid === ctx.user!.uid
-                              ? ctx.activeGame!.player2Uid
-                              : ctx.activeGame!.player1Uid;
+                            game.activeGame!.player1Uid === auth.user!.uid
+                              ? game.activeGame!.player2Uid
+                              : game.activeGame!.player1Uid;
                           const opponentName =
-                            ctx.activeGame!.player1Uid === ctx.user!.uid
-                              ? ctx.activeGame!.player2Username
-                              : ctx.activeGame!.player1Username;
-                          await ctx.startChallenge(opponentUid, opponentName);
+                            game.activeGame!.player1Uid === auth.user!.uid
+                              ? game.activeGame!.player2Username
+                              : game.activeGame!.player1Username;
+                          await game.startChallenge(opponentUid, opponentName);
                         }
                       : undefined
                   }
                   onBack={() => {
-                    ctx.setActiveGame(null);
-                    ctx.setScreen("lobby");
+                    game.setActiveGame(null);
+                    nav.setScreen("lobby");
                   }}
                 />
               </ErrorBoundary>
@@ -324,12 +329,12 @@ function AppRoutes() {
         <Route
           path="/record"
           element={
-            ctx.activeProfile ? (
+            auth.activeProfile ? (
               <MyRecordScreen
-                profile={ctx.activeProfile}
-                games={ctx.games}
-                onOpenGame={ctx.openGame}
-                onBack={() => ctx.setScreen("lobby")}
+                profile={auth.activeProfile}
+                games={game.games}
+                onOpenGame={game.openGame}
+                onBack={() => nav.setScreen("lobby")}
               />
             ) : (
               <Navigate to="/" replace />
@@ -337,22 +342,25 @@ function AppRoutes() {
           }
         />
 
-        <Route path="/privacy" element={<PrivacyPolicy onBack={() => ctx.setScreen("landing")} onNav={ctx.setScreen} />} />
+        <Route
+          path="/privacy"
+          element={<PrivacyPolicy onBack={() => nav.setScreen("landing")} onNav={nav.setScreen} />}
+        />
 
-        <Route path="/terms" element={<TermsOfService onBack={() => ctx.setScreen("landing")} />} />
+        <Route path="/terms" element={<TermsOfService onBack={() => nav.setScreen("landing")} />} />
 
         <Route
           path="/data-deletion"
-          element={<DataDeletion onBack={() => ctx.setScreen(ctx.user ? "lobby" : "landing")} />}
+          element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
         />
 
-        <Route path="/404" element={<NotFound onBack={() => ctx.setScreen(ctx.user ? "lobby" : "landing")} />} />
+        <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />
 
         {/* Catch-all: redirect unknown paths to 404 */}
         <Route path="*" element={<Navigate to="/404" replace />} />
       </Routes>
 
-      <ConsentBanner onNav={ctx.setScreen} />
+      <ConsentBanner onNav={nav.setScreen} />
       <Analytics />
     </>
   );
@@ -362,9 +370,13 @@ function AppInner() {
   if (!firebaseReady) return <FirebaseMissing />;
 
   return (
-    <GameProvider>
-      <AppScreens />
-    </GameProvider>
+    <AuthProvider>
+      <NavigationProvider>
+        <GameProvider>
+          <AppScreens />
+        </GameProvider>
+      </NavigationProvider>
+    </AuthProvider>
   );
 }
 

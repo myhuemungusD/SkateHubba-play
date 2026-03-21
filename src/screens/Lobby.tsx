@@ -117,7 +117,7 @@ export function Lobby({
           <button
             type="button"
             onClick={onSignOut}
-            className="font-body text-xs text-dim hover:text-white transition-colors duration-200 px-2.5 py-1.5 rounded-lg border border-border hover:border-border-hover"
+            className="font-body text-xs text-dim hover:text-white transition-colors duration-200 px-2.5 py-1.5 rounded-lg border border-border hover:border-[#3A3A3A]"
           >
             Sign Out
           </button>
@@ -204,7 +204,7 @@ export function Lobby({
                     ${
                       isMyTurn(g)
                         ? "border border-[rgba(255,107,0,0.35)] shadow-[0_0_28px_rgba(255,107,0,0.07)]"
-                        : "border border-border hover:border-border-hover"
+                        : "border border-border hover:border-[#3A3A3A]"
                     }`}
                 >
                   {isMyTurn(g) && (
@@ -312,7 +312,7 @@ export function Lobby({
                   type="button"
                   key={g.id}
                   onClick={() => onOpenGame(g)}
-                  className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border cursor-pointer transition-all duration-200 hover:border-border-hover opacity-60 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
+                  className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border cursor-pointer transition-all duration-200 hover:border-[#3A3A3A] opacity-60 hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
                 >
                   <div>
                     <span className="font-display text-[19px] text-white leading-none block mb-1">
@@ -369,7 +369,7 @@ export function Lobby({
               type="button"
               onClick={onLoadMore}
               disabled={gamesLoading}
-              className="px-6 py-2.5 rounded-xl border border-border bg-surface font-display text-sm tracking-wider text-brand-orange hover:border-border-hover transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="px-6 py-2.5 rounded-xl border border-border bg-surface font-display text-sm tracking-wider text-brand-orange hover:border-[#3A3A3A] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               {gamesLoading ? "Loading..." : "Load More Games"}
             </button>
@@ -417,7 +417,7 @@ export function Lobby({
                   key={p.uid}
                   onClick={() => onChallengeUser(p.username)}
                   disabled={!user?.emailVerified}
-                  className={`flex items-center justify-between p-4 rounded-2xl bg-surface border border-border transition-all duration-200 text-left w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "cursor-pointer hover:border-border-hover" : "cursor-not-allowed opacity-60"}`}
+                  className={`flex items-center justify-between p-4 rounded-2xl bg-surface border border-border transition-all duration-200 text-left w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "cursor-pointer hover:border-[#3A3A3A]" : "cursor-not-allowed opacity-60"}`}
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
