@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("../firebase", () => ({
   firebaseReady: false,
@@ -61,7 +62,11 @@ import App from "../App";
 
 describe("App — Firebase not configured", () => {
   it("shows Setup Required when firebaseReady is false", () => {
-    render(<App />);
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
     expect(screen.getByText("Setup Required")).toBeInTheDocument();
     expect(screen.getByText(/Firebase environment variables are missing/)).toBeInTheDocument();
   });

@@ -587,6 +587,14 @@ describe("games service", () => {
       expect(mockWhere).toHaveBeenCalledWith("player2Uid", "==", "u1");
     });
 
+    it("accepts a custom limit count", () => {
+      mockOnSnapshot.mockReturnValue(vi.fn());
+
+      subscribeToMyGames("u1", vi.fn(), 10);
+
+      expect(mockLimit).toHaveBeenCalledWith(10);
+    });
+
     it("unsubscribes both listeners on cleanup", () => {
       const unsub1 = vi.fn();
       const unsub2 = vi.fn();

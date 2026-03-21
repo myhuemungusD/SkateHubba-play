@@ -93,10 +93,15 @@ vi.mock("@sentry/react", () => ({
   addBreadcrumb: vi.fn(),
 }));
 
+import { MemoryRouter } from "react-router-dom";
 import App from "../App";
 
 function renderApp(): RenderResult {
-  return render(<App />);
+  return render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
 }
 
 beforeEach(() => vi.clearAllMocks());
@@ -185,7 +190,7 @@ function renderVerifiedLobby(games: ReturnType<typeof activeGame>[] = []) {
     refreshProfile: vi.fn(),
   });
   withGames(games);
-  return render(<App />);
+  return renderApp();
 }
 
 /* ══════════════════════════════════════════════
@@ -1326,7 +1331,7 @@ describe("Smoke Test: Game E2E", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    render(<App />);
+    renderApp();
 
     await userEvent.click(screen.getByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));

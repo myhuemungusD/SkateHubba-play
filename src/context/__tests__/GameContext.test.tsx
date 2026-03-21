@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { Component, type ReactNode } from "react";
 import { useGameContext } from "../GameContext";
 
@@ -55,9 +56,11 @@ describe("useGameContext", () => {
     }
 
     const { getByTestId } = render(
-      <ErrorCatcher>
-        <TestComponent />
-      </ErrorCatcher>,
+      <MemoryRouter>
+        <ErrorCatcher>
+          <TestComponent />
+        </ErrorCatcher>
+      </MemoryRouter>,
     );
 
     expect(getByTestId("error").textContent).toBe("useGameContext must be used within GameProvider");
@@ -73,12 +76,14 @@ describe("useGameContext", () => {
     }
 
     const { getByTestId } = render(
-      <GameProvider>
-        <TestComponent />
-      </GameProvider>,
+      <MemoryRouter initialEntries={["/"]}>
+        <GameProvider>
+          <TestComponent />
+        </GameProvider>
+      </MemoryRouter>,
     );
 
-    // Default screen for unauthenticated user is "landing"
+    // Default screen for unauthenticated user is "landing" (path "/")
     expect(getByTestId("screen").textContent).toBe("landing");
   });
 });

@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
 import { initSentry, captureException } from "./lib/sentry";
 import App from "./App";
 import "./index.css";
@@ -42,6 +43,8 @@ if (!rootEl) throw new Error("Missing #root element in index.html");
 
 createRoot(rootEl).render(
   <StrictMode>
-    <App />
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </StrictMode>,
 );
