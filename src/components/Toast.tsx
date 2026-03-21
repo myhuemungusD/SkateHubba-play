@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { AppNotification } from "../context/NotificationContext";
+import { TOAST_DURATION } from "../context/NotificationContext";
 import { notificationIcon, notificationAccentBg, notificationAccentText } from "../lib/notificationMeta";
-import { TOAST_DURATION } from "../constants/ui";
 const SWIPE_THRESHOLD = 80;
 
 export function Toast({ notification, onDismiss }: { notification: AppNotification; onDismiss: (id: string) => void }) {

@@ -5,7 +5,7 @@ import { LETTERS } from "../utils/helpers";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
 import { GameReplay } from "../components/GameReplay";
 import { Btn } from "../components/ui/Btn";
-import { TrophyIcon, SkullIcon, FlameIcon, SkateboardIcon, ChevronRightIcon } from "../components/icons";
+import { TrophyIcon, SkullIcon, FlameIcon, SkateboardIcon, ChevronLeftIcon, ChevronRightIcon } from "../components/icons";
 
 /* ── Types ────────────────────────────────────────────── */
 
@@ -143,19 +143,7 @@ export function MyRecordScreen({
           className="flex items-center gap-2 text-muted hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded-lg"
           aria-label="Back to lobby"
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
+          <ChevronLeftIcon size={16} />
           <span className="font-body text-xs">Lobby</span>
         </button>
         <span className="font-display text-sm tracking-[0.25em] text-brand-orange">MY RECORD</span>

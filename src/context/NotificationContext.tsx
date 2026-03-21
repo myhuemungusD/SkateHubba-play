@@ -51,6 +51,7 @@ export function useNotifications(): NotificationContextValue {
 /* ── Persistence helpers ───────────────────── */
 
 const MAX_STORED = 50;
+export const TOAST_DURATION = 4000;
 
 function storageKey(uid: string) {
   return `skate_notifs_${uid}`;

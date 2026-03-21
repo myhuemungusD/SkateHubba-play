@@ -219,6 +219,14 @@ export function ChevronRightIcon(props: IconProps) {
   );
 }
 
+export function ChevronLeftIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <polyline points="15 18 9 12 15 6" />
+    </SvgIcon>
+  );
+}
+
 export function FisheyeIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>
