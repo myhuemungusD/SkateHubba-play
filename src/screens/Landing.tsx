@@ -162,12 +162,17 @@ export function Landing({
       {/* ─── Demo Video ──────────────────────────────────── */}
       <section className="max-w-3xl mx-auto px-6 py-12 md:py-16">
         <div className="relative rounded-3xl overflow-hidden glass-card shadow-glow-lg group">
-          <img
-            src="/My Movie 5.MOV.gif"
-            alt="SkateHubba gameplay demo"
-            draggable={false}
-            className="w-full aspect-video object-cover bg-surface transition-transform duration-700 group-hover:scale-[1.02] select-none"
-          />
+          <video
+            autoPlay
+            loop
+            muted
+            playsInline
+            preload="metadata"
+            className="w-full aspect-video object-cover bg-surface transition-transform duration-700 group-hover:scale-[1.02]"
+            aria-label="SkateHubba gameplay demo"
+          >
+            <source src="/AVPARKEDIT.mp4" type="video/mp4" />
+          </video>
           {/* Vignette + gradient overlay */}
           <div
             className="absolute inset-0 pointer-events-none"
