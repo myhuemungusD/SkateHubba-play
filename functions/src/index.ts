@@ -132,7 +132,10 @@ export const onGameUpdated = onDocumentUpdated({ document: "games/{gameId}", dat
       { uid: after.player2Uid, name: after.player2Username },
     ];
 
-    await Promise.all(
+    // Best-effort push notifications — must not block stats updates.
+    // Use allSettled so a single FCM failure does not prevent stats from
+    // being recorded (root cause of the forfeit-stats P0).
+    await Promise.allSettled(
       players.map(async (player) => {
         const tokens = await getFcmTokens(player.uid);
         const won = winnerUid === player.uid;
@@ -296,6 +299,34 @@ export const checkExpiredTurns = onSchedule("every 15 minutes", async () => {
         winner,
         updatedAt: FieldValue.serverTimestamp(),
       });
+
+      // Update win/loss stats inline (defense-in-depth).
+      // onGameUpdated also updates stats, but if it fails (e.g. push
+      // notification error) these stats would be lost. The
+      // lastStatsGameId idempotency key prevents double-counting.
+      const loser = currentTurn;
+      const statsPlayers = [
+        { uid: winner, won: true },
+        { uid: loser, won: false },
+      ];
+
+      await Promise.allSettled(
+        statsPlayers.map(async ({ uid, won }) => {
+          const userRef = db.doc(`users/${uid}`);
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(userRef);
+            if (!snap.exists) return;
+            const data = snap.data()!;
+            if (data.lastStatsGameId === doc.id) return;
+            const field = won ? "wins" : "losses";
+            const current = typeof data[field] === "number" ? (data[field] as number) : 0;
+            tx.update(userRef, {
+              [field]: current + 1,
+              lastStatsGameId: doc.id,
+            });
+          });
+        }),
+      );
 
       logger.info("checkExpiredTurns: forfeited game", {
         gameId: doc.id,
