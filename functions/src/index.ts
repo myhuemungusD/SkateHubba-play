@@ -1,5 +1,6 @@
 import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onMessagePublished } from "firebase-functions/v2/pubsub";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
@@ -205,31 +206,79 @@ interface BudgetAlert {
   costIntervalStart: string;
 }
 
-export const onBillingAlert = onMessagePublished(
-  { topic: "firebase-billing-alerts" },
-  async (event) => {
-    const data: BudgetAlert =
-      typeof event.data.message.json === "string"
-        ? JSON.parse(event.data.message.json)
-        : event.data.message.json;
+export const onBillingAlert = onMessagePublished({ topic: "firebase-billing-alerts" }, async (event) => {
+  const data: BudgetAlert =
+    typeof event.data.message.json === "string" ? JSON.parse(event.data.message.json) : event.data.message.json;
 
-    const pct = data.alertThresholdExceeded
-      ? `${(data.alertThresholdExceeded * 100).toFixed(0)}%`
-      : "unknown";
+  const pct = data.alertThresholdExceeded ? `${(data.alertThresholdExceeded * 100).toFixed(0)}%` : "unknown";
 
-    logger.warn("🚨 Billing alert received", {
-      budget: data.budgetDisplayName,
-      thresholdExceeded: pct,
-      cost: `${data.costAmount} ${data.currencyCode}`,
-      budgetLimit: `${data.budgetAmount} ${data.currencyCode}`,
-    });
+  logger.warn("🚨 Billing alert received", {
+    budget: data.budgetDisplayName,
+    thresholdExceeded: pct,
+    cost: `${data.costAmount} ${data.currencyCode}`,
+    budgetLimit: `${data.budgetAmount} ${data.currencyCode}`,
+  });
 
-    // Persist alert to Firestore for audit trail / admin dashboard
-    const db = getFirestore(DB_NAME);
-    await db.collection("billingAlerts").add({
-      ...data,
-      thresholdPercent: pct,
-      receivedAt: FieldValue.serverTimestamp(),
-    });
-  },
-);
+  // Persist alert to Firestore for audit trail / admin dashboard
+  const db = getFirestore(DB_NAME);
+  await db.collection("billingAlerts").add({
+    ...data,
+    thresholdPercent: pct,
+    receivedAt: FieldValue.serverTimestamp(),
+  });
+});
+
+/* ── Server-side turn timer enforcement ────────────────────── */
+
+/**
+ * Scheduled function that runs every 15 minutes to auto-forfeit games
+ * where the turn deadline has expired. This ensures forfeits happen
+ * regardless of whether either player's client is online.
+ *
+ * Without this, a player can dodge losses by staying offline — the
+ * forfeit only triggers when the opponent opens the app.
+ */
+export const checkExpiredTurns = onSchedule("every 15 minutes", async () => {
+  const db = getFirestore(DB_NAME);
+  const now = new Date();
+
+  const expiredGames = await db
+    .collection("games")
+    .where("status", "==", "active")
+    .where("turnDeadline", "<=", now)
+    .get();
+
+  if (expiredGames.empty) {
+    logger.info("checkExpiredTurns: no expired games found");
+    return;
+  }
+
+  logger.info(`checkExpiredTurns: found ${expiredGames.size} expired game(s)`);
+
+  const results = await Promise.allSettled(
+    expiredGames.docs.map(async (doc) => {
+      const game = doc.data();
+      const currentTurn: string = game.currentTurn;
+
+      // Winner is the opponent of whoever's turn expired
+      const winner = currentTurn === game.player1Uid ? game.player2Uid : game.player1Uid;
+
+      await doc.ref.update({
+        status: "forfeit",
+        winner,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      logger.info("checkExpiredTurns: forfeited game", {
+        gameId: doc.id,
+        timedOutPlayer: currentTurn,
+        winner,
+      });
+    }),
+  );
+
+  const failed = results.filter((r) => r.status === "rejected").length;
+  if (failed > 0) {
+    logger.error(`checkExpiredTurns: ${failed}/${expiredGames.size} forfeit(s) failed`);
+  }
+});
