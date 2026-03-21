@@ -1,9 +1,45 @@
 /// <reference types="vitest/config" />
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { readFileSync, writeFileSync } from "fs";
+import { resolve } from "path";
+
+/**
+ * Vite plugin that injects real Firebase config values into the service worker
+ * at build time. The public/firebase-messaging-sw.js file uses __PLACEHOLDER__*
+ * tokens that this plugin replaces with VITE_FIREBASE_* env vars when copying
+ * the file into dist/.
+ */
+function firebaseSwPlugin(): Plugin {
+  return {
+    name: "firebase-sw-config",
+    apply: "build",
+    writeBundle(options) {
+      const outDir = options.dir ?? "dist";
+      const swPath = resolve(outDir, "firebase-messaging-sw.js");
+      try {
+        let content = readFileSync(swPath, "utf-8");
+        const replacements: Record<string, string | undefined> = {
+          __PLACEHOLDER_API_KEY__: process.env.VITE_FIREBASE_API_KEY,
+          __PLACEHOLDER_AUTH_DOMAIN__: process.env.VITE_FIREBASE_AUTH_DOMAIN,
+          __PLACEHOLDER_PROJECT_ID__: process.env.VITE_FIREBASE_PROJECT_ID,
+          __PLACEHOLDER_STORAGE_BUCKET__: process.env.VITE_FIREBASE_STORAGE_BUCKET,
+          __PLACEHOLDER_MESSAGING_SENDER_ID__: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+          __PLACEHOLDER_APP_ID__: process.env.VITE_FIREBASE_APP_ID,
+        };
+        for (const [token, value] of Object.entries(replacements)) {
+          if (value) content = content.replace(token, value);
+        }
+        writeFileSync(swPath, content);
+      } catch {
+        // SW file may not exist in test builds — skip silently
+      }
+    },
+  };
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), firebaseSwPlugin()],
   define: {
     "import.meta.env.VERCEL": JSON.stringify(process.env.VERCEL ?? ""),
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? ""),

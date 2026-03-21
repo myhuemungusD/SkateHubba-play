@@ -15,6 +15,37 @@ function getMessagingInstance() {
 }
 
 /**
+ * Register the Firebase messaging service worker with Firebase config passed
+ * via URL search params. This ensures the SW has real config values in dev
+ * mode (where the Vite build plugin doesn't run). In production the SW file
+ * already has config baked in by the plugin, so the params act as a no-op
+ * fallback.
+ */
+let swRegistrationPromise: Promise<ServiceWorkerRegistration> | null = null;
+
+export function getSwRegistration(): Promise<ServiceWorkerRegistration> {
+  if (swRegistrationPromise) return swRegistrationPromise;
+
+  const params = new URLSearchParams({
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "",
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? "",
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "",
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ?? "",
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
+    appId: import.meta.env.VITE_FIREBASE_APP_ID ?? "",
+  });
+
+  swRegistrationPromise = navigator.serviceWorker.register(`/firebase-messaging-sw.js?${params.toString()}`);
+
+  return swRegistrationPromise;
+}
+
+/** @internal Reset cached SW registration (for tests only) */
+export function _resetSwRegistration(): void {
+  swRegistrationPromise = null;
+}
+
+/**
  * Request push notification permission and store the FCM token in Firestore.
  * Returns the token if successful, or null if denied/unsupported.
  */
@@ -32,7 +63,8 @@ export async function requestPushPermission(uid: string): Promise<string | null>
       return null;
     }
 
-    const token = await getToken(messaging, { vapidKey: String(vapidKey) });
+    const serviceWorkerRegistration = await getSwRegistration();
+    const token = await getToken(messaging, { vapidKey: String(vapidKey), serviceWorkerRegistration });
     if (!token) return null;
 
     // Store token on the user's profile

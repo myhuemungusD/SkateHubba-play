@@ -113,7 +113,8 @@ describe("games service", () => {
       mockAddDoc.mockResolvedValueOnce({ id: "game123" });
       const id = await createGame("p1", "alice", "p2", "bob");
       expect(id).toBe("game123");
-      expect(mockAddDoc).toHaveBeenCalledTimes(1);
+      // First addDoc creates the game; second (fire-and-forget) writes a notification
+      expect(mockAddDoc).toHaveBeenCalledTimes(2);
 
       const docData = mockAddDoc.mock.calls[0][1];
       expect(docData.player1Uid).toBe("p1");
@@ -390,6 +391,17 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       const result = await submitMatchAttempt("g1", null, false);
+      expect(result.gameOver).toBe(true);
+      expect(result.winner).toBe("p2");
+    });
+
+    it("sends game_lost notification when setter loses", async () => {
+      // Edge case: p1 is setter but already had 5 letters (data inconsistency).
+      // The winner becomes p2 (matcher's side), so the setter gets a "game_lost" notification.
+      const game = { ...matchingGame, p1Letters: 5, currentSetter: "p1", currentTurn: "p2" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await submitMatchAttempt("g1", null, true);
       expect(result.gameOver).toBe(true);
       expect(result.winner).toBe("p2");
     });
