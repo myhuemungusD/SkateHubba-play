@@ -39,8 +39,8 @@ export function AuthScreen({
       setError("Enter a valid email");
       return;
     }
-    if (password.length < 6) {
-      setError("Password must be 6+ characters");
+    if (password.length < 8) {
+      setError("Password must be 8+ characters");
       return;
     }
     if (isSignup && password !== confirm) {
@@ -68,10 +68,9 @@ export function AuthScreen({
       if (code === "auth/email-already-in-use") setError("Email already in use. Try signing in, or use Google below.");
       else if (code === "auth/account-exists-with-different-credential")
         setError("This email is linked to Google. Tap 'Continue with Google' below.");
-      else if (code === "auth/invalid-credential" || code === "auth/wrong-password")
+      else if (code === "auth/invalid-credential" || code === "auth/wrong-password" || code === "auth/user-not-found")
         setError("Invalid email or password");
-      else if (code === "auth/user-not-found") setError("No account with that email. Need to sign up?");
-      else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
+      else if (code === "auth/weak-password") setError("Password too weak (8+ chars)");
       else if (code === "auth/too-many-requests")
         setError("Too many attempts. Please wait a few minutes and try again.");
       else if (code === "auth/network-request-failed") setError("Network error — check your connection and try again.");

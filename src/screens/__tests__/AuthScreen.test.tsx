@@ -73,12 +73,12 @@ describe("AuthScreen", () => {
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     const pws = screen.getAllByPlaceholderText(/•/);
-    await userEvent.type(pws[0], "123456");
-    await userEvent.type(pws[1], "123456");
+    await userEvent.type(pws[0], "12345678");
+    await userEvent.type(pws[1], "12345678");
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Password too weak (6+ chars)")).toBeInTheDocument();
+      expect(screen.getByText("Password too weak (8+ chars)")).toBeInTheDocument();
     });
   });
 

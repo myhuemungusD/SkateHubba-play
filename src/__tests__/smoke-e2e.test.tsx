@@ -699,11 +699,11 @@ describe("Smoke Test: Game E2E", () => {
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
 
     await userEvent.type(emailInput, "test@test.com");
-    await userEvent.type(passwordInputs[0], "12345");
-    await userEvent.type(passwordInputs[1], "12345");
+    await userEvent.type(passwordInputs[0], "1234567");
+    await userEvent.type(passwordInputs[1], "1234567");
 
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
-    expect(screen.getByText("Password must be 6+ characters")).toBeInTheDocument();
+    expect(screen.getByText("Password must be 8+ characters")).toBeInTheDocument();
   });
 
   it("shows firebase auth error for duplicate email", async () => {
@@ -789,7 +789,7 @@ describe("Smoke Test: Game E2E", () => {
     });
   });
 
-  it("shows error for user not found on sign in", async () => {
+  it("shows generic error for user not found on sign in (no enumeration)", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/user-not-found" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
@@ -805,7 +805,7 @@ describe("Smoke Test: Game E2E", () => {
     await userEvent.click(screen.getByText("Sign In"));
 
     await waitFor(() => {
-      expect(screen.getByText("No account with that email. Need to sign up?")).toBeInTheDocument();
+      expect(screen.getByText("Invalid email or password")).toBeInTheDocument();
     });
   });
 
@@ -1236,13 +1236,13 @@ describe("Smoke Test: Game E2E", () => {
     const passwordInputs = screen.getAllByPlaceholderText(/•/);
 
     await userEvent.type(emailInput, "test@test.com");
-    await userEvent.type(passwordInputs[0], "123456");
-    await userEvent.type(passwordInputs[1], "123456");
+    await userEvent.type(passwordInputs[0], "12345678");
+    await userEvent.type(passwordInputs[1], "12345678");
 
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Password too weak (6+ chars)")).toBeInTheDocument();
+      expect(screen.getByText("Password too weak (8+ chars)")).toBeInTheDocument();
     });
   });
 
