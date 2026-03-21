@@ -17,6 +17,11 @@ export interface UploadProgress {
  * Uses uploadBytesResumable for real-time progress tracking.
  * Retries with exponential backoff on transient failures.
  */
+/** Minimum upload size (1 KB) — must match storage.rules */
+const MIN_UPLOAD_BYTES = 1024;
+/** Maximum upload size (50 MB) — must match storage.rules */
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 export async function uploadVideo(
   gameId: string,
   turnNumber: number,
@@ -25,6 +30,15 @@ export async function uploadVideo(
   onProgress?: (progress: UploadProgress) => void,
   maxRetries = 2,
 ): Promise<string> {
+  // Pre-validate size to fail fast before wasting bandwidth.
+  // These limits mirror the Firebase Storage security rules.
+  if (blob.size <= MIN_UPLOAD_BYTES) {
+    throw new Error("Video is too small to upload. Please record a longer clip.");
+  }
+  if (blob.size >= MAX_UPLOAD_BYTES) {
+    throw new Error("Video exceeds the 50 MB limit. Please record a shorter clip.");
+  }
+
   // Determine file extension from the blob's MIME type.
   // Native (Capacitor) recordings produce mp4; web recordings produce webm.
   const ext = blob.type.includes("mp4") ? "mp4" : "webm";

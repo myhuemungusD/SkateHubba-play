@@ -122,7 +122,7 @@ export function Landing({
 
         <div className="relative max-w-5xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col items-center text-center">
           <img
-            src="/logonew.png"
+            src="/logonew.webp"
             alt="SkateHubba"
             width={1536}
             height={1024}

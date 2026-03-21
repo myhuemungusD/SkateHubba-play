@@ -37,6 +37,13 @@ vi.mock("../analytics", () => ({
 
 import { uploadVideo } from "../storage";
 
+/** Create a blob that passes the min-size (>1 KB) validation. */
+function validBlob(type = "video/webm"): Blob {
+  const blob = new Blob(["x"], { type });
+  Object.defineProperty(blob, "size", { value: 2048 });
+  return blob;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   // Default: mock task that completes immediately
@@ -48,7 +55,7 @@ beforeEach(() => {
 describe("storage service", () => {
   describe("uploadVideo", () => {
     it("uploads to the correct path and returns download URL", async () => {
-      const blob = new Blob(["video"], { type: "video/webm" });
+      const blob = validBlob();
       const url = await uploadVideo("game1", 3, "set", blob);
 
       expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-3/set.webm");
@@ -61,7 +68,7 @@ describe("storage service", () => {
     });
 
     it("sets correct custom metadata", async () => {
-      const blob = new Blob(["video"], { type: "video/webm" });
+      const blob = validBlob();
       await uploadVideo("game1", 2, "match", blob);
 
       const metadata = mockUploadBytesResumable.mock.calls[0][2];
@@ -89,7 +96,7 @@ describe("storage service", () => {
         ),
       }));
 
-      const blob = new Blob(["video"], { type: "video/webm" });
+      const blob = validBlob();
       await uploadVideo("game1", 1, "set", blob, progressFn);
 
       expect(progressFn).toHaveBeenCalledWith({ bytesTransferred: 50, totalBytes: 100, percent: 50 });
@@ -110,7 +117,7 @@ describe("storage service", () => {
         }),
       }));
 
-      const blob = new Blob(["video"], { type: "video/webm" });
+      const blob = validBlob();
       const url = await uploadVideo("game1", 1, "set", blob, undefined, 2);
 
       expect(url).toBe("https://cdn.example.com/video.webm");
@@ -134,7 +141,7 @@ describe("storage service", () => {
         ),
       }));
 
-      const blob = new Blob(["video"], { type: "video/webm" });
+      const blob = validBlob();
       await uploadVideo("game1", 1, "set", blob, progressFn);
 
       expect(progressFn).toHaveBeenCalledWith({ bytesTransferred: 0, totalBytes: 0, percent: 0 });
@@ -157,14 +164,14 @@ describe("storage service", () => {
         ),
       }));
 
-      const blob = new Blob(["video"], { type: "video/webm" });
+      const blob = validBlob();
       // No progress callback passed
       await expect(uploadVideo("game1", 1, "set", blob)).resolves.toBe("https://cdn.example.com/video.webm");
     });
 
     it("rejects when getDownloadURL fails after upload completes", async () => {
       mockGetDownloadURL.mockRejectedValueOnce(new Error("URL fetch failed"));
-      const blob = new Blob(["video"], { type: "video/webm" });
+      const blob = validBlob();
       await expect(uploadVideo("game1", 1, "set", blob, undefined, 0)).rejects.toThrow("URL fetch failed");
     });
 
@@ -176,12 +183,26 @@ describe("storage service", () => {
         }),
       }));
 
-      const blob = new Blob(["video"], { type: "video/webm" });
+      const blob = validBlob();
       await expect(uploadVideo("game1", 1, "set", blob, undefined, 0)).rejects.toThrow("Persistent failure");
     });
 
+    it("rejects blobs that are too small (≤1 KB)", async () => {
+      const tinyBlob = new Blob(["x"], { type: "video/webm" }); // ~1 byte
+      await expect(uploadVideo("game1", 1, "set", tinyBlob)).rejects.toThrow("too small");
+      expect(mockUploadBytesResumable).not.toHaveBeenCalled();
+    });
+
+    it("rejects blobs that exceed 50 MB", async () => {
+      // Create a blob that reports size >= 50MB via Object.defineProperty
+      const bigBlob = new Blob(["x"], { type: "video/webm" });
+      Object.defineProperty(bigBlob, "size", { value: 50 * 1024 * 1024 });
+      await expect(uploadVideo("game1", 1, "set", bigBlob)).rejects.toThrow("50 MB limit");
+      expect(mockUploadBytesResumable).not.toHaveBeenCalled();
+    });
+
     it("uses .mp4 extension and content type for mp4 blobs", async () => {
-      const blob = new Blob(["video"], { type: "video/mp4" });
+      const blob = validBlob("video/mp4");
       const url = await uploadVideo("game1", 1, "set", blob);
 
       expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.mp4");
