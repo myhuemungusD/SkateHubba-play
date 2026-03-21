@@ -55,7 +55,7 @@ export function VideoRecorder({
         audio: true,
       });
       streamRef.current = stream;
-      /* v8 ignore start */
+      /* v8 ignore start -- DOM ref assignment; videoRef always null in JSDOM tests */
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         void videoRef.current.play();
@@ -87,7 +87,7 @@ export function VideoRecorder({
 
     // Determine the stream to record: fisheye canvas + audio, or raw camera
     let recordStream = streamRef.current;
-    /* v8 ignore start */
+    /* v8 ignore start -- captureStream + fisheye canvas requires real browser; not available in JSDOM */
     if (fisheyeOn && fisheyeCanvasRef.current) {
       try {
         const canvasStream = fisheyeCanvasRef.current.captureStream(30);
@@ -112,7 +112,7 @@ export function VideoRecorder({
         : "";
     const mr = new MediaRecorder(recordStream, mimeType ? { mimeType } : undefined);
     mr.ondataavailable = (e) => {
-      /* v8 ignore start */
+      /* v8 ignore start -- MediaRecorder ondataavailable requires real browser */
       if (e.data.size > 0) chunksRef.current.push(e.data);
       /* v8 ignore stop */
     };
@@ -137,7 +137,7 @@ export function VideoRecorder({
     setSeconds(0);
     timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
     // Auto-stop at max duration
-    /* v8 ignore start */
+    /* v8 ignore start -- auto-stop timer requires real MediaRecorder; not exercisable in JSDOM */
     maxTimerRef.current = window.setTimeout(() => {
       clearInterval(timerRef.current);
       if (mrRef.current?.state === "recording") {

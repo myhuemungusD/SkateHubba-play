@@ -140,7 +140,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   const startChallenge = useCallback(
     async (opponentUid: string, opponentUsername: string) => {
-      /* v8 ignore start */
+      /* v8 ignore start -- null guard unreachable in tests; button disabled when user/profile is null */
       if (!user || !activeProfile) return;
       /* v8 ignore stop */
       const gameId = await createGame(user.uid, activeProfile.username, opponentUid, opponentUsername);

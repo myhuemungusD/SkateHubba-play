@@ -75,7 +75,7 @@ export async function requestPushPermission(uid: string): Promise<string | null>
 
     return token;
   } catch (err) {
-    logger.warn("fcm_token_failed", { error: err instanceof Error ? err.message : String(err) });
+    logger.warn("fcm_token_failed", { error: String(err) });
     return null;
   }
 }
@@ -88,8 +88,8 @@ export async function removeFcmToken(uid: string, token: string): Promise<void> 
     await updateDoc(doc(requireDb(), "users", uid), {
       fcmTokens: arrayRemove(token),
     });
-  } catch {
-    // Best-effort cleanup
+  } catch (err) {
+    logger.warn("fcm_token_removal_failed", { uid, error: String(err) });
   }
 }
 

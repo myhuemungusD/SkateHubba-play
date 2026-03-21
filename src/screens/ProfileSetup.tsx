@@ -304,11 +304,11 @@ export function ProfileSetup({
     const timeout = setTimeout(async () => {
       try {
         const ok = await isUsernameAvailable(normalized);
-        /* v8 ignore start */
+        /* v8 ignore start -- debounce guard; race between setTimeout and ref counter untestable in unit tests */
         if (checkRef.current === id) setAvailable(ok);
         /* v8 ignore stop */
       } catch {
-        /* v8 ignore start */
+        /* v8 ignore start -- debounce guard; same race condition as above */
         if (checkRef.current === id) setAvailable(null);
         /* v8 ignore stop */
         setError("Could not check username — try again");
@@ -329,7 +329,7 @@ export function ProfileSetup({
         setError(`Username too long (max ${USERNAME_MAX})`);
         return;
       }
-      /* v8 ignore start */
+      /* v8 ignore start -- regex guard unreachable after length validation; defensive for malformed input */
       if (!USERNAME_RE.test(normalized)) {
         setError("Only letters, numbers, and _ allowed");
         return;
