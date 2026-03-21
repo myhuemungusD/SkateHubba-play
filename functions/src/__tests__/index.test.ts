@@ -5,11 +5,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockGet = vi.fn();
 const mockUpdate = vi.fn();
 const mockAdd = vi.fn();
+const mockCollectionGet = vi.fn();
 const mockDoc = vi.fn(() => ({
   get: mockGet,
   update: mockUpdate,
 }));
-const mockCollection = vi.fn(() => ({ add: mockAdd }));
+const mockQueryChain = {
+  where: vi.fn(() => mockQueryChain),
+  get: mockCollectionGet,
+};
+const mockCollection = vi.fn(() => ({ add: mockAdd, where: mockQueryChain.where }));
 const mockTxGet = vi.fn();
 const mockTxUpdate = vi.fn();
 const mockRunTransaction = vi.fn(
@@ -55,6 +60,10 @@ vi.mock("firebase-functions/v2/pubsub", () => ({
   onMessagePublished: (_opts: unknown, handler: unknown) => handler,
 }));
 
+vi.mock("firebase-functions/v2/scheduler", () => ({
+  onSchedule: (_opts: unknown, handler: unknown) => handler,
+}));
+
 vi.mock("firebase-functions/v2", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
 }));
@@ -69,6 +78,8 @@ let onGameUpdated: any;
 
 let onBillingAlert: any;
 
+let checkExpiredTurns: any;
+
 beforeEach(async () => {
   vi.clearAllMocks();
   // Re-import to get fresh handler references
@@ -77,6 +88,7 @@ beforeEach(async () => {
   onGameCreated = mod.onGameCreated;
   onGameUpdated = mod.onGameUpdated;
   onBillingAlert = mod.onBillingAlert;
+  checkExpiredTurns = mod.checkExpiredTurns;
 });
 
 /* ── Helper to set up FCM token retrieval ─────────────── */
@@ -516,5 +528,171 @@ describe("sendPush (via onNudgeCreated)", () => {
     });
 
     expect(mockSendEachForMulticast).not.toHaveBeenCalled();
+  });
+});
+
+describe("onGameUpdated — push failure resilience", () => {
+  it("still updates stats when push notifications fail", async () => {
+    // Push notification fails for both players
+    mockGet.mockRejectedValueOnce(new Error("FCM token fetch failed"));
+    mockGet.mockRejectedValueOnce(new Error("FCM token fetch failed"));
+
+    // Stats transaction reads
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 2, losses: 0, lastStatsGameId: "old-game" }),
+    });
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 0, losses: 1, lastStatsGameId: "old-game" }),
+    });
+
+    await onGameUpdated({
+      data: {
+        before: {
+          data: () => ({
+            status: "active",
+            currentTurn: "user-1",
+            phase: "matching",
+          }),
+        },
+        after: {
+          data: () => ({
+            status: "forfeit",
+            winner: "user-2",
+            player1Uid: "user-1",
+            player2Uid: "user-2",
+            player1Username: "alice",
+            player2Username: "bob",
+            currentTurn: "user-1",
+            phase: "matching",
+          }),
+        },
+      },
+      params: { gameId: "game-forfeit" },
+    });
+
+    // Push failed but stats must still be updated
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(2);
+
+    // Loser (user-1) gets +1 loss (was 0)
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ losses: 1, lastStatsGameId: "game-forfeit" }),
+    );
+    // Winner (user-2) gets +1 win (was 0)
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ wins: 1, lastStatsGameId: "game-forfeit" }),
+    );
+  });
+});
+
+describe("checkExpiredTurns", () => {
+  it("forfeits expired games and updates stats", async () => {
+    const mockDocRef = { update: vi.fn().mockResolvedValue(undefined) };
+
+    mockCollectionGet.mockResolvedValueOnce({
+      empty: false,
+      size: 1,
+      docs: [
+        {
+          id: "expired-game-1",
+          ref: mockDocRef,
+          data: () => ({
+            currentTurn: "user-1",
+            player1Uid: "user-1",
+            player2Uid: "user-2",
+          }),
+        },
+      ],
+    });
+
+    // Stats transaction reads (winner then loser)
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 5, losses: 0, lastStatsGameId: "old" }),
+    });
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 0, losses: 3, lastStatsGameId: "old" }),
+    });
+
+    await checkExpiredTurns();
+
+    // Game doc updated to forfeit
+    expect(mockDocRef.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "forfeit",
+        winner: "user-2",
+      }),
+    );
+
+    // Stats updated for both players
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(2);
+
+    // Winner (user-2) gets +1 win
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ wins: 6, lastStatsGameId: "expired-game-1" }),
+    );
+    // Loser (user-1) gets +1 loss
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ losses: 4, lastStatsGameId: "expired-game-1" }),
+    );
+  });
+
+  it("skips when no expired games are found", async () => {
+    mockCollectionGet.mockResolvedValueOnce({
+      empty: true,
+      size: 0,
+      docs: [],
+    });
+
+    await checkExpiredTurns();
+
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+  });
+
+  it("uses idempotency key to prevent double-counting", async () => {
+    const mockDocRef = { update: vi.fn().mockResolvedValue(undefined) };
+
+    mockCollectionGet.mockResolvedValueOnce({
+      empty: false,
+      size: 1,
+      docs: [
+        {
+          id: "game-already-counted",
+          ref: mockDocRef,
+          data: () => ({
+            currentTurn: "user-1",
+            player1Uid: "user-1",
+            player2Uid: "user-2",
+          }),
+        },
+      ],
+    });
+
+    // Both users already have stats for this game
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 5, losses: 0, lastStatsGameId: "game-already-counted" }),
+    });
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 0, losses: 3, lastStatsGameId: "game-already-counted" }),
+    });
+
+    await checkExpiredTurns();
+
+    // Game doc updated
+    expect(mockDocRef.update).toHaveBeenCalled();
+
+    // Stats transactions ran but no updates (idempotent)
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 });
