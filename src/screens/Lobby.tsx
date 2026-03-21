@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
+import { logger } from "../services/logger";
 import { Timestamp } from "firebase/firestore";
 import type { FieldValue } from "firebase/firestore";
 import type { GameDoc } from "../services/games";
@@ -63,7 +64,9 @@ export function Lobby({
       .then((all) => {
         if (!stale) setPlayers(all.filter((p) => p.uid !== profile.uid));
       })
-      .catch(() => {
+      .catch((err) => {
+        // Non-critical: show empty lobby rather than error screen
+        logger.warn("[Lobby] player directory load failed", err);
         if (!stale) setPlayers([]);
       })
       .finally(() => {
@@ -260,7 +263,10 @@ export function Lobby({
                       </div>
                     </div>
                   </div>
-                  <ChevronRightIcon size={15} className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-faint"}`} />
+                  <ChevronRightIcon
+                    size={15}
+                    className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-faint"}`}
+                  />
                 </button>
               ))}
             </div>
