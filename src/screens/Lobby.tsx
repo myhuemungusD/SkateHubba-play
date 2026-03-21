@@ -4,9 +4,8 @@ import { Timestamp } from "firebase/firestore";
 import type { FieldValue } from "firebase/firestore";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
-import { Btn } from "../components/ui/Btn";
-import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
+import { DeleteAccountModal } from "../components/DeleteAccountModal";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
 import { PushPermissionBanner } from "../components/PushPermissionBanner";
@@ -38,6 +37,9 @@ export function Lobby({
   onDeleteAccount,
   onViewRecord,
   user,
+  hasMoreGames = false,
+  onLoadMore,
+  gamesLoading = false,
 }: {
   profile: UserProfile;
   games: GameDoc[];
@@ -48,10 +50,11 @@ export function Lobby({
   onDeleteAccount: () => Promise<void>;
   onViewRecord: () => void;
   user: { emailVerified?: boolean } | null;
+  hasMoreGames?: boolean;
+  onLoadMore?: () => void;
+  gamesLoading?: boolean;
 }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState("");
   const [players, setPlayers] = useState<UserProfile[]>([]);
   const [playersLoading, setPlayersLoading] = useState(true);
   useEffect(() => {
@@ -114,7 +117,7 @@ export function Lobby({
           <button
             type="button"
             onClick={onSignOut}
-            className="font-body text-xs text-[#999] hover:text-white transition-colors duration-200 px-2.5 py-1.5 rounded-lg border border-border hover:border-[#3A3A3A]"
+            className="font-body text-xs text-dim hover:text-white transition-colors duration-200 px-2.5 py-1.5 rounded-lg border border-border hover:border-[#3A3A3A]"
           >
             Sign Out
           </button>
@@ -164,13 +167,13 @@ export function Lobby({
           Challenge Someone
         </button>
         {!user?.emailVerified && (
-          <p className="text-[11px] text-[#888] text-center mb-2 font-body">Verify your email to start challenging</p>
+          <p className="text-[11px] text-muted text-center mb-2 font-body">Verify your email to start challenging</p>
         )}
 
         <InviteButton username={profile.username} className="mb-3" />
 
         {user?.emailVerified && (
-          <p className="font-body text-xs text-[#999] text-center mb-8">
+          <p className="font-body text-xs text-dim text-center mb-8">
             No one to play?{" "}
             <button
               type="button"
@@ -235,7 +238,7 @@ export function Lobby({
                         {LETTERS.map((l, i) => (
                           <span
                             key={i}
-                            className={`font-display text-[13px] leading-none tracking-wide ${i < myLetters(g) ? "text-brand-red" : "text-[#666]"}`}
+                            className={`font-display text-[13px] leading-none tracking-wide ${i < myLetters(g) ? "text-brand-red" : "text-faint"}`}
                           >
                             {l}
                           </span>
@@ -258,7 +261,7 @@ export function Lobby({
                     </div>
                   </div>
                   <svg
-                    className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-[#666]"}`}
+                    className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-faint"}`}
                     width="15"
                     height="15"
                     viewBox="0 0 24 24"
@@ -287,9 +290,9 @@ export function Lobby({
               </span>
             </div>
             <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
-              <SkateboardIcon size={24} className="mb-2 opacity-40 text-[#555]" />
-              <p className="font-body text-xs text-[#666]">No active games right now</p>
-              <p className="font-body text-[11px] text-[#555] mt-0.5">Challenge someone to start a new round</p>
+              <SkateboardIcon size={24} className="mb-2 opacity-40 text-subtle" />
+              <p className="font-body text-xs text-faint">No active games right now</p>
+              <p className="font-body text-[11px] text-subtle mt-0.5">Challenge someone to start a new round</p>
             </div>
           </div>
         )}
@@ -323,7 +326,7 @@ export function Lobby({
                     </span>
                   </div>
                   <svg
-                    className="text-[#666] shrink-0"
+                    className="text-faint shrink-0"
                     width="15"
                     height="15"
                     viewBox="0 0 24 24"
@@ -352,10 +355,24 @@ export function Lobby({
               </span>
             </div>
             <div className="flex flex-col items-center py-8 border border-dashed border-border rounded-2xl">
-              <TrophyIcon size={24} className="mb-2 opacity-40 text-[#555]" />
-              <p className="font-body text-xs text-[#666]">No finished games yet</p>
-              <p className="font-body text-[11px] text-[#555] mt-0.5">Complete a game to see your results here</p>
+              <TrophyIcon size={24} className="mb-2 opacity-40 text-subtle" />
+              <p className="font-body text-xs text-faint">No finished games yet</p>
+              <p className="font-body text-[11px] text-subtle mt-0.5">Complete a game to see your results here</p>
             </div>
+          </div>
+        )}
+
+        {/* Load More */}
+        {hasMoreGames && games.length > 0 && (
+          <div className="flex justify-center mb-6">
+            <button
+              type="button"
+              onClick={onLoadMore}
+              disabled={gamesLoading}
+              className="px-6 py-2.5 rounded-xl border border-border bg-surface font-display text-sm tracking-wider text-brand-orange hover:border-[#3A3A3A] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              {gamesLoading ? "Loading..." : "Load More Games"}
+            </button>
           </div>
         )}
 
@@ -378,8 +395,8 @@ export function Lobby({
               <circle cx="17.5" cy="17.5" r="2.5" />
               <path d="M2 7h1.5l2.1 7.5h10.8l2.1-6H7.5" />
             </svg>
-            <p className="font-body text-sm text-[#999]">No games yet.</p>
-            <p className="font-body text-xs text-[#777] mt-1">Challenge someone to get started.</p>
+            <p className="font-body text-sm text-dim">No games yet.</p>
+            <p className="font-body text-xs text-faint mt-1">Challenge someone to get started.</p>
           </div>
         )}
 
@@ -417,7 +434,7 @@ export function Lobby({
                     </div>
                   </div>
                   <span
-                    className={`font-display text-xs shrink-0 ml-3 ${user?.emailVerified ? "text-brand-orange" : "text-[#555]"}`}
+                    className={`font-display text-xs shrink-0 ml-3 ${user?.emailVerified ? "text-brand-orange" : "text-subtle"}`}
                   >
                     Challenge &rarr;
                   </span>
@@ -437,7 +454,7 @@ export function Lobby({
                   <span className="font-display text-[10px] text-brand-orange w-4 leading-none tabular-nums">
                     {String(i + 1).padStart(2, "0")}
                   </span>
-                  <span className="font-body text-sm text-[#999]">{f}</span>
+                  <span className="font-body text-sm text-dim">{f}</span>
                 </div>
                 <svg
                   className="text-brand-orange"
@@ -462,70 +479,15 @@ export function Lobby({
         <div className="mt-8 flex justify-center">
           <button
             onClick={() => setShowDeleteModal(true)}
-            className="font-body text-xs text-[#999] underline underline-offset-2 hover:text-brand-red transition-colors"
+            className="font-body text-xs text-dim underline underline-offset-2 hover:text-brand-red transition-colors"
           >
             Delete Account
           </button>
         </div>
       </div>
 
-      {/* Delete Account Modal */}
       {showDeleteModal && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center p-6 z-50"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-modal-title"
-          onClick={() => {
-            if (!deleting) setShowDeleteModal(false);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape" && !deleting) setShowDeleteModal(false);
-          }}
-        >
-          <div
-            className="bg-surface border border-border rounded-2xl p-6 max-w-sm w-full animate-fade-in"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 id="delete-modal-title" className="font-display text-xl text-white mb-2">
-              Delete Account?
-            </h3>
-            <p className="font-body text-sm text-[#888] mb-4">
-              This permanently deletes your profile and sign-in credentials. Your game history is retained for your
-              opponents.
-              <strong className="text-brand-red"> This cannot be undone.</strong>
-            </p>
-            {deleteError && <ErrorBanner message={deleteError} onDismiss={() => setDeleteError("")} />}
-            <div className="flex gap-3">
-              <Btn
-                onClick={() => {
-                  setDeleteError("");
-                  setShowDeleteModal(false);
-                }}
-                variant="secondary"
-                disabled={deleting}
-              >
-                Cancel
-              </Btn>
-              <Btn
-                onClick={async () => {
-                  setDeleting(true);
-                  setDeleteError("");
-                  try {
-                    await onDeleteAccount();
-                  } catch (err: unknown) {
-                    setDeleteError(err instanceof Error ? err.message : "Deletion failed — try again");
-                    setDeleting(false);
-                  }
-                }}
-                variant="danger"
-                disabled={deleting}
-              >
-                {deleting ? "Deleting..." : "Delete Forever"}
-              </Btn>
-            </div>
-          </div>
-        </div>
+        <DeleteAccountModal onClose={() => setShowDeleteModal(false)} onDeleteAccount={onDeleteAccount} />
       )}
     </div>
   );

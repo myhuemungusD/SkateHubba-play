@@ -13,6 +13,9 @@ export interface GameContextValue {
   setActiveGame: (g: GameDoc | null) => void;
   openGame: (g: GameDoc) => void;
   startChallenge: (opponentUid: string, opponentUsername: string) => Promise<void>;
+  hasMoreGames: boolean;
+  loadMoreGames: () => void;
+  gamesLoading: boolean;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
@@ -22,6 +25,9 @@ export function useGameContext(): GameContextValue {
   if (!ctx) throw new Error("useGameContext must be used within GameProvider");
   return ctx;
 }
+
+/** How many games to load per page in the real-time subscription. */
+const GAMES_PAGE_SIZE = 20;
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const { user, activeProfile } = useAuthContext();
@@ -33,6 +39,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Track which games have already had stats recorded this session
   const processedStatsRef = useRef(new Set<string>());
 
+  // Pagination state
+  const [gamesLimit, setGamesLimit] = useState(GAMES_PAGE_SIZE);
+  const [hasMoreGames, setHasMoreGames] = useState(false);
+  const [gamesLoading, setGamesLoading] = useState(false);
+
+  const loadMoreGames = useCallback(() => {
+    setGamesLoading(true);
+    setGamesLimit((prev) => prev + GAMES_PAGE_SIZE);
+  }, []);
+
   // Clear game state when user logs out
   useEffect(() => {
     if (!user) {
@@ -42,28 +58,39 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  // Subscribe to games list
+  // Subscribe to games list with pagination
   useEffect(() => {
     if (!user || !activeProfile) return;
-    const unsub = subscribeToMyGames(user.uid, (updatedGames) => {
-      setGames(updatedGames);
-      // Catch up on stats for games that completed while user was away
-      for (const g of updatedGames) {
-        if ((g.status === "complete" || g.status === "forfeit") && g.winner && !processedStatsRef.current.has(g.id)) {
-          processedStatsRef.current.add(g.id);
-          const won = g.winner === user.uid;
-          updatePlayerStats(user.uid, g.id, won).catch((err) => {
-            logger.warn("stats_catchup_failed", {
-              gameId: g.id,
-              error: err instanceof Error ? err.message : String(err),
+    setGamesLoading(true);
+    const unsub = subscribeToMyGames(
+      user.uid,
+      (updatedGames) => {
+        setGames(updatedGames);
+        setGamesLoading(false);
+        // Catch up on stats for games that completed while user was away
+        for (const g of updatedGames) {
+          if ((g.status === "complete" || g.status === "forfeit") && g.winner && !processedStatsRef.current.has(g.id)) {
+            processedStatsRef.current.add(g.id);
+            const won = g.winner === user.uid;
+            updatePlayerStats(user.uid, g.id, won).catch((err) => {
+              logger.warn("stats_catchup_failed", {
+                gameId: g.id,
+                error: err instanceof Error ? err.message : String(err),
+              });
+              processedStatsRef.current.delete(g.id);
             });
-            processedStatsRef.current.delete(g.id);
-          });
+          }
         }
-      }
-    });
+      },
+      gamesLimit,
+    );
     return unsub;
-  }, [user, activeProfile]);
+  }, [user, activeProfile, gamesLimit]);
+
+  // Track whether there are more games to load
+  useEffect(() => {
+    setHasMoreGames(games.length >= gamesLimit);
+  }, [games.length, gamesLimit]);
 
   // Real-time single game subscription
   const screenRef = useRef(screen);
@@ -131,6 +158,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setActiveGame,
     openGame,
     startChallenge,
+    hasMoreGames,
+    loadMoreGames,
+    gamesLoading,
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

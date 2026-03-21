@@ -30,7 +30,7 @@ vi.mock("../../firebase");
 
 /* ── tests ───────────────────────────────────── */
 
-import { requestPushPermission, removeFcmToken, onForegroundMessage } from "../fcm";
+import { requestPushPermission, removeFcmToken, onForegroundMessage, _resetSwRegistration } from "../fcm";
 
 // jsdom doesn't provide Notification — stub it globally for these tests
 const mockRequestPermission = vi.fn<[], Promise<NotificationPermission>>();
@@ -38,6 +38,7 @@ const originalNotification = globalThis.Notification;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  _resetSwRegistration();
   vi.stubEnv("VITE_FIREBASE_VAPID_KEY", "test-vapid-key");
 
   // Provide a minimal Notification stub
@@ -47,8 +48,12 @@ beforeEach(() => {
   } as unknown as typeof Notification;
 
   // Ensure serviceWorker is present on navigator (jsdom may omit it)
+  const mockRegistration = {} as ServiceWorkerRegistration;
+  const swStub = { register: vi.fn().mockResolvedValue(mockRegistration) };
   if (!("serviceWorker" in navigator)) {
-    Object.defineProperty(navigator, "serviceWorker", { value: {}, configurable: true });
+    Object.defineProperty(navigator, "serviceWorker", { value: swStub, configurable: true });
+  } else {
+    Object.defineProperty(navigator, "serviceWorker", { value: swStub, configurable: true });
   }
 });
 
@@ -86,7 +91,10 @@ describe("requestPushPermission", () => {
     const result = await requestPushPermission("u1");
 
     expect(result).toBe("fcm-token-123");
-    expect(mockGetToken).toHaveBeenCalledWith("messaging-instance", { vapidKey: "test-vapid-key" });
+    expect(mockGetToken).toHaveBeenCalledWith("messaging-instance", {
+      vapidKey: "test-vapid-key",
+      serviceWorkerRegistration: expect.any(Object),
+    });
     expect(mockUpdateDoc).toHaveBeenCalledWith("users/u1", {
       fcmTokens: { _op: "arrayUnion", value: "fcm-token-123" },
     });
@@ -109,6 +117,16 @@ describe("requestPushPermission", () => {
     expect(result).toBeNull();
     spy.mockRestore();
   });
+
+  it("returns null on non-Error throw", async () => {
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockRejectedValue("string error");
+
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await requestPushPermission("u1");
+    expect(result).toBeNull();
+    spy.mockRestore();
+  });
 });
 
 describe("removeFcmToken", () => {
@@ -122,6 +140,16 @@ describe("removeFcmToken", () => {
   it("does not throw on error", async () => {
     mockUpdateDoc.mockRejectedValueOnce(new Error("fail"));
     await expect(removeFcmToken("u1", "tok")).resolves.toBeUndefined();
+  });
+});
+
+describe("getSwRegistration caching", () => {
+  it("returns the same promise on subsequent calls", async () => {
+    const { getSwRegistration } = await import("../fcm");
+    const first = getSwRegistration();
+    const second = getSwRegistration();
+    expect(first).toBe(second);
+    await first;
   });
 });
 

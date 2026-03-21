@@ -113,7 +113,8 @@ describe("games service", () => {
       mockAddDoc.mockResolvedValueOnce({ id: "game123" });
       const id = await createGame("p1", "alice", "p2", "bob");
       expect(id).toBe("game123");
-      expect(mockAddDoc).toHaveBeenCalledTimes(1);
+      // First addDoc creates the game; second (fire-and-forget) writes a notification
+      expect(mockAddDoc).toHaveBeenCalledTimes(2);
 
       const docData = mockAddDoc.mock.calls[0][1];
       expect(docData.player1Uid).toBe("p1");
@@ -394,6 +395,17 @@ describe("games service", () => {
       expect(result.winner).toBe("p2");
     });
 
+    it("sends game_lost notification when setter loses", async () => {
+      // Edge case: p1 is setter but already had 5 letters (data inconsistency).
+      // The winner becomes p2 (matcher's side), so the setter gets a "game_lost" notification.
+      const game = { ...matchingGame, p1Letters: 5, currentSetter: "p1", currentTurn: "p2" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await submitMatchAttempt("g1", null, true);
+      expect(result.gameOver).toBe(true);
+      expect(result.winner).toBe("p2");
+    });
+
     it("increments turn number when game continues", async () => {
       const game = { ...matchingGame, turnNumber: 3 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
@@ -587,6 +599,14 @@ describe("games service", () => {
       expect(mockWhere).toHaveBeenCalledWith("player2Uid", "==", "u1");
     });
 
+    it("accepts a custom limit count", () => {
+      mockOnSnapshot.mockReturnValue(vi.fn());
+
+      subscribeToMyGames("u1", vi.fn(), 10);
+
+      expect(mockLimit).toHaveBeenCalledWith(10);
+    });
+
     it("unsubscribes both listeners on cleanup", () => {
       const unsub1 = vi.fn();
       const unsub2 = vi.fn();
@@ -690,9 +710,13 @@ describe("games service", () => {
         return vi.fn();
       });
 
-      // Should not throw — error is swallowed with a console.warn
+      // Should not throw — error is swallowed with a logger.warn
       expect(() => subscribeToMyGames("u1", vi.fn())).not.toThrow();
-      expect(warnSpy).toHaveBeenCalledWith("Game subscription error for uid:", "u1", "network error");
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[WARN]",
+        "game_subscription_error",
+        expect.objectContaining({ uid: "u1", error: "network error" }),
+      );
       warnSpy.mockRestore();
     });
   });

@@ -3,6 +3,7 @@ import { Btn } from "./ui/Btn";
 import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon } from "./icons";
 import { FisheyeRenderer } from "./FisheyeRenderer";
 import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
+import { logger } from "../services/logger";
 
 const MAX_RECORDING_SECONDS = 60;
 
@@ -70,7 +71,7 @@ export function VideoRecorder({
           ? "Camera access denied. Check your browser permissions and try again."
           : `Camera unavailable: ${msg}`,
       );
-      console.warn("Camera access failed:", msg);
+      logger.warn("camera_access_failed", { error: msg });
     }
   }, []);
 
@@ -99,7 +100,7 @@ export function VideoRecorder({
         recordStream = canvasStream;
       } catch {
         // captureStream not supported — fall back to raw stream
-        console.warn("captureStream not supported, recording without fisheye");
+        logger.warn("capture_stream_unsupported", { hint: "recording without fisheye" });
       }
     }
     /* v8 ignore stop */
@@ -186,7 +187,7 @@ export function VideoRecorder({
         return;
       }
       setCameraError(`Native camera error: ${msg}`);
-      console.warn("Native camera failed:", msg);
+      logger.warn("native_camera_failed", { error: msg });
     }
   }, [onRecorded]);
 
@@ -247,8 +248,8 @@ export function VideoRecorder({
 
         {state === "idle" && !cameraError && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-            <FilmIcon size={48} className="opacity-30 text-[#555]" />
-            <span className="font-body text-sm text-[#555]">Tap to open camera</span>
+            <FilmIcon size={48} className="opacity-30 text-subtle" />
+            <span className="font-body text-sm text-subtle">Tap to open camera</span>
           </div>
         )}
 

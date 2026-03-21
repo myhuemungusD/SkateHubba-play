@@ -132,8 +132,7 @@ export function MyRecordScreen({
     <div
       className="min-h-dvh pb-24 overflow-y-auto"
       style={{
-        background:
-          "radial-gradient(ellipse at 50% 0%, rgba(255,107,0,0.06) 0%, transparent 50%), rgba(10,10,10,0.8)",
+        background: "radial-gradient(ellipse at 50% 0%, rgba(255,107,0,0.06) 0%, transparent 50%), rgba(10,10,10,0.8)",
       }}
     >
       {/* Header */}
@@ -141,7 +140,7 @@ export function MyRecordScreen({
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 text-[#888] hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded-lg"
+          className="flex items-center gap-2 text-muted hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded-lg"
           aria-label="Back to lobby"
         >
           <svg
@@ -174,7 +173,7 @@ export function MyRecordScreen({
           </div>
           <div>
             <h1 className="font-display text-3xl text-white leading-none tracking-wide">@{profile.username}</h1>
-            <p className="font-body text-xs text-[#888] mt-1.5 capitalize">{profile.stance}</p>
+            <p className="font-body text-xs text-muted mt-1.5 capitalize">{profile.stance}</p>
           </div>
         </div>
 
@@ -185,7 +184,7 @@ export function MyRecordScreen({
           <StatCard
             label="Win Rate"
             value={`${stats.winRate}%`}
-            color={stats.winRate >= 50 ? "text-brand-orange" : "text-[#888]"}
+            color={stats.winRate >= 50 ? "text-brand-orange" : "text-muted"}
           />
         </div>
 
@@ -195,7 +194,7 @@ export function MyRecordScreen({
           <StatCard
             label="Land Rate"
             value={`${stats.landRate}%`}
-            color={stats.landRate >= 50 ? "text-brand-green" : "text-[#888]"}
+            color={stats.landRate >= 50 ? "text-brand-green" : "text-muted"}
           />
         </div>
 
@@ -237,20 +236,25 @@ export function MyRecordScreen({
                       <div className="flex items-center gap-2 mt-1">
                         <span className="font-body text-[11px] text-brand-green">{opp.wins}W</span>
                         <span className="font-body text-[11px] text-brand-red">{opp.losses}L</span>
-                        <span className="font-body text-[11px] text-[#555]">
+                        <span className="font-body text-[11px] text-subtle">
                           {opp.totalGames} {opp.totalGames === 1 ? "game" : "games"}
                         </span>
                       </div>
                     </div>
                   </div>
                   {/* H2H indicator */}
-                  <div className="shrink-0 ml-3" aria-label={opp.wins > opp.losses ? "You lead" : opp.wins < opp.losses ? "They lead" : "Even record"}>
+                  <div
+                    className="shrink-0 ml-3"
+                    aria-label={
+                      opp.wins > opp.losses ? "You lead" : opp.wins < opp.losses ? "They lead" : "Even record"
+                    }
+                  >
                     {opp.wins > opp.losses ? (
                       <TrophyIcon size={16} className="text-brand-green" />
                     ) : opp.wins < opp.losses ? (
                       <SkullIcon size={16} className="text-brand-red" />
                     ) : (
-                      <span className="font-display text-[10px] tracking-wider text-[#555]">EVEN</span>
+                      <span className="font-display text-[10px] tracking-wider text-subtle">EVEN</span>
                     )}
                   </div>
                 </div>
@@ -265,9 +269,9 @@ export function MyRecordScreen({
 
           {completedGames.length === 0 ? (
             <div className="flex flex-col items-center py-14 border border-dashed border-border rounded-2xl">
-              <SkateboardIcon size={28} className="mb-3 opacity-30 text-[#555]" />
-              <p className="font-body text-sm text-[#666]">No games played yet</p>
-              <p className="font-body text-[11px] text-[#555] mt-1">
+              <SkateboardIcon size={28} className="mb-3 opacity-30 text-subtle" />
+              <p className="font-body text-sm text-faint">No games played yet</p>
+              <p className="font-body text-[11px] text-subtle mt-1">
                 Challenge someone and finish a game to build your record
               </p>
             </div>
@@ -308,14 +312,17 @@ function StatCard({ label, value, color }: { label: string; value: string | numb
   return (
     <div className="flex flex-col items-center py-3.5 px-2 rounded-xl border border-border bg-surface">
       <span className={`font-display text-2xl leading-none tabular-nums ${color}`}>{value}</span>
-      <span className="font-body text-[10px] text-[#555] mt-2 uppercase tracking-wider">{label}</span>
+      <span className="font-body text-[10px] text-subtle mt-2 uppercase tracking-wider">{label}</span>
     </div>
   );
 }
 
 function LetterScore({ count, label }: { count: number; label: string }) {
   return (
-    <div className="flex items-center gap-1" aria-label={`${label}: ${LETTERS.slice(0, count).join(".")}${count > 0 ? "." : "none"}`}>
+    <div
+      className="flex items-center gap-1"
+      aria-label={`${label}: ${LETTERS.slice(0, count).join(".")}${count > 0 ? "." : "none"}`}
+    >
       {LETTERS.map((l, i) => (
         <span
           key={i}
@@ -364,16 +371,12 @@ function GameHistoryCard({
             </span>
             <span
               className={`px-2 py-0.5 rounded font-display text-[10px] tracking-wider leading-none shrink-0 ${
-                won
-                  ? "bg-[rgba(0,230,118,0.15)] text-brand-green"
-                  : "bg-[rgba(255,61,0,0.15)] text-brand-red"
+                won ? "bg-[rgba(0,230,118,0.15)] text-brand-green" : "bg-[rgba(255,61,0,0.15)] text-brand-red"
               }`}
             >
               {won ? "WIN" : "LOSS"}
             </span>
-            {game.status === "forfeit" && (
-              <span className="font-body text-[10px] text-[#555] shrink-0">forfeit</span>
-            )}
+            {game.status === "forfeit" && <span className="font-body text-[10px] text-subtle shrink-0">forfeit</span>}
           </div>
           {/* Score + date */}
           <div className="flex items-center gap-3">
@@ -382,14 +385,16 @@ function GameHistoryCard({
             <LetterScore count={theirLetterCount(game, profileUid)} label="Them" />
             {game.updatedAt && (
               <>
-                <span className="text-[#2E2E2E]" aria-hidden="true">·</span>
-                <span className="font-body text-[10px] text-[#555]">{formatDate(game.updatedAt)}</span>
+                <span className="text-[#2E2E2E]" aria-hidden="true">
+                  ·
+                </span>
+                <span className="font-body text-[10px] text-subtle">{formatDate(game.updatedAt)}</span>
               </>
             )}
           </div>
         </div>
         <svg
-          className={`text-[#555] shrink-0 ml-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
+          className={`text-subtle shrink-0 ml-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
           width="14"
           height="14"
           viewBox="0 0 24 24"
@@ -421,7 +426,7 @@ function GameHistoryCard({
             </>
           ) : (
             <div className="flex flex-col items-center py-6">
-              <p className="font-body text-xs text-[#555]">
+              <p className="font-body text-xs text-subtle">
                 {game.status === "forfeit" ? "Game ended by forfeit — no clips recorded" : "No clips available"}
               </p>
             </div>

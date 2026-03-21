@@ -15,8 +15,9 @@ import {
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
-import { metrics } from "./logger";
+import { logger, metrics } from "./logger";
 import { captureException } from "../lib/sentry";
+import { writeNotification } from "./notifications";
 
 /* ────────────────────────────────────────────
  * Types
@@ -167,6 +168,14 @@ export async function createGame(
   setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true }).catch(
     () => {},
   );
+  // Notify opponent about the new challenge (best-effort)
+  writeNotification({
+    recipientUid: opponentUid,
+    type: "new_challenge",
+    title: "New Challenge!",
+    body: `@${challengerUsername} challenged you to S.K.A.T.E.`,
+    gameId: docRef.id,
+  });
   return docRef.id;
 }
 
@@ -184,7 +193,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
 
   // Firestore transactions have built-in retry for transient conflicts;
   // withRetry is not needed here and would incorrectly retry app-logic errors.
-  await runTransaction(requireDb(), async (tx) => {
+  const txResult = await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -193,6 +202,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
     if (game.phase !== "setting") throw new Error("Not in setting phase");
 
     const matcherUid = getOpponent(game, game.currentSetter);
+    const setterUsername = game.currentSetter === game.player1Uid ? game.player1Username : game.player2Username;
 
     tx.update(gameRef, {
       phase: "matching",
@@ -203,8 +213,18 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
       updatedAt: serverTimestamp(),
     });
+
+    return { matcherUid, setterUsername };
   });
   recordTurnAction(gameId);
+  // Notify matcher it's their turn (best-effort)
+  writeNotification({
+    recipientUid: txResult.matcherUid,
+    type: "your_turn",
+    title: "Your Turn!",
+    body: `Match @${txResult.setterUsername}'s ${safeTrickName}`,
+    gameId,
+  });
 }
 
 /* ────────────────────────────────────────────
@@ -215,7 +235,7 @@ export async function failSetTrick(gameId: string): Promise<void> {
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
 
-  await runTransaction(requireDb(), async (tx) => {
+  const txResult = await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -224,6 +244,7 @@ export async function failSetTrick(gameId: string): Promise<void> {
     if (game.phase !== "setting") throw new Error("Not in setting phase");
 
     const nextSetter = getOpponent(game, game.currentSetter);
+    const prevSetterUsername = game.currentSetter === game.player1Uid ? game.player1Username : game.player2Username;
 
     tx.update(gameRef, {
       phase: "setting",
@@ -236,8 +257,18 @@ export async function failSetTrick(gameId: string): Promise<void> {
       turnNumber: game.turnNumber + 1,
       updatedAt: serverTimestamp(),
     });
+
+    return { nextSetterUid: nextSetter, prevSetterUsername };
   });
   recordTurnAction(gameId);
+  // Notify next setter it's their turn (best-effort)
+  writeNotification({
+    recipientUid: txResult.nextSetterUid,
+    type: "your_turn",
+    title: "Your Turn to Set!",
+    body: `@${txResult.prevSetterUsername} couldn't land their trick. Set a trick!`,
+    gameId,
+  });
 }
 
 /* ────────────────────────────────────────────
@@ -311,10 +342,41 @@ export async function submitMatchAttempt(
     }
 
     tx.update(gameRef, updates);
-    return { gameOver, winner };
+    return {
+      gameOver,
+      winner,
+      setterUid: game.currentSetter,
+      matcherUid,
+      setterUsername,
+      matcherUsername: matcherUsernameVal,
+      nextSetter,
+    };
   });
   recordTurnAction(gameId);
-  return result;
+
+  // Send notifications based on outcome (best-effort)
+  if (result.gameOver) {
+    // Notify the setter that the game ended
+    const setterWon = result.winner === result.setterUid;
+    writeNotification({
+      recipientUid: result.setterUid,
+      type: setterWon ? "game_won" : "game_lost",
+      title: setterWon ? "You Won!" : "Game Over",
+      body: `vs @${result.matcherUsername}`,
+      gameId,
+    });
+  } else {
+    // Notify next setter it's their turn
+    writeNotification({
+      recipientUid: result.nextSetter,
+      type: "your_turn",
+      title: "Your Turn to Set!",
+      body: `Set a trick for @${result.nextSetter === result.setterUid ? result.matcherUsername : result.setterUsername}`,
+      gameId,
+    });
+  }
+
+  return { gameOver: result.gameOver, winner: result.winner };
 }
 
 /* ────────────────────────────────────────────
@@ -356,9 +418,14 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
 
 /**
  * Subscribe to all games where the user is a player.
+ * @param limitCount — max number of games per query (defaults to 20).
  * Returns unsubscribe function.
  */
-export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => void): Unsubscribe {
+export function subscribeToMyGames(
+  uid: string,
+  onUpdate: (games: GameDoc[]) => void,
+  limitCount: number = 20,
+): Unsubscribe {
   // Firestore doesn't support OR queries across different fields natively,
   // so we run two queries and merge.
   let p1Games: GameDoc[] = [];
@@ -377,11 +444,11 @@ export function subscribeToMyGames(uid: string, onUpdate: (games: GameDoc[]) => 
     onUpdate(sorted);
   };
 
-  const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(50));
-  const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(50));
+  const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(limitCount));
+  const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(limitCount));
 
   const handleError = (err: Error) => {
-    console.warn("Game subscription error for uid:", uid, err.message);
+    logger.warn("game_subscription_error", { uid, error: err.message });
     captureException(err, { extra: { context: "subscribeToMyGames", uid } });
   };
 
@@ -423,7 +490,7 @@ export function subscribeToGame(gameId: string, onUpdate: (game: GameDoc | null)
       onUpdate(toGameDoc(snap));
     },
     (err) => {
-      console.warn("Game subscription error for game:", gameId, err.message);
+      logger.warn("game_subscription_error", { gameId, error: err.message });
       captureException(err, { extra: { context: "subscribeToGame", gameId } });
       onUpdate(null);
     },

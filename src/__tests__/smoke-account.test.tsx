@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { authedUser, verifiedUser, testProfile, activeGame, renderApp, createMockHelpers } from "./smoke-helpers";
 import App from "../App";
@@ -166,7 +167,11 @@ describe("Smoke: Account & Sign Out", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    render(<App />);
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
 
     await userEvent.click(screen.getByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));

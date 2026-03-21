@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { captureException } from "../lib/sentry";
+import { logger } from "../services/logger";
 
 interface Props {
   children: ReactNode;
@@ -19,7 +20,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: { componentStack?: string }) {
     captureException(error, { extra: { componentStack: info.componentStack } });
-    console.error("ErrorBoundary caught:", error.message, info.componentStack);
+    logger.error("error_boundary_caught", { error: error.message, componentStack: info.componentStack ?? "" });
   }
 
   render() {
@@ -29,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
           <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-4">SKATEHUBBA™</span>
           <h1 className="font-display text-3xl text-white mb-2">Something broke</h1>
-          <p className="font-body text-sm text-[#888] mb-6 text-center max-w-sm">{this.state.error.message}</p>
+          <p className="font-body text-sm text-muted mb-6 text-center max-w-sm">{this.state.error.message}</p>
           <button
             type="button"
             aria-label="Reload the application"

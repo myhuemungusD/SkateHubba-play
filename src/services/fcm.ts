@@ -1,6 +1,7 @@
 import { getMessaging, getToken, onMessage, type MessagePayload } from "firebase/messaging";
 import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
+import { logger } from "./logger";
 
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
 
@@ -12,6 +13,37 @@ function getMessagingInstance() {
     messagingInstance = getMessaging(app);
   }
   return messagingInstance;
+}
+
+/**
+ * Register the Firebase messaging service worker with Firebase config passed
+ * via URL search params. This ensures the SW has real config values in dev
+ * mode (where the Vite build plugin doesn't run). In production the SW file
+ * already has config baked in by the plugin, so the params act as a no-op
+ * fallback.
+ */
+let swRegistrationPromise: Promise<ServiceWorkerRegistration> | null = null;
+
+export function getSwRegistration(): Promise<ServiceWorkerRegistration> {
+  if (swRegistrationPromise) return swRegistrationPromise;
+
+  const params = new URLSearchParams({
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "",
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? "",
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID ?? "",
+    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ?? "",
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
+    appId: import.meta.env.VITE_FIREBASE_APP_ID ?? "",
+  });
+
+  swRegistrationPromise = navigator.serviceWorker.register(`/firebase-messaging-sw.js?${params.toString()}`);
+
+  return swRegistrationPromise;
+}
+
+/** @internal Reset cached SW registration (for tests only) */
+export function _resetSwRegistration(): void {
+  swRegistrationPromise = null;
 }
 
 /**
@@ -28,11 +60,12 @@ export async function requestPushPermission(uid: string): Promise<string | null>
     const messaging = getMessagingInstance();
     const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
     if (!vapidKey) {
-      console.warn("VITE_FIREBASE_VAPID_KEY not set — push notifications disabled");
+      logger.warn("vapid_key_missing", { hint: "set VITE_FIREBASE_VAPID_KEY to enable push notifications" });
       return null;
     }
 
-    const token = await getToken(messaging, { vapidKey: String(vapidKey) });
+    const serviceWorkerRegistration = await getSwRegistration();
+    const token = await getToken(messaging, { vapidKey: String(vapidKey), serviceWorkerRegistration });
     if (!token) return null;
 
     // Store token on the user's profile
@@ -42,7 +75,7 @@ export async function requestPushPermission(uid: string): Promise<string | null>
 
     return token;
   } catch (err) {
-    console.warn("Failed to get FCM token:", err);
+    logger.warn("fcm_token_failed", { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }

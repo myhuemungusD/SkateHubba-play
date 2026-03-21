@@ -10,6 +10,7 @@ import {
 import { getStorage, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { captureMessage } from "./lib/sentry";
+import { logger } from "./services/logger";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -72,7 +73,7 @@ if (firebaseReady) {
     });
   } else if (!import.meta.env.DEV) {
     // Warn in production so the ops team is alerted App Check is inactive.
-    console.warn("⚠️ App Check is disabled: set VITE_RECAPTCHA_SITE_KEY to protect against API abuse.");
+    logger.warn("appcheck_disabled", { hint: "set VITE_RECAPTCHA_SITE_KEY to protect against API abuse" });
     captureMessage("App Check disabled in production — set VITE_RECAPTCHA_SITE_KEY", "error");
   }
   /* v8 ignore stop */
@@ -95,7 +96,7 @@ if (firebaseReady) {
   const message = isVercel
     ? "Firebase config missing. Add VITE_FIREBASE_* environment variables in Vercel Dashboard → Project Settings → Environment Variables (scope: Preview and/or Production)."
     : "Firebase config missing. Copy .env.example to .env.local and fill in your Firebase project values.";
-  console.error(`⚠️ ${message}`);
+  logger.error("firebase_config_missing", { message });
   /* v8 ignore stop */
 }
 

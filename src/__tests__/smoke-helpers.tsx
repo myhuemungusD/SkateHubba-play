@@ -6,6 +6,7 @@
  */
 import { vi } from "vitest";
 import { render, screen, waitFor, type RenderResult } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
 
@@ -43,7 +44,11 @@ export function activeGame(overrides: Record<string, unknown> = {}) {
 /* ── Pure UI helpers (no mock dependencies) ────── */
 
 export function renderApp(): RenderResult {
-  return render(<App />);
+  return render(
+    <MemoryRouter>
+      <App />
+    </MemoryRouter>,
+  );
 }
 
 /** Fill the age gate with a valid adult DOB and advance to auth. */
@@ -109,7 +114,11 @@ export function createMockHelpers(mocks: {
       refreshProfile: vi.fn(),
     });
     withGames(games);
-    return render(<App />);
+    return render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
   }
 
   return { withGames, withGameSub, renderLobby, renderVerifiedLobby };

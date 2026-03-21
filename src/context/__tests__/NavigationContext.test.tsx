@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { Component, type ReactNode } from "react";
 import { useNavigationContext, NavigationProvider } from "../NavigationContext";
 import { AuthProvider } from "../AuthContext";
@@ -63,11 +64,13 @@ describe("useNavigationContext", () => {
     }
 
     const { getByTestId } = render(
-      <AuthProvider>
-        <NavigationProvider>
-          <TestComponent />
-        </NavigationProvider>
-      </AuthProvider>,
+      <MemoryRouter initialEntries={["/"]}>
+        <AuthProvider>
+          <NavigationProvider>
+            <TestComponent />
+          </NavigationProvider>
+        </AuthProvider>
+      </MemoryRouter>,
     );
 
     expect(getByTestId("screen").textContent).toBe("landing");

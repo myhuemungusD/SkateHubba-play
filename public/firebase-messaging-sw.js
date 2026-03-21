@@ -7,14 +7,23 @@
 importScripts("https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js");
 
-// Firebase config is read from the query string set by the FCM SDK when it
-// registers this service worker. If unavailable, the SW still registers
-// successfully but won't show background notifications.
+// Firebase config is injected at build time by the Vite plugin (see vite.config.ts).
+// During development the SW reads config from the query string appended by the
+// registration call in src/services/fcm.ts.
+//
+// At build time the plugin copies this file into dist/ with real env-var values
+// replacing the __PLACEHOLDER__* tokens below.  If a token is not replaced (e.g.
+// local dev without the plugin), the SW falls back to parsing the URL search params
+// set by the FCM SDK / manual registration.
+var swUrl = new URL(self.location.href);
+
 firebase.initializeApp({
-  apiKey: "PLACEHOLDER",
-  projectId: "PLACEHOLDER",
-  messagingSenderId: "PLACEHOLDER",
-  appId: "PLACEHOLDER",
+  apiKey: swUrl.searchParams.get("apiKey") || "__PLACEHOLDER_API_KEY__",
+  authDomain: swUrl.searchParams.get("authDomain") || "__PLACEHOLDER_AUTH_DOMAIN__",
+  projectId: swUrl.searchParams.get("projectId") || "__PLACEHOLDER_PROJECT_ID__",
+  storageBucket: swUrl.searchParams.get("storageBucket") || "__PLACEHOLDER_STORAGE_BUCKET__",
+  messagingSenderId: swUrl.searchParams.get("messagingSenderId") || "__PLACEHOLDER_MESSAGING_SENDER_ID__",
+  appId: swUrl.searchParams.get("appId") || "__PLACEHOLDER_APP_ID__",
 });
 
 var messaging = firebase.messaging();
