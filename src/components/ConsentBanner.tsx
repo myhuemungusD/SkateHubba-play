@@ -25,7 +25,7 @@ export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") 
       aria-label="Cookie and analytics notice"
       className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-safe-bottom"
     >
-      <div className="max-w-lg mx-auto mb-4 rounded-2xl border border-[#333] bg-[#111] px-4 py-3 shadow-2xl animate-fade-in">
+      <div className="max-w-lg mx-auto mb-4 rounded-2xl glass-card px-4 py-3 shadow-glass animate-scale-in">
         <div className="flex items-center gap-3">
           <p className="font-body text-xs text-[#aaa] leading-snug flex-1">
             Cookie-free analytics.{" "}
@@ -41,7 +41,7 @@ export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") 
             <button
               type="button"
               onClick={accept}
-              className="px-4 py-1.5 rounded-lg bg-brand-orange font-display text-xs text-white tracking-wider hover:opacity-90 transition-opacity"
+              className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-brand-orange to-[#FF8533] font-display text-xs text-white tracking-wider hover:shadow-glow-sm transition-all duration-300"
             >
               OK
             </button>

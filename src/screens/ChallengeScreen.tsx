@@ -72,7 +72,7 @@ export function ChallengeScreen({
           ← Back
         </button>
 
-        <h1 className="font-display text-[42px] text-white mb-2">Challenge</h1>
+        <h1 className="font-display text-fluid-4xl text-white mb-2">Challenge</h1>
         <p className="font-body text-sm text-[#888] mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 
         <form
@@ -96,7 +96,7 @@ export function ChallengeScreen({
 
           <InviteButton username={profile.username} className="mb-6" />
 
-          <div className="p-4 rounded-xl bg-surface-alt border border-border mb-6">
+          <div className="p-4 rounded-xl glass-card mb-6">
             <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
             <div className="font-body text-sm text-[#888] space-y-2">
               {RULES.map(({ Icon, text, color }) => (

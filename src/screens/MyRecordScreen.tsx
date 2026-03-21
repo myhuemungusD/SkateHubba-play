@@ -5,7 +5,14 @@ import { LETTERS } from "../utils/helpers";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
 import { GameReplay } from "../components/GameReplay";
 import { Btn } from "../components/ui/Btn";
-import { TrophyIcon, SkullIcon, FlameIcon, SkateboardIcon, ChevronLeftIcon, ChevronRightIcon } from "../components/icons";
+import {
+  TrophyIcon,
+  SkullIcon,
+  FlameIcon,
+  SkateboardIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+} from "../components/icons";
 
 /* ── Types ────────────────────────────────────────────── */
 
@@ -136,7 +143,7 @@ export function MyRecordScreen({
       }}
     >
       {/* Header */}
-      <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-border">
+      <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-white/[0.04] glass">
         <button
           type="button"
           onClick={onBack}
@@ -154,7 +161,7 @@ export function MyRecordScreen({
       <div className="px-5 pt-7 max-w-lg mx-auto">
         {/* Player identity */}
         <div className="flex items-center gap-4 mb-8 animate-fade-in">
-          <div className="w-14 h-14 rounded-full bg-surface-alt border-2 border-brand-orange/30 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(255,107,0,0.1)]">
+          <div className="w-14 h-14 rounded-full bg-brand-orange/[0.12] border-2 border-brand-orange/30 flex items-center justify-center shrink-0 shadow-glow-sm">
             <span className="font-display text-xl text-brand-orange leading-none">
               {profile.username[0].toUpperCase()}
             </span>
@@ -189,7 +196,7 @@ export function MyRecordScreen({
         {/* Current streak callout */}
         {stats.currentStreak >= 2 && (
           <div
-            className="flex items-center justify-center gap-2.5 mb-8 px-4 py-3.5 rounded-xl border border-brand-orange/30 bg-brand-orange/5 animate-fade-in"
+            className="flex items-center justify-center gap-2.5 mb-8 px-4 py-3.5 rounded-xl border border-brand-orange/30 bg-brand-orange/[0.06] shadow-glow-sm animate-scale-in"
             role="status"
             aria-label={`${stats.currentStreak} game win streak`}
           >
@@ -209,7 +216,7 @@ export function MyRecordScreen({
               {opponents.map((opp) => (
                 <div
                   key={opp.uid}
-                  className="flex items-center justify-between p-4 rounded-2xl bg-surface border border-border transition-colors"
+                  className="flex items-center justify-between p-4 rounded-2xl glass-card transition-all duration-300"
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
@@ -298,7 +305,7 @@ function SectionHeader({ title, count }: { title: string; count: number }) {
 
 function StatCard({ label, value, color }: { label: string; value: string | number; color: string }) {
   return (
-    <div className="flex flex-col items-center py-3.5 px-2 rounded-xl border border-border bg-surface">
+    <div className="flex flex-col items-center py-3.5 px-2 rounded-xl glass-card">
       <span className={`font-display text-2xl leading-none tabular-nums ${color}`}>{value}</span>
       <span className="font-body text-[10px] text-subtle mt-2 uppercase tracking-wider">{label}</span>
     </div>
@@ -341,8 +348,8 @@ function GameHistoryCard({
 
   return (
     <div
-      className={`rounded-2xl bg-surface border overflow-hidden transition-colors duration-200 ${
-        expanded ? "border-[rgba(255,107,0,0.25)]" : "border-border"
+      className={`rounded-2xl overflow-hidden transition-all duration-300 ${
+        expanded ? "glass-card border-brand-orange/25 shadow-glow-sm" : "glass-card"
       }`}
     >
       {/* Game summary row */}
@@ -381,7 +388,10 @@ function GameHistoryCard({
             )}
           </div>
         </div>
-        <ChevronRightIcon size={14} className={`text-subtle shrink-0 ml-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`} />
+        <ChevronRightIcon
+          size={14}
+          className={`text-subtle shrink-0 ml-3 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
+        />
       </button>
 
       {/* Expanded recap */}

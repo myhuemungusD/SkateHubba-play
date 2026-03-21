@@ -379,7 +379,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: true, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    expect(screen.getByText("SKATEHUBBA™")).toBeInTheDocument();
+    expect(screen.getByText(/SKATEHUBBA/)).toBeInTheDocument();
     // Spinner renders an accessible loading status
     expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
   });

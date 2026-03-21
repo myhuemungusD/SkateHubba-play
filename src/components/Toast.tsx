@@ -50,7 +50,7 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
     <div
       role="status"
       aria-live="polite"
-      className={`relative flex items-start gap-3 p-3 pr-8 rounded-xl border border-border bg-surface/95 backdrop-blur-sm shadow-lg overflow-hidden touch-pan-y select-none ${exiting ? "animate-toast-out" : "animate-toast-in"}`}
+      className={`relative flex items-start gap-3 p-3 pr-8 rounded-xl glass-card shadow-glass overflow-hidden touch-pan-y select-none ${exiting ? "animate-toast-out" : "animate-toast-in"}`}
       style={{
         transform: dragX > 0 ? `translateX(${dragX}px)` : undefined,
         opacity: dragX > 0 ? 1 - dragX / 200 : undefined,

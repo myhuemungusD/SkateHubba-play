@@ -6,6 +6,6 @@ describe("Btn", () => {
   it("uses primary variant when variant is null", () => {
     render(<Btn variant={null as any}>Click</Btn>);
     const btn = screen.getByRole("button", { name: "Click" });
-    expect(btn).toHaveClass("bg-brand-orange");
+    expect(btn).toHaveClass("from-brand-orange");
   });
 });

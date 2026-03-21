@@ -56,8 +56,8 @@ export function Field({
           autoCorrect="off"
           spellCheck={false}
           aria-describedby={noteId}
-          className={`w-full bg-surface-alt border border-border rounded-xl text-white text-base font-body outline-none
-            focus:border-brand-orange transition-colors duration-200
+          className={`w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-xl text-white text-base font-body outline-none
+            focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1)] transition-all duration-300
             disabled:opacity-40 disabled:cursor-not-allowed
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />

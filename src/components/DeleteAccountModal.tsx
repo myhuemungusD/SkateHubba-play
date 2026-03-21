@@ -14,7 +14,7 @@ export function DeleteAccountModal({
 
   return (
     <div
-      className="fixed inset-0 bg-black/80 flex items-center justify-center p-6 z-50"
+      className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6 z-50"
       role="dialog"
       aria-modal="true"
       aria-labelledby="delete-modal-title"
@@ -25,10 +25,7 @@ export function DeleteAccountModal({
         if (e.key === "Escape" && !deleting) onClose();
       }}
     >
-      <div
-        className="bg-surface border border-border rounded-2xl p-6 max-w-sm w-full animate-fade-in"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="glass-card rounded-2xl p-6 max-w-sm w-full animate-scale-in" onClick={(e) => e.stopPropagation()}>
         <h3 id="delete-modal-title" className="font-display text-xl text-white mb-2">
           Delete Account?
         </h3>
