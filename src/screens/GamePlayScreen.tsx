@@ -26,6 +26,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [setterAction, setSetterAction] = useState<"landed" | "missed" | null>(null);
+  const [matcherLanded, setMatcherLanded] = useState<boolean | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressData | null>(null);
   const [forfeitChecked, setForfeitChecked] = useState(false);
 
@@ -73,6 +74,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         await setTrick(game.id, trickNameRef.current.trim(), videoUrl);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to send trick");
+        captureException(err, { extra: { context: "submitSetterTrick", gameId: game.id } });
         setUploadProgress(null);
         submittedRef.current = false;
       } finally {
@@ -111,6 +113,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
       if (matchSubmittedRef.current) return;
       /* v8 ignore stop */
       matchSubmittedRef.current = true;
+      setMatcherLanded(landed);
       setSubmitting(true);
       setError("");
       try {
@@ -123,6 +126,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         await submitMatchAttempt(game.id, videoUrl, landed);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : "Failed to submit attempt");
+        captureException(err, { extra: { context: "submitMatchAttempt", gameId: game.id } });
         setUploadProgress(null);
         matchSubmittedRef.current = false;
       } finally {
@@ -285,9 +289,9 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <span className="font-display text-lg text-brand-green tracking-wider animate-pulse">Submitting...</span>
           </div>
         )}
-        {isMatcher && !submitting && error && videoRecorded && (
+        {isMatcher && !submitting && error && videoRecorded && matcherLanded !== null && (
           <div className="mt-5">
-            <Btn onClick={() => submitMatchWithCall(true)} variant="secondary">
+            <Btn onClick={() => submitMatchWithCall(matcherLanded)} variant="secondary">
               Retry
             </Btn>
           </div>
