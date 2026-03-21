@@ -127,7 +127,7 @@ export function Landing({
             width={1536}
             height={1024}
             draggable={false}
-            className="w-52 md:w-72 mb-8 drop-shadow-[0_0_40px_rgba(255,107,0,0.15)] select-none"
+            className="w-80 md:w-[28rem] lg:w-[32rem] mb-6 drop-shadow-[0_0_60px_rgba(255,107,0,0.25)] select-none"
           />
           <p className="font-body text-lg md:text-xl text-muted max-w-md leading-relaxed mb-4">
             The first async trick battle game.
