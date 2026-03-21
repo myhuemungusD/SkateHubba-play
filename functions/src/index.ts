@@ -153,6 +153,34 @@ export const onGameUpdated = onDocumentUpdated({ document: "games/{gameId}", dat
         );
       }),
     );
+
+    // Update win/loss stats for both players.
+    // Uses lastStatsGameId as idempotency key — safe if the client also
+    // calls updatePlayerStats or if this trigger fires more than once.
+    const db = getFirestore(DB_NAME);
+    await Promise.all(
+      players.map(async (player) => {
+        const won = winnerUid === player.uid;
+        const userRef = db.doc(`users/${player.uid}`);
+
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(userRef);
+          if (!snap.exists) return;
+
+          const data = snap.data()!;
+          if (data.lastStatsGameId === gameId) return;
+
+          const field = won ? "wins" : "losses";
+          const current = typeof data[field] === "number" ? (data[field] as number) : 0;
+
+          tx.update(userRef, {
+            [field]: current + 1,
+            lastStatsGameId: gameId,
+          });
+        });
+      }),
+    );
+
     return;
   }
 

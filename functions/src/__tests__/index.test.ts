@@ -10,9 +10,17 @@ const mockDoc = vi.fn(() => ({
   update: mockUpdate,
 }));
 const mockCollection = vi.fn(() => ({ add: mockAdd }));
+const mockTxGet = vi.fn();
+const mockTxUpdate = vi.fn();
+const mockRunTransaction = vi.fn(
+  async (callback: (tx: { get: typeof mockTxGet; update: typeof mockTxUpdate }) => Promise<void>) => {
+    return callback({ get: mockTxGet, update: mockTxUpdate });
+  },
+);
 const mockGetFirestore = vi.fn(() => ({
   doc: mockDoc,
   collection: mockCollection,
+  runTransaction: mockRunTransaction,
 }));
 
 const mockSendEachForMulticast = vi.fn();
@@ -158,12 +166,22 @@ describe("onGameCreated", () => {
 });
 
 describe("onGameUpdated", () => {
-  it("notifies both players when a game completes", async () => {
+  it("notifies both players and updates stats when a game completes", async () => {
     // Two calls to getFcmTokens (one per player)
     mockUserTokens(["token-p1"]);
     mockSendSuccess(1);
     mockUserTokens(["token-p2"]);
     mockSendSuccess(1);
+
+    // Transaction reads for stats update (one per player)
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 3, losses: 1, lastStatsGameId: "old-game" }),
+    });
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 0, losses: 2, lastStatsGameId: "old-game" }),
+    });
 
     await onGameUpdated({
       data: {
@@ -190,8 +208,115 @@ describe("onGameUpdated", () => {
       params: { gameId: "game-1" },
     });
 
-    // Called twice: once for each player
+    // Push notifications sent for both players
     expect(mockSendEachForMulticast).toHaveBeenCalledTimes(2);
+
+    // Stats updated via transactions
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(2);
+
+    // Winner gets +1 win
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ wins: 4, lastStatsGameId: "game-1" }),
+    );
+    // Loser gets +1 loss
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ losses: 3, lastStatsGameId: "game-1" }),
+    );
+  });
+
+  it("skips stats update when lastStatsGameId matches (idempotency)", async () => {
+    mockUserTokens(["token-p1"]);
+    mockSendSuccess(1);
+    mockUserTokens(["token-p2"]);
+    mockSendSuccess(1);
+
+    // Both users already have stats for this game
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 4, losses: 1, lastStatsGameId: "game-1" }),
+    });
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 0, losses: 3, lastStatsGameId: "game-1" }),
+    });
+
+    await onGameUpdated({
+      data: {
+        before: {
+          data: () => ({
+            status: "active",
+            currentTurn: "user-1",
+            phase: "matching",
+          }),
+        },
+        after: {
+          data: () => ({
+            status: "complete",
+            winner: "user-1",
+            player1Uid: "user-1",
+            player2Uid: "user-2",
+            player1Username: "alice",
+            player2Username: "bob",
+            currentTurn: "user-1",
+            phase: "matching",
+          }),
+        },
+      },
+      params: { gameId: "game-1" },
+    });
+
+    // Transactions ran but no updates due to idempotency
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+  });
+
+  it("skips stats for deleted user profiles", async () => {
+    mockUserTokens(["token-p1"]);
+    mockSendSuccess(1);
+    mockUserTokens(["token-p2"]);
+    mockSendSuccess(1);
+
+    // Player 1 profile deleted, player 2 exists
+    mockTxGet.mockResolvedValueOnce({ exists: false });
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ wins: 0, losses: 0, lastStatsGameId: "old-game" }),
+    });
+
+    await onGameUpdated({
+      data: {
+        before: {
+          data: () => ({
+            status: "active",
+            currentTurn: "user-1",
+            phase: "matching",
+          }),
+        },
+        after: {
+          data: () => ({
+            status: "forfeit",
+            winner: "user-2",
+            player1Uid: "user-1",
+            player2Uid: "user-2",
+            player1Username: "alice",
+            player2Username: "bob",
+            currentTurn: "user-1",
+            phase: "matching",
+          }),
+        },
+      },
+      params: { gameId: "game-1" },
+    });
+
+    // Only one update — the deleted profile is skipped
+    expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ wins: 1, lastStatsGameId: "game-1" }),
+    );
   });
 
   it("notifies the next player when the turn changes", async () => {
