@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { playChime, isSoundEnabled, setSoundEnabled, type ChimeType } from "../services/sounds";
+import { TOAST_DURATION } from "../constants/ui";
 
 /* ── Types ─────────────────────────────────── */
 
@@ -50,7 +51,6 @@ export function useNotifications(): NotificationContextValue {
 /* ── Persistence helpers ───────────────────── */
 
 const MAX_STORED = 50;
-const TOAST_DURATION = 4000;
 
 function storageKey(uid: string) {
   return `skate_notifs_${uid}`;
