@@ -52,7 +52,11 @@ describe("firebase module", () => {
     expect(mod.auth).toBeNull();
     expect(mod.storage).toBeNull();
     expect(mockInitializeApp).not.toHaveBeenCalled();
-    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining("Firebase config missing"));
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "[ERROR]",
+      "firebase_config_missing",
+      expect.objectContaining({ message: expect.stringContaining("Firebase config missing") }),
+    );
 
     consoleErrorSpy.mockRestore();
   });

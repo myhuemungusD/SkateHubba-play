@@ -25,7 +25,7 @@ function StepHeader({ step, title, subtitle }: { step: Step; title: string; subt
     <>
       <span className="font-display text-xs tracking-[0.3em] text-brand-orange block mb-2">STEP {step} OF 3</span>
       <h2 className="font-display text-3xl text-white mb-1">{title}</h2>
-      <p className="font-body text-sm text-[#888] mb-7">{subtitle}</p>
+      <p className="font-body text-sm text-muted mb-7">{subtitle}</p>
     </>
   );
 }
@@ -190,14 +190,14 @@ function StepStance({
               className={`flex-1 py-5 rounded-2xl font-display text-lg tracking-wider cursor-pointer transition-all duration-200 ${
                 selected
                   ? "bg-[rgba(255,107,0,0.1)] border-2 border-brand-orange text-brand-orange scale-[1.02] shadow-[0_0_20px_rgba(255,107,0,0.15)]"
-                  : "bg-surface-alt border-2 border-border text-[#666] hover:border-[#3A3A3A] hover:text-[#888]"
+                  : "bg-surface-alt border-2 border-border text-faint hover:border-[#3A3A3A] hover:text-muted"
               }`}
             >
               <div className="flex justify-center mb-2" aria-hidden="true">
-                <SkateboardIcon size={28} className={selected ? "text-brand-orange" : "text-[#666]"} />
+                <SkateboardIcon size={28} className={selected ? "text-brand-orange" : "text-faint"} />
               </div>
               <div>{value}</div>
-              <div className="font-body text-[10px] text-[#555] mt-1 tracking-normal">{foot}</div>
+              <div className="font-body text-[10px] text-subtle mt-1 tracking-normal">{foot}</div>
             </button>
           );
         })}
@@ -236,7 +236,7 @@ function StepReview({
           </div>
           <div>
             <div className="font-display text-xl text-white tracking-wide">@{username}</div>
-            <div className="font-body text-xs text-[#666]">Ready to skate</div>
+            <div className="font-body text-xs text-faint">Ready to skate</div>
           </div>
         </div>
 
@@ -246,7 +246,7 @@ function StepReview({
             { label: "Record", value: "0 – 0" },
           ].map(({ label, value }) => (
             <div key={label} className="flex-1 bg-[#0A0A0A] rounded-xl p-3 text-center">
-              <div className="font-body text-[10px] text-[#555] uppercase tracking-wider mb-1">{label}</div>
+              <div className="font-body text-[10px] text-subtle uppercase tracking-wider mb-1">{label}</div>
               <div className="font-display text-lg text-white">{value}</div>
             </div>
           ))}

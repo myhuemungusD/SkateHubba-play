@@ -32,13 +32,13 @@ export function Field({
   return (
     <div className="mb-4 w-full">
       {label && (
-        <label htmlFor={id} className="block font-display text-sm tracking-[0.12em] text-[#999] mb-1.5">
+        <label htmlFor={id} className="block font-display text-sm tracking-[0.12em] text-dim mb-1.5">
           {label}
         </label>
       )}
       <div className="relative">
         {icon && (
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#555] text-base" aria-hidden="true">
+          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-subtle text-base" aria-hidden="true">
             {icon}
           </span>
         )}
@@ -63,7 +63,7 @@ export function Field({
         />
       </div>
       {note && (
-        <span id={noteId} className="text-xs text-[#777] mt-1 block">
+        <span id={noteId} className="text-xs text-faint mt-1 block">
           {note}
         </span>
       )}

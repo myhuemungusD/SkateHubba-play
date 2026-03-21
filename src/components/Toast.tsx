@@ -73,14 +73,14 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
       {/* Content */}
       <div className="min-w-0 flex-1">
         <p className="font-display text-sm tracking-wider text-white leading-tight">{notification.title}</p>
-        <p className="font-body text-xs text-[#888] mt-0.5 leading-snug truncate">{notification.message}</p>
+        <p className="font-body text-xs text-muted mt-0.5 leading-snug truncate">{notification.message}</p>
       </div>
 
       {/* Dismiss button */}
       <button
         type="button"
         onClick={dismiss}
-        className="absolute top-2 right-2 text-[#555] hover:text-white transition-colors text-sm leading-none p-1"
+        className="absolute top-2 right-2 text-subtle hover:text-white transition-colors text-sm leading-none p-1"
         aria-label="Dismiss notification"
       >
         ×

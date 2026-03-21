@@ -22,7 +22,7 @@ export function Btn({
     secondary: "bg-surface-alt border border-border text-white py-3.5 text-lg",
     success: "bg-brand-green text-black py-4 text-xl font-bold",
     danger: "bg-brand-red text-white py-4 text-xl",
-    ghost: "bg-transparent border border-border text-[#888] py-3 text-lg",
+    ghost: "bg-transparent border border-border text-muted py-3 text-lg",
   };
   return (
     <button

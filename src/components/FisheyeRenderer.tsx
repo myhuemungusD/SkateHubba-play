@@ -1,4 +1,5 @@
 import { useRef, useEffect, useCallback } from "react";
+import { logger } from "../services/logger";
 
 /* ────────────────────────────────────────────
  * WebGL barrel-distortion (fisheye) renderer
@@ -55,7 +56,7 @@ function compileShader(gl: WebGLRenderingContext, type: number, src: string): We
   gl.compileShader(shader);
   /* v8 ignore start */
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-    console.warn("Shader compile error:", gl.getShaderInfoLog(shader));
+    logger.warn("shader_compile_error", { info: gl.getShaderInfoLog(shader) ?? "" });
     gl.deleteShader(shader);
     return null;
   }
@@ -76,7 +77,7 @@ function createProgram(gl: WebGLRenderingContext): WebGLProgram | null {
 
   /* v8 ignore start */
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    console.warn("Program link error:", gl.getProgramInfoLog(program));
+    logger.warn("program_link_error", { info: gl.getProgramInfoLog(program) ?? "" });
     gl.deleteProgram(program);
     return null;
   }
