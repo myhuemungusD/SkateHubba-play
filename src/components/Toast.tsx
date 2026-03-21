@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { AppNotification } from "../context/NotificationContext";
-import { TOAST_DURATION } from "../context/NotificationContext";
+import { TOAST_DURATION } from "../constants/ui";
 import { notificationIcon, notificationAccentBg, notificationAccentText } from "../lib/notificationMeta";
 const SWIPE_THRESHOLD = 80;
 
