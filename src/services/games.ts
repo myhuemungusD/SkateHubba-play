@@ -308,12 +308,7 @@ export async function submitMatchAttempt(
 
     const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
     const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
-    let nextSetter: string;
-    if (landed) {
-      nextSetter = matcherUid;
-    } else {
-      nextSetter = game.currentSetter;
-    }
+    const nextSetter = game.currentSetter;
 
     // Record this turn in the history for clips replay
     const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;

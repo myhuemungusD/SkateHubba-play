@@ -346,7 +346,7 @@ describe("games service", () => {
       currentTrickVideoUrl: "https://vid.url/set.webm",
     };
 
-    it("landed — no letter, matcher becomes setter", async () => {
+    it("landed — no letter, setter stays the setter", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
 
       const result = await submitMatchAttempt("g1", "https://vid.url/match.webm", true);
@@ -356,7 +356,7 @@ describe("games service", () => {
       expect(updates.p1Letters).toBe(0);
       expect(updates.p2Letters).toBe(0);
       expect(updates.phase).toBe("setting");
-      expect(updates.currentSetter).toBe("p2"); // matcher becomes next setter
+      expect(updates.currentSetter).toBe("p1"); // setter stays until they miss their own trick
       expect(updates.matchVideoUrl).toBe("https://vid.url/match.webm");
     });
 
