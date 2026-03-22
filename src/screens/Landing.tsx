@@ -171,7 +171,7 @@ export function Landing({
             className="w-full aspect-video object-cover bg-surface transition-transform duration-700 group-hover:scale-[1.02]"
             aria-label="SkateHubba gameplay demo"
           >
-            <source src="/AVPARKEDIT.mp4" type="video/mp4" />
+            <source src="/SHvideoedit.mp4" type="video/mp4" />
           </video>
           {/* Vignette + gradient overlay */}
           <div
