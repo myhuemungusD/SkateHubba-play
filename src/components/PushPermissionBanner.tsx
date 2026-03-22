@@ -19,6 +19,7 @@ function shouldShowBanner(): boolean {
 export function PushPermissionBanner({ uid }: { uid: string }) {
   const [visible, setVisible] = useState(shouldShowBanner);
   const [requesting, setRequesting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   if (!visible) return null;
 
@@ -43,15 +44,29 @@ export function PushPermissionBanner({ uid }: { uid: string }) {
           &times;
         </button>
       </div>
+      {error && <p className="font-body text-xs text-brand-red mt-2">{error}</p>}
       <div className="mt-3">
         <Btn
           variant="primary"
           disabled={requesting}
           onClick={async () => {
             setRequesting(true);
-            await requestPushPermission(uid);
-            localStorage.setItem(DISMISSED_KEY, "1");
-            setVisible(false);
+            setError(null);
+            try {
+              const token = await requestPushPermission(uid);
+              if (token) {
+                localStorage.setItem(DISMISSED_KEY, "1");
+                setVisible(false);
+              } else if (Notification.permission === "denied") {
+                setError("Notifications were blocked. Enable them in your browser settings and try again.");
+              } else {
+                setError("Could not enable notifications. Please try again.");
+              }
+            } catch {
+              setError("Something went wrong. Please try again.");
+            } finally {
+              setRequesting(false);
+            }
           }}
         >
           {requesting ? "Enabling..." : "Enable Notifications"}
