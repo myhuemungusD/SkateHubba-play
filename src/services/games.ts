@@ -376,7 +376,7 @@ export async function submitMatchAttempt(
       recipientUid: result.nextSetter,
       type: "your_turn",
       title: "Your Turn to Set!",
-      body: `Set a trick for @${result.nextSetter === result.setterUid ? result.matcherUsername : result.setterUsername}`,
+      body: `Set a trick for @${result.matcherUsername}`,
       gameId,
     });
   }
