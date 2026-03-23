@@ -1,6 +1,7 @@
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
+import { parseFirebaseError } from "../utils/helpers";
 
 export type NotificationDocType = "your_turn" | "new_challenge" | "game_won" | "game_lost";
 
@@ -37,7 +38,7 @@ export async function writeNotification(params: WriteNotificationParams): Promis
     logger.warn("notification_write_failed", {
       recipientUid: params.recipientUid,
       type: params.type,
-      error: String(err),
+      error: parseFirebaseError(err),
     });
   }
 }

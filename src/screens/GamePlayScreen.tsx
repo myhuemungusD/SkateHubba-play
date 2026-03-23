@@ -3,7 +3,7 @@ import type { GameDoc } from "../services/games";
 import { setTrick, failSetTrick, submitMatchAttempt, forfeitExpiredTurn } from "../services/games";
 import { uploadVideo, type UploadProgress as UploadProgressData } from "../services/storage";
 import type { UserProfile } from "../services/users";
-import { isFirebaseStorageUrl } from "../utils/helpers";
+import { isFirebaseStorageUrl, parseFirebaseError } from "../utils/helpers";
 import { captureException } from "../lib/sentry";
 import { logger } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
@@ -36,7 +36,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     if (deadline > 0 && Date.now() >= deadline) {
       forfeitExpiredTurn(game.id).catch((err) => {
         logger.warn("forfeit_check_failed", {
-          error: err instanceof Error ? err.message : String(err),
+          error: parseFirebaseError(err),
           gameId: game.id,
         });
         captureException(err, { extra: { context: "forfeitExpiredTurn", gameId: game.id } });

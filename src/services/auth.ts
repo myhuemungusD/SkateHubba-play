@@ -53,7 +53,10 @@ export async function signUp(email: string, password: string): Promise<User> {
   // Fire-and-forget verification email — failure is non-blocking (user can
   // resend from the lobby banner) but we want visibility in Sentry.
   sendEmailVerification(cred.user, getActionCodeSettings()).catch((err) => {
-    logger.error("sign_up_verification_email_failed", { uid: cred.user.uid, error: getErrorCode(err) || String(err) });
+    logger.error("sign_up_verification_email_failed", {
+      uid: cred.user.uid,
+      error: getErrorCode(err) || parseFirebaseError(err),
+    });
     captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
   });
   return cred.user;

@@ -2,6 +2,7 @@ import { getMessaging, getToken, onMessage, type MessagePayload } from "firebase
 import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
 import { logger } from "./logger";
+import { parseFirebaseError } from "../utils/helpers";
 
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
 
@@ -75,7 +76,7 @@ export async function requestPushPermission(uid: string): Promise<string | null>
 
     return token;
   } catch (err) {
-    logger.warn("fcm_token_failed", { error: String(err) });
+    logger.warn("fcm_token_failed", { error: parseFirebaseError(err) });
     return null;
   }
 }
@@ -89,7 +90,7 @@ export async function removeFcmToken(uid: string, token: string): Promise<void> 
       fcmTokens: arrayRemove(token),
     });
   } catch (err) {
-    logger.warn("fcm_token_removal_failed", { uid, error: String(err) });
+    logger.warn("fcm_token_removal_failed", { uid, error: parseFirebaseError(err) });
   }
 }
 

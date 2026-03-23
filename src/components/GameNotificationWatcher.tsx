@@ -17,6 +17,7 @@ import { logger } from "../services/logger";
 import { onForegroundMessage } from "../services/fcm";
 import type { GameDoc } from "../services/games";
 import type { ChimeType } from "../services/sounds";
+import { parseFirebaseError } from "../utils/helpers";
 
 /**
  * Maps FCM data.type values to chime types for foreground push messages.
@@ -326,7 +327,7 @@ export function GameNotificationWatcher() {
               updateDoc(firestoreDoc(db, "notifications", change.doc.id), { read: true }).catch((err) => {
                 logger.warn("notification_mark_read_failed", {
                   notificationId: change.doc.id,
-                  error: String(err),
+                  error: parseFirebaseError(err),
                 });
               });
             }

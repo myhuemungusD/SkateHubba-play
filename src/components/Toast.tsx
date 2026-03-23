@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { AppNotification } from "../context/NotificationContext";
-import { TOAST_DURATION } from "../constants/ui";
 import { notificationIcon, notificationAccentBg, notificationAccentText } from "../lib/notificationMeta";
 const SWIPE_THRESHOLD = 80;
 
@@ -51,6 +50,7 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
       role="status"
       aria-live="polite"
       className={`relative flex items-start gap-3 p-3 pr-8 rounded-xl glass-card shadow-glass overflow-hidden touch-pan-y select-none ${exiting ? "animate-toast-out" : "animate-toast-in"}`}
+      // Inline style required: transform/opacity are driven by continuous pointer drag state
       style={{
         transform: dragX > 0 ? `translateX(${dragX}px)` : undefined,
         opacity: dragX > 0 ? 1 - dragX / 200 : undefined,
@@ -88,8 +88,7 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
       {/* Progress bar */}
       <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-border">
         <div
-          className={`h-full origin-left ${notificationAccentBg[notification.type]}`}
-          style={{ animation: `progress-shrink ${TOAST_DURATION}ms linear forwards` }}
+          className={`h-full origin-left ${notificationAccentBg[notification.type]} [animation:progress-shrink_4000ms_linear_forwards]`}
         />
       </div>
     </div>

@@ -4,6 +4,7 @@ import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon } from "./icons
 import { FisheyeRenderer } from "./FisheyeRenderer";
 import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
 import { logger } from "../services/logger";
+import { parseFirebaseError } from "../utils/helpers";
 
 const MAX_RECORDING_SECONDS = 60;
 
@@ -65,7 +66,7 @@ export function VideoRecorder({
     } catch (err) {
       const isPermission =
         err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = parseFirebaseError(err);
       setCameraError(
         isPermission
           ? "Camera access denied. Check your browser permissions and try again."
@@ -181,7 +182,7 @@ export function VideoRecorder({
       setState("done");
       onRecorded(result.blob);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = parseFirebaseError(err);
       if (msg.toLowerCase().includes("cancel")) {
         // User cancelled — stay on idle
         return;

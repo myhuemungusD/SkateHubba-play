@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .catch((err) => {
         logger.warn("google_redirect_resolve_error", {
-          message: err instanceof Error ? err.message : String(err),
+          message: parseFirebaseError(err),
         });
         captureException(err, { extra: { context: "resolveGoogleRedirect" } });
         setGoogleError("Google sign-in failed. Please try again.");
@@ -108,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await fbSignOut();
     } catch (err) {
-      logger.error("sign_out_error", { message: err instanceof Error ? err.message : String(err) });
+      logger.error("sign_out_error", { message: parseFirebaseError(err) });
     }
     setActiveProfile(null);
   }, []);
