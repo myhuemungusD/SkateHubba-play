@@ -4,8 +4,8 @@
 // with the correct scope.
 //
 // ⚠️  Keep the CDN version below in sync with the `firebase` version in package.json.
-importScripts("https://www.gstatic.com/firebasejs/11.10.0/firebase-app-compat.js");
-importScripts("https://www.gstatic.com/firebasejs/11.10.0/firebase-messaging-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/12.11.0/firebase-messaging-compat.js");
 
 // Firebase config is injected at build time by the Vite plugin (see vite.config.ts).
 // During development the SW reads config from the query string appended by the
