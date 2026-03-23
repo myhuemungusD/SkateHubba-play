@@ -26,6 +26,7 @@ export function UploadProgress({ progress }: { progress: UploadProgressData | nu
       <div className="w-full h-2 bg-surface-alt border border-border rounded-full overflow-hidden">
         <div
           className="h-full bg-brand-orange rounded-full transition-all duration-300 ease-out"
+          // Inline style required: width is driven by dynamic upload progress percentage
           style={{ width: `${progress.percent}%` }}
         />
       </div>

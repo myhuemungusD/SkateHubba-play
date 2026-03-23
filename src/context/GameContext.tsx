@@ -3,7 +3,7 @@ import { useAuthContext } from "./AuthContext";
 import { useNavigationContext } from "./NavigationContext";
 import { updatePlayerStats } from "../services/users";
 import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
-import { newGameShell } from "../utils/helpers";
+import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger } from "../services/logger";
 
@@ -75,7 +75,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
             updatePlayerStats(user.uid, g.id, won).catch((err) => {
               logger.warn("stats_catchup_failed", {
                 gameId: g.id,
-                error: err instanceof Error ? err.message : String(err),
+                error: parseFirebaseError(err),
               });
               processedStatsRef.current.delete(g.id);
             });
@@ -116,7 +116,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         updatePlayerStats(user.uid, updated.id, won).catch((err) => {
           logger.warn("stats_update_failed", {
             gameId: updated.id,
-            error: err instanceof Error ? err.message : String(err),
+            error: parseFirebaseError(err),
           });
           processedStatsRef.current.delete(updated.id); // allow retry on next update
         });

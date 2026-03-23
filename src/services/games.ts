@@ -15,6 +15,7 @@ import {
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
+import { parseFirebaseError } from "../utils/helpers";
 import { logger, metrics } from "./logger";
 import { captureException } from "../lib/sentry";
 import { writeNotification } from "./notifications";
@@ -169,7 +170,7 @@ export async function createGame(
     (err) => {
       logger.warn("rate_limit_timestamp_write_failed", {
         uid: challengerUid,
-        error: String(err),
+        error: parseFirebaseError(err),
       });
     },
   );
