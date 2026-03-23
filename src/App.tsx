@@ -80,23 +80,18 @@ function AppRoutes() {
   const nav = useNavigationContext();
   const game = useGameContext();
   const [challengeTarget, setChallengeTarget] = useState("");
-  const [, setDirectChallengeError] = useState("");
-
   const directChallenge = useCallback(
     async (username: string) => {
-      setDirectChallengeError("");
       const normalized = username.toLowerCase().trim();
       try {
         const uid = await getUidByUsername(normalized);
         if (!uid) {
-          setDirectChallengeError(`@${normalized} doesn't exist yet.`);
           setChallengeTarget(normalized);
           nav.setScreen("challenge");
           return;
         }
         await game.startChallenge(uid, normalized);
-      } catch (err: unknown) {
-        setDirectChallengeError(err instanceof Error ? err.message : "Could not start game");
+      } catch {
         setChallengeTarget(normalized);
         nav.setScreen("challenge");
       }
