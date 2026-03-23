@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
@@ -15,7 +15,7 @@ import {
   type IconProps,
 } from "../components/icons";
 
-const RULES: { Icon: (props: IconProps) => JSX.Element; text: string; color: string }[] = [
+const RULES: { Icon: (props: IconProps) => React.ReactNode; text: string; color: string }[] = [
   { Icon: TargetIcon, text: "You set the first trick", color: "text-brand-orange" },
   { Icon: FilmIcon, text: "One-take video only — no retries", color: "text-brand-orange" },
   { Icon: ClockIcon, text: "24 hours per turn or forfeit", color: "text-brand-orange" },
