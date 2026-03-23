@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { readFileSync, writeFileSync } from "fs";
 import { resolve } from "path";
 
@@ -39,7 +40,7 @@ function firebaseSwPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), firebaseSwPlugin()],
+  plugins: [tailwindcss(), react(), firebaseSwPlugin()],
   define: {
     "import.meta.env.VERCEL": JSON.stringify(process.env.VERCEL ?? ""),
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? ""),
@@ -50,16 +51,13 @@ export default defineConfig({
     modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
-        manualChunks: {
-          firebase: [
-            "firebase/app",
-            "firebase/auth",
-            "firebase/firestore",
-            "firebase/storage",
-            "firebase/app-check",
-            "firebase/messaging",
-          ],
-          react: ["react", "react-dom"],
+        manualChunks(id) {
+          if (id.includes("node_modules/firebase/") || id.includes("node_modules/@firebase/")) {
+            return "firebase";
+          }
+          if (id.includes("node_modules/react-dom/") || id.includes("node_modules/react/")) {
+            return "react";
+          }
         },
       },
     },
