@@ -1,0 +1,37 @@
+{
+  "name": "@skatehubba/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -b",
+    "start": "node dist/index.js",
+    "migrate": "tsx src/db/migrate.ts",
+    "typecheck": "tsc -b --noEmit",
+    "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "pg": "^8.16.0",
+    "jsonwebtoken": "^9.0.2",
+    "helmet": "^8.1.0",
+    "cors": "^2.8.5",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.2",
+    "@types/pg": "^8.15.4",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/cors": "^2.8.19",
+    "@types/node": "^22.15.33",
+    "tsx": "^4.20.3",
+    "typescript": "^5.6.3",
+    "vitest": "^4.0.18"
+  }
+}
