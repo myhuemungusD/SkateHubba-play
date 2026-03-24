@@ -21,6 +21,8 @@ export interface UploadProgress {
 const MIN_UPLOAD_BYTES = 1024;
 /** Maximum upload size (50 MB) — must match storage.rules */
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+/** Base delay for exponential backoff on upload retries */
+const RETRY_BACKOFF_MS = 1000;
 
 export async function uploadVideo(
   gameId: string,
@@ -92,7 +94,7 @@ export async function uploadVideo(
     } catch (err) {
       if (attempt === maxRetries) throw err;
       // Exponential backoff: 1s, 2s
-      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS * (attempt + 1)));
     }
   }
 
