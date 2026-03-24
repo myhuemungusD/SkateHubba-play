@@ -65,29 +65,31 @@
   --ease-smooth: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+@layer base {
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 
-body {
-  font-family: "DM Sans", sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  overscroll-behavior: none;
-  background-color: #0a0a0a;
-  background-image:
-    radial-gradient(ellipse at 20% 0%, rgba(255, 107, 0, 0.12) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(255, 61, 0, 0.08) 0%, transparent 45%),
-    radial-gradient(ellipse at 50% 80%, rgba(255, 133, 51, 0.06) 0%, transparent 50%), url("/sh-graffiti.webp");
-  background-size:
-    100% 100%,
-    100% 100%,
-    100% 100%,
-    100% auto;
-  background-position: center top;
-  background-repeat: no-repeat;
+  body {
+    font-family: "DM Sans", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+    background-color: #0a0a0a;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(255, 107, 0, 0.12) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 20%, rgba(255, 61, 0, 0.08) 0%, transparent 45%),
+      radial-gradient(ellipse at 50% 80%, rgba(255, 133, 51, 0.06) 0%, transparent 50%), url("/sh-graffiti.webp");
+    background-size:
+      100% 100%,
+      100% 100%,
+      100% 100%,
+      100% auto;
+    background-position: center top;
+    background-repeat: no-repeat;
+  }
 }
 
 /* ── Glassmorphism utilities ─────────────────────────── */
