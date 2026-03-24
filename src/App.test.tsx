@@ -101,8 +101,8 @@ describe("App", () => {
     renderApp();
     await waitFor(() => {
       expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
-      expect(screen.getByText("Get Started with Email")).toBeInTheDocument();
-      expect(screen.getByText("I Have an Account")).toBeInTheDocument();
+      expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
+      expect(screen.getByText("LOG IN")).toBeInTheDocument();
     });
   });
 
@@ -115,13 +115,13 @@ describe("App", () => {
     });
     renderApp();
 
-    await userEvent.click(screen.getByText("Get Started with Email"));
+    await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
     });
   });
 
-  it("navigates to sign in screen when 'I Have an Account' is clicked", async () => {
+  it("navigates to sign in screen when 'LOG IN' is clicked", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: null,
@@ -130,7 +130,7 @@ describe("App", () => {
     });
     renderApp();
 
-    await userEvent.click(screen.getByText("I Have an Account"));
+    await userEvent.click(screen.getByText("LOG IN"));
     await waitFor(() => {
       expect(screen.getByText("Welcome Back")).toBeInTheDocument();
     });

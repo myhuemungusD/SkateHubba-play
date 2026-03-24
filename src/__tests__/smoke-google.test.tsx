@@ -241,7 +241,7 @@ describe("Smoke: Google Auth", () => {
     renderApp();
 
     // Navigate to auth screen via age gate
-    await userEvent.click(screen.getByText("Get Started with Email"));
+    await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
     await waitFor(() => expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument());
 
@@ -261,7 +261,7 @@ describe("Smoke: Google Auth", () => {
     mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
     renderApp();
 
-    await userEvent.click(screen.getByText("Get Started with Email"));
+    await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
     await waitFor(() => expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument());
 

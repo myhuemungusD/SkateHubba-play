@@ -14,21 +14,20 @@ describe("Landing", () => {
   it("renders hero content", () => {
     render(<Landing {...defaultProps} />);
     expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
-    expect(screen.getByText("Get Started with Email")).toBeInTheDocument();
-    expect(screen.getByText("I Have an Account")).toBeInTheDocument();
+    expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
   });
 
-  it("calls onGo with signup when Get Started is clicked", async () => {
+  it("calls onGo with signup when Sign In / Sign Up is clicked", async () => {
     const onGo = vi.fn();
     render(<Landing {...defaultProps} onGo={onGo} />);
-    await userEvent.click(screen.getByText("Get Started with Email"));
+    await userEvent.click(screen.getByText("Sign In / Sign Up"));
     expect(onGo).toHaveBeenCalledWith("signup");
   });
 
-  it("calls onGo with signin when I Have an Account is clicked", async () => {
+  it("calls onGo with signin via LOG IN nav button", async () => {
     const onGo = vi.fn();
     render(<Landing {...defaultProps} onGo={onGo} />);
-    await userEvent.click(screen.getByText("I Have an Account"));
+    await userEvent.click(screen.getByText("LOG IN"));
     expect(onGo).toHaveBeenCalledWith("signin");
   });
 
