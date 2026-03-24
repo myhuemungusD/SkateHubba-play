@@ -12,6 +12,7 @@ import { NotificationBell } from "../components/NotificationBell";
 import { PushPermissionBanner } from "../components/PushPermissionBanner";
 import { LobbyTimer } from "../components/LobbyTimer";
 import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
+import { ScrollSkateboard } from "../components/ScrollSkateboard";
 
 function relativeJoinDate(createdAt: FieldValue | null): string {
   if (!(createdAt instanceof Timestamp)) return "Joined";
@@ -98,9 +99,10 @@ export function Lobby({
   };
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0A]/60 pb-24">
+    <div className="min-h-dvh bg-[#0A0A0A]/40 pb-24">
+      <ScrollSkateboard />
       {/* Header */}
-      <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-white/[0.04] glass">
+      <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-2xl mx-auto">
         <span className="font-display text-sm tracking-[0.25em] text-brand-orange">
           SKATEHUBBA<span className="text-subtle">™</span>
         </span>
@@ -129,8 +131,10 @@ export function Lobby({
         </div>
       </div>
 
-      <VerifyEmailBanner emailVerified={user?.emailVerified ?? false} />
-      <PushPermissionBanner uid={profile.uid} />
+      <div className="max-w-2xl mx-auto">
+        <VerifyEmailBanner emailVerified={user?.emailVerified ?? false} />
+        <PushPermissionBanner uid={profile.uid} />
+      </div>
 
       <div className="px-5 pt-7 max-w-lg mx-auto">
         {/* Page header */}
