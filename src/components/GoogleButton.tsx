@@ -4,12 +4,18 @@ export function GoogleButton({ onClick, loading }: { onClick: () => void; loadin
       type="button"
       onClick={onClick}
       disabled={loading}
-      className="w-full flex items-center justify-center gap-3 rounded-xl border border-white/20 bg-white text-[#1f1f1f] font-body text-base font-medium py-3.5 transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] hover:bg-[#f5f5f5] hover:-translate-y-0.5 hover:shadow-[0_4px_20px_rgba(255,255,255,0.1)]"
+      className="group w-full flex items-center justify-center gap-3 rounded-2xl bg-white text-[#1f1f1f] font-body text-base font-semibold py-4 px-6 transition-all duration-300 ease-smooth disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] hover:bg-[#f8f8f8] hover:-translate-y-0.5 shadow-[0_2px_8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.08)] hover:shadow-[0_8px_30px_rgba(0,0,0,0.16),0_2px_6px_rgba(0,0,0,0.1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ring-1 ring-black/[0.04]"
     >
       {loading ? (
-        <div className="w-5 h-5 border-2 border-[#ccc] border-t-[#4285F4] rounded-full animate-spin" />
+        <div className="w-5 h-5 border-2 border-[#ddd] border-t-[#4285F4] rounded-full animate-spin" />
       ) : (
-        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className="flex-shrink-0 transition-transform duration-300 group-hover:scale-110"
+        >
           <path
             fill="#4285F4"
             d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -28,7 +34,7 @@ export function GoogleButton({ onClick, loading }: { onClick: () => void; loadin
           />
         </svg>
       )}
-      {loading ? "Signing in…" : "Continue with Google"}
+      <span className="transition-colors duration-300">{loading ? "Signing in\u2026" : "Continue with Google"}</span>
     </button>
   );
 }

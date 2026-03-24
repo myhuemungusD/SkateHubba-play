@@ -217,7 +217,7 @@ export function AuthScreen({
         {!isSignup && !googleLoading && (
           <button
             type="button"
-            className="w-full font-body text-xs text-[#555] text-center mt-3 cursor-pointer hover:text-[#888] transition-colors bg-transparent border-none"
+            className="w-full font-body text-xs text-[#555] text-center mt-3 cursor-pointer hover:text-white transition-colors duration-300 bg-transparent border-none"
             onClick={handleReset}
           >
             Forgot password?
@@ -226,11 +226,13 @@ export function AuthScreen({
 
         <button
           type="button"
-          className="w-full font-body text-sm text-[#555] text-center mt-5 cursor-pointer bg-transparent border-none"
+          className="w-full font-body text-sm text-[#555] text-center mt-5 cursor-pointer bg-transparent border-none transition-colors duration-300 hover:text-[#777]"
           onClick={onToggle}
         >
           {isSignup ? "Already have an account? " : "Need an account? "}
-          <span className="text-brand-orange">{isSignup ? "Sign in" : "Sign up"}</span>
+          <span className="text-brand-orange font-semibold hover:underline underline-offset-2">
+            {isSignup ? "Sign in" : "Sign up"}
+          </span>
         </button>
       </div>
     </div>
