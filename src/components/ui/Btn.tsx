@@ -7,6 +7,7 @@ export function Btn({
   disabled,
   className = "",
   type = "button",
+  autoFocus,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -14,6 +15,7 @@ export function Btn({
   disabled?: boolean;
   className?: string;
   type?: "button" | "submit";
+  autoFocus?: boolean;
 }) {
   const base =
     "w-full rounded-2xl font-display tracking-wider text-center transition-all duration-300 ease-smooth disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
@@ -33,6 +35,7 @@ export function Btn({
       type={type}
       onClick={onClick}
       disabled={disabled}
+      autoFocus={autoFocus}
       className={`${base} ${variants[variant ?? "primary"]} ${className}`}
     >
       {children}

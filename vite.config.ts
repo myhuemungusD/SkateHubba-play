@@ -28,8 +28,18 @@ function firebaseSwPlugin(): Plugin {
           __PLACEHOLDER_MESSAGING_SENDER_ID__: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
           __PLACEHOLDER_APP_ID__: process.env.VITE_FIREBASE_APP_ID,
         };
+        const unreplaced: string[] = [];
         for (const [token, value] of Object.entries(replacements)) {
-          if (value) content = content.replace(token, value);
+          if (value) {
+            content = content.replace(token, value);
+          } else if (content.includes(token)) {
+            unreplaced.push(token);
+          }
+        }
+        if (unreplaced.length > 0) {
+          console.warn(
+            `[firebase-sw-config] Warning: ${unreplaced.length} placeholder(s) not replaced in SW (missing env vars): ${unreplaced.join(", ")}`,
+          );
         }
         writeFileSync(swPath, content);
       } catch {

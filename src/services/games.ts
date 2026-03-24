@@ -191,8 +191,12 @@ export async function createGame(
  * ──────────────────────────────────────────── */
 
 export async function setTrick(gameId: string, trickName: string, videoUrl: string | null): Promise<void> {
-  // Sanitise at the service boundary: trim whitespace, cap length
-  const safeTrickName = trickName.trim().slice(0, 100);
+  // Sanitise at the service boundary: trim whitespace, strip control chars, cap length
+  const safeTrickName = trickName
+    .trim()
+    // eslint-disable-next-line no-control-regex -- intentionally stripping C0/C1 control characters
+    .replace(/[\x00-\x1F\x7F]/g, "")
+    .slice(0, 100);
   if (!safeTrickName) throw new Error("Trick name cannot be empty");
 
   checkTurnActionRate(gameId);
