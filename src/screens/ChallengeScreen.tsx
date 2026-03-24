@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";

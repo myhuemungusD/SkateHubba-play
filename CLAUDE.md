@@ -56,7 +56,7 @@ Never skip the type check. `tsc -b` catches what ESLint can't.
   - **Screens** (`src/screens/`): Full-page components. State managed via props from `App.tsx`
   - **Components** (`src/components/`): Reusable UI. Tailwind classes only — no CSS modules, no inline styles
   - **Hooks** (`src/hooks/`): Custom React hooks
-  - **No routing library.** Screen state is a single `useState` in `App.tsx`
+  - **Routing via react-router-dom.** All routes live in `App.tsx`. Screen transitions go through `NavigationContext.setScreen`
 - TypeScript strict mode is on. No `any`. Explicit return types on exported service functions
 - Use `runTransaction` for all game state mutations — this is non-negotiable
 
@@ -85,14 +85,14 @@ Prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`
 
 These are load-bearing decisions. Do not violate them without explicit discussion:
 
-| Guardrail | Why |
-|---|---|
-| No custom backend / API server | Firebase security rules are the authorization layer. Adding a server creates a second source of truth |
-| No state management libraries | Local state + hooks + context is sufficient for this app's complexity |
-| No UI component libraries | Tailwind + custom components keeps the bundle lean and the design consistent |
-| No URL routing | `App.tsx` is the state machine. Screen transitions are explicit and traceable |
-| No Cloud Functions in PRs | CI gate (`pr-gate.yml`) rejects new code in `functions/src/`. Discuss first |
-| Transactions for game writes | Race conditions in multiplayer are silent data corruption. Always `runTransaction` |
+| Guardrail                             | Why                                                                                                                                                        |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No custom backend / API server        | Firebase security rules are the authorization layer. Adding a server creates a second source of truth                                                      |
+| No state management libraries         | Local state + hooks + context is sufficient for this app's complexity                                                                                      |
+| No UI component libraries             | Tailwind + custom components keeps the bundle lean and the design consistent                                                                               |
+| URL routing via react-router-dom only | `App.tsx` defines all `<Route>` elements. Screen transitions go through `NavigationContext.setScreen`. No nested routers or lazy routes without discussion |
+| No Cloud Functions in PRs             | CI gate (`pr-gate.yml`) rejects new code in `functions/src/`. Discuss first                                                                                |
+| Transactions for game writes          | Race conditions in multiplayer are silent data corruption. Always `runTransaction`                                                                         |
 
 ---
 
@@ -111,16 +111,16 @@ When something breaks, work through this in order:
 
 ## File-Specific Knowledge
 
-| File | What to Know |
-|---|---|
-| `src/App.tsx` | The entire app state machine. Intentionally large. Don't refactor without discussion |
-| `src/firebase.ts` | Firebase init + emulator conditional. Named database `"skatehubba"` (not default) |
-| `src/services/games.ts` | All game CRUD. Uses `runTransaction` for state changes. Dual `onSnapshot` for OR queries |
-| `src/services/auth.ts` | Google OAuth uses popup with redirect fallback (Safari/mobile compatibility) |
-| `src/services/storage.ts` | Video upload/download. WebM only, 1KB–50MB. Validates Firebase Storage URLs |
-| `firestore.rules` | The real backend. Enforces turn order, score increments, timer, rate limits |
-| `storage.rules` | Only `set.webm` or `match.webm` filenames. Content-type must be `video/webm` |
-| `vercel.json` | CSP headers, HSTS, SPA rewrites, domain redirects. Touch carefully |
+| File                      | What to Know                                                                                           |
+| ------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `src/App.tsx`             | The entire app state machine. Intentionally large. Don't refactor without discussion                   |
+| `src/firebase.ts`         | Firebase init + emulator conditional. Named database `"skatehubba"` (not default)                      |
+| `src/services/games.ts`   | All game CRUD. Uses `runTransaction` for state changes. Dual `onSnapshot` for OR queries               |
+| `src/services/auth.ts`    | Google OAuth uses popup with redirect fallback (Safari/mobile compatibility)                           |
+| `src/services/storage.ts` | Video upload/download. WebM (web) and MP4 (native/Capacitor), 1KB–50MB. Retry with exponential backoff |
+| `firestore.rules`         | The real backend. Enforces turn order, score increments, timer, rate limits                            |
+| `storage.rules`           | Only `set.webm` or `match.webm` filenames. Content-type must be `video/webm`                           |
+| `vercel.json`             | CSP headers, HSTS, SPA rewrites, domain redirects. Touch carefully                                     |
 
 ---
 
