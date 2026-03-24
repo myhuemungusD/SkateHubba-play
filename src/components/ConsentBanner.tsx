@@ -41,14 +41,14 @@ export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") 
             <button
               type="button"
               onClick={accept}
-              className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-brand-orange to-[#FF8533] font-display text-xs text-white tracking-wider hover:shadow-glow-sm transition-all duration-300"
+              className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-brand-orange to-[#FF8533] font-display text-xs text-white tracking-wider hover:shadow-glow-sm active:scale-[0.97] transition-all duration-300 ring-1 ring-white/[0.08]"
             >
               OK
             </button>
             <button
               type="button"
               onClick={decline}
-              className="px-3 py-1.5 rounded-lg border border-[#333] font-body text-xs text-[#777] hover:text-[#aaa] transition-colors"
+              className="px-3 py-1.5 rounded-xl border border-border font-body text-xs text-subtle hover:text-muted hover:border-border-hover transition-all duration-300"
             >
               No
             </button>

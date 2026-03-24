@@ -83,7 +83,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
   ];
 
   const tileBase =
-    "rounded-xl bg-surface-alt border border-border hover:border-brand-orange active:scale-95 transition-all duration-150";
+    "rounded-xl bg-surface-alt border border-border hover:border-brand-orange/40 hover:bg-brand-orange/[0.03] active:scale-[0.97] transition-all duration-300";
 
   return (
     <div className={className}>
@@ -93,7 +93,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
           playOlliePop();
           setShowPanel(!showPanel);
         }}
-        className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-border text-[#666] hover:text-white hover:border-[#3A3A3A] rounded-xl py-[13px] font-display tracking-wider text-lg transition-all duration-200 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-border text-subtle hover:text-white hover:border-border-hover hover:bg-white/[0.02] rounded-2xl py-3.5 font-display tracking-wider text-lg transition-all duration-300 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         {showPanel ? (
           <>

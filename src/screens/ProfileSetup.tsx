@@ -52,8 +52,10 @@ function ProgressBar({ step }: { step: Step }) {
       {[1, 2, 3].map((s) => (
         <div
           key={s}
-          className={`h-1 flex-1 rounded-full transition-all duration-500 ${
-            s <= step ? "bg-brand-orange" : "bg-[#2A2A2A]"
+          className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${
+            s <= step
+              ? "bg-gradient-to-r from-brand-orange to-[#FF8533] shadow-[0_0_8px_rgba(255,107,0,0.2)]"
+              : "bg-[#2A2A2A]"
           }`}
         />
       ))}
@@ -189,8 +191,8 @@ function StepStance({
               onClick={() => setStance(value)}
               className={`flex-1 py-5 rounded-2xl font-display text-lg tracking-wider cursor-pointer transition-all duration-300 ease-smooth ${
                 selected
-                  ? "bg-brand-orange/10 border-2 border-brand-orange text-brand-orange scale-[1.02] shadow-glow-sm"
-                  : "bg-surface-alt/60 backdrop-blur-sm border-2 border-border text-faint hover:border-border-hover hover:text-muted hover:-translate-y-0.5"
+                  ? "bg-brand-orange/[0.08] border-2 border-brand-orange text-brand-orange scale-[1.02] shadow-glow-sm ring-1 ring-brand-orange/20"
+                  : "bg-surface-alt/60 backdrop-blur-sm border-2 border-border text-faint hover:border-border-hover hover:text-muted hover:-translate-y-0.5 hover:bg-white/[0.02]"
               }`}
             >
               <div className="flex justify-center mb-2" aria-hidden="true">

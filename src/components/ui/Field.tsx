@@ -32,13 +32,16 @@ export function Field({
   return (
     <div className="mb-4 w-full">
       {label && (
-        <label htmlFor={id} className="block font-display text-sm tracking-[0.12em] text-dim mb-1.5">
+        <label htmlFor={id} className="block font-display text-sm tracking-[0.12em] text-dim mb-2">
           {label}
         </label>
       )}
-      <div className="relative">
+      <div className="relative group">
         {icon && (
-          <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-subtle text-base" aria-hidden="true">
+          <span
+            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-subtle text-base transition-colors duration-300 group-focus-within:text-brand-orange"
+            aria-hidden="true"
+          >
             {icon}
           </span>
         )}
@@ -56,14 +59,15 @@ export function Field({
           autoCorrect="off"
           spellCheck={false}
           aria-describedby={noteId}
-          className={`w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-xl text-white text-base font-body outline-none
-            focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1)] transition-all duration-300
+          className={`w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-2xl text-white text-base font-body outline-none
+            focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1),0_0_16px_rgba(255,107,0,0.06)] transition-all duration-300
             disabled:opacity-40 disabled:cursor-not-allowed
+            placeholder:text-subtle/60
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />
       </div>
       {note && (
-        <span id={noteId} className="text-xs text-faint mt-1 block">
+        <span id={noteId} className="text-xs text-faint mt-1.5 block font-body">
           {note}
         </span>
       )}

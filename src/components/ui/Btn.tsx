@@ -16,17 +16,17 @@ export function Btn({
   type?: "button" | "submit";
 }) {
   const base =
-    "w-full rounded-xl font-display tracking-wider text-center transition-all duration-300 ease-smooth disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+    "w-full rounded-2xl font-display tracking-wider text-center transition-all duration-300 ease-smooth disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
   const variants: Record<string, string> = {
     primary:
-      "bg-gradient-to-r from-brand-orange to-[#FF8533] text-white py-4 text-xl shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5",
-    secondary: "glass-card text-white py-3.5 text-lg hover:-translate-y-0.5",
+      "bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white py-4 text-xl shadow-[0_2px_12px_rgba(255,107,0,0.2),0_1px_2px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.28),0_2px_6px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 ring-1 ring-white/[0.08]",
+    secondary: "glass-card text-white py-3.5 text-lg hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.2)]",
     success:
-      "bg-gradient-to-r from-brand-green to-[#00C864] text-black py-4 text-xl font-bold shadow-glow-green hover:shadow-[0_0_40px_rgba(0,230,118,0.2)] hover:-translate-y-0.5",
+      "bg-gradient-to-r from-brand-green via-[#00D96E] to-[#00C864] text-black py-4 text-xl font-bold shadow-[0_2px_12px_rgba(0,230,118,0.2)] hover:shadow-[0_6px_28px_rgba(0,230,118,0.25)] hover:-translate-y-0.5 ring-1 ring-white/[0.08]",
     danger:
-      "bg-gradient-to-r from-brand-red to-[#FF5722] text-white py-4 text-xl shadow-glow-red hover:shadow-[0_0_40px_rgba(255,61,0,0.2)] hover:-translate-y-0.5",
+      "bg-gradient-to-r from-brand-red via-[#FF4A1A] to-[#FF5722] text-white py-4 text-xl shadow-[0_2px_12px_rgba(255,61,0,0.2)] hover:shadow-[0_6px_28px_rgba(255,61,0,0.25)] hover:-translate-y-0.5 ring-1 ring-white/[0.08]",
     ghost:
-      "bg-transparent border border-border text-muted py-3 text-lg hover:border-border-hover hover:text-white hover:-translate-y-0.5",
+      "bg-transparent border border-border text-muted py-3 text-lg hover:border-border-hover hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(0,0,0,0.15)]",
   };
   return (
     <button

@@ -90,7 +90,7 @@ export function Landing({
                 playOlliePop();
                 onGo("signin");
               }}
-              className="font-display text-sm tracking-wider text-muted hover:text-white transition-colors duration-300"
+              className="relative font-display text-sm tracking-wider text-muted hover:text-white transition-all duration-300 py-2 px-1 after:absolute after:bottom-0.5 after:left-0 after:right-0 after:h-px after:bg-white after:origin-left after:scale-x-0 hover:after:scale-x-100 after:transition-transform after:duration-300"
             >
               LOG IN
             </button>
@@ -100,7 +100,7 @@ export function Landing({
                 playOlliePop();
                 onGo("signup");
               }}
-              className="font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange to-[#FF8533] text-white px-5 py-2 rounded-lg shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5 transition-all duration-300 active:scale-[0.97]"
+              className="font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange to-[#FF8533] text-white px-6 py-2.5 rounded-xl shadow-[0_2px_10px_rgba(255,107,0,0.2)] hover:shadow-[0_4px_20px_rgba(255,107,0,0.3)] hover:-translate-y-0.5 transition-all duration-300 active:scale-[0.97] ring-1 ring-white/[0.08]"
             >
               SIGN UP
             </button>
@@ -443,21 +443,21 @@ export function Landing({
             <button
               type="button"
               onClick={() => onNav("privacy")}
-              className="font-body text-xs text-subtle hover:text-muted transition-colors"
+              className="font-body text-xs text-subtle hover:text-muted transition-colors duration-300"
             >
               Privacy Policy
             </button>
             <button
               type="button"
               onClick={() => onNav("terms")}
-              className="font-body text-xs text-subtle hover:text-muted transition-colors"
+              className="font-body text-xs text-subtle hover:text-muted transition-colors duration-300"
             >
               Terms of Service
             </button>
             <button
               type="button"
               onClick={() => onNav("datadeletion")}
-              className="font-body text-xs text-subtle hover:text-muted transition-colors"
+              className="font-body text-xs text-subtle hover:text-muted transition-colors duration-300"
             >
               Data Deletion
             </button>

@@ -104,25 +104,27 @@ export function Lobby({
         <span className="font-display text-sm tracking-[0.25em] text-brand-orange">
           SKATEHUBBA<span className="text-subtle">™</span>
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <button
             type="button"
             onClick={onViewRecord}
-            className="flex items-center gap-2 hover:opacity-80 transition-all duration-300 group"
+            className="flex items-center gap-2 transition-all duration-300 group rounded-xl px-2 py-1.5 hover:bg-white/[0.03]"
             title="View my record"
           >
-            <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0 group-hover:shadow-glow-sm transition-shadow duration-300">
+            <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0 group-hover:shadow-glow-sm group-hover:border-brand-orange/40 transition-all duration-300">
               <span className="font-display text-[11px] text-brand-orange leading-none">
                 {profile.username[0].toUpperCase()}
               </span>
             </div>
-            <span className="font-body text-xs text-brand-orange">@{profile.username}</span>
+            <span className="font-body text-xs text-brand-orange group-hover:text-[#FF8533] transition-colors duration-300">
+              @{profile.username}
+            </span>
           </button>
           <NotificationBell games={games} onOpenGame={onOpenGame} />
           <button
             type="button"
             onClick={onSignOut}
-            className="font-body text-xs text-dim hover:text-white transition-all duration-300 px-2.5 py-1.5 rounded-lg border border-border hover:border-border-hover"
+            className="font-body text-xs text-dim hover:text-white transition-all duration-300 px-3 py-1.5 rounded-xl border border-border hover:border-border-hover hover:bg-white/[0.02]"
           >
             Sign Out
           </button>
@@ -151,7 +153,7 @@ export function Lobby({
           type="button"
           onClick={user?.emailVerified ? onChallenge : undefined}
           disabled={!user?.emailVerified}
-          className={`w-full flex items-center justify-center gap-2.5 rounded-xl py-[15px] mb-1 font-display tracking-wider text-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "bg-gradient-to-r from-brand-orange to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 shadow-glow-sm hover:shadow-glow-md" : "bg-brand-orange/30 text-white/50 cursor-not-allowed"}`}
+          className={`w-full flex items-center justify-center gap-2.5 rounded-2xl py-4 mb-1 font-display tracking-wider text-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 shadow-[0_2px_12px_rgba(255,107,0,0.2),0_1px_2px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.28),0_2px_6px_rgba(0,0,0,0.12)] ring-1 ring-white/[0.08]" : "bg-brand-orange/20 text-white/40 cursor-not-allowed border border-brand-orange/10"}`}
         >
           <svg
             width="17"
@@ -353,7 +355,7 @@ export function Lobby({
               type="button"
               onClick={onLoadMore}
               disabled={gamesLoading}
-              className="px-6 py-2.5 rounded-xl border border-border bg-surface/60 backdrop-blur-sm font-display text-sm tracking-wider text-brand-orange hover:border-brand-orange/30 hover:shadow-glow-sm transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="px-6 py-2.5 rounded-2xl border border-border bg-surface/60 backdrop-blur-sm font-display text-sm tracking-wider text-brand-orange hover:border-brand-orange/30 hover:shadow-glow-sm hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange active:scale-[0.97]"
             >
               {gamesLoading ? "Loading..." : "Load More Games"}
             </button>

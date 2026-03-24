@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useId, type ReactNode } from "react";
 import { playOlliePop } from "../utils/ollieSound";
 
 /**
@@ -18,6 +18,7 @@ export function SkateButton({
   className?: string;
 }) {
   const [popping, setPopping] = useState(false);
+  const uid = useId().replace(/:/g, "");
 
   const handleClick = () => {
     if (disabled) return;
@@ -27,6 +28,11 @@ export function SkateButton({
     onClick?.();
   };
 
+  const gradId = `deckGrad-${uid}`;
+  const strokeId = `deckStroke-${uid}`;
+  const shineId = `deckShine-${uid}`;
+  const innerGlowId = `innerGlow-${uid}`;
+
   return (
     <button
       type="button"
@@ -34,7 +40,9 @@ export function SkateButton({
       disabled={disabled}
       className={`group relative w-full disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-orange ${className}`}
     >
-      <div className={`relative transition-transform ${popping ? "animate-ollie" : ""}`}>
+      <div
+        className={`relative transition-all duration-300 ease-smooth ${popping ? "animate-ollie" : ""} group-hover:-translate-y-0.5 group-hover:drop-shadow-[0_8px_24px_rgba(255,107,0,0.2)] group-active:translate-y-0`}
+      >
         <svg
           viewBox="0 0 320 72"
           fill="none"
@@ -42,64 +50,88 @@ export function SkateButton({
           className="w-full h-auto"
           aria-hidden="true"
         >
-          {/* Deck shape — kicked nose and tail */}
-          <path
-            d="M28 8 C12 8, 4 18, 6 28 L8 44 C10 52, 18 56, 28 56 L292 56 C302 56, 310 52, 312 44 L314 28 C316 18, 308 8, 292 8 Z"
-            fill="url(#deckGrad)"
-            stroke="url(#deckStroke)"
-            strokeWidth="1.5"
-          />
-          {/* Grip tape */}
-          <rect x="32" y="12" width="256" height="40" rx="8" fill="#1a1a1a" opacity="0.7" />
-          {/* Deck shine */}
-          <rect x="32" y="12" width="256" height="20" rx="8" fill="url(#deckShineGrad)" opacity="0.3" />
-
-          {/* Front truck */}
-          <rect x="56" y="56" width="40" height="4" rx="2" fill="#888" />
-          {/* Rear truck */}
-          <rect x="224" y="56" width="40" height="4" rx="2" fill="#888" />
-
-          {/* Front-left wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "60px 66px" }}>
-            <circle cx="60" cy="66" r="6" fill="#E8E0D8" stroke="#999" strokeWidth="1" />
-            <circle cx="60" cy="66" r="2.5" fill="#aaa" />
-          </g>
-          {/* Front-right wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "92px 66px" }}>
-            <circle cx="92" cy="66" r="6" fill="#E8E0D8" stroke="#999" strokeWidth="1" />
-            <circle cx="92" cy="66" r="2.5" fill="#aaa" />
-          </g>
-          {/* Rear-left wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "228px 66px" }}>
-            <circle cx="228" cy="66" r="6" fill="#E8E0D8" stroke="#999" strokeWidth="1" />
-            <circle cx="228" cy="66" r="2.5" fill="#aaa" />
-          </g>
-          {/* Rear-right wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "260px 66px" }}>
-            <circle cx="260" cy="66" r="6" fill="#E8E0D8" stroke="#999" strokeWidth="1" />
-            <circle cx="260" cy="66" r="2.5" fill="#aaa" />
-          </g>
-
+          {/* Drop shadow filter */}
           <defs>
-            <linearGradient id="deckGrad" x1="0" y1="0" x2="320" y2="0" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#CC5500" />
-              <stop offset="50%" stopColor="#FF6B00" />
-              <stop offset="100%" stopColor="#CC5500" />
+            <filter id={`shadow-${uid}`} x="-10%" y="-10%" width="120%" height="140%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.3" />
+            </filter>
+
+            <linearGradient id={gradId} x1="0" y1="0" x2="320" y2="72" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#E85D00" />
+              <stop offset="30%" stopColor="#FF6B00" />
+              <stop offset="60%" stopColor="#FF7A1A" />
+              <stop offset="100%" stopColor="#E85D00" />
             </linearGradient>
-            <linearGradient id="deckStroke" x1="0" y1="0" x2="320" y2="0" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#993D00" />
+
+            <linearGradient id={strokeId} x1="0" y1="0" x2="320" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#B34700" />
               <stop offset="50%" stopColor="#FF8533" />
-              <stop offset="100%" stopColor="#993D00" />
+              <stop offset="100%" stopColor="#B34700" />
             </linearGradient>
-            <linearGradient id="deckShineGrad" x1="160" y1="12" x2="160" y2="32" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="white" />
+
+            <linearGradient id={shineId} x1="160" y1="10" x2="160" y2="36" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="white" stopOpacity="0.35" />
               <stop offset="100%" stopColor="white" stopOpacity="0" />
             </linearGradient>
+
+            <radialGradient id={innerGlowId} cx="50%" cy="30%" r="60%">
+              <stop offset="0%" stopColor="#FFB366" stopOpacity="0.15" />
+              <stop offset="100%" stopColor="#FF6B00" stopOpacity="0" />
+            </radialGradient>
           </defs>
+
+          {/* Deck shape — kicked nose and tail */}
+          <g filter={`url(#shadow-${uid})`}>
+            <path
+              d="M28 8 C12 8, 4 18, 6 28 L8 44 C10 52, 18 56, 28 56 L292 56 C302 56, 310 52, 312 44 L314 28 C316 18, 308 8, 292 8 Z"
+              fill={`url(#${gradId})`}
+              stroke={`url(#${strokeId})`}
+              strokeWidth="1.5"
+            />
+          </g>
+
+          {/* Grip tape */}
+          <rect x="32" y="12" width="256" height="40" rx="8" fill="#1a1a1a" opacity="0.65" />
+
+          {/* Inner glow for depth */}
+          <rect x="32" y="12" width="256" height="40" rx="8" fill={`url(#${innerGlowId})`} />
+
+          {/* Top shine highlight */}
+          <rect x="32" y="12" width="256" height="20" rx="8" fill={`url(#${shineId})`} />
+
+          {/* Front truck */}
+          <rect x="54" y="56" width="44" height="4" rx="2" fill="#777" />
+          {/* Rear truck */}
+          <rect x="222" y="56" width="44" height="4" rx="2" fill="#777" />
+
+          {/* Front-left wheel */}
+          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "58px 66px" }}>
+            <circle cx="58" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
+            <circle cx="58" cy="66" r="3" fill="#bbb" />
+            <circle cx="58" cy="66" r="1" fill="#999" />
+          </g>
+          {/* Front-right wheel */}
+          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "94px 66px" }}>
+            <circle cx="94" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
+            <circle cx="94" cy="66" r="3" fill="#bbb" />
+            <circle cx="94" cy="66" r="1" fill="#999" />
+          </g>
+          {/* Rear-left wheel */}
+          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "226px 66px" }}>
+            <circle cx="226" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
+            <circle cx="226" cy="66" r="3" fill="#bbb" />
+            <circle cx="226" cy="66" r="1" fill="#999" />
+          </g>
+          {/* Rear-right wheel */}
+          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "262px 66px" }}>
+            <circle cx="262" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
+            <circle cx="262" cy="66" r="3" fill="#bbb" />
+            <circle cx="262" cy="66" r="1" fill="#999" />
+          </g>
         </svg>
 
         {/* Text overlay on the deck */}
-        <span className="absolute inset-0 flex items-center justify-center font-display text-xl tracking-wider text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)] pb-2">
+        <span className="absolute inset-0 flex items-center justify-center font-display text-xl tracking-wider text-white pb-2 select-none drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)] [text-shadow:0_0_20px_rgba(255,107,0,0.3)]">
           {children}
         </span>
       </div>
