@@ -16,6 +16,7 @@ import {
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
+import { analytics } from "./analytics";
 import { logger, metrics } from "./logger";
 import { captureException } from "../lib/sentry";
 import { writeNotification } from "./notifications";
@@ -223,6 +224,8 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
     return { matcherUid, setterUsername };
   });
   recordTurnAction(gameId);
+  metrics.trickSet(gameId, safeTrickName, videoUrl !== null);
+  analytics.trickSet(gameId, safeTrickName);
   // Notify matcher it's their turn (best-effort)
   writeNotification({
     recipientUid: txResult.matcherUid,
@@ -356,9 +359,16 @@ export async function submitMatchAttempt(
       setterUsername,
       matcherUsername: matcherUsernameVal,
       nextSetter,
+      turnNumber: game.turnNumber,
     };
   });
   recordTurnAction(gameId);
+  metrics.matchSubmitted(gameId, landed);
+  analytics.matchSubmitted(gameId, landed);
+  if (result.gameOver && result.winner) {
+    metrics.gameCompleted(gameId, result.winner, result.turnNumber);
+    analytics.gameCompleted(gameId, result.winner === result.matcherUid);
+  }
 
   // Send notifications based on outcome (best-effort)
   if (result.gameOver) {
