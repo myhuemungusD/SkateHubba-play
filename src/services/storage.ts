@@ -1,6 +1,7 @@
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { requireStorage } from "../firebase";
 import { analytics } from "./analytics";
+import { metrics } from "./logger";
 
 export interface UploadProgress {
   bytesTransferred: number;
@@ -88,6 +89,7 @@ export async function uploadVideo(
       });
 
       analytics.videoUploaded(Date.now() - startTime, blob.size);
+      metrics.videoUploaded(gameId, blob.size, Date.now() - startTime);
       return url;
     } catch (err) {
       if (attempt === maxRetries) throw err;

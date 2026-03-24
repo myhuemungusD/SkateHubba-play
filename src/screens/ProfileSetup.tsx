@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { createProfile, isUsernameAvailable, type UserProfile } from "../services/users";
+import { analytics } from "../services/analytics";
+import { metrics } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -358,6 +360,8 @@ export function ProfileSetup({
     try {
       const normalized = username.trim();
       const profile = await createProfile(uid, normalized, stance, emailVerified, dob ?? undefined, parentalConsent);
+      metrics.signUp("google", uid);
+      analytics.signUp("google");
       onDone(profile);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not create profile");
