@@ -443,21 +443,21 @@ export function Landing({
             <button
               type="button"
               onClick={() => onNav("privacy")}
-              className="font-body text-xs text-subtle hover:text-muted transition-colors"
+              className="font-body text-xs text-subtle hover:text-muted transition-colors duration-300"
             >
               Privacy Policy
             </button>
             <button
               type="button"
               onClick={() => onNav("terms")}
-              className="font-body text-xs text-subtle hover:text-muted transition-colors"
+              className="font-body text-xs text-subtle hover:text-muted transition-colors duration-300"
             >
               Terms of Service
             </button>
             <button
               type="button"
               onClick={() => onNav("datadeletion")}
-              className="font-body text-xs text-subtle hover:text-muted transition-colors"
+              className="font-body text-xs text-subtle hover:text-muted transition-colors duration-300"
             >
               Data Deletion
             </button>

@@ -46,7 +46,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
       <button
         type="button"
         onClick={handleToggle}
-        className="relative p-1.5 rounded-lg border border-border hover:border-[#3A3A3A] transition-colors duration-200"
+        className="relative p-2 rounded-xl border border-border hover:border-border-hover hover:bg-white/[0.02] transition-all duration-300"
         aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ""}`}
         aria-expanded={open}
       >
@@ -75,7 +75,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[320px] max-h-[420px] flex flex-col rounded-2xl border border-border bg-surface shadow-2xl animate-fade-in z-50">
+        <div className="absolute right-0 top-full mt-2 w-[320px] max-h-[420px] flex flex-col rounded-2xl border border-white/[0.06] bg-surface/95 backdrop-blur-xl shadow-[0_8px_40px_rgba(0,0,0,0.4),0_2px_8px_rgba(0,0,0,0.2)] animate-scale-in z-50">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
             <span className="font-display text-sm tracking-wider text-white">NOTIFICATIONS</span>

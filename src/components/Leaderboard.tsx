@@ -99,10 +99,10 @@ export function Leaderboard({
           return (
             <div
               key={p.uid}
-              className={`flex items-center justify-between p-4 rounded-2xl bg-surface transition-all duration-200 ${
+              className={`flex items-center justify-between p-4 rounded-2xl transition-all duration-300 ${
                 isCurrentUser
-                  ? "border border-[rgba(255,107,0,0.35)] shadow-[0_0_28px_rgba(255,107,0,0.07)]"
-                  : "border border-border"
+                  ? "glass-card border-brand-orange/30 shadow-glow-sm"
+                  : "bg-surface border border-border hover:border-border-hover"
               }`}
             >
               <div className="flex items-center gap-3 min-w-0">

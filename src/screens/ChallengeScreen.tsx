@@ -68,7 +68,11 @@ export function ChallengeScreen({
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/80 px-6 pt-6">
       <div className="max-w-md mx-auto">
-        <button type="button" onClick={onBack} className="font-body text-sm text-[#888] mb-6 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="font-body text-sm text-muted hover:text-white mb-6 flex items-center gap-1.5 transition-colors duration-300 rounded-lg py-1 -ml-1 px-1"
+        >
           ← Back
         </button>
 
@@ -106,11 +110,11 @@ export function ChallengeScreen({
             )}
           </Btn>
 
-          <div className="p-4 rounded-xl bg-surface-alt border border-border mb-4 mt-8">
-            <h4 className="font-display text-xs tracking-[0.12em] text-[#555] mb-3">RULES</h4>
-            <div className="font-body text-sm text-[#888] space-y-2">
+          <div className="p-5 rounded-2xl glass-card mb-4 mt-8">
+            <h4 className="font-display text-xs tracking-[0.15em] text-subtle mb-3">RULES</h4>
+            <div className="font-body text-sm text-muted space-y-2.5">
               {RULES.map(({ Icon, text, color }) => (
-                <div key={text} className="flex items-center gap-2">
+                <div key={text} className="flex items-center gap-2.5">
                   <Icon size={15} className={`${color} shrink-0`} /> {text}
                 </div>
               ))}

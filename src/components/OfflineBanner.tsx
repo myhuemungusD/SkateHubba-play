@@ -10,7 +10,7 @@ export function OfflineBanner() {
     <div
       role="status"
       aria-live="assertive"
-      className="sticky top-0 z-50 bg-brand-red text-white text-center font-body text-xs py-1.5 tracking-wide"
+      className="sticky top-0 z-50 bg-gradient-to-r from-brand-red to-[#FF4A1A] text-white text-center font-body text-xs py-2 tracking-wide shadow-[0_2px_8px_rgba(255,61,0,0.2)]"
     >
       You&apos;re offline — changes will sync when reconnected
     </div>

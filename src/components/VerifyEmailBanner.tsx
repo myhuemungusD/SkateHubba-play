@@ -54,7 +54,7 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
   const btnLabel = sending ? "..." : cooldown > 0 ? `${cooldown}s` : sendError ? "Retry" : "Resend";
 
   return (
-    <div className="mx-5 mt-4 p-3.5 rounded-xl bg-[rgba(255,107,0,0.06)] border border-brand-orange flex items-center justify-between gap-3">
+    <div className="mx-5 mt-4 p-3.5 rounded-2xl bg-[rgba(255,107,0,0.06)] border border-brand-orange/40 flex items-center justify-between gap-3 shadow-[0_0_16px_rgba(255,107,0,0.06)] animate-fade-in">
       <div>
         <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
         <span className="font-body text-xs text-[#888]">
@@ -65,7 +65,7 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
         type="button"
         onClick={handleResend}
         disabled={sending || cooldown > 0}
-        className="font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange rounded-lg px-3 py-1.5 whitespace-nowrap disabled:opacity-40 transition-opacity"
+        className="font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange/40 rounded-xl px-3.5 py-1.5 whitespace-nowrap disabled:opacity-40 hover:bg-brand-orange/[0.08] hover:border-brand-orange/60 active:scale-[0.97] transition-all duration-300"
         aria-label={cooldown > 0 ? `Resend available in ${cooldown} seconds` : "Resend verification email"}
       >
         {btnLabel}

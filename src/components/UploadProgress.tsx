@@ -12,25 +12,25 @@ export function UploadProgress({ progress }: { progress: UploadProgressData | nu
 
   return (
     <div
-      className="w-full max-w-md mx-auto mt-4"
+      className="w-full max-w-md mx-auto mt-4 animate-fade-in"
       role="progressbar"
       aria-valuenow={progress.percent}
       aria-valuemin={0}
       aria-valuemax={100}
       aria-label="Video upload progress"
     >
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="flex items-center justify-between mb-2">
         <span className="font-display text-sm tracking-wider text-brand-orange">Uploading video...</span>
-        <span className="font-display text-sm tracking-wider text-white">{progress.percent}%</span>
+        <span className="font-display text-sm tracking-wider text-white tabular-nums">{progress.percent}%</span>
       </div>
-      <div className="w-full h-2 bg-surface-alt border border-border rounded-full overflow-hidden">
+      <div className="w-full h-2.5 bg-surface-alt border border-border rounded-full overflow-hidden">
         <div
-          className="h-full bg-brand-orange rounded-full transition-all duration-300 ease-out"
+          className="h-full bg-gradient-to-r from-brand-orange to-[#FF8533] rounded-full transition-all duration-300 ease-out shadow-[0_0_8px_rgba(255,107,0,0.3)]"
           // Inline style required: width is driven by dynamic upload progress percentage
           style={{ width: `${progress.percent}%` }}
         />
       </div>
-      <p className="font-body text-[11px] text-[#666] mt-1 text-center">
+      <p className="font-body text-[11px] text-subtle mt-1.5 text-center tabular-nums">
         {transferredMB} / {sizeMB} MB
       </p>
     </div>

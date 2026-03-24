@@ -132,8 +132,8 @@ export function AgeGate({
                 value={month}
                 onChange={(e) => setMonth(e.target.value.replace(/\D/g, ""))}
                 autoFocus
-                className="w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-xl text-white text-base font-body outline-none
-                  focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1)] transition-all duration-300 px-4 py-3.5 text-center"
+                className="w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-2xl text-white text-base font-body outline-none
+                  focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1),0_0_16px_rgba(255,107,0,0.06)] transition-all duration-300 px-4 py-3.5 text-center"
                 aria-label="Birth month"
               />
             </div>
@@ -145,8 +145,8 @@ export function AgeGate({
                 maxLength={2}
                 value={day}
                 onChange={(e) => setDay(e.target.value.replace(/\D/g, ""))}
-                className="w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-xl text-white text-base font-body outline-none
-                  focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1)] transition-all duration-300 px-4 py-3.5 text-center"
+                className="w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-2xl text-white text-base font-body outline-none
+                  focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1),0_0_16px_rgba(255,107,0,0.06)] transition-all duration-300 px-4 py-3.5 text-center"
                 aria-label="Birth day"
               />
             </div>
@@ -158,8 +158,8 @@ export function AgeGate({
                 maxLength={4}
                 value={year}
                 onChange={(e) => setYear(e.target.value.replace(/\D/g, ""))}
-                className="w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-xl text-white text-base font-body outline-none
-                  focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1)] transition-all duration-300 px-4 py-3.5 text-center"
+                className="w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-2xl text-white text-base font-body outline-none
+                  focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1),0_0_16px_rgba(255,107,0,0.06)] transition-all duration-300 px-4 py-3.5 text-center"
                 aria-label="Birth year"
               />
             </div>

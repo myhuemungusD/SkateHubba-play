@@ -24,7 +24,7 @@ export function PushPermissionBanner({ uid }: { uid: string }) {
   if (!visible) return null;
 
   return (
-    <div className="mx-5 mt-3 p-4 rounded-xl bg-surface border border-border animate-fade-in">
+    <div className="mx-5 mt-3 p-4 rounded-2xl bg-surface/80 backdrop-blur-sm border border-border animate-fade-in">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-display text-sm text-white mb-1">Enable push notifications?</p>

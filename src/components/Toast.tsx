@@ -49,7 +49,7 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
     <div
       role="status"
       aria-live="polite"
-      className={`relative flex items-start gap-3 p-3 pr-8 rounded-xl glass-card shadow-glass overflow-hidden touch-pan-y select-none ${exiting ? "animate-toast-out" : "animate-toast-in"}`}
+      className={`relative flex items-start gap-3 p-3.5 pr-8 rounded-2xl glass-card shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] overflow-hidden touch-pan-y select-none ${exiting ? "animate-toast-out" : "animate-toast-in"}`}
       // Inline style required: transform/opacity are driven by continuous pointer drag state
       style={{
         transform: dragX > 0 ? `translateX(${dragX}px)` : undefined,

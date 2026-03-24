@@ -148,7 +148,11 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/80 pb-10">
       <div className="px-5 py-4 border-b border-white/[0.04] glass flex justify-between items-center">
-        <button type="button" onClick={onBack} className="font-body text-sm text-muted">
+        <button
+          type="button"
+          onClick={onBack}
+          className="font-body text-sm text-muted hover:text-white transition-colors duration-300 rounded-lg py-1 px-1 -ml-1"
+        >
           ← Games
         </button>
         <Timer deadline={deadline} />
@@ -162,7 +166,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         </div>
 
         {isSetter ? (
-          <div className="text-center mb-5 rounded-xl border bg-brand-orange/[0.06] backdrop-blur-sm border-brand-orange/40 shadow-glow-sm">
+          <div className="text-center mb-5 rounded-2xl border bg-brand-orange/[0.06] backdrop-blur-sm border-brand-orange/30 shadow-[0_0_20px_rgba(255,107,0,0.06)]">
             <label
               htmlFor="trickNameInput"
               className="font-display text-[11px] tracking-[0.2em] text-brand-orange block pt-3"
@@ -191,7 +195,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             )}
           </div>
         ) : (
-          <div className="text-center py-3 px-5 mb-5 rounded-xl border bg-brand-green/[0.06] backdrop-blur-sm border-brand-green/40 shadow-glow-green">
+          <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-brand-green/[0.06] backdrop-blur-sm border-brand-green/30 shadow-[0_0_20px_rgba(0,230,118,0.06)]">
             <span className="font-display text-xl tracking-wider text-brand-green">
               Match @{game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}&apos;s{" "}
               {game.currentTrickName || "trick"}

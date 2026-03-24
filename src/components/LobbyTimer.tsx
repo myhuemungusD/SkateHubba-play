@@ -42,12 +42,12 @@ export function LobbyTimer({ deadline, isMyTurn }: { deadline: number; isMyTurn:
 
   return (
     <span
-      className={`font-display text-[10px] tracking-wider leading-none ${
-        urgent ? "text-brand-red animate-pulse" : isMyTurn ? "text-[#888]" : "text-[#555]"
+      className={`inline-flex items-center gap-1 font-display text-[10px] tracking-wider leading-none tabular-nums ${
+        urgent ? "text-brand-red animate-pulse" : isMyTurn ? "text-muted" : "text-subtle"
       }`}
       aria-label={`Time remaining: ${label}`}
     >
-      <ClockIcon size={10} className="inline -mt-px mr-0.5" />
+      <ClockIcon size={10} className="inline -mt-px" />
       {label}
     </span>
   );
