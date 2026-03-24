@@ -1,6 +1,7 @@
-import { Btn } from "../components/ui/Btn";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
+import { SkateButton } from "../components/SkateButton";
+import { playOlliePop } from "../utils/ollieSound";
 import { VideoIcon, ClockIcon, FlameIcon, ShieldIcon, TrophyIcon, UsersIcon } from "../components/icons";
 
 /* ── Data ────────────────────────────────────────────────── */
@@ -85,14 +86,20 @@ export function Landing({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => onGo("signin")}
+              onClick={() => {
+                playOlliePop();
+                onGo("signin");
+              }}
               className="font-display text-sm tracking-wider text-muted hover:text-white transition-colors duration-300"
             >
               LOG IN
             </button>
             <button
               type="button"
-              onClick={() => onGo("signup")}
+              onClick={() => {
+                playOlliePop();
+                onGo("signup");
+              }}
               className="font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange to-[#FF8533] text-white px-5 py-2 rounded-lg shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5 transition-all duration-300 active:scale-[0.97]"
             >
               SIGN UP
@@ -142,19 +149,22 @@ export function Landing({
           </span>
 
           {/* Auth Buttons */}
-          <div className="w-full max-w-sm flex flex-col gap-3">
-            <GoogleButton onClick={onGoogle} loading={googleLoading} />
+          <div className="w-full max-w-sm flex flex-col gap-4">
+            <GoogleButton
+              onClick={() => {
+                playOlliePop();
+                onGoogle();
+              }}
+              loading={googleLoading}
+            />
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
               <span className="font-body text-xs text-[#444]">or</span>
               <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
             </div>
-            <Btn onClick={() => onGo("signup")} disabled={googleLoading}>
-              Get Started with Email
-            </Btn>
-            <Btn onClick={() => onGo("signin")} variant="ghost" disabled={googleLoading}>
-              I Have an Account
-            </Btn>
+            <SkateButton onClick={() => onGo("signup")} disabled={googleLoading}>
+              Sign In / Sign Up
+            </SkateButton>
           </div>
         </div>
       </section>
@@ -358,15 +368,12 @@ export function Landing({
             Grab your board, open the app, and prove you&apos;ve got what it takes.
           </p>
 
-          <div className="w-full max-w-sm flex flex-col gap-3">
+          <div className="w-full max-w-sm flex flex-col gap-4">
             <div className="animate-glow-pulse rounded-xl">
-              <Btn onClick={() => onGo("signup")} disabled={googleLoading}>
+              <SkateButton onClick={() => onGo("signup")} disabled={googleLoading}>
                 Start Playing — It&apos;s Free
-              </Btn>
+              </SkateButton>
             </div>
-            <Btn onClick={() => onGo("signin")} variant="ghost" disabled={googleLoading}>
-              I Already Have an Account
-            </Btn>
           </div>
 
           <InviteButton className="w-full max-w-sm mt-5" />

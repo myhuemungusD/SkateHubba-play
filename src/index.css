@@ -216,6 +216,36 @@
   animation: float 4s ease-in-out infinite;
 }
 
+/* ── Ollie pop animation for skate buttons ─────────────── */
+@keyframes ollie {
+  0% {
+    transform: rotate(0deg) translateY(0);
+  }
+  15% {
+    transform: rotate(6deg) translateY(0);
+    transform-origin: 85% 100%;
+  }
+  35% {
+    transform: rotate(-4deg) translateY(-28px);
+  }
+  55% {
+    transform: rotate(0deg) translateY(-32px);
+  }
+  75% {
+    transform: rotate(2deg) translateY(-8px);
+  }
+  88% {
+    transform: rotate(0deg) translateY(0) scaleY(0.93);
+  }
+  100% {
+    transform: rotate(0deg) translateY(0) scaleY(1);
+  }
+}
+
+.animate-ollie {
+  animation: ollie 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
 /* ── Scale-in for modals / cards ─────────────────────── */
 @keyframes scale-in {
   from {
