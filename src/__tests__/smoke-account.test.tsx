@@ -180,7 +180,7 @@ describe("Smoke: Account & Sign Out", () => {
       expect(mockDeleteAccount).toHaveBeenCalled();
       expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
       // After deletion, app navigates to landing
-      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
   });
 
@@ -249,7 +249,7 @@ describe("Smoke: Account & Sign Out", () => {
 
     // Despite error, app navigates to landing (sign-out clears state even on error)
     await waitFor(() => {
-      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
   });
 
@@ -336,7 +336,7 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Sign Out"));
 
     await waitFor(() => {
-      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
   });
 });

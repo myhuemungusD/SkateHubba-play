@@ -13,7 +13,7 @@ describe("Landing", () => {
 
   it("renders hero content", () => {
     render(<Landing {...defaultProps} />);
-    expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+    expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
   });
 
@@ -33,9 +33,9 @@ describe("Landing", () => {
 
   it("renders How It Works section", () => {
     render(<Landing {...defaultProps} />);
-    expect(screen.getByText("Set a Trick")).toBeInTheDocument();
+    expect(screen.getByText("Film It")).toBeInTheDocument();
     expect(screen.getByText("Send the Challenge")).toBeInTheDocument();
-    expect(screen.getByText("Earn Letters")).toBeInTheDocument();
+    expect(screen.getByText("Spell It Out")).toBeInTheDocument();
   });
 
   it("renders footer with legal links", () => {

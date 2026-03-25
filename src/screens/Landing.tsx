@@ -11,20 +11,20 @@ const BRAND_ICON_CLASS = "text-brand-orange";
 const HOW_IT_WORKS = [
   {
     step: "01",
-    label: "Set a Trick",
-    desc: "Film yourself landing a trick in one take. No edits, no retakes.",
+    label: "Film It",
+    desc: "One take. One chance. Land your trick on camera or don't bother.",
     color: "#FF6B00",
   },
   {
     step: "02",
     label: "Send the Challenge",
-    desc: "Your opponent gets 24 hours to match your trick or set one back.",
+    desc: "Call out your opponent. They got 24 hours to match it or eat a letter.",
     color: "#FF8533",
   },
   {
     step: "03",
-    label: "Earn Letters",
-    desc: "Miss a trick, earn a letter. S-K-A-T-E = game over.",
+    label: "Spell It Out",
+    desc: "Miss the trick, take the letter. S-K-A-T-E and you're done.",
     color: "#FFA366",
   },
 ] as const;
@@ -32,33 +32,33 @@ const HOW_IT_WORKS = [
 const FEATURES = [
   {
     icon: <VideoIcon size={24} className={BRAND_ICON_CLASS} />,
-    title: "One-Take Video",
-    desc: "No editing. No second chances. One continuous take keeps it real.",
+    title: "One Take",
+    desc: "No editing. No do-overs. You film it, it counts. Period.",
   },
   {
     icon: <ClockIcon size={24} className={BRAND_ICON_CLASS} />,
-    title: "24hr Async Turns",
-    desc: "Play on your schedule. A full day to film and submit your trick.",
+    title: "24hr Turns",
+    desc: "Play when you want. You got a full day to get out there and film.",
   },
   {
     icon: <FlameIcon size={24} className={BRAND_ICON_CLASS} />,
     title: "No Trick Farming",
-    desc: "Every trick counts. The game rewards creativity and skill.",
+    desc: "Can't spam kickflips all day. Step it up or get spelled out.",
   },
   {
     icon: <ShieldIcon size={24} className={BRAND_ICON_CLASS} />,
-    title: "Fair Play",
-    desc: "What you see is what you get. No room for faking it.",
+    title: "No Faking",
+    desc: "One continuous take. What you see is what happened. That's it.",
   },
   {
     icon: <TrophyIcon size={24} className={BRAND_ICON_CLASS} />,
-    title: "Competitive Rankings",
-    desc: "Win games, climb the leaderboard, become the GOAT.",
+    title: "Rankings",
+    desc: "Win games, stack stats, climb the board. Talk is cheap.",
   },
   {
     icon: <UsersIcon size={24} className={BRAND_ICON_CLASS} />,
-    title: "Challenge Anyone",
-    desc: "Invite your crew or battle strangers. Board and phone is all you need.",
+    title: "Run It With Anyone",
+    desc: "Your crew, randoms, whoever. All you need is a board and a phone.",
   },
 ] as const;
 
@@ -129,18 +129,18 @@ export function Landing({
             className="font-display tracking-wide text-white mb-5 leading-[0.9]"
             style={{ fontSize: "clamp(3rem, 2.2rem + 4.5vw, 6.5rem)" }}
           >
-            <span className="block">TRICK BATTLES.</span>
+            <span className="block">SET IT. MATCH IT.</span>
             <span
               className="block text-brand-orange"
               style={{ textShadow: "0 0 60px rgba(255,107,0,0.35), 0 0 120px rgba(255,107,0,0.15)" }}
             >
-              ONE TAKE ONLY.
+              ONE TAKE.
             </span>
           </h1>
 
           {/* Subtitle */}
           <p className="font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
-            The first async S.K.A.T.E. game. Film your trick, send the challenge, prove you&apos;re the best.
+            Async S.K.A.T.E. No edits. No excuses. Film your trick and put up or shut up.
           </p>
 
           {/* Auth Buttons */}
@@ -207,7 +207,7 @@ export function Landing({
             <div className="absolute bottom-4 left-5 right-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-brand-red animate-rec-pulse" />
-                <span className="font-body text-xs text-white/70">Real game — no edits</span>
+                <span className="font-body text-xs text-white/70">Real game. No edits. No cap.</span>
               </div>
               <span className="font-display text-xs tracking-widest text-white/30">SKATEHUBBA</span>
             </div>
@@ -218,7 +218,7 @@ export function Landing({
       {/* ─── How It Works ───────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-6 py-16 md:py-28" aria-label="How it works">
         <div className="text-center mb-14 md:mb-20">
-          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">THE RULES</span>
+          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">THE DEAL</span>
           <h2 className="font-display text-fluid-3xl text-white tracking-wider">HOW IT WORKS</h2>
         </div>
 
@@ -298,37 +298,23 @@ export function Landing({
           <div className="flex-1 text-center md:text-left">
             <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-4 block">THE GAME</span>
             <h2 className="font-display text-fluid-3xl text-white tracking-wider mb-4 leading-[1.1]">
-              REAL TRICKS.
+              NO EDITS.
               <br />
-              REAL PROOF.
+              NO EXCUSES.
             </h2>
             <p className="font-body text-sm text-dim leading-relaxed mb-8 max-w-md">
-              Every trick is filmed in a single uncut take. No edits, no faking it. Your opponent watches your clip and
-              has to match it — or take a letter. Five letters and you&apos;re out.
+              Every trick is one uncut take. Your opponent watches your clip and either matches it or takes a letter.
+              Five letters and you&apos;re out. Simple as that.
             </p>
             <ul className="space-y-3 text-left">
               {[
-                "One continuous video per trick",
-                "24-hour window to respond",
-                "S-K-A-T-E elimination format",
-                "Play from anywhere, anytime",
+                "One continuous take per trick",
+                "24 hours to respond",
+                "S-K-A-T-E elimination",
+                "Play from anywhere",
               ].map((item) => (
                 <li key={item} className="flex items-center gap-3">
-                  <span className="w-5 h-5 rounded-full bg-brand-orange/10 flex items-center justify-center flex-shrink-0">
-                    <svg
-                      width="10"
-                      height="10"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="#FF6B00"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <polyline points="20 6 9 17 4 12" />
-                    </svg>
-                  </span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-brand-orange flex-shrink-0" />
                   <span className="font-body text-sm text-dim">{item}</span>
                 </li>
               ))}
@@ -340,8 +326,8 @@ export function Landing({
       {/* ─── Features Grid ──────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-6 py-16 md:py-28" aria-label="Features">
         <div className="text-center mb-14 md:mb-20">
-          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">FEATURES</span>
-          <h2 className="font-display text-fluid-3xl text-white tracking-wider">BUILT FOR SKATERS</h2>
+          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">WHAT YOU GET</span>
+          <h2 className="font-display text-fluid-3xl text-white tracking-wider">BUILT DIFFERENT</h2>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -375,16 +361,16 @@ export function Landing({
             className="font-display text-white tracking-wider mb-4 leading-[0.95]"
             style={{ fontSize: "clamp(2rem, 1.5rem + 3vw, 4.5rem)" }}
           >
-            READY TO PLAY?
+            QUIT SCROLLING.
           </h2>
-          <p className="font-body text-dim mb-10 max-w-sm leading-relaxed">
-            Grab your board, open the app, and prove you&apos;ve got what it takes.
+          <p className="font-body text-dim mb-10 max-w-xs leading-relaxed">
+            Board. Phone. That&apos;s all you need. Get in.
           </p>
 
           <div className="w-full max-w-sm flex flex-col gap-4">
             <div className="animate-glow-pulse rounded-xl">
               <SkateButton onClick={() => onGo("signup")} disabled={googleLoading}>
-                Start Playing — It&apos;s Free
+                Start Playing
               </SkateButton>
             </div>
           </div>
@@ -400,7 +386,7 @@ export function Landing({
             <span className="font-display text-sm tracking-[0.2em] text-white/40">
               SKATEHUBBA<span className="text-white/20">™</span>
             </span>
-            <span className="font-body text-xs text-[#333]">The first async S.K.A.T.E. trick battle game.</span>
+            <span className="font-body text-xs text-[#333]">Async S.K.A.T.E. One take only.</span>
           </div>
 
           {/* Social Links */}

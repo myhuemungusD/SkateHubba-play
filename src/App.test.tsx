@@ -100,7 +100,7 @@ describe("App", () => {
     });
     renderApp();
     await waitFor(() => {
-      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
       expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
       expect(screen.getByText("Log in")).toBeInTheDocument();
     });

@@ -117,7 +117,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+    expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
     expect(screen.getByText("Log in")).toBeInTheDocument();
 
@@ -392,7 +392,7 @@ describe("Smoke: Auth", () => {
     // Here we test that the normal flow works when firebase IS ready.
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
-    expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+    expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
   });
 
   it("password reset requires email before sending", async () => {
