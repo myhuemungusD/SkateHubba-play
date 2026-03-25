@@ -13,9 +13,6 @@ interface AuthState {
   refreshProfile: () => Promise<void>;
 }
 
-/** How often (ms) to poll user.reload() while email is unverified. */
-const EMAIL_POLL_MS = 5_000;
-
 export function useAuth(): AuthState {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
@@ -25,45 +22,6 @@ export function useAuth(): AuthState {
   // Keep a ref in sync so refreshProfile always uses latest user
   useEffect(() => {
     userRef.current = user;
-  }, [user]);
-
-  // ----- Email-verification refresh -----
-  // Firebase's onAuthStateChanged does NOT fire when emailVerified flips
-  // server-side.  We reload the user token on visibility-change (user returns
-  // from their inbox) and on a gentle 5 s poll while unverified.
-  useEffect(() => {
-    if (!user || user.emailVerified) return;
-
-    let cancelled = false;
-
-    const reloadAndSync = async (): Promise<void> => {
-      try {
-        await user.reload();
-        if (cancelled) return;
-        if (user.emailVerified) {
-          logger.info("email_verified_detected", { uid: user.uid });
-          // Re-set user so React sees the updated emailVerified flag
-          setUser(Object.assign(Object.create(Object.getPrototypeOf(user) as object), user) as User);
-        }
-      } catch (err) {
-        logger.debug("email_verify_reload_error", { error: parseFirebaseError(err) });
-      }
-    };
-
-    // 1. Visibility change (covers the "click link, come back to tab" flow)
-    const onVisible = (): void => {
-      if (document.visibilityState === "visible") void reloadAndSync();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-
-    // 2. Polling fallback (covers PWA / mobile where visibility may not change)
-    const timer = window.setInterval(() => void reloadAndSync(), EMAIL_POLL_MS);
-
-    return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", onVisible);
-      clearInterval(timer);
-    };
   }, [user]);
 
   const refreshProfile = useCallback(async () => {
