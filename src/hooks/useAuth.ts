@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { User } from "firebase/auth";
-import { onAuthChange } from "../services/auth";
+import { onAuthChange, reloadUser } from "../services/auth";
 import { getUserProfile, type UserProfile } from "../services/users";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -116,6 +116,33 @@ export function useAuth(): AuthState {
       setLoading(false);
     });
     return unsub;
+  }, []);
+
+  // When the user returns to the tab after clicking a verification link in
+  // another tab/browser, onAuthStateChanged does NOT fire.  We detect the
+  // page becoming visible and force-refresh the auth token so the UI picks
+  // up the updated emailVerified claim.
+  useEffect(() => {
+    const onVisible = async () => {
+      if (document.visibilityState !== "visible") return;
+      const u = userRef.current;
+      if (!u || u.emailVerified) return;
+      try {
+        const verified = await reloadUser();
+        if (verified) {
+          logger.debug("visibility_reload_verified", { uid: u.uid });
+          // Trigger a re-render with the refreshed user object.  Firebase
+          // mutates the User in place on reload(), so we clone via the
+          // getter to force React state to update.
+          setUser(Object.assign(Object.create(Object.getPrototypeOf(u)), u));
+        }
+      } catch {
+        // Network error while reloading — non-critical, will retry on next focus.
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
   return { loading, user, profile, refreshProfile };
