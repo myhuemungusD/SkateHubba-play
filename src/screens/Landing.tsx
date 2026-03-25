@@ -80,9 +80,12 @@ export function Landing({
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
       <nav className="sticky top-0 z-50 glass border-b border-white/[0.04]">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <span className="font-display text-lg tracking-[0.25em] text-brand-orange">
-            SKATEHUBBA<span className="text-subtle">™</span>
-          </span>
+          <img
+            src="/logonew.webp"
+            alt="SkateHubba"
+            draggable={false}
+            className="h-10 md:h-12 w-auto select-none drop-shadow-[0_0_12px_rgba(255,107,0,0.2)]"
+          />
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -130,14 +133,6 @@ export function Landing({
         />
 
         <div className="relative max-w-5xl mx-auto px-6 pt-16 pb-20 md:pt-24 md:pb-28 flex flex-col items-center text-center">
-          <img
-            src="/logonew.webp"
-            alt="SkateHubba"
-            width={1536}
-            height={1024}
-            draggable={false}
-            className="w-80 md:w-[28rem] lg:w-[32rem] mb-6 drop-shadow-[0_0_60px_rgba(255,107,0,0.25)] select-none"
-          />
           <p className="font-body text-fluid-lg text-muted max-w-md leading-relaxed mb-4">
             The first async trick battle game.
             <br />
