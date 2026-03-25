@@ -8,6 +8,7 @@ export function Field({
   type = "text",
   maxLength,
   note,
+  error,
   icon,
   autoComplete,
   autoFocus,
@@ -21,6 +22,7 @@ export function Field({
   type?: string;
   maxLength?: number;
   note?: string;
+  error?: string;
   icon?: string;
   autoComplete?: string;
   autoFocus?: boolean;
@@ -29,6 +31,7 @@ export function Field({
 }) {
   const id = useId();
   const noteId = note ? `${id}-note` : undefined;
+  const errorId = error ? `${id}-error` : undefined;
   return (
     <div className="mb-4 w-full">
       {label && (
@@ -58,15 +61,22 @@ export function Field({
           autoCapitalize={autoCapitalize}
           autoCorrect="off"
           spellCheck={false}
-          aria-describedby={noteId}
-          className={`w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-2xl text-white text-base font-body outline-none
+          aria-describedby={errorId ?? noteId}
+          aria-invalid={error ? true : undefined}
+          className={`w-full bg-surface-alt/80 backdrop-blur-sm border rounded-2xl text-white text-base font-body outline-none
             focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1),0_0_16px_rgba(255,107,0,0.06)] transition-all duration-300
             disabled:opacity-40 disabled:cursor-not-allowed
             placeholder:text-subtle/60
+            ${error ? "border-brand-red" : "border-border"}
             ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
         />
       </div>
-      {note && (
+      {error && (
+        <span id={errorId} className="text-xs text-brand-red mt-1.5 block font-body" role="alert">
+          {error}
+        </span>
+      )}
+      {note && !error && (
         <span id={noteId} className="text-xs text-faint mt-1.5 block font-body">
           {note}
         </span>

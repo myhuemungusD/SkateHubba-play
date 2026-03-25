@@ -43,6 +43,7 @@ export function DeleteAccountModal({
             }}
             variant="secondary"
             disabled={deleting}
+            autoFocus
           >
             Cancel
           </Btn>
