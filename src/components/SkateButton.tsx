@@ -103,31 +103,6 @@ export function SkateButton({
           <rect x="54" y="56" width="44" height="4" rx="2" fill="#777" />
           {/* Rear truck */}
           <rect x="222" y="56" width="44" height="4" rx="2" fill="#777" />
-
-          {/* Front-left wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "58px 66px" }}>
-            <circle cx="58" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
-            <circle cx="58" cy="66" r="3" fill="#bbb" />
-            <circle cx="58" cy="66" r="1" fill="#999" />
-          </g>
-          {/* Front-right wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "94px 66px" }}>
-            <circle cx="94" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
-            <circle cx="94" cy="66" r="3" fill="#bbb" />
-            <circle cx="94" cy="66" r="1" fill="#999" />
-          </g>
-          {/* Rear-left wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "226px 66px" }}>
-            <circle cx="226" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
-            <circle cx="226" cy="66" r="3" fill="#bbb" />
-            <circle cx="226" cy="66" r="1" fill="#999" />
-          </g>
-          {/* Rear-right wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "262px 66px" }}>
-            <circle cx="262" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
-            <circle cx="262" cy="66" r="3" fill="#bbb" />
-            <circle cx="262" cy="66" r="1" fill="#999" />
-          </g>
         </svg>
 
         {/* Text overlay on the deck */}
