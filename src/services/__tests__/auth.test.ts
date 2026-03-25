@@ -35,6 +35,7 @@ import {
   signOut,
   resetPassword,
   resendVerification,
+  reloadUser,
   onAuthChange,
   deleteAccount,
   resolveGoogleRedirect,
@@ -114,6 +115,22 @@ describe("auth service", () => {
       (auth as unknown as { currentUser: unknown }).currentUser = null;
       await resendVerification();
       expect(mockSendVerify).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("reloadUser", () => {
+    it("reloads the current user and returns emailVerified", async () => {
+      const mockUser = { uid: "u1", emailVerified: true, reload: vi.fn().mockResolvedValue(undefined) };
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
+      const result = await reloadUser();
+      expect(mockUser.reload).toHaveBeenCalled();
+      expect(result).toBe(true);
+    });
+
+    it("returns null when there is no current user", async () => {
+      (auth as unknown as { currentUser: unknown }).currentUser = null;
+      const result = await reloadUser();
+      expect(result).toBeNull();
     });
   });
 

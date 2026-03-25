@@ -81,6 +81,21 @@ export async function resetPassword(email: string): Promise<void> {
   logger.info("password_reset_sent", { email });
 }
 
+/**
+ * Force-refresh the current user's Auth token so that claims like
+ * `emailVerified` reflect the latest server state.  Call this when
+ * the user returns to the app after clicking a verification link
+ * in another tab/browser.
+ *
+ * Returns the updated emailVerified value, or null if no user is signed in.
+ */
+export async function reloadUser(): Promise<boolean | null> {
+  const user = requireAuth().currentUser;
+  if (!user) return null;
+  await user.reload();
+  return user.emailVerified;
+}
+
 export async function resendVerification(): Promise<void> {
   const user = requireAuth().currentUser;
   if (user) {

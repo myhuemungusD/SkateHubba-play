@@ -5,11 +5,14 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 let authChangeCallback: ((user: unknown) => void) | null = null;
 const mockUnsubscribe = vi.fn();
 
+const mockReloadUser = vi.fn();
+
 vi.mock("../../services/auth", () => ({
   onAuthChange: vi.fn((cb: (user: unknown) => void) => {
     authChangeCallback = cb;
     return mockUnsubscribe;
   }),
+  reloadUser: (...args: unknown[]) => mockReloadUser(...args),
 }));
 
 const mockGetUserProfile = vi.fn();
@@ -147,6 +150,115 @@ describe("useAuth hook", () => {
     });
 
     await waitFor(() => expect(result.current.profile).toBeNull());
+  });
+
+  it("reloads auth token on visibilitychange when emailVerified is false", async () => {
+    mockGetUserProfile.mockResolvedValue({ uid: "u1", username: "sk8r" });
+    mockReloadUser.mockResolvedValue(true);
+
+    const { result } = renderHook(() => useAuth());
+
+    // Sign in with an unverified user
+    await act(async () => {
+      authChangeCallback?.({ uid: "u1", email: "a@b.com", emailVerified: false });
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Simulate returning to the tab
+    await act(async () => {
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(mockReloadUser).toHaveBeenCalled();
+  });
+
+  it("skips reload when emailVerified is already true", async () => {
+    mockGetUserProfile.mockResolvedValue({ uid: "u1", username: "sk8r" });
+
+    const { result } = renderHook(() => useAuth());
+
+    // Sign in with a verified user
+    await act(async () => {
+      authChangeCallback?.({ uid: "u1", email: "a@b.com", emailVerified: true });
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Simulate returning to the tab
+    await act(async () => {
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
+  it("ignores visibilitychange when document is hidden", async () => {
+    mockGetUserProfile.mockResolvedValue({ uid: "u1", username: "sk8r" });
+
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      authChangeCallback?.({ uid: "u1", email: "a@b.com", emailVerified: false });
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Simulate tab going hidden (not visible)
+    await act(async () => {
+      Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
+  it("does not update user when reloadUser returns false (still unverified)", async () => {
+    mockGetUserProfile.mockResolvedValue({ uid: "u1", username: "sk8r" });
+    mockReloadUser.mockResolvedValue(false);
+
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      authChangeCallback?.({ uid: "u1", email: "a@b.com", emailVerified: false });
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const userBefore = result.current.user;
+
+    // Simulate returning to the tab — still unverified
+    await act(async () => {
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(mockReloadUser).toHaveBeenCalled();
+    // User object should not have changed (no re-render forced)
+    expect(result.current.user).toBe(userBefore);
+  });
+
+  it("swallows errors from reloadUser on visibilitychange", async () => {
+    mockGetUserProfile.mockResolvedValue({ uid: "u1", username: "sk8r" });
+    mockReloadUser.mockRejectedValue(new Error("network error"));
+
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      authChangeCallback?.({ uid: "u1", email: "a@b.com", emailVerified: false });
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // Should not throw
+    await act(async () => {
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    expect(mockReloadUser).toHaveBeenCalled();
+    expect(result.current.user).toBeTruthy();
   });
 
   it("refreshProfile preserves existing profile on transient error", async () => {
