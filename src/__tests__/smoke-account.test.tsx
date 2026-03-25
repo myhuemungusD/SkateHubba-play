@@ -220,7 +220,7 @@ describe("Smoke: Account & Sign Out", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    await userEvent.click(screen.getByText("LOG IN"));
+    await userEvent.click(screen.getByText("Log in"));
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");

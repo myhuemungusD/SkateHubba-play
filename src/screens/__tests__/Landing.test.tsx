@@ -24,23 +24,23 @@ describe("Landing", () => {
     expect(onGo).toHaveBeenCalledWith("signup");
   });
 
-  it("calls onGo with signin via LOG IN nav button", async () => {
+  it("calls onGo with signin via Log in nav button", async () => {
     const onGo = vi.fn();
     render(<Landing {...defaultProps} onGo={onGo} />);
-    await userEvent.click(screen.getByText("LOG IN"));
+    await userEvent.click(screen.getByText("Log in"));
     expect(onGo).toHaveBeenCalledWith("signin");
   });
 
   it("renders How It Works section", () => {
     render(<Landing {...defaultProps} />);
     expect(screen.getByText("Set a Trick")).toBeInTheDocument();
-    expect(screen.getByText("Challenge an Opponent")).toBeInTheDocument();
+    expect(screen.getByText("Send the Challenge")).toBeInTheDocument();
     expect(screen.getByText("Earn Letters")).toBeInTheDocument();
   });
 
   it("renders footer with legal links", () => {
     render(<Landing {...defaultProps} />);
-    expect(screen.getByText("Privacy Policy")).toBeInTheDocument();
-    expect(screen.getByText("Terms of Service")).toBeInTheDocument();
+    expect(screen.getByText("Privacy")).toBeInTheDocument();
+    expect(screen.getByText("Terms")).toBeInTheDocument();
   });
 });
