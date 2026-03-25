@@ -24,6 +24,9 @@ vi.mock("./services/users", () => ({
   isUsernameAvailable: vi.fn(),
   getUidByUsername: vi.fn(),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
+  USERNAME_MIN: 3,
+  USERNAME_MAX: 20,
+  USERNAME_RE: /^[a-z0-9_]+$/,
 }));
 
 vi.mock("./services/games", () => ({

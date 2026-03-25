@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
-import { createProfile, isUsernameAvailable, type UserProfile } from "../services/users";
+import {
+  createProfile,
+  isUsernameAvailable,
+  USERNAME_MIN,
+  USERNAME_MAX,
+  USERNAME_RE,
+  type UserProfile,
+} from "../services/users";
 import { analytics } from "../services/analytics";
 import { metrics } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
@@ -15,9 +22,6 @@ const STANCES = [
 ] as const;
 
 const DEBOUNCE_MS = 400;
-const USERNAME_MIN = 3;
-const USERNAME_MAX = 20;
-const USERNAME_RE = /^[a-z0-9_]+$/;
 const SANITIZE_RE = /[^a-z0-9_]/g;
 
 /* ── Shared ───────────────────────────────────────────────────── */

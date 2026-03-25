@@ -29,6 +29,7 @@ function getActionCodeSettings(): ActionCodeSettings {
   return { url, handleCodeInApp: false };
 }
 
+/** Subscribe to Firebase Auth state changes. Returns an unsubscribe function. */
 export function onAuthChange(cb: (user: User | null) => void) {
   if (!auth) {
     logger.warn("auth_change_no_firebase", { reason: "auth instance is null" });
@@ -46,6 +47,7 @@ export function onAuthChange(cb: (user: User | null) => void) {
   });
 }
 
+/** Create a new account with email/password and send a verification email (fire-and-forget). */
 export async function signUp(email: string, password: string): Promise<User> {
   logger.info("sign_up_attempt", { email });
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
@@ -62,6 +64,7 @@ export async function signUp(email: string, password: string): Promise<User> {
   return cred.user;
 }
 
+/** Sign in with email/password. Throws on invalid credentials. */
 export async function signIn(email: string, password: string): Promise<User> {
   logger.info("sign_in_attempt", { email });
   const cred = await signInWithEmailAndPassword(requireAuth(), email, password);
@@ -69,18 +72,21 @@ export async function signIn(email: string, password: string): Promise<User> {
   return cred.user;
 }
 
+/** Sign out the current user. */
 export async function signOut(): Promise<void> {
   logger.info("sign_out");
   await fbSignOut(requireAuth());
   logger.info("sign_out_success");
 }
 
+/** Send a password-reset email. Does not reveal whether the account exists (anti-enumeration). */
 export async function resetPassword(email: string): Promise<void> {
   logger.info("password_reset_attempt", { email });
   await sendPasswordResetEmail(requireAuth(), email, getActionCodeSettings());
   logger.info("password_reset_sent", { email });
 }
 
+/** Re-send the email verification link to the current user. No-op if not signed in. */
 export async function resendVerification(): Promise<void> {
   const user = requireAuth().currentUser;
   if (user) {

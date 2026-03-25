@@ -50,6 +50,9 @@ vi.mock("../services/users", () => ({
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
   getLeaderboard: vi.fn().mockResolvedValue([]),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
+  USERNAME_MIN: 3,
+  USERNAME_MAX: 20,
+  USERNAME_RE: /^[a-z0-9_]+$/,
 }));
 vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),

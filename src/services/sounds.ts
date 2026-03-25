@@ -20,6 +20,7 @@ function getCtx(): AudioContext {
 
 /* ── Preference ────────────────────────────── */
 
+/** Read the user's sound preference from localStorage (defaults to enabled). */
 export function isSoundEnabled(): boolean {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
@@ -29,6 +30,7 @@ export function isSoundEnabled(): boolean {
   }
 }
 
+/** Persist the user's sound preference to localStorage. */
 export function setSoundEnabled(enabled: boolean): void {
   try {
     localStorage.setItem(STORAGE_KEY, enabled ? "1" : "0");

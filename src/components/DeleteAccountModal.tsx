@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import { Btn } from "./ui/Btn";
 import { ErrorBanner } from "./ui/ErrorBanner";
 
@@ -11,9 +12,12 @@ export function DeleteAccountModal({
 }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
 
   return (
     <div
+      ref={dialogRef}
       className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center p-6 z-50"
       role="dialog"
       aria-modal="true"

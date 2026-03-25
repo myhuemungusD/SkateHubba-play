@@ -9,6 +9,9 @@ const mockIsUsernameAvailable = vi.fn();
 vi.mock("../../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
   isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
+  USERNAME_MIN: 3,
+  USERNAME_MAX: 20,
+  USERNAME_RE: /^[a-z0-9_]+$/,
 }));
 
 beforeEach(() => vi.clearAllMocks());

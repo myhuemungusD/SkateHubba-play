@@ -55,6 +55,7 @@ function emit(level: LogLevel, event: string, data?: Record<string, unknown>): v
   }
 }
 
+/** Structured logger — human-readable in dev, JSON in production. Info+ events become Sentry breadcrumbs. */
 export const logger = {
   debug: (event: string, data?: Record<string, unknown>) => emit("debug", event, data),
   info: (event: string, data?: Record<string, unknown>) => emit("info", event, data),

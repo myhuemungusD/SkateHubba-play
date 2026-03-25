@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import { useNotifications } from "../context/NotificationContext";
 import { notificationIcon, notificationAccentText } from "../lib/notificationMeta";
 import type { GameDoc } from "../services/games";
@@ -16,6 +17,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
     useNotifications();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef, open);
 
   // Close on outside click or Escape
   useEffect(() => {

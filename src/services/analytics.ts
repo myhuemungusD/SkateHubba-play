@@ -10,6 +10,7 @@ interface WindowWithVa {
   va?: (command: string, payload: Record<string, unknown>) => void;
 }
 
+/** Send a custom event to Vercel Analytics. Silently no-ops if analytics is unavailable. */
 export function trackEvent(name: string, properties?: EventProperties): void {
   // Vercel Analytics custom events (window.va is injected by @vercel/analytics)
   try {
@@ -22,7 +23,7 @@ export function trackEvent(name: string, properties?: EventProperties): void {
   }
 }
 
-// Pre-defined event helpers for type safety
+/** Pre-defined event helpers for type-safe analytics tracking. */
 export const analytics = {
   gameCreated: (gameId: string) => trackEvent("game_created", { gameId }),
   trickSet: (gameId: string, trickName: string) => trackEvent("trick_set", { gameId, trickName }),

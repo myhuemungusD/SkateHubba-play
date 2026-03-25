@@ -132,36 +132,38 @@ service cloud.firestore {
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.auth.uid == resource.data.currentTurn
-        // Rate limit: at most one turn action per 2 seconds (prevents write flooding)
+        // 2-second cooldown between writes prevents a compromised client from
+        // flooding Firestore with rapid turn submissions
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
           || request.time > resource.data.updatedAt + duration.value(2, 's')
         )
-        // Cannot change player UIDs or usernames
+        // Immutable identity fields — prevent a client from swapping players mid-game
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
         && request.resource.data.player1Username == resource.data.player1Username
         && request.resource.data.player2Username == resource.data.player2Username
-        // currentTurn must always be one of the two players after the update
+        // Prevent a malicious client from assigning the turn to an arbitrary UID
         && (
           request.resource.data.currentTurn == resource.data.player1Uid ||
           request.resource.data.currentTurn == resource.data.player2Uid
         )
         // turnDeadline must be a timestamp
         && request.resource.data.turnDeadline is timestamp
-        // Scores must not change during setting-phase updates.
-        // Letters are only awarded via the match resolution rule below.
+        // Scores are frozen during setting-phase turns — only the match resolution
+        // rule (below) can award letters, preventing score manipulation
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
         // Game stays active, no winner (completion only via match resolution or forfeit)
         && request.resource.data.status == 'active'
         && request.resource.data.winner == null
-        // Valid phase transitions only (prevents skipping phases)
+        // S.K.A.T.E. game state machine — only two transitions are valid from setting:
+        //   setting → matching: setter successfully set a trick, matcher must now attempt it
+        //   setting → setting:  setter couldn't land their own trick, turn passes to opponent
+        // No transition from matching is allowed here (that's the match resolution rule).
         && (
-          // setting → matching (setter sets a trick)
           (resource.data.phase == 'setting' && request.resource.data.phase == 'matching')
-          // setting → setting (setter failed to land, turn passes to opponent)
           || (resource.data.phase == 'setting' && request.resource.data.phase == 'setting')
         )
         // turnHistory must not change during setting-phase updates
@@ -178,13 +180,13 @@ service cloud.firestore {
         && resource.data.status == 'active'
         && resource.data.phase == 'matching'
         && request.auth.uid == resource.data.currentTurn
-        // Rate limit
+        // 2-second cooldown (same rationale as normal turn updates)
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
           || request.time > resource.data.updatedAt + duration.value(2, 's')
         )
-        // Cannot change player UIDs or usernames
+        // Immutable identity fields
         && request.resource.data.player1Uid == resource.data.player1Uid
         && request.resource.data.player2Uid == resource.data.player2Uid
         && request.resource.data.player1Username == resource.data.player1Username
@@ -196,18 +198,24 @@ service cloud.firestore {
         )
         // turnDeadline must be a timestamp
         && request.resource.data.turnDeadline is timestamp
-        // Letters: at most one player gains exactly one letter (missed) or none change (landed)
+        // In S.K.A.T.E., when the matcher fails to land the trick they earn one letter.
+        // Only the matcher can receive a letter per turn, never the setter — so at most
+        // one player's count increments by exactly 1. Both staying the same = landed.
         && (
-          // Landed — no letter change
+          // Landed — matcher matched the trick, no penalty
           (request.resource.data.p1Letters == resource.data.p1Letters
            && request.resource.data.p2Letters == resource.data.p2Letters)
-          // Missed — exactly one player gets +1
+          // Missed — exactly one player (the matcher) gets +1 letter
           || (request.resource.data.p1Letters == resource.data.p1Letters + 1
               && request.resource.data.p2Letters == resource.data.p2Letters)
           || (request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters + 1)
         )
-        // Either the game continues (back to setting) or ends (complete with a winner)
+        // After match resolution the game either continues or ends:
+        //   continues → back to setting phase, same setter gets another turn, no winner yet
+        //   ends      → a player reached 5 letters (S.K.A.T.E.), status becomes complete
+        // The 5-letter threshold is enforced client-side; rules only verify the
+        // status/winner/phase combination is internally consistent.
         && (
           (request.resource.data.status == 'active'
            && request.resource.data.phase == 'setting'
@@ -216,13 +224,15 @@ service cloud.firestore {
               && request.resource.data.winner != null)
         );
 
-      // Either player can forfeit the current-turn player's expired turn
-      // Winner must be the opponent of the player whose turn it is
+      // Forfeit rule — either player can trigger this when the turn timer expires.
+      // This is necessary because the idle player won't be online to forfeit themselves;
+      // the waiting opponent needs a way to end the stalled game.
       allow update: if isSignedIn()
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.resource.data.status == 'forfeit'
-        // Turn deadline must have actually expired (prevents premature forfeits)
+        // Turn deadline must have actually expired — without this check a malicious
+        // client could force-forfeit an opponent who still has time remaining
         && request.time > resource.data.turnDeadline
         // Cannot change player UIDs, usernames, or letters
         && request.resource.data.player1Uid == resource.data.player1Uid
@@ -302,6 +312,7 @@ service cloud.firestore {
 
     // ── Nudge rate limits ──
     // One doc per sender+game pair, enforces 1-hour cooldown server-side.
+    // Without this, a player could spam-nudge their opponent every few seconds.
     match /nudge_limits/{limitId} {
       allow read: if isSignedIn();
 

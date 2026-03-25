@@ -128,6 +128,10 @@ export function _resetCreateGameRateLimit() {
  * Create a new game (challenge)
  * ──────────────────────────────────────────── */
 
+/**
+ * Create a new S.K.A.T.E. game (challenge). Challenger sets the first trick.
+ * Rate-limited client-side (10s cooldown) and server-side (30s via Firestore rules).
+ */
 export async function createGame(
   challengerUid: string,
   challengerUsername: string,
@@ -190,6 +194,7 @@ export async function createGame(
  * Set a trick (setter's turn)
  * ──────────────────────────────────────────── */
 
+/** Set a trick (setter's turn). Transitions the game from setting → matching phase. */
 export async function setTrick(gameId: string, trickName: string, videoUrl: string | null): Promise<void> {
   // Sanitise at the service boundary: trim whitespace, strip control chars, cap length
   const safeTrickName = trickName
@@ -244,6 +249,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
  * Setter failed to land their trick — turn passes
  * ──────────────────────────────────────────── */
 
+/** Setter failed to land their trick — turn passes to the opponent who becomes the new setter. */
 export async function failSetTrick(gameId: string): Promise<void> {
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
@@ -288,6 +294,10 @@ export async function failSetTrick(gameId: string): Promise<void> {
  * Submit match attempt (matcher self-judges, resolves turn immediately)
  * ──────────────────────────────────────────── */
 
+/**
+ * Submit match attempt (matcher self-judges). If missed, the matcher gets a letter.
+ * Game ends when either player reaches 5 letters (S.K.A.T.E.). Returns whether the game ended.
+ */
 export async function submitMatchAttempt(
   gameId: string,
   matchVideoUrl: string | null,
@@ -403,6 +413,7 @@ export async function submitMatchAttempt(
  * Forfeit expired turn
  * ──────────────────────────────────────────── */
 
+/** Forfeit a game whose turn deadline has expired. The opponent of the timed-out player wins. */
 export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: boolean; winner: string | null }> {
   const gameRef = doc(requireDb(), "games", gameId);
 
