@@ -3,8 +3,8 @@ import { playOlliePop } from "../utils/ollieSound";
 
 /**
  * A skateboard-shaped button that does an ollie animation on click.
- * The deck is the button surface; wheels spin on hover and the whole
- * board pops up on click.
+ * Realistic top-down popsicle deck with grip tape, maple rails,
+ * hardware bolts, metal trucks, and urethane wheels.
  */
 export function SkateButton({
   children,
@@ -28,10 +28,12 @@ export function SkateButton({
     onClick?.();
   };
 
-  const gradId = `deckGrad-${uid}`;
-  const strokeId = `deckStroke-${uid}`;
-  const shineId = `deckShine-${uid}`;
-  const innerGlowId = `innerGlow-${uid}`;
+  const gripId = `grip-${uid}`;
+  const woodId = `wood-${uid}`;
+  const woodEdgeId = `woodEdge-${uid}`;
+  const truckId = `truck-${uid}`;
+  const wheelId = `wheel-${uid}`;
+  const boltId = `bolt-${uid}`;
 
   return (
     <button
@@ -41,97 +43,183 @@ export function SkateButton({
       className={`group relative w-full disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand-orange ${className}`}
     >
       <div
-        className={`relative transition-all duration-300 ease-smooth ${popping ? "animate-ollie" : ""} group-hover:-translate-y-0.5 group-hover:drop-shadow-[0_8px_24px_rgba(255,107,0,0.2)] group-active:translate-y-0`}
+        className={`relative transition-all duration-300 ease-smooth ${popping ? "animate-ollie" : ""} group-hover:-translate-y-0.5 group-hover:drop-shadow-[0_8px_24px_rgba(0,0,0,0.4)] group-active:translate-y-0`}
       >
         <svg
-          viewBox="0 0 320 72"
+          viewBox="0 0 340 80"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
           className="w-full h-auto"
           aria-hidden="true"
         >
-          {/* Drop shadow filter */}
           <defs>
-            <filter id={`shadow-${uid}`} x="-10%" y="-10%" width="120%" height="140%">
-              <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.3" />
+            {/* Drop shadow */}
+            <filter id={`shadow-${uid}`} x="-8%" y="-8%" width="116%" height="140%">
+              <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#000" floodOpacity="0.4" />
             </filter>
 
-            <linearGradient id={gradId} x1="0" y1="0" x2="320" y2="72" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#E85D00" />
-              <stop offset="30%" stopColor="#FF6B00" />
-              <stop offset="60%" stopColor="#FF7A1A" />
-              <stop offset="100%" stopColor="#E85D00" />
+            {/* Maple wood gradient — natural Canadian maple */}
+            <linearGradient id={woodId} x1="0" y1="0" x2="340" y2="0" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#C4863C" />
+              <stop offset="15%" stopColor="#D4964A" />
+              <stop offset="50%" stopColor="#DBA055" />
+              <stop offset="85%" stopColor="#D4964A" />
+              <stop offset="100%" stopColor="#C4863C" />
             </linearGradient>
 
-            <linearGradient id={strokeId} x1="0" y1="0" x2="320" y2="0" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#B34700" />
-              <stop offset="50%" stopColor="#FF8533" />
-              <stop offset="100%" stopColor="#B34700" />
+            {/* Wood edge — slightly darker for rail shadow */}
+            <linearGradient id={woodEdgeId} x1="170" y1="4" x2="170" y2="56" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor="#B8783A" />
+              <stop offset="50%" stopColor="#A86830" />
+              <stop offset="100%" stopColor="#B8783A" />
             </linearGradient>
 
-            <linearGradient id={shineId} x1="160" y1="10" x2="160" y2="36" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="white" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="white" stopOpacity="0" />
+            {/* Grip tape texture pattern */}
+            <pattern id={gripId} patternUnits="userSpaceOnUse" width="3" height="3">
+              <rect width="3" height="3" fill="#111" />
+              <rect x="0" y="0" width="1" height="1" fill="#1a1a1a" opacity="0.5" />
+              <rect x="2" y="1" width="1" height="1" fill="#0a0a0a" opacity="0.3" />
+              <rect x="1" y="2" width="1" height="1" fill="#1a1a1a" opacity="0.4" />
+            </pattern>
+
+            {/* Truck metal gradient */}
+            <linearGradient id={truckId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#9A9A9A" />
+              <stop offset="50%" stopColor="#7A7A7A" />
+              <stop offset="100%" stopColor="#8A8A8A" />
             </linearGradient>
 
-            <radialGradient id={innerGlowId} cx="50%" cy="30%" r="60%">
-              <stop offset="0%" stopColor="#FFB366" stopOpacity="0.15" />
-              <stop offset="100%" stopColor="#FF6B00" stopOpacity="0" />
+            {/* Wheel gradient — urethane look */}
+            <radialGradient id={wheelId} cx="50%" cy="40%" r="50%">
+              <stop offset="0%" stopColor="#F5F0EA" />
+              <stop offset="60%" stopColor="#E8E0D4" />
+              <stop offset="100%" stopColor="#D0C8BC" />
+            </radialGradient>
+
+            {/* Bolt gradient */}
+            <radialGradient id={boltId} cx="40%" cy="40%" r="50%">
+              <stop offset="0%" stopColor="#555" />
+              <stop offset="100%" stopColor="#333" />
             </radialGradient>
           </defs>
 
-          {/* Deck shape — kicked nose and tail */}
+          {/* === COMPLETE BOARD === */}
           <g filter={`url(#shadow-${uid})`}>
+            {/* Deck — realistic popsicle shape with proper nose/tail kicks */}
+            {/* Maple wood visible as the rail edge */}
             <path
-              d="M28 8 C12 8, 4 18, 6 28 L8 44 C10 52, 18 56, 28 56 L292 56 C302 56, 310 52, 312 44 L314 28 C316 18, 308 8, 292 8 Z"
-              fill={`url(#${gradId})`}
-              stroke={`url(#${strokeId})`}
-              strokeWidth="1.5"
+              d="M30 6 C18 6, 8 14, 6 24 L6 36 C8 46, 18 54, 30 54 L310 54 C322 54, 332 46, 334 36 L334 24 C332 14, 322 6, 310 6 Z"
+              fill={`url(#${woodId})`}
             />
+
+            {/* Wood ply lines on the rail — visible maple layers */}
+            <path
+              d="M30 6 C18 6, 8 14, 6 24 L6 36 C8 46, 18 54, 30 54"
+              fill="none"
+              stroke="#A06828"
+              strokeWidth="0.5"
+              opacity="0.6"
+            />
+            <path
+              d="M310 6 C322 6, 332 14, 334 24 L334 36 C332 46, 322 54, 310 54"
+              fill="none"
+              stroke="#A06828"
+              strokeWidth="0.5"
+              opacity="0.6"
+            />
+
+            {/* Grip tape — black, slightly inset from edges */}
+            <path
+              d="M32 8 C20 8, 11 15, 9 24 L9 36 C11 45, 20 52, 32 52 L308 52 C320 52, 329 45, 331 36 L331 24 C329 15, 320 8, 308 8 Z"
+              fill={`url(#${gripId})`}
+            />
+
+            {/* Subtle grip tape edge highlight */}
+            <path
+              d="M32 8 C20 8, 11 15, 9 24 L9 36 C11 45, 20 52, 32 52 L308 52 C320 52, 329 45, 331 36 L331 24 C329 15, 320 8, 308 8 Z"
+              fill="none"
+              stroke="#333"
+              strokeWidth="0.5"
+              opacity="0.4"
+            />
+
+            {/* Front hardware bolts (4 bolts in a square pattern) */}
+            <circle cx="62" cy="22" r="2" fill={`url(#${boltId})`} />
+            <circle cx="62" cy="38" r="2" fill={`url(#${boltId})`} />
+            <circle cx="74" cy="22" r="2" fill={`url(#${boltId})`} />
+            <circle cx="74" cy="38" r="2" fill={`url(#${boltId})`} />
+            {/* Bolt cross slots */}
+            <line x1="60" y1="22" x2="64" y2="22" stroke="#222" strokeWidth="0.6" />
+            <line x1="62" y1="20" x2="62" y2="24" stroke="#222" strokeWidth="0.6" />
+            <line x1="60" y1="38" x2="64" y2="38" stroke="#222" strokeWidth="0.6" />
+            <line x1="62" y1="36" x2="62" y2="40" stroke="#222" strokeWidth="0.6" />
+            <line x1="72" y1="22" x2="76" y2="22" stroke="#222" strokeWidth="0.6" />
+            <line x1="74" y1="20" x2="74" y2="24" stroke="#222" strokeWidth="0.6" />
+            <line x1="72" y1="38" x2="76" y2="38" stroke="#222" strokeWidth="0.6" />
+            <line x1="74" y1="36" x2="74" y2="40" stroke="#222" strokeWidth="0.6" />
+
+            {/* Rear hardware bolts */}
+            <circle cx="266" cy="22" r="2" fill={`url(#${boltId})`} />
+            <circle cx="266" cy="38" r="2" fill={`url(#${boltId})`} />
+            <circle cx="278" cy="22" r="2" fill={`url(#${boltId})`} />
+            <circle cx="278" cy="38" r="2" fill={`url(#${boltId})`} />
+            {/* Bolt cross slots */}
+            <line x1="264" y1="22" x2="268" y2="22" stroke="#222" strokeWidth="0.6" />
+            <line x1="266" y1="20" x2="266" y2="24" stroke="#222" strokeWidth="0.6" />
+            <line x1="264" y1="38" x2="268" y2="38" stroke="#222" strokeWidth="0.6" />
+            <line x1="266" y1="36" x2="266" y2="40" stroke="#222" strokeWidth="0.6" />
+            <line x1="276" y1="22" x2="280" y2="22" stroke="#222" strokeWidth="0.6" />
+            <line x1="278" y1="20" x2="278" y2="24" stroke="#222" strokeWidth="0.6" />
+            <line x1="276" y1="38" x2="280" y2="38" stroke="#222" strokeWidth="0.6" />
+            <line x1="278" y1="36" x2="278" y2="40" stroke="#222" strokeWidth="0.6" />
           </g>
 
-          {/* Grip tape */}
-          <rect x="32" y="12" width="256" height="40" rx="8" fill="#1a1a1a" opacity="0.65" />
+          {/* === TRUCKS (below deck) === */}
+          {/* Front truck — T-shaped hanger */}
+          <rect x="48" y="55" width="56" height="3.5" rx="1.5" fill={`url(#${truckId})`} />
+          <rect x="63" y="55" width="26" height="5" rx="1" fill="#666" />
+          {/* Kingpin */}
+          <circle cx="76" cy="58" r="1.5" fill="#888" />
 
-          {/* Inner glow for depth */}
-          <rect x="32" y="12" width="256" height="40" rx="8" fill={`url(#${innerGlowId})`} />
-
-          {/* Top shine highlight */}
-          <rect x="32" y="12" width="256" height="20" rx="8" fill={`url(#${shineId})`} />
-
-          {/* Front truck */}
-          <rect x="54" y="56" width="44" height="4" rx="2" fill="#777" />
           {/* Rear truck */}
-          <rect x="222" y="56" width="44" height="4" rx="2" fill="#777" />
+          <rect x="236" y="55" width="56" height="3.5" rx="1.5" fill={`url(#${truckId})`} />
+          <rect x="251" y="55" width="26" height="5" rx="1" fill="#666" />
+          {/* Kingpin */}
+          <circle cx="264" cy="58" r="1.5" fill="#888" />
 
-          {/* Front-left wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "58px 66px" }}>
-            <circle cx="58" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
-            <circle cx="58" cy="66" r="3" fill="#bbb" />
-            <circle cx="58" cy="66" r="1" fill="#999" />
+          {/* === WHEELS === */}
+          {/* Front-left */}
+          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "52px 66px" }}>
+            <circle cx="52" cy="66" r="7" fill={`url(#${wheelId})`} stroke="#B0A898" strokeWidth="0.8" />
+            <circle cx="52" cy="66" r="4" fill="#C8C0B4" />
+            <circle cx="52" cy="66" r="2.5" fill="#A09888" stroke="#8A8278" strokeWidth="0.5" />
+            <circle cx="52" cy="66" r="1" fill="#706860" />
           </g>
-          {/* Front-right wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "94px 66px" }}>
-            <circle cx="94" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
-            <circle cx="94" cy="66" r="3" fill="#bbb" />
-            <circle cx="94" cy="66" r="1" fill="#999" />
+          {/* Front-right */}
+          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "100px 66px" }}>
+            <circle cx="100" cy="66" r="7" fill={`url(#${wheelId})`} stroke="#B0A898" strokeWidth="0.8" />
+            <circle cx="100" cy="66" r="4" fill="#C8C0B4" />
+            <circle cx="100" cy="66" r="2.5" fill="#A09888" stroke="#8A8278" strokeWidth="0.5" />
+            <circle cx="100" cy="66" r="1" fill="#706860" />
           </g>
-          {/* Rear-left wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "226px 66px" }}>
-            <circle cx="226" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
-            <circle cx="226" cy="66" r="3" fill="#bbb" />
-            <circle cx="226" cy="66" r="1" fill="#999" />
+          {/* Rear-left */}
+          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "240px 66px" }}>
+            <circle cx="240" cy="66" r="7" fill={`url(#${wheelId})`} stroke="#B0A898" strokeWidth="0.8" />
+            <circle cx="240" cy="66" r="4" fill="#C8C0B4" />
+            <circle cx="240" cy="66" r="2.5" fill="#A09888" stroke="#8A8278" strokeWidth="0.5" />
+            <circle cx="240" cy="66" r="1" fill="#706860" />
           </g>
-          {/* Rear-right wheel */}
-          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "262px 66px" }}>
-            <circle cx="262" cy="66" r="6.5" fill="#E8E0D8" stroke="#888" strokeWidth="0.8" />
-            <circle cx="262" cy="66" r="3" fill="#bbb" />
-            <circle cx="262" cy="66" r="1" fill="#999" />
+          {/* Rear-right */}
+          <g className="origin-center group-hover:animate-spin" style={{ transformOrigin: "288px 66px" }}>
+            <circle cx="288" cy="66" r="7" fill={`url(#${wheelId})`} stroke="#B0A898" strokeWidth="0.8" />
+            <circle cx="288" cy="66" r="4" fill="#C8C0B4" />
+            <circle cx="288" cy="66" r="2.5" fill="#A09888" stroke="#8A8278" strokeWidth="0.5" />
+            <circle cx="288" cy="66" r="1" fill="#706860" />
           </g>
         </svg>
 
-        {/* Text overlay on the deck */}
-        <span className="absolute inset-0 flex items-center justify-center font-display text-xl tracking-wider text-white pb-2 select-none drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)] [text-shadow:0_0_20px_rgba(255,107,0,0.3)]">
+        {/* Text overlay on the grip tape */}
+        <span className="absolute inset-0 flex items-center justify-center font-display text-xl tracking-wider text-white pb-3 select-none drop-shadow-[0_1px_4px_rgba(0,0,0,0.8)] [text-shadow:0_0_12px_rgba(255,107,0,0.25)]">
           {children}
         </span>
       </div>
