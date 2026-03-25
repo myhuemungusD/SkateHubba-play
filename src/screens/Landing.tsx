@@ -12,19 +12,19 @@ const HOW_IT_WORKS = [
   {
     step: "01",
     label: "Set a Trick",
-    desc: "Film yourself landing a trick in one continuous take. No edits, no retakes — raw skill only.",
+    desc: "Film yourself landing a trick in one take. No edits, no retakes.",
     color: "#FF6B00",
   },
   {
     step: "02",
     label: "Send the Challenge",
-    desc: "Your opponent has 24 hours to match your trick or set one back.",
+    desc: "Your opponent gets 24 hours to match your trick or set one back.",
     color: "#FF8533",
   },
   {
     step: "03",
     label: "Earn Letters",
-    desc: "Miss a trick, earn a letter. S-K-A-T-E spells game over. Last one standing wins.",
+    desc: "Miss a trick, earn a letter. S-K-A-T-E = game over.",
     color: "#FFA366",
   },
 ] as const;
@@ -78,7 +78,7 @@ export function Landing({
   return (
     <div className="min-h-dvh pb-28 md:pb-0">
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
-      <nav className="sticky top-0 z-50 glass border-b border-white/[0.05]">
+      <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/[0.05]">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-9 md:h-11 w-auto select-none" />
           <div className="flex items-center gap-4">
@@ -106,17 +106,18 @@ export function Landing({
         </div>
       </nav>
 
-      {/* ─── Hero Section ───────────────────────────────── */}
-      <section className="relative overflow-hidden">
-        {/* Ambient glow */}
+      {/* ─── Hero Section (full viewport) ───────────────── */}
+      <section className="relative min-h-dvh flex flex-col items-center justify-center overflow-hidden">
+        {/* Layered ambient glow */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: "radial-gradient(ellipse 70% 50% at 50% -10%, rgba(255,107,0,0.12) 0%, transparent 70%)",
+            background:
+              "radial-gradient(ellipse 80% 60% at 50% -20%, rgba(255,107,0,0.18) 0%, transparent 70%), radial-gradient(ellipse 50% 40% at 80% 10%, rgba(255,61,0,0.08) 0%, transparent 60%), radial-gradient(ellipse 40% 30% at 20% 30%, rgba(255,133,51,0.06) 0%, transparent 50%)",
           }}
         />
 
-        <div className="relative max-w-6xl mx-auto px-6 pt-20 pb-8 md:pt-32 md:pb-12 flex flex-col items-center text-center">
+        <div className="relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center hero-stagger">
           {/* Badge */}
           <span className="inline-flex items-center gap-2 font-body text-xs tracking-wide text-brand-orange/80 border border-brand-orange/15 rounded-full px-4 py-1.5 mb-8 backdrop-blur-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-rec-pulse" />
@@ -124,20 +125,26 @@ export function Landing({
           </span>
 
           {/* Main headline */}
-          <h1 className="font-display text-fluid-hero tracking-wide text-white mb-4 leading-[0.95]">
+          <h1
+            className="font-display tracking-wide text-white mb-5 leading-[0.9]"
+            style={{ fontSize: "clamp(3rem, 2.2rem + 4.5vw, 6.5rem)" }}
+          >
             <span className="block">TRICK BATTLES.</span>
-            <span className="block text-brand-orange" style={{ textShadow: "0 0 40px rgba(255,107,0,0.3)" }}>
+            <span
+              className="block text-brand-orange"
+              style={{ textShadow: "0 0 60px rgba(255,107,0,0.35), 0 0 120px rgba(255,107,0,0.15)" }}
+            >
               ONE TAKE ONLY.
             </span>
           </h1>
 
-          <p className="font-body text-fluid-base text-dim max-w-lg leading-relaxed mb-10">
-            The first async S.K.A.T.E. game. Film your trick, send the challenge, prove you&apos;re the best — no edits,
-            no retakes.
+          {/* Subtitle */}
+          <p className="font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
+            The first async S.K.A.T.E. game. Film your trick, send the challenge, prove you&apos;re the best.
           </p>
 
           {/* Auth Buttons */}
-          <div className="w-full max-w-sm flex flex-col gap-3 mb-4">
+          <div className="w-full max-w-sm flex flex-col gap-3">
             <GoogleButton
               onClick={() => {
                 playOlliePop();
@@ -145,7 +152,7 @@ export function Landing({
               }}
               loading={googleLoading}
             />
-            <div className="flex items-center gap-3 my-1">
+            <div className="flex items-center gap-3 my-0.5">
               <div className="flex-1 h-px bg-white/[0.06]" />
               <span className="font-body text-xs text-[#555]">or</span>
               <div className="flex-1 h-px bg-white/[0.06]" />
@@ -155,71 +162,97 @@ export function Landing({
             </SkateButton>
           </div>
         </div>
+
+        {/* Scroll indicator */}
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-scroll-hint">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-white/30"
+            aria-hidden="true"
+          >
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </div>
       </section>
 
       {/* ─── Demo Video ──────────────────────────────────── */}
-      <section className="max-w-4xl mx-auto px-6 pt-8 pb-16 md:pt-12 md:pb-24">
-        <div className="relative rounded-2xl overflow-hidden border border-white/[0.06] group">
-          <video
-            autoPlay
-            loop
-            muted
-            playsInline
-            preload="metadata"
-            className="w-full aspect-video object-cover bg-surface"
-            aria-label="SkateHubba gameplay demo"
-          >
-            <source src="/SHvideoedit.mp4" type="video/mp4" />
-          </video>
-          {/* Bottom fade */}
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{
-              background: "linear-gradient(to top, rgba(10,10,10,0.5) 0%, transparent 25%)",
-            }}
-          />
-          {/* Caption overlay */}
-          <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between">
-            <span className="font-body text-xs text-white/60">Real game — no edits</span>
-            <span className="font-display text-xs tracking-wider text-brand-orange/60">SKATEHUBBA</span>
+      <section className="max-w-5xl mx-auto px-6 py-16 md:py-24">
+        <div className="video-showcase">
+          <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] shadow-[0_0_80px_rgba(255,107,0,0.06),0_20px_60px_rgba(0,0,0,0.4)]">
+            <video
+              autoPlay
+              loop
+              muted
+              playsInline
+              preload="metadata"
+              className="w-full aspect-video object-cover bg-surface"
+              aria-label="SkateHubba gameplay demo"
+            >
+              <source src="/SHvideoedit.mp4" type="video/mp4" />
+            </video>
+            {/* Bottom fade */}
+            <div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background:
+                  "linear-gradient(to top, rgba(10,10,10,0.6) 0%, transparent 30%), linear-gradient(to bottom, rgba(10,10,10,0.3) 0%, transparent 15%)",
+              }}
+            />
+            {/* Caption overlay */}
+            <div className="absolute bottom-4 left-5 right-5 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-brand-red animate-rec-pulse" />
+                <span className="font-body text-xs text-white/70">Real game — no edits</span>
+              </div>
+              <span className="font-display text-xs tracking-widest text-white/30">SKATEHUBBA</span>
+            </div>
           </div>
         </div>
       </section>
 
       {/* ─── How It Works ───────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 py-16 md:py-24" aria-label="How it works">
-        <div className="text-center mb-12 md:mb-16">
-          <h2 className="font-display text-fluid-3xl text-white tracking-wider mb-3">HOW IT WORKS</h2>
-          <p className="font-body text-sm text-faint max-w-xs mx-auto">
-            Three steps. One board. Prove you&apos;re the best.
-          </p>
+      <section className="max-w-6xl mx-auto px-6 py-16 md:py-28" aria-label="How it works">
+        <div className="text-center mb-14 md:mb-20">
+          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">THE RULES</span>
+          <h2 className="font-display text-fluid-3xl text-white tracking-wider">HOW IT WORKS</h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
-          {HOW_IT_WORKS.map((item) => (
-            <div
-              key={item.step}
-              className="group relative rounded-xl border border-white/[0.06] bg-white/[0.02] p-6 hover:border-white/[0.1] hover:bg-white/[0.04] transition-all duration-300"
-            >
-              <div className="flex items-baseline gap-3 mb-3">
-                <span className="font-display text-3xl leading-none" style={{ color: item.color, opacity: 0.25 }}>
-                  {item.step}
-                </span>
-                <h3 className="font-display text-lg text-white tracking-wide">{item.label}</h3>
+        {/* Steps with connecting line on desktop */}
+        <div className="relative">
+          {/* Connecting line (desktop only) */}
+          <div className="hidden md:block absolute top-8 left-[16.67%] right-[16.67%] h-px bg-gradient-to-r from-[#FF6B00]/20 via-[#FF8533]/20 to-[#FFA366]/20" />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-6">
+            {HOW_IT_WORKS.map((item) => (
+              <div key={item.step} className="relative flex flex-col items-center text-center">
+                {/* Step circle */}
+                <div
+                  className="w-16 h-16 rounded-full flex items-center justify-center mb-5 relative z-10"
+                  style={{
+                    background: `radial-gradient(circle, ${item.color}18, ${item.color}08)`,
+                    border: `1px solid ${item.color}25`,
+                    boxShadow: `0 0 30px ${item.color}10`,
+                  }}
+                >
+                  <span className="font-display text-xl" style={{ color: item.color }}>
+                    {item.step}
+                  </span>
+                </div>
+                <h3 className="font-display text-xl text-white tracking-wide mb-2">{item.label}</h3>
+                <p className="font-body text-sm text-faint leading-relaxed max-w-[260px]">{item.desc}</p>
               </div>
-              <p className="font-body text-sm text-faint leading-relaxed">{item.desc}</p>
-              {/* Bottom accent */}
-              <div
-                className="absolute bottom-0 left-6 right-6 h-px opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                style={{ background: `linear-gradient(90deg, ${item.color}60, transparent)` }}
-              />
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </section>
 
       {/* ─── Game Preview / Phone Mockup ────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 py-16 md:py-24">
+      <section className="max-w-6xl mx-auto px-6 py-16 md:py-28">
         <div className="flex flex-col md:flex-row items-center gap-12 md:gap-20">
           {/* Phone mockup */}
           <div className="relative flex-shrink-0 animate-float">
@@ -257,12 +290,13 @@ export function Landing({
               </div>
             </div>
             {/* Glow */}
-            <div className="absolute -inset-10 rounded-full bg-brand-orange/[0.05] blur-3xl -z-10" />
+            <div className="absolute -inset-12 rounded-full bg-brand-orange/[0.06] blur-3xl -z-10" />
+            <div className="absolute -inset-20 rounded-full bg-brand-orange/[0.03] blur-[80px] -z-20" />
           </div>
 
           {/* Text content */}
           <div className="flex-1 text-center md:text-left">
-            <span className="font-display text-xs tracking-[0.3em] text-brand-orange/70 mb-4 block">THE GAME</span>
+            <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-4 block">THE GAME</span>
             <h2 className="font-display text-fluid-3xl text-white tracking-wider mb-4 leading-[1.1]">
               REAL TRICKS.
               <br />
@@ -304,21 +338,19 @@ export function Landing({
       </section>
 
       {/* ─── Features Grid ──────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 py-16 md:py-24" aria-label="Features">
-        <div className="text-center mb-12 md:mb-16">
-          <h2 className="font-display text-fluid-3xl text-white tracking-wider mb-3">BUILT FOR SKATERS</h2>
-          <p className="font-body text-sm text-faint max-w-xs mx-auto">
-            Every feature keeps it raw, fair, and competitive.
-          </p>
+      <section className="max-w-6xl mx-auto px-6 py-16 md:py-28" aria-label="Features">
+        <div className="text-center mb-14 md:mb-20">
+          <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">FEATURES</span>
+          <h2 className="font-display text-fluid-3xl text-white tracking-wider">BUILT FOR SKATERS</h2>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {FEATURES.map((f) => (
             <div
               key={f.title}
-              className="group rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 hover:border-white/[0.1] hover:bg-white/[0.04] transition-all duration-300"
+              className="group rounded-xl border border-white/[0.06] bg-white/[0.02] p-5 hover:border-brand-orange/15 hover:bg-white/[0.04] transition-all duration-300"
             >
-              <div className="w-10 h-10 rounded-lg bg-brand-orange/[0.08] flex items-center justify-center mb-3 group-hover:bg-brand-orange/[0.14] transition-colors duration-300">
+              <div className="w-10 h-10 rounded-lg bg-brand-orange/[0.08] flex items-center justify-center mb-3 group-hover:bg-brand-orange/[0.14] group-hover:shadow-[0_0_20px_rgba(255,107,0,0.08)] transition-all duration-300">
                 {f.icon}
               </div>
               <h3 className="font-display text-base text-white tracking-wide mb-1.5">{f.title}</h3>
@@ -330,15 +362,22 @@ export function Landing({
 
       {/* ─── CTA / Bottom Section ───────────────────────── */}
       <section className="relative overflow-hidden">
+        {/* Strong ambient glow */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: "radial-gradient(ellipse 60% 40% at 50% 100%, rgba(255,107,0,0.08) 0%, transparent 70%)",
+            background:
+              "radial-gradient(ellipse 70% 50% at 50% 80%, rgba(255,107,0,0.1) 0%, transparent 60%), radial-gradient(ellipse 40% 30% at 50% 100%, rgba(255,61,0,0.06) 0%, transparent 50%)",
           }}
         />
-        <div className="relative max-w-6xl mx-auto px-6 py-20 md:py-28 flex flex-col items-center text-center">
-          <h2 className="font-display text-fluid-4xl text-white tracking-wider mb-3">READY TO PLAY?</h2>
-          <p className="font-body text-sm text-dim mb-8 max-w-sm leading-relaxed">
+        <div className="relative max-w-6xl mx-auto px-6 py-24 md:py-32 flex flex-col items-center text-center">
+          <h2
+            className="font-display text-white tracking-wider mb-4 leading-[0.95]"
+            style={{ fontSize: "clamp(2rem, 1.5rem + 3vw, 4.5rem)" }}
+          >
+            READY TO PLAY?
+          </h2>
+          <p className="font-body text-dim mb-10 max-w-sm leading-relaxed">
             Grab your board, open the app, and prove you&apos;ve got what it takes.
           </p>
 
