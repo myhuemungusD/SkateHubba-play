@@ -93,6 +93,13 @@ export async function reloadUser(): Promise<boolean | null> {
   const user = requireAuth().currentUser;
   if (!user) return null;
   await user.reload();
+  if (user.emailVerified) {
+    // user.reload() updates the local User object but does NOT refresh the
+    // cached ID token (JWT).  Firestore security rules read email_verified
+    // from the JWT, so without this call game-creation would be denied even
+    // though the UI shows the user as verified.
+    await user.getIdToken(/* forceRefresh= */ true);
+  }
   return user.emailVerified;
 }
 

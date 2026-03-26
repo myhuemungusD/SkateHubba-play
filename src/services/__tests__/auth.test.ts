@@ -120,11 +120,42 @@ describe("auth service", () => {
 
   describe("reloadUser", () => {
     it("reloads the current user and returns emailVerified", async () => {
-      const mockUser = { uid: "u1", emailVerified: true, reload: vi.fn().mockResolvedValue(undefined) };
+      const mockUser = {
+        uid: "u1",
+        emailVerified: true,
+        reload: vi.fn().mockResolvedValue(undefined),
+        getIdToken: vi.fn().mockResolvedValue("token"),
+      };
       (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
       const result = await reloadUser();
       expect(mockUser.reload).toHaveBeenCalled();
       expect(result).toBe(true);
+    });
+
+    it("force-refreshes ID token when email is verified", async () => {
+      const mockUser = {
+        uid: "u1",
+        emailVerified: true,
+        reload: vi.fn().mockResolvedValue(undefined),
+        getIdToken: vi.fn().mockResolvedValue("token"),
+      };
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
+      await reloadUser();
+      expect(mockUser.getIdToken).toHaveBeenCalledWith(true);
+    });
+
+    it("skips token refresh when email is not yet verified", async () => {
+      const mockUser = {
+        uid: "u1",
+        emailVerified: false,
+        reload: vi.fn().mockResolvedValue(undefined),
+        getIdToken: vi.fn().mockResolvedValue("token"),
+      };
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
+      const result = await reloadUser();
+      expect(mockUser.reload).toHaveBeenCalled();
+      expect(mockUser.getIdToken).not.toHaveBeenCalled();
+      expect(result).toBe(false);
     });
 
     it("returns null when there is no current user", async () => {
