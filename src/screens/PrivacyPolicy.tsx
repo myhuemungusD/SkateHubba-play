@@ -63,6 +63,11 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
             <li>To send transactional emails (e.g. email verification, password reset) via Firebase.</li>
             <li>To detect and fix bugs using anonymised error reports.</li>
             <li>To understand aggregate product usage and improve the app.</li>
+            <li>
+              To review user reports of inappropriate content or behaviour. When you flag an opponent, we store your
+              user ID, the reported user&apos;s ID, the game ID, and the reason you provided. Reports are reviewed by
+              our moderation team and kept confidential.
+            </li>
           </ul>
           <p>We do not sell your data to third parties. We do not use your data for advertising.</p>
         </Section>

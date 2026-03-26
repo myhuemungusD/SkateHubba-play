@@ -14,6 +14,7 @@ import { VideoRecorder } from "../components/VideoRecorder";
 import { UploadProgress } from "../components/UploadProgress";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
 import { WaitingScreen } from "../components/WaitingScreen";
+import { ReportModal } from "../components/ReportModal";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [trickName, setTrickName] = useState("");
@@ -29,6 +30,8 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const [matcherLanded, setMatcherLanded] = useState<boolean | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgressData | null>(null);
   const [forfeitChecked, setForfeitChecked] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [reported, setReported] = useState(false);
 
   useEffect(() => {
     if (forfeitChecked || game.status !== "active") return;
@@ -155,7 +158,19 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         >
           ← Games
         </button>
-        <Timer deadline={deadline} />
+        <div className="flex items-center gap-3">
+          <Timer deadline={deadline} />
+          <button
+            type="button"
+            onClick={() => setShowReport(true)}
+            disabled={reported}
+            aria-label="Report opponent"
+            title={reported ? "Already reported" : "Report opponent"}
+            className="font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {reported ? "Reported" : "Flag"}
+          </button>
+        </div>
       </div>
 
       <div className="px-5 pt-5 max-w-md mx-auto">
@@ -305,6 +320,20 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           <TurnHistoryViewer turns={game.turnHistory!} currentUserUid={profile.uid} />
         )}
       </div>
+
+      {showReport && (
+        <ReportModal
+          reporterUid={profile.uid}
+          reportedUid={game.player1Uid === profile.uid ? game.player2Uid : game.player1Uid}
+          reportedUsername={opponentName}
+          gameId={game.id}
+          onClose={() => setShowReport(false)}
+          onSubmitted={() => {
+            setShowReport(false);
+            setReported(true);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { InviteButton } from "../components/InviteButton";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
 import { GameReplay } from "../components/GameReplay";
 import { TrophyIcon, SkullIcon } from "../components/icons";
+import { ReportModal } from "../components/ReportModal";
 
 export function GameOverScreen({
   game,
@@ -46,6 +47,8 @@ export function GameOverScreen({
   const myUsername = profile.username;
 
   const [shareLabel, setShareLabel] = useState("Share Game Recap");
+  const [showReport, setShowReport] = useState(false);
+  const [reported, setReported] = useState(false);
 
   const handleShareGame = useCallback(async () => {
     const turns = game.turnHistory ?? [];
@@ -158,8 +161,30 @@ export function GameOverScreen({
           <Btn onClick={onBack} variant="ghost">
             Back to Lobby
           </Btn>
+          <button
+            type="button"
+            onClick={() => setShowReport(true)}
+            disabled={reported}
+            className="font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 mt-2 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {reported ? "Reported" : "Report opponent"}
+          </button>
         </div>
       </div>
+
+      {showReport && (
+        <ReportModal
+          reporterUid={profile.uid}
+          reportedUid={game.player1Uid === profile.uid ? game.player2Uid : game.player1Uid}
+          reportedUsername={opponentName}
+          gameId={game.id}
+          onClose={() => setShowReport(false)}
+          onSubmitted={() => {
+            setShowReport(false);
+            setReported(true);
+          }}
+        />
+      )}
     </div>
   );
 }

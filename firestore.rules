@@ -300,6 +300,33 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Reports (content/player flagging for Google Play UGC policy) ──
+    // Users can report opponents in games they participate in.
+    // Reports are immutable once created (only admins can update status).
+    // Rate limit: one report per game per reporter (enforced by query + client check).
+    match /reports/{reportId} {
+      // Only the reporter can read their own reports (to check for duplicates)
+      allow read: if isSignedIn()
+        && resource.data.reporterUid == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.resource.data.reporterUid == request.auth.uid
+        // Cannot report yourself
+        && request.resource.data.reportedUid != request.auth.uid
+        && request.resource.data.reportedUid is string
+        && request.resource.data.reportedUsername is string
+        && request.resource.data.gameId is string
+        && request.resource.data.reason is string
+        && request.resource.data.reason in ['inappropriate_video', 'abusive_behavior', 'cheating', 'spam', 'other']
+        && request.resource.data.description is string
+        && request.resource.data.description.size() <= 500
+        && request.resource.data.status == 'pending';
+
+      // Reports are immutable — only Admin SDK can update (for moderation)
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // ── Nudge rate limits ──
     // One doc per sender+game pair, enforces 1-hour cooldown server-side.
     match /nudge_limits/{limitId} {
