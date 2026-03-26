@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { NavigationProvider, useNavigationContext } from "./context/NavigationContext";
@@ -20,7 +20,7 @@ import { Lobby } from "./screens/Lobby";
 import { ChallengeScreen } from "./screens/ChallengeScreen";
 import { GamePlayScreen } from "./screens/GamePlayScreen";
 import { GameOverScreen } from "./screens/GameOverScreen";
-import { MyRecordScreen } from "./screens/MyRecordScreen";
+import { PlayerProfileScreen } from "./screens/PlayerProfileScreen";
 import { PrivacyPolicy } from "./screens/PrivacyPolicy";
 import { TermsOfService } from "./screens/TermsOfService";
 import { DataDeletion } from "./screens/DataDeletion";
@@ -72,6 +72,42 @@ function AppScreens() {
       <AppRoutes />
       <ToastContainer />
     </NotificationProvider>
+  );
+}
+
+/** Wrapper that extracts :uid from URL params and renders PlayerProfileScreen. */
+function PlayerProfileRoute({
+  currentUserProfile,
+  ownGames,
+  onOpenGame,
+  onBack,
+  onChallenge,
+  onViewPlayer,
+}: {
+  currentUserProfile: import("./services/users").UserProfile;
+  ownGames: import("./services/games").GameDoc[];
+  onOpenGame: (g: import("./services/games").GameDoc) => void;
+  onBack: () => void;
+  onChallenge: (uid: string, username: string) => void;
+  onViewPlayer: (uid: string) => void;
+}) {
+  const { uid } = useParams<{ uid: string }>();
+  if (!uid) return <Navigate to="/lobby" replace />;
+
+  const isOwn = uid === currentUserProfile.uid;
+
+  return (
+    <PlayerProfileScreen
+      key={uid}
+      viewedUid={uid}
+      currentUserProfile={currentUserProfile}
+      ownGames={ownGames}
+      isOwnProfile={isOwn}
+      onOpenGame={onOpenGame}
+      onBack={onBack}
+      onChallenge={isOwn ? undefined : onChallenge}
+      onViewPlayer={onViewPlayer}
+    />
   );
 }
 
@@ -224,6 +260,7 @@ function AppRoutes() {
                 hasMoreGames={game.hasMoreGames}
                 onLoadMore={game.loadMoreGames}
                 gamesLoading={game.gamesLoading}
+                onViewPlayer={nav.navigateToPlayer}
               />
             ) : (
               <Navigate to="/" replace />
@@ -240,6 +277,7 @@ function AppRoutes() {
                 onSend={game.startChallenge}
                 onBack={() => nav.setScreen("lobby")}
                 initialOpponent={challengeTarget}
+                onViewPlayer={nav.navigateToPlayer}
               />
             ) : (
               <Navigate to="/lobby" replace />
@@ -313,6 +351,7 @@ function AppRoutes() {
                     game.setActiveGame(null);
                     nav.setScreen("lobby");
                   }}
+                  onViewPlayer={nav.navigateToPlayer}
                 />
               </ErrorBoundary>
             ) : (
@@ -325,11 +364,32 @@ function AppRoutes() {
           path="/record"
           element={
             auth.activeProfile ? (
-              <MyRecordScreen
-                profile={auth.activeProfile}
-                games={game.games}
+              <PlayerProfileScreen
+                viewedUid={auth.activeProfile.uid}
+                currentUserProfile={auth.activeProfile}
+                ownGames={game.games}
+                isOwnProfile={true}
                 onOpenGame={game.openGame}
                 onBack={() => nav.setScreen("lobby")}
+                onViewPlayer={nav.navigateToPlayer}
+              />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
+
+        <Route
+          path="/player/:uid"
+          element={
+            auth.activeProfile ? (
+              <PlayerProfileRoute
+                currentUserProfile={auth.activeProfile}
+                ownGames={game.games}
+                onOpenGame={game.openGame}
+                onBack={() => nav.setScreen("lobby")}
+                onChallenge={(_uid, username) => directChallenge(username)}
+                onViewPlayer={nav.navigateToPlayer}
               />
             ) : (
               <Navigate to="/" replace />

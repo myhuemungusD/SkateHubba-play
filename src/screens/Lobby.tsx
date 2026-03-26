@@ -41,6 +41,7 @@ export function Lobby({
   hasMoreGames = false,
   onLoadMore,
   gamesLoading = false,
+  onViewPlayer,
 }: {
   profile: UserProfile;
   games: GameDoc[];
@@ -54,6 +55,7 @@ export function Lobby({
   hasMoreGames?: boolean;
   onLoadMore?: () => void;
   gamesLoading?: boolean;
+  onViewPlayer?: (uid: string) => void;
 }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [players, setPlayers] = useState<UserProfile[]>([]);
@@ -81,6 +83,7 @@ export function Lobby({
   const done = games.filter((g) => g.status !== "active");
 
   const opponent = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Username : g.player1Username);
+  const opponentUid = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Uid : g.player1Uid);
 
   const isMyTurn = (g: GameDoc) => g.currentTurn === profile.uid;
 
@@ -225,6 +228,19 @@ export function Lobby({
                   <div className="pl-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-display text-[19px] text-white leading-none">vs @{opponent(g)}</span>
+                      {onViewPlayer && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewPlayer(opponentUid(g));
+                          }}
+                          className="font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] transition-colors shrink-0"
+                          aria-label={`View @${opponent(g)}'s profile`}
+                        >
+                          Profile
+                        </button>
+                      )}
                       {isMyTurn(g) && (
                         <span className="px-2 py-0.5 rounded bg-brand-orange font-display text-[10px] text-white tracking-wider leading-none shrink-0">
                           PLAY
@@ -314,9 +330,22 @@ export function Lobby({
                   className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
                 >
                   <div>
-                    <span className="font-display text-[19px] text-white leading-none block mb-1">
-                      vs @{opponent(g)}
-                    </span>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-display text-[19px] text-white leading-none">vs @{opponent(g)}</span>
+                      {onViewPlayer && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onViewPlayer(opponentUid(g));
+                          }}
+                          className="font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] transition-colors shrink-0"
+                          aria-label={`View @${opponent(g)}'s profile`}
+                        >
+                          Profile
+                        </button>
+                      )}
+                    </div>
                     <span
                       className={`font-body text-[11px] ${g.winner === profile.uid ? "text-brand-green" : "text-brand-red"}`}
                     >

@@ -28,11 +28,13 @@ export function ChallengeScreen({
   onSend,
   onBack,
   initialOpponent = "",
+  onViewPlayer,
 }: {
   profile: UserProfile;
   onSend: (opponentUid: string, opponentUsername: string) => Promise<void>;
   onBack: () => void;
   initialOpponent?: string;
+  onViewPlayer?: (uid: string) => void;
 }) {
   const [opponent, setOpponent] = useState(initialOpponent);
   const [error, setError] = useState("");
@@ -124,7 +126,11 @@ export function ChallengeScreen({
           <InviteButton username={profile.username} className="mb-6" />
         </form>
 
-        <Leaderboard currentUserUid={profile.uid} onChallengeUser={(username) => setOpponent(username)} />
+        <Leaderboard
+          currentUserUid={profile.uid}
+          onChallengeUser={(username) => setOpponent(username)}
+          onViewPlayer={onViewPlayer}
+        />
       </div>
     </div>
   );

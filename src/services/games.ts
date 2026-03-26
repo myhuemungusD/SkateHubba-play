@@ -3,10 +3,12 @@ import {
   doc,
   addDoc,
   setDoc,
+  getDocs,
   runTransaction,
   query,
   where,
   limit,
+  orderBy,
   onSnapshot,
   serverTimestamp,
   Timestamp,
@@ -429,6 +431,59 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
 
     metrics.gameForfeit(gameId, winner);
     return { forfeited: true, winner };
+  });
+}
+
+/* ────────────────────────────────────────────
+ * One-time queries
+ * ──────────────────────────────────────────── */
+
+/**
+ * Fetch all completed/forfeit games for a player (one-time read).
+ * Used for viewing another player's public profile without subscribing
+ * to real-time updates. Returns games sorted by updatedAt descending.
+ */
+export async function fetchPlayerCompletedGames(uid: string): Promise<GameDoc[]> {
+  const ref = gamesRef();
+  const statusFilter = ["complete", "forfeit"];
+
+  // Firestore doesn't support OR across different fields, so run two queries.
+  const q1 = query(
+    ref,
+    where("player1Uid", "==", uid),
+    where("status", "in", statusFilter),
+    orderBy("updatedAt", "desc"),
+    limit(100),
+  );
+  const q2 = query(
+    ref,
+    where("player2Uid", "==", uid),
+    where("status", "in", statusFilter),
+    orderBy("updatedAt", "desc"),
+    limit(100),
+  );
+
+  const [snap1, snap2] = await Promise.all([withRetry(() => getDocs(q1)), withRetry(() => getDocs(q2))]);
+
+  const all = [...snap1.docs, ...snap2.docs].map((d) => toGameDoc(d));
+
+  // Deduplicate (a player could theoretically be both p1 and p2 in edge cases)
+  const seen = new Set<string>();
+  const unique: GameDoc[] = [];
+  for (const g of all) {
+    if (!seen.has(g.id)) {
+      seen.add(g.id);
+      unique.push(g);
+    }
+  }
+
+  // Sort by updatedAt descending
+  return unique.sort((a, b) => {
+    const aTs = a.updatedAt;
+    const aTime = aTs && typeof aTs.toMillis === "function" ? aTs.toMillis() : 0;
+    const bTs = b.updatedAt;
+    const bTime = bTs && typeof bTs.toMillis === "function" ? bTs.toMillis() : 0;
+    return bTime - aTime;
   });
 }
 

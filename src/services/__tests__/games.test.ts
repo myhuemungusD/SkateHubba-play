@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const {
   mockAddDoc,
   mockSetDoc,
+  mockGetDocs,
   mockRunTransaction,
   mockOnSnapshot,
   mockDoc,
@@ -17,6 +18,7 @@ const {
 } = vi.hoisted(() => ({
   mockAddDoc: vi.fn(),
   mockSetDoc: vi.fn().mockResolvedValue(undefined),
+  mockGetDocs: vi.fn(),
   mockRunTransaction: vi.fn(),
   mockOnSnapshot: vi.fn(),
   mockDoc: vi.fn((...args: any[]) => {
@@ -37,6 +39,7 @@ vi.mock("firebase/firestore", () => ({
   doc: mockDoc,
   addDoc: mockAddDoc,
   setDoc: mockSetDoc,
+  getDocs: mockGetDocs,
   runTransaction: mockRunTransaction,
   query: mockQuery,
   where: mockWhere,
@@ -61,6 +64,7 @@ import {
   forfeitExpiredTurn,
   subscribeToGame,
   subscribeToMyGames,
+  fetchPlayerCompletedGames,
 } from "../games";
 
 beforeEach(() => {
@@ -718,6 +722,123 @@ describe("games service", () => {
         expect.objectContaining({ uid: "u1", error: "network error" }),
       );
       warnSpy.mockRestore();
+    });
+  });
+
+  /* ── fetchPlayerCompletedGames ─────────────── */
+
+  describe("fetchPlayerCompletedGames", () => {
+    function makeDocSnap(data: Record<string, unknown>, id: string) {
+      return {
+        id,
+        data: () => data,
+      };
+    }
+
+    const baseCompleteGame = {
+      player1Uid: "u1",
+      player2Uid: "u2",
+      player1Username: "alice",
+      player2Username: "bob",
+      p1Letters: 5,
+      p2Letters: 2,
+      status: "complete",
+      currentTurn: "u1",
+      phase: "setting",
+      currentSetter: "u1",
+      currentTrickName: null,
+      currentTrickVideoUrl: null,
+      matchVideoUrl: null,
+      turnDeadline: { toMillis: () => 1000 },
+      turnNumber: 4,
+      winner: "u2",
+      createdAt: null,
+      updatedAt: { toMillis: () => 2000 },
+    };
+
+    it("fetches and merges games from both player1 and player2 queries", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({
+          docs: [makeDocSnap({ ...baseCompleteGame }, "g1")],
+        })
+        .mockResolvedValueOnce({
+          docs: [
+            makeDocSnap(
+              { ...baseCompleteGame, player1Uid: "u3", player2Uid: "u1", updatedAt: { toMillis: () => 3000 } },
+              "g2",
+            ),
+          ],
+        });
+
+      const games = await fetchPlayerCompletedGames("u1");
+      expect(games).toHaveLength(2);
+      // Sorted by updatedAt desc — g2 (3000) before g1 (2000)
+      expect(games[0].id).toBe("g2");
+      expect(games[1].id).toBe("g1");
+    });
+
+    it("deduplicates games that appear in both queries", async () => {
+      const sharedDoc = makeDocSnap({ ...baseCompleteGame }, "g1");
+      mockGetDocs.mockResolvedValueOnce({ docs: [sharedDoc] }).mockResolvedValueOnce({ docs: [sharedDoc] });
+
+      const games = await fetchPlayerCompletedGames("u1");
+      expect(games).toHaveLength(1);
+      expect(games[0].id).toBe("g1");
+    });
+
+    it("returns empty array when player has no completed games", async () => {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
+
+      const games = await fetchPlayerCompletedGames("u1");
+      expect(games).toHaveLength(0);
+    });
+
+    it("sorts games by updatedAt descending", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({
+          docs: [
+            makeDocSnap({ ...baseCompleteGame, updatedAt: { toMillis: () => 1000 } }, "g-old"),
+            makeDocSnap({ ...baseCompleteGame, updatedAt: { toMillis: () => 5000 } }, "g-new"),
+            makeDocSnap({ ...baseCompleteGame, updatedAt: { toMillis: () => 3000 } }, "g-mid"),
+          ],
+        })
+        .mockResolvedValueOnce({ docs: [] });
+
+      const games = await fetchPlayerCompletedGames("u1");
+      expect(games.map((g) => g.id)).toEqual(["g-new", "g-mid", "g-old"]);
+    });
+
+    it("handles games with null updatedAt", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({
+          docs: [
+            makeDocSnap({ ...baseCompleteGame, updatedAt: null }, "g-null"),
+            makeDocSnap({ ...baseCompleteGame, updatedAt: { toMillis: () => 1000 } }, "g-dated"),
+          ],
+        })
+        .mockResolvedValueOnce({ docs: [] });
+
+      const games = await fetchPlayerCompletedGames("u1");
+      expect(games).toHaveLength(2);
+      // g-dated (1000) comes before g-null (0)
+      expect(games[0].id).toBe("g-dated");
+      expect(games[1].id).toBe("g-null");
+    });
+
+    it("handles games with updatedAt missing toMillis", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({
+          docs: [
+            makeDocSnap({ ...baseCompleteGame, updatedAt: {} }, "g-no-millis-a"),
+            makeDocSnap({ ...baseCompleteGame, updatedAt: {} }, "g-no-millis-b"),
+            makeDocSnap({ ...baseCompleteGame, updatedAt: { toMillis: () => 1000 } }, "g-dated"),
+          ],
+        })
+        .mockResolvedValueOnce({ docs: [] });
+
+      const games = await fetchPlayerCompletedGames("u1");
+      expect(games).toHaveLength(3);
+      expect(games[0].id).toBe("g-dated");
     });
   });
 });
