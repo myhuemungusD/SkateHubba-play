@@ -100,9 +100,9 @@ describe("App", () => {
     });
     renderApp();
     await waitFor(() => {
-      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
       expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
-      expect(screen.getByText("LOG IN")).toBeInTheDocument();
+      expect(screen.getByText("Log in")).toBeInTheDocument();
     });
   });
 
@@ -121,7 +121,7 @@ describe("App", () => {
     });
   });
 
-  it("navigates to sign in screen when 'LOG IN' is clicked", async () => {
+  it("navigates to sign in screen when 'Log in' is clicked", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: null,
@@ -130,7 +130,7 @@ describe("App", () => {
     });
     renderApp();
 
-    await userEvent.click(screen.getByText("LOG IN"));
+    await userEvent.click(screen.getByText("Log in"));
     await waitFor(() => {
       expect(screen.getByText("Welcome Back")).toBeInTheDocument();
     });

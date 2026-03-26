@@ -498,6 +498,68 @@
   }
 }
 
+/* ── Hero stagger entrance ──────────────────────────── */
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.hero-stagger > * {
+  opacity: 0;
+  animation: hero-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.hero-stagger > *:nth-child(1) {
+  animation-delay: 0.1s;
+}
+.hero-stagger > *:nth-child(2) {
+  animation-delay: 0.25s;
+}
+.hero-stagger > *:nth-child(3) {
+  animation-delay: 0.4s;
+}
+.hero-stagger > *:nth-child(4) {
+  animation-delay: 0.55s;
+}
+.hero-stagger > *:nth-child(5) {
+  animation-delay: 0.7s;
+}
+
+/* ── Scroll indicator bounce ───────────────────────── */
+@keyframes scroll-hint {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  50% {
+    transform: translateY(6px);
+    opacity: 0.8;
+  }
+}
+
+.animate-scroll-hint {
+  animation: scroll-hint 2s ease-in-out infinite;
+}
+
+/* ── Video perspective tilt on hover ────────────────── */
+.video-showcase {
+  perspective: 1200px;
+}
+.video-showcase > * {
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.video-showcase:hover > * {
+  transform: rotateX(2deg) scale(1.01);
+}
+
 /* Input autofill override */
 input:-webkit-autofill {
   -webkit-box-shadow: 0 0 0 1000px #1a1a1a inset !important;

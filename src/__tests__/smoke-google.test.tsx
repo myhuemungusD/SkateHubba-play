@@ -169,7 +169,7 @@ describe("Smoke: Google Auth", () => {
 
     // No crash — app still renders
     await waitFor(() => {
-      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
   });
 
@@ -180,7 +180,7 @@ describe("Smoke: Google Auth", () => {
 
     // No crash — app still renders, String(err) branch is covered
     await waitFor(() => {
-      expect(screen.getByText("READY TO PLAY?")).toBeInTheDocument();
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
   });
 
