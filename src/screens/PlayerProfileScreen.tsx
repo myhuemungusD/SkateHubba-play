@@ -262,7 +262,7 @@ export function PlayerProfileScreen({
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5 mb-8 animate-fade-in">
+        <div className="grid grid-cols-3 gap-2.5 mb-2.5 animate-fade-in">
           <StatCard label="Games" value={stats.total} color="text-white" />
           <StatCard label="Best Streak" value={stats.longestStreak} color="text-brand-orange" />
           <StatCard
@@ -270,6 +270,26 @@ export function PlayerProfileScreen({
             value={`${stats.landRate}%`}
             color={stats.landRate >= 50 ? "text-brand-green" : "text-muted"}
           />
+        </div>
+
+        <div className="grid grid-cols-3 gap-2.5 mb-8 animate-fade-in">
+          <StatCard label="Total Turns" value={stats.totalTricks} color="text-white" />
+          <StatCard label="Landed" value={stats.tricksLanded} color="text-brand-green" />
+          <StatCard label="Missed" value={stats.totalTricks - stats.tricksLanded} color="text-brand-red" />
+        </div>
+
+        {/* Coming soon stats placeholder */}
+        <div className="mb-8 animate-fade-in">
+          <div className="p-5 rounded-2xl border border-dashed border-border bg-surface-alt/30">
+            <h4 className="font-display text-[10px] tracking-[0.2em] text-subtle mb-3">COMING SOON</h4>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 font-body text-[11px] text-[#555]">
+              <span>Pro Games Played</span>
+              <span>Trick Bounties Held</span>
+              <span>Legendary Spots Checked In</span>
+              <span>Spots Added</span>
+              <span>Sponsors / Flow</span>
+            </div>
+          </div>
         </div>
 
         {/* Current streak callout */}
