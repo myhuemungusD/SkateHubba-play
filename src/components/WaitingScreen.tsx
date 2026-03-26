@@ -9,6 +9,7 @@ import { LetterDisplay } from "./LetterDisplay";
 import { Timer } from "./Timer";
 import { TurnHistoryViewer } from "./TurnHistoryViewer";
 import { HourglassIcon } from "./icons";
+import { ReportModal } from "./ReportModal";
 
 function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName: string }) {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
@@ -148,6 +149,8 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
     canNudge(game.id) ? "idle" : "sent",
   );
   const [nudgeError, setNudgeError] = useState("");
+  const [showReport, setShowReport] = useState(false);
+  const [reported, setReported] = useState(false);
 
   // Re-check nudge cooldown periodically so the button re-enables after cooldown
   useEffect(() => {
@@ -287,12 +290,34 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
           </div>
         )}
 
-        <div className="mt-8">
+        <div className="mt-8 flex flex-col items-center gap-2">
           <Btn onClick={onBack} variant="ghost">
             ← Back to Games
           </Btn>
+          <button
+            type="button"
+            onClick={() => setShowReport(true)}
+            disabled={reported}
+            className="font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {reported ? "Reported" : "Report opponent"}
+          </button>
         </div>
       </div>
+
+      {showReport && (
+        <ReportModal
+          reporterUid={profile.uid}
+          reportedUid={game.player1Uid === profile.uid ? game.player2Uid : game.player1Uid}
+          reportedUsername={opponentName}
+          gameId={game.id}
+          onClose={() => setShowReport(false)}
+          onSubmitted={() => {
+            setShowReport(false);
+            setReported(true);
+          }}
+        />
+      )}
     </div>
   );
 }
