@@ -74,6 +74,19 @@ describe("usePlayerProfile", () => {
     expect(mockFetchPlayerCompletedGames).toHaveBeenCalledWith("u1", undefined);
   });
 
+  it("passes viewerUid to fetchPlayerCompletedGames", async () => {
+    mockGetUserProfile.mockResolvedValue(fakeProfile);
+    mockFetchPlayerCompletedGames.mockResolvedValue(fakeGames);
+
+    const { result } = renderHook(() => usePlayerProfile("u1", "viewer1"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(mockFetchPlayerCompletedGames).toHaveBeenCalledWith("u1", "viewer1");
+  });
+
   it("sets error when profile is not found", async () => {
     mockGetUserProfile.mockResolvedValue(null);
     mockFetchPlayerCompletedGames.mockResolvedValue([]);

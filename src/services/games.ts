@@ -451,42 +451,25 @@ export async function fetchPlayerCompletedGames(uid: string, viewerUid?: string)
   const ref = gamesRef();
   const statusFilter = ["complete", "forfeit"];
 
-  // When viewerUid is provided, only fetch games between both players.
-  // This satisfies Firestore rules that restrict reads to your own games.
-  let q1, q2;
-  if (viewerUid && viewerUid !== uid) {
-    q1 = query(
-      ref,
-      where("player1Uid", "==", uid),
-      where("player2Uid", "==", viewerUid),
-      where("status", "in", statusFilter),
-      orderBy("updatedAt", "desc"),
-      limit(100),
-    );
-    q2 = query(
-      ref,
-      where("player2Uid", "==", uid),
-      where("player1Uid", "==", viewerUid),
-      where("status", "in", statusFilter),
-      orderBy("updatedAt", "desc"),
-      limit(100),
-    );
-  } else {
-    q1 = query(
-      ref,
-      where("player1Uid", "==", uid),
-      where("status", "in", statusFilter),
-      orderBy("updatedAt", "desc"),
-      limit(100),
-    );
-    q2 = query(
-      ref,
-      where("player2Uid", "==", uid),
-      where("status", "in", statusFilter),
-      orderBy("updatedAt", "desc"),
-      limit(100),
-    );
-  }
+  // When viewerUid is provided, scope queries to games between both players.
+  // This satisfies Firestore rules that restrict game reads to participants.
+  const sharedFilter = viewerUid && viewerUid !== uid;
+  const q1Constraints = [
+    where("player1Uid", "==", uid),
+    ...(sharedFilter ? [where("player2Uid", "==", viewerUid)] : []),
+    where("status", "in", statusFilter),
+    orderBy("updatedAt", "desc"),
+    limit(100),
+  ];
+  const q2Constraints = [
+    where("player2Uid", "==", uid),
+    ...(sharedFilter ? [where("player1Uid", "==", viewerUid)] : []),
+    where("status", "in", statusFilter),
+    orderBy("updatedAt", "desc"),
+    limit(100),
+  ];
+  const q1 = query(ref, ...q1Constraints);
+  const q2 = query(ref, ...q2Constraints);
 
   const [snap1, snap2] = await Promise.all([withRetry(() => getDocs(q1)), withRetry(() => getDocs(q2))]);
 

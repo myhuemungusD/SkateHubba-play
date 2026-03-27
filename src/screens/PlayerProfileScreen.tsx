@@ -106,23 +106,21 @@ export function PlayerProfileScreen({
 
   // Aggregate stats
   const stats = useMemo(() => {
-    if (!profile)
-      return {
-        wins: 0,
-        losses: 0,
-        total: 0,
-        winRate: 0,
-        totalTricks: 0,
-        tricksLanded: 0,
-        landRate: 0,
-        longestStreak: 0,
-        currentStreak: 0,
-      };
-
-    // When viewing another player, use their profile-level stats for W/L
-    // since we only have shared games (Firestore rules restrict game reads
-    // to participants). For own profile, compute from full game history.
-    const useProfileStats = !isOwnProfile;
+    const empty = {
+      wins: 0,
+      losses: 0,
+      total: 0,
+      winRate: 0,
+      totalTricks: 0,
+      tricksLanded: 0,
+      landRate: 0,
+      longestStreak: 0,
+      currentStreak: 0,
+      vsYouWins: 0,
+      vsYouLosses: 0,
+      vsYouTotal: 0,
+    };
+    if (!profile) return empty;
 
     let wins = 0;
     let losses = 0;
@@ -150,11 +148,20 @@ export function PlayerProfileScreen({
       }
     }
 
-    const finalWins = useProfileStats ? (profile.wins ?? wins) : wins;
-    const finalLosses = useProfileStats ? (profile.losses ?? losses) : losses;
+    // When viewing another player, use profile-level stats for overall W/L
+    // since we only have shared games (Firestore rules restrict game reads
+    // to participants). For own profile, compute from full game history.
+    const finalWins = isOwnProfile ? wins : (profile.wins ?? 0);
+    const finalLosses = isOwnProfile ? losses : (profile.losses ?? 0);
     const total = finalWins + finalLosses;
     const winRate = total > 0 ? Math.round((finalWins / total) * 100) : 0;
+
+    // Shared game stats use the game-computed values (these are "vs you" when viewing others)
     const landRate = totalTricks > 0 ? Math.round((tricksLanded / totalTricks) * 100) : 0;
+
+    // VS YOU stats — wins/losses from shared games, from the current viewer's perspective
+    const vsYouWins = losses; // viewer wins when viewed player loses
+    const vsYouLosses = wins; // viewer loses when viewed player wins
 
     return {
       wins: finalWins,
@@ -166,6 +173,9 @@ export function PlayerProfileScreen({
       landRate,
       longestStreak,
       currentStreak,
+      vsYouWins,
+      vsYouLosses,
+      vsYouTotal: vsYouWins + vsYouLosses,
     };
   }, [completedGames, profile, isOwnProfile]);
 
@@ -268,7 +278,7 @@ export function PlayerProfileScreen({
           </Btn>
         )}
 
-        {/* Stats grid */}
+        {/* Overall stats */}
         <div className="grid grid-cols-3 gap-2.5 mb-2.5 animate-fade-in">
           <StatCard label="Wins" value={stats.wins} color="text-brand-green" />
           <StatCard label="Losses" value={stats.losses} color="text-brand-red" />
@@ -279,21 +289,39 @@ export function PlayerProfileScreen({
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-2.5 mb-2.5 animate-fade-in">
-          <StatCard label="Games" value={stats.total} color="text-white" />
-          <StatCard label="Best Streak" value={stats.longestStreak} color="text-brand-orange" />
-          <StatCard
-            label="Land Rate"
-            value={`${stats.landRate}%`}
-            color={stats.landRate >= 50 ? "text-brand-green" : "text-muted"}
-          />
-        </div>
+        {isOwnProfile ? (
+          <>
+            <div className="grid grid-cols-3 gap-2.5 mb-2.5 animate-fade-in">
+              <StatCard label="Games" value={stats.total} color="text-white" />
+              <StatCard label="Best Streak" value={stats.longestStreak} color="text-brand-orange" />
+              <StatCard
+                label="Land Rate"
+                value={`${stats.landRate}%`}
+                color={stats.landRate >= 50 ? "text-brand-green" : "text-muted"}
+              />
+            </div>
 
-        <div className="grid grid-cols-3 gap-2.5 mb-8 animate-fade-in">
-          <StatCard label="Total Turns" value={stats.totalTricks} color="text-white" />
-          <StatCard label="Landed" value={stats.tricksLanded} color="text-brand-green" />
-          <StatCard label="Missed" value={stats.totalTricks - stats.tricksLanded} color="text-brand-red" />
-        </div>
+            <div className="grid grid-cols-3 gap-2.5 mb-8 animate-fade-in">
+              <StatCard label="Total Turns" value={stats.totalTricks} color="text-white" />
+              <StatCard label="Landed" value={stats.tricksLanded} color="text-brand-green" />
+              <StatCard label="Missed" value={stats.totalTricks - stats.tricksLanded} color="text-brand-red" />
+            </div>
+          </>
+        ) : (
+          <div className="mb-6" />
+        )}
+
+        {/* VS YOU stats — only shown on other players' profiles */}
+        {!isOwnProfile && completedGames.length > 0 && (
+          <>
+            <p className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-2.5 animate-fade-in">VS YOU</p>
+            <div className="grid grid-cols-3 gap-2.5 mb-8 animate-fade-in">
+              <StatCard label="Your Wins" value={stats.vsYouWins} color="text-brand-green" />
+              <StatCard label="Your Losses" value={stats.vsYouLosses} color="text-brand-red" />
+              <StatCard label="Games" value={stats.vsYouTotal} color="text-white" />
+            </div>
+          </>
+        )}
 
         {/* Coming soon stats placeholder */}
         <div className="mb-8 animate-fade-in">
@@ -309,8 +337,8 @@ export function PlayerProfileScreen({
           </div>
         </div>
 
-        {/* Current streak callout */}
-        {stats.currentStreak >= 2 && (
+        {/* Current streak callout — only shown on own profile */}
+        {isOwnProfile && stats.currentStreak >= 2 && (
           <div
             className="flex items-center justify-center gap-2.5 mb-8 px-4 py-3.5 rounded-xl border border-brand-orange/30 bg-brand-orange/[0.06] shadow-glow-sm animate-scale-in"
             role="status"
@@ -324,10 +352,10 @@ export function PlayerProfileScreen({
           </div>
         )}
 
-        {/* Opponents section */}
+        {/* Opponents / H2H section */}
         {opponents.length > 0 && (
           <div className="mb-8 animate-fade-in">
-            <SectionHeader title="OPPONENTS" count={opponents.length} />
+            <SectionHeader title={isOwnProfile ? "OPPONENTS" : "HEAD TO HEAD"} count={opponents.length} />
             <div className="space-y-2">
               {opponents.map((opp) => {
                 const isTappable = onViewPlayer && opp.uid !== currentUserProfile.uid;
@@ -393,11 +421,13 @@ export function PlayerProfileScreen({
           {completedGames.length === 0 ? (
             <div className="flex flex-col items-center py-14 border border-dashed border-border rounded-2xl">
               <SkateboardIcon size={28} className="mb-3 opacity-30 text-subtle" />
-              <p className="font-body text-sm text-faint">No games played yet</p>
+              <p className="font-body text-sm text-faint">
+                {isOwnProfile ? "No games played yet" : "No games between you two yet"}
+              </p>
               <p className="font-body text-[11px] text-subtle mt-1">
                 {isOwnProfile
                   ? "Challenge someone and finish a game to build your record"
-                  : `@${profile.username} hasn't finished any games yet`}
+                  : `Challenge @${profile.username} to start a rivalry`}
               </p>
             </div>
           ) : (
