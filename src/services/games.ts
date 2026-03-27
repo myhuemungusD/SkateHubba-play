@@ -442,26 +442,34 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
  * Fetch all completed/forfeit games for a player (one-time read).
  * Used for viewing another player's public profile without subscribing
  * to real-time updates. Returns games sorted by updatedAt descending.
+ *
+ * When `viewerUid` is provided, only returns games where BOTH players
+ * are participants. This is required because Firestore security rules
+ * only allow reading games you're a player in.
  */
-export async function fetchPlayerCompletedGames(uid: string): Promise<GameDoc[]> {
+export async function fetchPlayerCompletedGames(uid: string, viewerUid?: string): Promise<GameDoc[]> {
   const ref = gamesRef();
   const statusFilter = ["complete", "forfeit"];
 
-  // Firestore doesn't support OR across different fields, so run two queries.
-  const q1 = query(
-    ref,
+  // When viewerUid is provided, scope queries to games between both players.
+  // This satisfies Firestore rules that restrict game reads to participants.
+  const sharedFilter = viewerUid && viewerUid !== uid;
+  const q1Constraints = [
     where("player1Uid", "==", uid),
+    ...(sharedFilter ? [where("player2Uid", "==", viewerUid)] : []),
     where("status", "in", statusFilter),
     orderBy("updatedAt", "desc"),
     limit(100),
-  );
-  const q2 = query(
-    ref,
+  ];
+  const q2Constraints = [
     where("player2Uid", "==", uid),
+    ...(sharedFilter ? [where("player1Uid", "==", viewerUid)] : []),
     where("status", "in", statusFilter),
     orderBy("updatedAt", "desc"),
     limit(100),
-  );
+  ];
+  const q1 = query(ref, ...q1Constraints);
+  const q2 = query(ref, ...q2Constraints);
 
   const [snap1, snap2] = await Promise.all([withRetry(() => getDocs(q1)), withRetry(() => getDocs(q2))]);
 

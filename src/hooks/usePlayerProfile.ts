@@ -14,8 +14,11 @@ export interface PlayerProfileState {
  * Used for viewing any player's record, including other players' profiles.
  *
  * Pass an empty string for uid to skip fetching (used when viewing own profile).
+ *
+ * When `viewerUid` is provided, only games between both players are fetched.
+ * This is required because Firestore rules restrict game reads to participants.
  */
-export function usePlayerProfile(uid: string): PlayerProfileState {
+export function usePlayerProfile(uid: string, viewerUid?: string): PlayerProfileState {
   const [data, setData] = useState<{
     fetchedUid: string;
     profile: UserProfile | null;
@@ -29,7 +32,7 @@ export function usePlayerProfile(uid: string): PlayerProfileState {
 
     let stale = false;
 
-    Promise.all([getUserProfile(uid), fetchPlayerCompletedGames(uid)])
+    Promise.all([getUserProfile(uid), fetchPlayerCompletedGames(uid, viewerUid)])
       .then(([fetchedProfile, fetchedGames]) => {
         if (stale) return;
         if (!fetchedProfile) {
@@ -46,7 +49,7 @@ export function usePlayerProfile(uid: string): PlayerProfileState {
     return () => {
       stale = true;
     };
-  }, [uid]);
+  }, [uid, viewerUid]);
 
   // Loading: uid is non-empty and data hasn't arrived for this uid yet
   const loading = uid !== "" && data.fetchedUid !== uid;

@@ -825,6 +825,33 @@ describe("games service", () => {
       expect(games[1].id).toBe("g-null");
     });
 
+    it("scopes queries to shared games when viewerUid is provided", async () => {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
+      mockWhere.mockClear();
+
+      await fetchPlayerCompletedGames("u1", "viewer1");
+
+      // Should include where clauses for both players in each query
+      expect(mockWhere).toHaveBeenCalledWith("player1Uid", "==", "u1");
+      expect(mockWhere).toHaveBeenCalledWith("player2Uid", "==", "viewer1");
+      expect(mockWhere).toHaveBeenCalledWith("player2Uid", "==", "u1");
+      expect(mockWhere).toHaveBeenCalledWith("player1Uid", "==", "viewer1");
+    });
+
+    it("does not scope queries when viewerUid equals uid", async () => {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
+      mockWhere.mockClear();
+
+      await fetchPlayerCompletedGames("u1", "u1");
+
+      // Should NOT add extra where clauses for viewerUid when same as uid
+      const playerCalls = mockWhere.mock.calls.filter(
+        (c: unknown[]) => (c[0] === "player1Uid" || c[0] === "player2Uid") && c[1] === "==",
+      );
+      // Only 2 calls: player1Uid==u1 and player2Uid==u1 (no viewer scoping)
+      expect(playerCalls).toHaveLength(2);
+    });
+
     it("handles games with updatedAt missing toMillis", async () => {
       mockGetDocs
         .mockResolvedValueOnce({

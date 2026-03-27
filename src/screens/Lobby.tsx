@@ -427,14 +427,16 @@ export function Lobby({
             </div>
             <div className="space-y-2">
               {players.map((p) => (
-                <button
-                  type="button"
+                <div
                   key={p.uid}
-                  onClick={() => onChallengeUser(p.username)}
-                  disabled={!user?.emailVerified}
-                  className={`flex items-center justify-between p-4 rounded-2xl glass-card transition-all duration-300 ease-smooth text-left w-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "cursor-pointer hover:border-white/[0.1] hover:-translate-y-0.5" : "cursor-not-allowed opacity-60"}`}
+                  className="flex items-center justify-between p-4 rounded-2xl glass-card transition-all duration-300 ease-smooth"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <button
+                    type="button"
+                    onClick={() => onViewPlayer?.(p.uid)}
+                    className="flex items-center gap-3 min-w-0 text-left cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                    aria-label={`View @${p.username}'s profile`}
+                  >
                     <div className="w-8 h-8 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
                       <span className="font-display text-[11px] text-brand-orange leading-none">
                         {p.username[0].toUpperCase()}
@@ -447,13 +449,17 @@ export function Lobby({
                         {p.createdAt ? ` \u00B7 ${relativeJoinDate(p.createdAt)}` : ""}
                       </span>
                     </div>
-                  </div>
-                  <span
-                    className={`font-display text-xs shrink-0 ml-3 ${user?.emailVerified ? "text-brand-orange" : "text-subtle"}`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChallengeUser(p.username)}
+                    disabled={!user?.emailVerified}
+                    className={`font-display text-xs shrink-0 ml-3 px-3 py-1.5 rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
+                    aria-label={`Challenge @${p.username}`}
                   >
-                    Challenge &rarr;
-                  </span>
-                </button>
+                    Challenge
+                  </button>
+                </div>
               ))}
             </div>
           </div>
