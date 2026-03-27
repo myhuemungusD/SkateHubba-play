@@ -49,6 +49,7 @@ vi.mock("../services/users", () => ({
   deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
   getLeaderboard: vi.fn().mockResolvedValue([]),
+  getUserProfile: vi.fn().mockResolvedValue(null),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../services/games", () => ({
@@ -111,7 +112,7 @@ describe("Smoke: Lobby", () => {
 
     expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
     expect(screen.getByText("Your Games")).toBeInTheDocument();
-    expect(screen.getByText(/vs @rival/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
     expect(screen.getByText("Your turn to set")).toBeInTheDocument();
   });
 
@@ -125,7 +126,7 @@ describe("Smoke: Lobby", () => {
     renderLobby([game]);
 
     // The lobby should show the game card
-    expect(screen.getByText(/vs @rival/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
   });
 
   it("sorts active games before completed games", () => {

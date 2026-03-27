@@ -164,6 +164,22 @@ describe("games service", () => {
       const id = await createGame("p1", "alice", "p2", "bob");
       expect(id).toBe("g1");
     });
+
+    it("includes pro status flags when players are verified pros", async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
+      await createGame("p1", "alice", "p2", "bob", true, true);
+      const docData = mockAddDoc.mock.calls[0][1];
+      expect(docData.player1IsVerifiedPro).toBe(true);
+      expect(docData.player2IsVerifiedPro).toBe(true);
+    });
+
+    it("omits pro status flags when players are not verified", async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
+      await createGame("p1", "alice", "p2", "bob");
+      const docData = mockAddDoc.mock.calls[0][1];
+      expect(docData.player1IsVerifiedPro).toBeUndefined();
+      expect(docData.player2IsVerifiedPro).toBeUndefined();
+    });
   });
 
   describe("setTrick", () => {

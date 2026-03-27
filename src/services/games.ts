@@ -69,6 +69,9 @@ export interface GameDoc {
   updatedAt: Timestamp | null;
   /** Accumulated history of completed turns (for clips replay). */
   turnHistory?: TurnRecord[];
+  /** Denormalized verified-pro status for each player (set at game creation). */
+  player1IsVerifiedPro?: boolean;
+  player2IsVerifiedPro?: boolean;
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -135,6 +138,8 @@ export async function createGame(
   challengerUsername: string,
   opponentUid: string,
   opponentUsername: string,
+  challengerIsVerifiedPro?: boolean,
+  opponentIsVerifiedPro?: boolean,
 ): Promise<string> {
   if (Date.now() - lastGameCreatedAt < GAME_CREATE_COOLDOWN_MS) {
     throw new Error("Please wait before creating another game");
@@ -163,6 +168,8 @@ export async function createGame(
     turnHistory: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    ...(challengerIsVerifiedPro && { player1IsVerifiedPro: true }),
+    ...(opponentIsVerifiedPro && { player2IsVerifiedPro: true }),
   };
 
   const docRef = await withRetry(() => addDoc(gamesRef(), gameData));

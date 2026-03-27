@@ -10,6 +10,7 @@ import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
 import { GameReplay } from "../components/GameReplay";
 import { TrophyIcon, SkullIcon } from "../components/icons";
 import { ReportModal } from "../components/ReportModal";
+import { ProUsername } from "../components/ProUsername";
 
 export function GameOverScreen({
   game,
@@ -44,6 +45,7 @@ export function GameOverScreen({
   const isWinner = game.winner === profile.uid;
   const isForfeit = game.status === "forfeit";
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
+  const opponentIsPro = game.player1Uid === profile.uid ? game.player2IsVerifiedPro : game.player1IsVerifiedPro;
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
   const myUsername = profile.username;
@@ -133,13 +135,24 @@ export function GameOverScreen({
             onClick={() => onViewPlayer(opponentUid)}
             className="font-display text-sm text-brand-orange hover:text-[#FF7A1A] transition-colors mb-6 underline underline-offset-2"
           >
-            View @{opponentName}&apos;s Record
+            View <ProUsername username={opponentName} isVerifiedPro={opponentIsPro} />
+            &apos;s Record
           </button>
         )}
 
         <div className="flex justify-center gap-5 mb-6">
-          <LetterDisplay count={myLetters} name={`@${profile.username}`} active={isWinner} />
-          <LetterDisplay count={theirLetters} name={`@${opponentName}`} active={!isWinner} />
+          <LetterDisplay
+            count={myLetters}
+            name={`@${profile.username}`}
+            active={isWinner}
+            isVerifiedPro={profile.isVerifiedPro}
+          />
+          <LetterDisplay
+            count={theirLetters}
+            name={`@${opponentName}`}
+            active={!isWinner}
+            isVerifiedPro={opponentIsPro}
+          />
         </div>
 
         {/* Full game replay */}

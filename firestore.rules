@@ -37,11 +37,19 @@ service cloud.firestore {
         // wins/losses must start at zero if present (prevents leaderboard inflation
         // by injecting arbitrary stats at profile creation time)
         && (!('wins' in request.resource.data) || request.resource.data.wins == 0)
-        && (!('losses' in request.resource.data) || request.resource.data.losses == 0);
+        && (!('losses' in request.resource.data) || request.resource.data.losses == 0)
+        // Pro fields are admin-only — clients cannot set them at creation
+        && !('isVerifiedPro' in request.resource.data)
+        && !('verifiedBy' in request.resource.data)
+        && !('verifiedAt' in request.resource.data);
       allow update: if isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
+        // Pro fields are admin-only — clients cannot modify them
+        && (!('isVerifiedPro' in request.resource.data) || request.resource.data.isVerifiedPro == resource.data.isVerifiedPro)
+        && (!('verifiedBy' in request.resource.data) || request.resource.data.verifiedBy == resource.data.verifiedBy)
+        && (!('verifiedAt' in request.resource.data) || request.resource.data.verifiedAt == resource.data.verifiedAt)
         // Wins/losses can only increment by 0 or 1 per write.
         // When the field doesn't exist yet, only 0 or 1 is allowed
         // (the old rule's !('wins' in resource.data) branch accepted any value).
