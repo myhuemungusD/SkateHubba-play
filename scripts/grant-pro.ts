@@ -18,6 +18,7 @@
  * Admin SDK bypasses Firestore security rules, so no rule changes are needed.
  */
 
+import { readFileSync } from "node:fs";
 import { initializeApp, cert, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, FieldValue } from "firebase-admin/firestore";
 
@@ -33,8 +34,7 @@ async function main() {
   // Initialize Admin SDK
   const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (credPath) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const serviceAccount = require(credPath) as ServiceAccount;
+    const serviceAccount = JSON.parse(readFileSync(credPath, "utf-8")) as ServiceAccount;
     initializeApp({ credential: cert(serviceAccount) });
   } else {
     initializeApp();
