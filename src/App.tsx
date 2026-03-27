@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { NavigationProvider, useNavigationContext } from "./context/NavigationContext";
 import { GameProvider, useGameContext } from "./context/GameContext";
@@ -357,6 +358,7 @@ function AppRoutes() {
 
       <ConsentBanner onNav={nav.setScreen} />
       <Analytics />
+      <SpeedInsights />
     </>
   );
 }
