@@ -334,7 +334,24 @@ describe("Lobby", () => {
     expect(playerCards).toHaveLength(1);
   });
 
-  it("clicking a player triggers onChallengeUser with their username", async () => {
+  it("clicking a player name navigates to their profile", async () => {
+    const onViewPlayer = vi.fn();
+    mockGetPlayerDirectory.mockResolvedValue([
+      { uid: "u2", username: "kickflip_king", stance: "Regular", createdAt: null, emailVerified: true },
+    ]);
+
+    renderWithProviders(<Lobby {...defaultProps} onViewPlayer={onViewPlayer} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
+    });
+
+    await userEvent.click(screen.getByText("@kickflip_king"));
+
+    expect(onViewPlayer).toHaveBeenCalledWith("u2");
+  });
+
+  it("clicking challenge button triggers onChallengeUser with their username", async () => {
     const onChallengeUser = vi.fn();
     mockGetPlayerDirectory.mockResolvedValue([
       { uid: "u2", username: "kickflip_king", stance: "Regular", createdAt: null, emailVerified: true },
@@ -346,7 +363,7 @@ describe("Lobby", () => {
       expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
     });
 
-    await userEvent.click(screen.getByText("@kickflip_king"));
+    await userEvent.click(screen.getByRole("button", { name: "Challenge @kickflip_king" }));
 
     expect(onChallengeUser).toHaveBeenCalledWith("kickflip_king");
   });
@@ -397,8 +414,8 @@ describe("Lobby", () => {
       expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
     });
 
-    const card = screen.getByText("@kickflip_king").closest("button")!;
-    expect(card).toBeDisabled();
+    const challengeBtn = screen.getByRole("button", { name: "Challenge @kickflip_king" });
+    expect(challengeBtn).toBeDisabled();
   });
 
   it("displays relative join dates correctly", async () => {

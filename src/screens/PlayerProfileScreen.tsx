@@ -77,7 +77,7 @@ export function PlayerProfileScreen({
   /** Called when the user taps an opponent in the H2H list. */
   onViewPlayer?: (uid: string) => void;
 }) {
-  const fetchedData = usePlayerProfile(isOwnProfile ? "" : viewedUid);
+  const fetchedData = usePlayerProfile(isOwnProfile ? "" : viewedUid, currentUserProfile.uid);
 
   // Determine which profile and games to use
   const profile = isOwnProfile ? currentUserProfile : fetchedData.profile;
@@ -119,6 +119,11 @@ export function PlayerProfileScreen({
         currentStreak: 0,
       };
 
+    // When viewing another player, use their profile-level stats for W/L
+    // since we only have shared games (Firestore rules restrict game reads
+    // to participants). For own profile, compute from full game history.
+    const useProfileStats = !isOwnProfile;
+
     let wins = 0;
     let losses = 0;
     let totalTricks = 0;
@@ -145,12 +150,24 @@ export function PlayerProfileScreen({
       }
     }
 
-    const total = wins + losses;
-    const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+    const finalWins = useProfileStats ? (profile.wins ?? wins) : wins;
+    const finalLosses = useProfileStats ? (profile.losses ?? losses) : losses;
+    const total = finalWins + finalLosses;
+    const winRate = total > 0 ? Math.round((finalWins / total) * 100) : 0;
     const landRate = totalTricks > 0 ? Math.round((tricksLanded / totalTricks) * 100) : 0;
 
-    return { wins, losses, total, winRate, totalTricks, tricksLanded, landRate, longestStreak, currentStreak };
-  }, [completedGames, profile]);
+    return {
+      wins: finalWins,
+      losses: finalLosses,
+      total,
+      winRate,
+      totalTricks,
+      tricksLanded,
+      landRate,
+      longestStreak,
+      currentStreak,
+    };
+  }, [completedGames, profile, isOwnProfile]);
 
   // Opponent head-to-head records
   const opponents = useMemo(() => {
@@ -371,7 +388,7 @@ export function PlayerProfileScreen({
 
         {/* Game history */}
         <div className="mb-6 animate-fade-in">
-          <SectionHeader title="GAME HISTORY" count={completedGames.length} />
+          <SectionHeader title={isOwnProfile ? "GAME HISTORY" : "GAMES VS YOU"} count={completedGames.length} />
 
           {completedGames.length === 0 ? (
             <div className="flex flex-col items-center py-14 border border-dashed border-border rounded-2xl">

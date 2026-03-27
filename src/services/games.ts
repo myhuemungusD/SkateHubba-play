@@ -442,26 +442,51 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
  * Fetch all completed/forfeit games for a player (one-time read).
  * Used for viewing another player's public profile without subscribing
  * to real-time updates. Returns games sorted by updatedAt descending.
+ *
+ * When `viewerUid` is provided, only returns games where BOTH players
+ * are participants. This is required because Firestore security rules
+ * only allow reading games you're a player in.
  */
-export async function fetchPlayerCompletedGames(uid: string): Promise<GameDoc[]> {
+export async function fetchPlayerCompletedGames(uid: string, viewerUid?: string): Promise<GameDoc[]> {
   const ref = gamesRef();
   const statusFilter = ["complete", "forfeit"];
 
-  // Firestore doesn't support OR across different fields, so run two queries.
-  const q1 = query(
-    ref,
-    where("player1Uid", "==", uid),
-    where("status", "in", statusFilter),
-    orderBy("updatedAt", "desc"),
-    limit(100),
-  );
-  const q2 = query(
-    ref,
-    where("player2Uid", "==", uid),
-    where("status", "in", statusFilter),
-    orderBy("updatedAt", "desc"),
-    limit(100),
-  );
+  // When viewerUid is provided, only fetch games between both players.
+  // This satisfies Firestore rules that restrict reads to your own games.
+  let q1, q2;
+  if (viewerUid && viewerUid !== uid) {
+    q1 = query(
+      ref,
+      where("player1Uid", "==", uid),
+      where("player2Uid", "==", viewerUid),
+      where("status", "in", statusFilter),
+      orderBy("updatedAt", "desc"),
+      limit(100),
+    );
+    q2 = query(
+      ref,
+      where("player2Uid", "==", uid),
+      where("player1Uid", "==", viewerUid),
+      where("status", "in", statusFilter),
+      orderBy("updatedAt", "desc"),
+      limit(100),
+    );
+  } else {
+    q1 = query(
+      ref,
+      where("player1Uid", "==", uid),
+      where("status", "in", statusFilter),
+      orderBy("updatedAt", "desc"),
+      limit(100),
+    );
+    q2 = query(
+      ref,
+      where("player2Uid", "==", uid),
+      where("status", "in", statusFilter),
+      orderBy("updatedAt", "desc"),
+      limit(100),
+    );
+  }
 
   const [snap1, snap2] = await Promise.all([withRetry(() => getDocs(q1)), withRetry(() => getDocs(q2))]);
 

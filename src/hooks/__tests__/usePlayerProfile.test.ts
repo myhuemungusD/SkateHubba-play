@@ -71,7 +71,7 @@ describe("usePlayerProfile", () => {
     expect(result.current.games).toEqual(fakeGames);
     expect(result.current.error).toBeNull();
     expect(mockGetUserProfile).toHaveBeenCalledWith("u1");
-    expect(mockFetchPlayerCompletedGames).toHaveBeenCalledWith("u1");
+    expect(mockFetchPlayerCompletedGames).toHaveBeenCalledWith("u1", undefined);
   });
 
   it("sets error when profile is not found", async () => {
@@ -125,7 +125,7 @@ describe("usePlayerProfile", () => {
       expect(result.current.profile?.uid).toBe("u2");
     });
     expect(mockGetUserProfile).toHaveBeenCalledWith("u2");
-    expect(mockFetchPlayerCompletedGames).toHaveBeenCalledWith("u2");
+    expect(mockFetchPlayerCompletedGames).toHaveBeenCalledWith("u2", undefined);
   });
 
   it("ignores stale error responses when uid changes quickly", async () => {
