@@ -16,11 +16,13 @@ export function GameOverScreen({
   profile,
   onRematch,
   onBack,
+  onViewPlayer,
 }: {
   game: GameDoc;
   profile: UserProfile;
   onRematch?: () => Promise<void>;
   onBack: () => void;
+  onViewPlayer?: (uid: string) => void;
 }) {
   const [rematching, setRematching] = useState(false);
   const rematchingRef = useRef(false);
@@ -45,6 +47,8 @@ export function GameOverScreen({
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
   const myUsername = profile.username;
+
+  const opponentUid = game.player1Uid === profile.uid ? game.player2Uid : game.player1Uid;
 
   const [shareLabel, setShareLabel] = useState("Share Game Recap");
   const [showReport, setShowReport] = useState(false);
@@ -122,6 +126,16 @@ export function GameOverScreen({
               ? `@${opponentName} spelled S.K.A.T.E.`
               : `@${opponentName} outlasted you.`}
         </p>
+
+        {onViewPlayer && (
+          <button
+            type="button"
+            onClick={() => onViewPlayer(opponentUid)}
+            className="font-display text-sm text-brand-orange hover:text-[#FF7A1A] transition-colors mb-6 underline underline-offset-2"
+          >
+            View @{opponentName}&apos;s Record
+          </button>
+        )}
 
         <div className="flex justify-center gap-5 mb-6">
           <LetterDisplay count={myLetters} name={`@${profile.username}`} active={isWinner} />

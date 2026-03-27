@@ -13,6 +13,7 @@ export type Screen =
   | "game"
   | "gameover"
   | "record"
+  | "player"
   | "privacy"
   | "terms"
   | "datadeletion"
@@ -29,6 +30,7 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   game: "/game",
   gameover: "/gameover",
   record: "/record",
+  player: "/player",
   privacy: "/privacy",
   terms: "/terms",
   datadeletion: "/data-deletion",
@@ -41,6 +43,8 @@ const PATH_TO_SCREEN: Record<string, Screen> = Object.fromEntries(
 ) as Record<string, Screen>;
 
 export function pathToScreen(pathname: string): Screen {
+  // Handle dynamic /player/:uid route
+  if (pathname.startsWith("/player/")) return "player";
   return PATH_TO_SCREEN[pathname] ?? "notfound";
 }
 
@@ -62,6 +66,8 @@ const PUBLIC_SCREENS: ReadonlySet<Screen> = new Set([
 export interface NavigationContextValue {
   screen: Screen;
   setScreen: (s: Screen) => void;
+  /** Navigate to a player's public profile page. */
+  navigateToPlayer: (uid: string) => void;
   authMode: "signup" | "signin";
   setAuthMode: (m: "signup" | "signin") => void;
   ageGateDob: string | null;
@@ -88,6 +94,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     (s: Screen) => {
       const path = screenToPath(s);
       navigate(path);
+    },
+    [navigate],
+  );
+
+  const navigateToPlayer = useCallback(
+    (uid: string) => {
+      navigate(`/player/${uid}`);
     },
     [navigate],
   );
@@ -153,6 +166,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const value: NavigationContextValue = {
     screen,
     setScreen,
+    navigateToPlayer,
     authMode,
     setAuthMode,
     ageGateDob,

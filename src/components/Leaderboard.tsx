@@ -6,9 +6,11 @@ const RANK_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"] as const; // gold, silver,
 export function Leaderboard({
   currentUserUid,
   onChallengeUser,
+  onViewPlayer,
 }: {
   currentUserUid: string;
   onChallengeUser?: (username: string) => void;
+  onViewPlayer?: (uid: string) => void;
 }) {
   const [players, setPlayers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,7 +138,20 @@ export function Leaderboard({
                 {/* Name + stats */}
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-display text-base text-white leading-none truncate">@{p.username}</span>
+                    {onViewPlayer ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onViewPlayer(p.uid);
+                        }}
+                        className="font-display text-base text-white leading-none truncate hover:text-brand-orange transition-colors"
+                      >
+                        @{p.username}
+                      </button>
+                    ) : (
+                      <span className="font-display text-base text-white leading-none truncate">@{p.username}</span>
+                    )}
                     {isCurrentUser && (
                       <span className="px-1.5 py-0.5 rounded bg-brand-orange font-display text-[9px] text-white tracking-wider leading-none shrink-0">
                         YOU
