@@ -224,7 +224,7 @@ describe("GameOverScreen", () => {
   it("renders view player button when onViewPlayer is provided", async () => {
     const onViewPlayer = vi.fn();
     render(<GameOverScreen game={makeGame()} profile={profile} onBack={vi.fn()} onViewPlayer={onViewPlayer} />);
-    await userEvent.click(screen.getByText(/View @rival's Record/));
+    await userEvent.click(screen.getByRole("button", { name: /View.*rival.*Record/ }));
     expect(onViewPlayer).toHaveBeenCalledWith("u2");
   });
 

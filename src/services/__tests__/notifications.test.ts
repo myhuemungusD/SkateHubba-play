@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockAddDoc = vi.fn().mockResolvedValue({ id: "notif1" });
+const mockSetDoc = vi.fn().mockResolvedValue(undefined);
 const mockCollection = vi.fn((...args: unknown[]) => args[1]);
 const mockDoc = vi.fn((...args: unknown[]) => args);
 const mockUpdateDoc = vi.fn().mockResolvedValue(undefined);
@@ -18,11 +19,27 @@ vi.mock("firebase/firestore", () => ({
   setDoc: (...args: unknown[]) => mockSetDoc(...args),
   doc: (...args: unknown[]) => mockDoc(...args),
   serverTimestamp: () => "SERVER_TS",
+  updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
+  deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
+  getDocs: (...args: unknown[]) => mockGetDocs(...args),
+  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
+  query: (...args: unknown[]) => mockQuery(...args),
+  where: (...args: unknown[]) => mockWhere(...args),
+  orderBy: (...args: unknown[]) => mockOrderBy(...args),
+  limit: (...args: unknown[]) => mockLimit(...args),
 }));
 
 vi.mock("../../firebase");
 
-import { writeNotification, _resetNotificationRateLimit } from "../notifications";
+import {
+  writeNotification,
+  _resetNotificationRateLimit,
+  markNotificationRead,
+  deleteNotification,
+  deleteUserNotifications,
+  subscribeToNudges,
+  subscribeToNotifications,
+} from "../notifications";
 
 beforeEach(() => {
   vi.clearAllMocks();
