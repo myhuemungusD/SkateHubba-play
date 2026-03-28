@@ -252,7 +252,17 @@ service cloud.firestore {
         && request.resource.data.recipientUid != request.auth.uid
         && request.resource.data.gameId is string
         && request.resource.data.senderUsername is string
-        && request.resource.data.delivered == false;
+        && request.resource.data.delivered == false
+        // Sender must be a player in the game, recipient must be the other player
+        && (
+          (request.auth.uid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
+           && request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid)
+          ||
+          (request.auth.uid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+           && request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid)
+        )
+        // Only nudge active games
+        && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.status == 'active';
 
       // Only the Admin SDK (Cloud Function) can update delivered status
       allow update: if false;
