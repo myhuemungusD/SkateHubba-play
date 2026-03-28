@@ -8,6 +8,7 @@ const mockInitializeFirestore = vi.fn(() => ({ name: "test-db" }));
 const mockConnectAuthEmulator = vi.fn();
 const mockConnectFirestoreEmulator = vi.fn();
 const mockConnectStorageEmulator = vi.fn();
+const mockMemoryLocalCache = vi.fn(() => ({}));
 const mockPersistentLocalCache = vi.fn(() => ({}));
 const mockPersistentMultipleTabManager = vi.fn(() => ({}));
 
@@ -23,6 +24,7 @@ vi.mock("firebase/auth", () => ({
 vi.mock("firebase/firestore", () => ({
   initializeFirestore: (...args: unknown[]) => mockInitializeFirestore(...args),
   connectFirestoreEmulator: (...args: unknown[]) => mockConnectFirestoreEmulator(...args),
+  memoryLocalCache: (...args: unknown[]) => mockMemoryLocalCache(...args),
   persistentLocalCache: (...args: unknown[]) => mockPersistentLocalCache(...args),
   persistentMultipleTabManager: (...args: unknown[]) => mockPersistentMultipleTabManager(...args),
 }));
@@ -82,6 +84,9 @@ describe("firebase module", () => {
     expect(mockConnectAuthEmulator).toHaveBeenCalledTimes(1);
     expect(mockConnectFirestoreEmulator).toHaveBeenCalledTimes(1);
     expect(mockConnectStorageEmulator).toHaveBeenCalledTimes(1);
+    // In emulator mode, memoryLocalCache is used instead of persistentLocalCache
+    expect(mockMemoryLocalCache).toHaveBeenCalledTimes(1);
+    expect(mockPersistentLocalCache).not.toHaveBeenCalled();
   });
 
   it("does not connect to emulators when VITE_USE_EMULATORS is not set", async () => {
