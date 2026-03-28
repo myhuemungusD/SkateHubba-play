@@ -30,7 +30,7 @@ const P2 = { email: "p2@test.com", password: "password123", username: "p2skater"
 
 async function signUpAndSetupProfile(page: Page, email: string, pw: string, username: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Get Started with Email" }).click();
+  await page.getByRole("button", { name: "Sign up" }).click();
   await page.getByPlaceholder("you@email.com").fill(email);
   const pwFields = page.getByPlaceholder("••••••••");
   await pwFields.nth(0).fill(pw);
@@ -46,7 +46,7 @@ async function signUpAndSetupProfile(page: Page, email: string, pw: string, user
 
 async function signInViaUI(page: Page, email: string, pw: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: "I Have an Account" }).click();
+  await page.getByRole("button", { name: "Log in" }).click();
   await page.getByPlaceholder("you@email.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(pw);
   await page.getByRole("button", { name: "Sign In" }).click();

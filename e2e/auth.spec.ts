@@ -5,7 +5,7 @@ import { clearAll, verifyEmail } from "./helpers/emulator";
 
 async function signUpViaUI(page: import("@playwright/test").Page, email: string, password: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Get Started with Email" }).click();
+  await page.getByRole("button", { name: "Sign up" }).click();
   await page.getByPlaceholder("you@email.com").fill(email);
   // Fill both password fields (Password + Confirm)
   const pwFields = page.getByPlaceholder("••••••••");
@@ -41,7 +41,7 @@ test("sign up → profile setup → lobby", async ({ page }) => {
 
 test("sign up form rejects mismatched passwords", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Get Started with Email" }).click();
+  await page.getByRole("button", { name: "Sign up" }).click();
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -54,7 +54,7 @@ test("sign up form rejects mismatched passwords", async ({ page }) => {
 
 test("sign up form rejects short passwords", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Get Started with Email" }).click();
+  await page.getByRole("button", { name: "Sign up" }).click();
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -99,7 +99,7 @@ test("sign in with existing account reaches lobby", async ({ page }) => {
   await expect(page.getByText("S.K.A.T.E.")).toBeVisible({ timeout: 5_000 });
 
   // Sign back in
-  await page.getByRole("button", { name: "I Have an Account" }).click();
+  await page.getByRole("button", { name: "Log in" }).click();
   await page.getByPlaceholder("you@email.com").fill("returner@test.com");
   await page.getByPlaceholder("••••••••").fill("password123");
   await page.getByRole("button", { name: "Sign In" }).click();
