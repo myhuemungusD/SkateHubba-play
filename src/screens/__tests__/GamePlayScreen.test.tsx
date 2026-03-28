@@ -177,7 +177,11 @@ describe("GamePlayScreen", () => {
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
-    expect(screen.getByText(/Match @/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, el) => el?.tagName === "SPAN" && /Match/.test(el?.textContent ?? "") && /@/.test(el?.textContent ?? ""),
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText(/Kickflip/)).toBeInTheDocument();
   });
 
@@ -209,7 +213,14 @@ describe("GamePlayScreen", () => {
     });
     const p2Profile = { ...profile, uid: "u2", username: "rival" };
     render(<GamePlayScreen game={game} profile={p2Profile} onBack={vi.fn()} />);
-    expect(screen.getByText(/Match @sk8r/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === "SPAN" &&
+          (el?.textContent?.includes("Match") ?? false) &&
+          (el?.textContent?.includes("@sk8r") ?? false),
+      ),
+    ).toBeInTheDocument();
   });
 
   it("matcher banner shows 'trick' fallback when no trick name set", () => {

@@ -37,11 +37,19 @@ service cloud.firestore {
         // wins/losses must start at zero if present (prevents leaderboard inflation
         // by injecting arbitrary stats at profile creation time)
         && (!('wins' in request.resource.data) || request.resource.data.wins == 0)
-        && (!('losses' in request.resource.data) || request.resource.data.losses == 0);
+        && (!('losses' in request.resource.data) || request.resource.data.losses == 0)
+        // Pro fields are admin-only — clients cannot set them at creation
+        && !('isVerifiedPro' in request.resource.data)
+        && !('verifiedBy' in request.resource.data)
+        && !('verifiedAt' in request.resource.data);
       allow update: if isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
+        // Pro fields are admin-only — clients cannot modify them
+        && (!('isVerifiedPro' in request.resource.data) || request.resource.data.isVerifiedPro == resource.data.isVerifiedPro)
+        && (!('verifiedBy' in request.resource.data) || request.resource.data.verifiedBy == resource.data.verifiedBy)
+        && (!('verifiedAt' in request.resource.data) || request.resource.data.verifiedAt == resource.data.verifiedAt)
         // Wins/losses can only increment by 0 or 1 per write.
         // When the field doesn't exist yet, only 0 or 1 is allowed
         // (the old rule's !('wins' in resource.data) branch accepted any value).
@@ -280,12 +288,26 @@ service cloud.firestore {
         && resource.data.recipientUid == request.auth.uid;
 
       allow create: if isSignedIn()
+        && request.resource.data.senderUid == request.auth.uid
         && request.resource.data.recipientUid is string
-        && request.resource.data.type is string
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost']
         && request.resource.data.title is string
         && request.resource.data.body is string
         && request.resource.data.gameId is string
-        && request.resource.data.read == false;
+        && request.resource.data.read == false
+        && request.resource.data.createdAt == request.time
+        // Sender must be a player in the referenced game
+        && isPlayer(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
+        // Recipient must be the opponent in that game
+        && request.resource.data.recipientUid == opponentUid(
+             get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data,
+             request.auth.uid
+           )
+        // Rate limit: at most 1 notification per game per action type per 5 seconds
+        && (
+          !exists(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type))
+          || request.time > get(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)).data.lastSentAt + duration.value(5, 's')
+        );
 
       // Only the recipient can mark a notification as read
       allow update: if isSignedIn()
@@ -293,10 +315,29 @@ service cloud.firestore {
         && request.resource.data.read == true
         // Cannot change other fields
         && request.resource.data.recipientUid == resource.data.recipientUid
+        && request.resource.data.senderUid == resource.data.senderUid
         && request.resource.data.type == resource.data.type
         && request.resource.data.title == resource.data.title
         && request.resource.data.body == resource.data.body
-        && request.resource.data.gameId == resource.data.gameId;
+        && request.resource.data.gameId == resource.data.gameId
+        && request.resource.data.createdAt == resource.data.createdAt;
+
+      allow delete: if false;
+    }
+
+    // ── Notification rate limits ──
+    // One doc per sender+game+type combo, enforces 5-second cooldown server-side.
+    match /notification_limits/{limitId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.senderUid
+        && limitId == (request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost'];
+
+      allow update: if isSignedIn()
+        && request.auth.uid == resource.data.senderUid
+        && request.time > resource.data.lastSentAt + duration.value(5, 's');
 
       // Only the recipient can delete their own notifications
       allow delete: if isSignedIn()

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { getLeaderboard, type UserProfile } from "../services/users";
+import { ProUsername } from "./ProUsername";
 
 const RANK_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"] as const; // gold, silver, bronze
 
@@ -147,10 +148,14 @@ export function Leaderboard({
                         }}
                         className="font-display text-base text-white leading-none truncate hover:text-brand-orange transition-colors"
                       >
-                        @{p.username}
+                        <ProUsername username={p.username} isVerifiedPro={p.isVerifiedPro} />
                       </button>
                     ) : (
-                      <span className="font-display text-base text-white leading-none truncate">@{p.username}</span>
+                      <ProUsername
+                        username={p.username}
+                        isVerifiedPro={p.isVerifiedPro}
+                        className="font-display text-base text-white leading-none truncate"
+                      />
                     )}
                     {isCurrentUser && (
                       <span className="px-1.5 py-0.5 rounded bg-brand-orange font-display text-[9px] text-white tracking-wider leading-none shrink-0">

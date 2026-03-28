@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useAuthContext } from "./AuthContext";
 import { useNavigationContext } from "./NavigationContext";
-import { updatePlayerStats } from "../services/users";
+import { updatePlayerStats, getUserProfile } from "../services/users";
 import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
@@ -143,7 +143,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
       /* v8 ignore start -- null guard unreachable in tests; button disabled when user/profile is null */
       if (!user || !activeProfile) return;
       /* v8 ignore stop */
-      const gameId = await createGame(user.uid, activeProfile.username, opponentUid, opponentUsername);
+      const opponentProfile = await getUserProfile(opponentUid);
+      const gameId = await createGame(
+        user.uid,
+        activeProfile.username,
+        opponentUid,
+        opponentUsername,
+        activeProfile.isVerifiedPro,
+        opponentProfile?.isVerifiedPro,
+      );
       analytics.gameCreated(gameId);
       const shell = newGameShell(gameId, user.uid, activeProfile.username, opponentUid, opponentUsername);
       setActiveGame(shell);

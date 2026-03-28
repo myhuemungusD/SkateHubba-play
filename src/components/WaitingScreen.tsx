@@ -165,6 +165,7 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
+  const opponentIsPro = game.player1Uid === profile.uid ? game.player2IsVerifiedPro : game.player1IsVerifiedPro;
   const [fallbackDeadline] = useState(() => Date.now() + 86400000);
   const deadline = game.turnDeadline?.toMillis?.() || fallbackDeadline;
   const nudgeAvailable = nudgeStatus === "idle";
@@ -173,9 +174,14 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
     <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
       <div className="text-center w-full max-w-sm animate-scale-in">
         <div className="flex justify-center gap-5 mb-4">
-          <LetterDisplay count={myLetters} name={`@${profile.username}`} active={false} />
+          <LetterDisplay
+            count={myLetters}
+            name={`@${profile.username}`}
+            active={false}
+            isVerifiedPro={profile.isVerifiedPro}
+          />
           <div className="flex items-center font-display text-2xl text-subtle">VS</div>
-          <LetterDisplay count={theirLetters} name={`@${opponentName}`} active={false} />
+          <LetterDisplay count={theirLetters} name={`@${opponentName}`} active={false} isVerifiedPro={opponentIsPro} />
         </div>
 
         <div className="flex justify-center mb-4">
