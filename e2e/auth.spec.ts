@@ -24,11 +24,15 @@ async function signUpViaUI(page: import("@playwright/test").Page, email: string,
 
 async function completeProfileSetup(page: import("@playwright/test").Page, username: string) {
   // Wait for the profile setup screen
-  await expect(page.getByText("Lock in your handle")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
   await page.getByPlaceholder("sk8legend").fill(username);
   // Wait for availability check to resolve (debounced 400 ms)
   await expect(page.getByText(`@${username} is available ✓`)).toBeVisible({ timeout: 5_000 });
-  // "Regular" stance is pre-selected; just submit
+  // Step 1 → Step 2 (stance)
+  await page.getByRole("button", { name: "Next" }).click();
+  // Step 2 → Step 3 (review) — "Regular" stance is pre-selected
+  await page.getByRole("button", { name: "Next" }).click();
+  // Step 3 — submit
   await page.getByRole("button", { name: "Lock It In" }).click();
 }
 

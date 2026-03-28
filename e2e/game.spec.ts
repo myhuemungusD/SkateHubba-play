@@ -45,9 +45,11 @@ async function signUpAndSetupProfile(page: Page, email: string, pw: string, user
   await pwFields.nth(1).fill(pw);
   await page.getByRole("button", { name: "Create Account" }).click();
 
-  await expect(page.getByText("Lock in your handle")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
   await page.getByPlaceholder("sk8legend").fill(username);
   await expect(page.getByText(`@${username} is available ✓`)).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("button", { name: "Next" }).click();
   await page.getByRole("button", { name: "Lock It In" }).click();
   await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 10_000 });
 }
