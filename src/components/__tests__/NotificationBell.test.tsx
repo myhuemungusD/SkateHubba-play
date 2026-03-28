@@ -25,6 +25,7 @@ const baseCtx = {
   markRead: vi.fn(),
   markAllRead: vi.fn(),
   clearAll: vi.fn(),
+  dismissNotification: vi.fn(),
   soundEnabled: true,
   toggleSound: vi.fn(),
 };
@@ -133,5 +134,118 @@ describe("NotificationBell", () => {
     await userEvent.click(screen.getByLabelText("Notifications"));
     await userEvent.click(screen.getByLabelText("Mute sounds"));
     expect(baseCtx.toggleSound).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows unmute label when sound is disabled", async () => {
+    mockNotifications.mockReturnValue({ ...baseCtx, soundEnabled: false });
+    render(<NotificationBell />);
+    await userEvent.click(screen.getByLabelText("Notifications"));
+    expect(screen.getByLabelText("Unmute sounds")).toBeInTheDocument();
+  });
+
+  it("calls dismissNotification on delete button click", async () => {
+    const dismissNotification = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      dismissNotification,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Test",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g1",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell games={[{ id: "g1" } as any]} onOpenGame={vi.fn()} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+    await userEvent.click(screen.getByLabelText("Delete notification"));
+    expect(dismissNotification).toHaveBeenCalledWith("n1");
+  });
+
+  it("marks notification as read and opens game when clicked", async () => {
+    const markRead = vi.fn();
+    const onOpenGame = vi.fn();
+    const game = { id: "g1" };
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      markRead,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Test",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g1",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell games={[game as any]} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+    await userEvent.click(screen.getByText("Test"));
+    expect(markRead).toHaveBeenCalledWith("n1");
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
+  it("navigates to game when notification with gameId is clicked", async () => {
+    const game = { id: "g1" };
+    const onOpenGame = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Your Turn",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g1",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell games={[game as any]} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+    await userEvent.click(screen.getByText("Your Turn"));
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
+  it("closes panel on outside click", async () => {
+    render(
+      <div>
+        <NotificationBell />
+        <button>Outside</button>
+      </div>,
+    );
+    await userEvent.click(screen.getByLabelText("Notifications"));
+    expect(screen.getByText("NOTIFICATIONS")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Outside"));
+    expect(screen.queryByText("NOTIFICATIONS")).not.toBeInTheDocument();
+  });
+
+  it("shows read notifications with reduced opacity", async () => {
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        { id: "n1", type: "game_event", title: "Read", message: "msg", timestamp: Date.now(), read: true },
+      ],
+    });
+
+    render(<NotificationBell />);
+    await userEvent.click(screen.getByLabelText("Notifications"));
+    const item = screen.getByText("Read").closest("button");
+    expect(item?.className).toContain("opacity-60");
   });
 });

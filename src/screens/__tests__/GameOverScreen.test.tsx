@@ -7,6 +7,22 @@ vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
 }));
 
+vi.mock("../../utils/helpers", () => ({
+  isFirebaseStorageUrl: (url: string) => url?.startsWith("https://firebasestorage.googleapis.com"),
+  LETTERS: ["S", "K", "A", "T", "E"],
+}));
+
+vi.mock("../../services/reports", () => ({
+  submitReport: vi.fn().mockResolvedValue("r1"),
+  REPORT_REASON_LABELS: {
+    inappropriate_video: "Inappropriate video content",
+    abusive_behavior: "Abusive or threatening behavior",
+    cheating: "Cheating or exploiting",
+    spam: "Spam or bot activity",
+    other: "Other",
+  },
+}));
+
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
 
 function makeGame(overrides: Record<string, unknown> = {}) {
@@ -143,5 +159,77 @@ describe("GameOverScreen", () => {
     );
     // player2 won
     expect(screen.getByText("You Win")).toBeInTheDocument();
+  });
+
+  it("shares game recap via clipboard when navigator.share is unavailable", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const origShare = navigator.share;
+    Object.defineProperty(navigator, "share", { value: undefined, configurable: true, writable: true });
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true, writable: true });
+
+    const turnHistory = [
+      {
+        turnNumber: 1,
+        trickName: "Kickflip",
+        setterUid: "u1",
+        setterUsername: "sk8r",
+        matcherUid: "u2",
+        matcherUsername: "rival",
+        setVideoUrl: "",
+        matchVideoUrl: "",
+        landed: true,
+        letterTo: null,
+      },
+    ];
+
+    render(<GameOverScreen game={makeGame({ turnHistory })} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Share Game Recap"));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalled();
+    });
+    expect(screen.getByText("Copied!")).toBeInTheDocument();
+
+    Object.defineProperty(navigator, "share", { value: origShare, configurable: true, writable: true });
+  });
+
+  it("renders turn history and game replay when turns exist", () => {
+    const turnHistory = [
+      {
+        turnNumber: 1,
+        trickName: "Heelflip",
+        setterUid: "u1",
+        setterUsername: "sk8r",
+        matcherUid: "u2",
+        matcherUsername: "rival",
+        setVideoUrl: "",
+        matchVideoUrl: "",
+        landed: false,
+        letterTo: "u2",
+      },
+    ];
+    render(<GameOverScreen game={makeGame({ turnHistory })} profile={profile} onBack={vi.fn()} />);
+    expect(screen.getByText("Game Clips (1 round)")).toBeInTheDocument();
+    expect(screen.getByText("Share Game Recap")).toBeInTheDocument();
+  });
+
+  it("shows report opponent button and opens modal", async () => {
+    render(<GameOverScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+    expect(screen.getByText("Report opponent")).toBeInTheDocument();
+    await userEvent.click(screen.getByText("Report opponent"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("renders view player button when onViewPlayer is provided", async () => {
+    const onViewPlayer = vi.fn();
+    render(<GameOverScreen game={makeGame()} profile={profile} onBack={vi.fn()} onViewPlayer={onViewPlayer} />);
+    await userEvent.click(screen.getByText(/View @rival's Record/));
+    expect(onViewPlayer).toHaveBeenCalledWith("u2");
+  });
+
+  it("shows invite button", () => {
+    render(<GameOverScreen game={makeGame()} profile={profile} onRematch={vi.fn()} onBack={vi.fn()} />);
+    expect(screen.getByText(/Invite/)).toBeInTheDocument();
   });
 });
