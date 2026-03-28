@@ -1,4 +1,17 @@
-import { addDoc, collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  setDoc,
+  serverTimestamp,
+  where,
+  type QuerySnapshot,
+  type DocumentData,
+} from "firebase/firestore";
 import { requireDb } from "../firebase";
 
 const COOLDOWN_MS = 1 * 60 * 60 * 1000; // 1 hour
@@ -53,4 +66,18 @@ export function canNudge(gameId: string): boolean {
   const key = `nudge_${gameId}`;
   const last = parseInt(localStorage.getItem(key) || "0", 10);
   return Date.now() - last >= COOLDOWN_MS;
+}
+
+/**
+ * Subscribe to incoming nudges for a user in real time.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToNudges(uid: string, callback: (snap: QuerySnapshot<DocumentData>) => void): () => void {
+  const q = query(
+    collection(requireDb(), "nudges"),
+    where("recipientUid", "==", uid),
+    orderBy("createdAt", "desc"),
+    limit(5),
+  );
+  return onSnapshot(q, callback);
 }

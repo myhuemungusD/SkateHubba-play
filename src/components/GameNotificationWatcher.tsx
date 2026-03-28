@@ -1,20 +1,11 @@
 import { useEffect, useRef } from "react";
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  orderBy,
-  limit,
-  updateDoc,
-  doc as firestoreDoc,
-} from "firebase/firestore";
-import { db } from "../firebase";
 import { useAuthContext } from "../context/AuthContext";
 import { useGameContext } from "../context/GameContext";
 import { useNotifications } from "../context/NotificationContext";
 import { logger } from "../services/logger";
 import { onForegroundMessage } from "../services/fcm";
+import { subscribeToUnreadNotifications, markNotificationRead } from "../services/notifications";
+import { subscribeToNudges } from "../services/nudge";
 import type { GameDoc } from "../services/games";
 import type { ChimeType } from "../services/sounds";
 import { parseFirebaseError } from "../utils/helpers";
@@ -220,7 +211,7 @@ export function GameNotificationWatcher() {
   const initialNudgeIdsRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
-    if (!uid || !db) {
+    if (!uid) {
       nudgeReadyRef.current = false;
       initialNudgeIdsRef.current = null;
       return;
@@ -228,14 +219,7 @@ export function GameNotificationWatcher() {
 
     let unsub: (() => void) | undefined;
     try {
-      const q = query(
-        collection(db, "nudges"),
-        where("recipientUid", "==", uid),
-        orderBy("createdAt", "desc"),
-        limit(5),
-      );
-
-      unsub = onSnapshot(q, (snap) => {
+      unsub = subscribeToNudges(uid, (snap) => {
         // Seed on first snapshot to avoid notifying for old nudges
         if (initialNudgeIdsRef.current === null) {
           initialNudgeIdsRef.current = new Set(snap.docs.map((d) => d.id));
@@ -281,7 +265,7 @@ export function GameNotificationWatcher() {
   const initialNotifIdsRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
-    if (!uid || !db) {
+    if (!uid) {
       notifReadyRef.current = false;
       initialNotifIdsRef.current = null;
       return;
@@ -289,15 +273,7 @@ export function GameNotificationWatcher() {
 
     let unsub: (() => void) | undefined;
     try {
-      const q = query(
-        collection(db, "notifications"),
-        where("recipientUid", "==", uid),
-        where("read", "==", false),
-        orderBy("createdAt", "desc"),
-        limit(10),
-      );
-
-      unsub = onSnapshot(q, (snap) => {
+      unsub = subscribeToUnreadNotifications(uid, (snap) => {
         // Seed on first snapshot to avoid toasting stale notifications
         if (initialNotifIdsRef.current === null) {
           initialNotifIdsRef.current = new Set(snap.docs.map((d) => d.id));
@@ -323,14 +299,12 @@ export function GameNotificationWatcher() {
             initialNotifIdsRef.current.add(change.doc.id);
 
             // Mark as read so it doesn't re-fire (best-effort)
-            if (db) {
-              updateDoc(firestoreDoc(db, "notifications", change.doc.id), { read: true }).catch((err) => {
-                logger.warn("notification_mark_read_failed", {
-                  notificationId: change.doc.id,
-                  error: parseFirebaseError(err),
-                });
+            markNotificationRead(change.doc.id).catch((err) => {
+              logger.warn("notification_mark_read_failed", {
+                notificationId: change.doc.id,
+                error: parseFirebaseError(err),
               });
-            }
+            });
           }
         }
 

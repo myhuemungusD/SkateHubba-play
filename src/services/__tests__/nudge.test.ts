@@ -7,6 +7,11 @@ const mockAddDoc = vi.fn().mockResolvedValue({ id: "nudge1" });
 const mockDoc = vi.fn((_db: unknown, ...segments: string[]) => segments.join("/"));
 const mockCollection = vi.fn((_db: unknown, name: string) => name);
 const mockServerTimestamp = vi.fn(() => "SERVER_TS");
+const mockOnSnapshot = vi.fn(() => vi.fn());
+const mockQuery = vi.fn((...args: unknown[]) => args);
+const mockWhere = vi.fn((...args: unknown[]) => args);
+const mockOrderBy = vi.fn((...args: unknown[]) => args);
+const mockLimit = vi.fn((...args: unknown[]) => args);
 
 vi.mock("firebase/firestore", () => ({
   addDoc: (...args: unknown[]) => mockAddDoc(...args),
@@ -14,13 +19,18 @@ vi.mock("firebase/firestore", () => ({
   doc: (...args: unknown[]) => mockDoc(...args),
   setDoc: (...args: unknown[]) => mockSetDoc(...args),
   serverTimestamp: () => mockServerTimestamp(),
+  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
+  query: (...args: unknown[]) => mockQuery(...args),
+  where: (...args: unknown[]) => mockWhere(...args),
+  orderBy: (...args: unknown[]) => mockOrderBy(...args),
+  limit: (...args: unknown[]) => mockLimit(...args),
 }));
 
 vi.mock("../../firebase");
 
 /* ── tests ───────────────────────────────────── */
 
-import { sendNudge, canNudge } from "../nudge";
+import { sendNudge, canNudge, subscribeToNudges } from "../nudge";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -88,5 +98,26 @@ describe("sendNudge", () => {
     await expect(sendNudge(params)).rejects.toThrow();
     // Timestamp should still be the original, not updated
     expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+});
+
+describe("subscribeToNudges", () => {
+  it("calls onSnapshot with a query for recipient nudges", () => {
+    const callback = vi.fn();
+    subscribeToNudges("u2", callback);
+
+    expect(mockCollection).toHaveBeenCalledWith(expect.anything(), "nudges");
+    expect(mockWhere).toHaveBeenCalledWith("recipientUid", "==", "u2");
+    expect(mockOrderBy).toHaveBeenCalledWith("createdAt", "desc");
+    expect(mockLimit).toHaveBeenCalledWith(5);
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the unsubscribe function from onSnapshot", () => {
+    const mockUnsub = vi.fn();
+    mockOnSnapshot.mockReturnValueOnce(mockUnsub);
+
+    const unsub = subscribeToNudges("u2", vi.fn());
+    expect(unsub).toBe(mockUnsub);
   });
 });

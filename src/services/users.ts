@@ -15,6 +15,7 @@ import {
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
+import { forfeitGameForDeletion } from "./games";
 
 export interface UserProfile {
   uid: string;
@@ -129,20 +130,28 @@ export async function createProfile(
 export async function deleteUserData(uid: string, username: string): Promise<void> {
   const db = requireDb();
 
-  // Phase 1: Delete game documents where user is a player
+  // Phase 1a: Find all game documents where user is a player
   const gamesCol = collection(db, "games");
   const [asP1, asP2] = await Promise.all([
     getDocs(query(gamesCol, where("player1Uid", "==", uid))),
     getDocs(query(gamesCol, where("player2Uid", "==", uid))),
   ]);
   const seen = new Set<string>();
-  const deletions: Promise<void>[] = [];
+  const allDocs: Array<{ id: string; status: string }> = [];
   for (const snap of [...asP1.docs, ...asP2.docs]) {
     if (!seen.has(snap.id)) {
       seen.add(snap.id);
-      deletions.push(deleteDoc(doc(db, "games", snap.id)));
+      const data = snap.data();
+      allDocs.push({ id: snap.id, status: typeof data.status === "string" ? data.status : "" });
     }
   }
+
+  // Phase 1b: Forfeit active games so they can be deleted
+  const forfeits = allDocs.filter((g) => g.status === "active").map((g) => forfeitGameForDeletion(g.id, uid));
+  await Promise.all(forfeits);
+
+  // Phase 1c: Delete all game documents (now all non-active)
+  const deletions = allDocs.map((g) => deleteDoc(doc(db, "games", g.id)));
   await Promise.all(deletions);
 
   // Phase 2: Delete profile + username atomically (no reads needed, batch is cheaper)

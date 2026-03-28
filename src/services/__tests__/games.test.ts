@@ -62,6 +62,7 @@ import {
   failSetTrick,
   submitMatchAttempt,
   forfeitExpiredTurn,
+  forfeitGameForDeletion,
   subscribeToGame,
   subscribeToMyGames,
   fetchPlayerCompletedGames,
@@ -540,6 +541,48 @@ describe("games service", () => {
       const result = await forfeitExpiredTurn("g1");
       expect(result.forfeited).toBe(true);
       expect(result.winner).toBe("p1");
+    });
+  });
+
+  describe("forfeitGameForDeletion", () => {
+    it("forfeits an active game and assigns opponent as winner", async () => {
+      const game = { ...baseGame, status: "active", currentTurn: "p1" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await forfeitGameForDeletion("g1", "p1");
+
+      expect(mockTxUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: "forfeit", winner: "p2" }),
+      );
+    });
+
+    it("skips non-active games", async () => {
+      const game = { ...baseGame, status: "complete" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await forfeitGameForDeletion("g1", "p1");
+
+      expect(mockTxUpdate).not.toHaveBeenCalled();
+    });
+
+    it("handles non-existent games gracefully", async () => {
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+
+      await expect(forfeitGameForDeletion("g1", "p1")).resolves.toBeUndefined();
+      expect(mockTxUpdate).not.toHaveBeenCalled();
+    });
+
+    it("assigns p1 as winner when p2 is deleting their account", async () => {
+      const game = { ...baseGame, status: "active", currentTurn: "p2" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await forfeitGameForDeletion("g1", "p2");
+
+      expect(mockTxUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: "forfeit", winner: "p1" }),
+      );
     });
   });
 

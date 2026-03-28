@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Btn } from "./ui/Btn";
 import { ErrorBanner } from "./ui/ErrorBanner";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 export function DeleteAccountModal({
   onClose,
@@ -11,6 +12,8 @@ export function DeleteAccountModal({
 }) {
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
 
   return (
     <div
@@ -25,7 +28,11 @@ export function DeleteAccountModal({
         if (e.key === "Escape" && !deleting) onClose();
       }}
     >
-      <div className="glass-card rounded-2xl p-6 max-w-sm w-full animate-scale-in" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        className="glass-card rounded-2xl p-6 max-w-sm w-full animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 id="delete-modal-title" className="font-display text-xl text-white mb-2">
           Delete Account?
         </h3>

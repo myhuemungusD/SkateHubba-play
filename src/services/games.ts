@@ -435,6 +435,35 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
 }
 
 /* ────────────────────────────────────────────
+ * Forfeit game for account deletion
+ * ──────────────────────────────────────────── */
+
+/**
+ * Forfeit an active game so it can be deleted during account deletion.
+ * Unlike `forfeitExpiredTurn`, this doesn't check the turn deadline —
+ * it unconditionally marks the game as forfeited with the opponent as winner.
+ */
+export async function forfeitGameForDeletion(gameId: string, uid: string): Promise<void> {
+  const gameRef = doc(requireDb(), "games", gameId);
+
+  await runTransaction(requireDb(), async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) return;
+
+    const game = toGameDoc(snap);
+    if (game.status !== "active") return;
+
+    const winner = getOpponent(game, uid);
+
+    tx.update(gameRef, {
+      status: "forfeit",
+      winner,
+      updatedAt: serverTimestamp(),
+    });
+  });
+}
+
+/* ────────────────────────────────────────────
  * One-time queries
  * ──────────────────────────────────────────── */
 

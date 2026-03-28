@@ -52,6 +52,11 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
+const mockForfeitGameForDeletion = vi.fn().mockResolvedValue(undefined);
+vi.mock("../games", () => ({
+  forfeitGameForDeletion: (...args: unknown[]) => mockForfeitGameForDeletion(...args),
+}));
+
 import {
   getUserProfile,
   isUsernameAvailable,
@@ -203,10 +208,9 @@ describe("users service", () => {
   });
 
   describe("deleteUserData", () => {
-    it("deletes game docs then profile and username via batch", async () => {
-      // Phase 1: getDocs returns game docs for both queries
-      const gameDoc1 = { id: "g1" };
-      const gameDoc2 = { id: "g2" };
+    it("forfeits active games, deletes all game docs, then profile and username via batch", async () => {
+      const gameDoc1 = { id: "g1", data: () => ({ status: "active" }) };
+      const gameDoc2 = { id: "g2", data: () => ({ status: "complete" }) };
       mockGetDocs
         .mockResolvedValueOnce({ docs: [gameDoc1] }) // player1Uid query
         .mockResolvedValueOnce({ docs: [gameDoc2] }); // player2Uid query
@@ -214,7 +218,10 @@ describe("users service", () => {
 
       await deleteUserData("u1", "sk8r");
 
-      // Game docs deleted individually
+      // Active game forfeited first
+      expect(mockForfeitGameForDeletion).toHaveBeenCalledWith("g1", "u1");
+      expect(mockForfeitGameForDeletion).toHaveBeenCalledTimes(1);
+      // Both game docs deleted
       expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
       // Profile + username deleted via batch
       const batch = mockWriteBatch();
@@ -223,13 +230,26 @@ describe("users service", () => {
     });
 
     it("deduplicates game docs appearing in both queries", async () => {
-      const gameDoc = { id: "g1" };
+      const gameDoc = { id: "g1", data: () => ({ status: "complete" }) };
       mockGetDocs.mockResolvedValueOnce({ docs: [gameDoc] }).mockResolvedValueOnce({ docs: [gameDoc] }); // same game in both
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
 
       // Only one deleteDoc call despite game appearing twice
+      expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+      // No forfeits needed (game is complete)
+      expect(mockForfeitGameForDeletion).not.toHaveBeenCalled();
+    });
+
+    it("treats games with missing status as non-active (no forfeit)", async () => {
+      const gameDoc = { id: "g1", data: () => ({ player1Uid: "u1" }) }; // no status field
+      mockGetDocs.mockResolvedValueOnce({ docs: [gameDoc] }).mockResolvedValueOnce({ docs: [] });
+      mockDeleteDoc.mockResolvedValue(undefined);
+
+      await deleteUserData("u1", "sk8r");
+
+      expect(mockForfeitGameForDeletion).not.toHaveBeenCalled();
       expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
     });
 

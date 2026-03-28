@@ -67,9 +67,14 @@ function AppScreens() {
 
   return (
     <NotificationProvider uid={auth.user?.uid ?? null}>
+      <a href="#main-content" className="skip-nav">
+        Skip to main content
+      </a>
       <OfflineBanner />
       <GameNotificationWatcher />
-      <AppRoutes />
+      <main id="main-content">
+        <AppRoutes />
+      </main>
       <ToastContainer />
     </NotificationProvider>
   );

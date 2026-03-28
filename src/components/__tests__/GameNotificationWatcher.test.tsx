@@ -26,19 +26,13 @@ vi.mock("../../context/NotificationContext", () => ({
   })),
 }));
 
-vi.mock("../../firebase", () => ({
-  db: null,
+vi.mock("../../services/notifications", () => ({
+  subscribeToUnreadNotifications: vi.fn(() => vi.fn()),
+  markNotificationRead: vi.fn(),
 }));
 
-vi.mock("firebase/firestore", () => ({
-  collection: vi.fn(),
-  query: vi.fn(),
-  where: vi.fn(),
-  orderBy: vi.fn(),
-  limit: vi.fn(),
-  onSnapshot: vi.fn(() => vi.fn()),
-  updateDoc: vi.fn(),
-  doc: vi.fn(),
+vi.mock("../../services/nudge", () => ({
+  subscribeToNudges: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("../../services/logger", () => ({

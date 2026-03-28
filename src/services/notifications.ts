@@ -1,4 +1,18 @@
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  orderBy,
+  limit,
+  query,
+  updateDoc,
+  where,
+  serverTimestamp,
+  type QuerySnapshot,
+  type DocumentData,
+} from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -41,4 +55,37 @@ export async function writeNotification(params: WriteNotificationParams): Promis
       error: parseFirebaseError(err),
     });
   }
+}
+
+/**
+ * Subscribe to a user's unread notifications in real time.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToUnreadNotifications(
+  uid: string,
+  callback: (snap: QuerySnapshot<DocumentData>) => void,
+): () => void {
+  const q = query(
+    collection(requireDb(), "notifications"),
+    where("recipientUid", "==", uid),
+    where("read", "==", false),
+    orderBy("createdAt", "desc"),
+    limit(10),
+  );
+  return onSnapshot(q, callback);
+}
+
+/**
+ * Mark a notification as read. Best-effort — callers should catch errors.
+ */
+export async function markNotificationRead(notificationId: string): Promise<void> {
+  await updateDoc(doc(requireDb(), "notifications", notificationId), { read: true });
+}
+
+/**
+ * Delete a single notification document. Only the recipient can delete
+ * (enforced by Firestore rules).
+ */
+export async function deleteNotification(notificationId: string): Promise<void> {
+  await deleteDoc(doc(requireDb(), "notifications", notificationId));
 }

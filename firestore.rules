@@ -239,8 +239,10 @@ service cloud.firestore {
           || request.resource.data.turnHistory == resource.data.turnHistory
         );
 
-      // Players may delete their own games (account deletion flow)
-      allow delete: if isSignedIn() && isPlayer(resource.data);
+      // Players may delete their own non-active games (account deletion flow).
+      // Active games must be forfeited before deletion.
+      allow delete: if isSignedIn() && isPlayer(resource.data)
+        && resource.data.status != "active";
     }
 
     // ── Nudges ──
@@ -297,7 +299,9 @@ service cloud.firestore {
         && request.resource.data.body == resource.data.body
         && request.resource.data.gameId == resource.data.gameId;
 
-      allow delete: if false;
+      // Recipients can delete their own notifications
+      allow delete: if isSignedIn()
+        && resource.data.recipientUid == request.auth.uid;
     }
 
     // ── Reports (content/player flagging for Google Play UGC policy) ──
