@@ -1,23 +1,11 @@
 import { useEffect, useRef } from "react";
-import {
-  collection,
-  query,
-  where,
-  onSnapshot,
-  orderBy,
-  limit,
-  updateDoc,
-  doc as firestoreDoc,
-} from "firebase/firestore";
-import { db } from "../firebase";
 import { useAuthContext } from "../context/AuthContext";
 import { useGameContext } from "../context/GameContext";
 import { useNotifications } from "../context/NotificationContext";
-import { logger } from "../services/logger";
 import { onForegroundMessage } from "../services/fcm";
+import { subscribeToNudges, subscribeToNotifications } from "../services/notifications";
 import type { GameDoc } from "../services/games";
 import type { ChimeType } from "../services/sounds";
-import { parseFirebaseError } from "../utils/helpers";
 
 /**
  * Maps FCM data.type values to chime types for foreground push messages.
@@ -215,136 +203,45 @@ export function GameNotificationWatcher() {
     prevGamesMapRef.current = new Map(games.map((g) => [g.id, g]));
   }, [uid, games, activeGame, notify]);
 
-  // ── Listen for incoming nudges ──
-  const nudgeReadyRef = useRef(false);
-  const initialNudgeIdsRef = useRef<Set<string> | null>(null);
-
+  // ── Listen for incoming nudges (via services layer) ──
   useEffect(() => {
-    if (!uid || !db) {
-      nudgeReadyRef.current = false;
-      initialNudgeIdsRef.current = null;
-      return;
-    }
+    if (!uid) return;
 
-    let unsub: (() => void) | undefined;
     try {
-      const q = query(
-        collection(db, "nudges"),
-        where("recipientUid", "==", uid),
-        orderBy("createdAt", "desc"),
-        limit(5),
-      );
-
-      unsub = onSnapshot(q, (snap) => {
-        // Seed on first snapshot to avoid notifying for old nudges
-        if (initialNudgeIdsRef.current === null) {
-          initialNudgeIdsRef.current = new Set(snap.docs.map((d) => d.id));
-          setTimeout(() => {
-            nudgeReadyRef.current = true;
-          }, 0);
-          return;
-        }
-
-        if (!nudgeReadyRef.current) return;
-
-        for (const change of snap.docChanges()) {
-          if (change.type === "added" && !initialNudgeIdsRef.current.has(change.doc.id)) {
-            const data = change.doc.data();
-            notify({
-              type: "game_event",
-              title: "You got nudged!",
-              message: `@${data.senderUsername} is waiting for your move`,
-              chime: "nudge",
-              gameId: data.gameId,
-            });
-            initialNudgeIdsRef.current.add(change.doc.id);
-            // Cap tracked IDs to prevent unbounded growth in long sessions
-            if (initialNudgeIdsRef.current.size > 50) {
-              const ids: string[] = Array.from(initialNudgeIdsRef.current);
-              initialNudgeIdsRef.current = new Set(ids.slice(-25));
-            }
-          }
-        }
+      const unsub = subscribeToNudges(uid, (nudge) => {
+        notify({
+          type: "game_event",
+          title: "You got nudged!",
+          message: `@${nudge.senderUsername} is waiting for your move`,
+          chime: "nudge",
+          gameId: nudge.gameId,
+        });
       });
+      return unsub;
     } catch {
       // Firestore not initialized (e.g. in tests) — skip nudge listener
     }
-
-    return () => unsub?.();
   }, [uid, notify]);
 
-  // ── Watch notifications collection for cross-client alerts ──
-  // When the opponent writes a notification doc, this listener picks it up
-  // and surfaces it as an in-app toast. Each doc is marked read after being
-  // shown so it only fires once.
-  const notifReadyRef = useRef(false);
-  const initialNotifIdsRef = useRef<Set<string> | null>(null);
-
+  // ── Watch notifications collection (via services layer) ──
   useEffect(() => {
-    if (!uid || !db) {
-      notifReadyRef.current = false;
-      initialNotifIdsRef.current = null;
-      return;
-    }
+    if (!uid) return;
 
-    let unsub: (() => void) | undefined;
     try {
-      const q = query(
-        collection(db, "notifications"),
-        where("recipientUid", "==", uid),
-        where("read", "==", false),
-        orderBy("createdAt", "desc"),
-        limit(10),
-      );
-
-      unsub = onSnapshot(q, (snap) => {
-        // Seed on first snapshot to avoid toasting stale notifications
-        if (initialNotifIdsRef.current === null) {
-          initialNotifIdsRef.current = new Set(snap.docs.map((d) => d.id));
-          setTimeout(() => {
-            notifReadyRef.current = true;
-          }, 0);
-          return;
-        }
-
-        if (!notifReadyRef.current) return;
-
-        for (const change of snap.docChanges()) {
-          if (change.type === "added" && !initialNotifIdsRef.current.has(change.doc.id)) {
-            const data = change.doc.data();
-            const chime = fcmChimeMap[data.type] ?? "general";
-            notify({
-              type: "game_event",
-              title: data.title ?? "SkateHubba",
-              message: data.body ?? "",
-              chime,
-              gameId: data.gameId,
-            });
-            initialNotifIdsRef.current.add(change.doc.id);
-
-            // Mark as read so it doesn't re-fire (best-effort)
-            if (db) {
-              updateDoc(firestoreDoc(db, "notifications", change.doc.id), { read: true }).catch((err) => {
-                logger.warn("notification_mark_read_failed", {
-                  notificationId: change.doc.id,
-                  error: parseFirebaseError(err),
-                });
-              });
-            }
-          }
-        }
-
-        // Cap tracked IDs
-        if (initialNotifIdsRef.current.size > 50) {
-          const ids = Array.from(initialNotifIdsRef.current);
-          initialNotifIdsRef.current = new Set(ids.slice(-25));
-        }
+      const unsub = subscribeToNotifications(uid, (notif) => {
+        const chime = fcmChimeMap[notif.type] ?? "general";
+        notify({
+          type: "game_event",
+          title: notif.title,
+          message: notif.body,
+          chime,
+          gameId: notif.gameId,
+        });
       });
+      return unsub;
     } catch {
       // Firestore not initialized — skip
     }
-
-    return () => unsub?.();
   }, [uid, notify]);
 
   // ── Handle deep-link from service worker notification tap ──

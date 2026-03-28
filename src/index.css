@@ -560,6 +560,27 @@
   transform: rotateX(2deg) scale(1.01);
 }
 
+/* ── Reduced motion ────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  /* Elements that start hidden and rely on animation to appear */
+  .stagger-children > *,
+  .hero-stagger > * {
+    opacity: 1;
+  }
+}
+
 /* Input autofill override */
 input:-webkit-autofill {
   -webkit-box-shadow: 0 0 0 1000px #1a1a1a inset !important;
