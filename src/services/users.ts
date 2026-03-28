@@ -32,6 +32,12 @@ export interface UserProfile {
   losses?: number;
   /** ID of the last game that updated this user's stats (idempotency key). */
   lastStatsGameId?: string;
+  /** Whether this user is a verified pro. Only settable via Admin SDK / Firebase console. */
+  isVerifiedPro?: boolean;
+  /** UID of the user or admin who granted verified-pro status. */
+  verifiedBy?: string;
+  /** Timestamp when pro status was granted (serverTimestamp on write, Firestore Timestamp on read). */
+  verifiedAt?: FieldValue | null;
 }
 
 /**

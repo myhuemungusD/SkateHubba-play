@@ -12,6 +12,7 @@ import { NotificationBell } from "../components/NotificationBell";
 import { PushPermissionBanner } from "../components/PushPermissionBanner";
 import { LobbyTimer } from "../components/LobbyTimer";
 import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
+import { ProUsername } from "../components/ProUsername";
 
 function relativeJoinDate(createdAt: FieldValue | null): string {
   if (!(createdAt instanceof Timestamp)) return "Joined";
@@ -84,6 +85,8 @@ export function Lobby({
 
   const opponent = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Username : g.player1Username);
   const opponentUid = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Uid : g.player1Uid);
+  const opponentIsVerifiedPro = (g: GameDoc) =>
+    g.player1Uid === profile.uid ? g.player2IsVerifiedPro : g.player1IsVerifiedPro;
 
   const isMyTurn = (g: GameDoc) => g.currentTurn === profile.uid;
 
@@ -119,9 +122,11 @@ export function Lobby({
                 {profile.username[0].toUpperCase()}
               </span>
             </div>
-            <span className="font-body text-xs text-brand-orange group-hover:text-[#FF8533] transition-colors duration-300">
-              @{profile.username}
-            </span>
+            <ProUsername
+              username={profile.username}
+              isVerifiedPro={profile.isVerifiedPro}
+              className="font-body text-xs text-brand-orange group-hover:text-[#FF8533] transition-colors duration-300"
+            />
           </button>
           <NotificationBell games={games} onOpenGame={onOpenGame} />
           <button
@@ -227,7 +232,9 @@ export function Lobby({
                   )}
                   <div className="pl-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-display text-[19px] text-white leading-none">vs @{opponent(g)}</span>
+                      <span className="font-display text-[19px] text-white leading-none">
+                        vs <ProUsername username={opponent(g)} isVerifiedPro={opponentIsVerifiedPro(g)} />
+                      </span>
                       {onViewPlayer && (
                         <button
                           type="button"
@@ -331,7 +338,9 @@ export function Lobby({
                 >
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-display text-[19px] text-white leading-none">vs @{opponent(g)}</span>
+                      <span className="font-display text-[19px] text-white leading-none">
+                        vs <ProUsername username={opponent(g)} isVerifiedPro={opponentIsVerifiedPro(g)} />
+                      </span>
                       {onViewPlayer && (
                         <button
                           type="button"
@@ -443,7 +452,11 @@ export function Lobby({
                       </span>
                     </div>
                     <div className="min-w-0">
-                      <span className="font-display text-base text-white block leading-none">@{p.username}</span>
+                      <ProUsername
+                        username={p.username}
+                        isVerifiedPro={p.isVerifiedPro}
+                        className="font-display text-base text-white block leading-none"
+                      />
                       <span className="font-body text-[11px] text-brand-green block mt-1">
                         {p.stance}
                         {p.createdAt ? ` \u00B7 ${relativeJoinDate(p.createdAt)}` : ""}

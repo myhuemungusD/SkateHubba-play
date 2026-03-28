@@ -79,7 +79,7 @@ describe("Lobby", () => {
     renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
 
     // opponent name is rival
-    expect(screen.getByText(/vs @rival/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
     // not my turn → phase-specific waiting text
     expect(screen.getByText("They're setting a trick")).toBeInTheDocument();
   });
@@ -248,7 +248,7 @@ describe("Lobby", () => {
     renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
 
     // opponent should be player1's username since profile is player2
-    expect(screen.getByText(/vs @someone/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /vs @someone/i })).toBeInTheDocument();
     // my turn → phase-specific turn text
     expect(screen.getByText("Your turn to set")).toBeInTheDocument();
   });
