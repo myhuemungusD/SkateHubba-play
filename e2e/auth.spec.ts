@@ -3,9 +3,17 @@ import { clearAll, verifyEmail } from "./helpers/emulator";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
+async function passAgeGate(page: import("@playwright/test").Page) {
+  await page.getByLabel("Birth month").fill("01");
+  await page.getByLabel("Birth day").fill("15");
+  await page.getByLabel("Birth year").fill("2000");
+  await page.getByRole("button", { name: "Continue" }).click();
+}
+
 async function signUpViaUI(page: import("@playwright/test").Page, email: string, password: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
+  await passAgeGate(page);
   await page.getByPlaceholder("you@email.com").fill(email);
   // Fill both password fields (Password + Confirm)
   const pwFields = page.getByPlaceholder("••••••••");
@@ -42,6 +50,7 @@ test("sign up → profile setup → lobby", async ({ page }) => {
 test("sign up form rejects mismatched passwords", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
+  await passAgeGate(page);
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -55,6 +64,7 @@ test("sign up form rejects mismatched passwords", async ({ page }) => {
 test("sign up form rejects short passwords", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
+  await passAgeGate(page);
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");

@@ -28,9 +28,17 @@ const P2 = { email: "p2@test.com", password: "password123", username: "p2skater"
 
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
 
+async function passAgeGate(page: Page) {
+  await page.getByLabel("Birth month").fill("01");
+  await page.getByLabel("Birth day").fill("15");
+  await page.getByLabel("Birth year").fill("2000");
+  await page.getByRole("button", { name: "Continue" }).click();
+}
+
 async function signUpAndSetupProfile(page: Page, email: string, pw: string, username: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
+  await passAgeGate(page);
   await page.getByPlaceholder("you@email.com").fill(email);
   const pwFields = page.getByPlaceholder("••••••••");
   await pwFields.nth(0).fill(pw);
