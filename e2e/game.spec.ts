@@ -30,7 +30,7 @@ const P2 = { email: "p2@test.com", password: "password123", username: "p2skater"
 
 async function signUpAndSetupProfile(page: Page, email: string, pw: string, username: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Sign up" }).click();
+  await page.getByRole("button", { name: "Sign up", exact: true }).click();
   await page.getByPlaceholder("you@email.com").fill(email);
   const pwFields = page.getByPlaceholder("••••••••");
   await pwFields.nth(0).fill(pw);
@@ -50,7 +50,8 @@ async function signInViaUI(page: Page, email: string, pw: string) {
   await page.getByPlaceholder("you@email.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(pw);
   await page.getByRole("button", { name: "Sign In" }).click();
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 10_000 });
+  await page.waitForURL("**/lobby**", { timeout: 15_000 });
+  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
 }
 
 /**
