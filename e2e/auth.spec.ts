@@ -49,6 +49,14 @@ test.beforeEach(async () => {
 });
 
 test("sign up → profile setup → lobby", async ({ page }) => {
+  // Capture browser console for debugging CI failures
+  page.on("console", (msg) => {
+    if (msg.type() === "error" || msg.text().includes("auth_") || msg.text().includes("firebase")) {
+      console.log(`[browser ${msg.type()}] ${msg.text()}`);
+    }
+  });
+  page.on("pageerror", (err) => console.log(`[browser pageerror] ${err.message}`));
+
   await signUpViaUI(page, "player@test.com", "password123");
   await completeProfileSetup(page, "sk8player");
 
