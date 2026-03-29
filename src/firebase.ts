@@ -1,5 +1,5 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth, connectAuthEmulator, type Auth } from "firebase/auth";
+import { getAuth, connectAuthEmulator, inMemoryPersistence, setPersistence, type Auth } from "firebase/auth";
 import {
   connectFirestoreEmulator,
   initializeFirestore,
@@ -85,6 +85,10 @@ if (firebaseReady) {
 
   // Connect to emulators in development (if running)
   if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {
+    // Use in-memory persistence to avoid IndexedDB issues in headless Chrome (CI).
+    // The returned Promise is intentionally not awaited — setPersistence sets the
+    // persistence synchronously internally and the Promise is for compat only.
+    void setPersistence(auth, inMemoryPersistence);
     connectAuthEmulator(auth, "http://localhost:9099", {
       disableWarnings: true,
     });

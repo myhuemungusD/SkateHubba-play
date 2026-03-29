@@ -38,6 +38,9 @@ export async function clearFirestore(): Promise<void> {
 /** Wipe Auth + Firestore — call in beforeEach to guarantee test isolation. */
 export async function clearAll(): Promise<void> {
   await Promise.all([clearAuth(), clearFirestore()]);
+  // Brief pause to let emulators fully process the clear before the next test.
+  // Without this, the first Firestore read after a clear can hang in CI.
+  await new Promise((r) => setTimeout(r, 500));
 }
 
 // ─── Auth helpers ─────────────────────────────────────────────────────────────
