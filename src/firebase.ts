@@ -3,6 +3,7 @@ import { getAuth, connectAuthEmulator, type Auth } from "firebase/auth";
 import {
   connectFirestoreEmulator,
   initializeFirestore,
+  memoryLocalCache,
   persistentLocalCache,
   persistentMultipleTabManager,
   type Firestore,
@@ -39,14 +40,19 @@ let storage: FirebaseStorage | null = null;
 if (firebaseReady) {
   app = initializeApp(firebaseConfig);
 
-  // Firestore with offline persistence — using named "skatehubba" database
+  // Firestore — using named "skatehubba" database.
+  // In emulator mode use memory cache to avoid IndexedDB/persistence issues
+  // that can stall getDoc() in headless Chrome on CI.
+  const useEmulators = import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true";
   db = initializeFirestore(
     app,
-    {
-      localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager(),
-      }),
-    },
+    useEmulators
+      ? { localCache: memoryLocalCache() }
+      : {
+          localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager(),
+          }),
+        },
     "skatehubba",
   );
 

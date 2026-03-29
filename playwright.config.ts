@@ -10,17 +10,21 @@ import { defineConfig, devices } from "@playwright/test";
  *   npm run test:e2e
  */
 export default defineConfig({
+  globalSetup: "./e2e/global-setup.ts",
   testDir: "./e2e",
   // Tests share emulator state, so run sequentially to avoid cross-test interference.
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  reporter: [["html", { outputFolder: "playwright-report", open: "never" }]],
+  reporter: process.env.CI
+    ? [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]]
+    : [["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: "http://localhost:5173",
-    trace: "on-first-retry",
-    video: "on-first-retry",
+    trace: "retain-on-failure",
+    video: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   projects: [
     {
