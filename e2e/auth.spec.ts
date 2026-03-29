@@ -48,13 +48,29 @@ test.beforeEach(async () => {
   await clearAll();
 });
 
-test("smoke: app connects to Firebase emulators", async ({ page }) => {
+test("emulator connectivity: sign up via SDK works", async ({ page }) => {
+  // This test serves as a warm-up for the Firebase SDK ↔ emulator connection
+  // and verifies end-to-end auth works before the remaining tests run.
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Sign up", exact: true })).toBeVisible({ timeout: 10_000 });
 
-  // Verify the Firebase SDK is connected to emulators
+  // Verify emulator mode is active
   const connected = await page.evaluate(() => "__e2eFirebaseAuth" in globalThis);
   expect(connected).toBe(true);
+
+  // Do a full sign-up flow through the UI
+  await page.getByRole("button", { name: "Sign up", exact: true }).click();
+  await passAgeGate(page);
+  await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
+  await page.getByPlaceholder("you@email.com").fill("warmup@test.com");
+  const pwFields = page.getByPlaceholder("••••••••");
+  await pwFields.nth(0).fill("password123");
+  await pwFields.nth(1).fill("password123");
+  await page.getByRole("button", { name: "Create Account" }).click();
+
+  // Wait for navigation — this confirms the full SDK → emulator → onAuthStateChanged flow works
+  await page.waitForURL(/\/(profile|lobby)/, { timeout: 15_000 });
+  await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
 });
 
 test("sign up → profile setup → lobby", async ({ page }) => {
