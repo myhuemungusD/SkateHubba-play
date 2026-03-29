@@ -128,6 +128,7 @@ export function FisheyeRenderer({ videoEl, active, strength = 2.0, onCanvas, cla
     const gl = canvas.getContext("webgl", { premultipliedAlpha: false, preserveDrawingBuffer: true });
     if (!gl) return false;
 
+    /* v8 ignore start -- WebGL pipeline cannot run in jsdom (no GPU context) */
     const program = createProgram(gl);
     if (!program) return false;
 
@@ -159,6 +160,7 @@ export function FisheyeRenderer({ videoEl, active, strength = 2.0, onCanvas, cla
     textureRef.current = texture;
 
     return true;
+    /* v8 ignore stop */
   }, [videoEl]);
 
   useEffect(() => {
@@ -169,6 +171,7 @@ export function FisheyeRenderer({ videoEl, active, strength = 2.0, onCanvas, cla
 
     let initialized = false;
 
+    /* v8 ignore start -- WebGL render loop requires GPU context unavailable in jsdom */
     const render = () => {
       if (!active) return;
 
@@ -205,6 +208,7 @@ export function FisheyeRenderer({ videoEl, active, strength = 2.0, onCanvas, cla
 
       rafRef.current = requestAnimationFrame(render);
     };
+    /* v8 ignore stop */
 
     rafRef.current = requestAnimationFrame(render);
 
@@ -217,11 +221,13 @@ export function FisheyeRenderer({ videoEl, active, strength = 2.0, onCanvas, cla
   useEffect(() => {
     return () => {
       cancelAnimationFrame(rafRef.current);
+      /* v8 ignore start -- GL cleanup requires active WebGL context */
       const gl = glRef.current;
       if (gl) {
         if (textureRef.current) gl.deleteTexture(textureRef.current);
         if (programRef.current) gl.deleteProgram(programRef.current);
       }
+      /* v8 ignore stop */
     };
   }, []);
 

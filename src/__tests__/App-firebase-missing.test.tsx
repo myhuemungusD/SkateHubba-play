@@ -25,6 +25,7 @@ vi.mock("../services/users", () => ({
   isUsernameAvailable: vi.fn(),
   getUidByUsername: vi.fn(),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
+  getUserProfile: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock("../services/games", () => ({

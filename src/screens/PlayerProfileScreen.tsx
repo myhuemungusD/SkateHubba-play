@@ -15,6 +15,7 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
 } from "../components/icons";
+import { ProUsername } from "../components/ProUsername";
 
 /* ── Types ────────────────────────────────────────────── */
 
@@ -24,6 +25,7 @@ interface OpponentRecord {
   wins: number;
   losses: number;
   totalGames: number;
+  isVerifiedPro?: boolean;
 }
 
 /* ── Helpers ──────────────────────────────────────────── */
@@ -188,11 +190,12 @@ export function PlayerProfileScreen({
       const isP1 = g.player1Uid === profile.uid;
       const oppUid = isP1 ? g.player2Uid : g.player1Uid;
       const oppName = isP1 ? g.player2Username : g.player1Username;
+      const oppIsPro = isP1 ? g.player2IsVerifiedPro : g.player1IsVerifiedPro;
       const won = g.winner === profile.uid;
 
       let rec = map.get(oppUid);
       if (!rec) {
-        rec = { uid: oppUid, username: oppName, wins: 0, losses: 0, totalGames: 0 };
+        rec = { uid: oppUid, username: oppName, wins: 0, losses: 0, totalGames: 0, isVerifiedPro: oppIsPro };
         map.set(oppUid, rec);
       }
       if (won) rec.wins++;
@@ -266,7 +269,9 @@ export function PlayerProfileScreen({
             </span>
           </div>
           <div>
-            <h1 className="font-display text-3xl text-white leading-none tracking-wide">@{profile.username}</h1>
+            <h1 className="font-display text-3xl text-white leading-none tracking-wide">
+              <ProUsername username={profile.username} isVerifiedPro={profile.isVerifiedPro} />
+            </h1>
             <p className="font-body text-xs text-muted mt-1.5 capitalize">{profile.stance}</p>
           </div>
         </div>
@@ -380,9 +385,11 @@ export function PlayerProfileScreen({
                         </span>
                       </div>
                       <div className="min-w-0">
-                        <span className="font-display text-base text-white block leading-none truncate">
-                          @{opp.username}
-                        </span>
+                        <ProUsername
+                          username={opp.username}
+                          isVerifiedPro={opp.isVerifiedPro}
+                          className="font-display text-base text-white block leading-none truncate"
+                        />
                         <div className="flex items-center gap-2 mt-1">
                           <span className="font-body text-[11px] text-brand-green">{opp.wins}W</span>
                           <span className="font-body text-[11px] text-brand-red">{opp.losses}L</span>

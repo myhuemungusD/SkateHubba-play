@@ -1,7 +1,8 @@
-import { useState, useId } from "react";
+import { useState, useId, useRef } from "react";
 import { Btn } from "./ui/Btn";
 import { ErrorBanner } from "./ui/ErrorBanner";
 import { submitReport, REPORT_REASON_LABELS, type ReportReason } from "../services/reports";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 
 const REASONS = Object.keys(REPORT_REASON_LABELS) as ReportReason[];
 
@@ -26,6 +27,8 @@ export function ReportModal({
   const [error, setError] = useState("");
   const selectId = useId();
   const descId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(panelRef);
 
   const handleSubmit = async () => {
     if (!reason) {
@@ -63,7 +66,11 @@ export function ReportModal({
         if (e.key === "Escape" && !submitting) onClose();
       }}
     >
-      <div className="glass-card rounded-2xl p-6 max-w-sm w-full animate-scale-in" onClick={(e) => e.stopPropagation()}>
+      <div
+        ref={panelRef}
+        className="glass-card rounded-2xl p-6 max-w-sm w-full animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
         <h3 id="report-modal-title" className="font-display text-xl text-white mb-1">
           Report @{reportedUsername}
         </h3>

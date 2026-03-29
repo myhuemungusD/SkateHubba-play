@@ -15,6 +15,7 @@ import { UploadProgress } from "../components/UploadProgress";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
 import { WaitingScreen } from "../components/WaitingScreen";
 import { ReportModal } from "../components/ReportModal";
+import { ProUsername } from "../components/ProUsername";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [trickName, setTrickName] = useState("");
@@ -51,7 +52,9 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const isSetter = game.phase === "setting" && game.currentSetter === profile.uid;
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
+  const opponentIsPro = game.player1Uid === profile.uid ? game.player2IsVerifiedPro : game.player1IsVerifiedPro;
   const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
+  const setterIsPro = game.player1Uid === game.currentSetter ? game.player1IsVerifiedPro : game.player2IsVerifiedPro;
 
   const trimmedTrickName = trickName.trim();
   if (isSetter && trimmedTrickName) recorderRevealedRef.current = true;
@@ -175,9 +178,19 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
       <div className="px-5 pt-5 max-w-md mx-auto">
         <div className="flex justify-center gap-5 mb-6">
-          <LetterDisplay count={myLetters} name={`@${profile.username}`} active={isSetter} />
+          <LetterDisplay
+            count={myLetters}
+            name={`@${profile.username}`}
+            active={isSetter}
+            isVerifiedPro={profile.isVerifiedPro}
+          />
           <div className="flex items-center font-display text-2xl text-subtle">VS</div>
-          <LetterDisplay count={theirLetters} name={`@${opponentName}`} active={isMatcher} />
+          <LetterDisplay
+            count={theirLetters}
+            name={`@${opponentName}`}
+            active={isMatcher}
+            isVerifiedPro={opponentIsPro}
+          />
         </div>
 
         {isSetter ? (
@@ -212,15 +225,18 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         ) : (
           <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-brand-green/[0.06] backdrop-blur-sm border-brand-green/30 shadow-[0_0_20px_rgba(0,230,118,0.06)]">
             <span className="font-display text-xl tracking-wider text-brand-green">
-              Match @{game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username}&apos;s{" "}
-              {game.currentTrickName || "trick"}
+              Match <ProUsername username={setterUsername} isVerifiedPro={setterIsPro} />
+              &apos;s {game.currentTrickName || "trick"}
             </span>
           </div>
         )}
 
         {isMatcher && (
           <div className="mb-5">
-            <p className="font-display text-sm tracking-wider text-brand-orange mb-2">@{setterUsername}&apos;s TRICK</p>
+            <p className="font-display text-sm tracking-wider text-brand-orange mb-2">
+              <ProUsername username={setterUsername} isVerifiedPro={setterIsPro} />
+              &apos;s TRICK
+            </p>
             {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
               <video
                 src={game.currentTrickVideoUrl}

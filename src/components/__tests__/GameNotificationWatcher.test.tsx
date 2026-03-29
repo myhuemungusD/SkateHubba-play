@@ -2,8 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act } from "@testing-library/react";
 import { GameNotificationWatcher } from "../GameNotificationWatcher";
 import type { GameDoc } from "../../services/games";
-import { onSnapshot } from "firebase/firestore";
 import { onForegroundMessage } from "../../services/fcm";
+import { subscribeToNudges, subscribeToNotifications } from "../../services/notifications";
 
 /* ── Mocks ─────────────────────────────────── */
 
@@ -49,6 +49,14 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../services/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+}));
+
+const mockNudgeUnsub = vi.fn();
+const mockNotifUnsub = vi.fn();
+
+vi.mock("../../services/notifications", () => ({
+  subscribeToNudges: vi.fn(() => mockNudgeUnsub),
+  subscribeToNotifications: vi.fn(() => mockNotifUnsub),
 }));
 
 const mockFcmUnsub = vi.fn();
@@ -470,50 +478,19 @@ describe("background games list changes", () => {
 });
 
 describe("nudge listener", () => {
-  it("seeds initial nudge IDs without notifying", () => {
+  it("subscribes to nudges with the user uid", () => {
     render(<GameNotificationWatcher />);
 
-    const snapshotCb = vi.mocked(onSnapshot).mock.calls[0]?.[1] as (snap: unknown) => void;
-    expect(snapshotCb).toBeDefined();
-
-    // First snapshot — seed
-    snapshotCb({
-      docs: [{ id: "nudge1" }, { id: "nudge2" }],
-      docChanges: () => [],
-    });
-
-    expect(mockNotify).not.toHaveBeenCalled();
+    expect(vi.mocked(subscribeToNudges)).toHaveBeenCalledWith("u1", expect.any(Function));
   });
 
-  it("notifies on new nudge after ready", () => {
+  it("notifies with correct payload when nudge callback fires", () => {
     render(<GameNotificationWatcher />);
 
-    const snapshotCb = vi.mocked(onSnapshot).mock.calls[0]?.[1] as (snap: unknown) => void;
+    const nudgeCb = vi.mocked(subscribeToNudges).mock.calls[0]?.[1];
+    expect(nudgeCb).toBeDefined();
 
-    // First snapshot — seed
-    snapshotCb({
-      docs: [{ id: "nudge1" }],
-      docChanges: () => [],
-    });
-
-    // Flush setTimeout to mark ready
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // Second snapshot — new nudge
-    snapshotCb({
-      docs: [{ id: "nudge1" }, { id: "nudge2" }],
-      docChanges: () => [
-        {
-          type: "added",
-          doc: {
-            id: "nudge2",
-            data: () => ({ senderUsername: "bob", gameId: "g1" }),
-          },
-        },
-      ],
-    });
+    nudgeCb!({ senderUsername: "bob", gameId: "g1" });
 
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -524,101 +501,26 @@ describe("nudge listener", () => {
       }),
     );
   });
-
-  it("does not notify for pre-existing nudge IDs", () => {
-    render(<GameNotificationWatcher />);
-
-    const snapshotCb = vi.mocked(onSnapshot).mock.calls[0]?.[1] as (snap: unknown) => void;
-
-    // Seed with nudge1
-    snapshotCb({
-      docs: [{ id: "nudge1" }],
-      docChanges: () => [],
-    });
-
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // "added" change for nudge1 which was already seeded
-    snapshotCb({
-      docs: [{ id: "nudge1" }],
-      docChanges: () => [
-        {
-          type: "added",
-          doc: {
-            id: "nudge1",
-            data: () => ({ senderUsername: "bob", gameId: "g1" }),
-          },
-        },
-      ],
-    });
-
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-
-  it("caps tracked IDs at 50 (cycles to last 25)", () => {
-    render(<GameNotificationWatcher />);
-
-    const snapshotCb = vi.mocked(onSnapshot).mock.calls[0]?.[1] as (snap: unknown) => void;
-
-    // Seed with 48 nudges
-    const seedDocs = Array.from({ length: 48 }, (_, i) => ({ id: `n${i}` }));
-    snapshotCb({ docs: seedDocs, docChanges: () => [] });
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // Add 4 more to push over 50
-    for (let i = 48; i < 52; i++) {
-      snapshotCb({
-        docs: [],
-        docChanges: () => [
-          {
-            type: "added",
-            doc: { id: `n${i}`, data: () => ({ senderUsername: "x", gameId: "g1" }) },
-          },
-        ],
-      });
-    }
-
-    // Should have notified 4 times (the 4 new ones) and cycled IDs
-    expect(mockNotify).toHaveBeenCalledTimes(4);
-  });
 });
 
 describe("notifications listener", () => {
-  it("surfaces new notification as toast and marks read", () => {
+  it("subscribes to notifications with the user uid", () => {
     render(<GameNotificationWatcher />);
 
-    // The second onSnapshot call is for the notifications collection
-    const calls = vi.mocked(onSnapshot).mock.calls;
-    const notifCb = calls[1]?.[1] as (snap: unknown) => void;
+    expect(vi.mocked(subscribeToNotifications)).toHaveBeenCalledWith("u1", expect.any(Function));
+  });
+
+  it("surfaces new notification as toast with correct chime", () => {
+    render(<GameNotificationWatcher />);
+
+    const notifCb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
     expect(notifCb).toBeDefined();
 
-    // Seed
-    notifCb({ docs: [], docChanges: () => [] });
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // New notification arrives
-    notifCb({
-      docs: [{ id: "notif1" }],
-      docChanges: () => [
-        {
-          type: "added",
-          doc: {
-            id: "notif1",
-            data: () => ({
-              type: "your_turn",
-              title: "Your Turn",
-              body: "Go play!",
-              gameId: "g1",
-            }),
-          },
-        },
-      ],
+    notifCb!({
+      type: "your_turn",
+      title: "Your Turn",
+      body: "Go play!",
+      gameId: "g1",
     });
 
     expect(mockNotify).toHaveBeenCalledWith(
@@ -632,40 +534,17 @@ describe("notifications listener", () => {
     );
   });
 
-  it("seeds initial notification IDs without notifying", () => {
-    render(<GameNotificationWatcher />);
-
-    const notifCb = vi.mocked(onSnapshot).mock.calls[1]?.[1] as (snap: unknown) => void;
-
-    notifCb({
-      docs: [{ id: "notif1" }, { id: "notif2" }],
-      docChanges: () => [],
-    });
-
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-
   it("uses general chime for unknown notification type", () => {
     render(<GameNotificationWatcher />);
 
-    const notifCb = vi.mocked(onSnapshot).mock.calls[1]?.[1] as (snap: unknown) => void;
+    const notifCb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
+    expect(notifCb).toBeDefined();
 
-    notifCb({ docs: [], docChanges: () => [] });
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    notifCb({
-      docs: [{ id: "notif1" }],
-      docChanges: () => [
-        {
-          type: "added",
-          doc: {
-            id: "notif1",
-            data: () => ({ type: "unknown_type", title: "X", body: "Y" }),
-          },
-        },
-      ],
+    notifCb!({
+      type: "unknown_type",
+      title: "X",
+      body: "Y",
+      gameId: "g1",
     });
 
     expect(mockNotify).toHaveBeenCalledWith(
@@ -673,67 +552,6 @@ describe("notifications listener", () => {
         chime: "general",
       }),
     );
-  });
-
-  it("handles updateDoc failure gracefully (mark read catch path)", async () => {
-    const { updateDoc: mockUpdateDoc } = await import("firebase/firestore");
-    vi.mocked(mockUpdateDoc).mockRejectedValueOnce(new Error("permission-denied"));
-
-    render(<GameNotificationWatcher />);
-
-    const notifCb = vi.mocked(onSnapshot).mock.calls[1]?.[1] as (snap: unknown) => void;
-
-    notifCb({ docs: [], docChanges: () => [] });
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    notifCb({
-      docs: [{ id: "notif1" }],
-      docChanges: () => [
-        {
-          type: "added",
-          doc: {
-            id: "notif1",
-            data: () => ({ type: "nudge", title: "Nudge", body: "Go!" }),
-          },
-        },
-      ],
-    });
-
-    // Should have called updateDoc and not thrown
-    expect(vi.mocked(mockUpdateDoc)).toHaveBeenCalled();
-    // Let the rejection settle
-    await vi.advanceTimersByTimeAsync(0);
-  });
-
-  it("caps tracked notification IDs at 50 (cycles to last 25)", () => {
-    render(<GameNotificationWatcher />);
-
-    const notifCb = vi.mocked(onSnapshot).mock.calls[1]?.[1] as (snap: unknown) => void;
-
-    // Seed with 48 notification IDs
-    const seedDocs = Array.from({ length: 48 }, (_, i) => ({ id: `notif${i}` }));
-    notifCb({ docs: seedDocs, docChanges: () => [] });
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // Add 4 more to push over 50
-    for (let i = 48; i < 52; i++) {
-      notifCb({
-        docs: [],
-        docChanges: () => [
-          {
-            type: "added",
-            doc: { id: `notif${i}`, data: () => ({ type: "info", title: "X", body: "Y" }) },
-          },
-        ],
-      });
-    }
-
-    // Should have notified 4 times (the 4 new ones) and capped IDs
-    expect(mockNotify).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -841,12 +659,13 @@ describe("service worker deep-link", () => {
 });
 
 describe("cleanup", () => {
-  it("unsubscribes onSnapshot listeners on unmount", () => {
+  it("unsubscribes nudge and notification listeners on unmount", () => {
     const { unmount } = render(<GameNotificationWatcher />);
 
     unmount();
 
-    expect(mockOnSnapshotUnsub).toHaveBeenCalled();
+    expect(mockNudgeUnsub).toHaveBeenCalled();
+    expect(mockNotifUnsub).toHaveBeenCalled();
   });
 
   it("unsubscribes FCM listener on unmount", () => {

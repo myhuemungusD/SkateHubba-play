@@ -49,6 +49,7 @@ vi.mock("../services/users", () => ({
   deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
   getLeaderboard: vi.fn().mockResolvedValue([]),
+  getUserProfile: vi.fn().mockResolvedValue(null),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../services/games", () => ({
@@ -115,7 +116,7 @@ describe("Smoke: Game Over", () => {
     renderVerifiedLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -134,7 +135,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
@@ -148,7 +149,7 @@ describe("Smoke: Game Over", () => {
     withGameSub(game);
     mockCreateGame.mockResolvedValueOnce("game2");
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -160,7 +161,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival");
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined);
     });
   });
 
@@ -169,7 +170,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -192,7 +193,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -210,7 +211,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Forfeit")).toBeInTheDocument();
@@ -230,7 +231,7 @@ describe("Smoke: Game Over", () => {
       return vi.fn();
     });
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
@@ -259,7 +260,7 @@ describe("Smoke: Game Over", () => {
     renderVerifiedLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => expect(screen.getByText("You Win")).toBeInTheDocument());
 
@@ -275,7 +276,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]); // renderLobby uses unverified user
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -290,14 +291,14 @@ describe("Smoke: Game Over", () => {
     renderVerifiedLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
     await waitFor(() => expect(screen.getByText("You Win")).toBeInTheDocument());
 
     withGameSub(newGame);
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival");
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined);
     });
   });
 
@@ -323,7 +324,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
     await waitFor(() => {
       // Should call createGame with the opponent's uid and username
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival");
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined);
     });
   });
 
@@ -343,7 +344,7 @@ describe("Smoke: Game Over", () => {
       return vi.fn();
     });
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => expect(screen.getByText(/Match.*Pop Shove/)).toBeInTheDocument());
 

@@ -96,6 +96,9 @@ export default defineConfig({
         // firebase.ts: App Check branches depend on runtime env vars (VITE_RECAPTCHA_SITE_KEY)
         // that cannot be set in Vitest's test environment — ~2 lines are legitimately untestable.
         "src/firebase.ts": { lines: 93, functions: 100, branches: 80, statements: 93 },
+        // UI coverage floors — enforces that component/screen coverage doesn't regress
+        "src/components/**": { lines: 80, functions: 80, branches: 75, statements: 80 },
+        "src/screens/**": { lines: 80, functions: 80, branches: 75, statements: 80 },
       },
     },
   },

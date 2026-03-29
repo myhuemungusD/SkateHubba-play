@@ -49,6 +49,7 @@ vi.mock("../services/users", () => ({
   deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
   getLeaderboard: vi.fn().mockResolvedValue([]),
+  getUserProfile: vi.fn().mockResolvedValue(null),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../services/games", () => ({
@@ -110,7 +111,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
@@ -146,7 +147,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
@@ -161,7 +162,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/Waiting on @rival/)).toBeInTheDocument();
@@ -178,7 +179,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/Match.*Tre Flip/)).toBeInTheDocument();
@@ -196,7 +197,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(mockForfeitExpiredTurn).toHaveBeenCalledWith("game1");
@@ -208,7 +209,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
@@ -228,7 +229,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       // Timer shows hours/minutes/seconds format
@@ -241,7 +242,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/setting a trick for you/)).toBeInTheDocument();
@@ -253,7 +254,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/attempting to match your trick/)).toBeInTheDocument();
@@ -271,11 +272,18 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     const videoUrl = `https://firebasestorage.googleapis.com/v0/b/${import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sk8hub-d7806.firebasestorage.app"}/o/trick.webm?alt=media`;
     await waitFor(() => {
-      expect(screen.getByText(/@rival's TRICK/)).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          (_, el) =>
+            el?.tagName === "P" &&
+            (el?.textContent?.includes("@rival") ?? false) &&
+            (el?.textContent?.includes("TRICK") ?? false),
+        ),
+      ).toBeInTheDocument();
       const video = document.querySelector(`video[src='${videoUrl}']`);
       expect(video).toBeTruthy();
     });
@@ -292,7 +300,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("VS")).toBeInTheDocument();
@@ -307,7 +315,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     // Type a trick name to reveal the recorder
     await waitFor(() => {
@@ -350,7 +358,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
@@ -387,7 +395,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     // Type trick name to reveal recorder
     await waitFor(() => {
@@ -425,7 +433,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     // Matcher: autoOpen=false, must manually open camera
     await waitFor(() => {
@@ -461,7 +469,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     // Type trick name to reveal recorder
     await waitFor(() => {
@@ -498,7 +506,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => screen.getByRole("button", { name: /open camera/i }));
     await userEvent.click(screen.getByRole("button", { name: /open camera/i }));
@@ -523,7 +531,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText("TRICK NAME"), "Heelflip");
@@ -558,7 +566,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
@@ -588,7 +596,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
     await waitFor(() => screen.getByRole("button", { name: /open camera/i }));
     await userEvent.click(screen.getByRole("button", { name: /open camera/i }));
     await waitFor(() => screen.getByRole("button", { name: /record/i }));
@@ -610,7 +618,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
     await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument());
     await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
 
@@ -638,7 +646,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(1);
@@ -655,7 +663,7 @@ describe("Smoke: Gameplay", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
 
     // No crash — waiting screen shows
     await waitFor(() => {
@@ -671,7 +679,7 @@ describe("Smoke: Gameplay", () => {
     });
     renderLobby([game]);
 
-    await userEvent.click(screen.getByText(/vs @rival/));
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
     // App should not crash
     await waitFor(() => expect(screen.getByText("← Games")).toBeInTheDocument());
   });

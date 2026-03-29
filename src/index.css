@@ -560,8 +560,45 @@
   transform: rotateX(2deg) scale(1.01);
 }
 
+/* ── Reduced motion ────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  html {
+    scroll-behavior: auto;
+  }
+
+  /* Elements that start hidden and rely on animation to appear */
+  .stagger-children > *,
+  .hero-stagger > * {
+    opacity: 1;
+  }
+}
+
 /* Input autofill override */
 input:-webkit-autofill {
   -webkit-box-shadow: 0 0 0 1000px #1a1a1a inset !important;
   -webkit-text-fill-color: #f5f5f5 !important;
+}
+
+/* ── Verified Pro gold shimmer ─────────────────────────── */
+.pro-username {
+  background: linear-gradient(90deg, #c8a415 0%, #ffd700 20%, #ffec8b 40%, #ffd700 60%, #c8a415 80%, #ffd700 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gold-shimmer 3s linear infinite;
+}
+
+@keyframes gold-shimmer {
+  to {
+    background-position: 200% center;
+  }
 }

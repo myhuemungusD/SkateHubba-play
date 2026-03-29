@@ -69,6 +69,9 @@ export interface GameDoc {
   updatedAt: Timestamp | null;
   /** Accumulated history of completed turns (for clips replay). */
   turnHistory?: TurnRecord[];
+  /** Denormalized verified-pro status for each player (set at game creation). */
+  player1IsVerifiedPro?: boolean;
+  player2IsVerifiedPro?: boolean;
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -135,6 +138,8 @@ export async function createGame(
   challengerUsername: string,
   opponentUid: string,
   opponentUsername: string,
+  challengerIsVerifiedPro?: boolean,
+  opponentIsVerifiedPro?: boolean,
 ): Promise<string> {
   if (Date.now() - lastGameCreatedAt < GAME_CREATE_COOLDOWN_MS) {
     throw new Error("Please wait before creating another game");
@@ -163,6 +168,8 @@ export async function createGame(
     turnHistory: [],
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    ...(challengerIsVerifiedPro && { player1IsVerifiedPro: true }),
+    ...(opponentIsVerifiedPro && { player2IsVerifiedPro: true }),
   };
 
   const docRef = await withRetry(() => addDoc(gamesRef(), gameData));
@@ -179,6 +186,7 @@ export async function createGame(
   );
   // Notify opponent about the new challenge (best-effort)
   writeNotification({
+    senderUid: challengerUid,
     recipientUid: opponentUid,
     type: "new_challenge",
     title: "New Challenge!",
@@ -227,13 +235,14 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
       updatedAt: serverTimestamp(),
     });
 
-    return { matcherUid, setterUsername };
+    return { setterUid: game.currentSetter, matcherUid, setterUsername };
   });
   recordTurnAction(gameId);
   metrics.trickSet(gameId, safeTrickName, videoUrl !== null);
   analytics.trickSet(gameId, safeTrickName);
   // Notify matcher it's their turn (best-effort)
   writeNotification({
+    senderUid: txResult.setterUid,
     recipientUid: txResult.matcherUid,
     type: "your_turn",
     title: "Your Turn!",
@@ -273,11 +282,12 @@ export async function failSetTrick(gameId: string): Promise<void> {
       updatedAt: serverTimestamp(),
     });
 
-    return { nextSetterUid: nextSetter, prevSetterUsername };
+    return { prevSetterUid: game.currentSetter, nextSetterUid: nextSetter, prevSetterUsername };
   });
   recordTurnAction(gameId);
   // Notify next setter it's their turn (best-effort)
   writeNotification({
+    senderUid: txResult.prevSetterUid,
     recipientUid: txResult.nextSetterUid,
     type: "your_turn",
     title: "Your Turn to Set!",
@@ -381,6 +391,7 @@ export async function submitMatchAttempt(
     // Notify the setter that the game ended
     const setterWon = result.winner === result.setterUid;
     writeNotification({
+      senderUid: result.matcherUid,
       recipientUid: result.setterUid,
       type: setterWon ? "game_won" : "game_lost",
       title: setterWon ? "You Won!" : "Game Over",
@@ -390,6 +401,7 @@ export async function submitMatchAttempt(
   } else {
     // Notify next setter it's their turn
     writeNotification({
+      senderUid: result.matcherUid,
       recipientUid: result.nextSetter,
       type: "your_turn",
       title: "Your Turn to Set!",

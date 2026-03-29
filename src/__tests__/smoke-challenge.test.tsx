@@ -49,6 +49,7 @@ vi.mock("../services/users", () => ({
   deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
   getLeaderboard: vi.fn().mockResolvedValue([]),
+  getUserProfile: vi.fn().mockResolvedValue(null),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../services/games", () => ({
@@ -122,7 +123,7 @@ describe("Smoke: Challenge", () => {
 
     await waitFor(() => {
       expect(mockGetUidByUsername).toHaveBeenCalledWith("rival");
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival");
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined);
     });
   });
 

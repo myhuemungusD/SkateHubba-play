@@ -203,10 +203,10 @@ describe("users service", () => {
   });
 
   describe("deleteUserData", () => {
-    it("deletes game docs then profile and username via batch", async () => {
+    it("deletes non-active game docs then profile and username via batch", async () => {
       // Phase 1: getDocs returns game docs for both queries
-      const gameDoc1 = { id: "g1" };
-      const gameDoc2 = { id: "g2" };
+      const gameDoc1 = { id: "g1", data: () => ({ status: "complete" }) };
+      const gameDoc2 = { id: "g2", data: () => ({ status: "forfeit" }) };
       mockGetDocs
         .mockResolvedValueOnce({ docs: [gameDoc1] }) // player1Uid query
         .mockResolvedValueOnce({ docs: [gameDoc2] }); // player2Uid query
@@ -222,8 +222,20 @@ describe("users service", () => {
       expect(batch.commit).toHaveBeenCalled();
     });
 
+    it("skips active games during deletion", async () => {
+      const activeGame = { id: "g1", data: () => ({ status: "active" }) };
+      const completeGame = { id: "g2", data: () => ({ status: "complete" }) };
+      mockGetDocs.mockResolvedValueOnce({ docs: [activeGame, completeGame] }).mockResolvedValueOnce({ docs: [] });
+      mockDeleteDoc.mockResolvedValue(undefined);
+
+      await deleteUserData("u1", "sk8r");
+
+      // Only the complete game is deleted, not the active one
+      expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+    });
+
     it("deduplicates game docs appearing in both queries", async () => {
-      const gameDoc = { id: "g1" };
+      const gameDoc = { id: "g1", data: () => ({ status: "complete" }) };
       mockGetDocs.mockResolvedValueOnce({ docs: [gameDoc] }).mockResolvedValueOnce({ docs: [gameDoc] }); // same game in both
       mockDeleteDoc.mockResolvedValue(undefined);
 
