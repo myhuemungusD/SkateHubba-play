@@ -29,6 +29,8 @@ const P2 = { email: "p2@test.com", password: "password123", username: "p2skater"
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
 
 async function passAgeGate(page: Page) {
+  // Wait for age gate to render
+  await expect(page.getByLabel("Birth month")).toBeVisible({ timeout: 5_000 });
   await page.getByLabel("Birth month").fill("01");
   await page.getByLabel("Birth day").fill("15");
   await page.getByLabel("Birth year").fill("2000");
@@ -39,11 +41,15 @@ async function signUpAndSetupProfile(page: Page, email: string, pw: string, user
   await page.goto("/");
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
   await passAgeGate(page);
+  // Wait for auth form to render
+  await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   const pwFields = page.getByPlaceholder("••••••••");
   await pwFields.nth(0).fill(pw);
   await pwFields.nth(1).fill(pw);
   await page.getByRole("button", { name: "Create Account" }).click();
+  // Wait for navigation away from auth screen
+  await page.waitForURL(/\/(profile|lobby)/, { timeout: 15_000 });
 
   await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
   await page.getByPlaceholder("sk8legend").fill(username);
@@ -57,6 +63,8 @@ async function signUpAndSetupProfile(page: Page, email: string, pw: string, user
 async function signInViaUI(page: Page, email: string, pw: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Log in" }).click();
+  // Wait for auth form to render
+  await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(pw);
   await page.getByRole("button", { name: "Sign In" }).click();

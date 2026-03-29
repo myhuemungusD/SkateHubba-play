@@ -4,6 +4,8 @@ import { clearAll, verifyEmail } from "./helpers/emulator";
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
 async function passAgeGate(page: import("@playwright/test").Page) {
+  // Wait for age gate to render
+  await expect(page.getByLabel("Birth month")).toBeVisible({ timeout: 5_000 });
   await page.getByLabel("Birth month").fill("01");
   await page.getByLabel("Birth day").fill("15");
   await page.getByLabel("Birth year").fill("2000");
@@ -14,12 +16,16 @@ async function signUpViaUI(page: import("@playwright/test").Page, email: string,
   await page.goto("/");
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
   await passAgeGate(page);
+  // Wait for auth form to render
+  await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   // Fill both password fields (Password + Confirm)
   const pwFields = page.getByPlaceholder("••••••••");
   await pwFields.nth(0).fill(password);
   await pwFields.nth(1).fill(password);
   await page.getByRole("button", { name: "Create Account" }).click();
+  // Wait for navigation away from auth screen (profile setup or lobby)
+  await page.waitForURL(/\/(profile|lobby)/, { timeout: 15_000 });
 }
 
 async function completeProfileSetup(page: import("@playwright/test").Page, username: string) {
@@ -114,9 +120,11 @@ test("sign in with existing account reaches lobby", async ({ page }) => {
 
   // Sign back in
   await page.getByRole("button", { name: "Log in" }).click();
+  await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill("returner@test.com");
   await page.getByPlaceholder("••••••••").fill("password123");
   await page.getByRole("button", { name: "Sign In" }).click();
+  await page.waitForURL("**/lobby**", { timeout: 15_000 });
 
   await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 10_000 });
 });
