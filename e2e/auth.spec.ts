@@ -48,7 +48,7 @@ test.beforeEach(async () => {
   await clearAll();
 });
 
-test("diagnostic: app loads and sign-up navigates to profile", async ({ page }) => {
+test("diagnostic: browser-to-emulator connectivity", async ({ page }) => {
   // Capture ALL browser console output for CI debugging
   const logs: string[] = [];
   page.on("console", (msg) => {
@@ -62,55 +62,106 @@ test("diagnostic: app loads and sign-up navigates to profile", async ({ page }) 
     console.log(text);
   });
 
-  // Step 1: Verify app loads
+  // Step 1: Load the app
   await page.goto("/");
-  console.log(`[diag] page loaded, URL=${page.url()}`);
   await expect(page.getByRole("button", { name: "Sign up", exact: true })).toBeVisible({ timeout: 10_000 });
-  console.log("[diag] Sign up button visible");
+  console.log("[diag] App loaded");
 
-  // Step 2: Go through age gate
+  // Step 2: Check if emulator mode is active (window.__e2eFirebaseAuth)
+  const emulatorMode = await page.evaluate(() => {
+    return {
+      hasE2eAuth: "__e2eFirebaseAuth" in globalThis,
+      envDev: (window as unknown as Record<string, unknown>).__vite_env_DEV,
+    };
+  });
+  console.log(`[diag] Emulator mode: __e2eFirebaseAuth=${emulatorMode.hasE2eAuth}`);
+
+  // Step 3: Check if browser can reach Auth emulator directly via fetch
+  const authReachable = await page.evaluate(async () => {
+    try {
+      const res = await fetch("http://localhost:9099/", { mode: "no-cors" });
+      return `ok type=${res.type} status=${res.status}`;
+    } catch (err) {
+      return `error: ${err}`;
+    }
+  });
+  console.log(`[diag] Auth emulator from browser (localhost): ${authReachable}`);
+
+  const authReachable2 = await page.evaluate(async () => {
+    try {
+      const res = await fetch("http://127.0.0.1:9099/", { mode: "no-cors" });
+      return `ok type=${res.type} status=${res.status}`;
+    } catch (err) {
+      return `error: ${err}`;
+    }
+  });
+  console.log(`[diag] Auth emulator from browser (127.0.0.1): ${authReachable2}`);
+
+  // Step 4: Try creating a user via REST API from the browser
+  const restSignup = await page.evaluate(async () => {
+    try {
+      const res = await fetch("http://localhost:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "browser-diag@test.com", password: "password123", returnSecureToken: true }),
+      });
+      const data = await res.json();
+      return `status=${res.status} uid=${(data as Record<string, string>).localId ?? "NONE"} error=${(data as Record<string, unknown>).error ?? "NONE"}`;
+    } catch (err) {
+      return `fetch_error: ${err}`;
+    }
+  });
+  console.log(`[diag] REST signup from browser: ${restSignup}`);
+
+  // Step 5: Check Firestore emulator reachability
+  const fsReachable = await page.evaluate(async () => {
+    try {
+      const res = await fetch("http://localhost:8080/", { mode: "no-cors" });
+      return `ok type=${res.type} status=${res.status}`;
+    } catch (err) {
+      return `error: ${err}`;
+    }
+  });
+  console.log(`[diag] Firestore emulator from browser: ${fsReachable}`);
+
+  // Step 6: Try the actual sign-up flow and capture what happens
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
   await expect(page.getByLabel("Birth month")).toBeVisible({ timeout: 5_000 });
-  console.log(`[diag] age gate visible, URL=${page.url()}`);
   await page.getByLabel("Birth month").fill("01");
   await page.getByLabel("Birth day").fill("15");
   await page.getByLabel("Birth year").fill("2000");
   await page.getByRole("button", { name: "Continue" }).click();
-
-  // Step 3: Fill auth form
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
-  console.log(`[diag] auth form visible, URL=${page.url()}`);
   await page.getByPlaceholder("you@email.com").fill("diag@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
   await pwFields.nth(0).fill("password123");
   await pwFields.nth(1).fill("password123");
   await page.getByRole("button", { name: "Create Account" }).click();
-  console.log(`[diag] Create Account clicked, URL=${page.url()}`);
+  console.log("[diag] Create Account clicked");
 
-  // Step 4: Wait and observe navigation
-  // Give the auth flow 20 seconds to complete navigation
+  // Wait 5 seconds then dump page state regardless
+  await page.waitForTimeout(5_000);
+  const url = page.url();
+  const bodyText = await page
+    .locator("body")
+    .innerText()
+    .catch(() => "COULD NOT GET BODY TEXT");
+  console.log(`[diag] After 5s: URL=${url}`);
+  console.log(`[diag] After 5s: page text (first 800 chars): ${bodyText.slice(0, 800)}`);
+
+  // Now wait for navigation
   try {
-    await page.waitForURL(/\/(profile|lobby)/, { timeout: 20_000 });
-    console.log(`[diag] navigated to URL=${page.url()}`);
+    await page.waitForURL(/\/(profile|lobby)/, { timeout: 15_000 });
+    console.log(`[diag] SUCCESS: navigated to ${page.url()}`);
   } catch {
-    // Capture page state for debugging
-    const url = page.url();
-    const title = await page.title();
-    const bodyText = await page
-      .locator("body")
-      .innerText()
-      .catch(() => "COULD NOT GET BODY TEXT");
-    console.log(`[diag] NAVIGATION TIMEOUT! URL=${url} title=${title}`);
-    console.log(`[diag] page text (first 500 chars): ${bodyText.slice(0, 500)}`);
+    console.log(`[diag] NAVIGATION TIMEOUT! URL stuck at ${page.url()}`);
     console.log(`[diag] total browser logs: ${logs.length}`);
-    // Dump last 20 browser logs
-    logs.slice(-20).forEach((l) => console.log(`  ${l}`));
-    throw new Error(`Navigation failed. URL stuck at ${url}. See logs above.`);
+    logs.slice(-30).forEach((l) => console.log(`  ${l}`));
+    throw new Error(`Navigation failed. URL stuck at ${url}. See [diag] logs above.`);
   }
 
-  // Step 5: Verify profile setup screen
   await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
-  console.log("[diag] Profile setup visible - SUCCESS");
+  console.log("[diag] Profile setup visible - FULL SUCCESS");
 });
 
 test("sign up → profile setup → lobby", async ({ page }) => {

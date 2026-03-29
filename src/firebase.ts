@@ -85,11 +85,11 @@ if (firebaseReady) {
 
   // Connect to emulators in development (if running)
   if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {
-    connectAuthEmulator(auth, "http://127.0.0.1:9099", {
+    connectAuthEmulator(auth, "http://localhost:9099", {
       disableWarnings: true,
     });
-    connectFirestoreEmulator(db, "127.0.0.1", 8080);
-    connectStorageEmulator(storage, "127.0.0.1", 9199);
+    connectFirestoreEmulator(db, "localhost", 8080);
+    connectStorageEmulator(storage, "localhost", 9199);
     // Expose auth for E2E tests to force-refresh the ID token after email
     // verification.  Only set when running against the local emulators so it
     // never leaks to production builds.
