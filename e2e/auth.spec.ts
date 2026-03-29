@@ -139,15 +139,39 @@ test("diagnostic: browser-to-emulator connectivity", async ({ page }) => {
   await page.getByRole("button", { name: "Create Account" }).click();
   console.log("[diag] Create Account clicked");
 
-  // Wait 5 seconds then dump page state regardless
-  await page.waitForTimeout(5_000);
+  // Wait 3 seconds then check SDK auth state directly
+  await page.waitForTimeout(3_000);
+
+  // Check Firebase Auth SDK state via exposed __e2eFirebaseAuth
+  const sdkState = await page.evaluate(() => {
+    const auth = (globalThis as Record<string, unknown>).__e2eFirebaseAuth as
+      | {
+          currentUser?: { uid?: string; email?: string } | null;
+          _isInitialized?: boolean;
+          config?: { apiHost?: string; apiKey?: string };
+          emulatorConfig?: unknown;
+        }
+      | undefined;
+    if (!auth) return "NO_AUTH_OBJECT";
+    return JSON.stringify({
+      hasCurrentUser: !!auth.currentUser,
+      uid: auth.currentUser?.uid ?? null,
+      email: auth.currentUser?.email ?? null,
+      isInitialized: auth._isInitialized ?? "unknown",
+      apiHost: auth.config?.apiHost ?? "unknown",
+      apiKey: auth.config?.apiKey ?? "unknown",
+      hasEmulatorConfig: !!auth.emulatorConfig,
+    });
+  });
+  console.log(`[diag] SDK auth state after 3s: ${sdkState}`);
+
   const url = page.url();
   const bodyText = await page
     .locator("body")
     .innerText()
     .catch(() => "COULD NOT GET BODY TEXT");
-  console.log(`[diag] After 5s: URL=${url}`);
-  console.log(`[diag] After 5s: page text (first 800 chars): ${bodyText.slice(0, 800)}`);
+  console.log(`[diag] After 3s: URL=${url}`);
+  console.log(`[diag] After 3s: page text (first 800 chars): ${bodyText.slice(0, 800)}`);
 
   // Now wait for navigation
   try {
@@ -155,8 +179,10 @@ test("diagnostic: browser-to-emulator connectivity", async ({ page }) => {
     console.log(`[diag] SUCCESS: navigated to ${page.url()}`);
   } catch {
     console.log(`[diag] NAVIGATION TIMEOUT! URL stuck at ${page.url()}`);
-    console.log(`[diag] total browser logs: ${logs.length}`);
-    logs.slice(-30).forEach((l) => console.log(`  ${l}`));
+    // Dump ALL browser logs (not just last 30)
+    console.log(`[diag] === ALL BROWSER LOGS (${logs.length}) ===`);
+    logs.forEach((l) => console.log(`  ${l}`));
+    console.log("[diag] === END BROWSER LOGS ===");
     throw new Error(`Navigation failed. URL stuck at ${url}. See [diag] logs above.`);
   }
 
