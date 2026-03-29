@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TurnHistoryViewer } from "../TurnHistoryViewer";
 import type { TurnRecord } from "../../services/games";
@@ -103,5 +103,97 @@ describe("TurnHistoryViewer", () => {
 
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("renders video elements with aria labels when expanded", () => {
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded />);
+    expect(screen.getByLabelText("Kickflip 1 set by alice")).toBeInTheDocument();
+    expect(screen.getByLabelText("Kickflip 1 attempted by bob")).toBeInTheDocument();
+  });
+
+  it("skips ClipVideo for non-firebase URLs", () => {
+    const turn = makeTurn(1, { setVideoUrl: "https://example.com/v.webm", matchVideoUrl: "" });
+    render(<TurnHistoryViewer turns={[turn]} currentUserUid="u1" defaultExpanded />);
+    // Non-firebase URLs return null from ClipVideo
+    expect(screen.queryByLabelText(/Kickflip 1 set by/)).not.toBeInTheDocument();
+  });
+
+  it("shows download buttons when showDownload is true", () => {
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />);
+    const saveButtons = screen.getAllByText("Save clip");
+    expect(saveButtons.length).toBe(2); // one for set, one for match
+  });
+
+  it("shows share buttons when showShare is true", () => {
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />);
+    const shareButtons = screen.getAllByText("Share clip");
+    expect(shareButtons.length).toBe(2);
+  });
+
+  it("download button transitions through saving states", async () => {
+    const mockBlob = new Blob(["video"], { type: "video/webm" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, blob: () => Promise.resolve(mockBlob) } as Response);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />);
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Saved!")).toBeInTheDocument();
+    });
+
+    vi.restoreAllMocks();
+  });
+
+  it("download button shows failure on fetch error", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Network error"));
+
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showDownload />);
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Save failed")).toBeInTheDocument();
+    });
+
+    vi.restoreAllMocks();
+  });
+
+  it("share button uses clipboard when navigator.share is unavailable", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const origShare = navigator.share;
+    Object.defineProperty(navigator, "share", { value: undefined, configurable: true, writable: true });
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true, writable: true });
+
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(new Blob(["vid"])),
+    } as Response);
+
+    render(<TurnHistoryViewer turns={[makeTurn(1)]} currentUserUid="u1" defaultExpanded showShare />);
+    await userEvent.click(screen.getAllByText("Share clip")[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText("Shared!")).toBeInTheDocument();
+    });
+    expect(writeText).toHaveBeenCalled();
+
+    Object.defineProperty(navigator, "share", { value: origShare, configurable: true, writable: true });
+    vi.restoreAllMocks();
+  });
+
+  it("shows letter recipient as setter when letterTo is setterUid (not matcherUid)", () => {
+    // letterTo !== matcherUid means the setter gets the letter
+    const turn = makeTurn(1, {
+      landed: false,
+      letterTo: "u1",
+      setterUid: "u1",
+      setterUsername: "alice",
+      matcherUid: "u2",
+      matcherUsername: "bob",
+    });
+    render(<TurnHistoryViewer turns={[turn]} currentUserUid="u2" defaultExpanded />);
+    // Since letterTo ("u1") !== matcherUid ("u2"), it shows setter's name
+    expect(screen.getByText(/@alice gets a letter/)).toBeInTheDocument();
   });
 });

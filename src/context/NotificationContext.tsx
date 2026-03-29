@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { playChime, isSoundEnabled, setSoundEnabled, type ChimeType } from "../services/sounds";
+import { deleteNotification, deleteUserNotifications } from "../services/notifications";
 import { TOAST_DURATION } from "../constants/ui";
 
 /* ── Types ─────────────────────────────────── */
@@ -36,6 +37,7 @@ interface NotificationContextValue {
   markRead: (id: string) => void;
   markAllRead: () => void;
   clearAll: () => void;
+  dismissNotification: (id: string) => void;
   soundEnabled: boolean;
   toggleSound: () => void;
 }
@@ -159,6 +161,19 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
 
   const clearAll = useCallback(() => {
     setNotifications([]);
+    const currentUid = uidRef.current;
+    if (currentUid) {
+      deleteUserNotifications(currentUid).catch(() => {
+        /* best-effort */
+      });
+    }
+  }, []);
+
+  const dismissNotification = useCallback((id: string) => {
+    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    deleteNotification(id).catch(() => {
+      /* best-effort */
+    });
   }, []);
 
   const toggleSound = useCallback(() => {
@@ -182,6 +197,7 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
       markRead,
       markAllRead,
       clearAll,
+      dismissNotification,
       soundEnabled,
       toggleSound,
     }),
@@ -195,6 +211,7 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
       markRead,
       markAllRead,
       clearAll,
+      dismissNotification,
       soundEnabled,
       toggleSound,
     ],

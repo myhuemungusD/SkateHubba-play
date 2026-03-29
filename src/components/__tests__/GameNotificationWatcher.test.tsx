@@ -26,31 +26,13 @@ vi.mock("../../context/NotificationContext", () => ({
   })),
 }));
 
-vi.mock("../../firebase", () => ({
-  db: null,
-}));
-
-vi.mock("firebase/firestore", () => ({
-  collection: vi.fn(),
-  query: vi.fn(),
-  where: vi.fn(),
-  orderBy: vi.fn(),
-  limit: vi.fn(),
-  onSnapshot: vi.fn(() => vi.fn()),
-  updateDoc: vi.fn(),
-  doc: vi.fn(),
-}));
-
-vi.mock("../../services/logger", () => ({
-  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+vi.mock("../../services/notifications", () => ({
+  subscribeToNudges: vi.fn(() => vi.fn()),
+  subscribeToNotifications: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("../../services/fcm", () => ({
   onForegroundMessage: vi.fn(() => vi.fn()),
-}));
-
-vi.mock("../../utils/helpers", () => ({
-  parseFirebaseError: (e: unknown) => String(e),
 }));
 
 describe("GameNotificationWatcher", () => {

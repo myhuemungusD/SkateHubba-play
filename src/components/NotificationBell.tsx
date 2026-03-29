@@ -12,8 +12,17 @@ function relativeTime(ts: number): string {
 }
 
 export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onOpenGame?: (g: GameDoc) => void }) {
-  const { notifications, unreadCount, notifyKey, markRead, markAllRead, clearAll, soundEnabled, toggleSound } =
-    useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    notifyKey,
+    markRead,
+    markAllRead,
+    clearAll,
+    dismissNotification,
+    soundEnabled,
+    toggleSound,
+  } = useNotifications();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -172,7 +181,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
                         setOpen(false);
                       }
                     }}
-                    className={`w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 transition-colors ${n.read ? "opacity-60" : ""} ${clickable ? "hover:bg-[rgba(255,107,0,0.04)] cursor-pointer" : ""}`}
+                    className={`group w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 transition-colors ${n.read ? "opacity-60" : ""} ${clickable ? "hover:bg-[rgba(255,107,0,0.04)] cursor-pointer" : ""}`}
                   >
                     <span className={`shrink-0 text-sm mt-0.5 ${notificationAccentText[n.type]}`}>
                       {notificationIcon[n.type]}
@@ -188,6 +197,30 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
                     {!n.read && (
                       <span className="shrink-0 w-2 h-2 rounded-full bg-brand-orange mt-1.5" aria-label="Unread" />
                     )}
+                    <button
+                      type="button"
+                      aria-label="Delete notification"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        dismissNotification(n.id);
+                      }}
+                      className="shrink-0 p-0.5 text-[#444] hover:text-brand-red transition-colors opacity-0 group-hover:opacity-100"
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
                   </button>
                 );
               })

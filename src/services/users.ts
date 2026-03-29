@@ -126,7 +126,8 @@ export async function createProfile(
  * account is already gone and Firestore data is orphaned — the caller
  * should log/alert so it can be cleaned up manually or via a Cloud Function.
  *
- * Phase 1: Delete all game documents where the user is a player.
+ * Phase 1: Delete non-active game documents where the user is a player.
+ * Active games are preserved so the opponent isn't affected mid-game.
  * Phase 2: Atomically delete profile + username reservation.
  *
  * Storage videos are orphaned and can be garbage-collected by a lifecycle
@@ -135,7 +136,7 @@ export async function createProfile(
 export async function deleteUserData(uid: string, username: string): Promise<void> {
   const db = requireDb();
 
-  // Phase 1: Delete game documents where user is a player
+  // Phase 1: Delete non-active game documents where user is a player
   const gamesCol = collection(db, "games");
   const [asP1, asP2] = await Promise.all([
     getDocs(query(gamesCol, where("player1Uid", "==", uid))),
@@ -146,7 +147,10 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   for (const snap of [...asP1.docs, ...asP2.docs]) {
     if (!seen.has(snap.id)) {
       seen.add(snap.id);
-      deletions.push(deleteDoc(doc(db, "games", snap.id)));
+      const data = snap.data();
+      if (data.status !== "active") {
+        deletions.push(deleteDoc(doc(db, "games", snap.id)));
+      }
     }
   }
   await Promise.all(deletions);
