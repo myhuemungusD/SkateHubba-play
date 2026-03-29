@@ -40,7 +40,7 @@ import {
   deleteAccount,
   resolveGoogleRedirect,
 } from "../auth";
-import { auth } from "../../firebase";
+import { auth, isEmulatorMode } from "../../firebase";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -223,6 +223,20 @@ describe("auth service", () => {
       mockGetRedirectResult.mockRejectedValueOnce(new Error("cross-origin"));
       const user = await resolveGoogleRedirect();
       expect(user).toBeNull();
+    });
+
+    it("skips getRedirectResult in emulator mode", async () => {
+      // Temporarily set isEmulatorMode to true
+      const firebaseMod = await import("../../firebase");
+      const original = firebaseMod.isEmulatorMode;
+      Object.defineProperty(firebaseMod, "isEmulatorMode", { value: true, writable: true });
+      try {
+        const user = await resolveGoogleRedirect();
+        expect(user).toBeNull();
+        expect(mockGetRedirectResult).not.toHaveBeenCalled();
+      } finally {
+        Object.defineProperty(firebaseMod, "isEmulatorMode", { value: original, writable: true });
+      }
     });
   });
 });
