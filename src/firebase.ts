@@ -1,5 +1,5 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth, connectAuthEmulator, inMemoryPersistence, type Auth } from "firebase/auth";
+import { getAuth, connectAuthEmulator, type Auth } from "firebase/auth";
 import {
   connectFirestoreEmulator,
   initializeFirestore,
@@ -85,8 +85,6 @@ if (firebaseReady) {
 
   // Connect to emulators in development (if running)
   if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {
-    // Use in-memory persistence to avoid IndexedDB issues in headless Chrome (CI).
-    auth.setPersistence(inMemoryPersistence);
     connectAuthEmulator(auth, "http://localhost:9099", {
       disableWarnings: true,
     });
@@ -121,6 +119,11 @@ function requireStorage(): FirebaseStorage {
   if (!storage) throw new Error("Firebase not initialized — check VITE_FIREBASE_* env vars");
   return storage;
 }
+
+/** True when running against local Firebase emulators */
+export const isEmulatorMode = Boolean(
+  import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true" && firebaseReady,
+);
 
 export { db, auth, storage, requireDb, requireAuth, requireStorage };
 export default app;

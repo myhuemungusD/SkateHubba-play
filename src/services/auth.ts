@@ -13,7 +13,7 @@ import {
   type User,
   type ActionCodeSettings,
 } from "firebase/auth";
-import { auth, requireAuth } from "../firebase";
+import { auth, requireAuth, isEmulatorMode } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { logger } from "./logger";
@@ -172,6 +172,12 @@ export async function deleteAccount(): Promise<void> {
 export async function resolveGoogleRedirect(): Promise<User | null> {
   if (!auth) {
     logger.warn("resolve_google_redirect_no_auth");
+    return null;
+  }
+  // Skip getRedirectResult when running against emulators — Google redirects
+  // never happen in emulator mode and getRedirectResult can hang in CI.
+  if (isEmulatorMode) {
+    logger.debug("resolve_google_redirect_skip_emulator");
     return null;
   }
   logger.debug("resolve_google_redirect_start");
