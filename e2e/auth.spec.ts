@@ -48,15 +48,72 @@ test.beforeEach(async () => {
   await clearAll();
 });
 
-test("sign up → profile setup → lobby", async ({ page }) => {
-  // Capture browser console for debugging CI failures
+test("diagnostic: app loads and sign-up navigates to profile", async ({ page }) => {
+  // Capture ALL browser console output for CI debugging
+  const logs: string[] = [];
   page.on("console", (msg) => {
-    if (msg.type() === "error" || msg.text().includes("auth_") || msg.text().includes("firebase")) {
-      console.log(`[browser ${msg.type()}] ${msg.text()}`);
-    }
+    const text = `[browser:${msg.type()}] ${msg.text()}`;
+    logs.push(text);
+    console.log(text);
   });
-  page.on("pageerror", (err) => console.log(`[browser pageerror] ${err.message}`));
+  page.on("pageerror", (err) => {
+    const text = `[browser:pageerror] ${err.message}`;
+    logs.push(text);
+    console.log(text);
+  });
 
+  // Step 1: Verify app loads
+  await page.goto("/");
+  console.log(`[diag] page loaded, URL=${page.url()}`);
+  await expect(page.getByRole("button", { name: "Sign up", exact: true })).toBeVisible({ timeout: 10_000 });
+  console.log("[diag] Sign up button visible");
+
+  // Step 2: Go through age gate
+  await page.getByRole("button", { name: "Sign up", exact: true }).click();
+  await expect(page.getByLabel("Birth month")).toBeVisible({ timeout: 5_000 });
+  console.log(`[diag] age gate visible, URL=${page.url()}`);
+  await page.getByLabel("Birth month").fill("01");
+  await page.getByLabel("Birth day").fill("15");
+  await page.getByLabel("Birth year").fill("2000");
+  await page.getByRole("button", { name: "Continue" }).click();
+
+  // Step 3: Fill auth form
+  await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
+  console.log(`[diag] auth form visible, URL=${page.url()}`);
+  await page.getByPlaceholder("you@email.com").fill("diag@test.com");
+  const pwFields = page.getByPlaceholder("••••••••");
+  await pwFields.nth(0).fill("password123");
+  await pwFields.nth(1).fill("password123");
+  await page.getByRole("button", { name: "Create Account" }).click();
+  console.log(`[diag] Create Account clicked, URL=${page.url()}`);
+
+  // Step 4: Wait and observe navigation
+  // Give the auth flow 20 seconds to complete navigation
+  try {
+    await page.waitForURL(/\/(profile|lobby)/, { timeout: 20_000 });
+    console.log(`[diag] navigated to URL=${page.url()}`);
+  } catch {
+    // Capture page state for debugging
+    const url = page.url();
+    const title = await page.title();
+    const bodyText = await page
+      .locator("body")
+      .innerText()
+      .catch(() => "COULD NOT GET BODY TEXT");
+    console.log(`[diag] NAVIGATION TIMEOUT! URL=${url} title=${title}`);
+    console.log(`[diag] page text (first 500 chars): ${bodyText.slice(0, 500)}`);
+    console.log(`[diag] total browser logs: ${logs.length}`);
+    // Dump last 20 browser logs
+    logs.slice(-20).forEach((l) => console.log(`  ${l}`));
+    throw new Error(`Navigation failed. URL stuck at ${url}. See logs above.`);
+  }
+
+  // Step 5: Verify profile setup screen
+  await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
+  console.log("[diag] Profile setup visible - SUCCESS");
+});
+
+test("sign up → profile setup → lobby", async ({ page }) => {
   await signUpViaUI(page, "player@test.com", "password123");
   await completeProfileSetup(page, "sk8player");
 
