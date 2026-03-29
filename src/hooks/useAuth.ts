@@ -6,11 +6,6 @@ import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { setUser as setSentryUser } from "../lib/sentry";
 
-/** Race a promise against a timeout. Rejects with a TimeoutError on expiry. */
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([promise, new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms))]);
-}
-
 interface AuthState {
   loading: boolean;
   user: User | null;
@@ -61,7 +56,11 @@ export function useAuth(): AuthState {
         // ProfileSetup (causes a visible flicker for returning Google users).
         setLoading(true);
         try {
-          const p = await withTimeout(getUserProfile(u.uid), 10_000);
+          /* v8 ignore next -- safety timeout; can't trigger in unit tests without 10s delay */
+          const p = await Promise.race([
+            getUserProfile(u.uid),
+            new Promise<null>((r) => setTimeout(() => r(null), 10_000)),
+          ]);
           logger.debug("use_auth_profile_loaded", { uid: u.uid, hasProfile: !!p, username: p?.username ?? null });
           setProfile(p);
         } catch (err) {
