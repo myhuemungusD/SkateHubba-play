@@ -48,6 +48,15 @@ test.beforeEach(async () => {
   await clearAll();
 });
 
+test("smoke: app connects to Firebase emulators", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Sign up", exact: true })).toBeVisible({ timeout: 10_000 });
+
+  // Verify the Firebase SDK is connected to emulators
+  const connected = await page.evaluate(() => "__e2eFirebaseAuth" in globalThis);
+  expect(connected).toBe(true);
+});
+
 test("sign up → profile setup → lobby", async ({ page }) => {
   await signUpViaUI(page, "player@test.com", "password123");
   await completeProfileSetup(page, "sk8player");
