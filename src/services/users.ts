@@ -218,7 +218,7 @@ export async function updatePlayerStats(uid: string, gameId: string, won: boolea
  * Capped at 50 to keep payload and read costs low.
  */
 export async function getLeaderboard(): Promise<UserProfile[]> {
-  const q = query(collection(requireDb(), "users"), orderBy("createdAt", "desc"), limit(50));
+  const q = query(collection(requireDb(), "users"), orderBy("wins", "desc"), limit(50));
   const snap = await withRetry(() => getDocs(q));
   const profiles = snap.docs.map((d) => d.data() as UserProfile);
 

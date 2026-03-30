@@ -95,6 +95,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Real-time single game subscription
   const screenRef = useRef(screen);
   screenRef.current = screen;
+  const userRef = useRef(user);
+  userRef.current = user;
 
   useEffect(() => {
     if (!activeGame) return;
@@ -105,15 +107,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setScreen("gameover");
       }
       // Update leaderboard stats when a game completes
+      const currentUser = userRef.current;
       if (
         (updated.status === "complete" || updated.status === "forfeit") &&
-        user &&
+        currentUser &&
         updated.winner &&
         !processedStatsRef.current.has(updated.id)
       ) {
         processedStatsRef.current.add(updated.id);
-        const won = updated.winner === user.uid;
-        updatePlayerStats(user.uid, updated.id, won).catch((err) => {
+        const won = updated.winner === currentUser.uid;
+        updatePlayerStats(currentUser.uid, updated.id, won).catch((err) => {
           logger.warn("stats_update_failed", {
             gameId: updated.id,
             error: parseFirebaseError(err),

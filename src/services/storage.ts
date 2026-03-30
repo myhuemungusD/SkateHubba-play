@@ -35,10 +35,10 @@ export async function uploadVideo(
 ): Promise<string> {
   // Pre-validate size to fail fast before wasting bandwidth.
   // These limits mirror the Firebase Storage security rules.
-  if (blob.size <= MIN_UPLOAD_BYTES) {
+  if (blob.size < MIN_UPLOAD_BYTES) {
     throw new Error("Video is too small to upload. Please record a longer clip.");
   }
-  if (blob.size >= MAX_UPLOAD_BYTES) {
+  if (blob.size > MAX_UPLOAD_BYTES) {
     throw new Error("Video exceeds the 50 MB limit. Please record a shorter clip.");
   }
 

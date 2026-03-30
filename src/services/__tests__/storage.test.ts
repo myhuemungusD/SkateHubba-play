@@ -194,9 +194,9 @@ describe("storage service", () => {
     });
 
     it("rejects blobs that exceed 50 MB", async () => {
-      // Create a blob that reports size >= 50MB via Object.defineProperty
+      // Create a blob that reports size > 50MB via Object.defineProperty
       const bigBlob = new Blob(["x"], { type: "video/webm" });
-      Object.defineProperty(bigBlob, "size", { value: 50 * 1024 * 1024 });
+      Object.defineProperty(bigBlob, "size", { value: 50 * 1024 * 1024 + 1 });
       await expect(uploadVideo("game1", 1, "set", bigBlob)).rejects.toThrow("50 MB limit");
       expect(mockUploadBytesResumable).not.toHaveBeenCalled();
     });

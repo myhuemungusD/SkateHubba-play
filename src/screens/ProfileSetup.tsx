@@ -313,9 +313,11 @@ export function ProfileSetup({
         /* v8 ignore stop */
       } catch {
         /* v8 ignore start -- debounce guard; same race condition as above */
-        if (checkRef.current === id) setAvailable(null);
+        if (checkRef.current === id) {
+          setAvailable(null);
+          setError("Could not check username — try again");
+        }
         /* v8 ignore stop */
-        setError("Could not check username — try again");
       }
     }, DEBOUNCE_MS);
     return () => clearTimeout(timeout);
