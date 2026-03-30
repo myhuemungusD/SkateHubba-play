@@ -1,0 +1,88 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { SkateButton } from "../SkateButton";
+
+const mockPlayOlliePop = vi.fn();
+
+vi.mock("../../utils/ollieSound", () => ({
+  playOlliePop: () => mockPlayOlliePop(),
+}));
+
+describe("SkateButton", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("renders children text", () => {
+    render(<SkateButton>Kickflip</SkateButton>);
+    expect(screen.getByRole("button", { name: "Kickflip" })).toBeInTheDocument();
+  });
+
+  it("calls onClick and plays sound on click", async () => {
+    vi.useRealTimers();
+    const onClick = vi.fn();
+    render(<SkateButton onClick={onClick}>Go</SkateButton>);
+    await userEvent.click(screen.getByRole("button", { name: "Go" }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(mockPlayOlliePop).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies animate-ollie class on click and removes it after 500ms", () => {
+    const { container } = render(<SkateButton>Pop</SkateButton>);
+    const animDiv = container.querySelector("button > div")!;
+
+    fireEvent.click(screen.getByRole("button", { name: "Pop" }));
+    expect(animDiv.className).toContain("animate-ollie");
+
+    act(() => vi.advanceTimersByTime(500));
+    expect(animDiv.className).not.toContain("animate-ollie");
+  });
+
+  it("does not fire onClick or sound when disabled (manual guard)", () => {
+    const onClick = vi.fn();
+    render(
+      <SkateButton onClick={onClick} disabled>
+        Nope
+      </SkateButton>,
+    );
+    const btn = screen.getByRole("button", { name: "Nope" });
+    expect(btn).toBeDisabled();
+
+    // fireEvent bypasses the HTML disabled attribute, testing the manual guard
+    fireEvent.click(btn);
+    expect(onClick).not.toHaveBeenCalled();
+    expect(mockPlayOlliePop).not.toHaveBeenCalled();
+  });
+
+  it("does not throw when unmounted during animation timeout", () => {
+    const { unmount } = render(<SkateButton>Bail</SkateButton>);
+    fireEvent.click(screen.getByRole("button", { name: "Bail" }));
+    unmount();
+    // Flush the 500ms setTimeout — should not throw on unmounted component
+    expect(() => vi.advanceTimersByTime(500)).not.toThrow();
+  });
+
+  it("applies custom className", () => {
+    render(<SkateButton className="mt-4">Styled</SkateButton>);
+    expect(screen.getByRole("button", { name: "Styled" })).toHaveClass("mt-4");
+  });
+
+  it("renders SVG with aria-hidden", () => {
+    const { container } = render(<SkateButton>Deck</SkateButton>);
+    const svg = container.querySelector("svg");
+    expect(svg).toBeInTheDocument();
+    expect(svg).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("works without onClick prop", () => {
+    render(<SkateButton>Solo</SkateButton>);
+    fireEvent.click(screen.getByRole("button", { name: "Solo" }));
+    expect(mockPlayOlliePop).toHaveBeenCalledTimes(1);
+  });
+});
