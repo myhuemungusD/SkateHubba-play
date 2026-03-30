@@ -14,22 +14,106 @@ import { OfflineBanner } from "./components/OfflineBanner";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 
+/* ── Retry wrapper for chunk loads (handles deploy-time hash invalidation) */
+function lazyRetry<T, C>(load: () => Promise<T>, pick: (m: T) => C, retries = 2): Promise<{ default: C }> {
+  return load().then(
+    (m) => ({ default: pick(m) }),
+    (err: unknown) => {
+      if (retries <= 0) {
+        // One auto-reload per session to pick up new deploy assets
+        const key = "skatehubba:chunk-reload";
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, "1");
+          window.location.reload();
+        }
+        return Promise.reject(err);
+      }
+      return new Promise<{ default: C }>((resolve) => {
+        setTimeout(() => resolve(lazyRetry(load, pick, retries - 1)), 1000);
+      });
+    },
+  );
+}
+
 /* ── Route-level code splitting ─────────────────────────── */
-const Landing = lazy(() => import("./screens/Landing").then((m) => ({ default: m.Landing })));
-const AuthScreen = lazy(() => import("./screens/AuthScreen").then((m) => ({ default: m.AuthScreen })));
-const ProfileSetup = lazy(() => import("./screens/ProfileSetup").then((m) => ({ default: m.ProfileSetup })));
-const Lobby = lazy(() => import("./screens/Lobby").then((m) => ({ default: m.Lobby })));
-const ChallengeScreen = lazy(() => import("./screens/ChallengeScreen").then((m) => ({ default: m.ChallengeScreen })));
-const GamePlayScreen = lazy(() => import("./screens/GamePlayScreen").then((m) => ({ default: m.GamePlayScreen })));
-const GameOverScreen = lazy(() => import("./screens/GameOverScreen").then((m) => ({ default: m.GameOverScreen })));
-const PlayerProfileScreen = lazy(() =>
-  import("./screens/PlayerProfileScreen").then((m) => ({ default: m.PlayerProfileScreen })),
+const Landing = lazy(() =>
+  lazyRetry(
+    () => import("./screens/Landing"),
+    (m) => m.Landing,
+  ),
 );
-const PrivacyPolicy = lazy(() => import("./screens/PrivacyPolicy").then((m) => ({ default: m.PrivacyPolicy })));
-const TermsOfService = lazy(() => import("./screens/TermsOfService").then((m) => ({ default: m.TermsOfService })));
-const DataDeletion = lazy(() => import("./screens/DataDeletion").then((m) => ({ default: m.DataDeletion })));
-const AgeGate = lazy(() => import("./screens/AgeGate").then((m) => ({ default: m.AgeGate })));
-const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
+const AuthScreen = lazy(() =>
+  lazyRetry(
+    () => import("./screens/AuthScreen"),
+    (m) => m.AuthScreen,
+  ),
+);
+const ProfileSetup = lazy(() =>
+  lazyRetry(
+    () => import("./screens/ProfileSetup"),
+    (m) => m.ProfileSetup,
+  ),
+);
+const Lobby = lazy(() =>
+  lazyRetry(
+    () => import("./screens/Lobby"),
+    (m) => m.Lobby,
+  ),
+);
+const ChallengeScreen = lazy(() =>
+  lazyRetry(
+    () => import("./screens/ChallengeScreen"),
+    (m) => m.ChallengeScreen,
+  ),
+);
+const GamePlayScreen = lazy(() =>
+  lazyRetry(
+    () => import("./screens/GamePlayScreen"),
+    (m) => m.GamePlayScreen,
+  ),
+);
+const GameOverScreen = lazy(() =>
+  lazyRetry(
+    () => import("./screens/GameOverScreen"),
+    (m) => m.GameOverScreen,
+  ),
+);
+const PlayerProfileScreen = lazy(() =>
+  lazyRetry(
+    () => import("./screens/PlayerProfileScreen"),
+    (m) => m.PlayerProfileScreen,
+  ),
+);
+const PrivacyPolicy = lazy(() =>
+  lazyRetry(
+    () => import("./screens/PrivacyPolicy"),
+    (m) => m.PrivacyPolicy,
+  ),
+);
+const TermsOfService = lazy(() =>
+  lazyRetry(
+    () => import("./screens/TermsOfService"),
+    (m) => m.TermsOfService,
+  ),
+);
+const DataDeletion = lazy(() =>
+  lazyRetry(
+    () => import("./screens/DataDeletion"),
+    (m) => m.DataDeletion,
+  ),
+);
+const AgeGate = lazy(() =>
+  lazyRetry(
+    () => import("./screens/AgeGate"),
+    (m) => m.AgeGate,
+  ),
+);
+const NotFound = lazy(() =>
+  lazyRetry(
+    () => import("./screens/NotFound"),
+    (m) => m.NotFound,
+  ),
+);
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
