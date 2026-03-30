@@ -80,7 +80,13 @@ export function Landing({
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
       <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/[0.05]">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-9 md:h-11 w-auto select-none" />
+          <img
+            src="/logonew.webp"
+            alt="SkateHubba"
+            loading="lazy"
+            draggable={false}
+            className="h-9 md:h-11 w-auto select-none"
+          />
           <div className="flex items-center gap-4">
             <button
               type="button"
