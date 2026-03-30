@@ -49,14 +49,22 @@ test.beforeEach(async () => {
 });
 
 test("emulator connectivity: sign up via SDK works", async ({ page }) => {
-  // This test serves as a warm-up for the Firebase SDK ↔ emulator connection
-  // and verifies end-to-end auth works before the remaining tests run.
+  // This test warms up the browser ↔ emulator connection before the real tests.
+  // In CI headless Chrome, the Firebase SDK's first request to the emulator can
+  // hang unless the browser has already established a connection to the host.
   await page.goto("/");
   await expect(page.getByRole("button", { name: "Sign up", exact: true })).toBeVisible({ timeout: 10_000 });
 
   // Verify emulator mode is active
   const connected = await page.evaluate(() => "__e2eFirebaseAuth" in globalThis);
   expect(connected).toBe(true);
+
+  // Prime the browser's connection to emulator hosts with direct fetches.
+  // This prevents the Firebase SDK's first request from hanging in CI.
+  await page.evaluate(async () => {
+    await fetch("http://localhost:9099/", { mode: "no-cors" }).catch(() => {});
+    await fetch("http://localhost:8080/", { mode: "no-cors" }).catch(() => {});
+  });
 
   // Do a full sign-up flow through the UI
   await page.getByRole("button", { name: "Sign up", exact: true }).click();

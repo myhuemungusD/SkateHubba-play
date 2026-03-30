@@ -39,6 +39,11 @@ async function passAgeGate(page: Page) {
 
 async function signUpAndSetupProfile(page: Page, email: string, pw: string, username: string) {
   await page.goto("/");
+  // Prime emulator connections from the browser to prevent SDK hangs in CI
+  await page.evaluate(async () => {
+    await fetch("http://localhost:9099/", { mode: "no-cors" }).catch(() => {});
+    await fetch("http://localhost:8080/", { mode: "no-cors" }).catch(() => {});
+  });
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
   await passAgeGate(page);
   // Wait for auth form to render
