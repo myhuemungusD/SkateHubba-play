@@ -560,6 +560,42 @@
   transform: rotateX(2deg) scale(1.01);
 }
 
+/* ── Ambient glow backgrounds ──────────────────────── */
+.bg-hero-glow {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -20%, rgba(255, 107, 0, 0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 50% 40% at 80% 10%, rgba(255, 61, 0, 0.08) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 20% 30%, rgba(255, 133, 51, 0.06) 0%, transparent 50%);
+}
+
+.bg-video-overlay {
+  background:
+    linear-gradient(to top, rgba(10, 10, 10, 0.6) 0%, transparent 30%),
+    linear-gradient(to bottom, rgba(10, 10, 10, 0.3) 0%, transparent 15%);
+}
+
+.bg-cta-glow {
+  background:
+    radial-gradient(ellipse 70% 50% at 50% 80%, rgba(255, 107, 0, 0.1) 0%, transparent 60%),
+    radial-gradient(ellipse 40% 30% at 50% 100%, rgba(255, 61, 0, 0.06) 0%, transparent 50%);
+}
+
+.bg-profile-glow {
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 107, 0, 0.06) 0%, transparent 50%), rgba(10, 10, 10, 0.8);
+}
+
+.bg-win-glow {
+  background:
+    radial-gradient(ellipse at 50% 20%, rgba(0, 230, 118, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 30% 60%, rgba(0, 230, 118, 0.04) 0%, transparent 50%), rgba(10, 10, 10, 0.85);
+}
+
+.bg-loss-glow {
+  background:
+    radial-gradient(ellipse at 50% 20%, rgba(255, 61, 0, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 70% 60%, rgba(255, 61, 0, 0.04) 0%, transparent 50%), rgba(10, 10, 10, 0.85);
+}
+
 /* ── Reduced motion ────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,

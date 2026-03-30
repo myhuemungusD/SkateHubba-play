@@ -1,5 +1,5 @@
-import { Timestamp } from "firebase/firestore";
 import type { GameDoc } from "../services/games";
+import { timestampFromMillis } from "../services/games";
 
 export const BG = "#0A0A0A";
 
@@ -95,7 +95,7 @@ export function newGameShell(
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    turnDeadline: Timestamp.fromMillis(Date.now() + 86400000),
+    turnDeadline: timestampFromMillis(Date.now() + 86400000),
     turnNumber: 1,
     winner: null,
     turnHistory: [],

@@ -99,12 +99,7 @@ export function GameOverScreen({
 
   return (
     <div
-      className="min-h-dvh flex flex-col items-center px-6 py-10 overflow-y-auto"
-      style={{
-        background: isWinner
-          ? "radial-gradient(ellipse at 50% 20%, rgba(0,230,118,0.12) 0%, transparent 50%), radial-gradient(ellipse at 30% 60%, rgba(0,230,118,0.04) 0%, transparent 50%), rgba(10,10,10,0.85)"
-          : "radial-gradient(ellipse at 50% 20%, rgba(255,61,0,0.12) 0%, transparent 50%), radial-gradient(ellipse at 70% 60%, rgba(255,61,0,0.04) 0%, transparent 50%), rgba(10,10,10,0.85)",
-      }}
+      className={`min-h-dvh flex flex-col items-center px-6 py-10 overflow-y-auto ${isWinner ? "bg-win-glow" : "bg-loss-glow"}`}
     >
       <div className="text-center w-full max-w-md animate-scale-in">
         <div className="flex justify-center mb-4">

@@ -109,13 +109,7 @@ export function Landing({
       {/* ─── Hero Section (full viewport) ───────────────── */}
       <section className="relative min-h-dvh flex flex-col items-center justify-center overflow-hidden">
         {/* Layered ambient glow */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse 80% 60% at 50% -20%, rgba(255,107,0,0.18) 0%, transparent 70%), radial-gradient(ellipse 50% 40% at 80% 10%, rgba(255,61,0,0.08) 0%, transparent 60%), radial-gradient(ellipse 40% 30% at 20% 30%, rgba(255,133,51,0.06) 0%, transparent 50%)",
-          }}
-        />
+        <div className="absolute inset-0 pointer-events-none bg-hero-glow" />
 
         <div className="relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center hero-stagger">
           {/* Badge */}
@@ -125,15 +119,9 @@ export function Landing({
           </span>
 
           {/* Main headline */}
-          <h1
-            className="font-display tracking-wide text-white mb-5 leading-[0.9]"
-            style={{ fontSize: "clamp(3rem, 2.2rem + 4.5vw, 6.5rem)" }}
-          >
+          <h1 className="font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)]">
             <span className="block">SET IT. MATCH IT.</span>
-            <span
-              className="block text-brand-orange"
-              style={{ textShadow: "0 0 60px rgba(255,107,0,0.35), 0 0 120px rgba(255,107,0,0.15)" }}
-            >
+            <span className="block text-brand-orange [text-shadow:0_0_60px_rgba(255,107,0,0.35),0_0_120px_rgba(255,107,0,0.15)]">
               ONE TAKE.
             </span>
           </h1>
@@ -196,13 +184,7 @@ export function Landing({
               <source src="/SHvideoedit.mp4" type="video/mp4" />
             </video>
             {/* Bottom fade */}
-            <div
-              className="absolute inset-0 pointer-events-none"
-              style={{
-                background:
-                  "linear-gradient(to top, rgba(10,10,10,0.6) 0%, transparent 30%), linear-gradient(to bottom, rgba(10,10,10,0.3) 0%, transparent 15%)",
-              }}
-            />
+            <div className="absolute inset-0 pointer-events-none bg-video-overlay" />
             {/* Caption overlay */}
             <div className="absolute bottom-4 left-5 right-5 flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -349,18 +331,9 @@ export function Landing({
       {/* ─── CTA / Bottom Section ───────────────────────── */}
       <section className="relative overflow-hidden">
         {/* Strong ambient glow */}
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse 70% 50% at 50% 80%, rgba(255,107,0,0.1) 0%, transparent 60%), radial-gradient(ellipse 40% 30% at 50% 100%, rgba(255,61,0,0.06) 0%, transparent 50%)",
-          }}
-        />
+        <div className="absolute inset-0 pointer-events-none bg-cta-glow" />
         <div className="relative max-w-6xl mx-auto px-6 py-24 md:py-32 flex flex-col items-center text-center">
-          <h2
-            className="font-display text-white tracking-wider mb-4 leading-[0.95]"
-            style={{ fontSize: "clamp(2rem, 1.5rem + 3vw, 4.5rem)" }}
-          >
+          <h2 className="font-display text-white tracking-wider mb-4 leading-[0.95] text-[clamp(2rem,1.5rem_+_3vw,4.5rem)]">
             QUIT SCROLLING.
           </h2>
           <p className="font-body text-dim mb-10 max-w-xs leading-relaxed">

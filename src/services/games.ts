@@ -45,6 +45,11 @@ export interface TurnRecord {
   letterTo: string | null;
 }
 
+/** Create a Firestore Timestamp from epoch milliseconds. Keeps Firebase SDK out of utils/. */
+export function timestampFromMillis(ms: number): Timestamp {
+  return Timestamp.fromMillis(ms);
+}
+
 export interface GameDoc {
   id: string;
   player1Uid: string;
