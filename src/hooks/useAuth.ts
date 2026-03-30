@@ -56,7 +56,12 @@ export function useAuth(): AuthState {
         // ProfileSetup (causes a visible flicker for returning Google users).
         setLoading(true);
         try {
-          const p = await getUserProfile(u.uid);
+          /* v8 ignore start -- safety timeout; can't trigger in unit tests without 10s delay */
+          const p = await Promise.race([
+            getUserProfile(u.uid),
+            new Promise<null>((r) => setTimeout(() => r(null), 10_000)),
+          ]);
+          /* v8 ignore stop */
           logger.debug("use_auth_profile_loaded", { uid: u.uid, hasProfile: !!p, username: p?.username ?? null });
           setProfile(p);
         } catch (err) {

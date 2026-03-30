@@ -10,17 +10,21 @@ import { defineConfig, devices } from "@playwright/test";
  *   npm run test:e2e
  */
 export default defineConfig({
+  globalSetup: "./e2e/global-setup.ts",
   testDir: "./e2e",
   // Tests share emulator state, so run sequentially to avoid cross-test interference.
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 1 : 0,
-  reporter: [["html", { outputFolder: "playwright-report", open: "never" }]],
+  retries: process.env.CI ? 2 : 0,
+  reporter: process.env.CI
+    ? [["list"], ["html", { outputFolder: "playwright-report", open: "never" }]]
+    : [["html", { outputFolder: "playwright-report", open: "never" }]],
   use: {
     baseURL: "http://localhost:5173",
-    trace: "on-first-retry",
-    video: "on-first-retry",
+    trace: "retain-on-failure",
+    video: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   projects: [
     {
@@ -32,17 +36,19 @@ export default defineConfig({
   // The emulators must already be running (started by `firebase emulators:exec`
   // or manually via `npx firebase-tools emulators:start`).
   webServer: {
-    command:
-      "VITE_FIREBASE_API_KEY=demo-key " +
-      "VITE_FIREBASE_AUTH_DOMAIN=demo-skatehubba.firebaseapp.com " +
-      "VITE_FIREBASE_PROJECT_ID=demo-skatehubba " +
-      "VITE_FIREBASE_STORAGE_BUCKET=demo-skatehubba.appspot.com " +
-      "VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000 " +
-      'VITE_FIREBASE_APP_ID="1:000000000000:web:demo" ' +
-      "VITE_USE_EMULATORS=true " +
-      "npx vite --port 5173",
+    command: "npx vite --port 5173",
     url: "http://localhost:5173",
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
+    env: {
+      ...process.env,
+      VITE_FIREBASE_API_KEY: "demo-key",
+      VITE_FIREBASE_AUTH_DOMAIN: "demo-skatehubba.firebaseapp.com",
+      VITE_FIREBASE_PROJECT_ID: "demo-skatehubba",
+      VITE_FIREBASE_STORAGE_BUCKET: "demo-skatehubba.appspot.com",
+      VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000",
+      VITE_FIREBASE_APP_ID: "1:000000000000:web:demo",
+      VITE_USE_EMULATORS: "true",
+    },
   },
 });

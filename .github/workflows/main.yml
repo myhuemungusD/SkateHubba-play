@@ -64,6 +64,59 @@ jobs:
           path: dist/
           retention-days: 7
 
+  e2e:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        id: e2e_run
+        continue-on-error: true
+        run: npm run test:e2e 2>&1 | tee e2e-output.log
+
+      - name: Dump E2E output to summary
+        if: always()
+        run: |
+          echo "### E2E Test Results" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -E 'passed|failed|timed out|Error|FAIL|PASS|\[diag\]|timeout|✓|✘|›' e2e-output.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No relevant output" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Last 150 lines" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -150 e2e-output.log >> $GITHUB_STEP_SUMMARY 2>/dev/null || true
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if E2E tests failed
+        if: steps.e2e_run.outcome == 'failure'
+        run: exit 1
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            e2e-output.log
+          retention-days: 14
+
   lighthouse:
     needs: build-and-test
     runs-on: ubuntu-latest
