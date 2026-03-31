@@ -35,6 +35,7 @@ vi.mock("../services/games", () => ({
   forfeitExpiredTurn: vi.fn(),
   subscribeToMyGames: vi.fn(() => vi.fn()),
   subscribeToGame: vi.fn(() => vi.fn()),
+  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
 }));
 
 vi.mock("../services/storage", () => ({

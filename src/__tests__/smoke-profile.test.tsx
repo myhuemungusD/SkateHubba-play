@@ -60,6 +60,7 @@ vi.mock("../services/games", () => ({
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
+  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
 }));
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
@@ -106,14 +107,14 @@ const { withGames } = createMockHelpers({
 });
 
 describe("Smoke: Profile Setup", () => {
-  it("shows profile setup when user exists but has no profile", () => {
+  it("shows profile setup when user exists but has no profile", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
     expect(screen.getByText("Pick your handle")).toBeInTheDocument();
   });
 
@@ -124,7 +125,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const usernameInput = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "ab");
@@ -143,7 +144,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const usernameInput = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "coolname");
@@ -161,7 +162,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const usernameInput = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "taken");
@@ -179,7 +180,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     // First advance to step 2 (stance is on step 2)
     const usernameInput = screen.getByPlaceholderText("sk8legend");
@@ -213,7 +214,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile,
     });
-    renderApp();
+    await renderApp();
 
     // Step 1: Username
     const usernameInput = screen.getByPlaceholderText("sk8legend");
@@ -254,7 +255,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "validname");
@@ -273,7 +274,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "validname");
@@ -298,7 +299,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     // Since maxLength=20 on input, we can't type more than 20 chars via userEvent.
     // But the validation at line 56-58 checks normalized.length > 20.
@@ -321,7 +322,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "testuser");
@@ -348,7 +349,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "taken_name");
@@ -373,7 +374,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "ab");
@@ -397,7 +398,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "taken_user");
@@ -417,14 +418,14 @@ describe("Smoke: Profile Setup", () => {
     expect(screen.queryByText("Username is taken")).not.toBeInTheDocument();
   });
 
-  it("profile setup uses displayName as suggested username", () => {
+  it("profile setup uses displayName as suggested username", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false, displayName: "Cool Skater123" },
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     const input = screen.getByPlaceholderText("sk8legend") as HTMLInputElement;
     expect(input.value).toBe("coolskater123");
@@ -439,7 +440,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     // Type valid chars via input
     const input = screen.getByPlaceholderText("sk8legend");
@@ -455,7 +456,7 @@ describe("Smoke: Profile Setup", () => {
       profile: null,
       refreshProfile: vi.fn(),
     });
-    renderApp();
+    await renderApp();
 
     await waitFor(() => expect(screen.getByText("Pick your handle")).toBeInTheDocument());
   });

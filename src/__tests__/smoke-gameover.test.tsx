@@ -60,6 +60,7 @@ vi.mock("../services/games", () => ({
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
+  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
 }));
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
@@ -113,7 +114,7 @@ describe("Smoke: Game Over", () => {
       p1Letters: 2,
       p2Letters: 5,
     });
-    renderVerifiedLobby([game]);
+    await renderVerifiedLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
@@ -132,7 +133,7 @@ describe("Smoke: Game Over", () => {
       p1Letters: 5,
       p2Letters: 1,
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
@@ -145,7 +146,7 @@ describe("Smoke: Game Over", () => {
 
   it("rematch from game over creates a new game", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
-    renderVerifiedLobby([game]);
+    await renderVerifiedLobby([game]);
     withGameSub(game);
     mockCreateGame.mockResolvedValueOnce("game2");
 
@@ -167,7 +168,7 @@ describe("Smoke: Game Over", () => {
 
   it("back to lobby from game over returns to lobby", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
@@ -190,7 +191,7 @@ describe("Smoke: Game Over", () => {
       p1Letters: 1,
       p2Letters: 2,
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
@@ -208,7 +209,7 @@ describe("Smoke: Game Over", () => {
       p1Letters: 1,
       p2Letters: 2,
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
@@ -221,7 +222,7 @@ describe("Smoke: Game Over", () => {
 
   it("transitions to game over when realtime update shows game complete", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    renderLobby([game]);
+    await renderLobby([game]);
 
     // First subscription returns active game, then sends a completed update
     let gameUpdateCb: (g: ReturnType<typeof activeGame>) => void;
@@ -257,7 +258,7 @@ describe("Smoke: Game Over", () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
     // Make createGame hang to show loading state
     mockCreateGame.mockImplementation(() => new Promise(() => {}));
-    renderVerifiedLobby([game]);
+    await renderVerifiedLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
@@ -273,7 +274,7 @@ describe("Smoke: Game Over", () => {
 
   it("game over shows disabled rematch button when email not verified", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
-    renderLobby([game]); // renderLobby uses unverified user
+    await renderLobby([game]); // renderLobby uses unverified user
     withGameSub(game);
 
     await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
@@ -288,7 +289,7 @@ describe("Smoke: Game Over", () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
     const newGame = activeGame({ id: "game2" });
     mockCreateGame.mockResolvedValueOnce("game2");
-    renderVerifiedLobby([game]);
+    await renderVerifiedLobby([game]);
     withGameSub(game);
 
     await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
@@ -316,7 +317,7 @@ describe("Smoke: Game Over", () => {
       cb(game);
       return vi.fn();
     });
-    renderVerifiedLobby([game]);
+    await renderVerifiedLobby([game]);
 
     await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
     await waitFor(() => expect(screen.getByText(/Rematch/)).toBeInTheDocument());
@@ -335,7 +336,7 @@ describe("Smoke: Game Over", () => {
       currentSetter: "u2",
       currentTrickName: "Pop Shove",
     });
-    renderLobby([game]);
+    await renderLobby([game]);
 
     let gameUpdateCb: (g: ReturnType<typeof activeGame>) => void;
     mockSubscribeToGame.mockImplementation((_id: string, cb: (g: ReturnType<typeof activeGame>) => void) => {
