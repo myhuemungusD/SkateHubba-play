@@ -51,13 +51,14 @@ beforeEach(() => {
 
 describe("auth service", () => {
   describe("signUp", () => {
-    it("creates a user and returns the User object", async () => {
-      const user = await signUp("a@b.com", "pass123");
+    it("creates a user and returns the User object with verificationEmailSent", async () => {
+      const result = await signUp("a@b.com", "pass123");
       expect(mockCreateUser).toHaveBeenCalledWith(auth, "a@b.com", "pass123");
-      expect(user).toEqual(mockUserCredential.user);
+      expect(result.user).toEqual(mockUserCredential.user);
+      expect(result.verificationEmailSent).toBe(true);
     });
 
-    it("sends a verification email (fire-and-forget)", async () => {
+    it("sends a verification email and awaits the result", async () => {
       await signUp("a@b.com", "pass123");
       expect(mockSendVerify).toHaveBeenCalledWith(mockUserCredential.user, {
         url: expect.any(String),
@@ -65,11 +66,11 @@ describe("auth service", () => {
       });
     });
 
-    it("swallows verification email errors silently", async () => {
+    it("returns verificationEmailSent=false when email send fails", async () => {
       mockSendVerify.mockRejectedValueOnce(new Error("email quota exceeded"));
-      // signUp should still succeed — the email is fire-and-forget
-      const user = await signUp("a@b.com", "pass123");
-      expect(user).toEqual(mockUserCredential.user);
+      const result = await signUp("a@b.com", "pass123");
+      expect(result.user).toEqual(mockUserCredential.user);
+      expect(result.verificationEmailSent).toBe(false);
     });
   });
 
