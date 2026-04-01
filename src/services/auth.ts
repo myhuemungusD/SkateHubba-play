@@ -46,20 +46,28 @@ export function onAuthChange(cb: (user: User | null) => void) {
   });
 }
 
-export async function signUp(email: string, password: string): Promise<User> {
+export interface SignUpResult {
+  user: User;
+  verificationEmailSent: boolean;
+}
+
+export async function signUp(email: string, password: string): Promise<SignUpResult> {
   logger.info("sign_up_attempt", { email });
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
   logger.info("sign_up_success", { uid: cred.user.uid, email: cred.user.email });
-  // Fire-and-forget verification email — failure is non-blocking (user can
-  // resend from the lobby banner) but we want visibility in Sentry.
-  sendEmailVerification(cred.user, getActionCodeSettings()).catch((err) => {
+  let verificationEmailSent = false;
+  try {
+    await sendEmailVerification(cred.user, getActionCodeSettings());
+    verificationEmailSent = true;
+    logger.info("sign_up_verification_email_sent", { uid: cred.user.uid });
+  } catch (err) {
     logger.error("sign_up_verification_email_failed", {
       uid: cred.user.uid,
       error: getErrorCode(err) || parseFirebaseError(err),
     });
     captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
-  });
-  return cred.user;
+  }
+  return { user: cred.user, verificationEmailSent };
 }
 
 export async function signIn(email: string, password: string): Promise<User> {

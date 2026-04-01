@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { signUp, signIn, resetPassword } from "../services/auth";
+import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
 import { EMAIL_RE, pwStrength, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
@@ -30,6 +30,7 @@ export function AuthScreen({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
+  const [verifyWarning, setVerifyWarning] = useState(false);
   const isSignup = mode === "signup";
   const anyLoading = loading || googleLoading;
 
@@ -49,12 +50,16 @@ export function AuthScreen({
     }
 
     setLoading(true);
-    logger.info("auth_screen_submit", { mode: isSignup ? "signup" : "signin", email: email.trim() });
+    const trimmedEmail = email.trim();
+    logger.info("auth_screen_submit", { mode: isSignup ? "signup" : "signin", email: trimmedEmail });
     try {
       if (isSignup) {
-        await signUp(email, password);
+        const result: SignUpResult = await signUp(trimmedEmail, password);
+        if (!result.verificationEmailSent) {
+          setVerifyWarning(true);
+        }
       } else {
-        await signIn(email, password);
+        await signIn(trimmedEmail, password);
       }
       logger.info("auth_screen_submit_success", { mode: isSignup ? "signup" : "signin" });
       onDone();
@@ -193,6 +198,14 @@ export function AuthScreen({
               onGoogleErrorDismiss();
             }}
           />
+
+          {verifyWarning && (
+            <div className="w-full p-3 rounded-xl bg-[rgba(255,168,0,0.08)] border border-yellow-500/40 mb-4">
+              <span className="font-body text-sm text-yellow-400">
+                Account created but the verification email failed to send. Use the Resend button on the next screen.
+              </span>
+            </div>
+          )}
 
           {resetSent && (
             <div className="w-full p-3 rounded-xl bg-[rgba(0,230,118,0.08)] border border-brand-green mb-4">
