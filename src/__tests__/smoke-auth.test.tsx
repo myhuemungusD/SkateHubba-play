@@ -116,31 +116,32 @@ const { withGames, renderLobby } = createMockHelpers({
 describe("Smoke: Auth", () => {
   it("landing page renders and navigates to age gate then sign-up", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
     expect(screen.getByText("Log in")).toBeInTheDocument();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
-    expect(screen.getByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
 
-    // Pass through age gate
+    // Pass through age gate (lazy-loaded, so waitFor is needed)
     await passAgeGate();
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
   });
 
   it("landing page navigates to sign-in", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Log in"));
-    expect(screen.getByText("Welcome Back")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Welcome Back")).toBeInTheDocument();
+    });
   });
 
   it("sign-up form validates matching passwords", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -161,11 +162,13 @@ describe("Smoke: Auth", () => {
 
     // Start unauthenticated
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile });
-    renderApp();
+    await renderApp();
 
     // Go to sign in
     await userEvent.click(screen.getByText("Log in"));
-    expect(screen.getByText("Welcome Back")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Welcome Back")).toBeInTheDocument();
+    });
 
     // Fill in credentials
     mockSignIn.mockResolvedValueOnce(undefined);
@@ -186,7 +189,7 @@ describe("Smoke: Auth", () => {
     });
   });
 
-  it("shows email verification banner when email not verified", () => {
+  it("shows email verification banner when email not verified", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: authedUser, // emailVerified: false
@@ -194,13 +197,13 @@ describe("Smoke: Auth", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    renderApp();
+    await renderApp();
 
     expect(screen.getByText("VERIFY YOUR EMAIL")).toBeInTheDocument();
     expect(screen.getByText("Resend")).toBeInTheDocument();
   });
 
-  it("hides email verification banner when email is verified", () => {
+  it("hides email verification banner when email is verified", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: verifiedUser,
@@ -208,7 +211,7 @@ describe("Smoke: Auth", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    renderApp();
+    await renderApp();
 
     expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
   });
@@ -222,7 +225,7 @@ describe("Smoke: Auth", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Resend"));
 
@@ -236,7 +239,7 @@ describe("Smoke: Auth", () => {
   it("password reset sends email and shows confirmation", async () => {
     mockResetPassword.mockResolvedValueOnce(undefined);
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Log in"));
 
@@ -253,7 +256,7 @@ describe("Smoke: Auth", () => {
 
   it("shows error for invalid email on sign up", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -271,7 +274,7 @@ describe("Smoke: Auth", () => {
 
   it("shows error for short password on sign up", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -290,7 +293,7 @@ describe("Smoke: Auth", () => {
   it("shows firebase auth error for duplicate email", async () => {
     mockSignUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -311,7 +314,7 @@ describe("Smoke: Auth", () => {
 
   it("toggles from sign-up to sign-in and back", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -329,7 +332,7 @@ describe("Smoke: Auth", () => {
   it("shows error for invalid credentials on sign in", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/invalid-credential" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Log in"));
 
@@ -349,7 +352,7 @@ describe("Smoke: Auth", () => {
   it("shows error for user not found on sign in", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/user-not-found" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Log in"));
 
@@ -368,7 +371,7 @@ describe("Smoke: Auth", () => {
 
   it("sign-in form shows only one password field", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Log in"));
 
@@ -376,29 +379,29 @@ describe("Smoke: Auth", () => {
     expect(passwordFields).toHaveLength(1);
   });
 
-  it("shows spinner while auth is loading", () => {
+  it("shows spinner while auth is loading", async () => {
     mockUseAuth.mockReturnValue({ loading: true, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     expect(screen.getByText(/SKATEHUBBA/)).toBeInTheDocument();
     // Spinner renders an accessible loading status
     expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
   });
 
-  it("shows setup required when firebase is not configured", () => {
+  it("shows setup required when firebase is not configured", async () => {
     // We need to re-mock firebase with firebaseReady=false for this test
     // Since the mock is module-level, we verify the rendered output
     // by checking the firebaseReady guard path exists in App.
     // This is covered by the App.test.tsx spinner test confirming the guard.
     // Here we test that the normal flow works when firebase IS ready.
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
     expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
   });
 
   it("password reset requires email before sending", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Log in"));
 
@@ -409,9 +412,9 @@ describe("Smoke: Auth", () => {
   });
 
   it("sign-up form calls signUp with email and password", async () => {
-    mockSignUp.mockResolvedValueOnce({ uid: "new-uid" });
+    mockSignUp.mockResolvedValueOnce({ user: { uid: "new-uid" }, verificationEmailSent: true });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -432,7 +435,7 @@ describe("Smoke: Auth", () => {
 
   it("error banner can be dismissed", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -455,7 +458,7 @@ describe("Smoke: Auth", () => {
   it("shows weak password error from Firebase", async () => {
     mockSignUp.mockRejectedValueOnce({ code: "auth/weak-password" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -477,7 +480,7 @@ describe("Smoke: Auth", () => {
   it("password reset does not reveal whether email exists when it fails", async () => {
     mockResetPassword.mockRejectedValueOnce(new Error("network error"));
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Log in"));
 
@@ -498,7 +501,7 @@ describe("Smoke: Auth", () => {
       refreshProfile: vi.fn(),
     });
     withGames([]);
-    renderApp();
+    await renderApp();
 
     // Click resend — it should fail but not crash
     const resendBtn = await screen.findByRole("button", { name: /resend/i });
@@ -514,7 +517,7 @@ describe("Smoke: Auth", () => {
   it("shows Google linked message for account-exists-with-different-credential on email auth", async () => {
     mockSignUp.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -534,7 +537,7 @@ describe("Smoke: Auth", () => {
   it("shows invalid credentials for wrong-password error", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/wrong-password" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Log in"));
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
@@ -549,7 +552,7 @@ describe("Smoke: Auth", () => {
   it("shows generic error for non-Error thrown on sign-in", async () => {
     mockSignIn.mockRejectedValueOnce("string error");
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Log in"));
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
@@ -564,7 +567,7 @@ describe("Smoke: Auth", () => {
   it("toggling auth mode clears google error", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce(new Error("OAuth error"));
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
     await waitFor(() => expect(screen.getByText("OAuth error")).toBeInTheDocument());

@@ -117,7 +117,7 @@ describe("Smoke: Google Auth", () => {
   it("Google sign-in popup-closed-by-user is silently ignored", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/popup-closed-by-user" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     const googleBtn = screen.getByRole("button", { name: /continue with google/i });
     await userEvent.click(googleBtn);
@@ -131,7 +131,7 @@ describe("Smoke: Google Auth", () => {
   it("Google sign-in shows error when email linked to password account", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
@@ -143,7 +143,7 @@ describe("Smoke: Google Auth", () => {
   it("Google sign-in shows generic error for other failures", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce(new Error("OAuth error"));
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
@@ -156,7 +156,7 @@ describe("Smoke: Google Auth", () => {
     const redirectUser = { uid: "google-user", email: "g@test.com" };
     mockResolveGoogleRedirect.mockResolvedValueOnce(redirectUser);
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await waitFor(() => {
       expect(mockResolveGoogleRedirect).toHaveBeenCalled();
@@ -166,22 +166,22 @@ describe("Smoke: Google Auth", () => {
   it("handles Google redirect resolution error gracefully", async () => {
     mockResolveGoogleRedirect.mockRejectedValueOnce(new Error("redirect error"));
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
-    // No crash — app still renders
+    // No crash — app navigates to auth screen and shows error
     await waitFor(() => {
-      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
+      expect(screen.getByText("Google sign-in failed. Please try again.")).toBeInTheDocument();
     });
   });
 
   it("handles Google redirect resolution non-Error rejection gracefully", async () => {
     mockResolveGoogleRedirect.mockRejectedValueOnce("string error");
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
-    // No crash — app still renders, String(err) branch is covered
+    // No crash — app navigates to auth screen and shows error, String(err) branch is covered
     await waitFor(() => {
-      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
+      expect(screen.getByText("Google sign-in failed. Please try again.")).toBeInTheDocument();
     });
   });
 
@@ -189,7 +189,7 @@ describe("Smoke: Google Auth", () => {
     const googleUser = { uid: "g1", email: "g@test.com" };
     mockSignInWithGoogle.mockResolvedValueOnce(googleUser);
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
@@ -201,7 +201,7 @@ describe("Smoke: Google Auth", () => {
   it("Google sign-in returns null when redirect is initiated (not completed)", async () => {
     mockSignInWithGoogle.mockResolvedValueOnce(null);
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
@@ -215,7 +215,7 @@ describe("Smoke: Google Auth", () => {
   it("Google sign-in cancelled popup request is silently ignored", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/cancelled-popup-request" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
@@ -227,7 +227,7 @@ describe("Smoke: Google Auth", () => {
   it("Google sign-in non-Error rejection shows fallback message", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce("string error");
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 
@@ -239,7 +239,7 @@ describe("Smoke: Google Auth", () => {
   it("google sign-in generic error on auth screen does not redirect", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     mockSignInWithGoogle.mockRejectedValueOnce(new Error("Network error"));
-    renderApp();
+    await renderApp();
 
     // Navigate to auth screen via age gate
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
@@ -260,7 +260,7 @@ describe("Smoke: Google Auth", () => {
   it("google credential conflict on auth screen does not redirect", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
     await passAgeGate();
@@ -276,7 +276,7 @@ describe("Smoke: Google Auth", () => {
   it("Google sign-in credential conflict from landing redirects to auth screen", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     // Click Google from landing page
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
@@ -291,7 +291,7 @@ describe("Smoke: Google Auth", () => {
   it("Google sign-in generic error from landing redirects to auth screen", async () => {
     mockSignInWithGoogle.mockRejectedValueOnce(new Error("OAuth broke"));
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    renderApp();
+    await renderApp();
 
     await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
 

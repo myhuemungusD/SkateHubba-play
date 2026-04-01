@@ -1,4 +1,27 @@
 import "@testing-library/jest-dom/vitest";
+import React from "react";
+
+// Override React.lazy so lazy-loaded screens resolve synchronously in tests.
+// Without this, every screen transition through React.lazy + Suspense requires
+// async waitFor() calls, breaking 100+ existing synchronous assertions.
+const origLazy = React.lazy;
+
+(React as any).lazy = function eagerLazy(factory: () => Promise<{ default: React.ComponentType<any> }>) {
+  const lazyComponent = origLazy(factory);
+  // Eagerly kick off the factory so the module loads immediately.
+  // Then poke React's internal lazy payload to mark it as resolved
+  // before the component is first rendered, preventing Suspense.
+  factory().then((mod) => {
+    // React lazy internals: _payload._status 1 = resolved, _result = component
+
+    const payload = (lazyComponent as any)._payload;
+    if (payload && payload._status !== 1) {
+      payload._status = 1;
+      payload._result = mod.default;
+    }
+  });
+  return lazyComponent;
+};
 
 // Mock Firebase Messaging — jsdom lacks Service Worker and Push APIs required
 // by the Firebase Messaging SDK, which throws "unsupported-browser" on init.
