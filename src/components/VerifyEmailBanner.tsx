@@ -4,6 +4,7 @@ import { getErrorCode } from "../utils/helpers";
 import { captureException } from "../lib/sentry";
 
 const RESEND_COOLDOWN_S = 60;
+const RATE_LIMIT_COOLDOWN_S = 300;
 const LS_KEY = "skatehubba_resend_cooldown_until";
 
 /** Read remaining cooldown seconds from localStorage (survives page refresh). */
@@ -50,7 +51,9 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
       const code = getErrorCode(err);
       captureException(err, { extra: { context: "VerifyEmailBanner resend" } });
       if (code === "auth/too-many-requests") {
-        setSendError("Too many attempts — wait a few minutes.");
+        writeStoredCooldown(RATE_LIMIT_COOLDOWN_S);
+        setCooldown(RATE_LIMIT_COOLDOWN_S);
+        setSendError("Too many attempts — please wait 5 minutes before retrying.");
       } else {
         setSendError("Failed to send — check your connection.");
       }
