@@ -99,7 +99,7 @@ export function GameOverScreen({
 
   return (
     <div
-      className="min-h-dvh flex flex-col items-center px-6 py-10 overflow-y-auto"
+      className="min-h-dvh flex flex-col items-center px-6 py-10 overflow-y-auto relative"
       style={{
         background: isWinner
           ? "radial-gradient(ellipse at 50% 20%, rgba(0,230,118,0.12) 0%, transparent 50%), radial-gradient(ellipse at 30% 60%, rgba(0,230,118,0.04) 0%, transparent 50%), rgba(10,10,10,0.85)"
@@ -197,6 +197,19 @@ export function GameOverScreen({
             {reported ? "Reported" : "Report opponent"}
           </button>
         </div>
+      </div>
+
+      {/* Brand watermark */}
+      <div className="brand-watermark mt-auto pt-8">
+        <div className="brand-divider flex-1 max-w-[60px]" />
+        <img
+          src="/logonew.webp"
+          alt=""
+          draggable={false}
+          className="h-5 w-auto select-none opacity-60"
+          aria-hidden="true"
+        />
+        <div className="brand-divider flex-1 max-w-[60px]" />
       </div>
 
       {showReport && (

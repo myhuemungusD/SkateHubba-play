@@ -382,10 +382,8 @@ export function Landing({
       {/* ─── Footer ─────────────────────────────────────── */}
       <footer className="border-t border-white/[0.05]">
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex flex-col items-center md:items-start gap-1">
-            <span className="font-display text-sm tracking-[0.2em] text-white/40">
-              SKATEHUBBA<span className="text-white/20">™</span>
-            </span>
+          <div className="flex flex-col items-center md:items-start gap-1.5">
+            <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-7 w-auto select-none opacity-40" />
             <span className="font-body text-xs text-[#333]">Async S.K.A.T.E. One take only.</span>
           </div>
 

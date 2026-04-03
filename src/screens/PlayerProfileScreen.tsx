@@ -255,7 +255,10 @@ export function PlayerProfileScreen({
           <ChevronLeftIcon size={16} />
           <span className="font-body text-xs">Lobby</span>
         </button>
-        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">{headerTitle}</span>
+        <div className="flex items-center gap-2.5">
+          <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-6 w-auto select-none opacity-70" />
+          <span className="font-display text-sm tracking-[0.25em] text-brand-orange">{headerTitle}</span>
+        </div>
         {/* Spacer to center title */}
         <div className="w-16" aria-hidden="true" />
       </div>

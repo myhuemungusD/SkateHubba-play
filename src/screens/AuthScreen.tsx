@@ -106,7 +106,7 @@ export function AuthScreen({
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in">
-        <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-2">SKATEHUBBA™</span>
+        <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-8 w-auto select-none mb-4" />
         <h2 className="font-display text-fluid-3xl text-white mb-1">{isSignup ? "Create Account" : "Welcome Back"}</h2>
         <p className="font-body text-sm text-[#888] mb-7">
           {isSignup ? "Join the crew. It's free." : "Sign in to continue your games."}

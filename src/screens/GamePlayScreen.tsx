@@ -154,13 +154,16 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/80 pb-10">
       <div className="px-5 py-4 border-b border-white/[0.04] glass flex justify-between items-center">
-        <button
-          type="button"
-          onClick={onBack}
-          className="font-body text-sm text-muted hover:text-white transition-colors duration-300 rounded-lg py-1 px-1 -ml-1"
-        >
-          ← Games
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="font-body text-sm text-muted hover:text-white transition-colors duration-300 rounded-lg py-1 px-1 -ml-1"
+          >
+            ← Games
+          </button>
+          <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-6 w-auto select-none opacity-60" />
+        </div>
         <div className="flex items-center gap-3">
           <Timer deadline={deadline} />
           <button

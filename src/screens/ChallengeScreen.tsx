@@ -78,6 +78,7 @@ export function ChallengeScreen({
           ← Back
         </button>
 
+        <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-7 w-auto select-none mb-5" />
         <h1 className="font-display text-fluid-4xl text-white mb-2">Challenge</h1>
         <p className="font-body text-sm text-[#888] mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 

@@ -90,7 +90,7 @@ export function AgeGate({
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in text-center">
-          <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-4">SKATEHUBBA™</span>
+          <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-8 w-auto select-none mb-5" />
           <h2 className="font-display text-3xl text-white mb-3">Sorry!</h2>
           <p className="font-body text-sm text-[#888] mb-6 leading-relaxed">
             You must be at least {MIN_AGE} years old to use SkateHubba. This is required by the Children&apos;s Online
@@ -108,7 +108,7 @@ export function AgeGate({
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in">
-        <span className="font-display text-sm tracking-[0.3em] text-brand-orange block mb-2">SKATEHUBBA™</span>
+        <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-8 w-auto select-none mb-4" />
         <h2 className="font-display text-3xl text-white mb-1">Verify Your Age</h2>
         <p className="font-body text-sm text-[#888] mb-7">
           We need your date of birth to comply with U.S. privacy laws (COPPA &amp; CCPA).
