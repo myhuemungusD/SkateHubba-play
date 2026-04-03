@@ -107,7 +107,7 @@ export function Lobby({
     <div className="min-h-dvh bg-[#0A0A0A]/40 pb-24">
       {/* Header */}
       <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-2xl mx-auto">
-        <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-7 w-auto select-none" />
+        <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
         <div className="flex items-center gap-2.5">
           <button
             type="button"
@@ -506,15 +506,9 @@ export function Lobby({
 
         {/* Brand watermark */}
         <div className="brand-watermark mt-6">
-          <div className="brand-divider flex-1 max-w-[60px]" />
-          <img
-            src="/logonew.webp"
-            alt=""
-            draggable={false}
-            className="h-5 w-auto select-none opacity-60"
-            aria-hidden="true"
-          />
-          <div className="brand-divider flex-1 max-w-[60px]" />
+          <div className="brand-divider flex-1 max-w-16" />
+          <img src="/logonew.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
+          <div className="brand-divider flex-1 max-w-16" />
         </div>
       </div>
 

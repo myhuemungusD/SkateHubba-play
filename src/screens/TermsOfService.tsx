@@ -10,7 +10,7 @@ export function TermsOfService({ onBack }: { onBack: () => void }) {
         <Btn onClick={onBack} variant="ghost" className="shrink-0">
           ← Back
         </Btn>
-        <span className="font-display text-lg tracking-wider text-brand-orange">SKATEHUBBA™</span>
+        <img src="/logonew.webp" alt="" draggable={false} className="h-6 w-auto select-none" aria-hidden="true" />
       </div>
 
       <article className="max-w-2xl mx-auto px-5 py-8">

@@ -235,8 +235,6 @@ export function PlayerProfileScreen({
     );
   }
 
-  const headerTitle = isOwnProfile ? "MY RECORD" : `@${profile.username.toUpperCase()}'S RECORD`;
-
   return (
     <div
       className="min-h-dvh pb-24 overflow-y-auto"
@@ -255,11 +253,14 @@ export function PlayerProfileScreen({
           <ChevronLeftIcon size={16} />
           <span className="font-body text-xs">Lobby</span>
         </button>
-        <div className="flex items-center gap-2.5">
-          <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-6 w-auto select-none opacity-70" />
-          <span className="font-display text-sm tracking-[0.25em] text-brand-orange">{headerTitle}</span>
-        </div>
-        {/* Spacer to center title */}
+        <img
+          src="/logonew.webp"
+          alt=""
+          draggable={false}
+          className="h-5 w-auto select-none opacity-40"
+          aria-hidden="true"
+        />
+        {/* Spacer to center logo */}
         <div className="w-16" aria-hidden="true" />
       </div>
 

@@ -383,7 +383,13 @@ export function Landing({
       <footer className="border-t border-white/[0.05]">
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex flex-col items-center md:items-start gap-1.5">
-            <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-7 w-auto select-none opacity-40" />
+            <img
+              src="/logonew.webp"
+              alt=""
+              draggable={false}
+              className="h-6 w-auto select-none opacity-40"
+              aria-hidden="true"
+            />
             <span className="font-body text-xs text-[#333]">Async S.K.A.T.E. One take only.</span>
           </div>
 

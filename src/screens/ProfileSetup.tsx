@@ -420,7 +420,7 @@ export function ProfileSetup({
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in" onKeyDown={handleKeyDown}>
-        <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-7 w-auto select-none mb-6" />
+        <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-6" aria-hidden="true" />
         <ProgressBar step={step} />
 
         <form

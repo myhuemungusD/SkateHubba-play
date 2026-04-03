@@ -68,17 +68,28 @@ export function ChallengeScreen({
   };
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0A]/80 px-6 pt-6">
-      <div className="max-w-md mx-auto">
+    <div className="min-h-dvh bg-[#0A0A0A]/80">
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-white/[0.04] glass flex justify-between items-center mb-6">
         <button
           type="button"
           onClick={onBack}
-          className="font-body text-sm text-muted hover:text-white mb-6 flex items-center gap-1.5 transition-colors duration-300 rounded-lg py-1 -ml-1 px-1"
+          className="font-body text-sm text-muted hover:text-white flex items-center gap-1.5 transition-colors duration-300 rounded-lg py-1 -ml-1 px-1"
         >
           ← Back
         </button>
+        <img
+          src="/logonew.webp"
+          alt=""
+          draggable={false}
+          className="h-5 w-auto select-none opacity-40"
+          aria-hidden="true"
+        />
+        {/* Spacer to center logo */}
+        <div className="w-14" aria-hidden="true" />
+      </div>
 
-        <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-7 w-auto select-none mb-5" />
+      <div className="max-w-md mx-auto px-6">
         <h1 className="font-display text-fluid-4xl text-white mb-2">Challenge</h1>
         <p className="font-body text-sm text-[#888] mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 

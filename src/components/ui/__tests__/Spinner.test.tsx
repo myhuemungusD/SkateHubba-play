@@ -11,6 +11,7 @@ describe("Spinner", () => {
 
   it("displays brand logo", () => {
     render(<Spinner />);
-    expect(screen.getByAltText("SkateHubba")).toBeInTheDocument();
+    const logo = screen.getByRole("status").querySelector('img[src="/logonew.webp"]');
+    expect(logo).toBeInTheDocument();
   });
 });

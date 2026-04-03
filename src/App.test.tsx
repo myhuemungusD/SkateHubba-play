@@ -89,7 +89,7 @@ describe("App", () => {
       refreshProfile: vi.fn(),
     });
     renderApp();
-    expect(screen.getByAltText("SkateHubba")).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
   });
 
   it("shows the landing page when not authenticated", async () => {
