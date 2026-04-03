@@ -119,7 +119,7 @@ When something breaks, work through this in order:
 | `src/services/auth.ts`    | Google OAuth uses popup with redirect fallback (Safari/mobile compatibility)                           |
 | `src/services/storage.ts` | Video upload/download. WebM (web) and MP4 (native/Capacitor), 1KB–50MB. Retry with exponential backoff |
 | `firestore.rules`         | The real backend. Enforces turn order, score increments, timer, rate limits                            |
-| `storage.rules`           | Only `set.webm` or `match.webm` filenames. Content-type must be `video/webm`                           |
+| `storage.rules`           | `set` or `match` filenames with `.webm` (web) or `.mp4` (native). Content-type must match extension    |
 | `vercel.json`             | CSP headers, HSTS, SPA rewrites, domain redirects. Touch carefully                                     |
 
 ---
