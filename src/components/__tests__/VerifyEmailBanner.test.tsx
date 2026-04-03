@@ -62,6 +62,27 @@ describe("VerifyEmailBanner", () => {
     });
   });
 
+  it("applies 5-minute cooldown on auth/too-many-requests", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockResendVerification.mockRejectedValueOnce({ code: "auth/too-many-requests" });
+    render(<VerifyEmailBanner emailVerified={false} />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByText("Resend"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Too many attempts — please wait 5 minutes before retrying.")).toBeInTheDocument();
+      expect(screen.getByText("300s")).toBeInTheDocument();
+      expect(screen.getByRole("button")).toBeDisabled();
+    });
+
+    // Cooldown persisted to localStorage
+    expect(localStorage.getItem("skatehubba_resend_cooldown_until")).toBeTruthy();
+
+    vi.useRealTimers();
+  });
+
   it("persists cooldown in localStorage across remounts", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockResendVerification.mockResolvedValueOnce(undefined);
