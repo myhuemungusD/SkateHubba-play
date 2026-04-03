@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { resendVerification } from "../services/auth";
+import { getErrorCode } from "../utils/helpers";
+import { captureException } from "../lib/sentry";
 
 const RESEND_COOLDOWN_S = 60;
 const LS_KEY = "skatehubba_resend_cooldown_until";
@@ -27,7 +29,7 @@ function writeStoredCooldown(seconds: number): void {
 export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(readStoredCooldown);
-  const [sendError, setSendError] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -39,26 +41,32 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
 
   const handleResend = async () => {
     setSending(true);
-    setSendError(false);
+    setSendError(null);
     try {
       await resendVerification();
       writeStoredCooldown(RESEND_COOLDOWN_S);
       setCooldown(RESEND_COOLDOWN_S);
-    } catch {
-      setSendError(true);
+    } catch (err) {
+      const code = getErrorCode(err);
+      captureException(err, { extra: { context: "VerifyEmailBanner resend" } });
+      if (code === "auth/too-many-requests") {
+        setSendError("Too many attempts — wait a few minutes.");
+      } else {
+        setSendError("Failed to send — check your connection.");
+      }
     } finally {
       setSending(false);
     }
   };
 
-  const btnLabel = sending ? "..." : cooldown > 0 ? `${cooldown}s` : sendError ? "Retry" : "Resend";
+  const btnLabel = sending ? "..." : cooldown > 0 ? `${cooldown}s` : sendError !== null ? "Retry" : "Resend";
 
   return (
     <div className="mx-5 mt-4 p-3.5 rounded-2xl bg-[rgba(255,107,0,0.06)] border border-brand-orange/40 flex items-center justify-between gap-3 shadow-[0_0_16px_rgba(255,107,0,0.06)] animate-fade-in">
       <div>
         <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
         <span className="font-body text-xs text-[#888]">
-          {sendError ? "Failed to send — check your connection." : "Check your inbox for the verification link."}
+          {sendError ?? "Check your inbox for the verification link."}
         </span>
       </div>
       <button

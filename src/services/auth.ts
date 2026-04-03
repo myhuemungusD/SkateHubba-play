@@ -61,11 +61,27 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
     verificationEmailSent = true;
     logger.info("sign_up_verification_email_sent", { uid: cred.user.uid });
   } catch (err) {
-    logger.error("sign_up_verification_email_failed", {
-      uid: cred.user.uid,
-      error: getErrorCode(err) || parseFirebaseError(err),
-    });
-    captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
+    const code = getErrorCode(err);
+    // Retry without actionCodeSettings if the continue-URI is rejected
+    if (code === "auth/unauthorized-continue-uri" || code === "auth/invalid-continue-uri") {
+      try {
+        await sendEmailVerification(cred.user);
+        verificationEmailSent = true;
+        logger.info("sign_up_verification_email_sent_fallback", { uid: cred.user.uid });
+      } catch (retryErr) {
+        logger.error("sign_up_verification_email_failed", {
+          uid: cred.user.uid,
+          error: getErrorCode(retryErr) || parseFirebaseError(retryErr),
+        });
+        captureException(retryErr, { extra: { context: "sendEmailVerification on sign-up (fallback)" } });
+      }
+    } else {
+      logger.error("sign_up_verification_email_failed", {
+        uid: cred.user.uid,
+        error: code || parseFirebaseError(err),
+      });
+      captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
+    }
   }
   return { user: cred.user, verificationEmailSent };
 }
@@ -113,13 +129,27 @@ export async function reloadUser(): Promise<boolean | null> {
 
 export async function resendVerification(): Promise<void> {
   const user = requireAuth().currentUser;
-  if (user) {
-    logger.info("resend_verification", { uid: user.uid });
-    await sendEmailVerification(user, getActionCodeSettings());
-    logger.info("resend_verification_sent", { uid: user.uid });
-  } else {
+  if (!user) {
     logger.warn("resend_verification_no_user");
+    return;
   }
+  logger.info("resend_verification", { uid: user.uid });
+  try {
+    await sendEmailVerification(user, getActionCodeSettings());
+  } catch (err) {
+    const code = getErrorCode(err);
+    logger.warn("resend_verification_with_settings_failed", { uid: user.uid, code });
+    // If the continue-URI is rejected (not in Firebase authorized domains)
+    // or invalid, retry without actionCodeSettings — Firebase will use its
+    // default redirect URL (the firebaseapp.com handler).
+    if (code === "auth/unauthorized-continue-uri" || code === "auth/invalid-continue-uri") {
+      await sendEmailVerification(user);
+      logger.info("resend_verification_sent_fallback", { uid: user.uid });
+      return;
+    }
+    throw err;
+  }
+  logger.info("resend_verification_sent", { uid: user.uid });
 }
 
 function makeGoogleProvider(): GoogleAuthProvider {
