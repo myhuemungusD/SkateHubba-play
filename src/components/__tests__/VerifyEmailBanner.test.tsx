@@ -7,6 +7,13 @@ const mockResendVerification = vi.fn();
 vi.mock("../../services/auth", () => ({
   resendVerification: (...args: unknown[]) => mockResendVerification(...args),
 }));
+vi.mock("../../utils/helpers", () => ({
+  getErrorCode: (err: unknown) => (err as { code?: string })?.code ?? null,
+  parseFirebaseError: (err: unknown) => (err as Error)?.message ?? "Unknown error",
+}));
+vi.mock("../../lib/sentry", () => ({
+  captureException: vi.fn(),
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();

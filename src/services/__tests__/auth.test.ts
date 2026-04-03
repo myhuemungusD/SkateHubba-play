@@ -72,6 +72,16 @@ describe("auth service", () => {
       expect(result.user).toEqual(mockUserCredential.user);
       expect(result.verificationEmailSent).toBe(false);
     });
+
+    it("retries without actionCodeSettings on unauthorized-continue-uri", async () => {
+      const uriError = Object.assign(new Error("unauthorized"), { code: "auth/unauthorized-continue-uri" });
+      mockSendVerify.mockRejectedValueOnce(uriError).mockResolvedValueOnce(undefined);
+      const result = await signUp("a@b.com", "pass123");
+      expect(result.verificationEmailSent).toBe(true);
+      expect(mockSendVerify).toHaveBeenCalledTimes(2);
+      // Second call should be without actionCodeSettings
+      expect(mockSendVerify.mock.calls[1]).toEqual([mockUserCredential.user]);
+    });
   });
 
   describe("signIn", () => {
@@ -116,6 +126,21 @@ describe("auth service", () => {
       (auth as unknown as { currentUser: unknown }).currentUser = null;
       await resendVerification();
       expect(mockSendVerify).not.toHaveBeenCalled();
+    });
+
+    it("falls back to no actionCodeSettings on unauthorized-continue-uri", async () => {
+      (auth as unknown as { currentUser: unknown }).currentUser = { uid: "u1" };
+      const uriError = Object.assign(new Error("unauthorized"), { code: "auth/unauthorized-continue-uri" });
+      mockSendVerify.mockRejectedValueOnce(uriError).mockResolvedValueOnce(undefined);
+      await resendVerification();
+      expect(mockSendVerify).toHaveBeenCalledTimes(2);
+      expect(mockSendVerify.mock.calls[1]).toEqual([{ uid: "u1" }]);
+    });
+
+    it("rethrows non-URI errors", async () => {
+      (auth as unknown as { currentUser: unknown }).currentUser = { uid: "u1" };
+      mockSendVerify.mockRejectedValueOnce(Object.assign(new Error("rate"), { code: "auth/too-many-requests" }));
+      await expect(resendVerification()).rejects.toThrow("rate");
     });
   });
 
