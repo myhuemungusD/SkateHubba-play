@@ -140,7 +140,7 @@ export function Landing({
 
           {/* Subtitle */}
           <p className="font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
-            Async S.K.A.T.E. No edits. No excuses. Film your trick and put up or shut up.
+            The first async S.K.A.T.E. game. No edits. No excuses. For the love of the game.
           </p>
 
           {/* Auth Buttons */}
@@ -390,7 +390,7 @@ export function Landing({
               className="h-6 w-auto select-none opacity-40"
               aria-hidden="true"
             />
-            <span className="font-body text-xs text-[#333]">Async S.K.A.T.E. One take only.</span>
+            <span className="font-body text-xs text-[#333]">For the love of the game.</span>
           </div>
 
           {/* Social Links */}
