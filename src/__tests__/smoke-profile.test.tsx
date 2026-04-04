@@ -259,9 +259,13 @@ describe("Smoke: Profile Setup", () => {
     const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "validname");
 
-    await waitFor(() => {
-      expect(screen.getByText("Could not check username — try again")).toBeInTheDocument();
-    });
+    // The component retries once after 1.5s before surfacing the error
+    await waitFor(
+      () => {
+        expect(screen.getByText("Could not check username — try again")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
   });
 
   it("shows error when profile creation fails", async () => {

@@ -337,10 +337,21 @@ export function ProfileSetup({
         if (checkRef.current === id) setAvailable(ok);
         /* v8 ignore stop */
       } catch {
+        // After Google sign-in the Firestore SDK may not have the auth token
+        // yet, causing a transient permission-denied. Retry once after a short
+        // delay before surfacing the error to the user.
         /* v8 ignore start -- debounce guard; same race condition as above */
-        if (checkRef.current === id) {
-          setAvailable(null);
-          setError("Could not check username — try again");
+        if (checkRef.current !== id) return;
+        try {
+          await new Promise((r) => setTimeout(r, 1500));
+          if (checkRef.current !== id) return;
+          const ok = await isUsernameAvailable(normalized);
+          if (checkRef.current === id) setAvailable(ok);
+        } catch {
+          if (checkRef.current === id) {
+            setAvailable(null);
+            setError("Could not check username — try again");
+          }
         }
         /* v8 ignore stop */
       }

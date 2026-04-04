@@ -30,7 +30,7 @@ const FIRESTORE_HANDLED_TYPES = new Set(["your_turn", "new_challenge", "game_won
  * Must be rendered inside both GameProvider and NotificationProvider.
  */
 export function GameNotificationWatcher() {
-  const { user } = useAuthContext();
+  const { user, activeProfile } = useAuthContext();
   const { games, activeGame } = useGameContext();
   const { notify } = useNotifications();
 
@@ -204,8 +204,11 @@ export function GameNotificationWatcher() {
   }, [uid, games, activeGame, notify]);
 
   // ── Listen for incoming nudges (via services layer) ──
+  // Guard on activeProfile so listeners don't start during profile setup
+  // (the user has a uid but no Firestore profile yet, which triggers
+  // permission-denied errors on the nudges/notifications collections).
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || !activeProfile) return;
 
     try {
       const unsub = subscribeToNudges(uid, (nudge) => {
@@ -221,11 +224,11 @@ export function GameNotificationWatcher() {
     } catch {
       // Firestore not initialized (e.g. in tests) — skip nudge listener
     }
-  }, [uid, notify]);
+  }, [uid, activeProfile, notify]);
 
   // ── Watch notifications collection (via services layer) ──
   useEffect(() => {
-    if (!uid) return;
+    if (!uid || !activeProfile) return;
 
     try {
       const unsub = subscribeToNotifications(uid, (notif) => {
@@ -242,7 +245,7 @@ export function GameNotificationWatcher() {
     } catch {
       // Firestore not initialized — skip
     }
-  }, [uid, notify]);
+  }, [uid, activeProfile, notify]);
 
   // ── Handle deep-link from service worker notification tap ──
   useEffect(() => {
