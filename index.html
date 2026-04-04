@@ -5,7 +5,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://apis.google.com https://www.gstatic.com https://www.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://firestore.googleapis.com https://firebasestorage.googleapis.com https://*.firebasestorage.app https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firebaseinstallations.googleapis.com https://fcm.googleapis.com https://fcmregistrations.googleapis.com https://vitals.vercel-insights.com https://*.sentry.io wss://*.firebaseio.com; frame-src 'self' https://accounts.google.com https://*.firebaseapp.com https://www.google.com; img-src 'self' data: blob: https://firebasestorage.googleapis.com https://*.firebasestorage.app https://lh3.googleusercontent.com; media-src 'self' blob: https://firebasestorage.googleapis.com https://*.firebasestorage.app; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://*.firebaseapp.com; upgrade-insecure-requests" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0A0A0A" />
-    <meta name="description" content="SkateHubba™ — The first async S.K.A.T.E. trick battle game. Set tricks. Match tricks. One take only." />
+    <meta name="description" content="SkateHubba™ — The first async S.K.A.T.E. trick battle game. For the love of the game." />
     <title>SkateHubba™ S.K.A.T.E.</title>
     <link rel="canonical" href="https://skatehubba.com/" />
     <link rel="icon" href="/logoblack.png" type="image/png" />
@@ -21,8 +21,8 @@
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://skatehubba.com" />
-    <meta property="og:title" content="SkateHubba™ — Async S.K.A.T.E. Trick Battles" />
-    <meta property="og:description" content="The first async S.K.A.T.E. trick battle game. Set tricks. Match tricks. One take only." />
+    <meta property="og:title" content="SkateHubba™ — For the Love of the Game" />
+    <meta property="og:description" content="The first async S.K.A.T.E. trick battle game. For the love of the game." />
     <meta property="og:site_name" content="SkateHubba" />
     <meta property="og:image" content="https://skatehubba.com/logonew.png" />
     <meta property="og:image:width" content="1536" />
@@ -30,14 +30,17 @@
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="SkateHubba™ — Async S.K.A.T.E. Trick Battles" />
-    <meta name="twitter:description" content="The first async S.K.A.T.E. trick battle game. Set tricks. Match tricks. One take only." />
+    <meta name="twitter:title" content="SkateHubba™ — For the Love of the Game" />
+    <meta name="twitter:description" content="The first async S.K.A.T.E. trick battle game. For the love of the game." />
     <meta name="twitter:image" content="https://skatehubba.com/logonew.png" />
 
     <!-- Firebase -->
     <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://identitytoolkit.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin />
+
+    <!-- Brand logo (critical for first paint) -->
+    <link rel="preload" href="/logonew.webp" as="image" type="image/webp" />
 
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -52,7 +55,7 @@
       "name": "SkateHubba",
       "alternateName": "SkateHubba S.K.A.T.E.",
       "url": "https://skatehubba.com",
-      "description": "The first async S.K.A.T.E. trick battle game. Set tricks. Match tricks. One take only.",
+      "description": "The first async S.K.A.T.E. trick battle game. For the love of the game.",
       "applicationCategory": "GameApplication",
       "operatingSystem": "Any",
       "browserRequirements": "Requires a modern browser with camera access",

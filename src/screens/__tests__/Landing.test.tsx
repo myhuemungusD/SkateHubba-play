@@ -79,7 +79,7 @@ describe("Landing", () => {
 
   it("renders hero subtitle", () => {
     render(<Landing {...defaultProps} />);
-    expect(screen.getAllByText(/Async S\.K\.A\.T\.E\./).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/For the love of the game/).length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders free to play badge", () => {
@@ -87,10 +87,10 @@ describe("Landing", () => {
     expect(screen.getByText("Free to play")).toBeInTheDocument();
   });
 
-  it("renders SET IT. MATCH IT. headline", () => {
+  it("renders FOR THE LOVE OF THE GAME headline", () => {
     render(<Landing {...defaultProps} />);
-    expect(screen.getByText("SET IT. MATCH IT.")).toBeInTheDocument();
-    expect(screen.getByText("ONE TAKE.")).toBeInTheDocument();
+    expect(screen.getByText("FOR THE LOVE")).toBeInTheDocument();
+    expect(screen.getByText("OF THE GAME.")).toBeInTheDocument();
   });
 
   it("calls onNav for privacy link", async () => {

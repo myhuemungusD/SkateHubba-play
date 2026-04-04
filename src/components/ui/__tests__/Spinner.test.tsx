@@ -9,8 +9,9 @@ describe("Spinner", () => {
     expect(el).toHaveAttribute("aria-label", "Loading");
   });
 
-  it("displays brand name", () => {
+  it("displays brand logo", () => {
     render(<Spinner />);
-    expect(screen.getByText(/SKATEHUBBA/)).toBeInTheDocument();
+    const logo = screen.getByRole("status").querySelector('img[src="/logonew.webp"]');
+    expect(logo).toBeInTheDocument();
   });
 });

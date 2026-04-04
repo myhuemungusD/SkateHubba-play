@@ -129,18 +129,18 @@ export function Landing({
             className="font-display tracking-wide text-white mb-5 leading-[0.9]"
             style={{ fontSize: "clamp(3rem, 2.2rem + 4.5vw, 6.5rem)" }}
           >
-            <span className="block">SET IT. MATCH IT.</span>
+            <span className="block">FOR THE LOVE</span>
             <span
               className="block text-brand-orange"
               style={{ textShadow: "0 0 60px rgba(255,107,0,0.35), 0 0 120px rgba(255,107,0,0.15)" }}
             >
-              ONE TAKE.
+              OF THE GAME.
             </span>
           </h1>
 
           {/* Subtitle */}
           <p className="font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
-            Async S.K.A.T.E. No edits. No excuses. Film your trick and put up or shut up.
+            The first async S.K.A.T.E. game. No edits. No excuses. For the love of the game.
           </p>
 
           {/* Auth Buttons */}
@@ -382,11 +382,15 @@ export function Landing({
       {/* ─── Footer ─────────────────────────────────────── */}
       <footer className="border-t border-white/[0.05]">
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex flex-col items-center md:items-start gap-1">
-            <span className="font-display text-sm tracking-[0.2em] text-white/40">
-              SKATEHUBBA<span className="text-white/20">™</span>
-            </span>
-            <span className="font-body text-xs text-[#333]">Async S.K.A.T.E. One take only.</span>
+          <div className="flex flex-col items-center md:items-start gap-1.5">
+            <img
+              src="/logonew.webp"
+              alt=""
+              draggable={false}
+              className="h-6 w-auto select-none opacity-40"
+              aria-hidden="true"
+            />
+            <span className="font-body text-xs text-[#333]">For the love of the game.</span>
           </div>
 
           {/* Social Links */}

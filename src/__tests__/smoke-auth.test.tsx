@@ -380,9 +380,9 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: true, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    expect(screen.getByText(/SKATEHUBBA/)).toBeInTheDocument();
-    // Spinner renders an accessible loading status
+    // Spinner renders an accessible loading status with brand logo
     expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
+    expect(screen.getByRole("status").querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
   });
 
   it("shows setup required when firebase is not configured", () => {
