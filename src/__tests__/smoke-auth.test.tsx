@@ -118,12 +118,12 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
+    expect(await screen.findByText("QUIT SCROLLING.")).toBeInTheDocument();
     expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
     expect(screen.getByText("Log in")).toBeInTheDocument();
 
     await userEvent.click(screen.getByText("Sign In / Sign Up"));
-    expect(screen.getByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
 
     // Pass through age gate
     await passAgeGate();
@@ -134,15 +134,15 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    await userEvent.click(screen.getByText("Log in"));
-    expect(screen.getByText("Welcome Back")).toBeInTheDocument();
+    await userEvent.click(await screen.findByText("Log in"));
+    expect(await screen.findByText("Welcome Back")).toBeInTheDocument();
   });
 
   it("sign-up form validates matching passwords", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    await userEvent.click(screen.getByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -164,8 +164,8 @@ describe("Smoke: Auth", () => {
     renderApp();
 
     // Go to sign in
-    await userEvent.click(screen.getByText("Log in"));
-    expect(screen.getByText("Welcome Back")).toBeInTheDocument();
+    await userEvent.click(await screen.findByText("Log in"));
+    expect(await screen.findByText("Welcome Back")).toBeInTheDocument();
 
     // Fill in credentials
     mockSignIn.mockResolvedValueOnce(undefined);
@@ -186,7 +186,7 @@ describe("Smoke: Auth", () => {
     });
   });
 
-  it("shows email verification banner when email not verified", () => {
+  it("shows email verification banner when email not verified", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: authedUser, // emailVerified: false
@@ -196,11 +196,11 @@ describe("Smoke: Auth", () => {
     withGames([]);
     renderApp();
 
-    expect(screen.getByText("VERIFY YOUR EMAIL")).toBeInTheDocument();
+    expect(await screen.findByText("VERIFY YOUR EMAIL")).toBeInTheDocument();
     expect(screen.getByText("Resend")).toBeInTheDocument();
   });
 
-  it("hides email verification banner when email is verified", () => {
+  it("hides email verification banner when email is verified", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: verifiedUser,
@@ -210,6 +210,8 @@ describe("Smoke: Auth", () => {
     withGames([]);
     renderApp();
 
+    // Wait for lazy-loaded lobby to render before asserting absence
+    await screen.findByText(/Challenge Someone/);
     expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
   });
 

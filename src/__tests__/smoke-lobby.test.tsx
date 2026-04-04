@@ -106,30 +106,30 @@ const { withGames, withGameSub, renderLobby, renderVerifiedLobby } = createMockH
 });
 
 describe("Smoke: Lobby", () => {
-  it("shows lobby with active games", () => {
+  it("shows lobby with active games", async () => {
     const game = activeGame();
     renderLobby([game]);
 
-    expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
+    expect(await screen.findByText(/@sk8r/i)).toBeInTheDocument();
     expect(screen.getByText("Your Games")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
     expect(screen.getByText("Your turn to set")).toBeInTheDocument();
   });
 
-  it("shows empty state when no games exist", () => {
+  it("shows empty state when no games exist", async () => {
     renderLobby([]);
-    expect(screen.getByText(/No games yet/)).toBeInTheDocument();
+    expect(await screen.findByText(/No games yet/)).toBeInTheDocument();
   });
 
-  it("displays correct letter counts in lobby", () => {
+  it("displays correct letter counts in lobby", async () => {
     const game = activeGame({ p1Letters: 2, p2Letters: 3 });
     renderLobby([game]);
 
     // The lobby should show the game card
-    expect(screen.getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
   });
 
-  it("sorts active games before completed games", () => {
+  it("sorts active games before completed games", async () => {
     const active1 = activeGame({ id: "g1", turnNumber: 3 });
     const completed = activeGame({
       id: "g2",
@@ -140,25 +140,25 @@ describe("Smoke: Lobby", () => {
     });
     renderLobby([active1, completed]);
 
-    expect(screen.getByText("ACTIVE")).toBeInTheDocument();
+    expect(await screen.findByText("ACTIVE")).toBeInTheDocument();
     expect(screen.getByText("COMPLETED")).toBeInTheDocument();
   });
 
-  it("lobby shows 'Waiting on opponent' for non-turn games", () => {
+  it("lobby shows 'Waiting on opponent' for non-turn games", async () => {
     const game = activeGame({ currentTurn: "u2" });
     renderLobby([game]);
 
-    expect(screen.getByText("They're setting a trick")).toBeInTheDocument();
+    expect(await screen.findByText("They're setting a trick")).toBeInTheDocument();
   });
 
-  it("lobby shows PLAY badge when it's your turn", () => {
+  it("lobby shows PLAY badge when it's your turn", async () => {
     const game = activeGame({ currentTurn: "u1" });
     renderLobby([game]);
 
-    expect(screen.getByText("PLAY")).toBeInTheDocument();
+    expect(await screen.findByText("PLAY")).toBeInTheDocument();
   });
 
-  it("lobby shows forfeit label on completed forfeit game", () => {
+  it("lobby shows forfeit label on completed forfeit game", async () => {
     const game = activeGame({
       status: "forfeit",
       winner: "u1",
@@ -167,7 +167,7 @@ describe("Smoke: Lobby", () => {
     });
     renderLobby([game]);
 
-    expect(screen.getByText(/forfeit/i)).toBeInTheDocument();
+    expect(await screen.findByText(/forfeit/i)).toBeInTheDocument();
   });
 
   it("opens game via keyboard Enter on active game card", async () => {
@@ -180,7 +180,7 @@ describe("Smoke: Lobby", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    const gameCard = screen.getByRole("button", { name: /vs @rival/i });
+    const gameCard = await screen.findByRole("button", { name: /vs @rival/i });
     gameCard.focus();
     await userEvent.keyboard("{Enter}");
 
@@ -194,7 +194,7 @@ describe("Smoke: Lobby", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    const gameCard = screen.getByRole("button", { name: /vs @rival/i });
+    const gameCard = await screen.findByRole("button", { name: /vs @rival/i });
     gameCard.focus();
     await userEvent.keyboard(" ");
 
@@ -203,9 +203,9 @@ describe("Smoke: Lobby", () => {
     });
   });
 
-  it("challenge button is disabled when email is not verified", () => {
+  it("challenge button is disabled when email is not verified", async () => {
     renderLobby([]); // uses unverified user
-    const btn = screen.getByText(/Challenge Someone/);
+    const btn = await screen.findByText(/Challenge Someone/);
     expect(btn.closest("button")).toBeDisabled();
     expect(screen.getByText("Verify your email to start challenging")).toBeInTheDocument();
   });
@@ -220,7 +220,7 @@ describe("Smoke: Lobby", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    const gameCard = screen.getByRole("button", { name: /vs @rival/i });
+    const gameCard = await screen.findByRole("button", { name: /vs @rival/i });
     gameCard.focus();
     await userEvent.keyboard(" ");
 
@@ -233,7 +233,7 @@ describe("Smoke: Lobby", () => {
     const game = activeGame();
     renderLobby([game]);
 
-    const gameCard = screen.getByRole("button", { name: /vs @rival/i });
+    const gameCard = await screen.findByRole("button", { name: /vs @rival/i });
     gameCard.focus();
     await userEvent.keyboard("a");
 
