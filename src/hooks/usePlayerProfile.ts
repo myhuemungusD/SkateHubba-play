@@ -32,7 +32,16 @@ export function usePlayerProfile(uid: string, viewerUid?: string): PlayerProfile
 
     let stale = false;
 
-    Promise.all([getUserProfile(uid), fetchPlayerCompletedGames(uid, viewerUid)])
+    // Fetch profile and games independently so a games query failure
+    // (e.g. missing composite index, permissions) doesn't block the profile.
+    const profilePromise = getUserProfile(uid);
+
+    const gamesPromise = fetchPlayerCompletedGames(uid, viewerUid).catch((err: unknown) => {
+      console.warn("Failed to fetch player games:", err);
+      return [] as GameDoc[];
+    });
+
+    Promise.all([profilePromise, gamesPromise])
       .then(([fetchedProfile, fetchedGames]) => {
         if (stale) return;
         if (!fetchedProfile) {
@@ -41,8 +50,9 @@ export function usePlayerProfile(uid: string, viewerUid?: string): PlayerProfile
           setData({ fetchedUid: uid, profile: fetchedProfile, games: fetchedGames, error: null });
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (stale) return;
+        console.warn("Failed to load player profile:", err);
         setData({ fetchedUid: uid, profile: null, games: [], error: "Could not load player profile" });
       });
 

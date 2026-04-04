@@ -115,6 +115,21 @@ describe("usePlayerProfile", () => {
     expect(result.current.error).toBe("Could not load player profile");
   });
 
+  it("shows profile even when games fetch fails", async () => {
+    mockGetUserProfile.mockResolvedValue(fakeProfile);
+    mockFetchPlayerCompletedGames.mockRejectedValue(new Error("missing index"));
+
+    const { result } = renderHook(() => usePlayerProfile("u1"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.profile).toEqual(fakeProfile);
+    expect(result.current.games).toEqual([]);
+    expect(result.current.error).toBeNull();
+  });
+
   it("refetches when uid changes", async () => {
     mockGetUserProfile.mockResolvedValue(fakeProfile);
     mockFetchPlayerCompletedGames.mockResolvedValue(fakeGames);

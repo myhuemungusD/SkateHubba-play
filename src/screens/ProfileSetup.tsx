@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
-import { createProfile, isUsernameAvailable, type UserProfile } from "../services/users";
+import { createProfile, getUserProfile, isUsernameAvailable, type UserProfile } from "../services/users";
 import { analytics } from "../services/analytics";
-import { metrics } from "../services/logger";
+import { logger, metrics } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -298,6 +298,31 @@ export function ProfileSetup({
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const checkRef = useRef(0);
+  const [checkingExisting, setCheckingExisting] = useState(true);
+
+  // If the user already has a profile (e.g. profile fetch timed out on sign-in),
+  // skip setup entirely and resolve with the existing profile.
+  useEffect(() => {
+    let cancelled = false;
+    getUserProfile(uid)
+      .then((existing) => {
+        if (cancelled) return;
+        if (existing) {
+          logger.info("profile_setup_existing_found", { uid, username: existing.username });
+          onDone(existing);
+        } else {
+          setCheckingExisting(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCheckingExisting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Only run on mount — uid and onDone are stable for the lifetime of this screen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
 
   useEffect(() => {
     setAvailable(null);
@@ -384,9 +409,18 @@ export function ProfileSetup({
     [step, goNext],
   );
 
+  if (checkingExisting) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center px-6">
+        <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in" onKeyDown={handleKeyDown}>
+        <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-6" aria-hidden="true" />
         <ProgressBar step={step} />
 
         <form

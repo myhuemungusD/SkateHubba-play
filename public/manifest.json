@@ -1,7 +1,7 @@
 {
   "name": "SkateHubba S.K.A.T.E.",
   "short_name": "SkateHubba",
-  "description": "The first async S.K.A.T.E. trick battle game. Set tricks. Match tricks. One take only.",
+  "description": "The first async S.K.A.T.E. trick battle game. For the love of the game.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

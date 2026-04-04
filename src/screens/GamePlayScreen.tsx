@@ -161,6 +161,13 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         >
           ← Games
         </button>
+        <img
+          src="/logonew.webp"
+          alt=""
+          draggable={false}
+          className="h-5 w-auto select-none opacity-40"
+          aria-hidden="true"
+        />
         <div className="flex items-center gap-3">
           <Timer deadline={deadline} />
           <button

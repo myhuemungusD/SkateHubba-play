@@ -21,6 +21,7 @@ vi.mock("./services/auth", () => ({
 
 vi.mock("./services/users", () => ({
   createProfile: vi.fn(),
+  getUserProfile: vi.fn().mockResolvedValue(null),
   isUsernameAvailable: vi.fn(),
   getUidByUsername: vi.fn(),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
@@ -88,7 +89,7 @@ describe("App", () => {
       refreshProfile: vi.fn(),
     });
     renderApp();
-    expect(screen.getByText(/SKATEHUBBA/)).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
   });
 
   it("shows the landing page when not authenticated", async () => {
