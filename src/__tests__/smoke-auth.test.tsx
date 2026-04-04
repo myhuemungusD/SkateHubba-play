@@ -226,7 +226,7 @@ describe("Smoke: Auth", () => {
     withGames([]);
     renderApp();
 
-    await userEvent.click(screen.getByText("Resend"));
+    await userEvent.click(await screen.findByText("Resend"));
 
     await waitFor(() => {
       expect(mockResendVerification).toHaveBeenCalled();
@@ -240,9 +240,9 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    await userEvent.click(screen.getByText("Log in"));
+    await userEvent.click(await screen.findByText("Log in"));
 
-    const emailInput = screen.getByPlaceholderText("you@email.com");
+    const emailInput = await screen.findByPlaceholderText("you@email.com");
     await userEvent.type(emailInput, "sk8r@test.com");
 
     await userEvent.click(screen.getByText("Forgot password?"));
@@ -333,9 +333,9 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    await userEvent.click(screen.getByText("Log in"));
+    await userEvent.click(await screen.findByText("Log in"));
 
-    const emailInput = screen.getByPlaceholderText("you@email.com");
+    const emailInput = await screen.findByPlaceholderText("you@email.com");
     const passwordInput = screen.getAllByPlaceholderText(/•/)[0];
 
     await userEvent.type(emailInput, "wrong@test.com");
@@ -353,9 +353,9 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     renderApp();
 
-    await userEvent.click(screen.getByText("Log in"));
+    await userEvent.click(await screen.findByText("Log in"));
 
-    const emailInput = screen.getByPlaceholderText("you@email.com");
+    const emailInput = await screen.findByPlaceholderText("you@email.com");
     const passwordInput = screen.getAllByPlaceholderText(/•/)[0];
 
     await userEvent.type(emailInput, "nobody@test.com");
