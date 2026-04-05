@@ -87,10 +87,10 @@ describe("Landing", () => {
     expect(screen.getByText("Free to play")).toBeInTheDocument();
   });
 
-  it("renders FOR THE LOVE OF THE GAME headline", () => {
+  it("renders SKATEHUBBA FOR THE LOVE OF THE GAME headline", () => {
     render(<Landing {...defaultProps} />);
-    expect(screen.getByText("FOR THE LOVE")).toBeInTheDocument();
-    expect(screen.getByText("OF THE GAME.")).toBeInTheDocument();
+    expect(screen.getAllByText("SKATEHUBBA").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("FOR THE LOVE OF THE GAME.")).toBeInTheDocument();
   });
 
   it("calls onNav for privacy link", async () => {
