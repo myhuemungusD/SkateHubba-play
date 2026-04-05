@@ -10,8 +10,10 @@ import { subscribeToNudges, subscribeToNotifications } from "../../services/noti
 const mockNotify = vi.fn();
 let mockUser: { uid: string; displayName: string } | null = { uid: "u1", displayName: "Alice" };
 
+const mockActiveProfile = { uid: "u1", username: "alice", stance: "Regular", createdAt: null, emailVerified: true };
+
 vi.mock("../../context/AuthContext", () => ({
-  useAuthContext: vi.fn(() => ({ user: mockUser, loading: false })),
+  useAuthContext: vi.fn(() => ({ user: mockUser, activeProfile: mockUser ? mockActiveProfile : null, loading: false })),
 }));
 
 const mockGames: GameDoc[] = [];

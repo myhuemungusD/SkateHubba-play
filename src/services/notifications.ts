@@ -163,27 +163,33 @@ export function subscribeToNudges(uid: string, onNudge: (nudge: NudgeEvent) => v
   let initialIds: Set<string> | null = null;
   let ready = false;
 
-  return onSnapshot(q, (snap) => {
-    if (initialIds === null) {
-      initialIds = new Set(snap.docs.map((d) => d.id));
-      setTimeout(() => {
-        ready = true;
-      }, 0);
-      return;
-    }
-    if (!ready) return;
+  return onSnapshot(
+    q,
+    (snap) => {
+      if (initialIds === null) {
+        initialIds = new Set(snap.docs.map((d) => d.id));
+        setTimeout(() => {
+          ready = true;
+        }, 0);
+        return;
+      }
+      if (!ready) return;
 
-    for (const change of snap.docChanges()) {
-      if (change.type === "added" && !initialIds.has(change.doc.id)) {
-        const data = change.doc.data();
-        onNudge({ senderUsername: data.senderUsername, gameId: data.gameId });
-        initialIds.add(change.doc.id);
-        if (initialIds.size > 50) {
-          initialIds = new Set(Array.from(initialIds).slice(-25));
+      for (const change of snap.docChanges()) {
+        if (change.type === "added" && !initialIds.has(change.doc.id)) {
+          const data = change.doc.data();
+          onNudge({ senderUsername: data.senderUsername, gameId: data.gameId });
+          initialIds.add(change.doc.id);
+          if (initialIds.size > 50) {
+            initialIds = new Set(Array.from(initialIds).slice(-25));
+          }
         }
       }
-    }
-  });
+    },
+    (err) => {
+      logger.warn("nudge_subscription_error", { uid, error: parseFirebaseError(err) });
+    },
+  );
 }
 
 export interface NotificationEvent {
@@ -210,33 +216,39 @@ export function subscribeToNotifications(uid: string, onNotification: (notif: No
   let initialIds: Set<string> | null = null;
   let ready = false;
 
-  return onSnapshot(q, (snap) => {
-    if (initialIds === null) {
-      initialIds = new Set(snap.docs.map((d) => d.id));
-      setTimeout(() => {
-        ready = true;
-      }, 0);
-      return;
-    }
-    if (!ready) return;
-
-    for (const change of snap.docChanges()) {
-      if (change.type === "added" && !initialIds.has(change.doc.id)) {
-        const data = change.doc.data();
-        onNotification({
-          type: data.type ?? "",
-          title: data.title ?? "SkateHubba",
-          body: data.body ?? "",
-          gameId: data.gameId,
-        });
-        initialIds.add(change.doc.id);
-
-        markNotificationRead(change.doc.id);
+  return onSnapshot(
+    q,
+    (snap) => {
+      if (initialIds === null) {
+        initialIds = new Set(snap.docs.map((d) => d.id));
+        setTimeout(() => {
+          ready = true;
+        }, 0);
+        return;
       }
-    }
+      if (!ready) return;
 
-    if (initialIds.size > 50) {
-      initialIds = new Set(Array.from(initialIds).slice(-25));
-    }
-  });
+      for (const change of snap.docChanges()) {
+        if (change.type === "added" && !initialIds.has(change.doc.id)) {
+          const data = change.doc.data();
+          onNotification({
+            type: data.type ?? "",
+            title: data.title ?? "SkateHubba",
+            body: data.body ?? "",
+            gameId: data.gameId,
+          });
+          initialIds.add(change.doc.id);
+
+          markNotificationRead(change.doc.id);
+        }
+      }
+
+      if (initialIds.size > 50) {
+        initialIds = new Set(Array.from(initialIds).slice(-25));
+      }
+    },
+    (err) => {
+      logger.warn("notification_subscription_error", { uid, error: parseFirebaseError(err) });
+    },
+  );
 }
