@@ -114,7 +114,7 @@ describe("Smoke: Profile Setup", () => {
       refreshProfile: vi.fn(),
     });
     renderApp();
-    await waitFor(() => expect(screen.getByText("Pick your handle")).toBeInTheDocument());
+    expect(await screen.findByText("Pick your handle")).toBeInTheDocument();
   });
 
   it("profile setup disables submit with short username", async () => {

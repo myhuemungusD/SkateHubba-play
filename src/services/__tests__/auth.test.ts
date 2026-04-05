@@ -82,6 +82,16 @@ describe("auth service", () => {
       // Second call should be without actionCodeSettings
       expect(mockSendVerify.mock.calls[1]).toEqual([mockUserCredential.user]);
     });
+
+    it("returns verificationEmailSent=false when fallback retry also fails", async () => {
+      const uriError = Object.assign(new Error("unauthorized"), { code: "auth/unauthorized-continue-uri" });
+      // Error without .code to exercise the parseFirebaseError fallback branch
+      const retryError = new Error("network timeout");
+      mockSendVerify.mockRejectedValueOnce(uriError).mockRejectedValueOnce(retryError);
+      const result = await signUp("a@b.com", "pass123");
+      expect(result.verificationEmailSent).toBe(false);
+      expect(mockSendVerify).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("signIn", () => {

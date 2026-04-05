@@ -112,8 +112,8 @@ describe("Smoke: Challenge", () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     mockCreateGame.mockResolvedValueOnce("game1");
 
-    await userEvent.click(screen.getByText(/Challenge Someone/));
-    expect(screen.getByText("Challenge")).toBeInTheDocument();
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    expect(await screen.findByText("Challenge")).toBeInTheDocument();
     expect(screen.getByText(/First to S.K.A.T.E. loses/)).toBeInTheDocument();
 
     const input = screen.getByPlaceholderText("their_handle");
@@ -130,9 +130,9 @@ describe("Smoke: Challenge", () => {
   it("challenge screen prevents self-challenge", async () => {
     renderVerifiedLobby([]);
 
-    await userEvent.click(screen.getByText(/Challenge Someone/));
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "sk8r");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
@@ -143,9 +143,9 @@ describe("Smoke: Challenge", () => {
     mockGetUidByUsername.mockResolvedValueOnce(null);
     renderVerifiedLobby([]);
 
-    await userEvent.click(screen.getByText(/Challenge Someone/));
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "ghost");
 
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -158,9 +158,9 @@ describe("Smoke: Challenge", () => {
   it("challenge disables send button with short username", async () => {
     renderVerifiedLobby([]);
 
-    await userEvent.click(screen.getByText(/Challenge Someone/));
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "ab");
 
     const sendBtn = screen.getByText(/Send Challenge/);
@@ -170,8 +170,8 @@ describe("Smoke: Challenge", () => {
   it("challenge back button returns to lobby", async () => {
     renderVerifiedLobby([]);
 
-    await userEvent.click(screen.getByText(/Challenge Someone/));
-    expect(screen.getByText("Challenge")).toBeInTheDocument();
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    expect(await screen.findByText("Challenge")).toBeInTheDocument();
 
     await userEvent.click(screen.getByText("← Back"));
 
@@ -185,9 +185,9 @@ describe("Smoke: Challenge", () => {
     mockCreateGame.mockRejectedValueOnce(new Error("Network error"));
     renderVerifiedLobby([]);
 
-    await userEvent.click(screen.getByText(/Challenge Someone/));
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "rival");
     await userEvent.click(screen.getByRole("button", { name: /send challenge/i }));
 
@@ -198,9 +198,9 @@ describe("Smoke: Challenge", () => {
 
   it("challenge shows validation error for short username on submit", async () => {
     renderVerifiedLobby([]);
-    await userEvent.click(screen.getByText(/Challenge Someone/));
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "ab");
 
     // Submit via form to bypass button disabled state
@@ -219,8 +219,8 @@ describe("Smoke: Challenge", () => {
     mockCreateGame.mockRejectedValueOnce("string error");
     renderVerifiedLobby([]);
 
-    await userEvent.click(screen.getByText(/Challenge Someone/));
-    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await userEvent.type(await screen.findByPlaceholderText("their_handle"), "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
@@ -230,9 +230,9 @@ describe("Smoke: Challenge", () => {
 
   it("challenge error banner can be dismissed", async () => {
     renderVerifiedLobby([]);
-    await userEvent.click(screen.getByText(/Challenge Someone/));
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "sk8r");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
@@ -246,9 +246,9 @@ describe("Smoke: Challenge", () => {
     mockGetUidByUsername.mockImplementation(() => new Promise(() => {})); // hang
     renderVerifiedLobby([]);
 
-    await userEvent.click(screen.getByText(/Challenge Someone/));
+    await userEvent.click(await screen.findByText(/Challenge Someone/));
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
 

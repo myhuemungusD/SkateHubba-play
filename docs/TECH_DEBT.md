@@ -14,12 +14,12 @@ SkateHubba-play is a well-structured mobile-first SKATE game app with strong fou
 
 ## Severity Levels
 
-| Level | Definition |
-|-------|-----------|
-| **P0 — Critical** | Blocks scaling or introduces user-facing risk |
-| **P1 — High** | Significant maintainability or quality concern |
-| **P2 — Medium** | Noticeable friction; address during related work |
-| **P3 — Low** | Nice-to-have improvements |
+| Level             | Definition                                       |
+| ----------------- | ------------------------------------------------ |
+| **P0 — Critical** | Blocks scaling or introduces user-facing risk    |
+| **P1 — High**     | Significant maintainability or quality concern   |
+| **P2 — Medium**   | Noticeable friction; address during related work |
+| **P3 — Low**      | Nice-to-have improvements                        |
 
 ---
 
@@ -32,6 +32,7 @@ SkateHubba-play is a well-structured mobile-first SKATE game app with strong fou
 The app uses a manual `screen` state string (`"lobby" | "game" | "auth" | ...`) with conditional rendering instead of a proper router (React Router, TanStack Router, etc.).
 
 **Impact:**
+
 - No URL-based navigation — users cannot bookmark, share, or deep-link to specific screens
 - Browser back/forward buttons don't work
 - Push notification deep-links require a custom event workaround (`skatehubba:open-game`)
@@ -61,6 +62,7 @@ Both `subscribeToMyGames` queries are hard-capped at `limit(50)`. Users with >50
 A single context provides auth, game state, navigation, profile management, and error handling. The `GameContextValue` interface exposes 25+ fields/methods.
 
 **Impact:**
+
 - Any state change triggers re-renders across the entire app
 - Difficult to test in isolation (the context test file is 371+ lines itself)
 - Mixing concerns makes refactoring risky
@@ -71,13 +73,14 @@ A single context provides auth, game state, navigation, profile management, and 
 
 **Files without tests:**
 
-| Category | Untested Files | Total Lines |
-|----------|---------------|-------------|
-| Components | 15 files | ~1,709 lines |
-| Screens | 7 files | ~1,627 lines |
-| Context | 1 file | 204 lines |
+| Category   | Untested Files | Total Lines  |
+| ---------- | -------------- | ------------ |
+| Components | 15 files       | ~1,709 lines |
+| Screens    | 7 files        | ~1,627 lines |
+| Context    | 1 file         | 204 lines    |
 
 Notable untested files:
+
 - `GameNotificationWatcher.tsx` (316 lines) — push notification logic
 - `MyRecordScreen.tsx` (439 lines) — stats/game history
 - `Landing.tsx` (417 lines) — first user impression
@@ -97,6 +100,7 @@ The vitest config enforces 100% coverage only on `src/services/**` and `src/hook
 All state flows through React Context + `useState`/`useEffect`. There's no state management library (Zustand, Jotai, Redux, etc.).
 
 **Impact:**
+
 - Context value changes cause full subtree re-renders
 - Complex state transitions (game phases, auth flows) are handled with imperative `setState` calls
 - No devtools for state inspection/time-travel debugging
@@ -120,6 +124,7 @@ A single test file with 2,753 lines covers most integration scenarios. This is f
 **Location:** Multiple files
 
 Several production files use `console.warn`/`console.error` directly instead of the existing `logger` service:
+
 - `src/firebase.ts` (lines 75, 98)
 - `src/services/games.ts` (lines 384, 426)
 - `src/services/fcm.ts` (lines 31, 45)
@@ -135,6 +140,7 @@ Several production files use `console.warn`/`console.error` directly instead of 
 ### 8. Large Screen Components (400+ lines)
 
 Several screens exceed 400 lines with mixed concerns:
+
 - `Lobby.tsx` — 532 lines (player directory fetching, game list rendering, UI)
 - `MyRecordScreen.tsx` — 439 lines (stats calculation, filtering, rendering)
 - `ProfileSetup.tsx` — 421 lines (form validation, Firebase writes, COPPA logic)
@@ -178,6 +184,7 @@ The same chevron-right `<svg>` with `<polyline points="9 18 15 12 9 6" />` is co
 ### 13. ESLint-Disable Comments
 
 **Location:**
+
 - `src/context/GameContext.tsx:256` — `eslint-disable-next-line react-hooks/exhaustive-deps`
 - `src/components/VideoRecorder.tsx:196` — `eslint-disable-next-line react-hooks/set-state-in-effect`
 
@@ -249,16 +256,16 @@ Autoplay hero video and custom fonts. Already documented — revisit when design
 
 ## Dependency Health
 
-| Area | Status |
-|------|--------|
-| TypeScript strict mode | Enabled (`strict: true`, `noUnusedLocals`, `noUnusedParameters`) |
-| ESLint `no-explicit-any` | Enforced in production code, relaxed in tests |
-| Package manager | npm (single lockfile, no competing managers) |
-| Node version | Pinned to >=22 |
-| React version | 18.3.x (stable, not yet React 19) |
-| Firebase SDK | v11 (current) |
-| Husky + lint-staged | Configured for pre-commit checks |
-| CI pipeline | 3 workflows (main, PR gate, release) with lint/typecheck/test/build |
+| Area                     | Status                                                              |
+| ------------------------ | ------------------------------------------------------------------- |
+| TypeScript strict mode   | Enabled (`strict: true`, `noUnusedLocals`, `noUnusedParameters`)    |
+| ESLint `no-explicit-any` | Enforced in production code, relaxed in tests                       |
+| Package manager          | npm (single lockfile, no competing managers)                        |
+| Node version             | Pinned to >=22                                                      |
+| React version            | 18.3.x (stable, not yet React 19)                                   |
+| Firebase SDK             | v11 (current)                                                       |
+| Husky + lint-staged      | Configured for pre-commit checks                                    |
+| CI pipeline              | 3 workflows (main, PR gate, release) with lint/typecheck/test/build |
 
 **Notable:** Dependencies are reasonably up-to-date. `npm audit` reports 0 vulnerabilities. GitHub Dependabot flags 2 (1 moderate, 1 low) on the default branch — likely transitive. Seven major-version upgrades are available (Vite 8, Tailwind 4, ESLint 10, React 19, etc.) but none are urgent.
 
@@ -266,26 +273,26 @@ Autoplay hero video and custom fonts. Already documented — revisit when design
 
 ## Prioritized Action Plan
 
-| Priority | Item | Effort | Impact |
-|----------|------|--------|--------|
-| P0 | Add client-side router | Medium | High — enables deep links, back button, SEO |
-| P0 | Implement game list pagination | Small | High — prevents data loss for active users |
-| P1 | Split GameContext into focused contexts | Medium | High — performance + maintainability |
-| P1 | Add component/screen test coverage | Large | High — prevents regressions in UI |
-| P1 | Evaluate lightweight state management | Small | Medium — reduces re-renders |
-| P1 | Split smoke-e2e test file | Medium | Medium — improves test maintainability |
-| P2 | Route console.warn/error through logger | Small | Medium — improves production debugging |
-| P2 | Extract hooks from large screens | Medium | Medium — improves readability |
-| P2 | Extract shared `TOAST_DURATION` constant | Trivial | Low — prevents silent divergence |
-| P2 | Add `ChevronRightIcon` to icons.tsx | Trivial | Low — removes 4x inline SVG duplication |
-| P2 | Consolidate Tailwind theme tokens | Small | Low — reduces duplication |
-| P2 | Add Cloud Functions tests | Medium | Medium — prevents deploy regressions |
-| P3 | Add React.lazy code splitting | Small | Low — improves initial load time |
-| P3 | Type environment variables | Small | Low — prevents runtime config errors |
-| P3 | Audit package.json overrides | Small | Low — removes stale workarounds |
-| P3 | Fix Firebase Messaging SW version mismatch | Small | Low — prevents SW/app version drift |
-| P3 | Wire Lighthouse CI into PR gate | Small | Low — catches performance regressions |
-| P3 | Add `.nvmrc` file | Trivial | Low — developer environment consistency |
+| Priority | Item                                       | Effort  | Impact                                      |
+| -------- | ------------------------------------------ | ------- | ------------------------------------------- |
+| P0       | Add client-side router                     | Medium  | High — enables deep links, back button, SEO |
+| P0       | Implement game list pagination             | Small   | High — prevents data loss for active users  |
+| P1       | Split GameContext into focused contexts    | Medium  | High — performance + maintainability        |
+| P1       | Add component/screen test coverage         | Large   | High — prevents regressions in UI           |
+| P1       | Evaluate lightweight state management      | Small   | Medium — reduces re-renders                 |
+| P1       | Split smoke-e2e test file                  | Medium  | Medium — improves test maintainability      |
+| P2       | Route console.warn/error through logger    | Small   | Medium — improves production debugging      |
+| P2       | Extract hooks from large screens           | Medium  | Medium — improves readability               |
+| P2       | Extract shared `TOAST_DURATION` constant   | Trivial | Low — prevents silent divergence            |
+| P2       | Add `ChevronRightIcon` to icons.tsx        | Trivial | Low — removes 4x inline SVG duplication     |
+| P2       | Consolidate Tailwind theme tokens          | Small   | Low — reduces duplication                   |
+| P2       | Add Cloud Functions tests                  | Medium  | Medium — prevents deploy regressions        |
+| P3       | Add React.lazy code splitting              | Small   | Low — improves initial load time            |
+| P3       | Type environment variables                 | Small   | Low — prevents runtime config errors        |
+| P3       | Audit package.json overrides               | Small   | Low — removes stale workarounds             |
+| P3       | Fix Firebase Messaging SW version mismatch | Small   | Low — prevents SW/app version drift         |
+| P3       | Wire Lighthouse CI into PR gate            | Small   | Low — catches performance regressions       |
+| P3       | Add `.nvmrc` file                          | Trivial | Low — developer environment consistency     |
 
 ---
 

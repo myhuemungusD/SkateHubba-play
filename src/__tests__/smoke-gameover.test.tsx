@@ -116,7 +116,7 @@ describe("Smoke: Game Over", () => {
     renderVerifiedLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -135,7 +135,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
@@ -149,7 +149,7 @@ describe("Smoke: Game Over", () => {
     withGameSub(game);
     mockCreateGame.mockResolvedValueOnce("game2");
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -170,7 +170,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -193,7 +193,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -211,7 +211,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Forfeit")).toBeInTheDocument();
@@ -231,7 +231,7 @@ describe("Smoke: Game Over", () => {
       return vi.fn();
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
@@ -260,7 +260,7 @@ describe("Smoke: Game Over", () => {
     renderVerifiedLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => expect(screen.getByText("You Win")).toBeInTheDocument());
 
@@ -276,7 +276,7 @@ describe("Smoke: Game Over", () => {
     renderLobby([game]); // renderLobby uses unverified user
     withGameSub(game);
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -291,7 +291,7 @@ describe("Smoke: Game Over", () => {
     renderVerifiedLobby([game]);
     withGameSub(game);
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
     await waitFor(() => expect(screen.getByText("You Win")).toBeInTheDocument());
 
     withGameSub(newGame);
@@ -318,7 +318,7 @@ describe("Smoke: Game Over", () => {
     });
     renderVerifiedLobby([game]);
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
     await waitFor(() => expect(screen.getByText(/Rematch/)).toBeInTheDocument());
 
     await userEvent.click(screen.getByText(/Rematch/));
@@ -344,7 +344,7 @@ describe("Smoke: Game Over", () => {
       return vi.fn();
     });
 
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
     await waitFor(() => expect(screen.getByText(/Match.*Pop Shove/)).toBeInTheDocument());
 
