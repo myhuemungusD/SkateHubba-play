@@ -129,12 +129,14 @@ export function Landing({
             className="font-display tracking-wide text-white mb-5 leading-[0.9]"
             style={{ fontSize: "clamp(3rem, 2.2rem + 4.5vw, 6.5rem)" }}
           >
-            <span className="block">FOR THE LOVE</span>
             <span
               className="block text-brand-orange"
               style={{ textShadow: "0 0 60px rgba(255,107,0,0.35), 0 0 120px rgba(255,107,0,0.15)" }}
             >
-              OF THE GAME.
+              SKATEHUBBA
+            </span>
+            <span className="block" style={{ fontSize: "clamp(1.2rem, 0.8rem + 2vw, 2.5rem)" }}>
+              FOR THE LOVE OF THE GAME.
             </span>
           </h1>
 
