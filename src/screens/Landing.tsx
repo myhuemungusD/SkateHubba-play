@@ -142,7 +142,7 @@ export function Landing({
 
           {/* Subtitle */}
           <p className="font-body text-fluid-lg text-dim max-w-md leading-relaxed mb-10">
-            The first async S.K.A.T.E. game. No edits. No excuses. For the love of the game.
+            The first async S.K.A.T.E. game. No edits. No excuses.
           </p>
 
           {/* Auth Buttons */}
