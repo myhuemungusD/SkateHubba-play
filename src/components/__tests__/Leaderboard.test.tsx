@@ -8,6 +8,9 @@ const mockGetLeaderboard = vi.fn();
 vi.mock("../../services/users", () => ({
   getLeaderboard: (...args: unknown[]) => mockGetLeaderboard(...args),
 }));
+vi.mock("../../services/blocking", () => ({
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+}));
 
 const players = [
   { uid: "u1", username: "alice", stance: "regular", createdAt: null, emailVerified: true, wins: 10, losses: 2 },

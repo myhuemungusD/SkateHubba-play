@@ -58,6 +58,12 @@ vi.mock("@sentry/react", () => ({
   init: vi.fn(),
   captureException: vi.fn(),
 }));
+vi.mock("../services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+}));
 
 import App from "../App";
 
