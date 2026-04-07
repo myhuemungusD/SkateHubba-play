@@ -28,6 +28,7 @@ let swRegistrationPromise: Promise<ServiceWorkerRegistration> | null = null;
 export function getSwRegistration(): Promise<ServiceWorkerRegistration> {
   if (swRegistrationPromise) return swRegistrationPromise;
 
+  /* v8 ignore start -- env vars are always present when firebase.ts init succeeds; ?? guards are defensive */
   const params = new URLSearchParams({
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY ?? "",
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ?? "",
@@ -36,6 +37,7 @@ export function getSwRegistration(): Promise<ServiceWorkerRegistration> {
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? "",
     appId: import.meta.env.VITE_FIREBASE_APP_ID ?? "",
   });
+  /* v8 ignore stop */
 
   swRegistrationPromise = navigator.serviceWorker.register(`/firebase-messaging-sw.js?${params.toString()}`);
 
