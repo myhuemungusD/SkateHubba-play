@@ -151,6 +151,29 @@ describe("getSwRegistration caching", () => {
     expect(first).toBe(second);
     await first;
   });
+
+  it("falls back to empty strings when env vars are undefined", async () => {
+    // Delete env vars so the ?? "" fallback branches are exercised
+    delete import.meta.env.VITE_FIREBASE_API_KEY;
+    delete import.meta.env.VITE_FIREBASE_AUTH_DOMAIN;
+    delete import.meta.env.VITE_FIREBASE_PROJECT_ID;
+    delete import.meta.env.VITE_FIREBASE_STORAGE_BUCKET;
+    delete import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID;
+    delete import.meta.env.VITE_FIREBASE_APP_ID;
+
+    _resetSwRegistration();
+    const { getSwRegistration: getSW } = await import("../fcm");
+    const reg = getSW();
+    expect(reg).toBeInstanceOf(Promise);
+    await reg;
+
+    // Verify register was called with all-empty params
+    const registerCall = (navigator.serviceWorker.register as ReturnType<typeof vi.fn>).mock.calls;
+    const lastCall = registerCall[registerCall.length - 1][0] as string;
+    expect(lastCall).toContain("firebase-messaging-sw.js?");
+    // All params should be empty strings from the ?? fallback
+    expect(lastCall).toContain("apiKey=&");
+  });
 });
 
 describe("onForegroundMessage", () => {
