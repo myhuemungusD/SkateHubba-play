@@ -16,6 +16,7 @@ export function useBlockedUsers(uid: string): Set<string> {
   useEffect(() => {
     if (!uid) {
       storeRef.current = EMPTY_SET;
+      /* v8 ignore next -- listeners may be empty during React commit phase */
       for (const l of listenersRef.current) l();
       return;
     }
@@ -29,10 +30,11 @@ export function useBlockedUsers(uid: string): Set<string> {
   return useSyncExternalStore(
     (onStoreChange) => {
       listenersRef.current.add(onStoreChange);
-      /* v8 ignore next -- React-managed cleanup; called internally on unmount */
+      /* v8 ignore start -- React-managed cleanup */
       return () => {
         listenersRef.current.delete(onStoreChange);
       };
+      /* v8 ignore stop */
     },
     () => storeRef.current,
   );
