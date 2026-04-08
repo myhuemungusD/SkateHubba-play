@@ -11,6 +11,7 @@ import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
 import { GameNotificationWatcher } from "./components/GameNotificationWatcher";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 import { Landing } from "./screens/Landing";
@@ -82,6 +83,7 @@ function PlayerProfileRoute({
   onBack,
   onChallenge,
   onViewPlayer,
+  blockedUids,
 }: {
   currentUserProfile: import("./services/users").UserProfile;
   ownGames: import("./services/games").GameDoc[];
@@ -89,6 +91,7 @@ function PlayerProfileRoute({
   onBack: () => void;
   onChallenge: (uid: string, username: string) => void;
   onViewPlayer: (uid: string) => void;
+  blockedUids: Set<string>;
 }) {
   const { uid } = useParams<{ uid: string }>();
   if (!uid) return <Navigate to="/lobby" replace />;
@@ -106,6 +109,7 @@ function PlayerProfileRoute({
       onBack={onBack}
       onChallenge={isOwn ? undefined : onChallenge}
       onViewPlayer={onViewPlayer}
+      blockedUids={blockedUids}
     />
   );
 }
@@ -114,6 +118,7 @@ function AppRoutes() {
   const auth = useAuthContext();
   const nav = useNavigationContext();
   const game = useGameContext();
+  const blockedUids = useBlockedUsers(auth.user?.uid ?? "");
   const [challengeTarget, setChallengeTarget] = useState("");
   const directChallenge = useCallback(
     async (username: string) => {
@@ -284,6 +289,7 @@ function AppRoutes() {
                   onBack={() => nav.setScreen("lobby")}
                   initialOpponent={challengeTarget}
                   onViewPlayer={nav.navigateToPlayer}
+                  blockedUids={blockedUids}
                 />
               ) : (
                 <Navigate to="/lobby" replace />
@@ -396,6 +402,7 @@ function AppRoutes() {
                   onBack={() => nav.setScreen("lobby")}
                   onChallenge={(_uid, username) => directChallenge(username)}
                   onViewPlayer={nav.navigateToPlayer}
+                  blockedUids={blockedUids}
                 />
               ) : (
                 <Navigate to="/" replace />

@@ -39,6 +39,13 @@ vi.mock("./services/games", () => ({
 vi.mock("./services/storage", () => ({
   uploadVideo: vi.fn(),
 }));
+vi.mock("./services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
+}));
 
 vi.mock("./services/analytics", () => ({
   trackEvent: vi.fn(),

@@ -1,4 +1,14 @@
-import { collection, doc, setDoc, deleteDoc, getDocs, getDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  getDocs,
+  getDoc,
+  onSnapshot,
+  serverTimestamp,
+  type Unsubscribe,
+} from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -86,4 +96,25 @@ export async function getBlockedUserIds(uid: string): Promise<Set<string>> {
     });
     return new Set();
   }
+}
+
+/**
+ * Subscribe to the blocked users subcollection for real-time updates.
+ * Used by the useBlockedUsers hook to keep the UI in sync.
+ */
+export function subscribeToBlockedUsers(uid: string, onUpdate: (blockedUids: Set<string>) => void): Unsubscribe {
+  const colRef = collection(requireDb(), "users", uid, "blocked_users");
+
+  return onSnapshot(
+    colRef,
+    (snap) => {
+      onUpdate(new Set(snap.docs.map((d) => d.id)));
+    },
+    (err) => {
+      logger.warn("blocked_users_subscription_error", {
+        uid,
+        error: parseFirebaseError(err),
+      });
+    },
+  );
 }

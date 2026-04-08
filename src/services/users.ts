@@ -15,6 +15,7 @@ import {
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
+import { deleteGameVideos } from "./storage";
 
 export interface UserProfile {
   uid: string;
@@ -126,36 +127,40 @@ export async function createProfile(
  * account is already gone and Firestore data is orphaned — the caller
  * should log/alert so it can be cleaned up manually or via a Cloud Function.
  *
- * Phase 1: Delete non-active game documents where the user is a player.
  * Active games are preserved so the opponent isn't affected mid-game.
- * Phase 2: Atomically delete profile + username reservation.
  *
- * Storage videos are orphaned and can be garbage-collected by a lifecycle
- * rule or Cloud Function.
+ * Phase 1: Delete video files from Storage for non-active games.
+ * Phase 2: Delete non-active game documents.
+ * Phase 3: Atomically delete profile + username reservation.
  */
 export async function deleteUserData(uid: string, username: string): Promise<void> {
   const db = requireDb();
 
-  // Phase 1: Delete non-active game documents where user is a player
+  // Phase 1 & 2: Find all games, delete videos then game docs for non-active ones
   const gamesCol = collection(db, "games");
   const [asP1, asP2] = await Promise.all([
     getDocs(query(gamesCol, where("player1Uid", "==", uid))),
     getDocs(query(gamesCol, where("player2Uid", "==", uid))),
   ]);
   const seen = new Set<string>();
-  const deletions: Promise<void>[] = [];
+  const nonActiveGameIds: string[] = [];
   for (const snap of [...asP1.docs, ...asP2.docs]) {
     if (!seen.has(snap.id)) {
       seen.add(snap.id);
       const data = snap.data();
       if (data.status !== "active") {
-        deletions.push(deleteDoc(doc(db, "games", snap.id)));
+        nonActiveGameIds.push(snap.id);
       }
     }
   }
-  await Promise.all(deletions);
 
-  // Phase 2: Delete profile + username atomically (no reads needed, batch is cheaper)
+  // Phase 1: Delete video files from Storage (best-effort)
+  await Promise.all(nonActiveGameIds.map((gameId) => deleteGameVideos(gameId)));
+
+  // Phase 2: Delete game documents
+  await Promise.all(nonActiveGameIds.map((gameId) => deleteDoc(doc(db, "games", gameId))));
+
+  // Phase 3: Delete profile + username atomically (no reads needed, batch is cheaper)
   const batch = writeBatch(db);
   batch.delete(doc(db, "users", uid));
   batch.delete(doc(db, "usernames", username.toLowerCase().trim()));

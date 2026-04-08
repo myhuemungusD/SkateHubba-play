@@ -9,7 +9,8 @@ service firebase.storage {
     // Storage restricts to auth + size bounds + content type + exact filename.
     match /games/{gameId}/{turnPath}/{fileName} {
       allow read: if request.auth != null;
-      allow write: if request.auth != null
+      // Upload: authenticated + size/type constraints
+      allow create, update: if request.auth != null
         // Minimum 1 KB — prevents empty/stub uploads
         && request.resource.size > 1024
         // Maximum 50 MB per video
@@ -19,6 +20,8 @@ service firebase.storage {
             || request.resource.contentType == 'video/mp4')
         // Only the two known roles are valid filenames (rejects path traversal attempts)
         && fileName.matches('(set|match)\\.(webm|mp4)');
+      // Delete: any authenticated user (used during account deletion cleanup)
+      allow delete: if request.auth != null;
     }
 
     // Default: deny everything else

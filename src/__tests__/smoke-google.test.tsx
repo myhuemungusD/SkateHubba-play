@@ -107,6 +107,7 @@ vi.mock("../services/blocking", () => ({
   unblockUser: vi.fn().mockResolvedValue(undefined),
   isUserBlocked: vi.fn().mockResolvedValue(false),
   getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
 }));
 
 beforeEach(() => vi.clearAllMocks());

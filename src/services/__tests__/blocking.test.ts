@@ -4,6 +4,7 @@ const mockSetDoc = vi.fn().mockResolvedValue(undefined);
 const mockDeleteDoc = vi.fn().mockResolvedValue(undefined);
 const mockGetDoc = vi.fn();
 const mockGetDocs = vi.fn();
+const mockOnSnapshot = vi.fn();
 const mockDoc = vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/"));
 const mockCollection = vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/"));
 const mockServerTimestamp = vi.fn(() => "SERVER_TS");
@@ -15,12 +16,13 @@ vi.mock("firebase/firestore", () => ({
   deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
   getDoc: (...args: unknown[]) => mockGetDoc(...args),
   getDocs: (...args: unknown[]) => mockGetDocs(...args),
+  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
   serverTimestamp: () => mockServerTimestamp(),
 }));
 
 vi.mock("../../firebase");
 
-import { blockUser, unblockUser, isUserBlocked, getBlockedUserIds } from "../blocking";
+import { blockUser, unblockUser, isUserBlocked, getBlockedUserIds, subscribeToBlockedUsers } from "../blocking";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -140,5 +142,40 @@ describe("getBlockedUserIds", () => {
     mockGetDocs.mockRejectedValueOnce(new Error("Network error"));
     const result = await getBlockedUserIds("user1");
     expect(result).toEqual(new Set());
+  });
+});
+
+describe("subscribeToBlockedUsers", () => {
+  it("calls onUpdate with blocked UIDs from snapshot", () => {
+    const callback = vi.fn();
+    mockOnSnapshot.mockImplementation((_ref: unknown, onNext: Function) => {
+      onNext({
+        docs: [{ id: "u2" }, { id: "u3" }],
+      });
+      return vi.fn();
+    });
+
+    subscribeToBlockedUsers("u1", callback);
+
+    expect(callback).toHaveBeenCalledWith(new Set(["u2", "u3"]));
+  });
+
+  it("returns unsubscribe function", () => {
+    const unsub = vi.fn();
+    mockOnSnapshot.mockReturnValue(unsub);
+
+    const result = subscribeToBlockedUsers("u1", vi.fn());
+    expect(result).toBe(unsub);
+  });
+
+  it("handles snapshot errors gracefully", () => {
+    const callback = vi.fn();
+    mockOnSnapshot.mockImplementation((_ref: unknown, _onNext: Function, onError: Function) => {
+      onError(new Error("permission denied"));
+      return vi.fn();
+    });
+
+    subscribeToBlockedUsers("u1", callback);
+    expect(callback).not.toHaveBeenCalled();
   });
 });
