@@ -10,6 +10,7 @@ import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
 import { GameReplay } from "../components/GameReplay";
 import { TrophyIcon, SkullIcon } from "../components/icons";
 import { ReportModal } from "../components/ReportModal";
+import { SpotTagModal } from "../components/SpotTagModal";
 import { ProUsername } from "../components/ProUsername";
 
 export function GameOverScreen({
@@ -55,6 +56,8 @@ export function GameOverScreen({
   const [shareLabel, setShareLabel] = useState("Share Game Recap");
   const [showReport, setShowReport] = useState(false);
   const [reported, setReported] = useState(false);
+  const [showSpotTag, setShowSpotTag] = useState(false);
+  const [taggedSpot, setTaggedSpot] = useState<string | null>(null);
 
   const handleShareGame = useCallback(async () => {
     const turns = game.turnHistory ?? [];
@@ -181,6 +184,15 @@ export function GameOverScreen({
               {shareLabel}
             </Btn>
           )}
+          {taggedSpot ? (
+            <div className="w-full text-center py-3 rounded-2xl glass-card">
+              <span className="font-body text-xs text-brand-green">Tagged at {taggedSpot}</span>
+            </div>
+          ) : (
+            <Btn onClick={() => setShowSpotTag(true)} variant="secondary">
+              Tag Spot
+            </Btn>
+          )}
           <Btn onClick={handleRematch} disabled={rematching || !onRematch}>
             {rematching ? "Starting..." : !onRematch ? "Verify email to rematch" : "Rematch"}
           </Btn>
@@ -205,6 +217,18 @@ export function GameOverScreen({
         <img src="/logonew.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
         <div className="brand-divider flex-1 max-w-16" />
       </div>
+
+      {showSpotTag && (
+        <SpotTagModal
+          gameId={game.id}
+          profile={profile}
+          onClose={() => setShowSpotTag(false)}
+          onTagged={(spotName) => {
+            setShowSpotTag(false);
+            setTaggedSpot(spotName);
+          }}
+        />
+      )}
 
       {showReport && (
         <ReportModal

@@ -24,6 +24,8 @@ import { PlayerProfileScreen } from "./screens/PlayerProfileScreen";
 import { PrivacyPolicy } from "./screens/PrivacyPolicy";
 import { TermsOfService } from "./screens/TermsOfService";
 import { DataDeletion } from "./screens/DataDeletion";
+import { MapScreen } from "./screens/MapScreen";
+import { SpotDetailScreen } from "./screens/SpotDetailScreen";
 import { AgeGate } from "./screens/AgeGate";
 import { NotFound } from "./screens/NotFound";
 
@@ -105,6 +107,33 @@ function PlayerProfileRoute({
       onOpenGame={onOpenGame}
       onBack={onBack}
       onChallenge={isOwn ? undefined : onChallenge}
+      onViewPlayer={onViewPlayer}
+    />
+  );
+}
+
+/** Wrapper that extracts :spotId from URL params and renders SpotDetailScreen. */
+function SpotDetailRoute({
+  currentUserProfile,
+  onBack,
+  onOpenGame,
+  onViewPlayer,
+}: {
+  currentUserProfile: import("./services/users").UserProfile;
+  onBack: () => void;
+  onOpenGame: (g: import("./services/games").GameDoc) => void;
+  onViewPlayer: (uid: string) => void;
+}) {
+  const { spotId } = useParams<{ spotId: string }>();
+  if (!spotId) return <Navigate to="/map" replace />;
+
+  return (
+    <SpotDetailScreen
+      key={spotId}
+      spotId={spotId}
+      profile={currentUserProfile}
+      onBack={onBack}
+      onOpenGame={onOpenGame}
       onViewPlayer={onViewPlayer}
     />
   );
@@ -267,6 +296,7 @@ function AppRoutes() {
                   onLoadMore={game.loadMoreGames}
                   gamesLoading={game.gamesLoading}
                   onViewPlayer={nav.navigateToPlayer}
+                  onViewMap={() => nav.setScreen("map")}
                 />
               ) : (
                 <Navigate to="/" replace />
@@ -395,6 +425,37 @@ function AppRoutes() {
                   onOpenGame={game.openGame}
                   onBack={() => nav.setScreen("lobby")}
                   onChallenge={(_uid, username) => directChallenge(username)}
+                  onViewPlayer={nav.navigateToPlayer}
+                />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+
+          <Route
+            path="/map"
+            element={
+              auth.activeProfile ? (
+                <MapScreen
+                  profile={auth.activeProfile}
+                  onBack={() => nav.setScreen("lobby")}
+                  onViewSpot={nav.navigateToSpot}
+                />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+
+          <Route
+            path="/spot/:spotId"
+            element={
+              auth.activeProfile ? (
+                <SpotDetailRoute
+                  currentUserProfile={auth.activeProfile}
+                  onBack={() => nav.setScreen("map")}
+                  onOpenGame={game.openGame}
                   onViewPlayer={nav.navigateToPlayer}
                 />
               ) : (

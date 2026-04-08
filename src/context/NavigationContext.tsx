@@ -14,6 +14,8 @@ export type Screen =
   | "gameover"
   | "record"
   | "player"
+  | "map"
+  | "spot"
   | "privacy"
   | "terms"
   | "datadeletion"
@@ -31,6 +33,8 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   gameover: "/gameover",
   record: "/record",
   player: "/player",
+  map: "/map",
+  spot: "/spot",
   privacy: "/privacy",
   terms: "/terms",
   datadeletion: "/data-deletion",
@@ -43,8 +47,9 @@ const PATH_TO_SCREEN: Record<string, Screen> = Object.fromEntries(
 ) as Record<string, Screen>;
 
 export function pathToScreen(pathname: string): Screen {
-  // Handle dynamic /player/:uid route
+  // Handle dynamic routes
   if (pathname.startsWith("/player/")) return "player";
+  if (pathname.startsWith("/spot/")) return "spot";
   return PATH_TO_SCREEN[pathname] ?? "notfound";
 }
 
@@ -68,6 +73,8 @@ export interface NavigationContextValue {
   setScreen: (s: Screen) => void;
   /** Navigate to a player's public profile page. */
   navigateToPlayer: (uid: string) => void;
+  /** Navigate to a spot detail page. */
+  navigateToSpot: (spotId: string) => void;
   authMode: "signup" | "signin";
   setAuthMode: (m: "signup" | "signin") => void;
   ageGateDob: string | null;
@@ -101,6 +108,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const navigateToPlayer = useCallback(
     (uid: string) => {
       navigate(`/player/${uid}`);
+    },
+    [navigate],
+  );
+
+  const navigateToSpot = useCallback(
+    (spotId: string) => {
+      navigate(`/spot/${spotId}`);
     },
     [navigate],
   );
@@ -167,6 +181,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     screen,
     setScreen,
     navigateToPlayer,
+    navigateToSpot,
     authMode,
     setAuthMode,
     ageGateDob,

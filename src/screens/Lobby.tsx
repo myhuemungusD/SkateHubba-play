@@ -12,7 +12,7 @@ import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
 import { PushPermissionBanner } from "../components/PushPermissionBanner";
 import { LobbyTimer } from "../components/LobbyTimer";
-import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
+import { SkateboardIcon, TrophyIcon, ChevronRightIcon, MapPinIcon } from "../components/icons";
 import { ProUsername } from "../components/ProUsername";
 
 function relativeJoinDate(createdAt: FieldValue | null): string {
@@ -44,6 +44,7 @@ export function Lobby({
   onLoadMore,
   gamesLoading = false,
   onViewPlayer,
+  onViewMap,
 }: {
   profile: UserProfile;
   games: GameDoc[];
@@ -58,6 +59,7 @@ export function Lobby({
   onLoadMore?: () => void;
   gamesLoading?: boolean;
   onViewPlayer?: (uid: string) => void;
+  onViewMap?: () => void;
 }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [players, setPlayers] = useState<UserProfile[]>([]);
@@ -477,11 +479,23 @@ export function Lobby({
           </div>
         )}
 
+        {/* Spot Map */}
+        {onViewMap && (
+          <button
+            type="button"
+            onClick={onViewMap}
+            className="w-full flex items-center justify-center gap-2.5 rounded-2xl py-3.5 mb-3 font-display tracking-wider text-lg glass-card hover:-translate-y-0.5 hover:border-brand-orange/30 hover:shadow-glow-sm transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <MapPinIcon size={17} className="text-brand-orange" />
+            <span className="text-white">Spot Map</span>
+          </button>
+        )}
+
         {/* Coming Soon */}
         <div className="p-5 rounded-2xl glass-card">
           <h3 className="font-display text-[10px] tracking-[0.25em] text-brand-orange mb-4">COMING SOON</h3>
           <div>
-            {["Spot Map & Discovery", "Trick Clips Feed", "Crew Challenges"].map((f, i) => (
+            {["Trick Clips Feed", "Crew Challenges"].map((f, i) => (
               <div key={f} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
                 <div className="flex items-center gap-3">
                   <span className="font-display text-[10px] text-brand-orange w-4 leading-none tabular-nums">

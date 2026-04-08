@@ -416,5 +416,47 @@ service cloud.firestore {
 
       allow delete: if false;
     }
+
+    // ── Spots (geo-tagged skate locations) ──
+    // Any authenticated user can create a spot and tag games.
+    // Only the creator can update the spot name.
+    match /spots/{spotId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 100
+        && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90
+        && request.resource.data.latitude <= 90
+        && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180
+        && request.resource.data.longitude <= 180
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.createdByUsername is string
+        && request.resource.data.gameCount == 0;
+
+      // Creator can update name; anyone can increment gameCount via transaction
+      allow update: if isSignedIn()
+        // Cannot change ownership or coordinates
+        && request.resource.data.createdByUid == resource.data.createdByUid
+        && request.resource.data.createdByUsername == resource.data.createdByUsername
+        && request.resource.data.latitude == resource.data.latitude
+        && request.resource.data.longitude == resource.data.longitude
+        // gameCount can only stay the same or increment by 1
+        && (
+          request.resource.data.gameCount == resource.data.gameCount
+          || request.resource.data.gameCount == resource.data.gameCount + 1
+        )
+        // Name changes only allowed by creator
+        && (
+          request.resource.data.name == resource.data.name
+          || request.resource.data.createdByUid == request.auth.uid
+        );
+
+      allow delete: if isSignedIn()
+        && resource.data.createdByUid == request.auth.uid;
+    }
   }
 }
