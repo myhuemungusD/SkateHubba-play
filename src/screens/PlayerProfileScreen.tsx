@@ -321,7 +321,7 @@ export function PlayerProfileScreen({
             }`}
           >
             <ShieldIcon size={14} />
-            {blockLoading ? "..." : isBlocked ? "Unblock @" + profile.username : "Block @" + profile.username}
+            {blockLoading ? "..." : isBlocked ? `Unblock @${profile.username}` : `Block @${profile.username}`}
           </button>
         {/* Block / Unblock controls */}
         {!isOwnProfile && (
