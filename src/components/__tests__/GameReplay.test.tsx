@@ -6,6 +6,7 @@ import type { TurnRecord } from "../../services/games";
 
 vi.mock("../../utils/helpers", () => ({
   isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com"),
+  parseFirebaseError: (err: unknown) => String(err),
 }));
 
 const makeTurn = (n: number, overrides?: Partial<TurnRecord>): TurnRecord => ({

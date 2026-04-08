@@ -7,6 +7,7 @@ import type { UserProfile } from "../../services/users";
 
 vi.mock("../../utils/helpers", () => ({
   isFirebaseStorageUrl: (url: string) => url?.startsWith("https://firebasestorage.googleapis.com"),
+  parseFirebaseError: (err: unknown) => String(err),
   LETTERS: ["S", "K", "A", "T", "E"],
 }));
 
