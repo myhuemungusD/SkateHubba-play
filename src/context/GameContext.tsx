@@ -2,7 +2,6 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 import { useAuthContext } from "./AuthContext";
 import { useNavigationContext } from "./NavigationContext";
 import { updatePlayerStats, getUserProfile } from "../services/users";
-import { isUserBlocked } from "../services/blocking";
 import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
@@ -147,14 +146,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       /* v8 ignore start -- null guard unreachable in tests; button disabled when user/profile is null */
       if (!user || !activeProfile) return;
       /* v8 ignore stop */
-      // Defense-in-depth: check block status client-side (Firestore rules enforce server-side)
-      const [blockedByMe, blockedByThem] = await Promise.all([
-        isUserBlocked(user.uid, opponentUid),
-        isUserBlocked(opponentUid, user.uid),
-      ]);
-      if (blockedByMe || blockedByThem) {
-        throw new Error("Cannot challenge this player.");
-      }
       const opponentProfile = await getUserProfile(opponentUid);
       const gameId = await createGame(
         user.uid,

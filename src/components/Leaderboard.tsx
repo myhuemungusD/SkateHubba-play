@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { getLeaderboard, type UserProfile } from "../services/users";
-import { getBlockedUserIds } from "../services/blocking";
 import { ProUsername } from "./ProUsername";
 
 const RANK_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"] as const; // gold, silver, bronze
@@ -20,9 +19,9 @@ export function Leaderboard({
 
   useEffect(() => {
     let stale = false;
-    Promise.all([getLeaderboard(), getBlockedUserIds(currentUserUid)])
-      .then(([all, blockedIds]) => {
-        if (!stale) setPlayers(all.filter((p) => !blockedIds.has(p.uid)));
+    getLeaderboard()
+      .then((all) => {
+        if (!stale) setPlayers(all);
       })
       .catch(() => {
         if (!stale) setError("Could not load leaderboard");
@@ -33,7 +32,7 @@ export function Leaderboard({
     return () => {
       stale = true;
     };
-  }, [currentUserUid]);
+  }, []);
 
   if (loading) {
     return <p className="font-body text-xs text-brand-orange text-center my-6">Loading leaderboard...</p>;

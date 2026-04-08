@@ -73,22 +73,6 @@ service cloud.firestore {
         );
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
-
-      // ── Blocked users subcollection ──
-      // Each user maintains their own block list. Apple App Store requires
-      // UGC apps to support user blocking (Guideline 1.2).
-      match /blocked_users/{blockedUid} {
-        // Only the owning user can read their own block list
-        allow read: if isOwner(uid);
-        // Only the owning user can block someone (cannot block yourself)
-        allow create: if isOwner(uid)
-          && blockedUid != uid
-          && request.resource.data.blockedUid == blockedUid;
-        // Block docs are immutable — delete and re-create to change
-        allow update: if false;
-        // Only the owning user can unblock
-        allow delete: if isOwner(uid);
-      }
     }
 
     // ── Usernames (reservation docs for uniqueness) ──
@@ -149,11 +133,7 @@ service cloud.firestore {
           !exists(/databases/$(database)/documents/users/$(request.auth.uid))
           || !('lastGameCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
           || request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastGameCreatedAt + duration.value(30, 's')
-        )
-        // Block check: neither player has blocked the other.
-        // Prevents challenges between users who have a blocking relationship.
-        && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/blocked_users/$(request.resource.data.player2Uid))
-        && !exists(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)/blocked_users/$(request.auth.uid));
+        );
 
       // Current-turn player can make normal game updates
       allow update: if isSignedIn()

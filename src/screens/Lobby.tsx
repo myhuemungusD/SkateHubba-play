@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
-import { getBlockedUserIds } from "../services/blocking";
 import { logger } from "../services/logger";
 import { Timestamp } from "firebase/firestore";
 import type { FieldValue } from "firebase/firestore";
@@ -64,9 +63,9 @@ export function Lobby({
   const [playersLoading, setPlayersLoading] = useState(true);
   useEffect(() => {
     let stale = false;
-    Promise.all([getPlayerDirectory(), getBlockedUserIds(profile.uid)])
-      .then(([all, blockedIds]) => {
-        if (!stale) setPlayers(all.filter((p) => p.uid !== profile.uid && !blockedIds.has(p.uid)));
+    getPlayerDirectory()
+      .then((all) => {
+        if (!stale) setPlayers(all.filter((p) => p.uid !== profile.uid));
       })
       .catch((err) => {
         // Non-critical: show empty lobby rather than error screen

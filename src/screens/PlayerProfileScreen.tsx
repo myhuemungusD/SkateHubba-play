@@ -1,8 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
 import { usePlayerProfile } from "../hooks/usePlayerProfile";
-import { isUserBlocked, blockUser, unblockUser } from "../services/blocking";
 import { LETTERS } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
@@ -89,48 +88,6 @@ export function PlayerProfileScreen({
   const error = isOwnProfile ? null : fetchedData.error;
 
   const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
-  const [blocked, setBlocked] = useState(false);
-  const [blockLoading, setBlockLoading] = useState(false);
-  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
-
-  // Check block status when viewing another player
-  useEffect(() => {
-    if (isOwnProfile) return;
-    let stale = false;
-    isUserBlocked(currentUserProfile.uid, viewedUid).then((val) => {
-      if (!stale) setBlocked(val);
-    });
-    return () => {
-      stale = true;
-    };
-  }, [isOwnProfile, currentUserProfile.uid, viewedUid]);
-
-  const handleBlock = useCallback(async () => {
-    setBlockLoading(true);
-    try {
-      await blockUser(currentUserProfile.uid, viewedUid);
-      setBlocked(true);
-      setShowBlockConfirm(false);
-      trackEvent("user_blocked", { blockedUid: viewedUid });
-    } catch {
-      // Error already logged in service
-    } finally {
-      setBlockLoading(false);
-    }
-  }, [currentUserProfile.uid, viewedUid]);
-
-  const handleUnblock = useCallback(async () => {
-    setBlockLoading(true);
-    try {
-      await unblockUser(currentUserProfile.uid, viewedUid);
-      setBlocked(false);
-      trackEvent("user_unblocked", { unblockedUid: viewedUid });
-    } catch {
-      // Error already logged in service
-    } finally {
-      setBlockLoading(false);
-    }
-  }, [currentUserProfile.uid, viewedUid]);
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedGameId((prev) => (prev === id ? null : id));
@@ -323,65 +280,11 @@ export function PlayerProfileScreen({
           </div>
         </div>
 
-        {/* Challenge button for other players (hidden when blocked) */}
-        {!isOwnProfile && onChallenge && !blocked && (
-          <Btn onClick={() => onChallenge(profile.uid, profile.username)} className="w-full mb-4">
+        {/* Challenge button for other players */}
+        {!isOwnProfile && onChallenge && (
+          <Btn onClick={() => onChallenge(profile.uid, profile.username)} className="w-full mb-8">
             Challenge @{profile.username}
           </Btn>
-        )}
-
-        {/* Block / Unblock controls */}
-        {!isOwnProfile && (
-          <div className="mb-8">
-            {blocked ? (
-              <div className="flex items-center justify-between p-3 rounded-xl border border-brand-red/20 bg-brand-red/[0.06]">
-                <span className="font-body text-xs text-brand-red">You have blocked this user</span>
-                <button
-                  type="button"
-                  onClick={handleUnblock}
-                  disabled={blockLoading}
-                  className="font-body text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-border hover:border-border-hover disabled:opacity-50"
-                >
-                  {blockLoading ? "..." : "Unblock"}
-                </button>
-              </div>
-            ) : (
-              <>
-                {showBlockConfirm ? (
-                  <div className="flex items-center justify-between p-3 rounded-xl border border-brand-red/20 bg-brand-red/[0.06]">
-                    <span className="font-body text-xs text-subtle">
-                      Block @{profile.username}? They won&apos;t be able to challenge you.
-                    </span>
-                    <div className="flex gap-2 shrink-0 ml-3">
-                      <button
-                        type="button"
-                        onClick={() => setShowBlockConfirm(false)}
-                        className="font-body text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-border"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleBlock}
-                        disabled={blockLoading}
-                        className="font-body text-xs text-brand-red hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-brand-red/30 hover:bg-brand-red/20 disabled:opacity-50"
-                      >
-                        {blockLoading ? "..." : "Block"}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowBlockConfirm(true)}
-                    className="font-body text-xs text-subtle hover:text-brand-red transition-colors"
-                  >
-                    Block this player
-                  </button>
-                )}
-              </>
-            )}
-          </div>
         )}
 
         {/* Overall stats */}
