@@ -102,6 +102,12 @@ vi.mock("@sentry/react", () => ({
   captureMessage: vi.fn(),
   addBreadcrumb: vi.fn(),
 }));
+vi.mock("../services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+}));
 
 beforeEach(() => vi.clearAllMocks());
 
