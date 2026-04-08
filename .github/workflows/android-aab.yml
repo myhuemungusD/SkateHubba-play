@@ -1,6 +1,6 @@
 name: Build Android AAB
 on:
-  workflow_dispatch: # Manual trigger — you control when this runs
+  workflow_dispatch: # Manual trigger â you control when this runs
   push:
     branches: [main]
     paths:
@@ -34,7 +34,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
       - name: Decode keystore
