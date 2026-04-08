@@ -1,9 +1,8 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
-import { blockUser, unblockUser } from "../services/block";
+import { blockUser, unblockUser } from "../services/blocking";
 import { usePlayerProfile } from "../hooks/usePlayerProfile";
-import { isUserBlocked, blockUser, unblockUser } from "../services/blocking";
 import { LETTERS } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
 import { TurnHistoryViewer } from "../components/TurnHistoryViewer";
@@ -16,7 +15,6 @@ import {
   SkateboardIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
-  ShieldIcon,
 } from "../components/icons";
 import { ProUsername } from "../components/ProUsername";
 
@@ -95,6 +93,7 @@ export function PlayerProfileScreen({
 
   const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
   const [blockLoading, setBlockLoading] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const isBlocked = blockedUids?.has(viewedUid) ?? false;
 
   const toggleExpanded = useCallback((id: string) => {
@@ -288,50 +287,29 @@ export function PlayerProfileScreen({
           </div>
         </div>
 
-        {/* Challenge button for other players */}
-        {!isOwnProfile && onChallenge && !isBlocked && (
         {/* Challenge button for other players (hidden when blocked) */}
-        {!isOwnProfile && onChallenge && !blocked && (
+        {!isOwnProfile && onChallenge && !isBlocked && (
           <Btn onClick={() => onChallenge(profile.uid, profile.username)} className="w-full mb-4">
             Challenge @{profile.username}
           </Btn>
         )}
 
-        {/* Block / Unblock button for other players */}
-        {!isOwnProfile && (
-          <button
-            type="button"
-            disabled={blockLoading}
-            onClick={async () => {
-              setBlockLoading(true);
-              try {
-                if (isBlocked) {
-                  await unblockUser(currentUserProfile.uid, profile.uid);
-                } else {
-                  await blockUser(currentUserProfile.uid, profile.uid, profile.username);
-                }
-              } finally {
-                setBlockLoading(false);
-              }
-            }}
-            className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border text-sm font-body transition-colors mb-8 disabled:opacity-40 ${
-              isBlocked
-                ? "border-brand-red/30 text-brand-red hover:bg-brand-red/[0.06]"
-                : "border-border text-muted hover:text-white hover:border-border-hover"
-            }`}
-          >
-            <ShieldIcon size={14} />
-            {blockLoading ? "..." : isBlocked ? `Unblock @${profile.username}` : `Block @${profile.username}`}
-          </button>
         {/* Block / Unblock controls */}
         {!isOwnProfile && (
           <div className="mb-8">
-            {blocked ? (
+            {isBlocked ? (
               <div className="flex items-center justify-between p-3 rounded-xl border border-brand-red/20 bg-brand-red/[0.06]">
                 <span className="font-body text-xs text-brand-red">You have blocked this user</span>
                 <button
                   type="button"
-                  onClick={handleUnblock}
+                  onClick={async () => {
+                    setBlockLoading(true);
+                    try {
+                      await unblockUser(currentUserProfile.uid, profile.uid);
+                    } finally {
+                      setBlockLoading(false);
+                    }
+                  }}
                   disabled={blockLoading}
                   className="font-body text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-border hover:border-border-hover disabled:opacity-50"
                 >
@@ -355,7 +333,15 @@ export function PlayerProfileScreen({
                       </button>
                       <button
                         type="button"
-                        onClick={handleBlock}
+                        onClick={async () => {
+                          setBlockLoading(true);
+                          try {
+                            await blockUser(currentUserProfile.uid, profile.uid);
+                            setShowBlockConfirm(false);
+                          } finally {
+                            setBlockLoading(false);
+                          }
+                        }}
                         disabled={blockLoading}
                         className="font-body text-xs text-brand-red hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-brand-red/30 hover:bg-brand-red/20 disabled:opacity-50"
                       >

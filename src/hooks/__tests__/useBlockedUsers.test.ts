@@ -3,7 +3,7 @@ import { renderHook, act } from "@testing-library/react";
 
 const mockSubscribeToBlockedUsers = vi.fn();
 
-vi.mock("../../services/block", () => ({
+vi.mock("../../services/blocking", () => ({
   subscribeToBlockedUsers: (...args: unknown[]) => mockSubscribeToBlockedUsers(...args),
 }));
 

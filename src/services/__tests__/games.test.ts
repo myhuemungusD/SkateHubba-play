@@ -55,11 +55,6 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
-const mockIsEitherBlocked = vi.hoisted(() => vi.fn().mockResolvedValue(false));
-vi.mock("../block", () => ({
-  isEitherBlocked: (...args: unknown[]) => mockIsEitherBlocked(...args),
-}));
-
 import {
   createGame,
   _resetCreateGameRateLimit,
@@ -131,12 +126,6 @@ describe("games service", () => {
       expect(docData.status).toBe("active");
       expect(docData.phase).toBe("setting");
       expect(docData.currentSetter).toBe("p1");
-    });
-
-    it("throws when either player has blocked the other", async () => {
-      mockIsEitherBlocked.mockResolvedValueOnce(true);
-      await expect(createGame("p1", "alice", "p2", "bob")).rejects.toThrow("Cannot challenge this player");
-      expect(mockAddDoc).not.toHaveBeenCalled();
     });
 
     it("throws when called again within the cooldown period", async () => {

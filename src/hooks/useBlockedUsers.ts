@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import { subscribeToBlockedUsers } from "../services/block";
+import { subscribeToBlockedUsers } from "../services/blocking";
 
 const EMPTY_SET: Set<string> = new Set();
 
