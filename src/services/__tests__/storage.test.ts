@@ -14,16 +14,20 @@ function createMockTask(_downloadUrl: string) {
   return task;
 }
 
-const { mockRef, mockUploadBytesResumable, mockGetDownloadURL } = vi.hoisted(() => ({
+const { mockRef, mockUploadBytesResumable, mockGetDownloadURL, mockDeleteObject, mockListAll } = vi.hoisted(() => ({
   mockRef: vi.fn((_storage: unknown, path: string) => path),
   mockUploadBytesResumable: vi.fn(),
   mockGetDownloadURL: vi.fn().mockResolvedValue("https://cdn.example.com/video.webm"),
+  mockDeleteObject: vi.fn().mockResolvedValue(undefined),
+  mockListAll: vi.fn().mockResolvedValue({ items: [], prefixes: [] }),
 }));
 
 vi.mock("firebase/storage", () => ({
   ref: mockRef,
   uploadBytesResumable: mockUploadBytesResumable,
   getDownloadURL: mockGetDownloadURL,
+  deleteObject: mockDeleteObject,
+  listAll: mockListAll,
 }));
 
 vi.mock("../../firebase");
@@ -35,7 +39,7 @@ vi.mock("../analytics", () => ({
   },
 }));
 
-import { uploadVideo } from "../storage";
+import { uploadVideo, deleteGameVideos, validateVideo } from "../storage";
 
 /** Create a blob that passes the min-size (>1 KB) validation. */
 function validBlob(type = "video/webm"): Blob {
@@ -212,6 +216,250 @@ describe("storage service", () => {
         expect.objectContaining({ contentType: "video/mp4" }),
       );
       expect(url).toBe("https://cdn.example.com/video.webm");
+    });
+  });
+
+  describe("deleteGameVideos", () => {
+    it("deletes all video files in a game's storage prefix", async () => {
+      const item1 = { fullPath: "games/g1/turn-1/set.webm" };
+      const item2 = { fullPath: "games/g1/turn-1/match.webm" };
+      mockListAll
+        .mockResolvedValueOnce({
+          items: [],
+          prefixes: ["games/g1/turn-1"],
+        })
+        .mockResolvedValueOnce({
+          items: [item1, item2],
+          prefixes: [],
+        });
+      mockDeleteObject.mockResolvedValue(undefined);
+
+      const deleted = await deleteGameVideos("g1");
+
+      expect(deleted).toBe(2);
+      expect(mockDeleteObject).toHaveBeenCalledWith(item1);
+      expect(mockDeleteObject).toHaveBeenCalledWith(item2);
+    });
+
+    it("returns 0 when no files exist", async () => {
+      mockListAll.mockResolvedValueOnce({ items: [], prefixes: [] });
+
+      const deleted = await deleteGameVideos("g1");
+
+      expect(deleted).toBe(0);
+      expect(mockDeleteObject).not.toHaveBeenCalled();
+    });
+
+    it("continues deleting other files when one delete fails", async () => {
+      const item1 = { fullPath: "games/g1/turn-1/set.webm" };
+      const item2 = { fullPath: "games/g1/turn-1/match.webm" };
+      mockListAll
+        .mockResolvedValueOnce({ items: [], prefixes: ["turn-1"] })
+        .mockResolvedValueOnce({ items: [item1, item2], prefixes: [] });
+      mockDeleteObject.mockRejectedValueOnce(new Error("permission denied")).mockResolvedValueOnce(undefined);
+
+      const deleted = await deleteGameVideos("g1");
+
+      expect(deleted).toBe(1);
+    });
+
+    it("handles listAll failure gracefully", async () => {
+      mockListAll.mockRejectedValueOnce(new Error("not found"));
+
+      const deleted = await deleteGameVideos("g1");
+
+      expect(deleted).toBe(0);
+    });
+
+    it("handles non-Error rejection in delete", async () => {
+      const item1 = { fullPath: "games/g1/turn-1/set.webm" };
+      mockListAll.mockResolvedValueOnce({ items: [item1], prefixes: [] });
+      mockDeleteObject.mockRejectedValueOnce("string error");
+
+      const deleted = await deleteGameVideos("g1");
+      expect(deleted).toBe(0);
+    });
+
+    it("handles non-Error rejection in listAll", async () => {
+      mockListAll.mockRejectedValueOnce("string error");
+
+      const deleted = await deleteGameVideos("g1");
+      expect(deleted).toBe(0);
+    });
+  });
+
+  describe("validateVideo", () => {
+    it("rejects non-video MIME types", async () => {
+      const blob = new Blob(["data"], { type: "text/plain" });
+      const result = await validateVideo(blob);
+      expect(result).toContain("Invalid video format");
+    });
+
+    it("rejects webm blob with wrong magic bytes", async () => {
+      // Create a blob that claims to be webm but has wrong magic bytes
+      const bytes = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      const blob = new Blob([bytes], { type: "video/webm" });
+      const result = await validateVideo(blob);
+      expect(result).toContain("valid WebM");
+    });
+
+    it("rejects mp4 blob with wrong magic bytes", async () => {
+      const bytes = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      const blob = new Blob([bytes], { type: "video/mp4" });
+      const result = await validateVideo(blob);
+      expect(result).toContain("valid MP4");
+    });
+
+    it("accepts webm blob with correct magic bytes", async () => {
+      // Prevent duration check from hanging in jsdom
+      const origCreateObjectURL = URL.createObjectURL;
+      URL.createObjectURL = vi.fn(() => "blob:test");
+      URL.revokeObjectURL = vi.fn();
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+        const el = origCreateElement(tag);
+        if (tag === "video") {
+          setTimeout(() => {
+            Object.defineProperty(el, "duration", { value: 5, writable: false });
+            el.onloadedmetadata?.(new Event("loadedmetadata"));
+          }, 0);
+        }
+        return el;
+      });
+
+      const bytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      const blob = new Blob([bytes], { type: "video/webm" });
+      const result = await validateVideo(blob);
+      expect(result).toBeNull();
+
+      URL.createObjectURL = origCreateObjectURL;
+      vi.restoreAllMocks();
+    });
+
+    it("accepts mp4 blob with correct magic bytes", async () => {
+      const origCreateObjectURL = URL.createObjectURL;
+      URL.createObjectURL = vi.fn(() => "blob:test");
+      URL.revokeObjectURL = vi.fn();
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+        const el = origCreateElement(tag);
+        if (tag === "video") {
+          setTimeout(() => {
+            Object.defineProperty(el, "duration", { value: 5, writable: false });
+            el.onloadedmetadata?.(new Event("loadedmetadata"));
+          }, 0);
+        }
+        return el;
+      });
+
+      const bytes = new Uint8Array([0x00, 0x00, 0x00, 0x00, 0x66, 0x74, 0x79, 0x70, 0x00, 0x00, 0x00, 0x00]);
+      const blob = new Blob([bytes], { type: "video/mp4" });
+      const result = await validateVideo(blob);
+      expect(result).toBeNull();
+
+      URL.createObjectURL = origCreateObjectURL;
+      vi.restoreAllMocks();
+    });
+
+    it("rejects video that is too short", async () => {
+      const origCreateObjectURL = URL.createObjectURL;
+      URL.createObjectURL = vi.fn(() => "blob:test");
+      URL.revokeObjectURL = vi.fn();
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+        const el = origCreateElement(tag);
+        if (tag === "video") {
+          setTimeout(() => {
+            Object.defineProperty(el, "duration", { value: 0.1, writable: false });
+            el.onloadedmetadata?.(new Event("loadedmetadata"));
+          }, 0);
+        }
+        return el;
+      });
+
+      const bytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      const blob = new Blob([bytes], { type: "video/webm" });
+      const result = await validateVideo(blob);
+      expect(result).toContain("too short");
+
+      URL.createObjectURL = origCreateObjectURL;
+      vi.restoreAllMocks();
+    });
+
+    it("rejects video that is too long", async () => {
+      const origCreateObjectURL = URL.createObjectURL;
+      URL.createObjectURL = vi.fn(() => "blob:test");
+      URL.revokeObjectURL = vi.fn();
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+        const el = origCreateElement(tag);
+        if (tag === "video") {
+          setTimeout(() => {
+            Object.defineProperty(el, "duration", { value: 999, writable: false });
+            el.onloadedmetadata?.(new Event("loadedmetadata"));
+          }, 0);
+        }
+        return el;
+      });
+
+      const bytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      const blob = new Blob([bytes], { type: "video/webm" });
+      const result = await validateVideo(blob);
+      expect(result).toContain("120-second limit");
+
+      URL.createObjectURL = origCreateObjectURL;
+      vi.restoreAllMocks();
+    });
+
+    it("handles non-finite video duration gracefully", async () => {
+      const origCreateObjectURL = URL.createObjectURL;
+      URL.createObjectURL = vi.fn(() => "blob:test");
+      URL.revokeObjectURL = vi.fn();
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+        const el = origCreateElement(tag);
+        if (tag === "video") {
+          setTimeout(() => {
+            Object.defineProperty(el, "duration", { value: Infinity, writable: false });
+            el.onloadedmetadata?.(new Event("loadedmetadata"));
+          }, 0);
+        }
+        return el;
+      });
+
+      const bytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      const blob = new Blob([bytes], { type: "video/webm" });
+      // Non-finite duration rejects internally but is caught — validation passes
+      const result = await validateVideo(blob);
+      expect(result).toBeNull();
+
+      URL.createObjectURL = origCreateObjectURL;
+      vi.restoreAllMocks();
+    });
+
+    it("handles video element error gracefully", async () => {
+      const origCreateObjectURL = URL.createObjectURL;
+      URL.createObjectURL = vi.fn(() => "blob:test");
+      URL.revokeObjectURL = vi.fn();
+      const origCreateElement = document.createElement.bind(document);
+      vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+        const el = origCreateElement(tag);
+        if (tag === "video") {
+          setTimeout(() => {
+            el.onerror?.(new Event("error"));
+          }, 0);
+        }
+        return el;
+      });
+
+      const bytes = new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
+      const blob = new Blob([bytes], { type: "video/webm" });
+      // Video element error is caught — validation passes (best-effort)
+      const result = await validateVideo(blob);
+      expect(result).toBeNull();
+
+      URL.createObjectURL = origCreateObjectURL;
+      vi.restoreAllMocks();
     });
   });
 });

@@ -29,12 +29,15 @@ export function ChallengeScreen({
   onBack,
   initialOpponent = "",
   onViewPlayer,
+  blockedUids,
 }: {
   profile: UserProfile;
   onSend: (opponentUid: string, opponentUsername: string) => Promise<void>;
   onBack: () => void;
   initialOpponent?: string;
   onViewPlayer?: (uid: string) => void;
+  /** Set of UIDs the current user has blocked (prevents challenging blocked users). */
+  blockedUids?: Set<string>;
 }) {
   const [opponent, setOpponent] = useState(initialOpponent);
   const [error, setError] = useState("");
@@ -57,6 +60,10 @@ export function ChallengeScreen({
       const uid = await getUidByUsername(normalized);
       if (!uid) {
         setError(`@${normalized} doesn't exist yet. They need to sign up first.`);
+        return;
+      }
+      if (blockedUids?.has(uid)) {
+        setError("You cannot challenge a blocked player. Unblock them first.");
         return;
       }
       await onSend(uid, normalized);

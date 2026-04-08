@@ -73,6 +73,22 @@ service cloud.firestore {
         );
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
+
+      // ── Blocked Users (subcollection) ──
+      // Each user maintains their own block list.  Only the owner can
+      // create, read, or delete entries.  Blocking is bidirectional at
+      // the application layer — game creation checks both directions.
+      match /blockedUsers/{blockedUid} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && request.resource.data.blockedUid == blockedUid
+          && request.resource.data.blockedUid is string
+          && request.resource.data.blockedUsername is string
+          // Cannot block yourself
+          && blockedUid != uid;
+        allow update: if false;
+        allow delete: if isOwner(uid);
+      }
     }
 
     // ── Usernames (reservation docs for uniqueness) ──
@@ -133,7 +149,11 @@ service cloud.firestore {
           !exists(/databases/$(database)/documents/users/$(request.auth.uid))
           || !('lastGameCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
           || request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastGameCreatedAt + duration.value(30, 's')
-        );
+        )
+        // Block check: neither player may have blocked the other.
+        // Uses exists() against both directions of the blockedUsers subcollection.
+        && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/blockedUsers/$(request.resource.data.player2Uid))
+        && !exists(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)/blockedUsers/$(request.auth.uid));
 
       // Current-turn player can make normal game updates
       allow update: if isSignedIn()

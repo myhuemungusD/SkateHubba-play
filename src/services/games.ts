@@ -22,6 +22,7 @@ import { analytics } from "./analytics";
 import { logger, metrics } from "./logger";
 import { captureException } from "../lib/sentry";
 import { writeNotification } from "./notifications";
+import { isEitherBlocked } from "./block";
 
 /* ────────────────────────────────────────────
  * Types
@@ -143,6 +144,11 @@ export async function createGame(
 ): Promise<string> {
   if (Date.now() - lastGameCreatedAt < GAME_CREATE_COOLDOWN_MS) {
     throw new Error("Please wait before creating another game");
+  }
+
+  // Client-side block check (defense-in-depth; Firestore rules enforce server-side)
+  if (await isEitherBlocked(challengerUid, opponentUid)) {
+    throw new Error("Cannot challenge this player.");
   }
 
   const deadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);

@@ -64,6 +64,14 @@ vi.mock("../services/games", () => ({
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
 }));
+vi.mock("../services/block", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  isEitherBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUsers: vi.fn().mockResolvedValue([]),
+  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
+}));
 vi.mock("../services/fcm", () => ({
   requestPushPermission: vi.fn().mockResolvedValue(null),
   removeFcmToken: vi.fn().mockResolvedValue(undefined),

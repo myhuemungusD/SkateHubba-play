@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
+import { blockUser, unblockUser } from "../services/block";
 import { usePlayerProfile } from "../hooks/usePlayerProfile";
 import { LETTERS } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
@@ -14,6 +15,7 @@ import {
   SkateboardIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ShieldIcon,
 } from "../components/icons";
 import { ProUsername } from "../components/ProUsername";
 
@@ -66,6 +68,7 @@ export function PlayerProfileScreen({
   onBack,
   onChallenge,
   onViewPlayer,
+  blockedUids,
 }: {
   viewedUid: string;
   currentUserProfile: UserProfile;
@@ -78,6 +81,8 @@ export function PlayerProfileScreen({
   onChallenge?: (uid: string, username: string) => void;
   /** Called when the user taps an opponent in the H2H list. */
   onViewPlayer?: (uid: string) => void;
+  /** Set of UIDs the current user has blocked (for block/unblock UI). */
+  blockedUids?: Set<string>;
 }) {
   const fetchedData = usePlayerProfile(isOwnProfile ? "" : viewedUid, currentUserProfile.uid);
 
@@ -88,6 +93,8 @@ export function PlayerProfileScreen({
   const error = isOwnProfile ? null : fetchedData.error;
 
   const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
+  const [blockLoading, setBlockLoading] = useState(false);
+  const isBlocked = blockedUids?.has(viewedUid) ?? false;
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedGameId((prev) => (prev === id ? null : id));
@@ -281,10 +288,38 @@ export function PlayerProfileScreen({
         </div>
 
         {/* Challenge button for other players */}
-        {!isOwnProfile && onChallenge && (
-          <Btn onClick={() => onChallenge(profile.uid, profile.username)} className="w-full mb-8">
+        {!isOwnProfile && onChallenge && !isBlocked && (
+          <Btn onClick={() => onChallenge(profile.uid, profile.username)} className="w-full mb-4">
             Challenge @{profile.username}
           </Btn>
+        )}
+
+        {/* Block / Unblock button for other players */}
+        {!isOwnProfile && (
+          <button
+            type="button"
+            disabled={blockLoading}
+            onClick={async () => {
+              setBlockLoading(true);
+              try {
+                if (isBlocked) {
+                  await unblockUser(currentUserProfile.uid, profile.uid);
+                } else {
+                  await blockUser(currentUserProfile.uid, profile.uid, profile.username);
+                }
+              } finally {
+                setBlockLoading(false);
+              }
+            }}
+            className={`flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border text-sm font-body transition-colors mb-8 disabled:opacity-40 ${
+              isBlocked
+                ? "border-brand-red/30 text-brand-red hover:bg-brand-red/[0.06]"
+                : "border-border text-muted hover:text-white hover:border-border-hover"
+            }`}
+          >
+            <ShieldIcon size={14} />
+            {blockLoading ? "..." : isBlocked ? "Unblock @" + profile.username : "Block @" + profile.username}
+          </button>
         )}
 
         {/* Overall stats */}
