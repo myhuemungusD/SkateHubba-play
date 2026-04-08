@@ -130,6 +130,17 @@ export function Lobby({
             />
           </button>
           <NotificationBell games={games} onOpenGame={onOpenGame} />
+          {onViewMap && (
+            <button
+              type="button"
+              onClick={onViewMap}
+              className="p-1.5 rounded-xl hover:bg-white/[0.05] transition-colors"
+              title="Spot Map"
+              aria-label="Open spot map"
+            >
+              <MapPinIcon size={18} className="text-brand-orange" />
+            </button>
+          )}
           <button
             type="button"
             onClick={onSignOut}
@@ -189,6 +200,18 @@ export function Lobby({
         )}
 
         <InviteButton username={profile.username} className="mb-3" />
+
+        {/* Spot Map — prominent CTA below challenge */}
+        {onViewMap && (
+          <button
+            type="button"
+            onClick={onViewMap}
+            className="w-full flex items-center justify-center gap-2.5 rounded-2xl py-3.5 mb-3 font-display tracking-wider text-lg glass-card hover:-translate-y-0.5 hover:border-brand-orange/30 hover:shadow-glow-sm transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <MapPinIcon size={17} className="text-brand-orange" />
+            <span className="text-white">Spot Map</span>
+          </button>
+        )}
 
         {user?.emailVerified && (
           <p className="font-body text-xs text-dim text-center mb-8">
@@ -477,18 +500,6 @@ export function Lobby({
               ))}
             </div>
           </div>
-        )}
-
-        {/* Spot Map */}
-        {onViewMap && (
-          <button
-            type="button"
-            onClick={onViewMap}
-            className="w-full flex items-center justify-center gap-2.5 rounded-2xl py-3.5 mb-3 font-display tracking-wider text-lg glass-card hover:-translate-y-0.5 hover:border-brand-orange/30 hover:shadow-glow-sm transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            <MapPinIcon size={17} className="text-brand-orange" />
-            <span className="text-white">Spot Map</span>
-          </button>
         )}
 
         {/* Coming Soon */}
