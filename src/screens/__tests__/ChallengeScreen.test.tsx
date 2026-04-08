@@ -13,6 +13,9 @@ vi.mock("../../services/users", () => ({
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
 }));
+vi.mock("../../services/blocking", () => ({
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+}));
 
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
 
