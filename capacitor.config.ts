@@ -25,6 +25,10 @@ const config: CapacitorConfig = {
       "ios.NSMicrophoneUsageDescription": "SkateHubba needs your microphone to capture audio with trick videos.",
       "ios.NSPhotoLibraryUsageDescription": "SkateHubba needs photo library access to save trick videos.",
     },
+    Geolocation: {
+      // iOS: location usage description shown when the app requests GPS for the spot map.
+      "ios.NSLocationWhenInUseUsageDescription": "SkateHubba needs your location to show nearby skating spots on the map.",
+    },
     SplashScreen: {
       launchAutoHide: true,
       backgroundColor: "#0A0A0A",
