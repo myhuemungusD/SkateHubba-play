@@ -1,4 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { MapContainer, TileLayer, Marker } from "react-leaflet";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import { getSpotById, fetchSpotGames, type Spot } from "../services/spots";
 import type { UserProfile } from "../services/users";
 import type { GameDoc } from "../services/games";
@@ -24,6 +27,20 @@ export function SpotDetailScreen({
   const [games, setGames] = useState<GameDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const miniMapIcon = useMemo(
+    () =>
+      new L.Icon({
+        iconUrl:
+          "data:image/svg+xml," +
+          encodeURIComponent(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="28" height="40" viewBox="0 0 28 40"><path d="M14 0C6.268 0 0 6.268 0 14c0 10.5 14 26 14 26s14-15.5 14-26C28 6.268 21.732 0 14 0z" fill="%23FF6B00"/><circle cx="14" cy="14" r="6" fill="white"/></svg>',
+          ),
+        iconSize: [28, 40],
+        iconAnchor: [14, 40],
+      }),
+    [],
+  );
 
   useEffect(() => {
     let stale = false;
@@ -87,6 +104,23 @@ export function SpotDetailScreen({
             {spot.latitude.toFixed(4)}, {spot.longitude.toFixed(4)}
           </p>
         </div>
+      </div>
+
+      {/* Mini-map preview */}
+      <div className="h-40 w-full">
+        <MapContainer
+          center={[spot.latitude, spot.longitude]}
+          zoom={15}
+          className="h-full w-full"
+          zoomControl={false}
+          dragging={false}
+          scrollWheelZoom={false}
+          doubleClickZoom={false}
+          attributionControl={false}
+        >
+          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+          <Marker position={[spot.latitude, spot.longitude]} icon={miniMapIcon} />
+        </MapContainer>
       </div>
 
       <div className="px-5 pt-6 max-w-lg mx-auto">

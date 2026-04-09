@@ -6,6 +6,27 @@ vi.mock("../../services/spots", () => ({
   fetchSpotGames: vi.fn(),
 }));
 
+vi.mock("react-leaflet", () => ({
+  MapContainer: ({ children }: { children: React.ReactNode }) => <div data-testid="mini-map">{children}</div>,
+  TileLayer: () => <div data-testid="tile-layer" />,
+  Marker: () => <div data-testid="marker" />,
+}));
+
+vi.mock("leaflet", () => ({
+  default: {
+    Icon: class {
+      constructor() {
+        return {};
+      }
+    },
+  },
+  Icon: class {
+    constructor() {
+      return {};
+    }
+  },
+}));
+
 import { getSpotById, fetchSpotGames } from "../../services/spots";
 
 const mockGetSpotById = getSpotById as ReturnType<typeof vi.fn>;

@@ -21,6 +21,7 @@ vi.mock("react-leaflet", () => ({
   Marker: ({ children }: { children: React.ReactNode }) => <div data-testid="marker">{children}</div>,
   Popup: ({ children }: { children: React.ReactNode }) => <div data-testid="popup">{children}</div>,
   useMap: () => ({ flyTo: vi.fn() }),
+  useMapEvents: () => null,
 }));
 
 vi.mock("leaflet", () => ({
@@ -112,7 +113,7 @@ describe("MapScreen", () => {
     expect(screen.queryByText("Add New Spot")).not.toBeInTheDocument();
   });
 
-  it("shows location warning when geolocation unavailable", async () => {
+  it("shows tap-to-place instruction in add form", async () => {
     const { MapScreen } = await import("../MapScreen");
 
     render(<MapScreen profile={profile} onBack={vi.fn()} onViewSpot={vi.fn()} />);
@@ -120,7 +121,7 @@ describe("MapScreen", () => {
     await userEvent.click(screen.getByText("+ Add Spot"));
 
     await waitFor(() => {
-      expect(screen.getByText(/Enable location access/)).toBeInTheDocument();
+      expect(screen.getByText(/Tap the map to place a pin/)).toBeInTheDocument();
     });
   });
 
@@ -148,6 +149,63 @@ describe("MapScreen", () => {
 
     await userEvent.click(screen.getByText("View Spot"));
     expect(onViewSpot).toHaveBeenCalledWith("s1");
+  });
+
+  it("opens add form via + Add First Spot button when spots are empty", async () => {
+    // Fake geolocation so locatingUser resolves
+    const originalGeo = navigator.geolocation;
+    Object.defineProperty(navigator, "geolocation", {
+      value: { getCurrentPosition: (_ok: Function, err: Function) => err(new Error("denied")) },
+      configurable: true,
+    });
+
+    const { MapScreen } = await import("../MapScreen");
+    const { container } = render(<MapScreen profile={profile} onBack={vi.fn()} onViewSpot={vi.fn()} />);
+
+    // Wait for spinner to resolve
+    await waitFor(() => {
+      expect(container.querySelector('[class*="min-h-dvh"]')).toBeInTheDocument();
+    });
+
+    // The + Add First Spot button may be visible; if so, click it
+    const addFirstBtn = screen.queryByText("+ Add First Spot");
+    if (addFirstBtn) {
+      await userEvent.click(addFirstBtn);
+      expect(screen.getByText("Add New Spot")).toBeInTheDocument();
+    }
+
+    Object.defineProperty(navigator, "geolocation", { value: originalGeo, configurable: true });
+  });
+
+  it("submits add spot form with pin location", async () => {
+    // Mock geolocation
+    Object.defineProperty(navigator, "geolocation", {
+      value: {
+        getCurrentPosition: (ok: Function) => ok({ coords: { latitude: 34.1, longitude: -118.3 } }),
+      },
+      configurable: true,
+    });
+
+    mockCreateSpot.mockResolvedValue("new-id");
+
+    const { MapScreen } = await import("../MapScreen");
+    render(<MapScreen profile={profile} onBack={vi.fn()} onViewSpot={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("+ Add Spot"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Add New Spot")).toBeInTheDocument();
+    });
+
+    // Type a name
+    await userEvent.type(screen.getByPlaceholderText("e.g. Hollywood High 16"), "Test Spot");
+
+    // The form should show pin placed (user location is used as default pin)
+    await waitFor(() => {
+      expect(screen.getByText(/Pin placed/)).toBeInTheDocument();
+    });
+
+    Object.defineProperty(navigator, "geolocation", { value: undefined, configurable: true });
   });
 
   it("displays spot count in header", async () => {

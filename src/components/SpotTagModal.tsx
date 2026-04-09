@@ -3,6 +3,7 @@ import { getAllSpots, createSpot, tagGameWithSpot, type Spot, type CreateSpotInp
 import type { UserProfile } from "../services/users";
 import { Field } from "./ui/Field";
 import { Btn } from "./ui/Btn";
+import { Spinner } from "./ui/Spinner";
 import { MapPinIcon, XCircleIcon } from "./icons";
 
 export function SpotTagModal({
@@ -23,6 +24,7 @@ export function SpotTagModal({
   const [newSpotName, setNewSpotName] = useState("");
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [tagging, setTagging] = useState(false);
+  const [taggingSpotId, setTaggingSpotId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [locatingUser, setLocatingUser] = useState(false);
 
@@ -56,6 +58,7 @@ export function SpotTagModal({
 
   const handleSelectSpot = async (spot: Spot) => {
     setTagging(true);
+    setTaggingSpotId(spot.id);
     setError("");
     try {
       await tagGameWithSpot(gameId, spot.id, profile.uid);
@@ -64,6 +67,7 @@ export function SpotTagModal({
       setError(err instanceof Error ? err.message : "Failed to tag spot");
     } finally {
       setTagging(false);
+      setTaggingSpotId(null);
     }
   };
 
@@ -147,12 +151,18 @@ export function SpotTagModal({
                     className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-white/[0.04] transition-colors text-left disabled:opacity-40"
                   >
                     <div className="w-8 h-8 rounded-lg bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
-                      <MapPinIcon size={14} className="text-brand-orange" />
+                      {taggingSpotId === spot.id ? (
+                        <Spinner />
+                      ) : (
+                        <MapPinIcon size={14} className="text-brand-orange" />
+                      )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <span className="font-display text-sm text-white block truncate">{spot.name}</span>
                       <span className="font-body text-[11px] text-dim">
-                        {spot.gameCount} {spot.gameCount === 1 ? "game" : "games"}
+                        {taggingSpotId === spot.id
+                          ? "Tagging..."
+                          : `${spot.gameCount} ${spot.gameCount === 1 ? "game" : "games"}`}
                       </span>
                     </div>
                   </button>
