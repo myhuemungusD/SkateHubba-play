@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
+import { blockUser, unblockUser } from "../services/blocking";
 import { usePlayerProfile } from "../hooks/usePlayerProfile";
 import { LETTERS } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
@@ -66,6 +67,7 @@ export function PlayerProfileScreen({
   onBack,
   onChallenge,
   onViewPlayer,
+  blockedUids,
 }: {
   viewedUid: string;
   currentUserProfile: UserProfile;
@@ -78,6 +80,8 @@ export function PlayerProfileScreen({
   onChallenge?: (uid: string, username: string) => void;
   /** Called when the user taps an opponent in the H2H list. */
   onViewPlayer?: (uid: string) => void;
+  /** Set of UIDs the current user has blocked (for block/unblock UI). */
+  blockedUids?: Set<string>;
 }) {
   const fetchedData = usePlayerProfile(isOwnProfile ? "" : viewedUid, currentUserProfile.uid);
 
@@ -88,6 +92,9 @@ export function PlayerProfileScreen({
   const error = isOwnProfile ? null : fetchedData.error;
 
   const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
+  const [blockLoading, setBlockLoading] = useState(false);
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false);
+  const isBlocked = blockedUids?.has(viewedUid) ?? false;
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedGameId((prev) => (prev === id ? null : id));
@@ -232,8 +239,6 @@ export function PlayerProfileScreen({
     );
   }
 
-  const headerTitle = isOwnProfile ? "MY RECORD" : `@${profile.username.toUpperCase()}'S RECORD`;
-
   return (
     <div className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow">
       {/* Header */}
@@ -247,8 +252,14 @@ export function PlayerProfileScreen({
           <ChevronLeftIcon size={16} />
           <span className="font-body text-xs">Lobby</span>
         </button>
-        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">{headerTitle}</span>
-        {/* Spacer to center title */}
+        <img
+          src="/logonew.webp"
+          alt=""
+          draggable={false}
+          className="h-5 w-auto select-none opacity-40"
+          aria-hidden="true"
+        />
+        {/* Spacer to center logo */}
         <div className="w-16" aria-hidden="true" />
       </div>
 
@@ -268,11 +279,80 @@ export function PlayerProfileScreen({
           </div>
         </div>
 
-        {/* Challenge button for other players */}
-        {!isOwnProfile && onChallenge && (
-          <Btn onClick={() => onChallenge(profile.uid, profile.username)} className="w-full mb-8">
+        {/* Challenge button for other players (hidden when blocked) */}
+        {!isOwnProfile && onChallenge && !isBlocked && (
+          <Btn onClick={() => onChallenge(profile.uid, profile.username)} className="w-full mb-4">
             Challenge @{profile.username}
           </Btn>
+        )}
+
+        {/* Block / Unblock controls */}
+        {!isOwnProfile && (
+          <div className="mb-8">
+            {isBlocked ? (
+              <div className="flex items-center justify-between p-3 rounded-xl border border-brand-red/20 bg-brand-red/[0.06]">
+                <span className="font-body text-xs text-brand-red">You have blocked this user</span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setBlockLoading(true);
+                    try {
+                      await unblockUser(currentUserProfile.uid, profile.uid);
+                    } finally {
+                      setBlockLoading(false);
+                    }
+                  }}
+                  disabled={blockLoading}
+                  className="font-body text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-border hover:border-border-hover disabled:opacity-50"
+                >
+                  {blockLoading ? "..." : "Unblock"}
+                </button>
+              </div>
+            ) : (
+              <>
+                {showBlockConfirm ? (
+                  <div className="flex items-center justify-between p-3 rounded-xl border border-brand-red/20 bg-brand-red/[0.06]">
+                    <span className="font-body text-xs text-subtle">
+                      Block @{profile.username}? They won&apos;t be able to challenge you.
+                    </span>
+                    <div className="flex gap-2 shrink-0 ml-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowBlockConfirm(false)}
+                        className="font-body text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-border"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setBlockLoading(true);
+                          try {
+                            await blockUser(currentUserProfile.uid, profile.uid);
+                            setShowBlockConfirm(false);
+                          } finally {
+                            setBlockLoading(false);
+                          }
+                        }}
+                        disabled={blockLoading}
+                        className="font-body text-xs text-brand-red hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-brand-red/30 hover:bg-brand-red/20 disabled:opacity-50"
+                      >
+                        {blockLoading ? "..." : "Block"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowBlockConfirm(true)}
+                    className="font-body text-xs text-subtle hover:text-brand-red transition-colors"
+                  >
+                    Block this player
+                  </button>
+                )}
+              </>
+            )}
+          </div>
         )}
 
         {/* Overall stats */}

@@ -7,7 +7,7 @@ describe("NotFound", () => {
   it("renders BAIL! heading and brand name", () => {
     render(<NotFound onBack={vi.fn()} />);
     expect(screen.getByText("BAIL!")).toBeInTheDocument();
-    expect(screen.getByText("SKATEHUBBA™")).toBeInTheDocument();
+    expect(screen.getByAltText("SkateHubba")).toBeInTheDocument();
   });
 
   it("calls onBack when button is clicked", async () => {

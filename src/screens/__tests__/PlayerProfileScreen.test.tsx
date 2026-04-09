@@ -14,6 +14,13 @@ vi.mock("../../utils/helpers", () => ({
   LETTERS: ["S", "K", "A", "T", "E"],
 }));
 
+vi.mock("../../services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+}));
+
 const mockUsePlayerProfile = vi.fn();
 
 vi.mock("../../hooks/usePlayerProfile", () => ({
@@ -101,7 +108,7 @@ describe("PlayerProfileScreen", () => {
 
   it("renders own profile header", () => {
     render(<PlayerProfileScreen {...baseProps} />);
-    expect(screen.getByText("MY RECORD")).toBeInTheDocument();
+    expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
     expect(screen.getByText("@viewer")).toBeInTheDocument();
     expect(screen.getByText("regular")).toBeInTheDocument();
   });
@@ -205,7 +212,7 @@ describe("PlayerProfileScreen", () => {
       error: null,
     });
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
-    expect(screen.getByText("@SK8RBOI'S RECORD")).toBeInTheDocument();
+    expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
     expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
   });
 

@@ -22,4 +22,4 @@ src/**/*.mov
 
 # Capacitor native platforms (generated — rebuild with `npm run cap:sync`)
 ios
-android
+# android is tracked so we can customise AndroidManifest, Gradle, icons, etc.

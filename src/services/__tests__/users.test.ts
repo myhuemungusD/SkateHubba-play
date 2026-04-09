@@ -52,6 +52,11 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
+const mockDeleteGameVideos = vi.fn().mockResolvedValue(0);
+vi.mock("../storage", () => ({
+  deleteGameVideos: (...args: unknown[]) => mockDeleteGameVideos(...args),
+}));
+
 import {
   getUserProfile,
   isUsernameAvailable,
@@ -203,8 +208,7 @@ describe("users service", () => {
   });
 
   describe("deleteUserData", () => {
-    it("deletes non-active game docs then profile and username via batch", async () => {
-      // Phase 1: getDocs returns game docs for both queries
+    it("deletes videos and game docs then profile and username via batch", async () => {
       const gameDoc1 = { id: "g1", data: () => ({ status: "complete" }) };
       const gameDoc2 = { id: "g2", data: () => ({ status: "forfeit" }) };
       mockGetDocs
@@ -214,6 +218,9 @@ describe("users service", () => {
 
       await deleteUserData("u1", "sk8r");
 
+      // Videos deleted for each non-active game
+      expect(mockDeleteGameVideos).toHaveBeenCalledWith("g1");
+      expect(mockDeleteGameVideos).toHaveBeenCalledWith("g2");
       // Game docs deleted individually
       expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
       // Profile + username deleted via batch
@@ -232,6 +239,8 @@ describe("users service", () => {
 
       // Only the complete game is deleted, not the active one
       expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+      expect(mockDeleteGameVideos).toHaveBeenCalledWith("g2");
+      expect(mockDeleteGameVideos).not.toHaveBeenCalledWith("g1");
     });
 
     it("deduplicates game docs appearing in both queries", async () => {
@@ -243,6 +252,7 @@ describe("users service", () => {
 
       // Only one deleteDoc call despite game appearing twice
       expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+      expect(mockDeleteGameVideos).toHaveBeenCalledTimes(1);
     });
 
     it("re-throws batch commit errors", async () => {

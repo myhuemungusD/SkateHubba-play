@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
-import { createProfile, isUsernameAvailable, type UserProfile } from "../services/users";
+import { createProfile, getUserProfile, isUsernameAvailable, type UserProfile } from "../services/users";
 import { analytics } from "../services/analytics";
-import { metrics } from "../services/logger";
+import { logger, metrics } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -298,6 +298,31 @@ export function ProfileSetup({
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const checkRef = useRef(0);
+  const [checkingExisting, setCheckingExisting] = useState(true);
+
+  // If the user already has a profile (e.g. profile fetch timed out on sign-in),
+  // skip setup entirely and resolve with the existing profile.
+  useEffect(() => {
+    let cancelled = false;
+    getUserProfile(uid)
+      .then((existing) => {
+        if (cancelled) return;
+        if (existing) {
+          logger.info("profile_setup_existing_found", { uid, username: existing.username });
+          onDone(existing);
+        } else {
+          setCheckingExisting(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCheckingExisting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Only run on mount — uid and onDone are stable for the lifetime of this screen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
 
   useEffect(() => {
     setAvailable(null);
@@ -312,10 +337,21 @@ export function ProfileSetup({
         if (checkRef.current === id) setAvailable(ok);
         /* v8 ignore stop */
       } catch {
+        // After Google sign-in the Firestore SDK may not have the auth token
+        // yet, causing a transient permission-denied. Retry once after a short
+        // delay before surfacing the error to the user.
         /* v8 ignore start -- debounce guard; same race condition as above */
-        if (checkRef.current === id) {
-          setAvailable(null);
-          setError("Could not check username — try again");
+        if (checkRef.current !== id) return;
+        try {
+          await new Promise((r) => setTimeout(r, 1500));
+          if (checkRef.current !== id) return;
+          const ok = await isUsernameAvailable(normalized);
+          if (checkRef.current === id) setAvailable(ok);
+        } catch {
+          if (checkRef.current === id) {
+            setAvailable(null);
+            setError("Could not check username — try again");
+          }
         }
         /* v8 ignore stop */
       }
@@ -384,9 +420,18 @@ export function ProfileSetup({
     [step, goNext],
   );
 
+  if (checkingExisting) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center px-6">
+        <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in" onKeyDown={handleKeyDown}>
+        <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-6" aria-hidden="true" />
         <ProgressBar step={step} />
 
         <form

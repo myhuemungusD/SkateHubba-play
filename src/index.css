@@ -623,6 +623,29 @@ input:-webkit-autofill {
   -webkit-text-fill-color: #f5f5f5 !important;
 }
 
+/* ── Branded divider ──────────────────────────────────── */
+.brand-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 107, 0, 0.25) 30%,
+    rgba(255, 107, 0, 0.4) 50%,
+    rgba(255, 107, 0, 0.25) 70%,
+    transparent 100%
+  );
+}
+
+/* ── Branded watermark footer ─────────────────────────── */
+.brand-watermark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  padding: 2rem 0 1rem;
+  opacity: 0.2;
+}
+
 /* ── Verified Pro gold shimmer ─────────────────────────── */
 .pro-username {
   background: linear-gradient(90deg, #c8a415 0%, #ffd700 20%, #ffec8b 40%, #ffd700 60%, #c8a415 80%, #ffd700 100%);

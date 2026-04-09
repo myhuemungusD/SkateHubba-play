@@ -21,6 +21,7 @@ vi.mock("./services/auth", () => ({
 
 vi.mock("./services/users", () => ({
   createProfile: vi.fn(),
+  getUserProfile: vi.fn().mockResolvedValue(null),
   isUsernameAvailable: vi.fn(),
   getUidByUsername: vi.fn(),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
@@ -37,6 +38,13 @@ vi.mock("./services/games", () => ({
 
 vi.mock("./services/storage", () => ({
   uploadVideo: vi.fn(),
+}));
+vi.mock("./services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
 }));
 
 vi.mock("./services/analytics", () => ({
@@ -88,7 +96,7 @@ describe("App", () => {
       refreshProfile: vi.fn(),
     });
     renderApp();
-    expect(screen.getByText(/SKATEHUBBA/)).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
   });
 
   it("shows the landing page when not authenticated", async () => {

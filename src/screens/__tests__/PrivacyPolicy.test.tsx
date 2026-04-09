@@ -4,10 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { PrivacyPolicy } from "../PrivacyPolicy";
 
 describe("PrivacyPolicy", () => {
-  it("renders heading and brand name", () => {
+  it("renders heading and brand logo", () => {
     render(<PrivacyPolicy onBack={vi.fn()} />);
     expect(screen.getByText("Privacy Policy")).toBeInTheDocument();
-    expect(screen.getByText("SKATEHUBBA™")).toBeInTheDocument();
+    expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
   });
 
   it("calls onBack when back button is clicked", async () => {

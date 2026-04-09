@@ -4,14 +4,20 @@ import userEvent from "@testing-library/user-event";
 import { ProfileSetup } from "../ProfileSetup";
 
 const mockCreateProfile = vi.fn();
+const mockGetUserProfile = vi.fn();
 const mockIsUsernameAvailable = vi.fn();
 
 vi.mock("../../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
+  getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
   isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
 }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Default: new user with no existing profile
+  mockGetUserProfile.mockResolvedValue(null);
+});
 
 describe("ProfileSetup", () => {
   const defaultProps = {
@@ -21,9 +27,15 @@ describe("ProfileSetup", () => {
     onDone: vi.fn(),
   };
 
+  /** Helper: wait for the existing-profile check to complete and the form to appear */
+  async function waitForForm() {
+    await waitFor(() => expect(screen.getByText("Pick your handle")).toBeInTheDocument());
+  }
+
   /** Helper: fill username and advance past Step 1 */
   async function fillUsernameAndAdvance(username = "newuser") {
     mockIsUsernameAvailable.mockResolvedValue(true);
+    await waitForForm();
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, username);
     await waitFor(() => expect(screen.getByText(new RegExp(`@${username} is available`))).toBeInTheDocument());
@@ -32,16 +44,16 @@ describe("ProfileSetup", () => {
 
   // ─── Step 1: Username ──────────────────────────────────────
 
-  it("renders step 1 by default with progress bar", () => {
+  it("renders step 1 by default with progress bar", async () => {
     render(<ProfileSetup {...defaultProps} />);
+    await waitForForm();
     expect(screen.getByText("STEP 1 OF 3")).toBeInTheDocument();
-    expect(screen.getByText("Pick your handle")).toBeInTheDocument();
     expect(screen.getByRole("progressbar")).toBeInTheDocument();
   });
 
   it("submits with short username shows error", async () => {
     render(<ProfileSetup {...defaultProps} />);
-
+    await waitForForm();
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "ab");
 
@@ -56,7 +68,7 @@ describe("ProfileSetup", () => {
 
   it("submits with too long username shows error (validation path)", async () => {
     render(<ProfileSetup {...defaultProps} />);
-
+    await waitForForm();
     const input = screen.getByPlaceholderText("sk8legend") as HTMLInputElement;
     expect(input.maxLength).toBe(20);
   });
@@ -64,7 +76,7 @@ describe("ProfileSetup", () => {
   it("submits when available is false shows 'Username is taken'", async () => {
     mockIsUsernameAvailable.mockResolvedValue(false);
     render(<ProfileSetup {...defaultProps} />);
-
+    await waitForForm();
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "takenuser");
 
@@ -82,7 +94,7 @@ describe("ProfileSetup", () => {
   it("submits when available is null (still checking) shows error", async () => {
     mockIsUsernameAvailable.mockImplementation(() => new Promise(() => {}));
     render(<ProfileSetup {...defaultProps} />);
-
+    await waitForForm();
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "checking");
 
@@ -101,25 +113,29 @@ describe("ProfileSetup", () => {
     mockIsUsernameAvailable.mockRejectedValue(new Error("Network"));
 
     render(<ProfileSetup {...defaultProps} />);
-
+    await waitForForm();
     const input = screen.getByPlaceholderText("sk8legend");
     await userEvent.type(input, "testname");
 
-    await waitFor(() => {
-      expect(screen.getByText("Could not check username — try again")).toBeInTheDocument();
-    });
+    // The component retries once after 1.5s before surfacing the error
+    await waitFor(
+      () => {
+        expect(screen.getByText("Could not check username — try again")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
   });
 
-  it("uses displayName as initial value", () => {
+  it("uses displayName as initial value", async () => {
     render(<ProfileSetup {...defaultProps} displayName="Sk8 Master" />);
-
+    await waitForForm();
     const input = screen.getByPlaceholderText("sk8legend") as HTMLInputElement;
     expect(input.value).toBe("sk8master");
   });
 
   it("submits with username > 20 chars shows too-long error", async () => {
     render(<ProfileSetup {...defaultProps} />);
-
+    await waitForForm();
     const input = screen.getByPlaceholderText("sk8legend") as HTMLInputElement;
     // Use fireEvent.change to bypass maxLength attribute
     const { fireEvent } = await import("@testing-library/react");
@@ -265,6 +281,29 @@ describe("ProfileSetup", () => {
     await waitFor(() => {
       expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false, undefined, undefined);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
+    });
+  });
+
+  it("skips setup and calls onDone when user already has a profile", async () => {
+    const onDone = vi.fn();
+    const existingProfile = { uid: "u1", username: "existinguser", stance: "Goofy" };
+    mockGetUserProfile.mockResolvedValue(existingProfile);
+
+    render(<ProfileSetup {...defaultProps} onDone={onDone} />);
+
+    await waitFor(() => {
+      expect(onDone).toHaveBeenCalledWith(existingProfile);
+    });
+    expect(mockGetUserProfile).toHaveBeenCalledWith("u1");
+  });
+
+  it("shows setup form when existing profile check fails", async () => {
+    mockGetUserProfile.mockRejectedValue(new Error("Network error"));
+
+    render(<ProfileSetup {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Pick your handle")).toBeInTheDocument();
     });
   });
 

@@ -105,6 +105,13 @@ vi.mock("@sentry/react", () => ({
   captureMessage: vi.fn(),
   addBreadcrumb: vi.fn(),
 }));
+vi.mock("../services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
+}));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -133,7 +140,7 @@ describe("Smoke: Account & Sign Out", () => {
 
     await renderApp();
 
-    expect(screen.getByText("Sign Out")).toBeInTheDocument();
+    expect(await screen.findByText("Sign Out")).toBeInTheDocument();
     await userEvent.click(screen.getByText("Sign Out"));
 
     expect(mockSignOut).toHaveBeenCalled();
@@ -142,7 +149,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("shows delete account modal when Delete Account is clicked", async () => {
     await renderLobby([]);
 
-    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(await screen.findByText("Delete Account"));
 
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
     expect(screen.getByText(/This cannot be undone/)).toBeInTheDocument();
@@ -153,7 +160,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("cancel button closes the delete modal without calling delete", async () => {
     await renderLobby([]);
 
-    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(await screen.findByText("Delete Account"));
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
 
     await userEvent.click(screen.getByText("Cancel"));
@@ -183,7 +190,7 @@ describe("Smoke: Account & Sign Out", () => {
       </MemoryRouter>,
     );
 
-    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
@@ -198,7 +205,7 @@ describe("Smoke: Account & Sign Out", () => {
     mockDeleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
     await renderLobby([]);
 
-    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
@@ -215,7 +222,7 @@ describe("Smoke: Account & Sign Out", () => {
     mockDeleteAccount.mockRejectedValueOnce(err);
     await renderLobby([]);
 
-    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
@@ -230,10 +237,9 @@ describe("Smoke: Account & Sign Out", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(screen.getByText("Log in"));
-    await screen.findByPlaceholderText("you@email.com");
+    await userEvent.click(await screen.findByText("Log in"));
 
-    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+    await userEvent.type(await screen.findByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
     await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
@@ -256,7 +262,7 @@ describe("Smoke: Account & Sign Out", () => {
     // After sign-out (even on error), the context clears state → useAuth returns no user
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
 
-    await userEvent.click(screen.getByText("Sign Out"));
+    await userEvent.click(await screen.findByText("Sign Out"));
 
     // Despite error, app navigates to landing (sign-out clears state even on error)
     await waitFor(() => {
@@ -267,7 +273,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("delete modal closes on overlay click", async () => {
     await renderLobby([]);
 
-    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(await screen.findByText("Delete Account"));
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
 
     // The overlay div has role="dialog" and aria-modal — click it directly
@@ -286,7 +292,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("delete modal closes on Escape key", async () => {
     await renderLobby([]);
 
-    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(await screen.findByText("Delete Account"));
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
 
     // Fire keydown on the overlay div directly
@@ -304,7 +310,7 @@ describe("Smoke: Account & Sign Out", () => {
     mockDeleteAccount.mockRejectedValueOnce(new Error("Deletion failed"));
     await renderLobby([]);
 
-    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
@@ -324,7 +330,7 @@ describe("Smoke: Account & Sign Out", () => {
     mockDeleteAccount.mockRejectedValueOnce("string error");
     await renderLobby([]);
 
-    await userEvent.click(screen.getByText("Delete Account"));
+    await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
@@ -344,7 +350,7 @@ describe("Smoke: Account & Sign Out", () => {
     await renderApp();
 
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
-    await userEvent.click(screen.getByText("Sign Out"));
+    await userEvent.click(await screen.findByText("Sign Out"));
 
     await waitFor(() => {
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();

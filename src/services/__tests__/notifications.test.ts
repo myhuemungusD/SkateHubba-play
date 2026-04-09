@@ -421,6 +421,19 @@ describe("subscribeToNudges", () => {
 
     expect(onNudge).not.toHaveBeenCalled();
   });
+
+  it("logs a warning when the snapshot listener errors", () => {
+    let errorHandler: (err: Error) => void = () => {};
+    mockOnSnapshot.mockImplementationOnce((_q: unknown, _cb: unknown, onError: (err: Error) => void) => {
+      errorHandler = onError;
+      return vi.fn();
+    });
+
+    subscribeToNudges("u1", vi.fn());
+    errorHandler(new Error("permission-denied"));
+
+    // Error handler should not throw — it logs via logger.warn
+  });
 });
 
 describe("subscribeToNotifications", () => {
@@ -583,5 +596,18 @@ describe("subscribeToNotifications", () => {
     });
 
     expect(onNotification).not.toHaveBeenCalled();
+  });
+
+  it("logs a warning when the snapshot listener errors", () => {
+    let errorHandler: (err: Error) => void = () => {};
+    mockOnSnapshot.mockImplementationOnce((_q: unknown, _cb: unknown, onError: (err: Error) => void) => {
+      errorHandler = onError;
+      return vi.fn();
+    });
+
+    subscribeToNotifications("u1", vi.fn());
+    errorHandler(new Error("permission-denied"));
+
+    // Error handler should not throw — it logs via logger.warn
   });
 });

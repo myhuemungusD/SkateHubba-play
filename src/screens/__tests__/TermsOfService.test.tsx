@@ -4,10 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { TermsOfService } from "../TermsOfService";
 
 describe("TermsOfService", () => {
-  it("renders heading and brand name", () => {
+  it("renders heading and brand logo", () => {
     render(<TermsOfService onBack={vi.fn()} />);
     expect(screen.getByText("Terms of Service")).toBeInTheDocument();
-    expect(screen.getByText("SKATEHUBBA™")).toBeInTheDocument();
+    expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
   });
 
   it("calls onBack when back button is clicked", async () => {

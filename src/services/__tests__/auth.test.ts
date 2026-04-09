@@ -51,13 +51,14 @@ beforeEach(() => {
 
 describe("auth service", () => {
   describe("signUp", () => {
-    it("creates a user and returns the User object", async () => {
-      const user = await signUp("a@b.com", "pass123");
+    it("creates a user and returns the User object with verificationEmailSent", async () => {
+      const result = await signUp("a@b.com", "pass123");
       expect(mockCreateUser).toHaveBeenCalledWith(auth, "a@b.com", "pass123");
-      expect(user).toEqual(mockUserCredential.user);
+      expect(result.user).toEqual(mockUserCredential.user);
+      expect(result.verificationEmailSent).toBe(true);
     });
 
-    it("sends a verification email (fire-and-forget)", async () => {
+    it("sends a verification email and awaits the result", async () => {
       await signUp("a@b.com", "pass123");
       expect(mockSendVerify).toHaveBeenCalledWith(mockUserCredential.user, {
         url: expect.any(String),
@@ -65,11 +66,31 @@ describe("auth service", () => {
       });
     });
 
-    it("swallows verification email errors silently", async () => {
+    it("returns verificationEmailSent=false when email send fails", async () => {
       mockSendVerify.mockRejectedValueOnce(new Error("email quota exceeded"));
-      // signUp should still succeed — the email is fire-and-forget
-      const user = await signUp("a@b.com", "pass123");
-      expect(user).toEqual(mockUserCredential.user);
+      const result = await signUp("a@b.com", "pass123");
+      expect(result.user).toEqual(mockUserCredential.user);
+      expect(result.verificationEmailSent).toBe(false);
+    });
+
+    it("retries without actionCodeSettings on unauthorized-continue-uri", async () => {
+      const uriError = Object.assign(new Error("unauthorized"), { code: "auth/unauthorized-continue-uri" });
+      mockSendVerify.mockRejectedValueOnce(uriError).mockResolvedValueOnce(undefined);
+      const result = await signUp("a@b.com", "pass123");
+      expect(result.verificationEmailSent).toBe(true);
+      expect(mockSendVerify).toHaveBeenCalledTimes(2);
+      // Second call should be without actionCodeSettings
+      expect(mockSendVerify.mock.calls[1]).toEqual([mockUserCredential.user]);
+    });
+
+    it("returns verificationEmailSent=false when fallback retry also fails", async () => {
+      const uriError = Object.assign(new Error("unauthorized"), { code: "auth/unauthorized-continue-uri" });
+      // Error without .code to exercise the parseFirebaseError fallback branch
+      const retryError = new Error("network timeout");
+      mockSendVerify.mockRejectedValueOnce(uriError).mockRejectedValueOnce(retryError);
+      const result = await signUp("a@b.com", "pass123");
+      expect(result.verificationEmailSent).toBe(false);
+      expect(mockSendVerify).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -115,6 +136,21 @@ describe("auth service", () => {
       (auth as unknown as { currentUser: unknown }).currentUser = null;
       await resendVerification();
       expect(mockSendVerify).not.toHaveBeenCalled();
+    });
+
+    it("falls back to no actionCodeSettings on unauthorized-continue-uri", async () => {
+      (auth as unknown as { currentUser: unknown }).currentUser = { uid: "u1" };
+      const uriError = Object.assign(new Error("unauthorized"), { code: "auth/unauthorized-continue-uri" });
+      mockSendVerify.mockRejectedValueOnce(uriError).mockResolvedValueOnce(undefined);
+      await resendVerification();
+      expect(mockSendVerify).toHaveBeenCalledTimes(2);
+      expect(mockSendVerify.mock.calls[1]).toEqual([{ uid: "u1" }]);
+    });
+
+    it("rethrows non-URI errors", async () => {
+      (auth as unknown as { currentUser: unknown }).currentUser = { uid: "u1" };
+      mockSendVerify.mockRejectedValueOnce(Object.assign(new Error("rate"), { code: "auth/too-many-requests" }));
+      await expect(resendVerification()).rejects.toThrow("rate");
     });
   });
 

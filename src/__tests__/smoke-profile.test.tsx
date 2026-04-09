@@ -95,6 +95,13 @@ vi.mock("@sentry/react", () => ({
   captureMessage: vi.fn(),
   addBreadcrumb: vi.fn(),
 }));
+vi.mock("../services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
+}));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -115,7 +122,7 @@ describe("Smoke: Profile Setup", () => {
       refreshProfile: vi.fn(),
     });
     await renderApp();
-    expect(screen.getByText("Pick your handle")).toBeInTheDocument();
+    expect(await screen.findByText("Pick your handle")).toBeInTheDocument();
   });
 
   it("profile setup disables submit with short username", async () => {
@@ -127,7 +134,7 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const usernameInput = screen.getByPlaceholderText("sk8legend");
+    const usernameInput = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "ab");
 
     const submitBtn = screen.getByText("Next");
@@ -146,7 +153,7 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const usernameInput = screen.getByPlaceholderText("sk8legend");
+    const usernameInput = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "coolname");
 
     await waitFor(() => {
@@ -164,7 +171,7 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const usernameInput = screen.getByPlaceholderText("sk8legend");
+    const usernameInput = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "taken");
 
     await waitFor(() => {
@@ -183,7 +190,7 @@ describe("Smoke: Profile Setup", () => {
     await renderApp();
 
     // First advance to step 2 (stance is on step 2)
-    const usernameInput = screen.getByPlaceholderText("sk8legend");
+    const usernameInput = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "testuser");
     await waitFor(() => expect(screen.getByText(/@testuser is available/)).toBeInTheDocument());
     await userEvent.click(screen.getByText("Next"));
@@ -217,7 +224,7 @@ describe("Smoke: Profile Setup", () => {
     await renderApp();
 
     // Step 1: Username
-    const usernameInput = screen.getByPlaceholderText("sk8legend");
+    const usernameInput = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "newsk8r");
 
     await waitFor(() => {
@@ -257,12 +264,16 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const input = screen.getByPlaceholderText("sk8legend");
+    const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "validname");
 
-    await waitFor(() => {
-      expect(screen.getByText("Could not check username — try again")).toBeInTheDocument();
-    });
+    // The component retries once after 1.5s before surfacing the error
+    await waitFor(
+      () => {
+        expect(screen.getByText("Could not check username — try again")).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
   });
 
   it("shows error when profile creation fails", async () => {
@@ -276,7 +287,7 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const input = screen.getByPlaceholderText("sk8legend");
+    const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "validname");
 
     await waitFor(() => expect(screen.getByText(/available/i)).toBeInTheDocument());
@@ -306,7 +317,7 @@ describe("Smoke: Profile Setup", () => {
     // This branch is guarded by the HTML maxLength attribute. We can still test
     // the submit validation path with a 3+ char name that triggers the other
     // validation branches.
-    const input = screen.getByPlaceholderText("sk8legend");
+    const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "abc");
 
     // Wait for availability check
@@ -324,7 +335,7 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const input = screen.getByPlaceholderText("sk8legend");
+    const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "testuser");
 
     // Check shows "Checking..."
@@ -351,7 +362,7 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const input = screen.getByPlaceholderText("sk8legend");
+    const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "taken_name");
 
     await waitFor(() => expect(screen.getByText(/@taken_name is taken/)).toBeInTheDocument());
@@ -376,7 +387,7 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const input = screen.getByPlaceholderText("sk8legend");
+    const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "ab");
 
     // Submit via form
@@ -400,7 +411,7 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const input = screen.getByPlaceholderText("sk8legend");
+    const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "taken_user");
 
     await waitFor(() => expect(screen.getByText(/@taken_user is taken/)).toBeInTheDocument());
@@ -427,7 +438,7 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    const input = screen.getByPlaceholderText("sk8legend") as HTMLInputElement;
+    const input = (await screen.findByPlaceholderText("sk8legend")) as HTMLInputElement;
     expect(input.value).toBe("coolskater123");
   });
 
@@ -443,7 +454,7 @@ describe("Smoke: Profile Setup", () => {
     await renderApp();
 
     // Type valid chars via input
-    const input = screen.getByPlaceholderText("sk8legend");
+    const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "abc");
 
     await waitFor(() => expect(screen.getByText(/@abc is available/)).toBeInTheDocument());

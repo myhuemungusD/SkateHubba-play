@@ -194,6 +194,13 @@ export function GameOverScreen({
         </div>
       </div>
 
+      {/* Brand watermark */}
+      <div className="brand-watermark mt-auto">
+        <div className="brand-divider flex-1 max-w-16" />
+        <img src="/logonew.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
+        <div className="brand-divider flex-1 max-w-16" />
+      </div>
+
       {showReport && (
         <ReportModal
           reporterUid={profile.uid}

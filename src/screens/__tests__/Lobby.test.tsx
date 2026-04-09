@@ -24,6 +24,9 @@ vi.mock("../../services/auth", () => ({
 vi.mock("../../services/users", () => ({
   getPlayerDirectory: vi.fn(),
 }));
+vi.mock("../../services/blocking", () => ({
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+}));
 
 import { getPlayerDirectory } from "../../services/users";
 

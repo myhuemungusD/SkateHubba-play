@@ -104,6 +104,13 @@ vi.mock("@sentry/react", () => ({
   captureMessage: vi.fn(),
   addBreadcrumb: vi.fn(),
 }));
+vi.mock("../services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
+}));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -121,7 +128,7 @@ describe("Smoke: Google Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    const googleBtn = screen.getByRole("button", { name: /continue with google/i });
+    const googleBtn = await screen.findByRole("button", { name: /continue with google/i });
     await userEvent.click(googleBtn);
 
     // No error message should appear
@@ -135,7 +142,7 @@ describe("Smoke: Google Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/linked to a password account/i)).toBeInTheDocument();
@@ -147,7 +154,7 @@ describe("Smoke: Google Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(screen.getByText("OAuth error")).toBeInTheDocument();
@@ -193,7 +200,7 @@ describe("Smoke: Google Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(mockSignInWithGoogle).toHaveBeenCalled();
@@ -205,7 +212,7 @@ describe("Smoke: Google Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(mockSignInWithGoogle).toHaveBeenCalled();
@@ -219,7 +226,7 @@ describe("Smoke: Google Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(screen.queryByText(/google sign-in failed/i)).not.toBeInTheDocument();
@@ -231,7 +238,7 @@ describe("Smoke: Google Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Google sign-in failed")).toBeInTheDocument();
@@ -244,7 +251,7 @@ describe("Smoke: Google Auth", () => {
     await renderApp();
 
     // Navigate to auth screen via age gate
-    await userEvent.click(screen.getByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
     await passAgeGate();
     await waitFor(() => expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument());
 
@@ -264,7 +271,7 @@ describe("Smoke: Google Auth", () => {
     mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
     await renderApp();
 
-    await userEvent.click(screen.getByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
     await passAgeGate();
     await waitFor(() => expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument());
 
@@ -281,7 +288,7 @@ describe("Smoke: Google Auth", () => {
     await renderApp();
 
     // Click Google from landing page
-    await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       // Should redirect to auth screen with sign-in mode
@@ -295,7 +302,7 @@ describe("Smoke: Google Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
 
     await waitFor(() => {
       expect(screen.getByText("Welcome Back")).toBeInTheDocument();

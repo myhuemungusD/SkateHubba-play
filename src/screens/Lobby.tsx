@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
+import { getBlockedUserIds } from "../services/blocking";
 import { logger } from "../services/logger";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
@@ -67,9 +68,9 @@ export function Lobby({
   const [playersLoading, setPlayersLoading] = useState(true);
   useEffect(() => {
     let stale = false;
-    getPlayerDirectory()
-      .then((all) => {
-        if (!stale) setPlayers(all.filter((p) => p.uid !== profile.uid));
+    Promise.all([getPlayerDirectory(), getBlockedUserIds(profile.uid)])
+      .then(([all, blockedIds]) => {
+        if (!stale) setPlayers(all.filter((p) => p.uid !== profile.uid && !blockedIds.has(p.uid)));
       })
       .catch((err) => {
         // Non-critical: show empty lobby rather than error screen
@@ -111,9 +112,7 @@ export function Lobby({
     <div className="min-h-dvh bg-[#0A0A0A]/40 pb-24">
       {/* Header */}
       <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-2xl mx-auto">
-        <span className="font-display text-sm tracking-[0.25em] text-brand-orange">
-          SKATEHUBBA<span className="text-subtle">™</span>
-        </span>
+        <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
         <div className="flex items-center gap-2.5">
           <button
             type="button"
@@ -508,6 +507,13 @@ export function Lobby({
           >
             Delete Account
           </button>
+        </div>
+
+        {/* Brand watermark */}
+        <div className="brand-watermark mt-6">
+          <div className="brand-divider flex-1 max-w-16" />
+          <img src="/logonew.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
+          <div className="brand-divider flex-1 max-w-16" />
         </div>
       </div>
 

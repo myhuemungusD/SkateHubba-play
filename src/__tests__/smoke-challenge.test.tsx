@@ -95,6 +95,13 @@ vi.mock("@sentry/react", () => ({
   captureMessage: vi.fn(),
   addBreadcrumb: vi.fn(),
 }));
+vi.mock("../services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
+}));
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -108,7 +115,7 @@ const { withGames, withGameSub, renderLobby, renderVerifiedLobby } = createMockH
 
 /** Navigate to challenge screen and wait for lazy load to resolve. */
 async function goToChallenge() {
-  await userEvent.click(screen.getByText(/Challenge Someone/));
+  await userEvent.click(await screen.findByText(/Challenge Someone/));
   await screen.findByPlaceholderText("their_handle");
 }
 
@@ -120,7 +127,7 @@ describe("Smoke: Challenge", () => {
     mockCreateGame.mockResolvedValueOnce("game1");
 
     await goToChallenge();
-    expect(screen.getByText("Challenge")).toBeInTheDocument();
+    expect(await screen.findByText("Challenge")).toBeInTheDocument();
     expect(screen.getByText(/First to S.K.A.T.E. loses/)).toBeInTheDocument();
 
     const input = screen.getByPlaceholderText("their_handle");
@@ -139,7 +146,7 @@ describe("Smoke: Challenge", () => {
 
     await goToChallenge();
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "sk8r");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
@@ -152,7 +159,7 @@ describe("Smoke: Challenge", () => {
 
     await goToChallenge();
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "ghost");
 
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -167,7 +174,7 @@ describe("Smoke: Challenge", () => {
 
     await goToChallenge();
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "ab");
 
     const sendBtn = screen.getByText(/Send Challenge/);
@@ -178,7 +185,7 @@ describe("Smoke: Challenge", () => {
     await renderVerifiedLobby([]);
 
     await goToChallenge();
-    expect(screen.getByText("Challenge")).toBeInTheDocument();
+    expect(await screen.findByText("Challenge")).toBeInTheDocument();
 
     await userEvent.click(screen.getByText("← Back"));
 
@@ -194,7 +201,7 @@ describe("Smoke: Challenge", () => {
 
     await goToChallenge();
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "rival");
     await userEvent.click(screen.getByRole("button", { name: /send challenge/i }));
 
@@ -207,7 +214,7 @@ describe("Smoke: Challenge", () => {
     await renderVerifiedLobby([]);
     await goToChallenge();
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "ab");
 
     // Submit via form to bypass button disabled state
@@ -227,7 +234,7 @@ describe("Smoke: Challenge", () => {
     await renderVerifiedLobby([]);
 
     await goToChallenge();
-    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.type(await screen.findByPlaceholderText("their_handle"), "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
@@ -239,7 +246,7 @@ describe("Smoke: Challenge", () => {
     await renderVerifiedLobby([]);
     await goToChallenge();
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "sk8r");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
@@ -255,7 +262,7 @@ describe("Smoke: Challenge", () => {
 
     await goToChallenge();
 
-    const input = screen.getByPlaceholderText("their_handle");
+    const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
