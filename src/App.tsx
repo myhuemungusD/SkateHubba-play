@@ -27,6 +27,8 @@ import { TermsOfService } from "./screens/TermsOfService";
 import { DataDeletion } from "./screens/DataDeletion";
 import { AgeGate } from "./screens/AgeGate";
 import { NotFound } from "./screens/NotFound";
+import { MapPage } from "../apps/web/src/pages/MapPage";
+import { SpotDetailPage } from "../apps/web/src/pages/SpotDetailPage";
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -421,6 +423,9 @@ function AppRoutes() {
             path="/data-deletion"
             element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
           />
+
+          <Route path="/map" element={<MapPage />} />
+          <Route path="/spots/:id" element={<SpotDetailPage />} />
 
           <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />
 

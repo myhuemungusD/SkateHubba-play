@@ -51,6 +51,11 @@ function firebaseSwPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [tailwindcss(), react(), firebaseSwPlugin()],
+  resolve: {
+    alias: {
+      "@shared/types": resolve(__dirname, "packages/shared/src/index.ts"),
+    },
+  },
   define: {
     "import.meta.env.VERCEL": JSON.stringify(process.env.VERCEL ?? ""),
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? ""),
