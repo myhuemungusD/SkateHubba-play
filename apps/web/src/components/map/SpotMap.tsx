@@ -59,16 +59,34 @@ function injectPulseCSS(): void {
 const DEBOUNCE_MS = 400;
 const BOUNDS_DELTA_THRESHOLD = 0.001;
 
+type MarkerEntry = { marker: mapboxgl.Marker; cleanup: () => void };
+
+function getGpsErrorMessage(err: GeolocationPositionError): string {
+  switch (err.code) {
+    case 1:
+      return 'Location permission denied. Enable in browser settings.';
+    case 2:
+      return 'Location unavailable. Check your location services.';
+    case 3:
+      return 'Location request timed out. Try again.';
+    default:
+      return 'Unable to get location';
+  }
+}
+
 export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
+  const markersRef = useRef<Map<string, MarkerEntry>>(new Map());
   const userMarker = useRef<mapboxgl.Marker | null>(null);
   const watchIdRef = useRef<number | null>(null);
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastBoundsRef = useRef<{ n: number; s: number; e: number; w: number } | null>(null);
   const hasLockedRef = useRef(false);
+  // Keep a ref to latest userLocation so callbacks don't go stale
+  const userLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
   const {
     spots,
@@ -85,11 +103,21 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
 
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [mapLoading, setMapLoading] = useState(true);
 
-  // Show toast briefly
+  // Keep ref in sync
+  useEffect(() => {
+    userLocationRef.current = userLocation;
+  }, [userLocation]);
+
+  // Show toast briefly with proper cleanup
   const showToast = useCallback((msg: string) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimerRef.current = null;
+    }, 3000);
   }, []);
 
   // Fetch spots for current bounds
@@ -200,6 +228,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
 
     // Initial fetch after load
     m.on('load', () => {
+      setMapLoading(false);
       fetchSpots(m);
     });
 
@@ -224,14 +253,14 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
         setUserLocation(loc);
         setGpsError(null);
 
-        // Fly to user on first lock
+        // Fly to user on first GPS lock, then user can pan freely
         if (!hasLockedRef.current && map.current) {
           map.current.flyTo({ center: [loc.lng, loc.lat], zoom: 15 });
           hasLockedRef.current = true;
         }
       },
       (err) => {
-        setGpsError(err.code === 1 ? 'Location permission denied' : 'Unable to get location');
+        setGpsError(getGpsErrorMessage(err));
       },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
     );
@@ -275,7 +304,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     }
   }, [userLocation, isTrackingUser]);
 
-  // Update spot markers
+  // Update spot markers — track listeners for proper cleanup
   useEffect(() => {
     if (!map.current) return;
 
@@ -285,60 +314,84 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     // Remove markers no longer in view
     for (const id of existingIds) {
       if (!currentIds.has(id)) {
-        markersRef.current.get(id)?.remove();
+        const entry = markersRef.current.get(id);
+        if (entry) {
+          entry.cleanup();
+          entry.marker.remove();
+        }
         markersRef.current.delete(id);
       }
     }
 
-    // Add/update markers
+    // Add new markers
     for (const spot of spots) {
       if (markersRef.current.has(spot.id)) continue;
 
       const isActiveGame = spot.id === activeGameSpotId;
       const el = createMarkerEl(spot, isActiveGame);
 
-      el.addEventListener('click', (e) => {
+      const listener = (e: MouseEvent) => {
         e.stopPropagation();
         setSelectedSpot(spot);
         onSpotSelect?.(spot);
-      });
+      };
+      el.addEventListener('click', listener);
 
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([spot.longitude, spot.latitude])
         .addTo(map.current!);
 
-      markersRef.current.set(spot.id, marker);
+      markersRef.current.set(spot.id, {
+        marker,
+        cleanup: () => el.removeEventListener('click', listener),
+      });
     }
   }, [spots, activeGameSpotId, createMarkerEl, setSelectedSpot, onSpotSelect]);
 
-  // Cleanup on unmount
+  // Cleanup all timers, controllers, and markers on unmount
   useEffect(() => {
     return () => {
       if (abortRef.current) abortRef.current.abort();
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      for (const entry of markersRef.current.values()) {
+        entry.cleanup();
+        entry.marker.remove();
+      }
+      markersRef.current.clear();
     };
   }, []);
 
   const handleRecenter = useCallback(() => {
-    if (!userLocation) {
+    const loc = userLocationRef.current;
+    if (!loc) {
       showToast('Waiting for location\u2026');
       return;
     }
+    if (!map.current) return;
     setIsTrackingUser(true);
-    map.current?.flyTo({ center: [userLocation.lng, userLocation.lat], zoom: 15 });
-  }, [userLocation, setIsTrackingUser, showToast]);
+    map.current.flyTo({ center: [loc.lng, loc.lat], zoom: 15 });
+  }, [setIsTrackingUser, showToast]);
 
   const handleAddSpotSuccess = useCallback((spot: Spot) => {
     setIsAddingSpot(false);
     setSelectedSpot(spot);
-    map.current?.flyTo({ center: [spot.longitude, spot.latitude], zoom: 16 });
-    // Add to local spots list
-    setSpots([...spots, spot]);
-  }, [setIsAddingSpot, setSelectedSpot, setSpots, spots]);
+    if (map.current) {
+      map.current.flyTo({ center: [spot.longitude, spot.latitude], zoom: 16 });
+    }
+    setSpots([...useMapStore.getState().spots, spot]);
+  }, [setIsAddingSpot, setSelectedSpot, setSpots]);
 
   return (
     <div className="relative w-full" style={{ height: '100dvh' }}>
       <div ref={mapContainer} className="w-full h-full" />
+
+      {/* Map loading overlay */}
+      {mapLoading && (
+        <div className="absolute inset-0 z-40 bg-[#0A0A0A] flex items-center justify-center">
+          <div className="text-[#888] text-sm">Loading map\u2026</div>
+        </div>
+      )}
 
       {/* GPS error banner */}
       {gpsError && (
@@ -348,7 +401,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       )}
 
       {/* Empty state */}
-      {spots.length === 0 && !gpsError && (
+      {!mapLoading && spots.length === 0 && !gpsError && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#1A1A1A]/90 backdrop-blur rounded-xl px-4 py-2 text-sm text-[#888]">
           No spots nearby. Add one!
         </div>

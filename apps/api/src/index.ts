@@ -3,7 +3,7 @@ import spotsRouter from './routes/spots';
 
 const app = express();
 
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 
 // Health check
 app.get('/api/health', (_req, res) => {

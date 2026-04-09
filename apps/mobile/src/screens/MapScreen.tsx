@@ -14,6 +14,17 @@ interface MapScreenProps {
   onAddSpotPress?: () => void;
 }
 
+/** Mapbox region-change callback payload shape */
+interface RegionPayload {
+  properties?: {
+    visibleBounds?: number[][];
+    [key: string]: unknown;
+  };
+  geometry?: {
+    coordinates?: number[];
+  };
+}
+
 export function MapScreen({ activeGameSpotId, onSpotPress, onAddSpotPress }: MapScreenProps) {
   const cameraRef = useRef<MapboxGL.Camera>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
@@ -39,8 +50,8 @@ export function MapScreen({ activeGameSpotId, onSpotPress, onAddSpotPress }: Map
         signal: controller.signal,
       });
       if (!res.ok) return;
-      const data = await res.json() as { features: SpotGeoJSON[] };
-      if (Array.isArray(data.features)) {
+      const data = await res.json() as { features?: SpotGeoJSON[] };
+      if (data?.features && Array.isArray(data.features)) {
         setSpots(data.features.map((f: SpotGeoJSON) => f.properties));
       }
     } catch (err) {
@@ -51,10 +62,9 @@ export function MapScreen({ activeGameSpotId, onSpotPress, onAddSpotPress }: Map
   }, []);
 
   const handleRegionChange = useCallback(
-    (feature: GeoJSON.Feature<GeoJSON.Point>) => {
-      // Assumption: onRegionDidChange provides visible bounds via properties
-      const bounds = (feature.properties as Record<string, unknown>)?.visibleBounds as number[][] | undefined;
-      if (bounds && bounds.length === 2) {
+    (feature: RegionPayload) => {
+      const bounds = feature?.properties?.visibleBounds;
+      if (bounds && Array.isArray(bounds) && bounds.length === 2) {
         fetchSpots({ ne: bounds[0], sw: bounds[1] });
       }
     },
@@ -103,7 +113,7 @@ export function MapScreen({ activeGameSpotId, onSpotPress, onAddSpotPress }: Map
       properties: {
         id: s.id,
         isVerified: s.isVerified,
-        isActiveGame: s.id === activeGameSpotId,
+        isActiveGame: activeGameSpotId != null && s.id === activeGameSpotId,
         name: s.name,
       },
     })),
@@ -113,11 +123,12 @@ export function MapScreen({ activeGameSpotId, onSpotPress, onAddSpotPress }: Map
   useEffect(() => {
     return () => {
       if (abortRef.current) abortRef.current.abort();
+      hasLockedRef.current = false;
     };
   }, []);
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} accessibilityLabel="Skate spot map">
       <MapboxGL.MapView
         style={styles.map}
         styleURL={MAP_STYLE}
@@ -138,8 +149,8 @@ export function MapScreen({ activeGameSpotId, onSpotPress, onAddSpotPress }: Map
         <MapboxGL.UserLocation
           visible
           onUpdate={handleUserLocationUpdate}
-          renderMode="normal"
-          androidRenderMode="compass"
+          renderMode="native"
+          androidRenderMode="native"
         />
 
         {/* Spot markers via ShapeSource + clustering */}
@@ -150,11 +161,13 @@ export function MapScreen({ activeGameSpotId, onSpotPress, onAddSpotPress }: Map
           clusterRadius={50}
           onPress={(e) => {
             const feature = e.features[0];
-            if (!feature || !feature.properties) return;
+            if (!feature?.properties) return;
 
             // If it's a cluster, zoom in
             if (feature.properties.cluster) {
-              const coords = (feature.geometry as GeoJSON.Point).coordinates;
+              const geometry = feature.geometry as GeoJSON.Point | undefined;
+              const coords = geometry?.coordinates;
+              if (!coords) return;
               cameraRef.current?.setCamera({
                 centerCoordinate: coords,
                 zoomLevel: (feature.properties.cluster_expansion_zoom as number) ?? 14,
@@ -221,6 +234,7 @@ export function MapScreen({ activeGameSpotId, onSpotPress, onAddSpotPress }: Map
         style={styles.recenterButton}
         onPress={handleRecenter}
         accessibilityLabel="Recenter to my location"
+        accessibilityRole="button"
       >
         <Crosshair size={16} color="#fff" />
       </TouchableOpacity>
@@ -230,6 +244,7 @@ export function MapScreen({ activeGameSpotId, onSpotPress, onAddSpotPress }: Map
         style={styles.fab}
         onPress={onAddSpotPress}
         accessibilityLabel="Add a spot"
+        accessibilityRole="button"
       >
         <Plus size={24} color="#fff" />
       </TouchableOpacity>

@@ -1,8 +1,18 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, ChevronLeft } from 'lucide-react';
 import type { Spot, ObstacleType, CreateSpotRequest } from '@shared/types';
 import { GnarRating } from './GnarRating';
 import { BustRisk } from './BustRisk';
+
+/** Only allow https URLs for photo submissions */
+function isValidPhotoUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
 
 interface AddSpotSheetProps {
   userLocation: { lat: number; lng: number } | null;
@@ -39,6 +49,14 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
   // Submission state
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
 
   // Validation
   const [nameError, setNameError] = useState<string | null>(null);
@@ -53,6 +71,12 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
   const handleSubmit = useCallback(async () => {
     setError(null);
+
+    // Cancel any in-flight request
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setSubmitting(true);
 
     const body: CreateSpotRequest = {
@@ -71,6 +95,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -82,15 +107,23 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
       const spot = await res.json() as Spot;
       onSuccess(spot);
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       setError(err instanceof Error ? err.message : 'Network error');
     } finally {
       setSubmitting(false);
     }
   }, [name, description, pinLat, pinLng, gnarRating, bustRisk, obstacles, photoUrls, onSuccess]);
 
+  const [photoError, setPhotoError] = useState<string | null>(null);
+
   const addPhotoUrl = useCallback(() => {
     const url = photoInput.trim();
     if (!url || photoUrls.length >= 5) return;
+    if (!isValidPhotoUrl(url)) {
+      setPhotoError('URL must start with https://');
+      return;
+    }
+    setPhotoError(null);
     setPhotoUrls((prev) => [...prev, url]);
     setPhotoInput('');
   }, [photoInput, photoUrls.length]);
@@ -336,7 +369,12 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                 </div>
               )}
 
-              {/* Error */}
+              {/* Photo URL validation error */}
+              {photoError && (
+                <p className="text-red-400 text-xs">{photoError}</p>
+              )}
+
+              {/* Submission error */}
               {error && (
                 <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
                   {error}

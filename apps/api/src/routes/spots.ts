@@ -16,6 +16,20 @@ const postLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later' },
 });
 
+const getLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later' },
+});
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUUID(id: string): boolean {
+  return UUID_REGEX.test(id);
+}
+
 const VALID_OBSTACLES: ObstacleType[] = [
   'ledge', 'rail', 'stairs', 'gap', 'bank', 'bowl',
   'manual_pad', 'quarter_pipe', 'euro_gap', 'slappy_curb',
@@ -24,6 +38,17 @@ const VALID_OBSTACLES: ObstacleType[] = [
 
 function isValidRating(v: unknown): v is 1 | 2 | 3 | 4 | 5 {
   return typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 5;
+}
+
+/** Validate a photo URL: must be a valid https URL */
+function isValidPhotoUrl(url: unknown): boolean {
+  if (typeof url !== 'string') return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 function rowToSpot(row: typeof spots.$inferSelect): Spot {
@@ -57,15 +82,30 @@ function spotToGeoJSON(spot: Spot): SpotGeoJSON {
 }
 
 // GET /api/spots/bounds — fetch spots within map viewport
-router.get('/bounds', async (req, res) => {
+router.get('/bounds', getLimiter, async (req, res) => {
   try {
     const north = parseFloat(req.query.north as string);
     const south = parseFloat(req.query.south as string);
     const east = parseFloat(req.query.east as string);
     const west = parseFloat(req.query.west as string);
 
-    if ([north, south, east, west].some(Number.isNaN)) {
-      res.status(400).json({ error: 'north, south, east, west query params required as numbers' });
+    if ([north, south, east, west].some((v) => Number.isNaN(v) || !Number.isFinite(v))) {
+      res.status(400).json({ error: 'north, south, east, west query params required as finite numbers' });
+      return;
+    }
+
+    if (north < -90 || north > 90 || south < -90 || south > 90) {
+      res.status(400).json({ error: 'latitude values must be between -90 and 90' });
+      return;
+    }
+
+    if (east < -180 || east > 180 || west < -180 || west > 180) {
+      res.status(400).json({ error: 'longitude values must be between -180 and 180' });
+      return;
+    }
+
+    if (north < south) {
+      res.status(400).json({ error: 'north must be greater than or equal to south' });
       return;
     }
 
@@ -87,14 +127,19 @@ router.get('/bounds', async (req, res) => {
       features,
     });
   } catch (err) {
-    console.error('GET /api/spots/bounds error:', err);
+    console.warn('GET /api/spots/bounds failed:', err instanceof Error ? err.message : 'unknown');
     res.status(500).json({ error: 'Failed to fetch spots' });
   }
 });
 
 // GET /api/spots/:id — fetch single spot
-router.get('/:id', async (req, res) => {
+router.get('/:id', getLimiter, async (req, res) => {
   try {
+    if (!isValidUUID(req.params.id)) {
+      res.status(400).json({ error: 'Invalid spot ID format' });
+      return;
+    }
+
     const rows = await db
       .select()
       .from(spots)
@@ -108,7 +153,7 @@ router.get('/:id', async (req, res) => {
 
     res.json(rowToSpot(rows[0]));
   } catch (err) {
-    console.error('GET /api/spots/:id error:', err);
+    console.warn('GET /api/spots/:id failed:', err instanceof Error ? err.message : 'unknown');
     res.status(500).json({ error: 'Failed to fetch spot' });
   }
 });
@@ -133,12 +178,14 @@ router.post('/', postLimiter, authMiddleware, async (req, res) => {
       }
     }
 
-    if (typeof body.latitude !== 'number' || body.latitude < -90 || body.latitude > 90) {
-      errors.push('latitude must be between -90 and 90');
+    if (typeof body.latitude !== 'number' || !Number.isFinite(body.latitude) ||
+        body.latitude < -90 || body.latitude > 90) {
+      errors.push('latitude must be a finite number between -90 and 90');
     }
 
-    if (typeof body.longitude !== 'number' || body.longitude < -180 || body.longitude > 180) {
-      errors.push('longitude must be between -180 and 180');
+    if (typeof body.longitude !== 'number' || !Number.isFinite(body.longitude) ||
+        body.longitude < -180 || body.longitude > 180) {
+      errors.push('longitude must be a finite number between -180 and 180');
     }
 
     if (!isValidRating(body.gnarRating)) {
@@ -159,6 +206,8 @@ router.post('/', postLimiter, authMiddleware, async (req, res) => {
       errors.push('photoUrls must be an array');
     } else if (body.photoUrls.length > 5) {
       errors.push('photoUrls max 5');
+    } else if (body.photoUrls.some((url) => !isValidPhotoUrl(url))) {
+      errors.push('photoUrls must contain valid https URLs');
     }
 
     if (errors.length > 0) {
@@ -183,14 +232,19 @@ router.post('/', postLimiter, authMiddleware, async (req, res) => {
 
     res.status(201).json(rowToSpot(row));
   } catch (err) {
-    console.error('POST /api/spots error:', err);
+    console.warn('POST /api/spots failed:', err instanceof Error ? err.message : 'unknown');
     res.status(500).json({ error: 'Failed to create spot' });
   }
 });
 
 // GET /api/spots/:id/comments — list comments for a spot
-router.get('/:id/comments', async (req, res) => {
+router.get('/:id/comments', getLimiter, async (req, res) => {
   try {
+    if (!isValidUUID(req.params.id)) {
+      res.status(400).json({ error: 'Invalid spot ID format' });
+      return;
+    }
+
     const rows = await db
       .select()
       .from(spotComments)
@@ -208,7 +262,7 @@ router.get('/:id/comments', async (req, res) => {
 
     res.json(comments);
   } catch (err) {
-    console.error('GET /api/spots/:id/comments error:', err);
+    console.warn('GET /api/spots/:id/comments failed:', err instanceof Error ? err.message : 'unknown');
     res.status(500).json({ error: 'Failed to fetch comments' });
   }
 });
@@ -216,6 +270,11 @@ router.get('/:id/comments', async (req, res) => {
 // POST /api/spots/:id/comments — add a comment [auth required]
 router.post('/:id/comments', postLimiter, authMiddleware, async (req, res) => {
   try {
+    if (!isValidUUID(req.params.id)) {
+      res.status(400).json({ error: 'Invalid spot ID format' });
+      return;
+    }
+
     const { content } = req.body as { content: string };
 
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
@@ -259,7 +318,7 @@ router.post('/:id/comments', postLimiter, authMiddleware, async (req, res) => {
 
     res.status(201).json(comment);
   } catch (err) {
-    console.error('POST /api/spots/:id/comments error:', err);
+    console.warn('POST /api/spots/:id/comments failed:', err instanceof Error ? err.message : 'unknown');
     res.status(500).json({ error: 'Failed to create comment' });
   }
 });

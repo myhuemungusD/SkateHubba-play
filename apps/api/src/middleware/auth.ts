@@ -3,8 +3,8 @@ import admin from 'firebase-admin';
 
 // Initialize Firebase Admin once
 if (!admin.apps.length) {
+  // Assumption: using GOOGLE_APPLICATION_CREDENTIALS env var for service account
   admin.initializeApp({
-    // Assumption: using GOOGLE_APPLICATION_CREDENTIALS env var for service account
     credential: admin.credential.applicationDefault(),
   });
 }
@@ -38,7 +38,8 @@ export async function authMiddleware(
     const decoded = await admin.auth().verifyIdToken(token);
     req.userId = decoded.uid;
     next();
-  } catch {
+  } catch (err) {
+    console.warn('Auth token verification failed:', err instanceof Error ? err.message : 'unknown');
     res.status(401).json({ error: 'Invalid or expired token' });
   }
 }

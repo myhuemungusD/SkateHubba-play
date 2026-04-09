@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChevronLeft, MapPin, Send } from 'lucide-react';
 import type { Spot, SpotComment } from '@shared/types';
@@ -8,6 +8,7 @@ import { BustRisk } from '../components/map/BustRisk';
 export function SpotDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const commentAbortRef = useRef<AbortController | null>(null);
 
   const [spot, setSpot] = useState<Spot | null>(null);
   const [comments, setComments] = useState<SpotComment[]>([]);
@@ -19,11 +20,15 @@ export function SpotDetailPage() {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
 
-  // Fetch spot and comments
+  // Fetch spot and comments with race condition guard
   useEffect(() => {
     if (!id) return;
 
     const controller = new AbortController();
+    let cancelled = false;
+
+    setLoading(true);
+    setError(null);
 
     Promise.all([
       fetch(`/api/spots/${id}`, { signal: controller.signal }).then((r) => {
@@ -36,21 +41,40 @@ export function SpotDetailPage() {
       }),
     ])
       .then(([spotData, commentsData]) => {
+        if (cancelled) return;
         setSpot(spotData);
         setComments(commentsData);
       })
       .catch((err: Error) => {
+        if (cancelled) return;
         if (err.name !== 'AbortError') {
           setError(err.message);
         }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [id]);
+
+  // Cleanup comment abort on unmount
+  useEffect(() => {
+    return () => {
+      commentAbortRef.current?.abort();
+    };
+  }, []);
 
   const handleSubmitComment = useCallback(async () => {
     if (!commentText.trim() || !id) return;
+
+    // Cancel any in-flight comment submission
+    commentAbortRef.current?.abort();
+    const controller = new AbortController();
+    commentAbortRef.current = controller;
 
     setSubmittingComment(true);
     setCommentError(null);
@@ -60,6 +84,7 @@ export function SpotDetailPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: commentText.trim() }),
+        signal: controller.signal,
       });
 
       if (!res.ok) {
@@ -72,6 +97,7 @@ export function SpotDetailPage() {
       setComments((prev) => [comment, ...prev]);
       setCommentText('');
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') return;
       setCommentError(err instanceof Error ? err.message : 'Network error');
     } finally {
       setSubmittingComment(false);
@@ -81,7 +107,7 @@ export function SpotDetailPage() {
   const handleChallenge = useCallback(() => {
     // Assumption: Game flow not yet wired — show toast
     // TODO: Navigate to game init with spotId when game flow is ready
-    alert('Coming Soon — S.K.A.T.E. challenges at spots launching soon!');
+    alert('Coming Soon \u2014 S.K.A.T.E. challenges at spots launching soon!');
   }, []);
 
   if (loading) {
@@ -131,7 +157,7 @@ export function SpotDetailPage() {
           <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
             {spot.photoUrls.map((url, i) => (
               <img
-                key={i}
+                key={url}
                 src={url}
                 alt={`${spot.name} photo ${i + 1}`}
                 className="w-64 h-48 object-cover rounded-xl flex-shrink-0"
