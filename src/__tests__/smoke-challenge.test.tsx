@@ -60,6 +60,7 @@ vi.mock("../services/games", () => ({
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
+  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
 }));
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
@@ -112,14 +113,20 @@ const { withGames, withGameSub, renderLobby, renderVerifiedLobby } = createMockH
   mockSubscribeToGame,
 });
 
+/** Navigate to challenge screen and wait for lazy load to resolve. */
+async function goToChallenge() {
+  await userEvent.click(await screen.findByText(/Challenge Someone/));
+  await screen.findByPlaceholderText("their_handle");
+}
+
 describe("Smoke: Challenge", () => {
   it("navigates to challenge screen and sends a challenge", async () => {
-    renderVerifiedLobby([]);
+    await renderVerifiedLobby([]);
     withGameSub(activeGame());
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     mockCreateGame.mockResolvedValueOnce("game1");
 
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await goToChallenge();
     expect(await screen.findByText("Challenge")).toBeInTheDocument();
     expect(screen.getByText(/First to S.K.A.T.E. loses/)).toBeInTheDocument();
 
@@ -135,9 +142,9 @@ describe("Smoke: Challenge", () => {
   });
 
   it("challenge screen prevents self-challenge", async () => {
-    renderVerifiedLobby([]);
+    await renderVerifiedLobby([]);
 
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await goToChallenge();
 
     const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "sk8r");
@@ -148,9 +155,9 @@ describe("Smoke: Challenge", () => {
 
   it("challenge shows error when opponent not found", async () => {
     mockGetUidByUsername.mockResolvedValueOnce(null);
-    renderVerifiedLobby([]);
+    await renderVerifiedLobby([]);
 
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await goToChallenge();
 
     const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "ghost");
@@ -163,9 +170,9 @@ describe("Smoke: Challenge", () => {
   });
 
   it("challenge disables send button with short username", async () => {
-    renderVerifiedLobby([]);
+    await renderVerifiedLobby([]);
 
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await goToChallenge();
 
     const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "ab");
@@ -175,9 +182,9 @@ describe("Smoke: Challenge", () => {
   });
 
   it("challenge back button returns to lobby", async () => {
-    renderVerifiedLobby([]);
+    await renderVerifiedLobby([]);
 
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await goToChallenge();
     expect(await screen.findByText("Challenge")).toBeInTheDocument();
 
     await userEvent.click(screen.getByText("← Back"));
@@ -190,9 +197,9 @@ describe("Smoke: Challenge", () => {
   it("challenge screen shows error when createGame fails", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     mockCreateGame.mockRejectedValueOnce(new Error("Network error"));
-    renderVerifiedLobby([]);
+    await renderVerifiedLobby([]);
 
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await goToChallenge();
 
     const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "rival");
@@ -204,8 +211,8 @@ describe("Smoke: Challenge", () => {
   });
 
   it("challenge shows validation error for short username on submit", async () => {
-    renderVerifiedLobby([]);
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await renderVerifiedLobby([]);
+    await goToChallenge();
 
     const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "ab");
@@ -224,9 +231,9 @@ describe("Smoke: Challenge", () => {
   it("challenge shows fallback error when onSend throws non-Error", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     mockCreateGame.mockRejectedValueOnce("string error");
-    renderVerifiedLobby([]);
+    await renderVerifiedLobby([]);
 
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await goToChallenge();
     await userEvent.type(await screen.findByPlaceholderText("their_handle"), "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
@@ -236,8 +243,8 @@ describe("Smoke: Challenge", () => {
   });
 
   it("challenge error banner can be dismissed", async () => {
-    renderVerifiedLobby([]);
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await renderVerifiedLobby([]);
+    await goToChallenge();
 
     const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "sk8r");
@@ -251,9 +258,9 @@ describe("Smoke: Challenge", () => {
 
   it("challenge input is locked during loading", async () => {
     mockGetUidByUsername.mockImplementation(() => new Promise(() => {})); // hang
-    renderVerifiedLobby([]);
+    await renderVerifiedLobby([]);
 
-    await userEvent.click(await screen.findByText(/Challenge Someone/));
+    await goToChallenge();
 
     const input = await screen.findByPlaceholderText("their_handle");
     await userEvent.type(input, "rival");

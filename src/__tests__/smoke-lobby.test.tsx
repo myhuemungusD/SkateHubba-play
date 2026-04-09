@@ -60,6 +60,7 @@ vi.mock("../services/games", () => ({
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
+  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
 }));
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
@@ -115,7 +116,7 @@ const { withGames, withGameSub, renderLobby, renderVerifiedLobby } = createMockH
 describe("Smoke: Lobby", () => {
   it("shows lobby with active games", async () => {
     const game = activeGame();
-    renderLobby([game]);
+    await renderLobby([game]);
 
     expect(await screen.findByText(/@sk8r/i)).toBeInTheDocument();
     expect(screen.getByText("Your Games")).toBeInTheDocument();
@@ -124,13 +125,13 @@ describe("Smoke: Lobby", () => {
   });
 
   it("shows empty state when no games exist", async () => {
-    renderLobby([]);
+    await renderLobby([]);
     expect(await screen.findByText(/No games yet/)).toBeInTheDocument();
   });
 
   it("displays correct letter counts in lobby", async () => {
     const game = activeGame({ p1Letters: 2, p2Letters: 3 });
-    renderLobby([game]);
+    await renderLobby([game]);
 
     // The lobby should show the game card
     expect(await screen.findByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
@@ -145,7 +146,7 @@ describe("Smoke: Lobby", () => {
       p2Letters: 5,
       player2Username: "loser",
     });
-    renderLobby([active1, completed]);
+    await renderLobby([active1, completed]);
 
     expect(await screen.findByText("ACTIVE")).toBeInTheDocument();
     expect(screen.getByText("COMPLETED")).toBeInTheDocument();
@@ -153,14 +154,14 @@ describe("Smoke: Lobby", () => {
 
   it("lobby shows 'Waiting on opponent' for non-turn games", async () => {
     const game = activeGame({ currentTurn: "u2" });
-    renderLobby([game]);
+    await renderLobby([game]);
 
     expect(await screen.findByText("They're setting a trick")).toBeInTheDocument();
   });
 
   it("lobby shows PLAY badge when it's your turn", async () => {
     const game = activeGame({ currentTurn: "u1" });
-    renderLobby([game]);
+    await renderLobby([game]);
 
     expect(await screen.findByText("PLAY")).toBeInTheDocument();
   });
@@ -172,7 +173,7 @@ describe("Smoke: Lobby", () => {
       p1Letters: 1,
       p2Letters: 2,
     });
-    renderLobby([game]);
+    await renderLobby([game]);
 
     expect(await screen.findByText(/forfeit/i)).toBeInTheDocument();
   });
@@ -184,7 +185,7 @@ describe("Smoke: Lobby", () => {
       currentSetter: "u2",
       currentTrickName: "Kickflip",
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameCard = await screen.findByRole("button", { name: /vs @rival/i });
@@ -198,7 +199,7 @@ describe("Smoke: Lobby", () => {
 
   it("opens completed game via keyboard Space on done card", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p1Letters: 0, p2Letters: 5 });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameCard = await screen.findByRole("button", { name: /vs @rival/i });
@@ -211,7 +212,7 @@ describe("Smoke: Lobby", () => {
   });
 
   it("challenge button is disabled when email is not verified", async () => {
-    renderLobby([]); // uses unverified user
+    await renderLobby([]); // uses unverified user
     const btn = await screen.findByText(/Challenge Someone/);
     expect(btn.closest("button")).toBeDisabled();
     expect(screen.getByText("Verify your email to start challenging")).toBeInTheDocument();
@@ -224,7 +225,7 @@ describe("Smoke: Lobby", () => {
       currentSetter: "u2",
       currentTrickName: "Kickflip",
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameCard = await screen.findByRole("button", { name: /vs @rival/i });
@@ -238,7 +239,7 @@ describe("Smoke: Lobby", () => {
 
   it("lobby game card ignores non-Enter/Space keys", async () => {
     const game = activeGame();
-    renderLobby([game]);
+    await renderLobby([game]);
 
     const gameCard = await screen.findByRole("button", { name: /vs @rival/i });
     gameCard.focus();

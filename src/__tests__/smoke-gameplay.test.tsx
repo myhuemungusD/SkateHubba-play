@@ -60,6 +60,7 @@ vi.mock("../services/games", () => ({
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
+  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
 }));
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
@@ -115,7 +116,7 @@ const { withGames, withGameSub, renderLobby, renderVerifiedLobby } = createMockH
 describe("Smoke: Gameplay", () => {
   it("gameplay screen shows setter UI when it's your turn to set", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -152,7 +153,7 @@ describe("Smoke: Gameplay", () => {
   it("setter auto-submits trick after recording", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockResolvedValueOnce(undefined);
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -168,7 +169,7 @@ describe("Smoke: Gameplay", () => {
 
   it("shows waiting screen when it's opponent's turn", async () => {
     const game = activeGame({ phase: "matching", currentTurn: "u2", currentSetter: "u1" });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -186,7 +187,7 @@ describe("Smoke: Gameplay", () => {
       currentSetter: "u2",
       currentTrickName: "Tre Flip",
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -205,7 +206,7 @@ describe("Smoke: Gameplay", () => {
       currentTurn: "u2",
       turnDeadline: { toMillis: () => Date.now() - 1000 }, // expired
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -218,7 +219,7 @@ describe("Smoke: Gameplay", () => {
 
   it("game screen back button returns to lobby", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -239,7 +240,7 @@ describe("Smoke: Gameplay", () => {
 
   it("game screen shows turn timer", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -253,7 +254,7 @@ describe("Smoke: Gameplay", () => {
 
   it("waiting screen shows setting context when opponent is setting", async () => {
     const game = activeGame({ phase: "setting", currentTurn: "u2", currentSetter: "u2" });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -266,7 +267,7 @@ describe("Smoke: Gameplay", () => {
 
   it("waiting screen shows matching context when opponent is matching", async () => {
     const game = activeGame({ phase: "matching", currentTurn: "u2", currentSetter: "u1" });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -285,7 +286,7 @@ describe("Smoke: Gameplay", () => {
       currentTrickName: "Heelflip",
       currentTrickVideoUrl: `https://firebasestorage.googleapis.com/v0/b/${import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sk8hub-d7806.firebasestorage.app"}/o/trick.webm?alt=media`,
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -314,7 +315,7 @@ describe("Smoke: Gameplay", () => {
       p1Letters: 2,
       p2Letters: 3,
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -330,7 +331,7 @@ describe("Smoke: Gameplay", () => {
   it("setter's trick is submitted after recording and clicking Landed", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockResolvedValueOnce(undefined);
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -374,7 +375,7 @@ describe("Smoke: Gameplay", () => {
   it("trick name input locks after recording and recorder stays mounted", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockResolvedValueOnce(undefined);
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -412,7 +413,7 @@ describe("Smoke: Gameplay", () => {
     // Covers the submitSetterTrick code path when blob is null (demo mode recording)
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockResolvedValue(undefined);
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -451,7 +452,7 @@ describe("Smoke: Gameplay", () => {
       currentTrickName: "Heelflip",
     });
     mockSubmitMatchAttempt.mockResolvedValueOnce(undefined);
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -488,7 +489,7 @@ describe("Smoke: Gameplay", () => {
   it("setter submits trick after confirming landed (upload skipped in demo mode)", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockResolvedValueOnce(undefined);
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -526,7 +527,7 @@ describe("Smoke: Gameplay", () => {
       currentTrickName: "Kickflip",
     });
     mockSubmitMatchAttempt.mockRejectedValueOnce(new Error("Submit failed"));
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -552,7 +553,7 @@ describe("Smoke: Gameplay", () => {
   it("setter landed failure shows error and retry button", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockRejectedValueOnce(new Error("Network error"));
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -588,7 +589,7 @@ describe("Smoke: Gameplay", () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     // Make setTrick hang to show submitting state
     mockSetTrick.mockImplementation(() => new Promise(() => {}));
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -619,7 +620,7 @@ describe("Smoke: Gameplay", () => {
       currentTrickName: "Kickflip",
     });
     mockSubmitMatchAttempt.mockRejectedValueOnce("string error");
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -642,7 +643,7 @@ describe("Smoke: Gameplay", () => {
   it("setter landed shows fallback error for non-Error thrown", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     mockSetTrick.mockRejectedValueOnce("string error");
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -671,7 +672,7 @@ describe("Smoke: Gameplay", () => {
       currentSetter: "u2",
       turnDeadline: { toMillis: () => Date.now() - 1000 },
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -689,7 +690,7 @@ describe("Smoke: Gameplay", () => {
       currentSetter: "u2",
       turnDeadline: { toMillis: () => Date.now() - 1000 },
     });
-    renderLobby([game]);
+    await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
@@ -707,7 +708,7 @@ describe("Smoke: Gameplay", () => {
       cb(null); // exercise the !updated return branch
       return vi.fn();
     });
-    renderLobby([game]);
+    await renderLobby([game]);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
     await userEvent.click(gameButton);

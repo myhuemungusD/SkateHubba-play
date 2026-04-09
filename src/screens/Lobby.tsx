@@ -2,8 +2,6 @@ import { useState, useEffect } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { logger } from "../services/logger";
-import { Timestamp } from "firebase/firestore";
-import type { FieldValue } from "firebase/firestore";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
 import { InviteButton } from "../components/InviteButton";
@@ -15,9 +13,15 @@ import { LobbyTimer } from "../components/LobbyTimer";
 import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
 import { ProUsername } from "../components/ProUsername";
 
-function relativeJoinDate(createdAt: FieldValue | null): string {
-  if (!(createdAt instanceof Timestamp)) return "Joined";
-  const millis = createdAt.toMillis();
+function relativeJoinDate(createdAt: unknown): string {
+  if (
+    !createdAt ||
+    typeof createdAt !== "object" ||
+    !("toMillis" in createdAt) ||
+    typeof (createdAt as { toMillis: unknown }).toMillis !== "function"
+  )
+    return "Joined";
+  const millis = (createdAt as { toMillis: () => number }).toMillis();
   const ms = Date.now() - millis;
   if (ms < 0) return "Just joined"; // future timestamp (clock skew)
   const hours = ms / 3_600_000;

@@ -5,7 +5,7 @@
  * be at file level), but reuses the data and helpers exported here.
  */
 import { vi } from "vitest";
-import { render, screen, waitFor, type RenderResult } from "@testing-library/react";
+import { render, screen, waitFor, act, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
@@ -43,12 +43,31 @@ export function activeGame(overrides: Record<string, unknown> = {}) {
 
 /* ── Pure UI helpers (no mock dependencies) ────── */
 
-export function renderApp(): RenderResult {
-  return render(
-    <MemoryRouter>
-      <App />
-    </MemoryRouter>,
-  );
+/** Wait for React.lazy() Suspense boundary to resolve after navigation. */
+export async function flushLazy(): Promise<void> {
+  await waitFor(() => {
+    expect(screen.queryByRole("status", { name: "Loading" })).not.toBeInTheDocument();
+  });
+}
+
+/**
+ * Render App inside a MemoryRouter. By default, waits for React.lazy()
+ * Suspense boundaries to resolve. Pass `{ waitForLazy: false }` to skip
+ * the wait (e.g. when testing the auth loading spinner).
+ */
+export async function renderApp(opts?: { waitForLazy?: boolean }): Promise<RenderResult> {
+  let result!: RenderResult;
+  await act(async () => {
+    result = render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+  });
+  if (opts?.waitForLazy !== false) {
+    await flushLazy();
+  }
+  return result;
 }
 
 /** Fill the age gate with a valid adult DOB and advance to auth. */
@@ -95,7 +114,7 @@ export function createMockHelpers(mocks: {
     });
   }
 
-  function renderLobby(games: ReturnType<typeof activeGame>[] = []) {
+  async function renderLobby(games: ReturnType<typeof activeGame>[] = []) {
     mocks.mockUseAuth.mockReturnValue({
       loading: false,
       user: authedUser,
@@ -106,7 +125,7 @@ export function createMockHelpers(mocks: {
     return renderApp();
   }
 
-  function renderVerifiedLobby(games: ReturnType<typeof activeGame>[] = []) {
+  async function renderVerifiedLobby(games: ReturnType<typeof activeGame>[] = []) {
     mocks.mockUseAuth.mockReturnValue({
       loading: false,
       user: verifiedUser,
@@ -114,11 +133,7 @@ export function createMockHelpers(mocks: {
       refreshProfile: vi.fn(),
     });
     withGames(games);
-    return render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    return renderApp();
   }
 
   return { withGames, withGameSub, renderLobby, renderVerifiedLobby };
