@@ -14,6 +14,13 @@ vi.mock("../../utils/helpers", () => ({
   LETTERS: ["S", "K", "A", "T", "E"],
 }));
 
+vi.mock("../../services/blocking", () => ({
+  blockUser: vi.fn().mockResolvedValue(undefined),
+  unblockUser: vi.fn().mockResolvedValue(undefined),
+  isUserBlocked: vi.fn().mockResolvedValue(false),
+  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+}));
+
 const mockUsePlayerProfile = vi.fn();
 
 vi.mock("../../hooks/usePlayerProfile", () => ({
