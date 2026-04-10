@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, MapPin, Send } from 'lucide-react';
-import type { Spot, SpotComment } from '@shared/types';
-import { GnarRating } from '../components/map/GnarRating';
-import { BustRisk } from '../components/map/BustRisk';
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { ChevronLeft, MapPin, Send } from "lucide-react";
+import type { Spot, SpotComment } from "@shared/types";
+import { GnarRating } from "../components/map/GnarRating";
+import { BustRisk } from "../components/map/BustRisk";
 
 export function SpotDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -16,7 +16,7 @@ export function SpotDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Comment form
-  const [commentText, setCommentText] = useState('');
+  const [commentText, setCommentText] = useState("");
   const [submittingComment, setSubmittingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
 
@@ -47,7 +47,7 @@ export function SpotDetailPage() {
       })
       .catch((err: Error) => {
         if (cancelled) return;
-        if (err.name !== 'AbortError') {
+        if (err.name !== "AbortError") {
           setError(err.message);
         }
       })
@@ -81,39 +81,40 @@ export function SpotDetailPage() {
 
     try {
       const res = await fetch(`/api/spots/${id}/comments`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: commentText.trim() }),
         signal: controller.signal,
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: 'Unknown error' })) as { error: string };
+        const data = (await res.json().catch(() => ({ error: "Unknown error" }))) as { error: string };
         setCommentError(data.error || `HTTP ${res.status}`);
         return;
       }
 
-      const comment = await res.json() as SpotComment;
+      const comment = (await res.json()) as SpotComment;
       setComments((prev) => [comment, ...prev]);
-      setCommentText('');
+      setCommentText("");
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      setCommentError(err instanceof Error ? err.message : 'Network error');
+      if (err instanceof Error && err.name === "AbortError") return;
+      setCommentError(err instanceof Error ? err.message : "Network error");
     } finally {
       setSubmittingComment(false);
     }
   }, [commentText, id]);
 
+  const [showChallengeHint, setShowChallengeHint] = useState(false);
   const handleChallenge = useCallback(() => {
-    // Assumption: Game flow not yet wired — show toast
-    // TODO: Navigate to game init with spotId when game flow is ready
-    alert('Coming Soon \u2014 S.K.A.T.E. challenges at spots launching soon!');
+    // TODO: Navigate to game init with spotId when the game-at-spot flow ships.
+    // Until then, reveal a friendly inline hint instead of a browser alert().
+    setShowChallengeHint(true);
   }, []);
 
   if (loading) {
     return (
-      <div className="min-h-dvh bg-[#0A0A0A] flex items-center justify-center">
-        <div className="text-[#888] text-sm">Loading spot\u2026</div>
+      <div className="min-h-dvh bg-[#0A0A0A] flex items-center justify-center" role="status" aria-live="polite">
+        <div className="text-[#888] text-sm">Loading spot…</div>
       </div>
     );
   }
@@ -121,10 +122,10 @@ export function SpotDetailPage() {
   if (error || !spot) {
     return (
       <div className="min-h-dvh bg-[#0A0A0A] flex flex-col items-center justify-center px-6">
-        <p className="text-[#888] text-sm mb-4">{error ?? 'Spot not found'}</p>
+        <p className="text-[#888] text-sm mb-4">{error ?? "Spot not found"}</p>
         <button
           type="button"
-          onClick={() => navigate('/map')}
+          onClick={() => navigate("/map")}
           className="px-4 py-2 bg-[#F97316] text-white rounded-lg text-sm"
         >
           Back to Map
@@ -139,7 +140,7 @@ export function SpotDetailPage() {
       <div className="sticky top-0 z-10 bg-[#0A0A0A]/95 backdrop-blur border-b border-[#222] px-4 py-3 flex items-center gap-3">
         <button
           type="button"
-          onClick={() => navigate('/map')}
+          onClick={() => navigate("/map")}
           className="text-[#888] hover:text-white"
           aria-label="Back to map"
         >
@@ -169,7 +170,9 @@ export function SpotDetailPage() {
         {/* Location */}
         <div className="flex items-center gap-2 text-[#888] text-sm">
           <MapPin size={14} />
-          <span>{spot.latitude.toFixed(4)}, {spot.longitude.toFixed(4)}</span>
+          <span>
+            {spot.latitude.toFixed(4)}, {spot.longitude.toFixed(4)}
+          </span>
         </div>
 
         {/* Ratings */}
@@ -185,9 +188,7 @@ export function SpotDetailPage() {
         </div>
 
         {/* Description */}
-        {spot.description && (
-          <p className="text-[#CCC] text-sm leading-relaxed">{spot.description}</p>
-        )}
+        {spot.description && <p className="text-[#CCC] text-sm leading-relaxed">{spot.description}</p>}
 
         {/* Obstacles */}
         {spot.obstacles.length > 0 && (
@@ -195,11 +196,8 @@ export function SpotDetailPage() {
             <h3 className="text-xs text-[#888] mb-2">Obstacles</h3>
             <div className="flex flex-wrap gap-2">
               {spot.obstacles.map((o) => (
-                <span
-                  key={o}
-                  className="px-3 py-1 text-xs rounded-full bg-[#1A1A1A] border border-[#333] text-[#CCC]"
-                >
-                  {o.replace('_', ' ')}
+                <span key={o} className="px-3 py-1 text-xs rounded-full bg-[#1A1A1A] border border-[#333] text-[#CCC]">
+                  {o.replace("_", " ")}
                 </span>
               ))}
             </div>
@@ -210,11 +208,21 @@ export function SpotDetailPage() {
         <button
           type="button"
           onClick={handleChallenge}
+          aria-expanded={showChallengeHint}
           className="w-full py-3 rounded-xl bg-[#F97316] text-white font-semibold
-                     hover:bg-[#EA580C] transition-colors"
+                     hover:bg-[#EA580C] transition-colors focus-visible:outline-2
+                     focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           Challenge to S.K.A.T.E. here
         </button>
+        {showChallengeHint && (
+          <div
+            className="rounded-xl bg-[#1A1A1A] border border-[#F97316]/40 px-4 py-3 text-sm text-[#CCC]"
+            role="status"
+          >
+            Coming soon — S.K.A.T.E. matches at real spots launch with the next update.
+          </div>
+        )}
 
         {/* Comments */}
         <div>
@@ -227,7 +235,14 @@ export function SpotDetailPage() {
               maxLength={300}
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Add a comment\u2026"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  void handleSubmitComment();
+                }
+              }}
+              placeholder="Add a comment…"
+              aria-label="Add a comment"
               className="flex-1 bg-[#1A1A1A] border border-[#333] rounded-lg px-3 py-2 text-white text-sm
                          placeholder:text-[#555] focus:outline-none focus:border-[#F97316]"
             />
@@ -243,9 +258,7 @@ export function SpotDetailPage() {
             </button>
           </div>
 
-          {commentError && (
-            <p className="text-red-400 text-xs mb-3">{commentError}</p>
-          )}
+          {commentError && <p className="text-red-400 text-xs mb-3">{commentError}</p>}
 
           {/* Comment list */}
           {comments.length === 0 ? (
@@ -255,10 +268,10 @@ export function SpotDetailPage() {
               {comments.map((c) => (
                 <div key={c.id} className="bg-[#1A1A1A] rounded-lg p-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-[#888]">{c.userId.slice(0, 8)}\u2026</span>
-                    <span className="text-xs text-[#555]">
-                      {new Date(c.createdAt).toLocaleDateString()}
+                    <span className="text-xs text-[#888]" title={`User ${c.userId}`}>
+                      {`${c.userId.slice(0, 8)}…`}
                     </span>
+                    <span className="text-xs text-[#555]">{new Date(c.createdAt).toLocaleDateString()}</span>
                   </div>
                   <p className="text-sm text-[#CCC]">{c.content}</p>
                 </div>

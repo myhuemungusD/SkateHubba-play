@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Crosshair, Plus } from "lucide-react";
+import { Crosshair, Plus, X } from "lucide-react";
 import type { Spot, SpotGeoJSON } from "@shared/types";
 import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS } from "../../lib/mapbox";
 import { SpotPreviewCard } from "./SpotPreviewCard";
@@ -51,6 +51,21 @@ function injectPulseCSS(): void {
       background: rgba(249,115,22,0.15);
       pointer-events: none;
     }
+    /* Keyboard focus ring for spot markers (role=button, tabindex=0) */
+    .mapboxgl-marker[role="button"]:focus-visible {
+      outline: 2px solid #F97316;
+      outline-offset: 3px;
+      border-radius: 50%;
+    }
+    /* Lift Mapbox's built-in bottom controls above the SkateHubba bottom nav
+       (which covers roughly the bottom 80px of the viewport on /map) and the
+       Add Spot FAB column. */
+    .mapboxgl-ctrl-bottom-right {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 11rem) !important;
+    }
+    .mapboxgl-ctrl-bottom-left {
+      bottom: calc(env(safe-area-inset-bottom, 0px) + 5rem) !important;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -96,8 +111,13 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   const [gpsError, setGpsError] = useState<string | null>(() =>
     "geolocation" in navigator ? null : "Geolocation not supported by your browser",
   );
+  const [gpsErrorDismissed, setGpsErrorDismissed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [mapLoading, setMapLoading] = useState(true);
+  const [mapLoadError, setMapLoadError] = useState<string | null>(() =>
+    MAPBOX_TOKEN ? null : "Map configuration missing. Please try again later.",
+  );
+  const [spotsFetchError, setSpotsFetchError] = useState<string | null>(null);
 
   // Keep ref in sync
   useEffect(() => {
@@ -162,10 +182,12 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
             if (!Array.isArray(data.features)) return;
             const spotsList: Spot[] = data.features.map((f: SpotGeoJSON) => f.properties);
             setSpots(spotsList);
+            setSpotsFetchError(null);
           })
           .catch((err: Error) => {
             if (err.name !== "AbortError") {
               console.warn("Failed to fetch spots:", err.message);
+              setSpotsFetchError("Couldn't load spots. Check your connection.");
             }
           });
       }, DEBOUNCE_MS);
@@ -193,22 +215,36 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     return el;
   }, []);
 
-  // Initialize map
+  // Initialize map — setState inside the catch/error branches below is
+  // intentional: surfacing a Mapbox init failure to the user is exactly the
+  // kind of external-system error that must flow back into React state, and
+  // there is no external subscription to defer it through.
+  /* eslint-disable react-hooks/set-state-in-effect -- map init errors must be
+     surfaced to the UI synchronously */
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
+    // Short-circuit when Mapbox is not configured so the error overlay stays visible
+    if (!MAPBOX_TOKEN) return;
 
     injectPulseCSS();
     mapboxgl.accessToken = MAPBOX_TOKEN;
 
-    const m = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: MAP_STYLE,
-      zoom: MAP_DEFAULTS.zoom,
-      minZoom: MAP_DEFAULTS.minZoom,
-      maxZoom: MAP_DEFAULTS.maxZoom,
-      center: [-118.2437, 34.0522], // Assumption: default to Los Angeles
-      attributionControl: false,
-    });
+    let m: mapboxgl.Map;
+    try {
+      m = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: MAP_STYLE,
+        zoom: MAP_DEFAULTS.zoom,
+        minZoom: MAP_DEFAULTS.minZoom,
+        maxZoom: MAP_DEFAULTS.maxZoom,
+        center: [-118.2437, 34.0522], // Assumption: default to Los Angeles
+        attributionControl: false,
+      });
+    } catch (err) {
+      setMapLoadError(err instanceof Error ? err.message : "Failed to load map");
+      setMapLoading(false);
+      return;
+    }
 
     // Add zoom controls
     m.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
@@ -229,6 +265,14 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       fetchSpots(m);
     });
 
+    // Surface fatal Mapbox errors (auth failures, tile load issues) to the user
+    m.on("error", (e) => {
+      const msg = e.error?.message ?? "Map failed to load";
+      console.warn("Mapbox error:", msg);
+      setMapLoadError(msg);
+      setMapLoading(false);
+    });
+
     map.current = m;
 
     return () => {
@@ -236,6 +280,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       map.current = null;
     };
   }, [fetchSpots, setIsTrackingUser]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // GPS tracking
   useEffect(() => {
@@ -246,6 +291,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserLocation(loc);
         setGpsError(null);
+        setGpsErrorDismissed(false);
 
         // Fly to user on first GPS lock, then user can pan freely
         if (!hasLockedRef.current && map.current) {
@@ -255,6 +301,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       },
       (err) => {
         setGpsError(getGpsErrorMessage(err));
+        setGpsErrorDismissed(false);
       },
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 },
     );
@@ -324,12 +371,28 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       const isActiveGame = spot.id === activeGameSpotId;
       const el = createMarkerEl(spot, isActiveGame);
 
-      const listener = (e: MouseEvent) => {
-        e.stopPropagation();
+      // Make markers keyboard-accessible for screen readers and non-mouse users
+      el.setAttribute("role", "button");
+      el.setAttribute("tabindex", "0");
+      el.setAttribute("aria-label", `Spot: ${spot.name}`);
+
+      const selectSpot = () => {
         setSelectedSpot(spot);
         onSpotSelect?.(spot);
       };
-      el.addEventListener("click", listener);
+      const clickListener = (e: MouseEvent) => {
+        e.stopPropagation();
+        selectSpot();
+      };
+      const keyListener = (e: KeyboardEvent) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          e.stopPropagation();
+          selectSpot();
+        }
+      };
+      el.addEventListener("click", clickListener);
+      el.addEventListener("keydown", keyListener);
 
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([spot.longitude, spot.latitude])
@@ -337,7 +400,10 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
 
       markersRef.current.set(spot.id, {
         marker,
-        cleanup: () => el.removeEventListener("click", listener),
+        cleanup: () => {
+          el.removeEventListener("click", clickListener);
+          el.removeEventListener("keydown", keyListener);
+        },
       });
     }
   }, [spots, activeGameSpotId, createMarkerEl, setSelectedSpot, onSpotSelect]);
@@ -360,13 +426,21 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   const handleRecenter = useCallback(() => {
     const loc = userLocationRef.current;
     if (!loc) {
-      showToast("Waiting for location\u2026");
+      showToast("Waiting for location…");
       return;
     }
     if (!map.current) return;
     setIsTrackingUser(true);
     map.current.flyTo({ center: [loc.lng, loc.lat], zoom: 15 });
   }, [setIsTrackingUser, showToast]);
+
+  const handleRetryFetch = useCallback(() => {
+    if (!map.current) return;
+    // Reset the bounds cache so fetchSpots doesn't early-return on identical bounds
+    lastBoundsRef.current = null;
+    setSpotsFetchError(null);
+    fetchSpots(map.current);
+  }, [fetchSpots]);
 
   const handleAddSpotSuccess = useCallback(
     (spot: Spot) => {
@@ -385,22 +459,71 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       <div ref={mapContainer} className="w-full h-full" />
 
       {/* Map loading overlay */}
-      {mapLoading && (
-        <div className="absolute inset-0 z-40 bg-[#0A0A0A] flex items-center justify-center">
-          <div className="text-[#888] text-sm">Loading map\u2026</div>
+      {mapLoading && !mapLoadError && (
+        <div
+          className="absolute inset-0 z-40 bg-[#0A0A0A] flex items-center justify-center"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="text-[#888] text-sm">Loading map…</div>
         </div>
       )}
 
-      {/* GPS error banner */}
-      {gpsError && (
-        <div className="absolute top-4 left-4 right-4 z-30 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-3 text-sm text-[#CCC]">
-          {gpsError}
+      {/* Map load error overlay (missing token / tile failure) */}
+      {mapLoadError && (
+        <div
+          className="absolute inset-0 z-40 bg-[#0A0A0A] flex flex-col items-center justify-center px-6 text-center"
+          role="alert"
+        >
+          <p className="text-white text-base font-semibold mb-2">Map unavailable</p>
+          <p className="text-[#888] text-sm mb-4">{mapLoadError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="px-5 py-2 bg-[#F97316] text-white rounded-lg text-sm hover:bg-[#EA580C] transition-colors"
+          >
+            Reload
+          </button>
+        </div>
+      )}
+
+      {/* GPS error banner (dismissible) */}
+      {gpsError && !gpsErrorDismissed && (
+        <div
+          className="absolute top-4 left-4 right-4 z-30 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-3 text-sm text-[#CCC] flex items-start gap-3"
+          role="status"
+        >
+          <span className="flex-1">{gpsError}</span>
+          <button
+            type="button"
+            onClick={() => setGpsErrorDismissed(true)}
+            className="text-[#888] hover:text-white shrink-0 -mt-0.5"
+            aria-label="Dismiss location error"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Spots fetch error banner with retry */}
+      {spotsFetchError && !mapLoading && !mapLoadError && (
+        <div
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#1A1A1A] border border-red-500/40 rounded-xl px-4 py-2 text-sm text-[#CCC] flex items-center gap-3"
+          role="alert"
+        >
+          <span>{spotsFetchError}</span>
+          <button type="button" onClick={handleRetryFetch} className="text-[#F97316] font-semibold hover:underline">
+            Retry
+          </button>
         </div>
       )}
 
       {/* Empty state */}
-      {!mapLoading && spots.length === 0 && !gpsError && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#1A1A1A]/90 backdrop-blur rounded-xl px-4 py-2 text-sm text-[#888]">
+      {!mapLoading && !mapLoadError && !spotsFetchError && spots.length === 0 && (
+        <div
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#1A1A1A]/90 backdrop-blur rounded-xl px-4 py-2 text-sm text-[#888]"
+          role="status"
+        >
           No spots nearby. Add one!
         </div>
       )}
@@ -412,27 +535,31 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
         </div>
       )}
 
-      {/* Recenter button */}
+      {/* Recenter button — sits above the Add Spot FAB */}
       <button
         type="button"
         onClick={handleRecenter}
-        className="absolute bottom-36 right-2.5 z-20 w-8 h-8 bg-[#1A1A1A] border border-[#333] rounded-lg
-                   flex items-center justify-center text-white hover:bg-[#333] transition-colors"
+        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 15rem)" }}
+        className="absolute right-2.5 z-20 w-10 h-10 bg-[#1A1A1A] border border-[#333] rounded-lg
+                   flex items-center justify-center text-white hover:bg-[#333] transition-colors
+                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F97316]"
         aria-label="Recenter to my location"
       >
-        <Crosshair size={16} />
+        <Crosshair size={18} />
       </button>
 
-      {/* Add spot FAB */}
+      {/* Add spot FAB — sits above the app's bottom tab bar */}
       <button
         type="button"
         onClick={() => setIsAddingSpot(true)}
-        className="absolute bottom-24 right-2.5 z-20 w-12 h-12 bg-[#F97316] rounded-full
+        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 8rem)" }}
+        className="absolute right-2.5 z-20 w-14 h-14 bg-[#F97316] rounded-full
                    flex items-center justify-center text-white shadow-lg
-                   hover:bg-[#EA580C] transition-colors"
+                   hover:bg-[#EA580C] transition-colors
+                   focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         aria-label="Add a spot"
       >
-        <Plus size={24} />
+        <Plus size={26} />
       </button>
 
       {/* Spot preview card */}
