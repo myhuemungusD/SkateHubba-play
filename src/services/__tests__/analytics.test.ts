@@ -73,5 +73,13 @@ describe("analytics service", () => {
       analytics.signIn("google");
       expect(vaSpy).toHaveBeenCalledWith("event", { name: "sign_in", method: "google" });
     });
+
+    it("challengeFromSpot sends challenge_from_spot event", () => {
+      analytics.challengeFromSpot("11111111-2222-3333-4444-555555555555");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "challenge_from_spot",
+        spotId: "11111111-2222-3333-4444-555555555555",
+      });
+    });
   });
 });

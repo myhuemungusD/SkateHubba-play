@@ -11,6 +11,8 @@ function renderWithRouter(ui: ReactElement, { initialEntries = ["/challenge"] }:
 }
 
 const mockGetUidByUsername = vi.fn();
+const mockChallengeFromSpot = vi.fn();
+const mockFetchSpotName = vi.fn();
 
 vi.mock("../../services/users", () => ({
   getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
@@ -19,7 +21,15 @@ vi.mock("../../services/users", () => ({
 
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
+  analytics: {
+    challengeFromSpot: (...args: unknown[]) => mockChallengeFromSpot(...args),
+  },
 }));
+
+vi.mock("../../services/spots", () => ({
+  fetchSpotName: (...args: unknown[]) => mockFetchSpotName(...args),
+}));
+
 vi.mock("../../services/blocking", () => ({
   getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
 }));
@@ -146,18 +156,21 @@ describe("ChallengeScreen", () => {
     expect(input.value).toBe("testuser");
   });
 
+  const VALID_SPOT_ID = "11111111-2222-3333-4444-555555555555";
+
   it("forwards ?spot= URL param to onSend as spotId", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
+    mockFetchSpotName.mockResolvedValueOnce(null);
     const onSend = vi.fn().mockResolvedValue(undefined);
     renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />, {
-      initialEntries: ["/challenge?spot=spot-uuid-123"],
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
     });
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("u2", "rival", "spot-uuid-123");
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", VALID_SPOT_ID);
     });
   });
 
@@ -171,6 +184,61 @@ describe("ChallengeScreen", () => {
 
     await waitFor(() => {
       expect(onSend).toHaveBeenCalledWith("u2", "rival", null);
+    });
+  });
+
+  it("drops a garbled ?spot= value so onSend receives null", async () => {
+    mockGetUidByUsername.mockResolvedValueOnce("u2");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />, {
+      initialEntries: ["/challenge?spot=%27%20OR%201%3D1"],
+    });
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", null);
+    });
+    // No chip should render for garbled input
+    expect(screen.queryByTestId("challenge-spot-chip")).not.toBeInTheDocument();
+  });
+
+  it("fires the challengeFromSpot analytics event on mount when spotId is valid", async () => {
+    mockFetchSpotName.mockResolvedValueOnce(null);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />, {
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
+    });
+
+    await waitFor(() => {
+      expect(mockChallengeFromSpot).toHaveBeenCalledWith(VALID_SPOT_ID);
+    });
+  });
+
+  it("does not fire analytics when there is no spotId", () => {
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
+    expect(mockChallengeFromSpot).not.toHaveBeenCalled();
+  });
+
+  it("renders the spot context chip with the fetched name", async () => {
+    mockFetchSpotName.mockResolvedValueOnce("Hollenbeck Hubba");
+    renderWithRouter(<ChallengeScreen {...defaultProps} />, {
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("challenge-spot-chip")).toHaveTextContent("Challenging at Hollenbeck Hubba");
+    });
+  });
+
+  it("falls back to a generic label when the spot name fetch fails", async () => {
+    mockFetchSpotName.mockResolvedValueOnce(null);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />, {
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("challenge-spot-chip")).toHaveTextContent("Challenging at a saved spot");
     });
   });
 });

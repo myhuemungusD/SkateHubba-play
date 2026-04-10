@@ -31,4 +31,6 @@ export const analytics = {
   videoUploaded: (durationMs: number, sizeBytes: number) => trackEvent("video_uploaded", { durationMs, sizeBytes }),
   signUp: (method: string) => trackEvent("sign_up", { method }),
   signIn: (method: string) => trackEvent("sign_in", { method }),
+  /** Fired when the user taps "Challenge from here" on a spot preview card. */
+  challengeFromSpot: (spotId: string) => trackEvent("challenge_from_spot", { spotId }),
 } as const;
