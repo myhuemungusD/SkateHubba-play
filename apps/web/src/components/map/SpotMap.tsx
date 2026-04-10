@@ -86,6 +86,10 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   const hasLockedRef = useRef(false);
   // Keep a ref to latest userLocation so callbacks don't go stale
   const userLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  // Track the previously-rendered active game spot so we can rebuild the
+  // affected markers when it changes (the markers diff below otherwise
+  // short-circuits on existing spot ids and never updates the pulse ring).
+  const prevActiveSpotRef = useRef<string | undefined>(undefined);
 
   const [spots, setSpots] = useState<Spot[]>([]);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
@@ -307,6 +311,24 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     const currentIds = new Set(spots.map((s) => s.id));
     const existingIds = new Set(markersRef.current.keys());
 
+    // If the active game spot changed, evict the previously-active marker
+    // and the newly-active marker (if present) so the add-new loop below
+    // recreates them with the correct pulse-ring state. Without this,
+    // toggling activeGameSpotId while `spots` is unchanged would be a no-op
+    // because the loop short-circuits on existing ids.
+    const prevActive = prevActiveSpotRef.current;
+    if (prevActive !== activeGameSpotId) {
+      for (const id of [prevActive, activeGameSpotId]) {
+        if (id && markersRef.current.has(id)) {
+          const entry = markersRef.current.get(id)!;
+          entry.cleanup();
+          entry.marker.remove();
+          markersRef.current.delete(id);
+        }
+      }
+      prevActiveSpotRef.current = activeGameSpotId;
+    }
+
     // Remove markers no longer in view
     for (const id of existingIds) {
       if (!currentIds.has(id)) {
@@ -319,7 +341,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       }
     }
 
-    // Add new markers
+    // Add new markers (including any we just evicted above)
     for (const spot of spots) {
       if (markersRef.current.has(spot.id)) continue;
 
