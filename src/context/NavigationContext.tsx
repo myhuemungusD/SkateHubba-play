@@ -14,6 +14,7 @@ export type Screen =
   | "gameover"
   | "record"
   | "player"
+  | "map"
   | "privacy"
   | "terms"
   | "datadeletion"
@@ -31,6 +32,7 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   gameover: "/gameover",
   record: "/record",
   player: "/player",
+  map: "/map",
   privacy: "/privacy",
   terms: "/terms",
   datadeletion: "/data-deletion",
@@ -57,6 +59,7 @@ const PUBLIC_SCREENS: ReadonlySet<Screen> = new Set([
   "landing",
   "agegate",
   "auth",
+  "map",
   "privacy",
   "terms",
   "datadeletion",
