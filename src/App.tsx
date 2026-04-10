@@ -12,6 +12,7 @@ import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
 import { GameNotificationWatcher } from "./components/GameNotificationWatcher";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { BottomNav } from "./components/BottomNav";
 import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
@@ -435,6 +436,7 @@ function AppRoutes() {
         </Routes>
       </main>
 
+      <BottomNav />
       <ConsentBanner onNav={nav.setScreen} />
       <Analytics />
       <SpeedInsights />
