@@ -33,6 +33,7 @@
     "@capacitor/ios": "^8.2.0",
     "@sentry/react": "^10.43.0",
     "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "firebase": "^12.11.0",
     "lucide-react": "^1.8.0",
     "mapbox-gl": "^3.21.0",
