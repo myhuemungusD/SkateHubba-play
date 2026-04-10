@@ -154,7 +154,8 @@ describe("newGameShell", () => {
   });
 
   it("carries the spotId when one is passed in", () => {
-    const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", "spot-uuid-123");
-    expect(shell.spotId).toBe("spot-uuid-123");
+    const validSpotId = "11111111-2222-3333-4444-555555555555";
+    const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", validSpotId);
+    expect(shell.spotId).toBe(validSpotId);
   });
 });

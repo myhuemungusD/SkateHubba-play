@@ -141,6 +141,14 @@ service cloud.firestore {
         && request.resource.data.currentTrickName == null
         && request.resource.data.currentTrickVideoUrl == null
         && request.resource.data.matchVideoUrl == null
+        // Optional spotId must be a string if present (location context for
+        // the challenge — clients validate UUID shape, rules enforce the
+        // coarser type invariant).
+        && (
+          !('spotId' in request.resource.data)
+          || (request.resource.data.spotId is string
+              && request.resource.data.spotId.size() <= 64)
+        )
         // Rate limit: at most one game creation per 30 seconds per user.
         // Checks the user's lastGameCreatedAt field — if it doesn't exist
         // (first game ever) the condition is satisfied automatically.
@@ -170,6 +178,9 @@ service cloud.firestore {
         && request.resource.data.player2Uid == resource.data.player2Uid
         && request.resource.data.player1Username == resource.data.player1Username
         && request.resource.data.player2Username == resource.data.player2Username
+        // spotId is set at creation and immutable thereafter — .get(field, null)
+        // makes the comparison safe whether or not the field is present.
+        && request.resource.data.get('spotId', null) == resource.data.get('spotId', null)
         // currentTurn must always be one of the two players after the update
         && (
           request.resource.data.currentTurn == resource.data.player1Uid ||
@@ -216,6 +227,8 @@ service cloud.firestore {
         && request.resource.data.player2Uid == resource.data.player2Uid
         && request.resource.data.player1Username == resource.data.player1Username
         && request.resource.data.player2Username == resource.data.player2Username
+        // spotId is immutable after creation — see create rule for the details.
+        && request.resource.data.get('spotId', null) == resource.data.get('spotId', null)
         // currentTurn must be one of the two players
         && (
           request.resource.data.currentTurn == resource.data.player1Uid ||
@@ -258,6 +271,8 @@ service cloud.firestore {
         && request.resource.data.player2Username == resource.data.player2Username
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
+        // spotId is immutable after creation — a forfeit must not change it.
+        && request.resource.data.get('spotId', null) == resource.data.get('spotId', null)
         // Winner must be the opponent of the current-turn player (who timed out)
         && request.resource.data.winner == opponentUid(resource.data, resource.data.currentTurn)
         // turnHistory must not change during a forfeit (and cannot be injected if absent)

@@ -181,16 +181,26 @@ describe("games service", () => {
       expect(docData.player2IsVerifiedPro).toBeUndefined();
     });
 
-    it("includes spotId when a spot is provided", async () => {
+    it("includes spotId when a valid UUID is provided", async () => {
       mockAddDoc.mockResolvedValueOnce({ id: "g1" });
-      await createGame("p1", "alice", "p2", "bob", undefined, undefined, "spot-uuid-123");
+      const validSpotId = "11111111-2222-3333-4444-555555555555";
+      await createGame("p1", "alice", "p2", "bob", undefined, undefined, validSpotId);
       const docData = mockAddDoc.mock.calls[0][1];
-      expect(docData.spotId).toBe("spot-uuid-123");
+      expect(docData.spotId).toBe(validSpotId);
     });
 
     it("omits spotId when null or undefined", async () => {
       mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob", undefined, undefined, null);
+      const docData = mockAddDoc.mock.calls[0][1];
+      expect("spotId" in docData).toBe(false);
+    });
+
+    it("drops a malformed spotId instead of writing garbage to Firestore", async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
+      // Shape doesn't match UUID regex — should be silently normalized to null
+      // so the field is omitted entirely, not written as a hostile string.
+      await createGame("p1", "alice", "p2", "bob", undefined, undefined, "not-a-uuid");
       const docData = mockAddDoc.mock.calls[0][1];
       expect("spotId" in docData).toBe(false);
     });
