@@ -84,9 +84,8 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   const abortRef = useRef<AbortController | null>(null);
   const lastBoundsRef = useRef<{ n: number; s: number; e: number; w: number } | null>(null);
   const hasLockedRef = useRef(false);
-  // Keep refs to latest values so callbacks don't go stale
+  // Keep a ref to latest userLocation so callbacks don't go stale
   const userLocationRef = useRef<{ lat: number; lng: number } | null>(null);
-  const spotsRef = useRef<Spot[]>([]);
 
   const [spots, setSpots] = useState<Spot[]>([]);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
@@ -94,17 +93,16 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isTrackingUser, setIsTrackingUser] = useState(true);
 
-  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(() =>
+    "geolocation" in navigator ? null : "Geolocation not supported by your browser",
+  );
   const [toast, setToast] = useState<string | null>(null);
   const [mapLoading, setMapLoading] = useState(true);
 
-  // Keep refs in sync
+  // Keep ref in sync
   useEffect(() => {
     userLocationRef.current = userLocation;
   }, [userLocation]);
-  useEffect(() => {
-    spotsRef.current = spots;
-  }, [spots]);
 
   // Show toast briefly with proper cleanup
   const showToast = useCallback((msg: string) => {
@@ -241,11 +239,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
 
   // GPS tracking
   useEffect(() => {
-    if (!("geolocation" in navigator)) {
-      // Defer state update to avoid synchronous setState in effect body
-      queueMicrotask(() => setGpsError("Geolocation not supported by your browser"));
-      return;
-    }
+    if (!("geolocation" in navigator)) return;
 
     const id = navigator.geolocation.watchPosition(
       (pos) => {
@@ -381,7 +375,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       if (map.current) {
         map.current.flyTo({ center: [spot.longitude, spot.latitude], zoom: 16 });
       }
-      setSpots([...spotsRef.current, spot]);
+      setSpots((prev) => [...prev, spot]);
     },
     [setIsAddingSpot, setSelectedSpot, setSpots],
   );
