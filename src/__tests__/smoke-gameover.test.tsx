@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { authedUser, verifiedUser, testProfile, activeGame, renderApp, createMockHelpers } from "./smoke-helpers";
+import type { GameDoc } from "../services/games";
 
 /* ── Hoisted mocks ──────────────────────────── */
 
@@ -320,7 +321,7 @@ describe("Smoke: Game Over", () => {
       player2Username: "sk8r",
     });
     mockCreateGame.mockResolvedValueOnce("rematch1");
-    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: any) => void) => {
+    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
       cb(game);
       return vi.fn();
     });
