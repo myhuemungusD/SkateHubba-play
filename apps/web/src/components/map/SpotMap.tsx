@@ -1,12 +1,11 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
-import { Crosshair, Plus } from 'lucide-react';
-import type { Spot, SpotGeoJSON } from '@shared/types';
-import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS } from '../../lib/mapbox';
-import { useMapStore } from '../../stores/mapStore';
-import { SpotPreviewCard } from './SpotPreviewCard';
-import { AddSpotSheet } from './AddSpotSheet';
+import { useEffect, useRef, useCallback, useState } from "react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { Crosshair, Plus } from "lucide-react";
+import type { Spot, SpotGeoJSON } from "@shared/types";
+import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS } from "../../lib/mapbox";
+import { SpotPreviewCard } from "./SpotPreviewCard";
+import { AddSpotSheet } from "./AddSpotSheet";
 
 interface SpotMapProps {
   activeGameSpotId?: string;
@@ -14,10 +13,10 @@ interface SpotMapProps {
 }
 
 // Inject pulsing marker CSS once
-const PULSE_CSS_ID = 'spot-pulse-css';
+const PULSE_CSS_ID = "spot-pulse-css";
 function injectPulseCSS(): void {
   if (document.getElementById(PULSE_CSS_ID)) return;
-  const style = document.createElement('style');
+  const style = document.createElement("style");
   style.id = PULSE_CSS_ID;
   style.textContent = `
     @keyframes spot-pulse {
@@ -64,13 +63,13 @@ type MarkerEntry = { marker: mapboxgl.Marker; cleanup: () => void };
 function getGpsErrorMessage(err: GeolocationPositionError): string {
   switch (err.code) {
     case 1:
-      return 'Location permission denied. Enable in browser settings.';
+      return "Location permission denied. Enable in browser settings.";
     case 2:
-      return 'Location unavailable. Check your location services.';
+      return "Location unavailable. Check your location services.";
     case 3:
-      return 'Location request timed out. Try again.';
+      return "Location request timed out. Try again.";
     default:
-      return 'Unable to get location';
+      return "Unable to get location";
   }
 }
 
@@ -88,20 +87,15 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   // Keep a ref to latest userLocation so callbacks don't go stale
   const userLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
-  const {
-    spots,
-    selectedSpot,
-    isAddingSpot,
-    userLocation,
-    isTrackingUser,
-    setSpots,
-    setSelectedSpot,
-    setIsAddingSpot,
-    setUserLocation,
-    setIsTrackingUser,
-  } = useMapStore();
+  const [spots, setSpots] = useState<Spot[]>([]);
+  const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
+  const [isAddingSpot, setIsAddingSpot] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isTrackingUser, setIsTrackingUser] = useState(true);
 
-  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(() =>
+    "geolocation" in navigator ? null : "Geolocation not supported by your browser",
+  );
   const [toast, setToast] = useState<string | null>(null);
   const [mapLoading, setMapLoading] = useState(true);
 
@@ -121,75 +115,78 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   }, []);
 
   // Fetch spots for current bounds
-  const fetchSpots = useCallback((mapInstance: mapboxgl.Map) => {
-    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+  const fetchSpots = useCallback(
+    (mapInstance: mapboxgl.Map) => {
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
 
-    fetchTimerRef.current = setTimeout(() => {
-      const bounds = mapInstance.getBounds();
-      if (!bounds) return;
-      const n = bounds.getNorth();
-      const s = bounds.getSouth();
-      const e = bounds.getEast();
-      const w = bounds.getWest();
+      fetchTimerRef.current = setTimeout(() => {
+        const bounds = mapInstance.getBounds();
+        if (!bounds) return;
+        const n = bounds.getNorth();
+        const s = bounds.getSouth();
+        const e = bounds.getEast();
+        const w = bounds.getWest();
 
-      // Skip if bounds delta is too small
-      if (lastBoundsRef.current) {
-        const prev = lastBoundsRef.current;
-        if (
-          Math.abs(n - prev.n) < BOUNDS_DELTA_THRESHOLD &&
-          Math.abs(s - prev.s) < BOUNDS_DELTA_THRESHOLD &&
-          Math.abs(e - prev.e) < BOUNDS_DELTA_THRESHOLD &&
-          Math.abs(w - prev.w) < BOUNDS_DELTA_THRESHOLD
-        ) {
-          return;
-        }
-      }
-      lastBoundsRef.current = { n, s, e, w };
-
-      // Cancel previous fetch
-      if (abortRef.current) abortRef.current.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-
-      const params = new URLSearchParams({
-        north: n.toString(),
-        south: s.toString(),
-        east: e.toString(),
-        west: w.toString(),
-      });
-
-      fetch(`/api/spots/bounds?${params}`, { signal: controller.signal })
-        .then((res) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-          return res.json() as Promise<{ type: string; features: SpotGeoJSON[] }>;
-        })
-        .then((data) => {
-          if (!Array.isArray(data.features)) return;
-          const spotsList: Spot[] = data.features.map((f: SpotGeoJSON) => f.properties);
-          setSpots(spotsList);
-        })
-        .catch((err: Error) => {
-          if (err.name !== 'AbortError') {
-            console.warn('Failed to fetch spots:', err.message);
+        // Skip if bounds delta is too small
+        if (lastBoundsRef.current) {
+          const prev = lastBoundsRef.current;
+          if (
+            Math.abs(n - prev.n) < BOUNDS_DELTA_THRESHOLD &&
+            Math.abs(s - prev.s) < BOUNDS_DELTA_THRESHOLD &&
+            Math.abs(e - prev.e) < BOUNDS_DELTA_THRESHOLD &&
+            Math.abs(w - prev.w) < BOUNDS_DELTA_THRESHOLD
+          ) {
+            return;
           }
+        }
+        lastBoundsRef.current = { n, s, e, w };
+
+        // Cancel previous fetch
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        const params = new URLSearchParams({
+          north: n.toString(),
+          south: s.toString(),
+          east: e.toString(),
+          west: w.toString(),
         });
-    }, DEBOUNCE_MS);
-  }, [setSpots]);
+
+        fetch(`/api/spots/bounds?${params}`, { signal: controller.signal })
+          .then((res) => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json() as Promise<{ type: string; features: SpotGeoJSON[] }>;
+          })
+          .then((data) => {
+            if (!Array.isArray(data.features)) return;
+            const spotsList: Spot[] = data.features.map((f: SpotGeoJSON) => f.properties);
+            setSpots(spotsList);
+          })
+          .catch((err: Error) => {
+            if (err.name !== "AbortError") {
+              console.warn("Failed to fetch spots:", err.message);
+            }
+          });
+      }, DEBOUNCE_MS);
+    },
+    [setSpots],
+  );
 
   // Create spot marker element
   const createMarkerEl = useCallback((spot: Spot, isActiveGame: boolean): HTMLDivElement => {
-    const el = document.createElement('div');
-    el.style.width = '20px';
-    el.style.height = '20px';
-    el.style.borderRadius = '50%';
-    el.style.border = '1px solid white';
-    el.style.cursor = 'pointer';
-    el.style.position = 'relative';
-    el.style.backgroundColor = spot.isVerified ? '#22C55E' : '#F97316';
+    const el = document.createElement("div");
+    el.style.width = "20px";
+    el.style.height = "20px";
+    el.style.borderRadius = "50%";
+    el.style.border = "1px solid white";
+    el.style.cursor = "pointer";
+    el.style.position = "relative";
+    el.style.backgroundColor = spot.isVerified ? "#22C55E" : "#F97316";
 
     if (isActiveGame) {
-      const ring = document.createElement('div');
-      ring.className = 'spot-pulse-ring';
+      const ring = document.createElement("div");
+      ring.className = "spot-pulse-ring";
       el.appendChild(ring);
     }
 
@@ -214,20 +211,20 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     });
 
     // Add zoom controls
-    m.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'bottom-right');
+    m.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "bottom-right");
 
     // Disable tracking when user manually pans
-    m.on('dragstart', () => {
+    m.on("dragstart", () => {
       setIsTrackingUser(false);
     });
 
     // Fetch spots on moveend
-    m.on('moveend', () => {
+    m.on("moveend", () => {
       fetchSpots(m);
     });
 
     // Initial fetch after load
-    m.on('load', () => {
+    m.on("load", () => {
       setMapLoading(false);
       fetchSpots(m);
     });
@@ -242,10 +239,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
 
   // GPS tracking
   useEffect(() => {
-    if (!('geolocation' in navigator)) {
-      setGpsError('Geolocation not supported by your browser');
-      return;
-    }
+    if (!("geolocation" in navigator)) return;
 
     const id = navigator.geolocation.watchPosition(
       (pos) => {
@@ -278,17 +272,17 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     if (!map.current || !userLocation) return;
 
     if (!userMarker.current) {
-      const el = document.createElement('div');
-      el.style.position = 'relative';
-      el.style.width = '12px';
-      el.style.height = '12px';
+      const el = document.createElement("div");
+      el.style.position = "relative";
+      el.style.width = "12px";
+      el.style.height = "12px";
 
-      const accuracy = document.createElement('div');
-      accuracy.className = 'spot-user-accuracy';
+      const accuracy = document.createElement("div");
+      accuracy.className = "spot-user-accuracy";
       el.appendChild(accuracy);
 
-      const dot = document.createElement('div');
-      dot.className = 'spot-user-dot';
+      const dot = document.createElement("div");
+      dot.className = "spot-user-dot";
       el.appendChild(dot);
 
       userMarker.current = new mapboxgl.Marker({ element: el })
@@ -335,7 +329,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
         setSelectedSpot(spot);
         onSpotSelect?.(spot);
       };
-      el.addEventListener('click', listener);
+      el.addEventListener("click", listener);
 
       const marker = new mapboxgl.Marker({ element: el })
         .setLngLat([spot.longitude, spot.latitude])
@@ -343,29 +337,30 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
 
       markersRef.current.set(spot.id, {
         marker,
-        cleanup: () => el.removeEventListener('click', listener),
+        cleanup: () => el.removeEventListener("click", listener),
       });
     }
   }, [spots, activeGameSpotId, createMarkerEl, setSelectedSpot, onSpotSelect]);
 
   // Cleanup all timers, controllers, and markers on unmount
   useEffect(() => {
+    const markers = markersRef.current;
     return () => {
       if (abortRef.current) abortRef.current.abort();
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-      for (const entry of markersRef.current.values()) {
+      for (const entry of markers.values()) {
         entry.cleanup();
         entry.marker.remove();
       }
-      markersRef.current.clear();
+      markers.clear();
     };
   }, []);
 
   const handleRecenter = useCallback(() => {
     const loc = userLocationRef.current;
     if (!loc) {
-      showToast('Waiting for location\u2026');
+      showToast("Waiting for location\u2026");
       return;
     }
     if (!map.current) return;
@@ -373,17 +368,20 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     map.current.flyTo({ center: [loc.lng, loc.lat], zoom: 15 });
   }, [setIsTrackingUser, showToast]);
 
-  const handleAddSpotSuccess = useCallback((spot: Spot) => {
-    setIsAddingSpot(false);
-    setSelectedSpot(spot);
-    if (map.current) {
-      map.current.flyTo({ center: [spot.longitude, spot.latitude], zoom: 16 });
-    }
-    setSpots([...useMapStore.getState().spots, spot]);
-  }, [setIsAddingSpot, setSelectedSpot, setSpots]);
+  const handleAddSpotSuccess = useCallback(
+    (spot: Spot) => {
+      setIsAddingSpot(false);
+      setSelectedSpot(spot);
+      if (map.current) {
+        map.current.flyTo({ center: [spot.longitude, spot.latitude], zoom: 16 });
+      }
+      setSpots((prev) => [...prev, spot]);
+    },
+    [setIsAddingSpot, setSelectedSpot, setSpots],
+  );
 
   return (
-    <div className="relative w-full" style={{ height: '100dvh' }}>
+    <div className="relative w-full" style={{ height: "100dvh" }}>
       <div ref={mapContainer} className="w-full h-full" />
 
       {/* Map loading overlay */}
@@ -438,12 +436,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       </button>
 
       {/* Spot preview card */}
-      {selectedSpot && (
-        <SpotPreviewCard
-          spot={selectedSpot}
-          onClose={() => setSelectedSpot(null)}
-        />
-      )}
+      {selectedSpot && <SpotPreviewCard spot={selectedSpot} onClose={() => setSelectedSpot(null)} />}
 
       {/* Add spot sheet */}
       {isAddingSpot && (

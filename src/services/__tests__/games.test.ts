@@ -21,15 +21,15 @@ const {
   mockGetDocs: vi.fn(),
   mockRunTransaction: vi.fn(),
   mockOnSnapshot: vi.fn(),
-  mockDoc: vi.fn((...args: any[]) => {
+  mockDoc: vi.fn((...args: unknown[]) => {
     const path = args.slice(1).join("/");
-    return { __path: path, id: path.split("/").pop() || "auto-id" };
+    return { __path: path, id: String(path).split("/").pop() || "auto-id" };
   }),
-  mockCollection: vi.fn((...args: any[]) => args[1]),
-  mockQuery: vi.fn((...args: any[]) => args),
-  mockWhere: vi.fn((...args: any[]) => args),
-  mockLimit: vi.fn((...args: any[]) => args),
-  mockOrderBy: vi.fn((...args: any[]) => args),
+  mockCollection: vi.fn((...args: unknown[]) => args[1]),
+  mockQuery: vi.fn((...args: unknown[]) => args),
+  mockWhere: vi.fn((...args: unknown[]) => args),
+  mockLimit: vi.fn((...args: unknown[]) => args),
+  mockOrderBy: vi.fn((...args: unknown[]) => args),
   mockTxGet: vi.fn(),
   mockTxUpdate: vi.fn(),
 }));
@@ -657,7 +657,7 @@ describe("games service", () => {
 
       // Should be called with deduplicated games
       const games = onUpdate.mock.calls[onUpdate.mock.calls.length - 1][0];
-      const ids = games.map((g: any) => g.id);
+      const ids = games.map((g: { id: string }) => g.id);
       expect(new Set(ids).size).toBe(ids.length); // no duplicates
     });
 

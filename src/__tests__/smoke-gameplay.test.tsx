@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { authedUser, verifiedUser, testProfile, activeGame, renderApp, createMockHelpers } from "./smoke-helpers";
+import type { GameDoc } from "../services/games";
 
 /* ── Hoisted mocks ──────────────────────────── */
 
@@ -704,7 +705,7 @@ describe("Smoke: Gameplay", () => {
 
   it("subscribeToGame callback with null does not crash", async () => {
     const game = activeGame();
-    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: any) => void) => {
+    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
       cb(null); // exercise the !updated return branch
       return vi.fn();
     });
