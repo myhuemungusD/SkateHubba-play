@@ -1,9 +1,9 @@
-import { useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { X } from 'lucide-react';
-import type { Spot } from '@shared/types';
-import { GnarRating } from './GnarRating';
-import { BustRisk } from './BustRisk';
+import { useRef, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import { X } from "lucide-react";
+import type { Spot } from "@shared/types";
+import { GnarRating } from "./GnarRating";
+import { BustRisk } from "./BustRisk";
 
 interface SpotPreviewCardProps {
   spot: Spot;
@@ -20,14 +20,17 @@ export function SpotPreviewCard({ spot, onClose }: SpotPreviewCardProps) {
     touchStartY.current = e.touches[0].clientY;
   }, []);
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    if (touchStartY.current === null) return;
-    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
-    if (deltaY > 60) {
-      onClose();
-    }
-    touchStartY.current = null;
-  }, [onClose]);
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      if (touchStartY.current === null) return;
+      const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+      if (deltaY > 60) {
+        onClose();
+      }
+      touchStartY.current = null;
+    },
+    [onClose],
+  );
 
   const visibleObstacles = spot.obstacles.slice(0, MAX_VISIBLE_OBSTACLES);
   const hiddenCount = spot.obstacles.length - MAX_VISIBLE_OBSTACLES;
@@ -35,11 +38,7 @@ export function SpotPreviewCard({ spot, onClose }: SpotPreviewCardProps) {
   return (
     <>
       {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      <div className="fixed inset-0 z-40" onClick={onClose} aria-hidden="true" />
 
       {/* Card */}
       <div
@@ -93,17 +92,12 @@ export function SpotPreviewCard({ spot, onClose }: SpotPreviewCardProps) {
             {spot.obstacles.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
                 {visibleObstacles.map((o) => (
-                  <span
-                    key={o}
-                    className="px-2 py-0.5 text-xs rounded-full bg-[#333] text-[#CCC]"
-                  >
-                    {o.replace('_', ' ')}
+                  <span key={o} className="px-2 py-0.5 text-xs rounded-full bg-[#333] text-[#CCC]">
+                    {o.replace("_", " ")}
                   </span>
                 ))}
                 {hiddenCount > 0 && (
-                  <span className="px-2 py-0.5 text-xs rounded-full bg-[#333] text-[#888]">
-                    +{hiddenCount} more
-                  </span>
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-[#333] text-[#888]">+{hiddenCount} more</span>
                 )}
               </div>
             )}
@@ -118,6 +112,16 @@ export function SpotPreviewCard({ spot, onClose }: SpotPreviewCardProps) {
                      hover:bg-[#EA580C] transition-colors"
         >
           View Spot
+        </button>
+
+        {/* Challenge from here — starts a S.K.A.T.E. challenge pre-seeded with this spot */}
+        <button
+          type="button"
+          onClick={() => navigate(`/challenge?spot=${spot.id}`)}
+          className="mt-2 w-full py-2.5 rounded-xl bg-[#1A1A1A] border border-[#F97316] text-[#F97316]
+                     font-semibold text-sm hover:bg-[#F97316]/10 transition-colors"
+        >
+          Challenge from here
         </button>
       </div>
     </>

@@ -147,4 +147,14 @@ describe("newGameShell", () => {
     expect(shell.winner).toBeNull();
     expect(shell.turnNumber).toBe(1);
   });
+
+  it("defaults spotId to null when not provided", () => {
+    const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival");
+    expect(shell.spotId).toBeNull();
+  });
+
+  it("carries the spotId when one is passed in", () => {
+    const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", "spot-uuid-123");
+    expect(shell.spotId).toBe("spot-uuid-123");
+  });
 });

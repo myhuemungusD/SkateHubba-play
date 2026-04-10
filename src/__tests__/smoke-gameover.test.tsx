@@ -170,7 +170,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined);
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined, undefined);
     });
   });
 
@@ -307,7 +307,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined);
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined, undefined);
     });
   });
 
@@ -333,7 +333,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
     await waitFor(() => {
       // Should call createGame with the opponent's uid and username
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined);
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined, undefined);
     });
   });
 

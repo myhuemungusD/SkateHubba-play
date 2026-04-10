@@ -137,7 +137,7 @@ describe("Smoke: Challenge", () => {
 
     await waitFor(() => {
       expect(mockGetUidByUsername).toHaveBeenCalledWith("rival");
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined);
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined, null);
     });
   });
 

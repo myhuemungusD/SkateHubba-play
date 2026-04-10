@@ -1,5 +1,5 @@
-import { Component, type ReactNode } from 'react';
-import { SpotMap } from '../components/map/SpotMap';
+import { Component, type ReactNode } from "react";
+import { SpotMap } from "../components/map/SpotMap";
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -14,13 +14,13 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryS
   }
 
   componentDidCatch(error: Error): void {
-    console.warn('MapErrorBoundary caught:', error.message);
+    console.warn("MapErrorBoundary caught:", error.message);
   }
 
   render() {
     if (this.state.hasError) {
       return (
-        <div className="w-full flex items-center justify-center bg-[#0A0A0A]" style={{ height: '100dvh' }}>
+        <div className="w-full flex items-center justify-center bg-[#0A0A0A]" style={{ height: "100dvh" }}>
           <div className="text-center px-6">
             <p className="text-[#888] text-sm mb-4">Map failed to load. Please refresh the page.</p>
             <button
@@ -39,10 +39,21 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryS
   }
 }
 
-export function MapPage() {
+interface MapPageProps {
+  /**
+   * If set, the spot with this id is rendered with a pulsing ring indicating
+   * the active S.K.A.T.E. game's location. Threaded from GameContext via
+   * the top-level `<Route path="/map">` in `src/App.tsx` rather than
+   * imported directly here, to keep `apps/web` self-contained and avoid
+   * crossing the `rootDir: ./src` boundary.
+   */
+  activeGameSpotId?: string;
+}
+
+export function MapPage({ activeGameSpotId }: MapPageProps = {}) {
   return (
     <MapErrorBoundary>
-      <SpotMap />
+      <SpotMap activeGameSpotId={activeGameSpotId} />
     </MapErrorBoundary>
   );
 }

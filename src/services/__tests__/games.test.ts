@@ -180,6 +180,20 @@ describe("games service", () => {
       expect(docData.player1IsVerifiedPro).toBeUndefined();
       expect(docData.player2IsVerifiedPro).toBeUndefined();
     });
+
+    it("includes spotId when a spot is provided", async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
+      await createGame("p1", "alice", "p2", "bob", undefined, undefined, "spot-uuid-123");
+      const docData = mockAddDoc.mock.calls[0][1];
+      expect(docData.spotId).toBe("spot-uuid-123");
+    });
+
+    it("omits spotId when null or undefined", async () => {
+      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
+      await createGame("p1", "alice", "p2", "bob", undefined, undefined, null);
+      const docData = mockAddDoc.mock.calls[0][1];
+      expect("spotId" in docData).toBe(false);
+    });
   });
 
   describe("setTrick", () => {

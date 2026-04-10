@@ -426,7 +426,7 @@ function AppRoutes() {
             element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
           />
 
-          <Route path="/map" element={<MapPage />} />
+          <Route path="/map" element={<MapPage activeGameSpotId={game.activeGame?.spotId ?? undefined} />} />
           <Route path="/spots/:id" element={<SpotDetailPage />} />
 
           <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />

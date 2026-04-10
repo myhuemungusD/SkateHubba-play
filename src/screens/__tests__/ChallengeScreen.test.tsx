@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import type { ReactElement } from "react";
 import { ChallengeScreen } from "../ChallengeScreen";
+
+/** Render helper — ChallengeScreen uses useSearchParams() which requires a Router ancestor. */
+function renderWithRouter(ui: ReactElement, { initialEntries = ["/challenge"] }: { initialEntries?: string[] } = {}) {
+  return render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
+}
 
 const mockGetUidByUsername = vi.fn();
 
@@ -29,7 +36,7 @@ describe("ChallengeScreen", () => {
   };
 
   it("rejects short username on submit", async () => {
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     const input = screen.getByPlaceholderText("their_handle");
     await userEvent.type(input, "ab");
@@ -44,7 +51,7 @@ describe("ChallengeScreen", () => {
   });
 
   it("rejects self-challenge", async () => {
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "sk8r");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -54,7 +61,7 @@ describe("ChallengeScreen", () => {
 
   it("shows error when opponent not found", async () => {
     mockGetUidByUsername.mockResolvedValueOnce(null);
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "ghost");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -67,7 +74,7 @@ describe("ChallengeScreen", () => {
   it("shows error when onSend fails with Error", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     defaultProps.onSend.mockRejectedValueOnce(new Error("Create failed"));
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -80,7 +87,7 @@ describe("ChallengeScreen", () => {
   it("shows fallback error when onSend fails with non-Error", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     defaultProps.onSend.mockRejectedValueOnce("string error");
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -92,7 +99,7 @@ describe("ChallengeScreen", () => {
 
   it("input is locked during loading", async () => {
     mockGetUidByUsername.mockImplementation(() => new Promise(() => {}));
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     const input = screen.getByPlaceholderText("their_handle") as HTMLInputElement;
     await userEvent.type(input, "rival");
@@ -110,7 +117,7 @@ describe("ChallengeScreen", () => {
   });
 
   it("error banner can be dismissed", async () => {
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "sk8r");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -123,19 +130,47 @@ describe("ChallengeScreen", () => {
 
   it("onBack navigates back", async () => {
     const onBack = vi.fn();
-    render(<ChallengeScreen {...defaultProps} onBack={onBack} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onBack={onBack} />);
 
     await userEvent.click(screen.getByText("← Back"));
     expect(onBack).toHaveBeenCalled();
   });
 
   it("strips special characters from username input", async () => {
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     const input = screen.getByPlaceholderText("their_handle") as HTMLInputElement;
     await userEvent.type(input, "test@#$user");
 
     // Only alphanumeric and underscore
     expect(input.value).toBe("testuser");
+  });
+
+  it("forwards ?spot= URL param to onSend as spotId", async () => {
+    mockGetUidByUsername.mockResolvedValueOnce("u2");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />, {
+      initialEntries: ["/challenge?spot=spot-uuid-123"],
+    });
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", "spot-uuid-123");
+    });
+  });
+
+  it("forwards null spotId when no ?spot= URL param is present", async () => {
+    mockGetUidByUsername.mockResolvedValueOnce("u2");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", null);
+    });
   });
 });

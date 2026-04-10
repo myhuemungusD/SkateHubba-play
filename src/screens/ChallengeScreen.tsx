@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
@@ -32,7 +33,7 @@ export function ChallengeScreen({
   blockedUids,
 }: {
   profile: UserProfile;
-  onSend: (opponentUid: string, opponentUsername: string) => Promise<void>;
+  onSend: (opponentUid: string, opponentUsername: string, spotId?: string | null) => Promise<void>;
   onBack: () => void;
   initialOpponent?: string;
   onViewPlayer?: (uid: string) => void;
@@ -42,6 +43,11 @@ export function ChallengeScreen({
   const [opponent, setOpponent] = useState(initialOpponent);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Optional spot passed in via ?spot=<uuid> (e.g. when the user taps
+  // "Challenge from here" on a spot preview card in the map). Forwarded
+  // verbatim to onSend so the created game carries location context.
+  const [searchParams] = useSearchParams();
+  const spotId = searchParams.get("spot");
 
   const submit = async () => {
     setError("");
@@ -66,7 +72,7 @@ export function ChallengeScreen({
         setError("You cannot challenge a blocked player. Unblock them first.");
         return;
       }
-      await onSend(uid, normalized);
+      await onSend(uid, normalized, spotId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not start game");
     } finally {

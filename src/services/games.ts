@@ -77,6 +77,8 @@ export interface GameDoc {
   /** Denormalized verified-pro status for each player (set at game creation). */
   player1IsVerifiedPro?: boolean;
   player2IsVerifiedPro?: boolean;
+  /** Optional associated spot for location context. Set at game creation, immutable. */
+  spotId?: string | null;
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -145,6 +147,7 @@ export async function createGame(
   opponentUsername: string,
   challengerIsVerifiedPro?: boolean,
   opponentIsVerifiedPro?: boolean,
+  spotId?: string | null,
 ): Promise<string> {
   if (Date.now() - lastGameCreatedAt < GAME_CREATE_COOLDOWN_MS) {
     throw new Error("Please wait before creating another game");
@@ -175,6 +178,7 @@ export async function createGame(
     updatedAt: serverTimestamp(),
     ...(challengerIsVerifiedPro && { player1IsVerifiedPro: true }),
     ...(opponentIsVerifiedPro && { player2IsVerifiedPro: true }),
+    ...(spotId && { spotId }),
   };
 
   const docRef = await withRetry(() => addDoc(gamesRef(), gameData));

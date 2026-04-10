@@ -183,6 +183,9 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     el.style.cursor = "pointer";
     el.style.position = "relative";
     el.style.backgroundColor = spot.isVerified ? "#22C55E" : "#F97316";
+    // Test hook — anonymous marker divs are otherwise unselectable in e2e
+    // without coordinate math.
+    el.setAttribute("data-testid", `spot-marker-${spot.id}`);
 
     if (isActiveGame) {
       const ring = document.createElement("div");
