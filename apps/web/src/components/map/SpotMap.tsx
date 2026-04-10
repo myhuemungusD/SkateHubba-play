@@ -207,7 +207,6 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       minZoom: MAP_DEFAULTS.minZoom,
       maxZoom: MAP_DEFAULTS.maxZoom,
       center: [-118.2437, 34.0522], // Assumption: default to Los Angeles
-      attributionControl: false,
     });
 
     // Add zoom controls
