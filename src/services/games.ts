@@ -77,6 +77,8 @@ export interface GameDoc {
   /** Denormalized verified-pro status for each player (set at game creation). */
   player1IsVerifiedPro?: boolean;
   player2IsVerifiedPro?: boolean;
+  /** Optional associated spot for location context. Set at game creation, immutable. */
+  spotId?: string | null;
 }
 
 const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -138,6 +140,19 @@ export function _resetCreateGameRateLimit() {
  * Create a new game (challenge)
  * ──────────────────────────────────────────── */
 
+/**
+ * Canonical UUID shape. Matches the API's `UUID_REGEX` in
+ * apps/api/src/routes/spots.ts. Malformed values are silently dropped at the
+ * service boundary — callers that need to surface "your spot id is bad" UI
+ * should validate upstream (e.g. `ChallengeScreen` does via `UUID_SHAPE`).
+ */
+const SPOT_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function normalizeSpotId(raw: string | null | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  return SPOT_ID_SHAPE.test(raw) ? raw : null;
+}
+
 export async function createGame(
   challengerUid: string,
   challengerUsername: string,
@@ -145,10 +160,16 @@ export async function createGame(
   opponentUsername: string,
   challengerIsVerifiedPro?: boolean,
   opponentIsVerifiedPro?: boolean,
+  spotId?: string | null,
 ): Promise<string> {
   if (Date.now() - lastGameCreatedAt < GAME_CREATE_COOLDOWN_MS) {
     throw new Error("Please wait before creating another game");
   }
+
+  // Defense-in-depth: drop any spotId that doesn't look like a UUID before
+  // it reaches Firestore. Keeps the data model clean even if an upstream
+  // caller forgets to validate or a shared URL has a stale/garbled value.
+  const safeSpotId = normalizeSpotId(spotId);
 
   const deadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
 
@@ -175,6 +196,7 @@ export async function createGame(
     updatedAt: serverTimestamp(),
     ...(challengerIsVerifiedPro && { player1IsVerifiedPro: true }),
     ...(opponentIsVerifiedPro && { player2IsVerifiedPro: true }),
+    ...(safeSpotId && { spotId: safeSpotId }),
   };
 
   const docRef = await withRetry(() => addDoc(gamesRef(), gameData));

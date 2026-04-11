@@ -29,8 +29,8 @@ import { TermsOfService } from "./screens/TermsOfService";
 import { DataDeletion } from "./screens/DataDeletion";
 import { AgeGate } from "./screens/AgeGate";
 import { NotFound } from "./screens/NotFound";
-import { MapPage } from "../apps/web/src/pages/MapPage";
-import { SpotDetailPage } from "../apps/web/src/pages/SpotDetailPage";
+import { MapPage } from "./screens/MapPage";
+import { SpotDetailPage } from "./screens/SpotDetailPage";
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (

@@ -1,5 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { getUidByUsername, type UserProfile } from "../services/users";
+import { fetchSpotName } from "../services/spots";
+import { analytics } from "../services/analytics";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -12,8 +15,15 @@ import {
   XCircleIcon,
   SkullIcon,
   FlameIcon,
+  MapPinIcon,
   type IconProps,
 } from "../components/icons";
+
+/**
+ * Loose UUID shape check — rejects obvious garbage without being strict about
+ * version bits. Matches the server's `UUID_REGEX` in apps/api/src/routes/spots.ts.
+ */
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const RULES: { Icon: (props: IconProps) => React.ReactNode; text: string; color: string }[] = [
   { Icon: TargetIcon, text: "You set the first trick", color: "text-brand-orange" },
@@ -32,7 +42,7 @@ export function ChallengeScreen({
   blockedUids,
 }: {
   profile: UserProfile;
-  onSend: (opponentUid: string, opponentUsername: string) => Promise<void>;
+  onSend: (opponentUid: string, opponentUsername: string, spotId?: string | null) => Promise<void>;
   onBack: () => void;
   initialOpponent?: string;
   onViewPlayer?: (uid: string) => void;
@@ -42,6 +52,33 @@ export function ChallengeScreen({
   const [opponent, setOpponent] = useState(initialOpponent);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  // Optional spot passed in via ?spot=<uuid> (e.g. when the user taps
+  // "Challenge from here" on a spot preview card in the map). Forwarded
+  // to onSend so the created game carries location context. Only accepted
+  // if it matches the canonical UUID shape — this is client-side
+  // defense-in-depth; the API enforces the same invariant server-side.
+  const [searchParams] = useSearchParams();
+  const rawSpotId = searchParams.get("spot");
+  const spotId = rawSpotId && UUID_SHAPE.test(rawSpotId) ? rawSpotId : null;
+
+  // Spot name resolution is a tri-state: "loading" (initial, fetch in flight),
+  // a string (resolved), or null (fetch settled with no name — either 404 or
+  // error). We defer rendering the chip until we leave "loading" so the user
+  // never sees a flash of the generic fallback label.
+  type SpotNameState = "loading" | string | null;
+  const [spotName, setSpotName] = useState<SpotNameState>("loading");
+  useEffect(() => {
+    if (!spotId) return;
+    // Funnel event — fires once per ChallengeScreen mount with a spot,
+    // including direct URL visits (e.g. a shared link).
+    analytics.challengeFromSpot(spotId);
+
+    const controller = new AbortController();
+    fetchSpotName(spotId, controller.signal).then((name) => {
+      if (!controller.signal.aborted) setSpotName(name);
+    });
+    return () => controller.abort();
+  }, [spotId]);
 
   const submit = async () => {
     setError("");
@@ -66,7 +103,7 @@ export function ChallengeScreen({
         setError("You cannot challenge a blocked player. Unblock them first.");
         return;
       }
-      await onSend(uid, normalized);
+      await onSend(uid, normalized, spotId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not start game");
     } finally {
@@ -97,6 +134,18 @@ export function ChallengeScreen({
       </div>
 
       <div className="max-w-md mx-auto px-6">
+        {spotId && spotName !== "loading" && (
+          <div
+            className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-orange/40 bg-brand-orange/10 px-3 py-1.5 text-xs text-brand-orange"
+            data-testid="challenge-spot-chip"
+            aria-label={spotName ? `Challenging at ${spotName}` : "Challenging at a saved spot"}
+          >
+            <MapPinIcon size={12} className="shrink-0" />
+            <span className="truncate max-w-[16rem]">
+              Challenging at <span className="font-semibold">{spotName ?? "a saved spot"}</span>
+            </span>
+          </div>
+        )}
         <h1 className="font-display text-fluid-4xl text-white mb-2">Challenge</h1>
         <p className="font-body text-sm text-[#888] mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 

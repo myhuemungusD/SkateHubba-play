@@ -1,9 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
+import type { ReactElement } from "react";
 import { ChallengeScreen } from "../ChallengeScreen";
 
+/** Render helper — ChallengeScreen uses useSearchParams() which requires a Router ancestor. */
+function renderWithRouter(ui: ReactElement, { initialEntries = ["/challenge"] }: { initialEntries?: string[] } = {}) {
+  return render(<MemoryRouter initialEntries={initialEntries}>{ui}</MemoryRouter>);
+}
+
 const mockGetUidByUsername = vi.fn();
+const mockChallengeFromSpot = vi.fn();
+const mockFetchSpotName = vi.fn();
 
 vi.mock("../../services/users", () => ({
   getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
@@ -12,7 +21,15 @@ vi.mock("../../services/users", () => ({
 
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
+  analytics: {
+    challengeFromSpot: (...args: unknown[]) => mockChallengeFromSpot(...args),
+  },
 }));
+
+vi.mock("../../services/spots", () => ({
+  fetchSpotName: (...args: unknown[]) => mockFetchSpotName(...args),
+}));
+
 vi.mock("../../services/blocking", () => ({
   getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
 }));
@@ -29,7 +46,7 @@ describe("ChallengeScreen", () => {
   };
 
   it("rejects short username on submit", async () => {
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     const input = screen.getByPlaceholderText("their_handle");
     await userEvent.type(input, "ab");
@@ -44,7 +61,7 @@ describe("ChallengeScreen", () => {
   });
 
   it("rejects self-challenge", async () => {
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "sk8r");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -54,7 +71,7 @@ describe("ChallengeScreen", () => {
 
   it("shows error when opponent not found", async () => {
     mockGetUidByUsername.mockResolvedValueOnce(null);
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "ghost");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -67,7 +84,7 @@ describe("ChallengeScreen", () => {
   it("shows error when onSend fails with Error", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     defaultProps.onSend.mockRejectedValueOnce(new Error("Create failed"));
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -80,7 +97,7 @@ describe("ChallengeScreen", () => {
   it("shows fallback error when onSend fails with non-Error", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2");
     defaultProps.onSend.mockRejectedValueOnce("string error");
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -92,7 +109,7 @@ describe("ChallengeScreen", () => {
 
   it("input is locked during loading", async () => {
     mockGetUidByUsername.mockImplementation(() => new Promise(() => {}));
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     const input = screen.getByPlaceholderText("their_handle") as HTMLInputElement;
     await userEvent.type(input, "rival");
@@ -110,7 +127,7 @@ describe("ChallengeScreen", () => {
   });
 
   it("error banner can be dismissed", async () => {
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("their_handle"), "sk8r");
     await userEvent.click(screen.getByText(/Send Challenge/));
@@ -123,19 +140,133 @@ describe("ChallengeScreen", () => {
 
   it("onBack navigates back", async () => {
     const onBack = vi.fn();
-    render(<ChallengeScreen {...defaultProps} onBack={onBack} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onBack={onBack} />);
 
     await userEvent.click(screen.getByText("← Back"));
     expect(onBack).toHaveBeenCalled();
   });
 
   it("strips special characters from username input", async () => {
-    render(<ChallengeScreen {...defaultProps} />);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
     const input = screen.getByPlaceholderText("their_handle") as HTMLInputElement;
     await userEvent.type(input, "test@#$user");
 
     // Only alphanumeric and underscore
     expect(input.value).toBe("testuser");
+  });
+
+  const VALID_SPOT_ID = "11111111-2222-3333-4444-555555555555";
+
+  it("forwards ?spot= URL param to onSend as spotId", async () => {
+    mockGetUidByUsername.mockResolvedValueOnce("u2");
+    mockFetchSpotName.mockResolvedValueOnce(null);
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />, {
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
+    });
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", VALID_SPOT_ID);
+    });
+  });
+
+  it("forwards null spotId when no ?spot= URL param is present", async () => {
+    mockGetUidByUsername.mockResolvedValueOnce("u2");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", null);
+    });
+  });
+
+  it("drops a garbled ?spot= value so onSend receives null", async () => {
+    mockGetUidByUsername.mockResolvedValueOnce("u2");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />, {
+      initialEntries: ["/challenge?spot=%27%20OR%201%3D1"],
+    });
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", null);
+    });
+    // No chip should render for garbled input, and neither analytics nor
+    // the fetch helper should ever see the garbled value.
+    expect(screen.queryByTestId("challenge-spot-chip")).not.toBeInTheDocument();
+    expect(mockChallengeFromSpot).not.toHaveBeenCalled();
+    expect(mockFetchSpotName).not.toHaveBeenCalled();
+  });
+
+  it("does not render the chip until the spot name fetch resolves (no flash)", async () => {
+    // Hold the fetch promise open so we can observe the "loading" state.
+    let resolveFetch: (name: string | null) => void = () => {};
+    mockFetchSpotName.mockReturnValueOnce(
+      new Promise<string | null>((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    renderWithRouter(<ChallengeScreen {...defaultProps} />, {
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
+    });
+
+    // While the fetch is pending, the chip must NOT be in the DOM — the
+    // tri-state render is what prevents the "Challenging at a saved spot"
+    // fallback from flashing before the real name arrives.
+    expect(screen.queryByTestId("challenge-spot-chip")).not.toBeInTheDocument();
+
+    // Resolve the fetch; chip should now appear with the fetched name.
+    resolveFetch("Hollenbeck Hubba");
+    await waitFor(() => {
+      expect(screen.getByTestId("challenge-spot-chip")).toHaveTextContent("Challenging at Hollenbeck Hubba");
+    });
+  });
+
+  it("fires the challengeFromSpot analytics event on mount when spotId is valid", async () => {
+    mockFetchSpotName.mockResolvedValueOnce(null);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />, {
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
+    });
+
+    await waitFor(() => {
+      expect(mockChallengeFromSpot).toHaveBeenCalledWith(VALID_SPOT_ID);
+    });
+  });
+
+  it("does not fire analytics when there is no spotId", () => {
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
+    expect(mockChallengeFromSpot).not.toHaveBeenCalled();
+  });
+
+  it("renders the spot context chip with the fetched name", async () => {
+    mockFetchSpotName.mockResolvedValueOnce("Hollenbeck Hubba");
+    renderWithRouter(<ChallengeScreen {...defaultProps} />, {
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("challenge-spot-chip")).toHaveTextContent("Challenging at Hollenbeck Hubba");
+    });
+  });
+
+  it("falls back to a generic label when the spot name fetch fails", async () => {
+    mockFetchSpotName.mockResolvedValueOnce(null);
+    renderWithRouter(<ChallengeScreen {...defaultProps} />, {
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("challenge-spot-chip")).toHaveTextContent("Challenging at a saved spot");
+    });
   });
 });

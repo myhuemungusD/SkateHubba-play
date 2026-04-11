@@ -79,6 +79,7 @@ export function newGameShell(
   myUsername: string,
   opponentUid: string,
   opponentUsername: string,
+  spotId: string | null = null,
 ): GameDoc {
   return {
     id: gameId,
@@ -101,5 +102,6 @@ export function newGameShell(
     turnHistory: [],
     createdAt: null,
     updatedAt: null,
+    spotId,
   };
 }

@@ -73,5 +73,26 @@ describe("analytics service", () => {
       analytics.signIn("google");
       expect(vaSpy).toHaveBeenCalledWith("event", { name: "sign_in", method: "google" });
     });
+
+    it("challengeFromSpot sends challenge_from_spot event", () => {
+      analytics.challengeFromSpot("11111111-2222-3333-4444-555555555555");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "challenge_from_spot",
+        spotId: "11111111-2222-3333-4444-555555555555",
+      });
+    });
+
+    it("mapViewed sends map_viewed event", () => {
+      analytics.mapViewed();
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "map_viewed" });
+    });
+
+    it("spotPreviewed sends spot_previewed event with the spot id", () => {
+      analytics.spotPreviewed("11111111-2222-3333-4444-555555555555");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "spot_previewed",
+        spotId: "11111111-2222-3333-4444-555555555555",
+      });
+    });
   });
 });

@@ -13,7 +13,7 @@ export interface GameContextValue {
   activeGame: GameDoc | null;
   setActiveGame: (g: GameDoc | null) => void;
   openGame: (g: GameDoc) => void;
-  startChallenge: (opponentUid: string, opponentUsername: string) => Promise<void>;
+  startChallenge: (opponentUid: string, opponentUsername: string, spotId?: string | null) => Promise<void>;
   hasMoreGames: boolean;
   loadMoreGames: () => void;
   gamesLoading: boolean;
@@ -143,7 +143,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   const startChallenge = useCallback(
-    async (opponentUid: string, opponentUsername: string) => {
+    async (opponentUid: string, opponentUsername: string, spotId?: string | null) => {
       /* v8 ignore start -- null guard unreachable in tests; button disabled when user/profile is null */
       if (!user || !activeProfile) return;
       /* v8 ignore stop */
@@ -163,9 +163,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
         opponentUsername,
         activeProfile.isVerifiedPro,
         opponentProfile?.isVerifiedPro,
+        spotId,
       );
       analytics.gameCreated(gameId);
-      const shell = newGameShell(gameId, user.uid, activeProfile.username, opponentUid, opponentUsername);
+      const shell = newGameShell(gameId, user.uid, activeProfile.username, opponentUid, opponentUsername, spotId);
       setActiveGame(shell);
       setScreen("game");
     },

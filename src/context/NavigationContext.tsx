@@ -3,6 +3,22 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuthContext } from "./AuthContext";
 import { logger } from "../services/logger";
 
+/**
+ * SessionStorage key used to carry a pending challenge spotId through the
+ * auth bounce. Flow:
+ *   1. Unauthenticated user opens /challenge?spot=<uuid> (shared link)
+ *   2. Auth router bounces them to /landing for sign-in
+ *   3. Before the bounce, the spot param is stashed here
+ *   4. After login, the router lands them on /lobby
+ *   5. On the lobby transition we consume the stash and redirect to
+ *      /challenge?spot=<uuid>, restoring the full context
+ *
+ * Without this the query string is discarded by the bounce and the shared
+ * link is effectively broken for logged-out recipients.
+ */
+const PENDING_SPOT_KEY = "skate.pendingChallengeSpot";
+const SPOT_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type Screen =
   | "landing"
   | "agegate"
@@ -132,6 +148,18 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         logger.debug("auth_router_public_screen", { screen: currentScreen });
         return;
       }
+      // Stash a /challenge?spot=<uuid> param before the bounce so we can
+      // restore it after the user authenticates. See PENDING_SPOT_KEY docs.
+      if (currentScreen === "challenge") {
+        const spot = new URLSearchParams(location.search).get("spot");
+        if (spot && SPOT_ID_SHAPE.test(spot)) {
+          try {
+            sessionStorage.setItem(PENDING_SPOT_KEY, spot);
+          } catch {
+            // Private-mode Safari can throw — best-effort persistence only.
+          }
+        }
+      }
       logger.debug("auth_router_no_user", { target: "landing" });
       setScreen("landing");
       setAuthMode("signup");
@@ -150,10 +178,27 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       from: currentScreen,
       to: next,
     });
+    // If we're about to land the freshly-authenticated user on /lobby and
+    // we have a pending challenge spot stashed from a pre-auth shared link,
+    // consume it and redirect to /challenge?spot=<uuid> instead.
+    if (next === "lobby") {
+      let pending: string | null = null;
+      try {
+        pending = sessionStorage.getItem(PENDING_SPOT_KEY);
+        if (pending) sessionStorage.removeItem(PENDING_SPOT_KEY);
+      } catch {
+        // Best-effort read; private mode, disabled storage, etc.
+      }
+      if (pending && SPOT_ID_SHAPE.test(pending)) {
+        logger.debug("auth_router_restored_pending_spot", { uid: user.uid, spot: pending });
+        navigate(`/challenge?spot=${pending}`, { replace: true });
+        return;
+      }
+    }
     if (next !== currentScreen) {
       setScreen(next);
     }
-  }, [loading, user, activeProfile, setScreen, location.pathname]);
+  }, [loading, user, activeProfile, setScreen, location.pathname, location.search, navigate]);
 
   // Navigate to auth screen when a Google error occurs (e.g. redirect failure)
   const prevGoogleErrorRef = useRef(googleError);
