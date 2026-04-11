@@ -31,6 +31,11 @@ export const analytics = {
   videoUploaded: (durationMs: number, sizeBytes: number) => trackEvent("video_uploaded", { durationMs, sizeBytes }),
   signUp: (method: string) => trackEvent("sign_up", { method }),
   signIn: (method: string) => trackEvent("sign_in", { method }),
-  /** Fired when the user taps "Challenge from here" on a spot preview card. */
+  // ── Map funnel ────────────────────────────────────────────────────────
+  /** Top of funnel — fires once per MapPage mount. */
+  mapViewed: () => trackEvent("map_viewed"),
+  /** Fired when a user taps a marker and the SpotPreviewCard opens. */
+  spotPreviewed: (spotId: string) => trackEvent("spot_previewed", { spotId }),
+  /** Fired when ChallengeScreen mounts with a valid ?spot= URL param. */
   challengeFromSpot: (spotId: string) => trackEvent("challenge_from_spot", { spotId }),
 } as const;

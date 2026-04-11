@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from "react";
+import { Component, useEffect, type ReactNode } from "react";
 import { SpotMap } from "../components/map/SpotMap";
 
 interface ErrorBoundaryState {
@@ -48,12 +48,32 @@ interface MapPageProps {
    * crossing the `rootDir: ./src` boundary.
    */
   activeGameSpotId?: string;
+  /**
+   * Fired once per MapPage mount — top of the map funnel.
+   * Threaded from the analytics module at the src/App.tsx level; the
+   * `apps/web` subtree deliberately stays analytics-agnostic.
+   */
+  onMapViewed?: () => void;
+  /**
+   * Fired when the user opens a spot preview card from the map.
+   */
+  onSpotPreviewed?: (spotId: string) => void;
 }
 
-export function MapPage({ activeGameSpotId }: MapPageProps = {}) {
+export function MapPage({ activeGameSpotId, onMapViewed, onSpotPreviewed }: MapPageProps = {}) {
+  useEffect(() => {
+    onMapViewed?.();
+    // Only fire once per mount — downstream listeners treat this as a page-view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <MapErrorBoundary>
-      <SpotMap activeGameSpotId={activeGameSpotId} />
+      <SpotMap
+        activeGameSpotId={activeGameSpotId}
+        // Adapt: SpotMap gives us the full Spot, analytics only needs the id.
+        onSpotSelect={onSpotPreviewed ? (spot) => onSpotPreviewed(spot.id) : undefined}
+      />
     </MapErrorBoundary>
   );
 }

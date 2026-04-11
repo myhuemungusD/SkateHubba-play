@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
+import { analytics } from "./services/analytics";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { NavigationProvider, useNavigationContext } from "./context/NavigationContext";
@@ -426,7 +427,16 @@ function AppRoutes() {
             element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
           />
 
-          <Route path="/map" element={<MapPage activeGameSpotId={game.activeGame?.spotId ?? undefined} />} />
+          <Route
+            path="/map"
+            element={
+              <MapPage
+                activeGameSpotId={game.activeGame?.spotId ?? undefined}
+                onMapViewed={analytics.mapViewed}
+                onSpotPreviewed={analytics.spotPreviewed}
+              />
+            }
+          />
           <Route path="/spots/:id" element={<SpotDetailPage />} />
 
           <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />

@@ -81,5 +81,18 @@ describe("analytics service", () => {
         spotId: "11111111-2222-3333-4444-555555555555",
       });
     });
+
+    it("mapViewed sends map_viewed event", () => {
+      analytics.mapViewed();
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "map_viewed" });
+    });
+
+    it("spotPreviewed sends spot_previewed event with the spot id", () => {
+      analytics.spotPreviewed("11111111-2222-3333-4444-555555555555");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "spot_previewed",
+        spotId: "11111111-2222-3333-4444-555555555555",
+      });
+    });
   });
 });
