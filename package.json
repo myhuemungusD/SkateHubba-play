@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:rules": "npx firebase-tools emulators:exec --only firestore --project demo-skatehubba-rules 'vitest run --config rules-tests/vitest.config.ts'",
     "test:e2e": "npx firebase-tools emulators:exec --only auth,firestore,storage --project demo-skatehubba 'npx playwright test'",
     "test:e2e:ui": "npx firebase-tools emulators:exec --only auth,firestore,storage --project demo-skatehubba 'npx playwright test --ui'",
     "emulators": "npx firebase-tools emulators:start --only auth,firestore,storage --project demo-skatehubba",
@@ -47,6 +48,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
     "@eslint/js": "^9.39.4",
+    "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "^1.56.1",
     "@tailwindcss/vite": "^4.2.2",
     "@testing-library/dom": "^10.4.1",
