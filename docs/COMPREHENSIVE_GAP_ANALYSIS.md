@@ -1,8 +1,8 @@
 # Comprehensive Gap Analysis — SkateHubba-Play
 
-**Date:** 2026-03-24
-**Stack:** React 18 + TypeScript (strict) + Firebase (Auth / Firestore / Storage) + Vercel
-**Verification gate:** `tsc -b` ✓ | `lint` ✓ | `761/761 tests` ✓ | `build` ✓
+**Date:** 2026-04-11 (refreshed)
+**Stack:** React 19 + TypeScript 5.6 (strict) + Vite 8 + Tailwind CSS 4 + Firebase 12 (Auth / Firestore / Storage / Functions) + Capacitor 8 (iOS + Android) + Vercel
+**Verification gate:** `lint` ✓ | `tsc -b` ✓ | `test:coverage` ✓ | `build` ✓ | `test:e2e` ✓ (emulators)
 
 ---
 
@@ -67,7 +67,7 @@ SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript er
 
 **Strengths:**
 
-- 71 test files, 761 tests, all passing
+- 80+ Vitest files across `src/services/__tests__`, `src/hooks/__tests__`, `src/components/__tests__`, and the split `src/__tests__/smoke-*.test.tsx` suites, plus Playwright E2E in `e2e/` and Firestore rules unit tests in `rules-tests/`
 - 100% coverage on `src/services/**` and `src/hooks/**` (lines, functions, branches, statements)
 - `src/firebase.ts` at 96%/93% (legitimately untestable App Check env branches)
 - Smoke tests for all screens
@@ -75,13 +75,12 @@ SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript er
 
 **Remaining gaps:**
 
-| #   | Gap                             | Severity | Owner | Details                                                                                                                                     |
-| --- | ------------------------------- | -------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| T1  | No E2E tests                    | P2       | Dev   | No Playwright/Cypress for critical flows (sign-up → profile → game → trick → game over). `npm run test:e2e` script exists but no test files |
-| T2  | No Firestore rule unit tests    | P2       | Dev   | Rules enforce critical game logic but aren't tested in CI. Should use `@firebase/rules-unit-testing`                                        |
-| T3  | No accessibility testing in CI  | P2       | Dev   | No axe-core or Lighthouse accessibility audit in pipeline                                                                                   |
-| T4  | Low coverage on `RecordScreen`  | P3       | Dev   | 0% coverage — likely a newer screen. Needs smoke tests                                                                                      |
-| T5  | Low coverage on `ollieSound.ts` | P3       | Dev   | 20% — audio playback not easily testable in JSDOM. Acceptable                                                                               |
+| #   | Gap                                      | Severity | Owner | Details                                                                                                                             |
+| --- | ---------------------------------------- | -------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| T1  | No accessibility testing in CI           | P2       | Dev   | Lighthouse CI runs, but no axe-core or dedicated a11y audit job yet                                                                 |
+| T2  | Low coverage on `RecordScreen`           | P3       | Dev   | Coverage is thin — needs smoke tests                                                                                                |
+| T3  | Low coverage on `ollieSound.ts`          | P3       | Dev   | Audio playback not easily testable in JSDOM. Acceptable                                                                             |
+| T4  | Cloud Functions tests are minimal        | P2       | Dev   | `functions/src/__tests__/` exists but doesn't cover every branch of `checkExpiredTurns` / `onGameUpdated`. Expand before next change |
 
 ### 4. Type Safety — 10/10
 
@@ -161,18 +160,19 @@ SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript er
 
 **Strengths:**
 
-- Pipeline: Lint → Type check → Test with coverage → Build → Lighthouse CI
+- Pipeline: Lint → Type check → Test with coverage → Build → Lighthouse CI → Playwright E2E (on Firebase emulators)
 - Coverage thresholds enforced (100% services/hooks)
-- PR gate rejects new Cloud Functions code
-- Conventional commit format enforced
+- PR gate blocks any change under `functions/src/` without explicit maintainer approval (`verify-no-cloud-functions` in `pr-gate.yml`)
+- `guard-as-any-casts` rejects `as any` in production code
+- `guard-todo-fixme-hack` rejects `TODO`/`FIXME`/`HACK` comments in `src/`
+- Branch protection is documented in `.github/BRANCH_PROTECTION.md` and CODEOWNERS is in place
 
 **Remaining gaps:**
 
 | #   | Gap                                       | Severity | Owner | Details                                                                                               |
 | --- | ----------------------------------------- | -------- | ----- | ----------------------------------------------------------------------------------------------------- |
 | C1  | No automated Firebase rules deployment    | P1       | Ops   | Firestore/Storage rules deployed manually. Add `firebase deploy --only firestore:rules,storage` to CI |
-| C2  | No branch protection rules                | P1       | Ops   | No `CODEOWNERS`, no required reviews before merge to `main`                                           |
-| C3  | SW placeholder validation is warning-only | Info     | —     | Build succeeds even with unreplaced placeholders (warning logged). Consider failing in CI             |
+| C2  | SW placeholder validation is warning-only | Info     | —     | Build succeeds even with unreplaced placeholders (warning logged). Consider failing in CI             |
 
 ### 9. Data Privacy & Compliance — 10/10
 
@@ -249,7 +249,7 @@ These are out of scope for the code repo but critical for production:
 2. Enable Firestore managed exports (daily backups)
 3. Set Storage lifecycle rule for video retention
 4. Add "Download My Data" feature (GDPR Article 20)
-5. Configure GitHub branch protection rules
+5. ~~Configure GitHub branch protection rules~~ — **resolved.** See `.github/BRANCH_PROTECTION.md` and `.github/CODEOWNERS`
 
 ### P2 — Quality (Dev)
 

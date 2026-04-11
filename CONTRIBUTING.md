@@ -61,14 +61,24 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full local setup including Fi
 
 ## Code Style
 
-We don't use a linter or formatter config in this repo, but follow these conventions:
+This repo ships with a full lint + format toolchain. Run it before you push:
+
+```bash
+npm run lint     # ESLint 9 (flat config in eslint.config.js)
+npm run format   # Prettier 3.8 over src/**/*.{ts,tsx}
+```
+
+Husky + lint-staged run ESLint + Prettier on staged files at pre-commit, so most formatting issues are fixed automatically.
+
+Conventions on top of the tooling:
 
 - **TypeScript strict mode** is enabled (`"strict": true` in `tsconfig.app.json`). All new code must type-check cleanly. Run `npx tsc -b` before submitting.
-- **No `any`** — use proper types or generics.
-- **Tailwind classes** for all styling. Don't add inline styles or CSS modules.
+- **No `any`** in production code — the `guard-as-any-casts` CI job fails the build if it finds any.
+- **Tailwind v4 classes** for all styling. Don't add inline styles or CSS modules.
 - **Service layer pattern** — UI talks to `src/services/*`, not to Firebase directly. New Firebase operations belong in the relevant service file.
-- **No unused imports or variables** — TypeScript strict mode will catch these.
-- Keep functions small and focused. The existing `App.tsx` is intentionally large (it's the state machine); new screen logic should follow existing patterns rather than introducing new abstractions.
+- **No unused imports or variables** — TypeScript strict mode (`noUnusedLocals` / `noUnusedParameters`) catches these.
+- Keep functions small and focused. The existing `App.tsx` is intentionally large (it owns the `<Routes>` tree, auth guard, and `NavigationContext`); new screen logic should follow existing patterns rather than introducing new abstractions.
+- **No `TODO`/`FIXME`/`HACK`** — the `guard-todo-fixme-hack` CI job rejects these. Resolve them before opening a PR.
 
 ---
 
@@ -106,8 +116,8 @@ The `main` branch has protection rules that apply to all contributors, including
 
 - **Direct pushes to `main` are blocked** — all changes must go through a pull request
 - **At least 1 approving review** from a CODEOWNER is required
-- **CI status checks must pass** before merging (lint, type check, tests, build)
-- **Cloud Functions are not allowed** — a CI guard rejects PRs adding code to `functions/src/`
+- **CI status checks must pass** before merging (lint → type check → `test:coverage` → build → Lighthouse CI, plus Playwright E2E against Firebase emulators)
+- **Cloud Functions changes are gated** — a small set of Cloud Functions already exists (push notifications, billing alerts, and the `checkExpiredTurns` scheduled turn-forfeit). The `verify-no-cloud-functions` CI guard rejects any PR that modifies or adds files under `functions/src/` without explicit maintainer approval
 - **Workflow changes are flagged** — modifications to `.github/workflows/` require explicit maintainer review
 
 See [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md) for the full ruleset and setup checklist.
@@ -118,11 +128,13 @@ See [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md) for the full 
 
 Before opening a PR, confirm:
 
+- [ ] `npm run lint` passes with no errors
 - [ ] `npx tsc -b` passes with no errors
-- [ ] `npm test` passes with no failures
+- [ ] `npm run test:coverage` passes with no failures (thresholds are enforced)
 - [ ] `npm run build` completes successfully
-- [ ] New features have tests (unit or smoke E2E)
-- [ ] No console.log statements left in code (use `console.warn` for expected error paths only)
+- [ ] For changes that affect rules or gameplay: `npm run test:rules` and/or `npm run test:e2e` pass locally (both require the Firebase emulators)
+- [ ] New features have tests (unit + smoke)
+- [ ] No `console.log` statements left in code (use `console.warn` for expected error paths only)
 - [ ] Firebase security rules updated if new collections or fields are added
 - [ ] `.env.example` updated if new environment variables are introduced
 - [ ] PR description explains what changed and why
@@ -131,10 +143,12 @@ Before opening a PR, confirm:
 
 ## Writing Tests
 
-We use Vitest with jsdom. Firebase is mocked via `src/__mocks__/firebase.ts`.
+We use Vitest 4 with jsdom. Firebase is mocked via `src/__mocks__/firebase.ts`.
 
-- **Unit tests** go in `src/services/__tests__/` (one file per service)
-- **E2E smoke tests** go in `src/__tests__/smoke-e2e.test.tsx`
+- **Unit tests** go in `src/services/__tests__/` and `src/hooks/__tests__/` (one file per module, 100% coverage enforced)
+- **Smoke tests** are split by area under `src/__tests__/smoke-*.test.tsx` (auth, lobby, challenge, gameplay, gameover, profile, google, account). Extend the existing file for the relevant area or create a new `smoke-<area>.test.tsx`.
+- **Firestore rule tests** live in `rules-tests/` and run via `npm run test:rules` against the emulator.
+- **Playwright E2E tests** live in `e2e/` and run via `npm run test:e2e` against the emulator.
 
 See [docs/TESTING.md](docs/TESTING.md) for patterns and examples.
 
@@ -144,11 +158,11 @@ See [docs/TESTING.md](docs/TESTING.md) for patterns and examples.
 
 To keep this repo focused:
 
-- No backend / API servers — this is a serverless Firebase app by design
+- No backend / API servers — this is a Firebase-backed app by design. Cloud Functions exist only for push notifications, billing alerts, and the scheduled `checkExpiredTurns` turn-forfeit; new functions need explicit maintainer approval.
 - No new database engines (PostgreSQL, Redis, etc.)
-- No state management libraries (Redux, Zustand, etc.) — local state + hooks are sufficient
-- No UI component libraries — we use Tailwind with custom components
-- No major refactors of `App.tsx` without prior discussion — it's intentionally a monolithic state machine
+- No state management libraries (Redux, Zustand, etc.) — local state + hooks + `NavigationContext` are sufficient
+- No UI component libraries — we use Tailwind v4 with custom components
+- No major refactors of `App.tsx` (which owns the `<Routes>` tree + auth guard) without prior discussion
 
 If you're unsure whether a contribution fits, open an issue first.
 

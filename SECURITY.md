@@ -54,8 +54,8 @@ Firebase Storage rules (`storage.rules`) enforce:
 
 - Only authenticated users can upload or download videos.
 - Video size: minimum 1 KB (prevents stub uploads), maximum 50 MB.
-- Content type: must be `video/webm`.
-- Filename: only `set.webm` or `match.webm` are accepted — this prevents path traversal via crafted filenames.
+- Content type: must be `video/webm` (produced by the web build via `MediaRecorder`) or `video/mp4` (produced by the Capacitor iOS/Android shells via the native camera).
+- Filename: only `set.webm`, `match.webm`, `set.mp4`, or `match.mp4` are accepted — this prevents path traversal via crafted filenames, and the content-type must match the extension.
 
 ### XSS Prevention
 
@@ -88,8 +88,10 @@ The `main` branch is protected by GitHub branch protection rules and automated C
 Key safeguards:
 
 - **All changes to `main` must go through a pull request** with at least one CODEOWNER approval
-- **Required CI checks** must pass: lint, type check, tests, build
-- **Cloud Functions guard**: a CI job rejects PRs that introduce new Cloud Functions code
+- **Required CI checks** must pass: lint → type check → `test:coverage` → build → Lighthouse CI, plus Playwright E2E against Firebase emulators
+- **Cloud Functions guard**: `verify-no-cloud-functions` in `pr-gate.yml` rejects any PR that modifies files under `functions/src/` without explicit maintainer approval
+- **`as any` guard**: `guard-as-any-casts` rejects `as any` in production code
+- **TODO/FIXME/HACK guard**: `guard-todo-fixme-hack` rejects those comments in `src/`
 - **Workflow change detection**: modifications to `.github/workflows/` are flagged for manual review
 - **Force pushes and branch deletion are blocked** on `main`
 

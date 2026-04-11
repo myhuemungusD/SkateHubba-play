@@ -33,13 +33,22 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Available Scripts
 
-| Command              | Description                                        |
-| -------------------- | -------------------------------------------------- |
-| `npm run dev`        | Start Vite dev server at `localhost:5173` with HMR |
-| `npm run build`      | TypeScript check + production build → `dist/`      |
-| `npm run preview`    | Serve the production build locally                 |
-| `npm test`           | Run the full test suite once (CI mode)             |
-| `npm run test:watch` | Run tests in watch mode while editing              |
+| Command                 | Description                                        |
+| ----------------------- | -------------------------------------------------- |
+| `npm run dev`           | Start Vite dev server at `localhost:5173` with HMR |
+| `npm run build`         | TypeScript check + production build → `dist/`     |
+| `npm run preview`       | Serve the production build locally                 |
+| `npm test`              | Run the Vitest suite once (CI mode)                |
+| `npm run test:watch`    | Run tests in watch mode while editing              |
+| `npm run test:coverage` | Run tests with V8 coverage + threshold enforcement |
+| `npm run test:rules`    | Firestore rules unit tests (starts emulator)       |
+| `npm run test:e2e`      | Playwright E2E tests (starts emulator)             |
+| `npm run lint`          | ESLint 9 (flat config) over `src/`                 |
+| `npm run format`        | Prettier 3.8 over `src/**/*.{ts,tsx}`              |
+| `npm run emulators`     | Start Firebase emulators (auth/firestore/storage)  |
+| `npm run cap:sync`      | `npx cap sync` — copy web build into native shells |
+| `npm run cap:open:ios`  | Open the iOS project in Xcode                      |
+| `npm run cap:open:android` | Open the Android project in Android Studio     |
 
 ---
 
@@ -112,26 +121,29 @@ Open [http://localhost:4000](http://localhost:4000) while the emulators are runn
 ```
 skatehubba-play/
 ├── src/
-│   ├── App.tsx              # All screens + state machine
+│   ├── App.tsx              # Router (`react-router-dom`) + auth guard + NavigationContext
 │   ├── firebase.ts          # Firebase initialization
-│   ├── main.tsx             # React entry point
-│   ├── index.css            # Tailwind directives + custom animations
-│   ├── hooks/
-│   │   └── useAuth.ts       # Auth state + Firestore profile hook
+│   ├── main.tsx             # React entry point + Sentry init
+│   ├── index.css            # Tailwind v4 @theme + custom animations
+│   ├── hooks/               # useAuth, useOnlineStatus, usePlayerProfile, etc.
 │   ├── services/
 │   │   ├── auth.ts          # Sign-up, sign-in, Google OAuth, password reset
 │   │   ├── users.ts         # Profiles + atomic username reservation
 │   │   ├── games.ts         # Game CRUD + real-time subscriptions
-│   │   └── storage.ts       # Video upload to Firebase Storage
-│   └── __tests__/
-│       ├── setup.ts         # Global test setup (jest-dom matchers)
-│       └── smoke-e2e.test.tsx  # 45+ end-to-end smoke tests
+│   │   ├── storage.ts       # Video upload (WebM on web, MP4 on native)
+│   │   ├── analytics.ts     # Vercel Analytics event tracking
+│   │   └── notifications.ts # In-app notification writes
+│   ├── context/             # AuthContext, GameContext, NavigationContext, NotificationContext
+│   └── __tests__/           # setup.ts, smoke-helpers.tsx, split smoke-*.test.tsx files
+├── functions/               # Cloud Functions (push, billing, scheduled turn forfeit)
+├── e2e/                     # Playwright E2E tests (run against emulators)
+├── rules-tests/             # Firestore rules unit tests
+├── ios/ + android/          # Capacitor native projects
 ├── firestore.rules          # Firestore security rules
-├── storage.rules            # Storage security rules
-├── vercel.json              # Vercel SPA config + noindex headers
+├── storage.rules            # Storage security rules (WebM + MP4)
+├── vercel.json              # Vercel SPA config + security headers
 ├── firebase.json            # Firebase CLI config
-├── vite.config.ts           # Vite + Vitest config
-├── tailwind.config.js       # Brand tokens + font config
+├── vite.config.ts           # Vite + Vitest + @tailwindcss/vite
 └── docs/                    # Documentation
 ```
 
@@ -153,8 +165,8 @@ skatehubba-play/
 
 ### Component architecture
 
-- `App.tsx` is the intentional monolith. Do not split it into route-based files.
-- Screen state is a string managed with `useState`. New screens follow the existing `if/else if` pattern.
+- `App.tsx` owns the `<Routes>` tree, the auth guard, and the `NavigationProvider`. It's intentionally large — don't split it into route-based files.
+- Screen transitions go through `nav.setScreen(...)` (from `NavigationContext`). New screens should add a `<Route>` in `App.tsx` and a branch in `NavigationContext`'s screen → path mapping so legacy callsites keep working.
 - If a new Firebase operation belongs in a service function, add it to the relevant service file.
 
 ### Styling
@@ -181,21 +193,23 @@ Rules are not deployed by Vercel and not deployed by CI — this is intentional.
 
 ## Adding a New Screen
 
-1. Add the new screen name to the `screen` state type in `App.tsx`.
-2. Add a navigation trigger (a button or condition that sets `screen` to the new value).
-3. Add the conditional render block in `App.tsx`, following the existing pattern.
-4. Add smoke tests in `src/__tests__/smoke-e2e.test.tsx`.
+1. Add the new screen name to the `Screen` union in `src/context/NavigationContext.tsx` and map it to a URL path.
+2. Add a `<Route>` entry in `App.tsx` using the same path.
+3. Add a navigation trigger somewhere (a button that calls `nav.setScreen("newscreen")` or `navigate("/newscreen")`).
+4. Add focused smoke tests in `src/__tests__/smoke-<area>.test.tsx` — either extend an existing file or create a new one for the screen's area.
 
 ---
 
 ## Running CI Checks Locally
 
-The same three checks that run in CI:
+The same checks that run in CI, in the same order:
 
 ```bash
-npx tsc -b      # Type check
-npm test        # Tests
-npm run build   # Production build
+npm run lint            # ESLint 9 (flat config)
+npx tsc -b              # TypeScript
+npm run test:coverage   # Vitest + V8 coverage thresholds
+npm run build           # Production build
+npm run test:e2e        # Playwright E2E (requires emulators)
 ```
 
-All three must pass before a PR can merge.
+All of these must pass before a PR can merge. The CI pipeline (`.github/workflows/main.yml`) also runs Lighthouse CI after the build.

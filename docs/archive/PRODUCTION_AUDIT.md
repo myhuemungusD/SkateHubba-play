@@ -1,8 +1,10 @@
 # Production-Level Audit Report
 
+> **Archived snapshot (2026-03-15).** The stack has since moved to React 19 + Vite 8 + Firebase 12 + Tailwind CSS 4 + Capacitor 8, and `react-router-dom` v7 has replaced the single-`useState` screen machine. The `INFO: No React Router` finding below is resolved, `No `engines` field` is resolved (`engines.node: >=22`), and the test count numbers no longer match reality. See `docs/COMPREHENSIVE_GAP_ANALYSIS.md` and `docs/TECH_DEBT.md` for current-state analysis.
+
 **Date:** 2026-03-15
 **Project:** SkateHubba-play v1.0.0
-**Stack:** React 18 + TypeScript + Vite 6 + Firebase 11 + Tailwind CSS 3
+**Stack (at time of writing):** React 18 + TypeScript + Vite 6 + Firebase 11 + Tailwind CSS 3
 **Deployment:** Vercel (SPA)
 
 ---

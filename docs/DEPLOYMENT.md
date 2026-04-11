@@ -2,11 +2,13 @@
 
 ## Architecture
 
-| Concern                   | Service                                     |
-| ------------------------- | ------------------------------------------- |
-| Code hosting              | Vercel (auto-deploys from GitHub)           |
-| Auth + Database + Storage | Firebase (manual rules deployment required) |
-| CI gate                   | GitHub Actions (type check → test → build)  |
+| Concern                   | Service                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Code hosting              | Vercel (auto-deploys from GitHub)                                                                                |
+| Auth + Database + Storage | Firebase (manual rules deployment required)                                                                      |
+| Cloud Functions           | Firebase Functions (push notifications, billing alerts, `checkExpiredTurns` scheduled forfeit)                   |
+| Native apps               | Capacitor 8 — iOS + Android (shells wrap the same web bundle; Android AAB built via `.github/workflows/android-aab.yml`) |
+| CI gate                   | GitHub Actions — Lint → type check → test:coverage → build → Lighthouse → E2E (Playwright, on emulators)         |
 
 ---
 
@@ -191,7 +193,7 @@ Run `npx tsc -b` locally to see the errors. Fix type errors before pushing.
 
 ### Build fails on `npm test`
 
-Run `npm test` locally. All 45+ tests must pass before CI will approve the build.
+Run `npm test` locally. The full Vitest suite (80+ test files, spread across `src/services/__tests__`, `src/hooks/__tests__`, `src/components/__tests__`, and split `src/__tests__/smoke-*.test.tsx`) must pass before CI will approve the build. Coverage thresholds on `src/services/**` and `src/hooks/**` are also enforced — see `vite.config.ts`.
 
 ### Firestore `permission-denied` error in production
 

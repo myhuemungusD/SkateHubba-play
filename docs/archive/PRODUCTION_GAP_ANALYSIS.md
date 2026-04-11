@@ -1,7 +1,9 @@
 # Production Review — SkateHubba-Play
 
+> **Archived snapshot (2026-03-15).** The stack has since moved to React 19 / Vite 8 / Tailwind 4 / Firebase 12 / Capacitor 8 and `react-router-dom` v7 has replaced the single-`useState` screen machine. Branch protection is now in place (see `.github/BRANCH_PROTECTION.md`) and a `checkExpiredTurns` Cloud Function handles server-side turn-timer enforcement. See `docs/COMPREHENSIVE_GAP_ANALYSIS.md` for the current-state analysis; the sections below are preserved as a historical record only.
+
 **Last updated:** 2026-03-15
-**Stack:** React 18 + TypeScript + Firebase (Auth / Firestore / Storage) + Vercel
+**Stack (at time of writing):** React 18 + TypeScript + Firebase (Auth / Firestore / Storage) + Vercel
 
 ---
 
@@ -58,7 +60,7 @@ SkateHubba-Play is a well-architected, lean MVP with strong Firestore security r
 | 2   | **No Firestore backup/exports**            | No scheduled exports — data loss risk                       | Enable Cloud Firestore managed exports (daily to GCS)          |
 | 3   | **Video retention not enforced**           | `retainUntil` metadata is a hint; nothing purges old videos | Set up Cloud Function or Storage lifecycle rule (90-day TTL)   |
 | 4   | **No user data export**                    | GDPR Article 20 (right to data portability)                 | Add "Download My Data" button (profile + game history as JSON) |
-| 5   | **No branch protection**                   | No `CODEOWNERS`, no required reviews before merge to `main` | Configure GitHub branch protection rules                       |
+| 5   | ~~**No branch protection**~~ — **resolved** | Branch protection is now documented in `.github/BRANCH_PROTECTION.md` and `.github/CODEOWNERS` requires review from `@myhuemungusD` on every PR. | — |
 
 ### P2 — Quality & Scale
 
