@@ -1,8 +1,8 @@
 export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
 
-// SkateHubba dark map style.
-// Uses the Mapbox `dark-v11` style as a default until the custom SkateHubba
-// Studio style is authored and its URL is provided via VITE_MAPBOX_STYLE_URL.
+// SkateHubba dark map style
+// Placeholder: using Mapbox `dark-v11` until a custom Mapbox Studio style
+// is designed. Override via VITE_MAPBOX_STYLE_URL without touching code.
 export const MAP_STYLE =
   (import.meta.env.VITE_MAPBOX_STYLE_URL as string | undefined) ?? "mapbox://styles/mapbox/dark-v11";
 

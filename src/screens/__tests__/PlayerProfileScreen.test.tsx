@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PlayerProfileScreen } from "../PlayerProfileScreen";
@@ -287,5 +287,153 @@ describe("PlayerProfileScreen", () => {
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} onViewPlayer={onViewPlayer} />);
     // The H2H list should show the viewer (me) as an opponent
     expect(screen.getByText("HEAD TO HEAD")).toBeInTheDocument();
+  });
+
+  // ── Block / Unblock flow ────────────────────────────
+
+  it("opens block confirmation and cancels it", async () => {
+    mockUsePlayerProfile.mockReturnValue({
+      profile: otherProfile,
+      games: [],
+      loading: false,
+      error: null,
+    });
+    render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set()} />);
+
+    await userEvent.click(screen.getByText("Block this player"));
+    expect(screen.getByText(/Block @sk8rboi\?/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Cancel"));
+    expect(screen.getByText("Block this player")).toBeInTheDocument();
+  });
+
+  it("confirms block and calls blockUser", async () => {
+    const { blockUser } = await import("../../services/blocking");
+    mockUsePlayerProfile.mockReturnValue({
+      profile: otherProfile,
+      games: [],
+      loading: false,
+      error: null,
+    });
+    render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set()} />);
+
+    await userEvent.click(screen.getByText("Block this player"));
+    await userEvent.click(screen.getByRole("button", { name: "Block" }));
+
+    await waitFor(() => {
+      expect(blockUser).toHaveBeenCalledWith("me", "u2");
+    });
+  });
+
+  it("shows blocked banner and unblocks via Unblock button", async () => {
+    const { unblockUser } = await import("../../services/blocking");
+    mockUsePlayerProfile.mockReturnValue({
+      profile: otherProfile,
+      games: [],
+      loading: false,
+      error: null,
+    });
+    render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set(["u2"])} />);
+
+    expect(screen.getByText("You have blocked this user")).toBeInTheDocument();
+    // Challenge button should be hidden when blocked
+    expect(screen.queryByText("Challenge @sk8rboi")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Unblock"));
+    await waitFor(() => {
+      expect(unblockUser).toHaveBeenCalledWith("me", "u2");
+    });
+  });
+
+  // ── H2H tap navigation (line 446) ───────────────────
+
+  it("calls onViewPlayer when tapping a tappable H2H opponent on own profile", async () => {
+    const onViewPlayer = vi.fn();
+    const games = [makeGame()];
+    render(<PlayerProfileScreen {...baseProps} ownGames={games} onViewPlayer={onViewPlayer} />);
+    // The OPPONENTS list renders sk8rboi as a tappable button — find it via
+    // the unique "1 game" sibling text and walk up to the enclosing button.
+    const h2hRow = screen.getByText("1 game").closest("button");
+    expect(h2hRow).not.toBeNull();
+    await userEvent.click(h2hRow!);
+    expect(onViewPlayer).toHaveBeenCalledWith("u2");
+  });
+
+  // ── handleShareGame (lines 593–627) ─────────────────
+
+  describe("Share Game", () => {
+    afterEach(() => {
+      Object.defineProperty(navigator, "share", { value: undefined, writable: true, configurable: true });
+    });
+
+    it("uses navigator.share when available", async () => {
+      const shareFn = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "share", { value: shareFn, writable: true, configurable: true });
+
+      const games = [makeGame()];
+      render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
+      await userEvent.click(screen.getByText(/vs @sk8rboi/));
+      await userEvent.click(screen.getByText("Share Game"));
+
+      await waitFor(() => {
+        expect(shareFn).toHaveBeenCalledWith(expect.objectContaining({ text: expect.stringContaining("Kickflip") }));
+      });
+    });
+
+    it("falls back to clipboard when navigator.share rejects", async () => {
+      const shareFn = vi.fn().mockRejectedValue(new Error("cancelled"));
+      Object.defineProperty(navigator, "share", { value: shareFn, writable: true, configurable: true });
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, { clipboard: { writeText } });
+
+      const games = [makeGame()];
+      render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
+      await userEvent.click(screen.getByText(/vs @sk8rboi/));
+      await userEvent.click(screen.getByText("Share Game"));
+
+      await waitFor(() => {
+        expect(writeText).toHaveBeenCalledWith(expect.stringContaining("SkateHubba Game Recap"));
+      });
+      await waitFor(() => expect(screen.getByText("Copied!")).toBeInTheDocument());
+    });
+
+    it("falls back to clipboard when navigator.share is undefined", async () => {
+      Object.defineProperty(navigator, "share", { value: undefined, writable: true, configurable: true });
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, { clipboard: { writeText } });
+
+      const games = [
+        makeGame({
+          id: "g1",
+          status: "forfeit",
+          winner: "u2",
+          p1Letters: 0,
+          p2Letters: 0,
+          turnHistory: [
+            {
+              turnNumber: 1,
+              trickName: "Heelflip",
+              setterUid: "me",
+              setterUsername: "viewer",
+              matcherUid: "u2",
+              matcherUsername: "sk8rboi",
+              setVideoUrl: "",
+              matchVideoUrl: "",
+              landed: false,
+              letterTo: "me",
+            },
+          ],
+        }),
+      ];
+      render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
+      await userEvent.click(screen.getByText(/vs @sk8rboi/));
+      await userEvent.click(screen.getByText("Share Game"));
+
+      await waitFor(() => {
+        // forfeit branch + missed-trick branch
+        expect(writeText).toHaveBeenCalledWith(expect.stringContaining("wins by forfeit"));
+      });
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("missed"));
+    });
   });
 });

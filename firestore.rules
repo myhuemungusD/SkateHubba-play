@@ -501,9 +501,13 @@ service cloud.firestore {
         && request.auth.uid == resource.data.senderUid
         && request.time > resource.data.lastSentAt + duration.value(5, 's');
 
-      // Only the recipient can delete their own notifications
-      allow delete: if isSignedIn()
-        && resource.data.recipientUid == request.auth.uid;
+      // Rate-limit docs are server-managed cooldown state with no user-facing
+      // lifecycle. Clients must never delete them — a successful delete would
+      // reset the 5-second cooldown and let a sender spam notifications.
+      // (The previous rule checked resource.data.recipientUid, which doesn't
+      // exist on these docs — so it was a copy-paste from /notifications that
+      // always denied. Making the intent explicit matches /nudge_limits.)
+      allow delete: if false;
     }
 
     // ── Reports (content/player flagging for Google Play UGC policy) ──
