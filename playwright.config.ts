@@ -29,7 +29,16 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        launchOptions: {
+          // Force software WebGL so mapbox-gl can initialize in headless
+          // environments without a real GPU (CI containers, sandboxed
+          // runners). Without these flags mapbox-gl throws "Failed to
+          // initialize WebGL" and MapErrorBoundary swallows the error.
+          args: ["--use-gl=swiftshader", "--enable-webgl", "--ignore-gpu-blocklist"],
+        },
+      },
     },
   ],
   // Start the Vite dev server pointed at the Firebase Emulators.
@@ -49,6 +58,10 @@ export default defineConfig({
       VITE_FIREBASE_MESSAGING_SENDER_ID: "000000000000",
       VITE_FIREBASE_APP_ID: "1:000000000000:web:demo",
       VITE_USE_EMULATORS: "true",
+      // Dummy Mapbox token so the map component initializes. Tests that
+      // need the map stub mapbox.com requests via page.route and never
+      // actually hit the Mapbox API.
+      VITE_MAPBOX_TOKEN: "pk.e2e-test-token",
     },
   },
 });
