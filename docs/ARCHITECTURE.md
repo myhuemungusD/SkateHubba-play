@@ -2,23 +2,23 @@
 
 ## Overview
 
-SkateHubba S.K.A.T.E. is a zero-backend web application. There is no Express server, no REST API, and no serverless functions. The React SPA talks directly to Firebase services, with Firestore security rules serving as the sole authorization layer.
+SkateHubba S.K.A.T.E. is a Firebase-backed single-page application. There is no Express server and no REST API. The React SPA talks directly to Firebase services, with Firestore security rules serving as the primary authorization layer. A small set of Cloud Functions handles push notifications, billing alerts, and scheduled turn-expiration enforcement — none of them expose a public HTTP surface.
 
 This means:
 
 - **Client code is not trusted.** Any business logic in the browser is for UX only. The Firestore rules enforce the same constraints server-side and will reject invalid writes regardless of what the client does.
-- **The attack surface is small.** Firebase and Vercel handle infrastructure security. There's no custom server to harden.
-- **Operational cost is near-zero at low scale.** No servers to run or pay for beyond Firebase's free tier.
+- **The attack surface is small.** Firebase and Vercel handle infrastructure security. There's no custom server to harden, and Cloud Functions are all Firestore/Pub-Sub/Scheduler-triggered, not HTTP-exposed.
+- **Operational cost is near-zero at low scale.** No servers to run or pay for beyond Firebase's free tier and the small Cloud Functions footprint.
 
 ---
 
 ## Technology Choices
 
-### React 18 + TypeScript + Vite
+### React 19 + TypeScript + Vite 8
 
-- SPA only — no SSR, no React Router, no URL-based routing.
-- Screen state is managed with a single `useState` in `App.tsx`. This was a deliberate choice: the app has a small, linear screen flow (landing → auth → lobby → game) that doesn't benefit from URL routing. Deep-linking to a specific game is not a product requirement.
-- Vite is configured with two manual chunks (`firebase` and `react`) to split the largest dependencies and improve parse time on first load.
+- Web SPA rendered with React 19 (strict mode) and bundled by Vite 8 (Rolldown). Native iOS/Android ship the same bundle via Capacitor 8.
+- **URL routing via `react-router-dom` v7.** All routes are declared in `App.tsx` as `<Route>` elements. `NavigationContext.setScreen` drives `useNavigate()` under the hood so legacy screen-state callsites keep working while the browser URL stays in sync. Deep-linkable public pages include `/privacy`, `/terms`, `/data-deletion`, `/map`, `/spots/:id`, and `/player/:uid`. A catch-all `*` route redirects to `/404`.
+- Vite is configured with manual chunks (`firebase` and `react`) to split the largest dependencies and improve parse time on first load.
 - `import.meta.env.VERCEL` is injected via `vite.config.ts` so the app can detect a missing Firebase config in a Vercel context and show a helpful error message.
 
 ### Firebase Auth
@@ -35,8 +35,8 @@ This means:
 
 ### Firebase Storage
 
-- Used exclusively for trick videos in WebM format.
-- Storage rules enforce authentication, file size (1 KB – 50 MB), content type (`video/webm`), and an exact filename allowlist (`set.webm`, `match.webm`). Storage rules cannot cross-reference Firestore, so game membership is not verified at the storage layer — see [SECURITY.md](../SECURITY.md) for implications.
+- Used exclusively for trick videos. The web build records WebM via `MediaRecorder`; the Capacitor iOS/Android shells produce MP4 via the native camera.
+- Storage rules enforce authentication, file size (1 KB – 50 MB), content type (`video/webm` or `video/mp4`), and an exact filename allowlist (`set.webm`, `match.webm`, `set.mp4`, `match.mp4`). Storage rules cannot cross-reference Firestore, so game membership is not verified at the storage layer — see [SECURITY.md](../SECURITY.md) for implications.
 
 ### Vercel
 
@@ -49,40 +49,39 @@ This means:
 
 ## Application State Machine
 
-`App.tsx` manages all screen state with a single `screen` string. There is no routing library. Every screen is a conditional render block.
+`App.tsx` composes `react-router-dom` `<Routes>` with a centralized `NavigationContext`. Each screen has both a URL path and a logical `screen` name; `nav.setScreen("lobby")` navigates to `/lobby`, and the browser back/forward buttons work naturally. Deep-linkable public pages (`/privacy`, `/terms`, `/data-deletion`, `/map`, `/spots/:id`, `/player/:uid`) are rendered without auth, while gameplay routes (`/lobby`, `/challenge`, `/game`, `/gameover`, `/record`) gate on the auth guard described below.
 
-### Screen transitions
+### Routes (as of the current `App.tsx`)
 
-```
-loading
-  ├── → landing         (no authenticated user)
-  ├── → profileSetup    (user authenticated but no Firestore profile)
-  └── → lobby           (user authenticated + profile exists)
-
-landing
-  ├── → signUp
-  └── → signIn
-
-signUp / signIn
-  └── → lobby           (on successful auth + profile load)
-
-lobby
-  ├── → challenge
-  └── → gameplay        (on game card click)
-
-gameplay
-  └── → lobby           (back button, or game-over → back)
-```
+| Path | Screen | Notes |
+|---|---|---|
+| `/` | `landing` | Marketing hero + auth entry points |
+| `/age-gate` | `agegate` | COPPA gate before sign-up |
+| `/auth` | `auth` | Sign-in / sign-up forms |
+| `/profile` | `profile` | Profile setup (first run) |
+| `/lobby` | `lobby` | Game list + challenge entry |
+| `/challenge` | `challenge` | Pick opponent |
+| `/game` | `game` | Active gameplay |
+| `/gameover` | `gameover` | End-of-game + rematch |
+| `/record` | `record` | My Record / history |
+| `/player/:uid` | `player` | Public player profile |
+| `/privacy` | — | Public |
+| `/terms` | — | Public |
+| `/data-deletion` | — | Public |
+| `/map` | — | Public spot map |
+| `/spots/:id` | — | Public spot detail |
+| `/404` | — | Not-found screen |
+| `*` | — | Redirect to `/404` |
 
 ### Auth guard pattern
 
-`App.tsx` evaluates conditions in this order before rendering any screen:
+`App.tsx` evaluates conditions in this order before rendering any protected route:
 
 1. `!firebaseReady` → renders a "Firebase not configured" error screen with environment-specific instructions.
 2. `loading` (from `useAuth`) → renders a loading spinner.
-3. `user === null` → renders the landing screen.
-4. `user !== null && profile === null` → renders profile setup.
-5. `user !== null && profile !== null` → renders the main app (lobby, challenge, gameplay).
+3. `user === null` → redirects to `/` (landing).
+4. `user !== null && profile === null` → redirects to `/profile` (profile setup).
+5. `user !== null && profile !== null` → renders the requested gameplay route.
 
 ---
 

@@ -35,7 +35,7 @@ Each turn has two phases: **setting** and **matching**.
 The current setter must:
 
 1. Type the trick name (max 100 characters, trimmed of whitespace)
-2. Record a one-take video using the device camera (WebM format via MediaRecorder API)
+2. Record a one-take video using the device camera — WebM via `MediaRecorder` on the web build, or MP4 via the native camera on the Capacitor iOS/Android shells
 3. Submit
 
 On submit (`setTrick`):
@@ -102,16 +102,18 @@ A player does not submit their turn within 24 hours of the `turnDeadline`. Eithe
 
 - Every time a phase transitions (setting → matching or matching → setting), a new `turnDeadline` Timestamp is written to the game document: `Date.now() + 24 hours`.
 - The countdown is displayed in the game screen as `HH:MM:SS`.
-- Enforcement is client-triggered: when either player opens a game where `turnDeadline < Date.now()`, the app calls `forfeitExpiredTurn`. A player who never opens the app will not be auto-forfeited until their opponent checks.
-- The Firestore rules validate the forfeit write — a client cannot claim a forfeit unless the current player's turn has genuinely expired.
+- Enforcement runs on two paths:
+  - **Client-triggered:** when either player opens a game where `turnDeadline < Date.now()`, the app calls `forfeitExpiredTurn`.
+  - **Server-scheduled:** the `checkExpiredTurns` Cloud Function (`functions/src/index.ts`) runs every 15 minutes and forfeits any active game whose deadline has expired — so a player who never reopens the app can no longer dodge a loss.
+- The Firestore rules validate every forfeit write (`request.time > resource.data.turnDeadline` and the winner must be the opponent of the timed-out player), so neither path can be used to forge a forfeit.
 
 ---
 
 ## Video Recording
 
 - One take only. The camera starts recording immediately when the player taps "Record." There is no re-record option before submission.
-- Format: `video/webm` (via MediaRecorder API).
-- Storage path: `games/{gameId}/turn-{turnNumber}/{role}.webm` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt).
+- Format: `video/webm` on the web build (via `MediaRecorder`) or `video/mp4` on the Capacitor iOS/Android shells (via the native camera).
+- Storage path: `games/{gameId}/turn-{turnNumber}/{role}.{webm|mp4}` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt). The storage rules regex `(set|match)\.(webm|mp4)` enforces the allowlist.
 - Size limits: 1 KB minimum (prevents empty uploads), 50 MB maximum per video.
 - Videos are stored permanently — there is no cleanup process in the current version.
 

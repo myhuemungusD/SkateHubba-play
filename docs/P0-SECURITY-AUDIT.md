@@ -107,10 +107,10 @@ Thoroughly reviewed all four `allow update` rules:
 
 ### Rules Summary
 
-| Path                                   | Read          | Write         | Constraints                                                |
-| -------------------------------------- | ------------- | ------------- | ---------------------------------------------------------- |
-| `games/{gameId}/{turnPath}/{fileName}` | Authenticated | Authenticated | 1KB–50MB, `video/webm` only, filename `(set\|match)\.webm` |
-| Everything else                        | Denied        | Denied        | Default deny                                               |
+| Path                                   | Read          | Write         | Constraints                                                                                                  |
+| -------------------------------------- | ------------- | ------------- | ------------------------------------------------------------------------------------------------------------ |
+| `games/{gameId}/{turnPath}/{fileName}` | Authenticated | Authenticated | 1KB–50MB; content-type `video/webm` (web) or `video/mp4` (native); filename `(set\|match)\.(webm\|mp4)`      |
+| Everything else                        | Denied        | Denied        | Default deny                                                                                                 |
 
 ### Findings
 
@@ -124,8 +124,8 @@ a comment in the rules file). Any authenticated user can upload a video to any g
 - Firestore game rules validate that only the current-turn player can update `currentTrickVideoUrl`
   and `matchVideoUrl` fields, so an attacker can upload garbage to a path but can't inject it into
   the game document.
-- Files must be `video/webm` and between 1KB–50MB.
-- Filename restricted to `set.webm` or `match.webm` — blocks path traversal.
+- Files must be `video/webm` (web) or `video/mp4` (native/Capacitor) and between 1KB–50MB.
+- Filename restricted to `set.webm`, `match.webm`, `set.mp4`, or `match.mp4` — blocks path traversal and forces the extension to match the content-type.
 
 **Recommendation:** This is an accepted limitation. The real access control is on the Firestore game
 document, not the storage blob. An attacker could waste storage quota by uploading to arbitrary game
@@ -178,10 +178,12 @@ stale ones. The authDomain pin in `firebase.ts` is well-implemented.
 
 ## 4. Turn Timer Enforcement Audit
 
-### Finding: NO server-side turn timer enforcement — CONFIRMED P0
+### Finding: NO server-side turn timer enforcement — FIXED (was P0)
 
-The 24-hour turn timer (`turnDeadline`) is **client-enforced only**. There is no scheduled Cloud
-Function, cron job, or any server-side process that checks expired deadlines and auto-forfeits.
+At the time of this audit, the 24-hour turn timer (`turnDeadline`) was **client-enforced only**: there
+was no scheduled Cloud Function, cron job, or server-side process that checked expired deadlines and
+auto-forfeited. This was the P0 tracked here; the fix is described below and is now live in
+`functions/src/index.ts` as the `checkExpiredTurns` scheduled function.
 
 **Current flow:**
 

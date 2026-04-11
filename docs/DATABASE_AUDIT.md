@@ -29,7 +29,7 @@ React SPA (Vite + TypeScript)
   │     ├── usernames/{username}  — Username uniqueness index
   │     └── games/{gameId}        — Game state documents
   ├── Firebase Storage
-  │     └── games/{gameId}/turn-{N}/{set|match}.webm
+  │     └── games/{gameId}/turn-{N}/{set|match}.{webm|mp4}
   └── Vercel (hosting + security headers)
 ```
 
@@ -53,7 +53,7 @@ These areas are well-implemented:
 | **Atomic transactions**    | Profile + username reservation uses `runTransaction` to prevent races                             |
 | **Input sanitization**     | Username regex `[a-z0-9_]+`, trick name trimmed and capped at 100 chars                           |
 | **PII minimization**       | Email deprecated from Firestore profiles; delegated to Firebase Auth                              |
-| **Storage constraints**    | Content type (video/webm), size (1KB–50MB), filename whitelist (set.webm/match.webm)              |
+| **Storage constraints**    | Content type (video/webm on web, video/mp4 on native), size (1KB–50MB), filename whitelist `(set\|match)\.(webm\|mp4)` |
 | **Security headers**       | HSTS (2yr+preload), CSP, X-Frame-Options DENY, nosniff, Referrer-Policy, COOP, Permissions-Policy |
 | **App Check**              | reCAPTCHA v3 integration blocks non-app traffic                                                   |
 | **Retry with backoff**     | Exponential backoff with permanent-error detection avoids retry storms                            |

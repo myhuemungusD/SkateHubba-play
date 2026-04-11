@@ -91,7 +91,7 @@ These are load-bearing decisions. Do not violate them without explicit discussio
 | No state management libraries         | Local state + hooks + context is sufficient for this app's complexity                                                                                      |
 | No UI component libraries             | Tailwind + custom components keeps the bundle lean and the design consistent                                                                               |
 | URL routing via react-router-dom only | `App.tsx` defines all `<Route>` elements. Screen transitions go through `NavigationContext.setScreen`. No nested routers or lazy routes without discussion |
-| No Cloud Functions in PRs             | CI gate (`pr-gate.yml`) rejects new code in `functions/src/`. Discuss first                                                                                |
+| No unapproved Cloud Functions changes | A small set of Cloud Functions already exists (push notifications, billing alerts, `checkExpiredTurns` scheduled turn-forfeit). The CI gate (`pr-gate.yml` → `verify-no-cloud-functions`) rejects any PR that modifies or adds files under `functions/src/` unless the change has been discussed with a maintainer first. |
 | Transactions for game writes          | Race conditions in multiplayer are silent data corruption. Always `runTransaction`                                                                         |
 
 ---
@@ -129,7 +129,7 @@ When something breaks, work through this in order:
 - Don't add `console.log` — use `console.warn` for expected error paths, Sentry for everything else
 - Don't import Firebase SDK in components — go through `src/services/`
 - Don't write CSS — use Tailwind utility classes
-- Don't add dependencies without justification — check `DEPENDENCY_AUDIT.md`
+- Don't add dependencies without justification — run `npm audit` and document the reason in the PR description
 - Don't modify `.github/workflows/` without maintainer sign-off — CI gate flags it
 - Don't guess at Firestore rule behavior — test against emulators
 - Don't skip tests to "ship faster" — the coverage thresholds exist because a bug here means corrupted game state for real users

@@ -136,7 +136,7 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 skatehubba-play/
 ├── public/                  # Static assets served at /
 ├── src/
-│   ├── App.tsx              # Router + app state machine (15 routes)
+│   ├── App.tsx              # react-router-dom <Routes> + auth guard + NavigationContext
 │   ├── firebase.ts          # Firebase init (named DB "skatehubba")
 │   ├── main.tsx             # React entry + Sentry init
 │   ├── index.css            # Tailwind v4 @theme + custom animations
@@ -194,7 +194,6 @@ VITE_APP_URL=https://...        # optional — email action redirects
 | [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md)         | Game rules and turn flow                    |
 | [docs/GAME_STATE_MACHINE.md](docs/GAME_STATE_MACHINE.md) | State transitions and lifecycle             |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                   | Architecture decision records               |
-| [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md)               | Dependency versions, vulnerabilities, audit |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                       | How to contribute                           |
 | [SECURITY.md](SECURITY.md)                               | Security policy and vulnerability reporting |
 | [CHANGELOG.md](CHANGELOG.md)                             | Version history                             |
@@ -226,7 +225,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 | Real-time multiplayer | Firestore `onSnapshot` — sub-second updates      |
 | Video infrastructure  | WebM (web) + MP4 (native), 1KB–50MB per clip     |
 | Native apps           | Capacitor builds for iOS + Android               |
-| CI pipeline           | Type-check → lint → test:coverage → build → E2E  |
+| CI pipeline           | Lint → type-check → test:coverage → build → Lighthouse → E2E |
 | Test coverage         | 100% on services + hooks (enforced by CI)        |
 | Security posture      | 0 npm vulnerabilities, Firestore rules validated |
 | Bundle size (gzip)    | ~289 kB total (Firebase 148 kB, app 71 kB)       |

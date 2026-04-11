@@ -297,9 +297,9 @@ uploadVideo(
 ): Promise<string>
 ```
 
-Uploads a video blob to Firebase Storage at `games/{gameId}/turn-{turnNumber}/{role}.webm`. Content-Type is set to `video/webm` (required by storage rules). Returns the Firebase Storage download URL.
+Uploads a video blob to Firebase Storage at `games/{gameId}/turn-{turnNumber}/{role}.{webm|mp4}`. The extension and `Content-Type` are selected from the blob's own `blob.type` — WebM on the web build (`MediaRecorder` output) and MP4 on the Capacitor iOS/Android shells (native camera output). Both formats are allowlisted by `storage.rules`. Returns the Firebase Storage download URL.
 
-Custom metadata stored per upload: `gameId`, `turn` (string), `role`, `uploadedAt` (ISO 8601 string).
+Custom metadata stored per upload: `gameId`, `turn` (string), `role`, `uploadedAt` (ISO 8601 string), `retainUntil` (ISO 8601 string, 90-day hint).
 
 ---
 

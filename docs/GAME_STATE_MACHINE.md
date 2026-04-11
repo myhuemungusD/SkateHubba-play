@@ -165,25 +165,30 @@ in `src/services/games.ts`.
 
 ## Client-Side Navigation States
 
-The `GameContext` (`src/context/GameContext.tsx`) maps game data into
-navigation screens. This is not part of the Firestore state machine but
-governs what the user sees:
+`App.tsx` uses `react-router-dom` v7 for URL routing, with
+`NavigationContext` (`src/context/NavigationContext.tsx`) bridging the
+logical screen names to router paths. The `GameContext`
+(`src/context/GameContext.tsx`) still owns game data and fires
+`nav.setScreen(...)` when a state transition should drive navigation.
 
 ```
-Screen flow:
-  landing → auth → profile → lobby → challenge → game → gameover
-                                 ↑                         │
-                                 └─────────────────────────┘
+Route flow:
+  /  →  /auth  →  /profile  →  /lobby  →  /challenge  →  /game  →  /gameover
+                                    ↑                                │
+                                    └────────────────────────────────┘
 ```
 
-| Condition                            | Screen      |
-| ------------------------------------ | ----------- |
-| Not authenticated                    | `landing`   |
-| Authenticated, no profile            | `profile`   |
-| Authenticated + profile              | `lobby`     |
-| User taps "Challenge"                | `challenge` |
-| User opens active game               | `game`      |
-| Game status becomes complete/forfeit | `gameover`  |
+| Condition                            | Path           | Screen name |
+| ------------------------------------ | -------------- | ----------- |
+| Not authenticated                    | `/`            | `landing`   |
+| Authenticated, no profile            | `/profile`     | `profile`   |
+| Authenticated + profile              | `/lobby`       | `lobby`     |
+| User taps "Challenge"                | `/challenge`   | `challenge` |
+| User opens active game               | `/game`        | `game`      |
+| Game status becomes complete/forfeit | `/gameover`    | `gameover`  |
+
+Public pages (`/privacy`, `/terms`, `/data-deletion`, `/map`,
+`/spots/:id`, `/player/:uid`) are deep-linkable without authentication.
 
 ---
 
@@ -206,6 +211,7 @@ These are always true for a valid game document:
 
 - Duration: 24 hours (`TURN_DURATION_MS`)
 - Reset on every phase transition (setTrick / submitMatchAttempt / submitConfirmation)
-- Enforced client-side: `forfeitExpiredTurn()` is called when any player
-  opens a game whose deadline has passed
-- Firestore security rules prevent fraudulent forfeit claims
+- Enforced on **two independent paths**:
+  1. **Client-triggered:** `forfeitExpiredTurn()` runs when either player opens a game whose deadline has passed.
+  2. **Server-scheduled:** the `checkExpiredTurns` Cloud Function runs every 15 minutes, queries for active games with expired `turnDeadline`, and auto-forfeits them — so an offline player can't dodge a loss by never re-opening the app.
+- Firestore security rules validate every forfeit write (`request.time > resource.data.turnDeadline` and winner must be the opponent of the timed-out player), so neither path can be used to forge a forfeit.

@@ -1,14 +1,14 @@
 # Technical Debt Assessment
 
-**Date:** 2026-03-21 (refreshed)
+**Date:** 2026-04-11 (refreshed)
 **Scope:** Full codebase review of `skatehubba-play`
-**Tech Stack:** React 18 + TypeScript + Vite + Firebase (Auth/Firestore/Storage) + Tailwind CSS + Capacitor
+**Tech Stack:** React 19 + TypeScript 5.6 + Vite 8 + Firebase 12 (Auth/Firestore/Storage) + Tailwind CSS 4 + Capacitor 8 (iOS/Android)
 
 ---
 
 ## Executive Summary
 
-SkateHubba-play is a well-structured mobile-first SKATE game app with strong foundations: strict TypeScript, 100% unit test coverage on services/hooks, robust Firestore security rules, and a clean CI pipeline. However, several areas of technical debt exist that will become increasingly costly as the app scales. The most critical items are the **lack of a client-side router**, a **monolithic GameContext (371 lines)**, and **large gaps in component/screen test coverage**.
+SkateHubba-play is a well-structured mobile-first SKATE game app with strong foundations: strict TypeScript, 100% unit test coverage on services/hooks, robust Firestore security rules, and a clean CI pipeline. Several areas of technical debt remain — the most notable are the **monolithic GameContext (371 lines)** and **gaps in component/screen test coverage**. The long-standing "no client-side router" P0 is now **resolved** (see below).
 
 ---
 
@@ -23,25 +23,21 @@ SkateHubba-play is a well-structured mobile-first SKATE game app with strong fou
 
 ---
 
+## Resolved since the last review
+
+### ~~No Client-Side Router~~ — RESOLVED
+
+The app now uses `react-router-dom` v7. `App.tsx` declares a `<Routes>` tree covering every screen (`/`, `/age-gate`, `/auth`, `/profile`, `/lobby`, `/challenge`, `/game`, `/gameover`, `/record`, `/player/:uid`, `/privacy`, `/terms`, `/data-deletion`, `/map`, `/spots/:id`, `/404`, plus a `*` catch-all). `NavigationContext.setScreen` bridges legacy screen-name callsites to `useNavigate()` so existing transitions keep working while the browser URL stays in sync. Browser back/forward works, public pages are deep-linkable, and push notifications can target a specific route.
+
+### ~~Client-only turn timer (P0 from the 2026-03 security audit)~~ — RESOLVED
+
+A scheduled Cloud Function (`checkExpiredTurns` in `functions/src/index.ts`) now runs every 15 minutes and auto-forfeits any active game whose `turnDeadline` has passed. Firestore rules still validate every forfeit write. The client also calls `forfeitExpiredTurn()` on game open as defense-in-depth.
+
+---
+
 ## P0 — Critical
 
-### 1. No Client-Side Router
-
-**Location:** `src/App.tsx` (lines 75–295), `src/context/GameContext.tsx` (Screen type)
-
-The app uses a manual `screen` state string (`"lobby" | "game" | "auth" | ...`) with conditional rendering instead of a proper router (React Router, TanStack Router, etc.).
-
-**Impact:**
-
-- No URL-based navigation — users cannot bookmark, share, or deep-link to specific screens
-- Browser back/forward buttons don't work
-- Push notification deep-links require a custom event workaround (`skatehubba:open-game`)
-- SEO is impossible for public pages (landing, privacy policy, terms)
-- Analytics page tracking requires manual instrumentation
-
-**Recommendation:** Adopt React Router v7+ or TanStack Router. Map each `Screen` variant to a route path. This is the single highest-impact improvement.
-
-### 2. Firestore Pagination Cap Without User Warning (DEC-003)
+### 1. Firestore Pagination Cap Without User Warning (DEC-003)
 
 **Location:** `src/services/games.ts` (lines 380–381)
 
@@ -55,7 +51,7 @@ Both `subscribeToMyGames` queries are hard-capped at `limit(50)`. Users with >50
 
 ## P1 — High
 
-### 3. Monolithic GameContext (371 lines)
+### 2. Monolithic GameContext (371 lines)
 
 **Location:** `src/context/GameContext.tsx`
 
@@ -69,7 +65,7 @@ A single context provides auth, game state, navigation, profile management, and 
 
 **Recommendation:** Split into focused contexts: `AuthContext`, `GameContext`, `NavigationContext`. Use `useSyncExternalStore` or Zustand for game state to avoid cascading re-renders.
 
-### 4. Large Component/Screen Test Coverage Gap
+### 3. Large Component/Screen Test Coverage Gap
 
 **Files without tests:**
 
@@ -93,7 +89,7 @@ The vitest config enforces 100% coverage only on `src/services/**` and `src/hook
 
 **Recommendation:** Add coverage thresholds for components (target 80%+). Prioritize testing `AgeGate` (compliance), `GameNotificationWatcher` (critical path), and `NotificationContext`.
 
-### 5. No State Management Library
+### 4. No State Management Library
 
 **Location:** Project-wide
 
@@ -107,19 +103,28 @@ All state flows through React Context + `useState`/`useEffect`. There's no state
 
 **Recommendation:** Consider Zustand for game state (small API, built-in devtools, supports subscriptions without re-renders).
 
-### 6. Smoke E2E Test Is Monolithic (2,753 lines)
+### 5. ~~Smoke E2E Test Is Monolithic (2,753 lines)~~ — RESOLVED
 
-**Location:** `src/__tests__/smoke-e2e.test.tsx`
+**Location (was):** `src/__tests__/smoke-e2e.test.tsx`
 
-A single test file with 2,753 lines covers most integration scenarios. This is fragile and difficult to maintain.
+The monolithic smoke-e2e file has since been split into focused suites under `src/__tests__/`:
 
-**Recommendation:** Split into focused test suites per feature (auth flow, game flow, notifications, etc.).
+- `smoke-auth.test.tsx`
+- `smoke-google.test.tsx`
+- `smoke-profile.test.tsx`
+- `smoke-lobby.test.tsx`
+- `smoke-challenge.test.tsx`
+- `smoke-gameplay.test.tsx`
+- `smoke-gameover.test.tsx`
+- `smoke-account.test.tsx`
+
+plus `smoke-helpers.tsx` for shared fixtures. No remaining work on this item.
 
 ---
 
 ## P2 — Medium
 
-### 7. Console.warn/error Used Instead of Logger Service
+### 6. Console.warn/error Used Instead of Logger Service
 
 **Location:** Multiple files
 
@@ -137,7 +142,7 @@ Several production files use `console.warn`/`console.error` directly instead of 
 
 **Recommendation:** Replace all `console.warn`/`console.error` in production code with `logger.warn`/`logger.error` to get Sentry breadcrumbs automatically.
 
-### 8. Large Screen Components (400+ lines)
+### 7. Large Screen Components (400+ lines)
 
 Several screens exceed 400 lines with mixed concerns:
 
@@ -149,7 +154,7 @@ Several screens exceed 400 lines with mixed concerns:
 
 **Recommendation:** Extract data-fetching logic into custom hooks and break down UI into smaller sub-components.
 
-### 9. Inline Tailwind Styles Are Verbose and Duplicated
+### 8. Inline Tailwind Styles Are Verbose and Duplicated
 
 **Location:** Throughout `src/components/` and `src/screens/`
 
@@ -157,15 +162,15 @@ Long Tailwind class strings are repeated across components (e.g., `"min-h-dvh fl
 
 **Recommendation:** Define shared layout patterns as Tailwind `@apply` utilities or component abstractions. Move all colors into `tailwind.config` theme.
 
-### 10. Cloud Functions Have No Tests
+### 9. Cloud Functions Have Minimal Test Coverage
 
 **Location:** `functions/`
 
-The `functions/` directory contains Cloud Functions (billing alerts, nudge delivery) with zero test files and no test script in `functions/package.json`.
+The `functions/` directory contains the push-notification triggers (`onNudgeCreated`, `onGameCreated`, `onGameUpdated`), the `onBillingAlert` Pub/Sub handler, and the `checkExpiredTurns` scheduled forfeit enforcer. `functions/src/__tests__/` exists but coverage is thin relative to the client-side services.
 
-**Recommendation:** Add a test framework for Cloud Functions (firebase-functions-test or vitest). Critical since the PR gate blocks new functions in `functions/src/`.
+**Recommendation:** Expand the existing test harness (firebase-functions-test or vitest) so every Cloud Function has at least happy-path + one failure test. This is especially important for `checkExpiredTurns`, which is the server-side turn-timer fix for the P0 security finding. The PR gate blocks changes under `functions/src/` without maintainer approval, so test coverage is the only safety net when a change does land.
 
-### 11. Duplicate `TOAST_DURATION` Constant
+### 10. Duplicate `TOAST_DURATION` Constant
 
 **Location:** `src/components/Toast.tsx:5`, `src/context/NotificationContext.tsx:53`
 
@@ -173,7 +178,7 @@ Both files independently define `const TOAST_DURATION = 4000;`. Neither imports 
 
 **Recommendation:** Extract to a shared constant (e.g., `src/lib/constants.ts`) and import in both files.
 
-### 12. Inline Chevron SVG Duplicated 4x
+### 11. Inline Chevron SVG Duplicated 4x
 
 **Location:** `src/screens/Lobby.tsx` (lines 260–273, 325–338, 442–455), `src/screens/MyRecordScreen.tsx` (line ~400)
 
@@ -181,7 +186,7 @@ The same chevron-right `<svg>` with `<polyline points="9 18 15 12 9 6" />` is co
 
 **Recommendation:** Add a `ChevronRightIcon` to `icons.tsx` and replace the 4 inline instances.
 
-### 13. ESLint-Disable Comments
+### 12. ESLint-Disable Comments
 
 **Location:**
 
@@ -194,7 +199,7 @@ The same chevron-right `<svg>` with `<polyline points="9 18 15 12 9 6" />` is co
 
 ## P3 — Low
 
-### 14. No React.lazy / Code Splitting for Screens
+### 13. No React.lazy / Code Splitting for Screens
 
 **Location:** `src/App.tsx` (lines 13–25)
 
@@ -202,7 +207,7 @@ All screens are eagerly imported. The Vite build does manual chunking for `fireb
 
 **Recommendation:** Use `React.lazy()` + `Suspense` for screens not needed at initial load (GamePlayScreen, MyRecordScreen, PrivacyPolicy, etc.).
 
-### 15. No Typed Environment Variables
+### 14. No Typed Environment Variables
 
 **Location:** `src/vite-env.d.ts`, `src/firebase.ts`
 
@@ -210,7 +215,7 @@ Firebase config reads from `import.meta.env.VITE_FIREBASE_*` without a typed sch
 
 **Recommendation:** Add a Zod/Valibot schema to validate env vars at build time or app startup.
 
-### 16. `http-proxy-agent` Override in package.json
+### 15. `http-proxy-agent` Override in package.json
 
 **Location:** `package.json` (line 41)
 
@@ -222,15 +227,15 @@ This is a transitive dependency override likely for a security fix. If the upstr
 
 **Recommendation:** Check if the override is still needed. Remove if upstream dependency has been updated.
 
-### 17. Firebase Messaging SW Version Hardcoded
+### 16. Firebase Messaging SW Version Hardcoded
 
 **Location:** `public/firebase-messaging-sw.js`
 
-The service worker imports a hardcoded Firebase v11.0.0 CDN URL, but `package.json` specifies `^11.0.0` which resolves to a newer patch. This can cause version mismatch bugs between the SW and the app bundle.
+The service worker imports a hardcoded Firebase CDN URL, but `package.json` specifies `^12.x.x` which resolves to a newer patch. This can cause version mismatch bugs between the SW and the app bundle.
 
 **Recommendation:** Dynamically inject the Firebase version at build time, or pin the SW import to match the resolved lockfile version.
 
-### 18. `.lighthouserc.json` Not Wired into CI
+### 17. `.lighthouserc.json` Not Wired into CI
 
 **Location:** `.lighthouserc.json`, `.github/workflows/main.yml`
 
@@ -238,17 +243,17 @@ A Lighthouse CI config exists (performance >=0.8, accessibility >=0.9) but the `
 
 **Recommendation:** Verify Lighthouse CI runs on every PR and fails the gate if thresholds regress.
 
-### 19. No `.nvmrc` File
+### 18. No `.nvmrc` File
 
 No `.nvmrc` exists at the project root. CI uses Node 22 and `package.json` specifies `>=22`, but local developer environments have no enforcement.
 
 **Recommendation:** Add `.nvmrc` with `22` for consistency across developer machines.
 
-### 20. STL Asset Storage Undocumented (DEC-002)
+### 19. STL Asset Storage Undocumented (DEC-002)
 
 Already tracked in `docs/DECISIONS.md`. Needs resolution to prevent asset loss.
 
-### 21. Deferred Landing Page Features (DEC-001)
+### 20. Deferred Landing Page Features (DEC-001)
 
 Autoplay hero video and custom fonts. Already documented — revisit when design resources are available.
 
@@ -256,18 +261,22 @@ Autoplay hero video and custom fonts. Already documented — revisit when design
 
 ## Dependency Health
 
-| Area                     | Status                                                              |
-| ------------------------ | ------------------------------------------------------------------- |
-| TypeScript strict mode   | Enabled (`strict: true`, `noUnusedLocals`, `noUnusedParameters`)    |
-| ESLint `no-explicit-any` | Enforced in production code, relaxed in tests                       |
-| Package manager          | npm (single lockfile, no competing managers)                        |
-| Node version             | Pinned to >=22                                                      |
-| React version            | 18.3.x (stable, not yet React 19)                                   |
-| Firebase SDK             | v11 (current)                                                       |
-| Husky + lint-staged      | Configured for pre-commit checks                                    |
-| CI pipeline              | 3 workflows (main, PR gate, release) with lint/typecheck/test/build |
+| Area                     | Status                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------- |
+| TypeScript strict mode   | Enabled (`strict: true`, `noUnusedLocals`, `noUnusedParameters`)                |
+| ESLint `no-explicit-any` | Enforced in production code, relaxed in tests                                   |
+| Package manager          | npm (single lockfile, no competing managers)                                    |
+| Node version             | Pinned to >=22                                                                  |
+| React version            | 19.2.x                                                                          |
+| Vite                     | 8 (Rolldown)                                                                    |
+| Tailwind CSS             | 4 (`@tailwindcss/vite` plugin)                                                  |
+| Firebase SDK             | 12                                                                              |
+| Router                   | `react-router-dom` 7                                                            |
+| Native                   | Capacitor 8 — `@capacitor/ios`, `@capacitor/android`, `@capacitor/camera`       |
+| Husky + lint-staged      | Configured for pre-commit checks                                                |
+| CI pipeline              | 4 workflows (main, PR gate, release, android-aab) — lint/typecheck/test/build/Lighthouse/E2E |
 
-**Notable:** Dependencies are reasonably up-to-date. `npm audit` reports 0 vulnerabilities. GitHub Dependabot flags 2 (1 moderate, 1 low) on the default branch — likely transitive. Seven major-version upgrades are available (Vite 8, Tailwind 4, ESLint 10, React 19, etc.) but none are urgent.
+**Notable:** Dependencies are current with the latest major versions (React 19, Vite 8, Tailwind 4, Firebase 12, Capacitor 8). `npm audit` reports 0 vulnerabilities.
 
 ---
 
@@ -275,7 +284,6 @@ Autoplay hero video and custom fonts. Already documented — revisit when design
 
 | Priority | Item                                       | Effort  | Impact                                      |
 | -------- | ------------------------------------------ | ------- | ------------------------------------------- |
-| P0       | Add client-side router                     | Medium  | High — enables deep links, back button, SEO |
 | P0       | Implement game list pagination             | Small   | High — prevents data loss for active users  |
 | P1       | Split GameContext into focused contexts    | Medium  | High — performance + maintainability        |
 | P1       | Add component/screen test coverage         | Large   | High — prevents regressions in UI           |
