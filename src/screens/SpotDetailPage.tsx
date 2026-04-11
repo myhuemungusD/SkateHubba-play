@@ -77,8 +77,8 @@ export function SpotDetailPage() {
   }, [commentText, id, user]);
 
   const handleChallenge = useCallback(() => {
-    // Assumption: Game flow not yet wired — show toast
-    // TODO: Navigate to game init with spotId when game flow is ready
+    // Game-flow integration is deferred: once the S.K.A.T.E. challenge flow
+    // accepts a spotId, swap this alert for navigation into game init.
     alert("Coming Soon \u2014 S.K.A.T.E. challenges at spots launching soon!");
   }, []);
 
