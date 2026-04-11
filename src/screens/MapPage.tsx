@@ -1,5 +1,7 @@
 import { Component, useEffect, type ReactNode } from "react";
 import { SpotMap } from "../components/map/SpotMap";
+import { useGameContext } from "../context/GameContext";
+import { analytics } from "../services/analytics";
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -39,40 +41,21 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryS
   }
 }
 
-interface MapPageProps {
-  /**
-   * If set, the spot with this id is rendered with a pulsing ring indicating
-   * the active S.K.A.T.E. game's location. Threaded from GameContext via
-   * the top-level `<Route path="/map">` in `src/App.tsx` rather than
-   * imported directly here, to keep `apps/web` self-contained and avoid
-   * crossing the `rootDir: ./src` boundary.
-   */
-  activeGameSpotId?: string;
-  /**
-   * Fired once per MapPage mount — top of the map funnel.
-   * Threaded from the analytics module at the src/App.tsx level; the
-   * `apps/web` subtree deliberately stays analytics-agnostic.
-   */
-  onMapViewed?: () => void;
-  /**
-   * Fired when the user opens a spot preview card from the map.
-   */
-  onSpotPreviewed?: (spotId: string) => void;
-}
+export function MapPage() {
+  const { activeGame } = useGameContext();
 
-export function MapPage({ activeGameSpotId, onMapViewed, onSpotPreviewed }: MapPageProps = {}) {
   useEffect(() => {
-    onMapViewed?.();
-    // Only fire once per mount — downstream listeners treat this as a page-view.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Top of the map funnel — fires once per mount, including direct URL
+    // visits. Downstream funnel events (spot_previewed, challenge_from_spot)
+    // are fired by their respective components.
+    analytics.mapViewed();
   }, []);
 
   return (
     <MapErrorBoundary>
       <SpotMap
-        activeGameSpotId={activeGameSpotId}
-        // Adapt: SpotMap gives us the full Spot, analytics only needs the id.
-        onSpotSelect={onSpotPreviewed ? (spot) => onSpotPreviewed(spot.id) : undefined}
+        activeGameSpotId={activeGame?.spotId ?? undefined}
+        onSpotSelect={(spot) => analytics.spotPreviewed(spot.id)}
       />
     </MapErrorBoundary>
   );

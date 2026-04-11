@@ -1,14 +1,16 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { X, ChevronLeft } from 'lucide-react';
-import type { Spot, ObstacleType, CreateSpotRequest } from '@shared/types';
-import { GnarRating } from './GnarRating';
-import { BustRisk } from './BustRisk';
+import { useState, useCallback } from "react";
+import { X, ChevronLeft } from "lucide-react";
+import type { Spot, ObstacleType, CreateSpotRequest } from "../../types/spot";
+import { createSpot } from "../../services/spots";
+import { useAuthContext } from "../../context/AuthContext";
+import { GnarRating } from "./GnarRating";
+import { BustRisk } from "./BustRisk";
 
 /** Only allow https URLs for photo submissions */
 function isValidPhotoUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'https:';
+    return parsed.protocol === "https:";
   } catch {
     return false;
   }
@@ -21,14 +23,26 @@ interface AddSpotSheetProps {
 }
 
 const ALL_OBSTACLES: ObstacleType[] = [
-  'ledge', 'rail', 'stairs', 'gap', 'bank', 'bowl',
-  'manual_pad', 'quarter_pipe', 'euro_gap', 'slappy_curb',
-  'hip', 'hubba', 'flatground', 'other',
+  "ledge",
+  "rail",
+  "stairs",
+  "gap",
+  "bank",
+  "bowl",
+  "manual_pad",
+  "quarter_pipe",
+  "euro_gap",
+  "slappy_curb",
+  "hip",
+  "hubba",
+  "flatground",
+  "other",
 ];
 
 type Step = 1 | 2 | 3;
 
 export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetProps) {
+  const { user } = useAuthContext();
   const [step, setStep] = useState<Step>(1);
 
   // Step 1: Location
@@ -36,35 +50,25 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
   const [pinLng, setPinLng] = useState(userLocation?.lng ?? -118.2437);
 
   // Step 2: Details
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
   const [obstacles, setObstacles] = useState<ObstacleType[]>([]);
   const [gnarRating, setGnarRating] = useState<1 | 2 | 3 | 4 | 5>(3);
   const [bustRisk, setBustRisk] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // Step 3: Photos
   const [photoUrls, setPhotoUrls] = useState<string[]>([]);
-  const [photoInput, setPhotoInput] = useState('');
+  const [photoInput, setPhotoInput] = useState("");
 
   // Submission state
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      abortRef.current?.abort();
-    };
-  }, []);
 
   // Validation
   const [nameError, setNameError] = useState<string | null>(null);
 
   const toggleObstacle = useCallback((o: ObstacleType) => {
-    setObstacles((prev) =>
-      prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o],
-    );
+    setObstacles((prev) => (prev.includes(o) ? prev.filter((x) => x !== o) : [...prev, o]));
   }, []);
 
   const canProceedStep2 = name.trim().length > 0;
@@ -72,14 +76,14 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
   const handleSubmit = useCallback(async () => {
     setError(null);
 
-    // Cancel any in-flight request
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
+    if (!user) {
+      setError("You must be signed in to add a spot");
+      return;
+    }
 
     setSubmitting(true);
 
-    const body: CreateSpotRequest = {
+    const req: CreateSpotRequest = {
       name: name.trim(),
       description: description.trim() || undefined,
       latitude: pinLat,
@@ -91,28 +95,14 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
     };
 
     try {
-      const res = await fetch('/api/spots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({ error: 'Unknown error' })) as { error: string };
-        setError(data.error || `HTTP ${res.status}`);
-        return;
-      }
-
-      const spot = await res.json() as Spot;
+      const spot: Spot = await createSpot(req, user.uid);
       onSuccess(spot);
     } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return;
-      setError(err instanceof Error ? err.message : 'Network error');
+      setError(err instanceof Error ? err.message : "Failed to create spot");
     } finally {
       setSubmitting(false);
     }
-  }, [name, description, pinLat, pinLng, gnarRating, bustRisk, obstacles, photoUrls, onSuccess]);
+  }, [user, name, description, pinLat, pinLng, gnarRating, bustRisk, obstacles, photoUrls, onSuccess]);
 
   const [photoError, setPhotoError] = useState<string | null>(null);
 
@@ -120,12 +110,12 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
     const url = photoInput.trim();
     if (!url || photoUrls.length >= 5) return;
     if (!isValidPhotoUrl(url)) {
-      setPhotoError('URL must start with https://');
+      setPhotoError("URL must start with https://");
       return;
     }
     setPhotoError(null);
     setPhotoUrls((prev) => [...prev, url]);
-    setPhotoInput('');
+    setPhotoInput("");
   }, [photoInput, photoUrls.length]);
 
   const removePhoto = useCallback((index: number) => {
@@ -158,9 +148,9 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
               </button>
             )}
             <h2 className="text-white font-semibold">
-              {step === 1 && 'Pin Location'}
-              {step === 2 && 'Spot Details'}
-              {step === 3 && 'Photos'}
+              {step === 1 && "Pin Location"}
+              {step === 2 && "Spot Details"}
+              {step === 3 && "Photos"}
             </h2>
           </div>
           <button type="button" onClick={onClose} className="text-[#888] hover:text-white" aria-label="Close">
@@ -208,7 +198,10 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                 {userLocation && (
                   <button
                     type="button"
-                    onClick={() => { setPinLat(userLocation.lat); setPinLng(userLocation.lng); }}
+                    onClick={() => {
+                      setPinLat(userLocation.lat);
+                      setPinLng(userLocation.lng);
+                    }}
                     className="mt-3 text-xs text-[#F97316] hover:underline"
                   >
                     Use my current location
@@ -241,7 +234,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                   value={name}
                   onChange={(e) => {
                     setName(e.target.value);
-                    setNameError(e.target.value.trim().length === 0 ? 'Name is required' : null);
+                    setNameError(e.target.value.trim().length === 0 ? "Name is required" : null);
                   }}
                   placeholder="e.g. Hollywood High 16"
                   className="w-full bg-[#0A0A0A] border border-[#444] rounded-lg px-3 py-2 text-white text-sm
@@ -277,11 +270,11 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       onClick={() => toggleObstacle(o)}
                       className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                         obstacles.includes(o)
-                          ? 'bg-[#F97316] border-[#F97316] text-white'
-                          : 'bg-transparent border-[#444] text-[#888] hover:border-[#666]'
+                          ? "bg-[#F97316] border-[#F97316] text-white"
+                          : "bg-transparent border-[#444] text-[#888] hover:border-[#666]"
                       }`}
                     >
-                      {o.replace('_', ' ')}
+                      {o.replace("_", " ")}
                     </button>
                   ))}
                 </div>
@@ -318,20 +311,14 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
           {/* Step 3: Photos */}
           {step === 3 && (
             <div className="space-y-4">
-              <p className="text-sm text-[#888]">
-                Add up to 5 photo URLs (optional)
-              </p>
+              <p className="text-sm text-[#888]">Add up to 5 photo URLs (optional)</p>
 
               {/* Photo previews */}
               {photoUrls.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto pb-2">
                   {photoUrls.map((url, i) => (
                     <div key={i} className="relative flex-shrink-0">
-                      <img
-                        src={url}
-                        alt={`Spot photo ${i + 1}`}
-                        className="w-20 h-20 object-cover rounded-lg"
-                      />
+                      <img src={url} alt={`Spot photo ${i + 1}`} className="w-20 h-20 object-cover rounded-lg" />
                       <button
                         type="button"
                         onClick={() => removePhoto(i)}
@@ -370,9 +357,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
               )}
 
               {/* Photo URL validation error */}
-              {photoError && (
-                <p className="text-red-400 text-xs">{photoError}</p>
-              )}
+              {photoError && <p className="text-red-400 text-xs">{photoError}</p>}
 
               {/* Submission error */}
               {error && (
@@ -388,7 +373,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                 className="w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
                            hover:bg-[#EA580C] transition-colors disabled:opacity-60"
               >
-                {submitting ? 'Submitting\u2026' : 'Submit Spot'}
+                {submitting ? "Submitting\u2026" : "Submit Spot"}
               </button>
             </div>
           )}

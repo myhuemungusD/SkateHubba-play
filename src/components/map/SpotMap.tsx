@@ -2,7 +2,9 @@ import { useEffect, useRef, useCallback, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Crosshair, Plus } from "lucide-react";
-import type { Spot, SpotGeoJSON } from "@shared/types";
+import type { Spot } from "../../types/spot";
+import { getSpotsInBounds } from "../../services/spots";
+import { logger } from "../../services/logger";
 import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS } from "../../lib/mapbox";
 import { SpotPreviewCard } from "./SpotPreviewCard";
 import { AddSpotSheet } from "./AddSpotSheet";
@@ -81,7 +83,6 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   const watchIdRef = useRef<number | null>(null);
   const fetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
   const lastBoundsRef = useRef<{ n: number; s: number; e: number; w: number } | null>(null);
   const hasLockedRef = useRef(false);
   // Keep a ref to latest userLocation so callbacks don't go stale
@@ -118,7 +119,12 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     }, 3000);
   }, []);
 
-  // Fetch spots for current bounds
+  // Fetch spots inside the current viewport via the Firestore spots service.
+  // No AbortController: the Firestore SDK has no native cancellation. Instead
+  // each fetch bumps `fetchGenerationRef` so a stale resolver knows to drop
+  // its result, which gives us the same "only the latest pan wins" behavior
+  // without pretending to cancel in-flight Firestore RPCs.
+  const fetchGenerationRef = useRef(0);
   const fetchSpots = useCallback(
     (mapInstance: mapboxgl.Map) => {
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
@@ -145,32 +151,18 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
         }
         lastBoundsRef.current = { n, s, e, w };
 
-        // Cancel previous fetch
-        if (abortRef.current) abortRef.current.abort();
-        const controller = new AbortController();
-        abortRef.current = controller;
-
-        const params = new URLSearchParams({
-          north: n.toString(),
-          south: s.toString(),
-          east: e.toString(),
-          west: w.toString(),
-        });
-
-        fetch(`/api/spots/bounds?${params}`, { signal: controller.signal })
-          .then((res) => {
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return res.json() as Promise<{ type: string; features: SpotGeoJSON[] }>;
-          })
-          .then((data) => {
-            if (!Array.isArray(data.features)) return;
-            const spotsList: Spot[] = data.features.map((f: SpotGeoJSON) => f.properties);
+        const generation = ++fetchGenerationRef.current;
+        getSpotsInBounds({ north: n, south: s, east: e, west: w })
+          .then((spotsList) => {
+            // Drop the result if a newer pan has started in the meantime.
+            if (generation !== fetchGenerationRef.current) return;
             setSpots(spotsList);
           })
-          .catch((err: Error) => {
-            if (err.name !== "AbortError") {
-              console.warn("Failed to fetch spots:", err.message);
-            }
+          .catch((err: unknown) => {
+            if (generation !== fetchGenerationRef.current) return;
+            logger.warn("fetch_spots_failed", {
+              error: err instanceof Error ? err.message : "unknown",
+            });
           });
       }, DEBOUNCE_MS);
     },
@@ -366,11 +358,11 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     }
   }, [spots, activeGameSpotId, createMarkerEl, setSelectedSpot, onSpotSelect]);
 
-  // Cleanup all timers, controllers, and markers on unmount
+  // Cleanup all timers and markers on unmount. The stale-fetch guard is
+  // handled via fetchGenerationRef above, not via AbortController.
   useEffect(() => {
     const markers = markersRef.current;
     return () => {
-      if (abortRef.current) abortRef.current.abort();
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
       for (const entry of markers.values()) {

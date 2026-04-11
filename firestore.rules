@@ -178,9 +178,14 @@ service cloud.firestore {
         && request.resource.data.player2Uid == resource.data.player2Uid
         && request.resource.data.player1Username == resource.data.player1Username
         && request.resource.data.player2Username == resource.data.player2Username
-        // spotId is set at creation and immutable thereafter — .get(field, null)
-        // makes the comparison safe whether or not the field is present.
-        && request.resource.data.get('spotId', null) == resource.data.get('spotId', null)
+        // spotId is set at creation and immutable thereafter. Explicit `in`
+        // checks here rather than .get(field, null) because the latter
+        // throws "Null value error" in current Firestore rules engines.
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
         // currentTurn must always be one of the two players after the update
         && (
           request.resource.data.currentTurn == resource.data.player1Uid ||
@@ -228,7 +233,11 @@ service cloud.firestore {
         && request.resource.data.player1Username == resource.data.player1Username
         && request.resource.data.player2Username == resource.data.player2Username
         // spotId is immutable after creation — see create rule for the details.
-        && request.resource.data.get('spotId', null) == resource.data.get('spotId', null)
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
         // currentTurn must be one of the two players
         && (
           request.resource.data.currentTurn == resource.data.player1Uid ||
@@ -272,7 +281,11 @@ service cloud.firestore {
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
         // spotId is immutable after creation — a forfeit must not change it.
-        && request.resource.data.get('spotId', null) == resource.data.get('spotId', null)
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
         // Winner must be the opponent of the current-turn player (who timed out)
         && request.resource.data.winner == opponentUid(resource.data, resource.data.currentTurn)
         // turnHistory must not change during a forfeit (and cannot be injected if absent)
@@ -284,6 +297,111 @@ service cloud.firestore {
       // Players may delete their own non-active games (account deletion flow)
       allow delete: if isSignedIn() && isPlayer(resource.data)
         && resource.data.status != "active";
+    }
+
+    // ── Spots ──
+    // User-contributed skate spots. The map feature lives entirely on
+    // Firestore per charter 2.2 ("no custom backend — Firebase rules are
+    // the authorization layer"). Spots are world-readable for any signed-
+    // in user; only email-verified users can create them; creators can
+    // only update their own spots and cannot change immutable fields
+    // (coordinates, createdBy, isVerified, isActive) after creation.
+    match /spots/{spotId} {
+      // Active spots are publicly readable — skate spots are inherently
+      // public information and every comparable map app (AllTrails, Strava,
+      // Smap, ShredSpots) lets anonymous users browse without an account.
+      // Requiring auth here would gate the exact users (new visitors via
+      // shared /challenge?spot= links) we most want to convert. Inactive
+      // (soft-deleted or moderation-hidden) spots are never visible.
+      // All write paths below remain auth-gated.
+      allow read: if resource.data.isActive == true;
+
+      // Create: signed-in + email-verified, owner-stamped, with full
+      // field validation mirroring the shared Spot type. Rate-limited
+      // via users/{uid}.lastSpotCreatedAt (30s cooldown), same pattern
+      // as game creation above.
+      allow create: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.resource.data.createdBy == request.auth.uid
+        // name: 1–80 chars
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 80
+        // description: optional, ≤500 chars
+        && (
+          request.resource.data.description == null
+          || (request.resource.data.description is string
+              && request.resource.data.description.size() <= 500)
+        )
+        // latitude/longitude: finite numbers in WGS84 range
+        && request.resource.data.latitude is number
+        && request.resource.data.latitude >= -90
+        && request.resource.data.latitude <= 90
+        && request.resource.data.longitude is number
+        && request.resource.data.longitude >= -180
+        && request.resource.data.longitude <= 180
+        // ratings: integer 1–5
+        && request.resource.data.gnarRating is int
+        && request.resource.data.gnarRating >= 1
+        && request.resource.data.gnarRating <= 5
+        && request.resource.data.bustRisk is int
+        && request.resource.data.bustRisk >= 1
+        && request.resource.data.bustRisk <= 5
+        // obstacles: list, ≤14 items (one per obstacle type)
+        && request.resource.data.obstacles is list
+        && request.resource.data.obstacles.size() <= 14
+        // photoUrls: list, max 5
+        && request.resource.data.photoUrls is list
+        && request.resource.data.photoUrls.size() <= 5
+        // Verified and active flags: clients cannot self-verify; active
+        // must start true (soft-delete is an update, not a create).
+        && request.resource.data.isVerified == false
+        && request.resource.data.isActive == true
+        // Rate limit: at most one spot creation per 30 seconds per user.
+        && (
+          !exists(/databases/$(database)/documents/users/$(request.auth.uid))
+          || !('lastSpotCreatedAt' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+          || request.time > get(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastSpotCreatedAt + duration.value(30, 's')
+        );
+
+      // Update: owner-only, and coordinates + ownership + verification +
+      // active flag are immutable after creation (soft-delete goes through
+      // a separate admin flow, not covered here).
+      allow update: if isSignedIn()
+        && resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.latitude == resource.data.latitude
+        && request.resource.data.longitude == resource.data.longitude
+        && request.resource.data.isVerified == resource.data.isVerified
+        && request.resource.data.isActive == resource.data.isActive
+        // Mutable fields still get type-checked.
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 80
+        && (
+          request.resource.data.description == null
+          || (request.resource.data.description is string
+              && request.resource.data.description.size() <= 500)
+        );
+
+      // Delete: owner only. (Prefer soft-delete via admin in practice.)
+      allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
+
+      // ── Spot comments (subcollection) ──
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+
+        allow create: if isSignedIn()
+          && request.auth.token.email_verified == true
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.content is string
+          && request.resource.data.content.size() >= 1
+          && request.resource.data.content.size() <= 300;
+
+        // Comments are immutable once posted — no edits, only owner delete.
+        allow update: if false;
+        allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      }
     }
 
     // ── Nudges ──

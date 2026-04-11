@@ -1,8 +1,8 @@
-import { Flame } from 'lucide-react';
+import { Flame } from "lucide-react";
 
 interface GnarRatingProps {
   value: 1 | 2 | 3 | 4 | 5;
-  size?: 'sm' | 'md';
+  size?: "sm" | "md";
   readonly?: boolean;
   onChange?: (value: 1 | 2 | 3 | 4 | 5) => void;
 }
@@ -12,7 +12,7 @@ const SIZES = {
   md: 18,
 } as const;
 
-export function GnarRating({ value, size = 'md', readonly = true, onChange }: GnarRatingProps) {
+export function GnarRating({ value, size = "md", readonly = true, onChange }: GnarRatingProps) {
   const px = SIZES[size];
 
   return (
@@ -25,13 +25,13 @@ export function GnarRating({ value, size = 'md', readonly = true, onChange }: Gn
             type="button"
             disabled={readonly}
             onClick={() => onChange?.(i)}
-            className={readonly ? 'cursor-default' : 'cursor-pointer hover:scale-110 transition-transform'}
-            aria-label={`${i} flame${i > 1 ? 's' : ''}`}
+            className={readonly ? "cursor-default" : "cursor-pointer hover:scale-110 transition-transform"}
+            aria-label={`${i} flame${i > 1 ? "s" : ""}`}
           >
             <Flame
               size={px}
-              fill={filled ? '#F97316' : 'none'}
-              color={filled ? '#F97316' : 'currentColor'}
+              fill={filled ? "#F97316" : "none"}
+              color={filled ? "#F97316" : "currentColor"}
               strokeWidth={1.5}
             />
           </button>

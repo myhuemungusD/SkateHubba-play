@@ -1,7 +1,7 @@
 import { useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
-import type { Spot } from "@shared/types";
+import type { Spot } from "../../types/spot";
 import { GnarRating } from "./GnarRating";
 import { BustRisk } from "./BustRisk";
 

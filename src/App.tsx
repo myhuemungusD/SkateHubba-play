@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
-import { analytics } from "./services/analytics";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { NavigationProvider, useNavigationContext } from "./context/NavigationContext";
@@ -30,8 +29,8 @@ import { TermsOfService } from "./screens/TermsOfService";
 import { DataDeletion } from "./screens/DataDeletion";
 import { AgeGate } from "./screens/AgeGate";
 import { NotFound } from "./screens/NotFound";
-import { MapPage } from "../apps/web/src/pages/MapPage";
-import { SpotDetailPage } from "../apps/web/src/pages/SpotDetailPage";
+import { MapPage } from "./screens/MapPage";
+import { SpotDetailPage } from "./screens/SpotDetailPage";
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -427,16 +426,7 @@ function AppRoutes() {
             element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
           />
 
-          <Route
-            path="/map"
-            element={
-              <MapPage
-                activeGameSpotId={game.activeGame?.spotId ?? undefined}
-                onMapViewed={analytics.mapViewed}
-                onSpotPreviewed={analytics.spotPreviewed}
-              />
-            }
-          />
+          <Route path="/map" element={<MapPage />} />
           <Route path="/spots/:id" element={<SpotDetailPage />} />
 
           <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />
