@@ -77,8 +77,9 @@ export function SpotDetailPage() {
   }, [commentText, id, user]);
 
   const handleChallenge = useCallback(() => {
-    // Assumption: Game flow not yet wired — show toast
-    // TODO: Navigate to game init with spotId when game flow is ready
+    // Spot-linked challenges are not yet wired into the game-creation flow.
+    // When the flow supports spot IDs, replace this alert with a navigate to
+    // the challenge screen seeded with `id` from the current route params.
     alert("Coming Soon \u2014 S.K.A.T.E. challenges at spots launching soon!");
   }, []);
 
