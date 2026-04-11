@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { WaitingScreen } from "../WaitingScreen";
 import type { GameDoc } from "../../services/games";
@@ -224,5 +224,142 @@ describe("WaitingScreen", () => {
     await waitFor(() => {
       expect(screen.getByText("Failed to nudge")).toBeInTheDocument();
     });
+  });
+
+  // ── ClipShareButtons coverage (Save/Share handlers) ─────────────────────
+
+  describe("ClipShareButtons", () => {
+    const origCreateObjectURL = URL.createObjectURL;
+    const origRevokeObjectURL = URL.revokeObjectURL;
+
+    beforeEach(() => {
+      URL.createObjectURL = vi.fn(() => "blob:test");
+      URL.revokeObjectURL = vi.fn();
+    });
+
+    afterEach(() => {
+      URL.createObjectURL = origCreateObjectURL;
+      URL.revokeObjectURL = origRevokeObjectURL;
+      vi.unstubAllGlobals();
+      // Reset navigator.share / clipboard between cases
+      Object.defineProperty(navigator, "share", { value: undefined, writable: true, configurable: true });
+      Object.defineProperty(navigator, "canShare", { value: undefined, writable: true, configurable: true });
+    });
+
+    it("Save Clip downloads the clip and toggles label to 'Saved!'", async () => {
+      const blob = new Blob(["video"], { type: "video/webm" });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, blob: vi.fn().mockResolvedValue(blob) }));
+      // Stub anchor click to avoid jsdom navigation noise
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+      render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+      await userEvent.click(screen.getByText("Save Clip"));
+
+      await waitFor(() => expect(screen.getByText("Saved!")).toBeInTheDocument());
+      expect(clickSpy).toHaveBeenCalled();
+      expect(URL.createObjectURL).toHaveBeenCalled();
+      clickSpy.mockRestore();
+    });
+
+    it("Save Clip shows 'Save failed' when fetch fails", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, blob: vi.fn() }));
+      render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+      await userEvent.click(screen.getByText("Save Clip"));
+      await waitFor(() => expect(screen.getByText("Save failed")).toBeInTheDocument());
+    });
+
+    it("Share Clip uses native file share when canShare returns true", async () => {
+      const blob = new Blob(["video"], { type: "video/webm" });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, blob: vi.fn().mockResolvedValue(blob) }));
+      const shareFn = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "share", { value: shareFn, writable: true, configurable: true });
+      Object.defineProperty(navigator, "canShare", {
+        value: vi.fn().mockReturnValue(true),
+        writable: true,
+        configurable: true,
+      });
+
+      render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+      await userEvent.click(screen.getByText("Share Clip"));
+
+      await waitFor(() => expect(screen.getByText("Shared!")).toBeInTheDocument());
+      expect(shareFn).toHaveBeenCalledWith(expect.objectContaining({ files: expect.any(Array) }));
+    });
+
+    it("Share Clip falls back to text share when canShare is false", async () => {
+      const blob = new Blob(["video"], { type: "video/webm" });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, blob: vi.fn().mockResolvedValue(blob) }));
+      const shareFn = vi.fn().mockResolvedValue(undefined);
+      Object.defineProperty(navigator, "share", { value: shareFn, writable: true, configurable: true });
+      Object.defineProperty(navigator, "canShare", {
+        value: vi.fn().mockReturnValue(false),
+        writable: true,
+        configurable: true,
+      });
+
+      render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+      await userEvent.click(screen.getByText("Share Clip"));
+
+      await waitFor(() => expect(screen.getByText("Shared!")).toBeInTheDocument());
+      expect(shareFn).toHaveBeenCalledWith(expect.objectContaining({ text: expect.any(String) }));
+      expect(shareFn).not.toHaveBeenCalledWith(expect.objectContaining({ files: expect.anything() }));
+    });
+
+    it("Share Clip falls back to clipboard when navigator.share is unavailable", async () => {
+      const blob = new Blob(["video"], { type: "video/webm" });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, blob: vi.fn().mockResolvedValue(blob) }));
+      const writeText = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, { clipboard: { writeText } });
+
+      render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+      await userEvent.click(screen.getByText("Share Clip"));
+
+      await waitFor(() => expect(screen.getByText("Shared!")).toBeInTheDocument());
+      expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Kickflip"));
+    });
+
+    it("Share Clip shows 'Share failed' when fetch fails", async () => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, blob: vi.fn() }));
+      render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+      await userEvent.click(screen.getByText("Share Clip"));
+      await waitFor(() => expect(screen.getByText("Share failed")).toBeInTheDocument());
+    });
+  });
+
+  // ── Misc uncovered branches ─────────────────────────────────────────────
+
+  it("re-enables nudge when cooldown clears via interval tick", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      // Start in 'sent' state because canNudge is initially false
+      mockCanNudge.mockReturnValue(false);
+      render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+      expect(screen.getByText("Nudge Sent")).toBeDisabled();
+
+      // Cooldown clears — advancing the interval should flip back to 'idle'
+      mockCanNudge.mockReturnValue(true);
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+
+      await waitFor(() => expect(screen.getByText("Nudge")).toBeInTheDocument());
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("disables Report opponent button after submission", async () => {
+    render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+    await userEvent.click(screen.getByText("Report opponent"));
+
+    // ReportModal uses a <select>; choose a reason then submit
+    const select = await screen.findByLabelText(/REASON/i);
+    await userEvent.selectOptions(select, "inappropriate_video");
+
+    const submit = await screen.findByRole("button", { name: /Submit Report/i });
+    await userEvent.click(submit);
+
+    await waitFor(() => expect(screen.getByText("Reported")).toBeInTheDocument());
+    expect(screen.getByText("Reported")).toBeDisabled();
   });
 });
