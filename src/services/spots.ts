@@ -9,6 +9,7 @@
  */
 
 import { logger } from "./logger";
+import { captureException } from "../lib/sentry";
 
 interface SpotNameResponse {
   id: string;
@@ -19,6 +20,15 @@ interface SpotNameResponse {
  * Fetch a spot's display name by id. Returns `null` on any error (network,
  * 404, malformed response, abort) — this is a best-effort lookup used to
  * decorate UI and must never block the core flow.
+ *
+ * Failure telemetry:
+ *   - AbortError (component unmount) is expected and silent.
+ *   - Non-ok HTTP (404, 5xx) is expected-ish and not paged to Sentry —
+ *     the server already logs these, and a stale shared link is a
+ *     legitimate cause.
+ *   - Everything else (TypeError from a failed DNS, malformed JSON, etc.)
+ *     is an unexpected client-side fault and gets both a structured log
+ *     and a Sentry capture so we can diagnose in production.
  *
  * @param spotId  UUID of the spot
  * @param signal  optional AbortSignal so callers can cancel in flight on unmount
@@ -37,6 +47,7 @@ export async function fetchSpotName(spotId: string, signal?: AbortSignal): Promi
       spotId,
       error: err instanceof Error ? err.message : "unknown",
     });
+    captureException(err, { tags: { op: "fetchSpotName" }, extra: { spotId } });
     return null;
   }
 }

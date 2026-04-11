@@ -200,8 +200,36 @@ describe("ChallengeScreen", () => {
     await waitFor(() => {
       expect(onSend).toHaveBeenCalledWith("u2", "rival", null);
     });
-    // No chip should render for garbled input
+    // No chip should render for garbled input, and neither analytics nor
+    // the fetch helper should ever see the garbled value.
     expect(screen.queryByTestId("challenge-spot-chip")).not.toBeInTheDocument();
+    expect(mockChallengeFromSpot).not.toHaveBeenCalled();
+    expect(mockFetchSpotName).not.toHaveBeenCalled();
+  });
+
+  it("does not render the chip until the spot name fetch resolves (no flash)", async () => {
+    // Hold the fetch promise open so we can observe the "loading" state.
+    let resolveFetch: (name: string | null) => void = () => {};
+    mockFetchSpotName.mockReturnValueOnce(
+      new Promise<string | null>((resolve) => {
+        resolveFetch = resolve;
+      }),
+    );
+
+    renderWithRouter(<ChallengeScreen {...defaultProps} />, {
+      initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
+    });
+
+    // While the fetch is pending, the chip must NOT be in the DOM — the
+    // tri-state render is what prevents the "Challenging at a saved spot"
+    // fallback from flashing before the real name arrives.
+    expect(screen.queryByTestId("challenge-spot-chip")).not.toBeInTheDocument();
+
+    // Resolve the fetch; chip should now appear with the fetched name.
+    resolveFetch("Hollenbeck Hubba");
+    await waitFor(() => {
+      expect(screen.getByTestId("challenge-spot-chip")).toHaveTextContent("Challenging at Hollenbeck Hubba");
+    });
   });
 
   it("fires the challengeFromSpot analytics event on mount when spotId is valid", async () => {

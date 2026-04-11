@@ -61,10 +61,12 @@ export function ChallengeScreen({
   const rawSpotId = searchParams.get("spot");
   const spotId = rawSpotId && UUID_SHAPE.test(rawSpotId) ? rawSpotId : null;
 
-  // Best-effort lookup of the spot's display name for the context chip.
-  // Fetch failure is non-blocking: we fall back to a generic label so the
-  // user still gets confirmation that their challenge carries location.
-  const [spotName, setSpotName] = useState<string | null>(null);
+  // Spot name resolution is a tri-state: "loading" (initial, fetch in flight),
+  // a string (resolved), or null (fetch settled with no name — either 404 or
+  // error). We defer rendering the chip until we leave "loading" so the user
+  // never sees a flash of the generic fallback label.
+  type SpotNameState = "loading" | string | null;
+  const [spotName, setSpotName] = useState<SpotNameState>("loading");
   useEffect(() => {
     if (!spotId) return;
     // Funnel event — fires once per ChallengeScreen mount with a spot,
@@ -132,7 +134,7 @@ export function ChallengeScreen({
       </div>
 
       <div className="max-w-md mx-auto px-6">
-        {spotId && (
+        {spotId && spotName !== "loading" && (
           <div
             className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-orange/40 bg-brand-orange/10 px-3 py-1.5 text-xs text-brand-orange"
             data-testid="challenge-spot-chip"

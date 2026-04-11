@@ -104,24 +104,26 @@ export function SpotPreviewCard({ spot, onClose }: SpotPreviewCardProps) {
           </div>
         </div>
 
-        {/* View Spot button */}
-        <button
-          type="button"
-          onClick={() => navigate(`/spots/${spot.id}`)}
-          className="mt-4 w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
-                     hover:bg-[#EA580C] transition-colors"
-        >
-          View Spot
-        </button>
-
-        {/* Challenge from here — starts a S.K.A.T.E. challenge pre-seeded with this spot */}
+        {/* Challenge from here — the primary action per charter 2.2:
+            the map exists to serve the S.K.A.T.E. game loop, so starting
+            a challenge is the dominant affordance on a spot preview. */}
         <button
           type="button"
           onClick={() => navigate(`/challenge?spot=${spot.id}`)}
-          className="mt-2 w-full py-2.5 rounded-xl bg-[#1A1A1A] border border-[#F97316] text-[#F97316]
-                     font-semibold text-sm hover:bg-[#F97316]/10 transition-colors"
+          className="mt-4 w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
+                     hover:bg-[#EA580C] transition-colors"
         >
           Challenge from here
+        </button>
+
+        {/* View Spot — secondary action for users who just want context. */}
+        <button
+          type="button"
+          onClick={() => navigate(`/spots/${spot.id}`)}
+          className="mt-2 w-full py-2.5 rounded-xl bg-[#1A1A1A] border border-[#333] text-[#CCC]
+                     font-semibold text-sm hover:bg-[#222] hover:border-[#444] transition-colors"
+        >
+          View Spot
         </button>
       </div>
     </>
