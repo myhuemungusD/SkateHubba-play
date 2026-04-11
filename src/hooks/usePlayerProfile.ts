@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { getUserProfile, type UserProfile } from "../services/users";
 import { fetchPlayerCompletedGames, type GameDoc } from "../services/games";
+import { logger } from "../services/logger";
+import { parseFirebaseError } from "../utils/helpers";
 
 export interface PlayerProfileState {
   profile: UserProfile | null;
@@ -37,7 +39,7 @@ export function usePlayerProfile(uid: string, viewerUid?: string): PlayerProfile
     const profilePromise = getUserProfile(uid);
 
     const gamesPromise = fetchPlayerCompletedGames(uid, viewerUid).catch((err: unknown) => {
-      console.warn("Failed to fetch player games:", err);
+      logger.warn("player_games_fetch_failed", { uid, viewerUid, error: parseFirebaseError(err) });
       return [] as GameDoc[];
     });
 
@@ -52,7 +54,7 @@ export function usePlayerProfile(uid: string, viewerUid?: string): PlayerProfile
       })
       .catch((err: unknown) => {
         if (stale) return;
-        console.warn("Failed to load player profile:", err);
+        logger.warn("player_profile_load_failed", { uid, viewerUid, error: parseFirebaseError(err) });
         setData({ fetchedUid: uid, profile: null, games: [], error: "Could not load player profile" });
       });
 
