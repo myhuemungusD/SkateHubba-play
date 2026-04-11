@@ -529,9 +529,6 @@ export function PlayerProfileScreen({
   );
 }
 
-/** Re-export under old name for backwards compatibility during migration. */
-export { PlayerProfileScreen as MyRecordScreen };
-
 /* ── Sub-components ───────────────────────────────────── */
 
 function SectionHeader({ title, count }: { title: string; count: number }) {
