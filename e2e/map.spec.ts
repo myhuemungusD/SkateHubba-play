@@ -1,120 +1,102 @@
 /**
  * E2E for the map → S.K.A.T.E. challenge wiring.
  *
- * Deliberately auth-agnostic: the /map route is listed in PUBLIC_SCREENS
- * (see src/context/NavigationContext.tsx), so we can exercise the full
- * map → marker → preview card → "Challenge from here" flow without
- * going through Firebase Auth sign-up. That keeps the test fast, stable,
- * and immune to auth-emulator flakiness.
+ * Charter-compliant: this test seeds the spot data directly into the
+ * Firestore emulator (via the named "skatehubba" database) instead of
+ * stubbing an HTTP API. There is no apps/api server — the map talks
+ * to Firestore exclusively, and so does this test.
  *
- * Two assertions cover the two halves of the P0 #3 wire-up:
- *   1. Clicking "Challenge from here" navigates to /challenge?spot=<uuid>.
- *      This is captured via a `framenavigated` listener because the auth
- *      router will immediately bounce an unauthenticated user back to /,
- *      so the post-click URL is only momentarily at /challenge.
- *   2. Before the bounce, the spot id is stashed in sessionStorage under
- *      `skate.pendingChallengeSpot` so a post-login restore can reapply
- *      it. This is the auth-bounce polish added on top of the P0.
- *
- * The bounds endpoint is stubbed via page.route so the test has no
- * dependency on a live Neon Postgres or the apps/api server.
+ * Auth-agnostic: the /map route is in PUBLIC_SCREENS, so we exercise
+ * the full marker → preview card → "Challenge from here" flow without
+ * touching Firebase Auth. The "Challenge from here" click as an
+ * unauthenticated user lets us also assert the auth-bounce stash
+ * (sessionStorage `skate.pendingChallengeSpot`) added to NavigationContext.
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { clearAll } from "./helpers/emulator";
+import { clearAll, createSpot } from "./helpers/emulator";
 
-const FIXTURE_SPOT = {
-  id: "11111111-2222-3333-4444-555555555555",
-  createdBy: "seed",
-  name: "Test Ledge",
-  description: null,
-  latitude: 34.0522,
-  longitude: -118.2437,
-  gnarRating: 3,
-  bustRisk: 2,
-  obstacles: ["ledge"],
-  photoUrls: [],
-  isVerified: false,
-  isActive: true,
-  createdAt: "2026-04-10T00:00:00.000Z",
-  updatedAt: "2026-04-10T00:00:00.000Z",
-};
-
-const FIXTURE_FEATURE_COLLECTION = {
-  type: "FeatureCollection",
-  features: [
-    {
-      type: "Feature",
-      geometry: { type: "Point", coordinates: [FIXTURE_SPOT.longitude, FIXTURE_SPOT.latitude] },
-      properties: FIXTURE_SPOT,
-    },
-  ],
-};
-
-/**
- * Minimal Mapbox style + source stubs so GL JS initializes without needing
- * live network access to api.mapbox.com / *.tiles.mapbox.com. We return an
- * empty style with no layers — the map won't render any basemap, but the
- * Map container + marker element overlays still work, which is all the
- * wiring test needs to exercise the click flow.
- */
-const EMPTY_STYLE = {
-  version: 8,
-  name: "e2e-stub",
-  sources: {},
-  layers: [],
-  sprite: "https://stub.invalid/sprite",
-  glyphs: "https://stub.invalid/{fontstack}/{range}.pbf",
-};
-
-/** Stub every endpoint the map layer would otherwise hit over the network. */
-async function stubBounds(page: Page): Promise<void> {
-  // Mapbox style — returns a minimal valid style doc.
-  await page.route(/api\.mapbox\.com\/styles\//, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(EMPTY_STYLE),
-    });
-  });
-  // Mapbox telemetry / events / sprites / glyphs — swallow with 204.
-  await page.route(/api\.mapbox\.com\/(events|v4|fonts|sprites)/, async (route) => {
-    await route.fulfill({ status: 204, body: "" });
-  });
-  await page.route(/\.tiles\.mapbox\.com/, async (route) => {
-    await route.fulfill({ status: 204, body: "" });
-  });
-
-  // The app's bounds endpoint — returns a single fixture spot.
-  await page.route("**/api/spots/bounds*", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify(FIXTURE_FEATURE_COLLECTION),
-    });
-  });
-  // Singular spot endpoint so the ChallengeScreen chip's fetchSpotName call
-  // doesn't 404 in a follow-up navigation.
-  await page.route(`**/api/spots/${FIXTURE_SPOT.id}`, async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ id: FIXTURE_SPOT.id, name: FIXTURE_SPOT.name }),
-    });
-  });
-}
+const SPOT_ID = "11111111-2222-3333-4444-555555555555";
+const SPOT_NAME = "Test Ledge";
 
 test.beforeEach(async () => {
   await clearAll();
+  // Seed one spot in the LA viewport so the SpotMap bounds query finds
+  // exactly one marker. The default lat/lng in createSpot match the map's
+  // initial center (34.0522, -118.2437).
+  await createSpot(SPOT_ID, "seed-user", { name: SPOT_NAME });
 });
+
+/**
+ * Stub Mapbox network endpoints so GL JS can initialize without reaching
+ * api.mapbox.com / *.tiles.mapbox.com. The map renders an empty basemap;
+ * markers still mount as DOM overlays so the click flow works.
+ */
+/**
+ * Strip the meta-tag CSP from the served HTML so headless Chromium can
+ * reach the localhost emulators (port 8080 etc) from the page's context.
+ * The production CSP blocks `http://localhost:*` because `'self'` is
+ * strict same-origin (5173 ≠ 8080), and there's no dev-time relaxation.
+ *
+ * Test-only — production builds keep the full CSP unchanged.
+ */
+async function relaxCspForEmulators(page: Page): Promise<void> {
+  // Vite serves index.html for any unknown SPA route. Intercept the exact
+  // /map navigation (and any other top-level page request) and strip the
+  // CSP meta tag from the body before it reaches the document.
+  await page.route(
+    /http:\/\/localhost:5173\/(map|spots|challenge|lobby|profile|game|gameover|player|auth|age-gate|privacy|terms|data-deletion|404|$)/,
+    async (route) => {
+      const response = await route.fetch();
+      const contentType = response.headers()["content-type"] ?? "";
+      if (!contentType.includes("text/html")) {
+        await route.fulfill({ response });
+        return;
+      }
+      const body = await response.text();
+      const stripped = body.replace(/<meta http-equiv="Content-Security-Policy"[^>]*\/>/i, "");
+      await route.fulfill({
+        response,
+        body: stripped,
+      });
+    },
+  );
+}
+
+async function stubMapbox(page: Page): Promise<void> {
+  // The sprite/glyph URLs MUST point at api.mapbox.com because the CSP
+  // (vercel.json) only allows api.mapbox.com / *.tiles.mapbox.com /
+  // events.mapbox.com for connect-src. Anything else is blocked at the
+  // browser level before page.route can intercept it.
+  const emptyStyle = {
+    version: 8,
+    name: "e2e-stub",
+    sources: {},
+    layers: [],
+    sprite: "https://api.mapbox.com/sprite",
+    glyphs: "https://api.mapbox.com/fonts/{fontstack}/{range}.pbf",
+  };
+  await page.route(/api\.mapbox\.com\/styles\//, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyStyle) }),
+  );
+  // Catch the sprite + glyph URLs the empty style references plus any
+  // ancillary GET to api.mapbox.com that GL JS makes during init.
+  await page.route(/api\.mapbox\.com\/(events|v4|fonts|sprites|sprite)/, (route) =>
+    route.fulfill({ status: 204, body: "" }),
+  );
+  await page.route(/api\.mapbox\.com\/sprite/, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "{}" }),
+  );
+  await page.route(/\.tiles\.mapbox\.com/, (route) => route.fulfill({ status: 204, body: "" }));
+}
 
 test.describe("Map → challenge wiring", () => {
   test("Challenge from here forwards the spot id and stashes it across auth", async ({ page }) => {
-    await stubBounds(page);
+    await relaxCspForEmulators(page);
+    await stubMapbox(page);
 
-    // Surface uncaught page errors + browser console warnings/errors if the
-    // test fails. The MapErrorBoundary otherwise swallows mapbox-gl crashes,
-    // making CI failures opaque — this keeps them actionable.
+    // Surface page errors / browser console for actionable CI failures —
+    // the MapErrorBoundary otherwise swallows mapbox-gl crashes silently.
     const consoleMessages: string[] = [];
     page.on("console", (msg) => {
       if (msg.type() === "warning" || msg.type() === "error") {
@@ -125,10 +107,9 @@ test.describe("Map → challenge wiring", () => {
       consoleMessages.push(`[pageerror] ${err.message}`);
     });
 
-    // Collect every URL the frame navigates to — the auth router will bounce
-    // an unauthenticated user off /challenge, but we still want to prove the
-    // intermediate URL had the spot param. This matches how a real shared
-    // link from a logged-out user would behave.
+    // Capture every URL change. The auth router will bounce an
+    // unauthenticated user off /challenge, so we need to assert the
+    // intermediate /challenge?spot=<id> URL existed before the bounce.
     const navigatedUrls: string[] = [];
     page.on("framenavigated", (frame) => {
       if (frame === page.mainFrame()) navigatedUrls.push(frame.url());
@@ -136,39 +117,36 @@ test.describe("Map → challenge wiring", () => {
 
     await page.goto("/map");
 
-    // The spot marker is rendered as an HTMLDivElement with a test id set in
-    // SpotMap.createMarkerEl. Wait for it to appear — the map has to load its
-    // style and fire the first bounds fetch before markers are added.
-    const marker = page.locator(`[data-testid="spot-marker-${FIXTURE_SPOT.id}"]`);
+    // Wait for the seeded spot's marker to appear. The marker carries a
+    // data-testid attached in SpotMap.createMarkerEl.
+    const marker = page.locator(`[data-testid="spot-marker-${SPOT_ID}"]`);
     try {
       await expect(marker).toBeVisible({ timeout: 15_000 });
     } catch (e) {
-      // Surface captured console output to make sandbox failures actionable
-      // (e.g. missing WebGL in headless chromium).
       console.error("[e2e] Captured browser console output:\n" + consoleMessages.join("\n"));
       throw e;
     }
 
-    // Tap the marker to open the preview card.
+    // Tap the marker to open the SpotPreviewCard.
     await marker.click();
-    await expect(page.getByRole("dialog", { name: `Spot: ${FIXTURE_SPOT.name}` })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: `Spot: ${SPOT_NAME}` })).toBeVisible();
 
     // "Challenge from here" is the primary (orange) button on the card.
     await page.getByRole("button", { name: "Challenge from here" }).click();
 
-    // At least one intermediate navigation must have included the spot param.
-    // Poll the captured list so we don't race the auth router's bounce.
+    // The intermediate URL must have included ?spot=<id>. Poll the captured
+    // list so we don't race the auth router's bounce.
     await expect
-      .poll(() => navigatedUrls.some((u) => u.includes(`/challenge?spot=${FIXTURE_SPOT.id}`)), {
+      .poll(() => navigatedUrls.some((u) => u.includes(`/challenge?spot=${SPOT_ID}`)), {
         timeout: 5_000,
       })
       .toBe(true);
 
     // The auth-bounce polish stashes the spot in sessionStorage so a
-    // post-login restore can reapply it. Verify the stash survived the
-    // bounce — this is what makes shared /challenge?spot= links work for
+    // post-login restore can reapply it. Verifying the stash survived the
+    // bounce is what makes shared /challenge?spot= links work for
     // logged-out recipients.
     const stashed = await page.evaluate(() => window.sessionStorage.getItem("skate.pendingChallengeSpot"));
-    expect(stashed).toBe(FIXTURE_SPOT.id);
+    expect(stashed).toBe(SPOT_ID);
   });
 });

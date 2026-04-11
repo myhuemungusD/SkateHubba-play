@@ -101,6 +101,7 @@ type FsValue =
   | { doubleValue: number }
   | { stringValue: string }
   | { timestampValue: string }
+  | { arrayValue: { values: FsValue[] } }
   | { mapValue: { fields: Record<string, FsValue> } };
 
 function toFsValue(v: unknown): FsValue {
@@ -111,6 +112,9 @@ function toFsValue(v: unknown): FsValue {
   }
   if (typeof v === "string") return { stringValue: v };
   if (v instanceof Date) return { timestampValue: v.toISOString() };
+  if (Array.isArray(v)) {
+    return { arrayValue: { values: v.map(toFsValue) } };
+  }
   if (typeof v === "object") {
     return {
       mapValue: {
@@ -184,6 +188,36 @@ export async function createGame(
     turnDeadline: deadline,
     turnNumber: 1,
     winner: null,
+    ...overrides,
+  });
+}
+
+/**
+ * Seed a spot document directly into Firestore. Mirrors the createSpot
+ * service's payload shape but writes via the emulator REST API so tests
+ * don't need an authenticated client. `overrides` can patch any field —
+ * for example to test inactive spots, missing photo arrays, etc.
+ */
+export async function createSpot(
+  spotId: string,
+  createdBy: string,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
+  const now = new Date();
+  await writeDoc("spots", spotId, {
+    createdBy,
+    name: "Test Spot",
+    description: null,
+    latitude: 34.0522,
+    longitude: -118.2437,
+    gnarRating: 3,
+    bustRisk: 2,
+    obstacles: ["ledge"],
+    photoUrls: [],
+    isVerified: false,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
     ...overrides,
   });
 }
