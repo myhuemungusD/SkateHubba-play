@@ -6,6 +6,8 @@ const {
   mockGetDocs,
   mockSetDoc,
   mockDeleteDoc,
+  mockUpdateDoc,
+  mockIncrement,
   mockRunTransaction,
   mockWriteBatch,
   mockDoc,
@@ -22,6 +24,8 @@ const {
     mockGetDocs: vi.fn(),
     mockSetDoc: vi.fn(),
     mockDeleteDoc: vi.fn(),
+    mockUpdateDoc: vi.fn().mockResolvedValue(undefined),
+    mockIncrement: vi.fn((n: number) => ({ _op: "increment", operand: n })),
     mockRunTransaction: vi.fn(),
     mockWriteBatch: vi.fn(() => batchInstance),
     mockDoc: vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/")),
@@ -40,6 +44,8 @@ vi.mock("firebase/firestore", () => ({
   deleteDoc: mockDeleteDoc,
   getDoc: mockGetDoc,
   getDocs: mockGetDocs,
+  updateDoc: mockUpdateDoc,
+  increment: (n: number) => mockIncrement(n),
   query: mockQuery,
   where: mockWhere,
   orderBy: mockOrderBy,
@@ -315,84 +321,64 @@ describe("users service", () => {
 
   describe("updatePlayerStats", () => {
     it("increments wins when player won", async () => {
-      const mockTx = {
-        get: vi.fn().mockResolvedValue({
-          exists: () => true,
-          data: () => ({ uid: "u1", username: "sk8r", wins: 3, losses: 1, lastStatsGameId: "old-game" }),
-        }),
-        update: vi.fn(),
-      };
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", username: "sk8r", wins: 3, losses: 1, lastStatsGameId: "old-game" }),
+      });
 
       await updatePlayerStats("u1", "game-123", true);
 
-      expect(mockTx.update).toHaveBeenCalledWith(expect.anything(), {
-        wins: 4,
+      expect(mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), {
+        wins: { _op: "increment", operand: 1 },
         lastStatsGameId: "game-123",
       });
     });
 
     it("increments losses when player lost", async () => {
-      const mockTx = {
-        get: vi.fn().mockResolvedValue({
-          exists: () => true,
-          data: () => ({ uid: "u1", username: "sk8r", wins: 2, losses: 5, lastStatsGameId: "old-game" }),
-        }),
-        update: vi.fn(),
-      };
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", username: "sk8r", wins: 2, losses: 5, lastStatsGameId: "old-game" }),
+      });
 
       await updatePlayerStats("u1", "game-456", false);
 
-      expect(mockTx.update).toHaveBeenCalledWith(expect.anything(), {
-        losses: 6,
+      expect(mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), {
+        losses: { _op: "increment", operand: 1 },
         lastStatsGameId: "game-456",
       });
     });
 
-    it("defaults wins/losses to 0 when fields are missing", async () => {
-      const mockTx = {
-        get: vi.fn().mockResolvedValue({
-          exists: () => true,
-          data: () => ({ uid: "u1", username: "sk8r" }),
-        }),
-        update: vi.fn(),
-      };
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+    it("uses increment(1) regardless of whether field exists", async () => {
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", username: "sk8r" }),
+      });
 
       await updatePlayerStats("u1", "game-789", true);
 
-      expect(mockTx.update).toHaveBeenCalledWith(expect.anything(), {
-        wins: 1,
+      expect(mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), {
+        wins: { _op: "increment", operand: 1 },
         lastStatsGameId: "game-789",
       });
     });
 
     it("skips update when lastStatsGameId matches (idempotency)", async () => {
-      const mockTx = {
-        get: vi.fn().mockResolvedValue({
-          exists: () => true,
-          data: () => ({ uid: "u1", wins: 3, losses: 1, lastStatsGameId: "game-123" }),
-        }),
-        update: vi.fn(),
-      };
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", wins: 3, losses: 1, lastStatsGameId: "game-123" }),
+      });
 
       await updatePlayerStats("u1", "game-123", true);
 
-      expect(mockTx.update).not.toHaveBeenCalled();
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
     });
 
     it("skips update when profile does not exist", async () => {
-      const mockTx = {
-        get: vi.fn().mockResolvedValue({ exists: () => false }),
-        update: vi.fn(),
-      };
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => fn(mockTx));
+      mockGetDoc.mockResolvedValueOnce({ exists: () => false });
 
       await updatePlayerStats("u1", "game-123", true);
 
-      expect(mockTx.update).not.toHaveBeenCalled();
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
     });
   });
 

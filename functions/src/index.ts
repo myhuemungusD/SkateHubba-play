@@ -157,7 +157,8 @@ export const onGameUpdated = onDocumentUpdated({ document: "games/{gameId}", dat
       }),
     );
 
-    // Update win/loss stats for both players.
+    // Update win/loss stats for both players using FieldValue.increment()
+    // to avoid contention with concurrent client-side updates.
     // Uses lastStatsGameId as idempotency key — safe if the client also
     // calls updatePlayerStats or if this trigger fires more than once.
     const db = getFirestore(DB_NAME);
@@ -166,20 +167,14 @@ export const onGameUpdated = onDocumentUpdated({ document: "games/{gameId}", dat
         const won = winnerUid === player.uid;
         const userRef = db.doc(`users/${player.uid}`);
 
-        await db.runTransaction(async (tx) => {
-          const snap = await tx.get(userRef);
-          if (!snap.exists) return;
+        const snap = await userRef.get();
+        if (!snap.exists) return;
+        if (snap.data()!.lastStatsGameId === gameId) return;
 
-          const data = snap.data()!;
-          if (data.lastStatsGameId === gameId) return;
-
-          const field = won ? "wins" : "losses";
-          const current = typeof data[field] === "number" ? (data[field] as number) : 0;
-
-          tx.update(userRef, {
-            [field]: current + 1,
-            lastStatsGameId: gameId,
-          });
+        const field = won ? "wins" : "losses";
+        await userRef.update({
+          [field]: FieldValue.increment(1),
+          lastStatsGameId: gameId,
         });
       }),
     );
@@ -300,7 +295,8 @@ export const checkExpiredTurns = onSchedule("every 15 minutes", async () => {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // Update win/loss stats inline (defense-in-depth).
+      // Update win/loss stats inline using FieldValue.increment()
+      // to avoid contention (defense-in-depth).
       // onGameUpdated also updates stats, but if it fails (e.g. push
       // notification error) these stats would be lost. The
       // lastStatsGameId idempotency key prevents double-counting.
@@ -313,17 +309,13 @@ export const checkExpiredTurns = onSchedule("every 15 minutes", async () => {
       await Promise.allSettled(
         statsPlayers.map(async ({ uid, won }) => {
           const userRef = db.doc(`users/${uid}`);
-          await db.runTransaction(async (tx) => {
-            const snap = await tx.get(userRef);
-            if (!snap.exists) return;
-            const data = snap.data()!;
-            if (data.lastStatsGameId === doc.id) return;
-            const field = won ? "wins" : "losses";
-            const current = typeof data[field] === "number" ? (data[field] as number) : 0;
-            tx.update(userRef, {
-              [field]: current + 1,
-              lastStatsGameId: doc.id,
-            });
+          const snap = await userRef.get();
+          if (!snap.exists) return;
+          if (snap.data()!.lastStatsGameId === doc.id) return;
+          const field = won ? "wins" : "losses";
+          await userRef.update({
+            [field]: FieldValue.increment(1),
+            lastStatsGameId: doc.id,
           });
         }),
       );
