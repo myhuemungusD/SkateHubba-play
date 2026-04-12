@@ -3,6 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { fetchSpotName } from "../services/spots";
 import { analytics } from "../services/analytics";
+import type { StartChallengeOptions } from "../context/GameContext";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -42,7 +43,7 @@ export function ChallengeScreen({
   blockedUids,
 }: {
   profile: UserProfile;
-  onSend: (opponentUid: string, opponentUsername: string, spotId?: string | null) => Promise<void>;
+  onSend: (opponentUid: string, opponentUsername: string, options?: StartChallengeOptions) => Promise<void>;
   onBack: () => void;
   initialOpponent?: string;
   onViewPlayer?: (uid: string) => void;
@@ -50,6 +51,8 @@ export function ChallengeScreen({
   blockedUids?: Set<string>;
 }) {
   const [opponent, setOpponent] = useState(initialOpponent);
+  const [judge, setJudge] = useState("");
+  const [judgePickerOpen, setJudgePickerOpen] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   // Optional spot passed in via ?spot=<uuid> (e.g. when the user taps
@@ -92,6 +95,21 @@ export function ChallengeScreen({
       return;
     }
 
+    // Judge picker is optional — only validate when the user filled it in.
+    const judgeNormalized = judge.toLowerCase().trim();
+    if (judgeNormalized && judgeNormalized.length < 3) {
+      setError("Judge username is too short");
+      return;
+    }
+    if (judgeNormalized === profile.username) {
+      setError("You can't be your own judge");
+      return;
+    }
+    if (judgeNormalized && judgeNormalized === normalized) {
+      setError("Judge must be a third player");
+      return;
+    }
+
     setLoading(true);
     try {
       const uid = await getUidByUsername(normalized);
@@ -103,7 +121,28 @@ export function ChallengeScreen({
         setError("You cannot challenge a blocked player. Unblock them first.");
         return;
       }
-      await onSend(uid, normalized, spotId);
+
+      let judgeUid: string | null = null;
+      let judgeUsername: string | null = null;
+      if (judgeNormalized) {
+        const resolvedJudgeUid = await getUidByUsername(judgeNormalized);
+        if (!resolvedJudgeUid) {
+          setError(`Judge @${judgeNormalized} doesn't exist yet. They need to sign up first.`);
+          return;
+        }
+        if (resolvedJudgeUid === uid) {
+          setError("Judge must be a third player");
+          return;
+        }
+        if (blockedUids?.has(resolvedJudgeUid)) {
+          setError("You cannot nominate a blocked player as judge.");
+          return;
+        }
+        judgeUid = resolvedJudgeUid;
+        judgeUsername = judgeNormalized;
+      }
+
+      await onSend(uid, normalized, { spotId, judgeUid, judgeUsername });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Could not start game");
     } finally {
@@ -167,6 +206,51 @@ export function ChallengeScreen({
             maxLength={20}
             autoFocus
           />
+
+          {/* Optional judge picker — collapsed by default. Games without a judge
+              run on the honor system with no disputes or "Call BS" flows. */}
+          <div className="mb-4">
+            {!judgePickerOpen ? (
+              <button
+                type="button"
+                onClick={() => setJudgePickerOpen(true)}
+                disabled={loading}
+                className="font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40"
+                data-testid="add-judge-toggle"
+              >
+                + Add a judge? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
+              </button>
+            ) : (
+              <div>
+                <Field
+                  label="Judge Username (optional)"
+                  value={judge}
+                  onChange={(v) => {
+                    if (!loading) setJudge(v.replace(/[^a-zA-Z0-9_]/g, ""));
+                  }}
+                  placeholder="their_handle"
+                  icon="@"
+                  maxLength={20}
+                />
+                <div className="flex items-center justify-between -mt-2 mb-2">
+                  <p className="font-body text-xs text-subtle">
+                    A third player who rules on disputes and &quot;Call BS&quot; claims.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setJudge("");
+                      setJudgePickerOpen(false);
+                    }}
+                    disabled={loading}
+                    className="font-body text-xs text-subtle hover:text-brand-red transition-colors disabled:opacity-40 ml-2 shrink-0"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 

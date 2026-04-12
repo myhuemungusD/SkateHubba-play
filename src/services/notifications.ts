@@ -18,7 +18,7 @@ import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 
-export type NotificationDocType = "your_turn" | "new_challenge" | "game_won" | "game_lost";
+export type NotificationDocType = "your_turn" | "new_challenge" | "game_won" | "game_lost" | "judge_invite";
 
 interface WriteNotificationParams {
   senderUid: string;

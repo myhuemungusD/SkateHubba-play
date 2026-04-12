@@ -80,6 +80,8 @@ export function newGameShell(
   opponentUid: string,
   opponentUsername: string,
   spotId: string | null = null,
+  judgeUid: string | null = null,
+  judgeUsername: string | null = null,
 ): GameDoc {
   return {
     id: gameId,
@@ -103,5 +105,9 @@ export function newGameShell(
     createdAt: null,
     updatedAt: null,
     spotId,
+    judgeId: judgeUid,
+    judgeUsername,
+    judgeStatus: judgeUid ? "pending" : null,
+    judgeReviewFor: null,
   };
 }

@@ -9,6 +9,10 @@ const mockSubmitMatchAttempt = vi.fn();
 const mockResolveDispute = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 const mockUploadVideo = vi.fn();
+const mockCallBS = vi.fn();
+const mockJudgeRuleSetTrick = vi.fn();
+const mockAcceptJudgeInvite = vi.fn();
+const mockDeclineJudgeInvite = vi.fn();
 
 vi.mock("../../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
@@ -16,6 +20,12 @@ vi.mock("../../services/games", () => ({
   submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
   resolveDispute: (...args: unknown[]) => mockResolveDispute(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
+  callBSOnSetTrick: (...args: unknown[]) => mockCallBS(...args),
+  judgeRuleSetTrick: (...args: unknown[]) => mockJudgeRuleSetTrick(...args),
+  acceptJudgeInvite: (...args: unknown[]) => mockAcceptJudgeInvite(...args),
+  declineJudgeInvite: (...args: unknown[]) => mockDeclineJudgeInvite(...args),
+  isJudgeActive: (game: { judgeId?: string | null; judgeStatus?: string | null }) =>
+    !!game.judgeId && game.judgeStatus === "accepted",
 }));
 
 vi.mock("../../services/storage", () => ({
@@ -654,69 +664,81 @@ describe("GamePlayScreen", () => {
     });
   });
 
-  // ── Dispute review (setter reviews matcher's "landed" claim) ──
+  // ── Dispute review (judge rules on matcher's "landed" claim) ──
+  // Disputes only exist in games with an active judge. The setter never
+  // self-judges. These tests pivot the acting profile to the judge.
 
-  it("shows dispute review UI when phase is disputable and user is setter", () => {
-    const game = makeGame({
+  const judgeProfile = { ...profile, uid: "u3", username: "judge" };
+  function makeJudgeGame(overrides: Record<string, unknown> = {}) {
+    return makeGame({
+      judgeId: "u3",
+      judgeUsername: "judge",
+      judgeStatus: "accepted",
+      ...overrides,
+    });
+  }
+
+  it("shows judge review UI when phase is disputable and user is the judge", () => {
+    const game = makeJudgeGame({
       phase: "disputable",
-      currentTurn: "u1", // setter reviews
+      currentTurn: "u3", // judge reviews
       currentSetter: "u1",
       currentTrickName: "Kickflip",
       currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
       matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
     });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
-    expect(screen.getByText(/REVIEW MATCH/)).toBeInTheDocument();
-    expect(screen.getByText(/claims they landed your Kickflip/)).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Accept or dispute the match result" })).toBeInTheDocument();
-    expect(screen.getByText("Accept")).toBeInTheDocument();
-    expect(screen.getByText("Dispute")).toBeInTheDocument();
+    expect(screen.getByText(/JUDGE'S CALL/)).toBeInTheDocument();
+    expect(screen.getByText(/claims they landed/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Rule landed or missed" })).toBeInTheDocument();
+    expect(screen.getByText("Landed")).toBeInTheDocument();
+    expect(screen.getByText("Missed")).toBeInTheDocument();
   });
 
   it("shows setter's trick video and matcher's attempt video in dispute review", () => {
-    const game = makeGame({
+    const game = makeJudgeGame({
       phase: "disputable",
-      currentTurn: "u1",
+      currentTurn: "u3",
       currentSetter: "u1",
       currentTrickName: "Kickflip",
       currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
       matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
     });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
-    expect(screen.getByLabelText(/Your Kickflip video/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/sk8r's Kickflip video/)).toBeInTheDocument();
     expect(screen.getByLabelText(/rival's match attempt video/)).toBeInTheDocument();
   });
 
-  it("calls resolveDispute(true) when setter clicks Accept", async () => {
+  it("calls resolveDispute(true) when judge clicks Landed", async () => {
     mockResolveDispute.mockResolvedValueOnce({ gameOver: false, winner: null });
-    const game = makeGame({
+    const game = makeJudgeGame({
       phase: "disputable",
-      currentTurn: "u1",
+      currentTurn: "u3",
       currentSetter: "u1",
       currentTrickName: "Kickflip",
     });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
-    await userEvent.click(screen.getByText("Accept"));
+    await userEvent.click(screen.getByText("Landed"));
 
     await waitFor(() => {
       expect(mockResolveDispute).toHaveBeenCalledWith("game1", true);
     });
   });
 
-  it("calls resolveDispute(false) when setter clicks Dispute", async () => {
+  it("calls resolveDispute(false) when judge clicks Missed", async () => {
     mockResolveDispute.mockResolvedValueOnce({ gameOver: false, winner: null });
-    const game = makeGame({
+    const game = makeJudgeGame({
       phase: "disputable",
-      currentTurn: "u1",
+      currentTurn: "u3",
       currentSetter: "u1",
       currentTrickName: "Kickflip",
     });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
-    await userEvent.click(screen.getByText("Dispute"));
+    await userEvent.click(screen.getByText("Missed"));
 
     await waitFor(() => {
       expect(mockResolveDispute).toHaveBeenCalledWith("game1", false);
@@ -725,15 +747,15 @@ describe("GamePlayScreen", () => {
 
   it("shows error when resolveDispute fails", async () => {
     mockResolveDispute.mockRejectedValueOnce(new Error("Network error"));
-    const game = makeGame({
+    const game = makeJudgeGame({
       phase: "disputable",
-      currentTurn: "u1",
+      currentTurn: "u3",
       currentSetter: "u1",
       currentTrickName: "Kickflip",
     });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
-    await userEvent.click(screen.getByText("Accept"));
+    await userEvent.click(screen.getByText("Landed"));
 
     await waitFor(() => {
       expect(screen.getByText("Network error")).toBeInTheDocument();
@@ -741,28 +763,30 @@ describe("GamePlayScreen", () => {
   });
 
   it("shows waiting screen when matcher is waiting during disputable phase", () => {
-    const game = makeGame({
+    const game = makeJudgeGame({
       phase: "disputable",
-      currentTurn: "u2", // setter is u2, matcher (u1) waits
+      currentTurn: "u3", // judge reviews, matcher (u1) waits
       currentSetter: "u2",
       currentTrickName: "Kickflip",
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
-    expect(screen.getByText(/reviewing your match attempt/)).toBeInTheDocument();
+    // Waiting-on label flips to the judge when the judge holds the turn.
+    expect(screen.getByText(/Judge is reviewing the match call/)).toBeInTheDocument();
+    expect(screen.getByText(/Waiting on @judge/)).toBeInTheDocument();
   });
 
   it("shows 'Resolving...' during dispute submission", async () => {
     mockResolveDispute.mockImplementation(() => new Promise(() => {}));
-    const game = makeGame({
+    const game = makeJudgeGame({
       phase: "disputable",
-      currentTurn: "u1",
+      currentTurn: "u3",
       currentSetter: "u1",
       currentTrickName: "Kickflip",
     });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
-    await userEvent.click(screen.getByText("Accept"));
+    await userEvent.click(screen.getByText("Landed"));
 
     await waitFor(() => {
       expect(screen.getByText("Resolving...")).toBeInTheDocument();
@@ -770,15 +794,15 @@ describe("GamePlayScreen", () => {
   });
 
   it("shows fallback text when no videos in dispute review", () => {
-    const game = makeGame({
+    const game = makeJudgeGame({
       phase: "disputable",
-      currentTurn: "u1",
+      currentTurn: "u3",
       currentSetter: "u1",
       currentTrickName: "Kickflip",
       currentTrickVideoUrl: null,
       matchVideoUrl: null,
     });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
     expect(screen.getByText(/No videos recorded/)).toBeInTheDocument();
   });

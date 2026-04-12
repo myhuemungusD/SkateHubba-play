@@ -20,6 +20,28 @@ service cloud.firestore {
       );
     }
 
+    // A judge is a non-player third user nominated at game creation who
+    // rules on disputes and "Call BS" claims. Judge fields may be null on
+    // honor-system games — always guard with 'judgeId' in-check first.
+    function isJudge(game) {
+      return isSignedIn()
+        && 'judgeId' in game
+        && game.judgeId != null
+        && request.auth.uid == game.judgeId;
+    }
+
+    // Game doc is readable by either player OR the nominated judge.
+    function isParticipant(game) {
+      return isPlayer(game) || isJudge(game);
+    }
+
+    // True when a judge is actively seated (accepted the invite). Honor-system
+    // rules apply until this is true — no dispute/BS transitions permitted.
+    function judgeActive(game) {
+      return 'judgeId' in game && game.judgeId != null
+        && 'judgeStatus' in game && game.judgeStatus == 'accepted';
+    }
+
     // ── Users ──
     // Users can read any profile (for opponent lookup)
     // Users can only write their own profile (created once)
@@ -111,8 +133,8 @@ service cloud.firestore {
 
     // ── Games ──
     match /games/{gameId} {
-      // Both players can read their game
-      allow read: if isSignedIn() && isPlayer(resource.data);
+      // Players AND the nominated judge can read the game document.
+      allow read: if isSignedIn() && isParticipant(resource.data);
 
       // Any signed-in user with a verified email can create a game (as player1).
       // Email verification is enforced server-side here so it can't be bypassed
@@ -148,6 +170,22 @@ service cloud.firestore {
           !('spotId' in request.resource.data)
           || (request.resource.data.spotId is string
               && request.resource.data.spotId.size() <= 64)
+        )
+        // Judge fields must be present with correct shape. judgeId can be
+        // null (honor system) or a non-player string UID. When judgeId is
+        // set, judgeStatus must start as 'pending'. When null, judgeStatus
+        // must also be null. This keeps invariants enforceable for updates.
+        && (
+          !('judgeId' in request.resource.data)
+          || request.resource.data.judgeId == null
+          || (request.resource.data.judgeId is string
+              && request.resource.data.judgeId != request.auth.uid
+              && request.resource.data.judgeId != request.resource.data.player2Uid)
+        )
+        && (
+          !('judgeStatus' in request.resource.data)
+          || (request.resource.data.judgeId == null && request.resource.data.judgeStatus == null)
+          || (request.resource.data.judgeId != null && request.resource.data.judgeStatus == 'pending')
         )
         // Rate limit: at most one game creation per 30 seconds per user.
         // Checks the user's lastGameCreatedAt field — if it doesn't exist
@@ -186,6 +224,18 @@ service cloud.firestore {
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
         )
+        // Judge identity is immutable after creation. judgeStatus may only
+        // change via dedicated accept/decline rules below.
+        && (
+          (!('judgeId' in resource.data) && !('judgeId' in request.resource.data))
+          || ('judgeId' in resource.data && 'judgeId' in request.resource.data
+              && request.resource.data.judgeId == resource.data.judgeId)
+        )
+        && (
+          (!('judgeStatus' in resource.data) && !('judgeStatus' in request.resource.data))
+          || ('judgeStatus' in resource.data && 'judgeStatus' in request.resource.data
+              && request.resource.data.judgeStatus == resource.data.judgeStatus)
+        )
         // currentTurn must always be one of the two players after the update
         && (
           request.resource.data.currentTurn == resource.data.player1Uid ||
@@ -213,10 +263,16 @@ service cloud.firestore {
           || request.resource.data.turnHistory == resource.data.turnHistory
         );
 
-      // ── Match resolution (matcher self-judges: missed → immediate, landed → disputable) ──
-      // When the matcher claims MISSED, letters change and the turn resolves
-      // immediately. When the matcher claims LANDED, the game enters the
-      // 'disputable' phase so the setter can accept or dispute within 24 h.
+      // ── Match resolution (matcher submits an attempt) ──
+      // Honor system (no active judge):
+      //   • missed  → matcher +1 letter, phase=setting (or complete)
+      //   • landed  → matcher's call stands; roles swap, phase=setting
+      // With active judge:
+      //   • missed  → matcher +1 letter (matcher admitting doesn't dispute)
+      //   • landed  → phase=disputable, currentTurn routes to judge
+      //
+      // Call BS (judge only): matcher transitions matching → setReview with
+      // currentTurn = judgeId. Split out as its own branch for clarity.
       allow update: if isSignedIn()
         && isPlayer(resource.data)
         && resource.data.status == 'active'
@@ -239,16 +295,22 @@ service cloud.firestore {
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
         )
-        // currentTurn must be one of the two players
+        // Judge identity + status immutable during match resolution
         && (
-          request.resource.data.currentTurn == resource.data.player1Uid ||
-          request.resource.data.currentTurn == resource.data.player2Uid
+          (!('judgeId' in resource.data) && !('judgeId' in request.resource.data))
+          || ('judgeId' in resource.data && 'judgeId' in request.resource.data
+              && request.resource.data.judgeId == resource.data.judgeId)
+        )
+        && (
+          (!('judgeStatus' in resource.data) && !('judgeStatus' in request.resource.data))
+          || ('judgeStatus' in resource.data && 'judgeStatus' in request.resource.data
+              && request.resource.data.judgeStatus == resource.data.judgeStatus)
         )
         // turnDeadline must be a timestamp
         && request.resource.data.turnDeadline is timestamp
-        // Letters: at most one player gains exactly one letter (missed) or none change (landed/disputable)
+        // Letters: at most one player gains exactly one letter (missed) or none change (landed)
         && (
-          // Landed / disputable — no letter change
+          // No letter change (landed path, both honor + judge)
           (request.resource.data.p1Letters == resource.data.p1Letters
            && request.resource.data.p2Letters == resource.data.p2Letters)
           // Missed — exactly one player gets +1
@@ -257,28 +319,59 @@ service cloud.firestore {
           || (request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters + 1)
         )
-        // Valid outcomes: continue (setting), end (complete), or enter disputable
+        // Valid outcomes depend on whether a judge is active.
         && (
+          // Missed path — immediate resolution, both branches. currentTurn
+          // stays on a player (same setter). Game may complete here.
           (request.resource.data.status == 'active'
            && request.resource.data.phase == 'setting'
-           && request.resource.data.winner == null)
+           && request.resource.data.winner == null
+           && (
+             request.resource.data.currentTurn == resource.data.player1Uid
+             || request.resource.data.currentTurn == resource.data.player2Uid
+           ))
           || (request.resource.data.status == 'complete'
               && request.resource.data.winner != null)
-          || (request.resource.data.status == 'active'
+          // Honor system + landed — roles swap immediately, no judge routing.
+          // Letters must stay unchanged; currentTurn becomes the matcher
+          // (opponent of resource.data.currentSetter). Only allowed when the
+          // judge is NOT active.
+          || (!judgeActive(resource.data)
+              && request.resource.data.status == 'active'
+              && request.resource.data.phase == 'setting'
+              && request.resource.data.winner == null
+              && request.resource.data.p1Letters == resource.data.p1Letters
+              && request.resource.data.p2Letters == resource.data.p2Letters
+              && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter))
+          // Judge-active + landed — enter disputable, route currentTurn to judge.
+          || (judgeActive(resource.data)
+              && request.resource.data.status == 'active'
               && request.resource.data.phase == 'disputable'
               && request.resource.data.winner == null
               && request.resource.data.p1Letters == resource.data.p1Letters
-              && request.resource.data.p2Letters == resource.data.p2Letters)
+              && request.resource.data.p2Letters == resource.data.p2Letters
+              && request.resource.data.currentTurn == resource.data.judgeId)
+          // Judge-active + Call BS — enter setReview, route currentTurn to judge.
+          // Letters unchanged; matchVideoUrl unchanged (no attempt recorded).
+          || (judgeActive(resource.data)
+              && request.resource.data.status == 'active'
+              && request.resource.data.phase == 'setReview'
+              && request.resource.data.winner == null
+              && request.resource.data.p1Letters == resource.data.p1Letters
+              && request.resource.data.p2Letters == resource.data.p2Letters
+              && request.resource.data.currentTurn == resource.data.judgeId)
         );
 
-      // ── Dispute resolution (setter accepts or disputes the matcher's "landed" call) ──
-      // The setter reviews both videos and either accepts (no letter change,
-      // roles swap) or disputes (matcher gets a letter, setter keeps setting).
+      // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
+      // Judge-only. The setter never self-judges — disputes only exist in
+      // games with an active judge. Judge accepts (no letters, roles swap)
+      // or overrules (matcher +1 letter, setter keeps setting).
       allow update: if isSignedIn()
-        && isPlayer(resource.data)
+        && isJudge(resource.data)
         && resource.data.status == 'active'
         && resource.data.phase == 'disputable'
         && request.auth.uid == resource.data.currentTurn
+        && judgeActive(resource.data)
         // Rate limit
         && (
           !('updatedAt' in resource.data)
@@ -296,7 +389,10 @@ service cloud.firestore {
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
         )
-        // currentTurn must be one of the two players
+        // Judge identity and status immutable during ruling
+        && request.resource.data.judgeId == resource.data.judgeId
+        && request.resource.data.judgeStatus == resource.data.judgeStatus
+        // currentTurn must be one of the two players after the ruling
         && (
           request.resource.data.currentTurn == resource.data.player1Uid ||
           request.resource.data.currentTurn == resource.data.player2Uid
@@ -321,13 +417,86 @@ service cloud.firestore {
               && request.resource.data.winner != null)
         );
 
+      // ── Call BS resolution (judge rules on set trick in setReview phase) ──
+      // Judge-only. Clean → back to matching (matcher must attempt).
+      // Sketchy → back to setting (same setter re-sets, trick fields cleared).
+      // No letter changes, no game completion.
+      allow update: if isSignedIn()
+        && isJudge(resource.data)
+        && resource.data.status == 'active'
+        && resource.data.phase == 'setReview'
+        && request.auth.uid == resource.data.currentTurn
+        && judgeActive(resource.data)
+        && (
+          !('updatedAt' in resource.data)
+          || resource.data.updatedAt == null
+          || request.time > resource.data.updatedAt + duration.value(2, 's')
+        )
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        && request.resource.data.judgeId == resource.data.judgeId
+        && request.resource.data.judgeStatus == resource.data.judgeStatus
+        && request.resource.data.status == 'active'
+        && request.resource.data.winner == null
+        && request.resource.data.turnDeadline is timestamp
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        && request.resource.data.currentSetter == resource.data.currentSetter
+        // Clean: back to matching with matcher's turn.
+        // Sketchy: back to setting with same setter re-setting.
+        && (
+          (request.resource.data.phase == 'matching'
+           && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter))
+          || (request.resource.data.phase == 'setting'
+              && request.resource.data.currentTurn == resource.data.currentSetter
+              && request.resource.data.currentTrickName == null
+              && request.resource.data.currentTrickVideoUrl == null)
+        );
+
+      // ── Judge invite accept / decline ──
+      // Only the nominated judge can flip their status from pending. No
+      // other field may change on the same write.
+      allow update: if isSignedIn()
+        && isJudge(resource.data)
+        && resource.data.status == 'active'
+        && 'judgeStatus' in resource.data
+        && resource.data.judgeStatus == 'pending'
+        && request.resource.data.judgeId == resource.data.judgeId
+        && (request.resource.data.judgeStatus == 'accepted'
+            || request.resource.data.judgeStatus == 'declined')
+        // Everything else must stay identical.
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.phase == resource.data.phase
+        && request.resource.data.currentTurn == resource.data.currentTurn
+        && request.resource.data.currentSetter == resource.data.currentSetter
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        && request.resource.data.winner == resource.data.winner
+        && request.resource.data.turnNumber == resource.data.turnNumber
+        && (
+          (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
+          || request.resource.data.turnHistory == resource.data.turnHistory
+        );
+
       // Either player can forfeit the current-turn player's expired turn
       // Winner must be the opponent of the player whose turn it is
       allow update: if isSignedIn()
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.resource.data.status == 'forfeit'
-        // Only forfeit from setting or matching (not disputable — that auto-accepts)
+        // Only forfeit from setting or matching (disputable auto-accepts,
+        // setReview auto-clears to matching — neither is a forfeit path).
         && (resource.data.phase == 'setting' || resource.data.phase == 'matching')
         // Turn deadline must have actually expired (prevents premature forfeits)
         && request.time > resource.data.turnDeadline
@@ -353,11 +522,11 @@ service cloud.firestore {
         );
 
       // ── Expired dispute auto-accept ──
-      // When the setter's review window expires (24 h), either player can
-      // trigger auto-accept: matcher's "landed" call stands, roles swap,
-      // no letters change, game continues.
+      // When the judge's review window expires (24 h), any participant
+      // (player or judge) can trigger auto-accept: matcher's "landed" call
+      // stands, roles swap, no letters change, game continues.
       allow update: if isSignedIn()
-        && isPlayer(resource.data)
+        && isParticipant(resource.data)
         && resource.data.status == 'active'
         && resource.data.phase == 'disputable'
         && request.time > resource.data.turnDeadline
@@ -369,16 +538,46 @@ service cloud.firestore {
         && request.resource.data.player2Uid == resource.data.player2Uid
         && request.resource.data.player1Username == resource.data.player1Username
         && request.resource.data.player2Username == resource.data.player2Username
-        // spotId immutable
+        // spotId + judge immutable
         && (
           (!('spotId' in resource.data) && !('spotId' in request.resource.data))
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
         )
+        && request.resource.data.judgeId == resource.data.judgeId
+        && request.resource.data.judgeStatus == resource.data.judgeStatus
         // Must transition back to setting (active, no winner)
         && request.resource.data.status == 'active'
         && request.resource.data.phase == 'setting'
         && request.resource.data.winner == null
+        && request.resource.data.turnDeadline is timestamp;
+
+      // ── Expired setReview auto-clear ──
+      // When the judge doesn't rule on a "Call BS" within 24h, the set
+      // stands (benefit of the doubt) and matcher is prompted to attempt.
+      allow update: if isSignedIn()
+        && isParticipant(resource.data)
+        && resource.data.status == 'active'
+        && resource.data.phase == 'setReview'
+        && request.time > resource.data.turnDeadline
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        && request.resource.data.judgeId == resource.data.judgeId
+        && request.resource.data.judgeStatus == resource.data.judgeStatus
+        && request.resource.data.status == 'active'
+        && request.resource.data.phase == 'matching'
+        && request.resource.data.winner == null
+        && request.resource.data.currentSetter == resource.data.currentSetter
+        && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
         && request.resource.data.turnDeadline is timestamp;
 
       // Players may delete their own non-active games (account deletion flow)
@@ -539,19 +738,27 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.senderUid == request.auth.uid
         && request.resource.data.recipientUid is string
-        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost']
+        && request.resource.data.recipientUid != request.auth.uid
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite']
         && request.resource.data.title is string
         && request.resource.data.body is string
         && request.resource.data.gameId is string
         && request.resource.data.read == false
         && request.resource.data.createdAt == request.time
-        // Sender must be a player in the referenced game
-        && isPlayer(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
-        // Recipient must be the opponent in that game
-        && request.resource.data.recipientUid == opponentUid(
-             get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data,
-             request.auth.uid
-           )
+        // Sender must be a participant (player OR judge) of the referenced game.
+        && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
+        // Recipient must be a participant (player OR judge) of the same game.
+        // Allows: player→player (existing), player→judge (judge_invite),
+        // judge→player (your_turn after ruling).
+        && (
+          request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
+          || request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+          || (
+            'judgeId' in get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data
+            && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.judgeId != null
+            && request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.judgeId
+          )
+        )
         // Rate limit: at most 1 notification per game per action type per 5 seconds
         && (
           !exists(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type))
@@ -582,7 +789,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.senderUid
         && limitId == (request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)
-        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost'];
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite'];
 
       allow update: if isSignedIn()
         && request.auth.uid == resource.data.senderUid

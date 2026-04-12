@@ -169,6 +169,9 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
   const [fallbackDeadline] = useState(() => Date.now() + 86400000);
   const deadline = game.turnDeadline?.toMillis?.() || fallbackDeadline;
   const nudgeAvailable = nudgeStatus === "idle";
+  // Judge-driven phases surface a different "who are we waiting on" copy.
+  const isJudgeTurn = game.phase === "disputable" || game.phase === "setReview";
+  const waitingOnLabel = isJudgeTurn && game.judgeUsername ? `@${game.judgeUsername}` : `@${opponentName}`;
 
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
@@ -187,13 +190,29 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
         <div className="flex justify-center mb-4">
           <HourglassIcon size={48} className="text-subtle" />
         </div>
-        <h2 className="font-display text-fluid-2xl text-white mb-2">Waiting on @{opponentName}</h2>
+        <h2 className="font-display text-fluid-2xl text-white mb-2">Waiting on {waitingOnLabel}</h2>
+        {game.judgeUsername && game.judgeStatus === "pending" && (
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle">
+            <span className="font-display tracking-wider">JUDGE PENDING</span>
+            <span className="font-body">@{game.judgeUsername} hasn&apos;t responded — honor system applies</span>
+          </div>
+        )}
+        {game.judgeUsername && game.judgeStatus === "declined" && (
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle">
+            <span className="font-display tracking-wider">NO JUDGE</span>
+            <span className="font-body">Honor system — no disputes</span>
+          </div>
+        )}
         <p className="font-body text-sm text-muted mb-2">
           {game.phase === "disputable"
-            ? "They're reviewing your match attempt."
-            : game.phase === "setting"
-              ? "They're setting a trick for you to match."
-              : "They're attempting to match your trick."}
+            ? game.judgeUsername
+              ? `Judge is reviewing the match call.`
+              : "They're reviewing your match attempt."
+            : game.phase === "setReview"
+              ? `Judge is ruling clean or sketchy on the set.`
+              : game.phase === "setting"
+                ? "They're setting a trick for you to match."
+                : "They're attempting to match your trick."}
         </p>
         <Timer deadline={deadline} />
 
