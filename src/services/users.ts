@@ -4,6 +4,8 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
+  updateDoc,
+  increment,
   query,
   where,
   orderBy,
@@ -194,26 +196,25 @@ export async function getUidByUsername(username: string): Promise<string | null>
  * Uses lastStatsGameId as an idempotency key to prevent double-counting
  * when subscriptions fire multiple times for the same game.
  *
+ * Uses FieldValue.increment() instead of a read-then-write transaction
+ * to avoid contention when the client and Cloud Function (or multiple
+ * games) update the same user doc concurrently.
+ *
  * Each player's client calls this for their OWN profile only.
  */
 export async function updatePlayerStats(uid: string, gameId: string, won: boolean): Promise<void> {
   const db = requireDb();
   const userRef = doc(db, "users", uid);
 
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(userRef);
-    if (!snap.exists()) return; // profile deleted
+  const snap = await getDoc(userRef);
+  if (!snap.exists()) return; // profile deleted
 
-    const data = snap.data();
-    // Idempotency: skip if this game already counted
-    if (data.lastStatsGameId === gameId) return;
+  // Idempotency: skip if this game already counted
+  if (snap.data().lastStatsGameId === gameId) return;
 
-    const current = typeof data[won ? "wins" : "losses"] === "number" ? (data[won ? "wins" : "losses"] as number) : 0;
-
-    tx.update(userRef, {
-      [won ? "wins" : "losses"]: current + 1,
-      lastStatsGameId: gameId,
-    });
+  await updateDoc(userRef, {
+    [won ? "wins" : "losses"]: increment(1),
+    lastStatsGameId: gameId,
   });
 }
 
