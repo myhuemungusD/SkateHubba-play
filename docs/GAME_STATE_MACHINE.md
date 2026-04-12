@@ -9,13 +9,13 @@ in `src/services/games.ts`.
 
 ## States
 
-| `status`   | `phase`      | Description                                     |
-| ---------- | ------------ | ----------------------------------------------- |
-| `active`   | `setting`    | Current setter must name & record a trick       |
-| `active`   | `matching`   | Matcher must attempt the trick                  |
-| `active`   | `confirming` | Setter reviews attempt & decides landed/missed  |
-| `complete` | —            | A player reached 5 letters; winner is recorded  |
-| `forfeit`  | —            | Turn timer expired; opponent wins automatically |
+| `status`   | `phase`      | Description                                           |
+| ---------- | ------------ | ----------------------------------------------------- |
+| `active`   | `setting`    | Current setter must name & record a trick             |
+| `active`   | `matching`   | Matcher must attempt the trick                        |
+| `active`   | `disputable` | Setter reviews matcher's "landed" claim (24 h window) |
+| `complete` | —            | A player reached 5 letters; winner is recorded        |
+| `forfeit`  | —            | Turn timer expired; opponent wins automatically       |
 
 ---
 
@@ -26,53 +26,62 @@ in `src/services/games.ts`.
                            │
                            ▼
                   ┌────────────────┐
-                  │ active:setting │◄──────────────────────┐
-                  └───────┬────────┘                       │
-                          │ setTrick()                     │
-                          ▼                                │
-                 ┌─────────────────┐                       │
-                 │ active:matching │                       │
-                 └───────┬─────────┘                       │
-                         │ submitMatchAttempt()            │
-                         ▼                                 │
-               ┌───────────────────┐                       │
-               │ active:confirming │                       │
-               └───────┬───────────┘                       │
-                       │                                   │
-           submitConfirmation()                            │
-           (setter decides)                                │
-              ┌────────┴──────────┐                        │
-              │                   │                        │
-         landed=true         landed=false                  │
-              │                   │                        │
-              │            letters++ for matcher           │
-              │                   │                        │
-              │            letters >= 5?                    │
-              │            ┌──────┴──────┐                 │
-              │            │             │                 │
-              │         YES             NO                 │
-              │            │             │                 │
-              │            ▼             │                 │
-              │      ┌──────────┐        │                 │
-              │      │ complete │        │                 │
-              │      └──────────┘        │                 │
-              │                          │                 │
-              │   next setter = current  │                 │
-              │   setter (same player)   │                 │
-              │            │             │                 │
-              │            └─────────────┘                 │
-              │                                            │
-              │   next setter = matcher (roles swap)       │
-              └────────────────────────────────────────────┘
+                  │ active:setting │◄──────────────────────────────┐
+                  └───────┬────────┘                               │
+                          │ setTrick()                             │
+                          ▼                                        │
+                 ┌─────────────────┐                               │
+                 │ active:matching │                               │
+                 └───────┬─────────┘                               │
+                         │ submitMatchAttempt()                    │
+              ┌──────────┴──────────┐                              │
+              │                     │                              │
+       landed=false           landed=true                          │
+              │                     │                              │
+   letters++ for matcher            ▼                              │
+              │          ┌──────────────────────┐                  │
+       letters >= 5?     │ active:disputable    │                  │
+       ┌──────┴──────┐   └───────┬──────────────┘                  │
+       │             │           │                                 │
+    YES             NO    setter reviews (24 h)                    │
+       │             │    resolveDispute()                         │
+       ▼             │    ┌──────┴──────────┐                      │
+ ┌──────────┐        │    │                 │                      │
+ │ complete │        │  accept           dispute                   │
+ └──────────┘        │  (or auto-accept  (setter overrules)        │
+                     │   after 24 h)          │                    │
+                     │    │          letters++ for matcher          │
+                     │    │                   │                    │
+                     │    │           letters >= 5?                │
+                     │    │           ┌───────┴───────┐            │
+                     │    │        YES               NO            │
+                     │    │           │               │            │
+                     │    │           ▼        setter keeps        │
+                     │    │     ┌──────────┐   setting             │
+                     │    │     │ complete │        │              │
+                     │    │     └──────────┘        │              │
+                     │    │                         │              │
+                     │    │  roles swap             │              │
+                     │    │  (matcher → setter)     │              │
+                     │    └─────────────────────────┘──────────────┘
+                     │                                             │
+                     │   setter keeps setting                      │
+                     └─────────────────────────────────────────────┘
 
 
-  Any active state + turnDeadline expired
+  setting/matching + turnDeadline expired
               │
               │ forfeitExpiredTurn()
               ▼
         ┌──────────┐
         │ forfeit  │
         └──────────┘
+
+  disputable + turnDeadline expired
+              │
+              │ forfeitExpiredTurn() → auto-accept
+              ▼
+        back to active:setting (matcher's call stands)
 ```
 
 ---
@@ -105,44 +114,57 @@ in `src/services/games.ts`.
   - `turnDeadline` → now + 24 h
 - **Result state:** `active:matching`
 
-### `submitMatchAttempt(gameId, matchVideoUrl)`
+### `submitMatchAttempt(gameId, matchVideoUrl, landed)`
 
 **File:** `src/services/games.ts` — `submitMatchAttempt()`
 
 - **Pre-conditions (validated inside transaction):**
   - `status === "active"`
   - `phase === "matching"`
-- **Writes:**
-  - `phase: "confirming"`
-  - `matchVideoUrl` set
-  - `currentTurn` → setter (setter reviews the attempt)
-  - `turnDeadline` → now + 24 h
-- **Result state:** `active:confirming`
 
-### `submitConfirmation(gameId, playerUid, landed)`
+#### Path A — Matcher claims missed (`landed === false`)
 
-**File:** `src/services/games.ts` — `submitConfirmation()`
+- Matcher gains 1 letter (`p1Letters++` or `p2Letters++`)
+- Turn resolves immediately: `phase: "setting"`, `turnNumber++`
+- Setter keeps setting (same `currentSetter`)
+- If letters === 5: `status: "complete"`, `winner` set
+- Turn recorded in `turnHistory`
+- **Result state:** `active:setting` or `complete`
+
+#### Path B — Matcher claims landed (`landed === true`)
+
+- No letters awarded, no turn history recorded yet
+- `phase: "disputable"`, `matchVideoUrl` set
+- `currentTurn` → setter (setter reviews the claim)
+- `turnDeadline` → now + 24 h
+- **Result state:** `active:disputable`
+
+### `resolveDispute(gameId, accept)`
+
+**File:** `src/services/games.ts` — `resolveDispute()`
 
 - **Pre-conditions (validated inside transaction):**
   - `status === "active"`
-  - `phase === "confirming"`
-  - `playerUid === currentSetter` (only the setter can decide)
+  - `phase === "disputable"`
+  - Caller is `currentTurn` (the setter reviewing the claim)
 
-#### Path A — Landed (`landed === true`)
+#### Path A — Accept (`accept === true`)
 
 - No letters awarded
-- `currentSetter` → matcher (roles swap)
+- `currentSetter` → matcher (roles swap — they landed, so they set next)
 - `phase: "setting"`, `turnNumber++`
+- Turn recorded in `turnHistory` with `landed: true`
 - **Result state:** `active:setting`
 
-#### Path B — Missed, no game over (`landed === false`, letters < 5)
+#### Path B — Dispute, no game over (`accept === false`, letters < 5)
 
-- Matcher gains 1 letter (`p1Letters++` or `p2Letters++`)
+- Matcher gains 1 letter (setter overrules the "landed" claim)
 - `currentSetter` stays the same (setter keeps setting)
 - `phase: "setting"`, `turnNumber++`
+- Turn recorded in `turnHistory` with `landed: false`
 - **Result state:** `active:setting`
 
-#### Path C — Missed, game over (`landed === false`, letters === 5)
+#### Path C — Dispute, game over (`accept === false`, letters === 5)
 
 - Matcher gains the 5th letter
 - `status: "complete"`, `winner` = opponent of the player with 5 letters
@@ -152,14 +174,20 @@ in `src/services/games.ts`.
 
 **File:** `src/services/games.ts` — `forfeitExpiredTurn()`
 
-- **Pre-conditions (validated inside transaction):**
-  - `status === "active"`
-  - `turnDeadline.toMillis() < Date.now()`
-- **Writes:**
-  - `status: "forfeit"`
-  - `winner` = opponent of `currentTurn` player
+#### Setting / matching phase expired
+
+- **Pre-conditions:** `status === "active"`, `phase` is `"setting"` or `"matching"`, deadline passed
+- **Writes:** `status: "forfeit"`, `winner` = opponent of `currentTurn`
 - **Result state:** `forfeit`
-- **Trigger:** Called on game-screen mount when deadline has passed
+
+#### Disputable phase expired (auto-accept)
+
+- **Pre-conditions:** `status === "active"`, `phase === "disputable"`, deadline passed
+- **Writes:** matcher's "landed" call stands (no letters, roles swap), `phase: "setting"`, `turnNumber++`
+- Turn recorded in `turnHistory` with `landed: true`
+- **Result state:** `active:setting`
+
+**Trigger:** Called on game-screen mount when deadline has passed
 
 ---
 
@@ -205,7 +233,9 @@ These are always true for a valid game document:
 ## Turn Deadline
 
 - Duration: 24 hours (`TURN_DURATION_MS`)
-- Reset on every phase transition (setTrick / submitMatchAttempt / submitConfirmation)
+- Reset on every phase transition (setTrick / submitMatchAttempt / resolveDispute)
 - Enforced client-side: `forfeitExpiredTurn()` is called when any player
   opens a game whose deadline has passed
-- Firestore security rules prevent fraudulent forfeit claims
+- For setting/matching: expired deadline → forfeit (opponent wins)
+- For disputable: expired deadline → auto-accept (matcher's call stands, game continues)
+- Firestore security rules prevent fraudulent forfeit and auto-accept claims

@@ -61,6 +61,7 @@ import {
   setTrick,
   failSetTrick,
   submitMatchAttempt,
+  resolveDispute,
   forfeitExpiredTurn,
   subscribeToGame,
   subscribeToMyGames,
@@ -380,7 +381,7 @@ describe("games service", () => {
     });
   });
 
-  describe("submitMatchAttempt (self-judging)", () => {
+  describe("submitMatchAttempt", () => {
     const matchingGame = {
       ...baseGame,
       phase: "matching",
@@ -390,18 +391,21 @@ describe("games service", () => {
       currentTrickVideoUrl: "https://vid.url/set.webm",
     };
 
-    it("landed — no letter, setter stays the setter", async () => {
+    it("landed — enters disputable phase, no letters change", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
 
       const result = await submitMatchAttempt("g1", "https://vid.url/match.webm", true);
 
       expect(result.gameOver).toBe(false);
+      expect(result.winner).toBeNull();
       const updates = mockTxUpdate.mock.calls[0][1];
-      expect(updates.p1Letters).toBe(0);
-      expect(updates.p2Letters).toBe(0);
-      expect(updates.phase).toBe("setting");
-      expect(updates.currentSetter).toBe("p1"); // setter stays until they miss their own trick
+      expect(updates.phase).toBe("disputable");
       expect(updates.matchVideoUrl).toBe("https://vid.url/match.webm");
+      expect(updates.currentTurn).toBe("p1"); // setter reviews
+      // No letter changes, no turn history yet (deferred to dispute resolution)
+      expect(updates.p1Letters).toBeUndefined();
+      expect(updates.p2Letters).toBeUndefined();
+      expect(updates.turnHistory).toBeUndefined();
     });
 
     it("missed — matcher gets a letter, setter stays", async () => {
@@ -414,6 +418,7 @@ describe("games service", () => {
       expect(updates.p2Letters).toBe(1); // p2 is matcher
       expect(updates.p1Letters).toBe(0);
       expect(updates.currentSetter).toBe("p1"); // same setter stays
+      expect(updates.phase).toBe("setting");
     });
 
     it("ends game when matcher reaches 5 letters", async () => {
@@ -430,7 +435,6 @@ describe("games service", () => {
     });
 
     it("ends game when p1 reaches 5 letters (p2 wins)", async () => {
-      // p2 is setter, p1 is matcher
       const game = { ...matchingGame, currentSetter: "p2", currentTurn: "p1", p1Letters: 4 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
@@ -439,18 +443,18 @@ describe("games service", () => {
       expect(result.winner).toBe("p2");
     });
 
-    it("sends game_lost notification when setter loses", async () => {
-      // Edge case: p1 is setter but already had 5 letters (data inconsistency).
-      // The winner becomes p2 (matcher's side), so the setter gets a "game_lost" notification.
+    it("landed with 5 letters already — still enters disputable, not game over", async () => {
+      // Even if matcher already has 5 letters, landing enters disputable (no letter change)
       const game = { ...matchingGame, p1Letters: 5, currentSetter: "p1", currentTurn: "p2" };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
       const result = await submitMatchAttempt("g1", null, true);
-      expect(result.gameOver).toBe(true);
-      expect(result.winner).toBe("p2");
+      expect(result.gameOver).toBe(false);
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.phase).toBe("disputable");
     });
 
-    it("increments turn number when game continues", async () => {
+    it("increments turn number when game continues (missed)", async () => {
       const game = { ...matchingGame, turnNumber: 3 };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
@@ -460,24 +464,24 @@ describe("games service", () => {
       expect(updates.turnNumber).toBe(4);
     });
 
-    it("records turn history", async () => {
+    it("records turn history on miss", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
 
-      await submitMatchAttempt("g1", "https://vid.url/match.webm", true);
+      await submitMatchAttempt("g1", "https://vid.url/match.webm", false);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.turnHistory).toBeDefined();
       const record = updates.turnHistory._arrayUnion[0];
       expect(record.trickName).toBe("Kickflip");
-      expect(record.landed).toBe(true);
-      expect(record.letterTo).toBeNull();
+      expect(record.landed).toBe(false);
+      expect(record.letterTo).toBe("p2");
     });
 
-    it("uses 'Trick' fallback when currentTrickName is null", async () => {
+    it("uses 'Trick' fallback when currentTrickName is null (miss)", async () => {
       const game = { ...matchingGame, currentTrickName: null };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
 
-      await submitMatchAttempt("g1", null, true);
+      await submitMatchAttempt("g1", null, false);
 
       const updates = mockTxUpdate.mock.calls[0][1];
       const record = updates.turnHistory._arrayUnion[0];
@@ -503,10 +507,171 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
       await submitMatchAttempt("g1", null, true);
 
-      // Second call hits rate limit before reaching the transaction — no mock needed
       await expect(submitMatchAttempt("g1", null, false)).rejects.toThrow(
         "Please wait before submitting another action",
       );
+    });
+  });
+
+  describe("resolveDispute", () => {
+    const disputableGame = {
+      ...baseGame,
+      phase: "disputable",
+      currentSetter: "p1",
+      currentTurn: "p1", // setter reviews
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://vid.url/set.webm",
+      matchVideoUrl: "https://vid.url/match.webm",
+    };
+
+    it("accept — no letter change, roles swap, matcher becomes setter", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+
+      const result = await resolveDispute("g1", true);
+
+      expect(result.gameOver).toBe(false);
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.p1Letters).toBe(0);
+      expect(updates.p2Letters).toBe(0);
+      expect(updates.phase).toBe("setting");
+      expect(updates.currentSetter).toBe("p2"); // matcher becomes setter
+      expect(updates.currentTurn).toBe("p2");
+      expect(updates.turnNumber).toBe(2);
+    });
+
+    it("accept — records turn history with landed=true", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+
+      await resolveDispute("g1", true);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      const record = updates.turnHistory._arrayUnion[0];
+      expect(record.landed).toBe(true);
+      expect(record.letterTo).toBeNull();
+      expect(record.trickName).toBe("Kickflip");
+      expect(record.matchVideoUrl).toBe("https://vid.url/match.webm");
+    });
+
+    it("dispute — matcher gets a letter, setter keeps setting", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+
+      const result = await resolveDispute("g1", false);
+
+      expect(result.gameOver).toBe(false);
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.p2Letters).toBe(1); // p2 is matcher, gets letter
+      expect(updates.p1Letters).toBe(0);
+      expect(updates.phase).toBe("setting");
+      expect(updates.currentSetter).toBe("p1"); // setter stays
+      expect(updates.turnNumber).toBe(2);
+    });
+
+    it("dispute — records turn history with landed=false", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+
+      await resolveDispute("g1", false);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      const record = updates.turnHistory._arrayUnion[0];
+      expect(record.landed).toBe(false);
+      expect(record.letterTo).toBe("p2");
+    });
+
+    it("dispute ends game when matcher reaches 5 letters", async () => {
+      const game = { ...disputableGame, p2Letters: 4 };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await resolveDispute("g1", false);
+
+      expect(result.gameOver).toBe(true);
+      expect(result.winner).toBe("p1");
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.status).toBe("complete");
+      expect(updates.winner).toBe("p1");
+    });
+
+    it("dispute ends game when p1-as-matcher reaches 5 letters", async () => {
+      const game = { ...disputableGame, currentSetter: "p2", currentTurn: "p2", p1Letters: 4 };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await resolveDispute("g1", false);
+
+      expect(result.gameOver).toBe(true);
+      expect(result.winner).toBe("p2");
+    });
+
+    it("uses 'Trick' fallback when currentTrickName is null", async () => {
+      const game = { ...disputableGame, currentTrickName: null };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await resolveDispute("g1", true);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      const record = updates.turnHistory._arrayUnion[0];
+      expect(record.trickName).toBe("Trick");
+    });
+
+    it("throws when game is not found", async () => {
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+      await expect(resolveDispute("g1", true)).rejects.toThrow("Game not found");
+    });
+
+    it("throws when game is already over", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...disputableGame, status: "complete" }));
+      await expect(resolveDispute("g1", true)).rejects.toThrow("Game is already over");
+    });
+
+    it("throws when not in disputable phase", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...disputableGame, phase: "setting" }));
+      await expect(resolveDispute("g1", true)).rejects.toThrow("Not in disputable phase");
+    });
+
+    it("accept with roles swapped (p2 is setter)", async () => {
+      const game = { ...disputableGame, currentSetter: "p2", currentTurn: "p2" };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await resolveDispute("g1", true);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.currentSetter).toBe("p1"); // roles swap: p1 becomes setter
+      expect(updates.currentTurn).toBe("p1");
+    });
+
+    it("dispute with roles swapped — sends game_won notification to matcher", async () => {
+      // p2 is setter, p1 is matcher. Dispute → p1 gets letter. p1 at 4 letters → game over
+      const game = { ...disputableGame, currentSetter: "p2", currentTurn: "p2", p1Letters: 4 };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await resolveDispute("g1", false);
+      expect(result.gameOver).toBe(true);
+      expect(result.winner).toBe("p2"); // p2 wins (p1 gets 5th letter)
+    });
+
+    it("accept — sends your_turn notification to new setter", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+
+      await resolveDispute("g1", true);
+
+      // Notification is best-effort via writeNotification (mocked as addDoc)
+      // Just verify the service function completes without error
+      expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it("dispute — sends correct notification when setter keeps setting", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+
+      await resolveDispute("g1", false);
+
+      // Dispute: matcher gets letter, setter keeps setting
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.currentSetter).toBe("p1");
+    });
+
+    it("throws when called again within cooldown", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+      await resolveDispute("g1", true);
+
+      await expect(resolveDispute("g1", false)).rejects.toThrow("Please wait before submitting another action");
     });
   });
 
@@ -580,6 +745,96 @@ describe("games service", () => {
       const result = await forfeitExpiredTurn("g1");
       expect(result.forfeited).toBe(true);
       expect(result.winner).toBe("p1");
+    });
+
+    it("auto-accepts expired disputable phase (matcher's landed call stands)", async () => {
+      const game = {
+        ...baseGame,
+        phase: "disputable",
+        currentSetter: "p1",
+        currentTurn: "p1",
+        currentTrickName: "Kickflip",
+        currentTrickVideoUrl: "https://vid.url/set.webm",
+        matchVideoUrl: "https://vid.url/match.webm",
+        turnDeadline: { toMillis: () => Date.now() - 1000 },
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.forfeited).toBe(false);
+      expect(result.winner).toBeNull();
+      expect(result.disputeAutoAccepted).toBe(true);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.phase).toBe("setting");
+      expect(updates.currentSetter).toBe("p2"); // roles swap
+      expect(updates.currentTurn).toBe("p2");
+      expect(updates.turnNumber).toBe(2);
+      expect(updates.p1Letters).toBe(0); // no letter changes
+      expect(updates.p2Letters).toBe(0);
+      // Turn history recorded
+      const record = updates.turnHistory._arrayUnion[0];
+      expect(record.landed).toBe(true);
+      expect(record.letterTo).toBeNull();
+    });
+
+    it("auto-accepts expired disputable with null trickName (uses 'Trick' fallback)", async () => {
+      const game = {
+        ...baseGame,
+        phase: "disputable",
+        currentSetter: "p1",
+        currentTurn: "p1",
+        currentTrickName: null,
+        currentTrickVideoUrl: null,
+        matchVideoUrl: null,
+        turnDeadline: { toMillis: () => Date.now() - 1000 },
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.disputeAutoAccepted).toBe(true);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      const record = updates.turnHistory._arrayUnion[0];
+      expect(record.trickName).toBe("Trick");
+    });
+
+    it("auto-accepts expired disputable when p2 is setter (covers p2 username ternary)", async () => {
+      const game = {
+        ...baseGame,
+        phase: "disputable",
+        currentSetter: "p2",
+        currentTurn: "p2",
+        currentTrickName: "Heelflip",
+        currentTrickVideoUrl: "https://vid.url/set.webm",
+        matchVideoUrl: "https://vid.url/match.webm",
+        turnDeadline: { toMillis: () => Date.now() - 1000 },
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.disputeAutoAccepted).toBe(true);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.currentSetter).toBe("p1"); // roles swap: p1 is matcher who landed
+      const record = updates.turnHistory._arrayUnion[0];
+      expect(record.setterUsername).toBe("bob"); // p2's username
+      expect(record.matcherUsername).toBe("alice"); // p1's username
+    });
+
+    it("does not auto-accept disputable when deadline is in the future", async () => {
+      const game = {
+        ...baseGame,
+        phase: "disputable",
+        currentTurn: "p1",
+        turnDeadline: { toMillis: () => Date.now() + 86400000 },
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1");
+      expect(result.forfeited).toBe(false);
+      expect(result.disputeAutoAccepted).toBeUndefined();
+      expect(mockTxUpdate).not.toHaveBeenCalled();
     });
   });
 

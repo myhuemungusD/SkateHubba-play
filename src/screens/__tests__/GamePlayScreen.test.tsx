@@ -6,6 +6,7 @@ import { GamePlayScreen } from "../GamePlayScreen";
 const mockSetTrick = vi.fn();
 const mockFailSetTrick = vi.fn();
 const mockSubmitMatchAttempt = vi.fn();
+const mockResolveDispute = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 const mockUploadVideo = vi.fn();
 
@@ -13,6 +14,7 @@ vi.mock("../../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
   failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
   submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
+  resolveDispute: (...args: unknown[]) => mockResolveDispute(...args),
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
 }));
 
@@ -650,5 +652,134 @@ describe("GamePlayScreen", () => {
       expect(screen.getByText(/✓ Landed/)).toBeInTheDocument();
       expect(screen.getByText(/✗ Missed/)).toBeInTheDocument();
     });
+  });
+
+  // ── Dispute review (setter reviews matcher's "landed" claim) ──
+
+  it("shows dispute review UI when phase is disputable and user is setter", () => {
+    const game = makeGame({
+      phase: "disputable",
+      currentTurn: "u1", // setter reviews
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText(/REVIEW MATCH/)).toBeInTheDocument();
+    expect(screen.getByText(/claims they landed your Kickflip/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Accept or dispute the match result" })).toBeInTheDocument();
+    expect(screen.getByText("Accept")).toBeInTheDocument();
+    expect(screen.getByText("Dispute")).toBeInTheDocument();
+  });
+
+  it("shows setter's trick video and matcher's attempt video in dispute review", () => {
+    const game = makeGame({
+      phase: "disputable",
+      currentTurn: "u1",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByLabelText(/Your Kickflip video/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/rival's match attempt video/)).toBeInTheDocument();
+  });
+
+  it("calls resolveDispute(true) when setter clicks Accept", async () => {
+    mockResolveDispute.mockResolvedValueOnce({ gameOver: false, winner: null });
+    const game = makeGame({
+      phase: "disputable",
+      currentTurn: "u1",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Accept"));
+
+    await waitFor(() => {
+      expect(mockResolveDispute).toHaveBeenCalledWith("game1", true);
+    });
+  });
+
+  it("calls resolveDispute(false) when setter clicks Dispute", async () => {
+    mockResolveDispute.mockResolvedValueOnce({ gameOver: false, winner: null });
+    const game = makeGame({
+      phase: "disputable",
+      currentTurn: "u1",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Dispute"));
+
+    await waitFor(() => {
+      expect(mockResolveDispute).toHaveBeenCalledWith("game1", false);
+    });
+  });
+
+  it("shows error when resolveDispute fails", async () => {
+    mockResolveDispute.mockRejectedValueOnce(new Error("Network error"));
+    const game = makeGame({
+      phase: "disputable",
+      currentTurn: "u1",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Accept"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Network error")).toBeInTheDocument();
+    });
+  });
+
+  it("shows waiting screen when matcher is waiting during disputable phase", () => {
+    const game = makeGame({
+      phase: "disputable",
+      currentTurn: "u2", // setter is u2, matcher (u1) waits
+      currentSetter: "u2",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText(/reviewing your match attempt/)).toBeInTheDocument();
+  });
+
+  it("shows 'Resolving...' during dispute submission", async () => {
+    mockResolveDispute.mockImplementation(() => new Promise(() => {}));
+    const game = makeGame({
+      phase: "disputable",
+      currentTurn: "u1",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Accept"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Resolving...")).toBeInTheDocument();
+    });
+  });
+
+  it("shows fallback text when no videos in dispute review", () => {
+    const game = makeGame({
+      phase: "disputable",
+      currentTurn: "u1",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: null,
+      matchVideoUrl: null,
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText(/No videos recorded/)).toBeInTheDocument();
   });
 });
