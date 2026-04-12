@@ -189,11 +189,40 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
         </div>
         <h2 className="font-display text-fluid-2xl text-white mb-2">Waiting on @{opponentName}</h2>
         <p className="font-body text-sm text-muted mb-2">
-          {game.phase === "setting"
-            ? "They're setting a trick for you to match."
-            : "They're attempting to match your trick."}
+          {game.phase === "disputable"
+            ? "They're reviewing your match attempt."
+            : game.phase === "setting"
+              ? "They're setting a trick for you to match."
+              : "They're attempting to match your trick."}
         </p>
         <Timer deadline={deadline} />
+
+        {game.phase === "disputable" && (
+          <div className="mt-6 w-full">
+            <div className="text-center py-2 px-4 mb-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06]">
+              <span className="font-display text-xs tracking-wider text-amber-400">UNDER REVIEW</span>
+              <p className="font-body text-xs text-muted mt-0.5">
+                You claimed landed — waiting for @{opponentName}&apos;s decision.
+              </p>
+            </div>
+            {game.matchVideoUrl && isFirebaseStorageUrl(game.matchVideoUrl) && (
+              <>
+                <p className="font-display text-sm tracking-wider text-brand-green mb-2">
+                  Your Attempt: {game.currentTrickName || "Trick"}
+                </p>
+                <video
+                  src={game.matchVideoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  aria-label={`Your attempt at ${game.currentTrickName || "trick"}`}
+                  className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+                />
+                <ClipShareButtons videoUrl={game.matchVideoUrl} trickName={game.currentTrickName || "trick"} />
+              </>
+            )}
+          </div>
+        )}
 
         {game.phase === "matching" && (
           <div className="mt-6 w-full">

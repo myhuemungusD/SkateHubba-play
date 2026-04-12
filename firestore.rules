@@ -213,9 +213,10 @@ service cloud.firestore {
           || request.resource.data.turnHistory == resource.data.turnHistory
         );
 
-      // ── Match resolution (matcher self-judges: landed or missed) ──
-      // The matcher resolves the turn immediately.  Letters may change and the
-      // game may end, so this is a separate rule from the normal turn updates.
+      // ── Match resolution (matcher self-judges: missed → immediate, landed → disputable) ──
+      // When the matcher claims MISSED, letters change and the turn resolves
+      // immediately. When the matcher claims LANDED, the game enters the
+      // 'disputable' phase so the setter can accept or dispute within 24 h.
       allow update: if isSignedIn()
         && isPlayer(resource.data)
         && resource.data.status == 'active'
@@ -232,7 +233,7 @@ service cloud.firestore {
         && request.resource.data.player2Uid == resource.data.player2Uid
         && request.resource.data.player1Username == resource.data.player1Username
         && request.resource.data.player2Username == resource.data.player2Username
-        // spotId is immutable after creation — see create rule for the details.
+        // spotId immutable
         && (
           (!('spotId' in resource.data) && !('spotId' in request.resource.data))
           || ('spotId' in resource.data && 'spotId' in request.resource.data
@@ -245,9 +246,9 @@ service cloud.firestore {
         )
         // turnDeadline must be a timestamp
         && request.resource.data.turnDeadline is timestamp
-        // Letters: at most one player gains exactly one letter (missed) or none change (landed)
+        // Letters: at most one player gains exactly one letter (missed) or none change (landed/disputable)
         && (
-          // Landed — no letter change
+          // Landed / disputable — no letter change
           (request.resource.data.p1Letters == resource.data.p1Letters
            && request.resource.data.p2Letters == resource.data.p2Letters)
           // Missed — exactly one player gets +1
@@ -256,7 +257,62 @@ service cloud.firestore {
           || (request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters + 1)
         )
-        // Either the game continues (back to setting) or ends (complete with a winner)
+        // Valid outcomes: continue (setting), end (complete), or enter disputable
+        && (
+          (request.resource.data.status == 'active'
+           && request.resource.data.phase == 'setting'
+           && request.resource.data.winner == null)
+          || (request.resource.data.status == 'complete'
+              && request.resource.data.winner != null)
+          || (request.resource.data.status == 'active'
+              && request.resource.data.phase == 'disputable'
+              && request.resource.data.winner == null
+              && request.resource.data.p1Letters == resource.data.p1Letters
+              && request.resource.data.p2Letters == resource.data.p2Letters)
+        );
+
+      // ── Dispute resolution (setter accepts or disputes the matcher's "landed" call) ──
+      // The setter reviews both videos and either accepts (no letter change,
+      // roles swap) or disputes (matcher gets a letter, setter keeps setting).
+      allow update: if isSignedIn()
+        && isPlayer(resource.data)
+        && resource.data.status == 'active'
+        && resource.data.phase == 'disputable'
+        && request.auth.uid == resource.data.currentTurn
+        // Rate limit
+        && (
+          !('updatedAt' in resource.data)
+          || resource.data.updatedAt == null
+          || request.time > resource.data.updatedAt + duration.value(2, 's')
+        )
+        // Cannot change player UIDs or usernames
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        // spotId immutable
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        // currentTurn must be one of the two players
+        && (
+          request.resource.data.currentTurn == resource.data.player1Uid ||
+          request.resource.data.currentTurn == resource.data.player2Uid
+        )
+        // turnDeadline must be a timestamp
+        && request.resource.data.turnDeadline is timestamp
+        // Letters: accept (no change) or dispute (one player +1)
+        && (
+          (request.resource.data.p1Letters == resource.data.p1Letters
+           && request.resource.data.p2Letters == resource.data.p2Letters)
+          || (request.resource.data.p1Letters == resource.data.p1Letters + 1
+              && request.resource.data.p2Letters == resource.data.p2Letters)
+          || (request.resource.data.p1Letters == resource.data.p1Letters
+              && request.resource.data.p2Letters == resource.data.p2Letters + 1)
+        )
+        // Must resolve to setting (continue) or complete (game over)
         && (
           (request.resource.data.status == 'active'
            && request.resource.data.phase == 'setting'
@@ -271,6 +327,8 @@ service cloud.firestore {
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.resource.data.status == 'forfeit'
+        // Only forfeit from setting or matching (not disputable — that auto-accepts)
+        && (resource.data.phase == 'setting' || resource.data.phase == 'matching')
         // Turn deadline must have actually expired (prevents premature forfeits)
         && request.time > resource.data.turnDeadline
         // Cannot change player UIDs, usernames, or letters
@@ -293,6 +351,35 @@ service cloud.firestore {
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory
         );
+
+      // ── Expired dispute auto-accept ──
+      // When the setter's review window expires (24 h), either player can
+      // trigger auto-accept: matcher's "landed" call stands, roles swap,
+      // no letters change, game continues.
+      allow update: if isSignedIn()
+        && isPlayer(resource.data)
+        && resource.data.status == 'active'
+        && resource.data.phase == 'disputable'
+        && request.time > resource.data.turnDeadline
+        // Letters must not change (auto-accept = landed)
+        && request.resource.data.p1Letters == resource.data.p1Letters
+        && request.resource.data.p2Letters == resource.data.p2Letters
+        // Cannot change player UIDs or usernames
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        // spotId immutable
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        // Must transition back to setting (active, no winner)
+        && request.resource.data.status == 'active'
+        && request.resource.data.phase == 'setting'
+        && request.resource.data.winner == null
+        && request.resource.data.turnDeadline is timestamp;
 
       // Players may delete their own non-active games (account deletion flow)
       allow delete: if isSignedIn() && isPlayer(resource.data)

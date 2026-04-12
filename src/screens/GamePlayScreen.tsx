@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { GameDoc } from "../services/games";
-import { setTrick, failSetTrick, submitMatchAttempt, forfeitExpiredTurn } from "../services/games";
+import { setTrick, failSetTrick, submitMatchAttempt, resolveDispute, forfeitExpiredTurn } from "../services/games";
 import { uploadVideo, type UploadProgress as UploadProgressData } from "../services/storage";
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl, parseFirebaseError } from "../utils/helpers";
@@ -51,6 +51,29 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
   const isSetter = game.phase === "setting" && game.currentSetter === profile.uid;
   const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
+  const isDisputeReviewer = game.phase === "disputable" && game.currentTurn === profile.uid;
+
+  // Resolve dispute: setter accepts or disputes the matcher's "landed" claim
+  const [disputeSubmitting, setDisputeSubmitting] = useState(false);
+  const disputeSubmittedRef = useRef(false);
+  const handleResolveDispute = useCallback(
+    async (accept: boolean) => {
+      if (disputeSubmittedRef.current) return;
+      disputeSubmittedRef.current = true;
+      setDisputeSubmitting(true);
+      setError("");
+      try {
+        await resolveDispute(game.id, accept);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to resolve dispute");
+        captureException(err, { extra: { context: "resolveDispute", gameId: game.id, accept } });
+        disputeSubmittedRef.current = false;
+      } finally {
+        setDisputeSubmitting(false);
+      }
+    },
+    [game.id],
+  );
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
   const opponentIsPro = game.player1Uid === profile.uid ? game.player2IsVerifiedPro : game.player1IsVerifiedPro;
   const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
@@ -147,7 +170,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const deadline = game.turnDeadline?.toMillis?.() || Date.now() + 86400000;
 
   // ── Waiting screen (not your turn) ──
-  if (!isSetter && !isMatcher) {
+  if (!isSetter && !isMatcher && !isDisputeReviewer) {
     return <WaitingScreen game={game} profile={profile} onBack={onBack} />;
   }
 
@@ -336,6 +359,80 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <Btn onClick={() => submitMatchWithCall(matcherLanded)} variant="secondary">
               Retry
             </Btn>
+          </div>
+        )}
+
+        {isDisputeReviewer && (
+          <div className="mt-5">
+            <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-amber-500/[0.06] backdrop-blur-sm border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.06)]">
+              <span className="font-display text-sm tracking-wider text-amber-400">REVIEW MATCH</span>
+              <p className="font-body text-sm text-muted mt-1">
+                @{opponentName} claims they landed your {game.currentTrickName || "trick"}. Watch both videos and
+                decide.
+              </p>
+            </div>
+
+            {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) && (
+              <div className="mb-4">
+                <p className="font-display text-sm tracking-wider text-brand-orange mb-2">YOUR TRICK</p>
+                <video
+                  src={game.currentTrickVideoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  aria-label={`Your ${game.currentTrickName || "trick"} video`}
+                  className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+                />
+              </div>
+            )}
+
+            {game.matchVideoUrl && isFirebaseStorageUrl(game.matchVideoUrl) && (
+              <div className="mb-4">
+                <p className="font-display text-sm tracking-wider text-brand-green mb-2">
+                  @{opponentName.toUpperCase()}&apos;S ATTEMPT
+                </p>
+                <video
+                  src={game.matchVideoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  aria-label={`${opponentName}'s match attempt video`}
+                  className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+                />
+              </div>
+            )}
+
+            {!game.currentTrickVideoUrl && !game.matchVideoUrl && (
+              <p className="font-body text-sm text-subtle text-center py-4 mb-4">
+                No videos recorded — decide based on the claim.
+              </p>
+            )}
+
+            {!disputeSubmitting && !error && (
+              <div role="group" aria-label="Accept or dispute the match result">
+                <p className="font-display text-xl text-white text-center mb-4">Did they land it?</p>
+                <div className="flex gap-3">
+                  <Btn onClick={() => handleResolveDispute(true)} variant="success" disabled={disputeSubmitting}>
+                    Accept
+                  </Btn>
+                  <Btn onClick={() => handleResolveDispute(false)} variant="danger" disabled={disputeSubmitting}>
+                    Dispute
+                  </Btn>
+                </div>
+              </div>
+            )}
+            {disputeSubmitting && (
+              <div className="text-center">
+                <span className="font-display text-lg text-amber-400 tracking-wider animate-pulse">Resolving...</span>
+              </div>
+            )}
+            {!disputeSubmitting && error && (
+              <div className="mt-3">
+                <Btn onClick={() => handleResolveDispute(true)} variant="secondary">
+                  Retry
+                </Btn>
+              </div>
+            )}
           </div>
         )}
 

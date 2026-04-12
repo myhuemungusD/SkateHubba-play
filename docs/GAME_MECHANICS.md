@@ -52,20 +52,27 @@ The matcher must:
 2. Record their own one-take attempt
 3. Submit their attempt for review
 
-On submit (`submitMatchAttempt`), the game transitions to the **confirming** phase and it becomes the setter's turn to review.
+On submit (`submitMatchAttempt`):
 
-### Phase 3 — Confirming
+- **Missed:** The matcher admits they missed. A letter is assigned immediately. The setter keeps setting. Turn resolves instantly.
+- **Landed:** The matcher claims they landed. The game enters the **disputable** phase.
 
-The setter reviews both videos and decides whether the matcher landed the trick. Only the setter votes — the matcher waits for the decision.
+### Phase 3 — Disputable (setter reviews "landed" claim)
 
-On submit (`submitConfirmation`):
+When the matcher claims "landed", the setter has 24 hours to review both videos and decide whether to accept or dispute.
 
-| Result | Letter assigned          | Next setter                                 |
-| ------ | ------------------------ | ------------------------------------------- |
-| Landed | None                     | Matcher becomes the new setter (roles swap) |
-| Missed | Matcher earns one letter | Setter keeps setting                        |
+On submit (`resolveDispute`):
 
-The `turnNumber` increments after every completed trick round (one full set → match → confirm cycle).
+| Result  | Letter assigned          | Next setter                                 |
+| ------- | ------------------------ | ------------------------------------------- |
+| Accept  | None                     | Matcher becomes the new setter (roles swap) |
+| Dispute | Matcher earns one letter | Setter keeps setting                        |
+
+If the setter does not respond within 24 hours, the matcher's "landed" call is **auto-accepted** — no letter is assigned and roles swap. This keeps the game loop moving; a stalled game is worse than an occasionally wrong call.
+
+The disputable phase only triggers when the matcher claims "landed" (~50% of turns). When the matcher admits "missed", the turn resolves immediately with no review step.
+
+The `turnNumber` increments after every completed trick round (one full set → match → resolve cycle).
 
 ---
 
@@ -129,6 +136,12 @@ From the game-over screen, either player can start a rematch. A rematch creates 
 
 ---
 
-## Setter's Call
+## Dispute System
 
-The setter has the final say on whether a trick was landed. After the matcher submits their attempt, the setter reviews both videos and decides. There is no opponent voting — this keeps the game flow fast and avoids delays waiting for both players to vote. Videos are stored and visible to both players for transparency.
+The matcher self-judges whether they landed the trick. If the matcher claims "missed", the letter is assigned immediately and no review is needed. If the matcher claims "landed", the setter gets a 24-hour window to review both videos and either accept or dispute the call.
+
+- **Accept**: the setter agrees the trick was landed. No letter is assigned and the matcher becomes the next setter.
+- **Dispute**: the setter overrules the claim. The matcher earns a letter and the setter keeps setting.
+- **No response (24 h)**: auto-accept. The matcher's "landed" call stands. This prevents stalled games.
+
+There is no community jury system — disputes are resolved between the two players with the setter having final say. Videos are stored and visible to both players for transparency. A community jury is a roadmap item for when the user base is large enough to make it viable.

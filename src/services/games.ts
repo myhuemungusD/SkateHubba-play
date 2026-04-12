@@ -28,7 +28,7 @@ import { writeNotification } from "./notifications";
  * ──────────────────────────────────────────── */
 
 export type GameStatus = "active" | "complete" | "forfeit";
-export type GamePhase = "setting" | "matching";
+export type GamePhase = "setting" | "matching" | "disputable";
 
 /** A snapshot of a completed turn, stored in the game's turnHistory array. */
 export interface TurnRecord {
@@ -324,7 +324,11 @@ export async function failSetTrick(gameId: string): Promise<void> {
 }
 
 /* ────────────────────────────────────────────
- * Submit match attempt (matcher self-judges, resolves turn immediately)
+ * Submit match attempt (matcher self-judges)
+ *
+ * • missed  → letter assigned immediately, turn resolves
+ * • landed  → enters "disputable" phase; setter has 24 h to
+ *             accept or dispute before auto-accept kicks in
  * ──────────────────────────────────────────── */
 
 export async function submitMatchAttempt(
@@ -344,22 +348,43 @@ export async function submitMatchAttempt(
     if (game.phase !== "matching") throw new Error("Not in matching phase");
 
     const matcherUid = getOpponent(game, game.currentSetter);
+    const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
+    const matcherUsernameVal = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
+
+    // ── Matcher claims LANDED → disputable phase ──────────────
+    if (landed) {
+      tx.update(gameRef, {
+        phase: "disputable",
+        matchVideoUrl,
+        currentTurn: game.currentSetter, // setter reviews
+        turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+        updatedAt: serverTimestamp(),
+      });
+
+      return {
+        gameOver: false,
+        winner: null,
+        disputable: true,
+        setterUid: game.currentSetter,
+        matcherUid,
+        setterUsername,
+        matcherUsername: matcherUsernameVal,
+        nextSetter: game.currentSetter,
+        turnNumber: game.turnNumber,
+      };
+    }
+
+    // ── Matcher admits MISSED → immediate resolution ──────────
     const isP1Matcher = matcherUid === game.player1Uid;
     let newP1Letters = game.p1Letters;
     let newP2Letters = game.p2Letters;
 
-    if (!landed) {
-      if (isP1Matcher) newP1Letters++;
-      else newP2Letters++;
-    }
+    if (isP1Matcher) newP1Letters++;
+    else newP2Letters++;
 
     const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
     const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
     const nextSetter = game.currentSetter;
-
-    // Record this turn in the history for clips replay
-    const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
-    const matcherUsernameVal = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
 
     const turnRecord: TurnRecord = {
       turnNumber: game.turnNumber,
@@ -370,8 +395,8 @@ export async function submitMatchAttempt(
       matcherUsername: matcherUsernameVal,
       setVideoUrl: game.currentTrickVideoUrl,
       matchVideoUrl,
-      landed,
-      letterTo: landed ? null : matcherUid,
+      landed: false,
+      letterTo: matcherUid,
     };
 
     const updates: Record<string, unknown> = {
@@ -397,6 +422,7 @@ export async function submitMatchAttempt(
     return {
       gameOver,
       winner,
+      disputable: false,
       setterUid: game.currentSetter,
       matcherUid,
       setterUsername,
@@ -408,25 +434,38 @@ export async function submitMatchAttempt(
   recordTurnAction(gameId);
   metrics.matchSubmitted(gameId, landed);
   analytics.matchSubmitted(gameId, landed);
+
+  if (result.disputable) {
+    // Notify setter to review the matcher's "landed" claim
+    writeNotification({
+      senderUid: result.matcherUid,
+      recipientUid: result.setterUid,
+      type: "your_turn",
+      title: "Review Match!",
+      body: `@${result.matcherUsername} claims they landed your trick. Accept or dispute?`,
+      gameId,
+    });
+    return { gameOver: false, winner: null };
+  }
+
   if (result.gameOver && result.winner) {
     metrics.gameCompleted(gameId, result.winner, result.turnNumber);
     analytics.gameCompleted(gameId, result.winner === result.matcherUid);
   }
 
   // Send notifications based on outcome (best-effort)
+  // In the missed path, only the matcher gains a letter, so the setter always
+  // wins when the game ends here.
   if (result.gameOver) {
-    // Notify the setter that the game ended
-    const setterWon = result.winner === result.setterUid;
     writeNotification({
       senderUid: result.matcherUid,
       recipientUid: result.setterUid,
-      type: setterWon ? "game_won" : "game_lost",
-      title: setterWon ? "You Won!" : "Game Over",
+      type: "game_won",
+      title: "You Won!",
       body: `vs @${result.matcherUsername}`,
       gameId,
     });
   } else {
-    // Notify next setter it's their turn
     writeNotification({
       senderUid: result.matcherUid,
       recipientUid: result.nextSetter,
@@ -441,10 +480,142 @@ export async function submitMatchAttempt(
 }
 
 /* ────────────────────────────────────────────
+ * Resolve a disputable turn (setter accepts or disputes)
+ *
+ * Only the setter (currentTurn during disputable phase) can call this.
+ *   accept=true  → matcher's "landed" call stands, roles swap
+ *   accept=false → setter overrules, matcher gets a letter
+ * ──────────────────────────────────────────── */
+
+export async function resolveDispute(
+  gameId: string,
+  accept: boolean,
+): Promise<{ gameOver: boolean; winner: string | null }> {
+  checkTurnActionRate(gameId);
+  const gameRef = doc(requireDb(), "games", gameId);
+
+  const result = await runTransaction(requireDb(), async (tx) => {
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) throw new Error("Game not found");
+
+    const game = toGameDoc(snap);
+    if (game.status !== "active") throw new Error("Game is already over");
+    if (game.phase !== "disputable") throw new Error("Not in disputable phase");
+
+    const matcherUid = getOpponent(game, game.currentSetter);
+    const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
+    const matcherUsernameVal = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
+
+    const isP1Matcher = matcherUid === game.player1Uid;
+    let newP1Letters = game.p1Letters;
+    let newP2Letters = game.p2Letters;
+
+    const landed = accept; // accept = matcher landed; dispute = matcher missed
+
+    if (!landed) {
+      if (isP1Matcher) newP1Letters++;
+      else newP2Letters++;
+    }
+
+    const gameOver = newP1Letters >= 5 || newP2Letters >= 5;
+    const winner = gameOver ? (newP1Letters >= 5 ? game.player2Uid : game.player1Uid) : null;
+    const nextSetter = landed ? matcherUid : game.currentSetter;
+
+    const turnRecord: TurnRecord = {
+      turnNumber: game.turnNumber,
+      trickName: game.currentTrickName || "Trick",
+      setterUid: game.currentSetter,
+      setterUsername,
+      matcherUid,
+      matcherUsername: matcherUsernameVal,
+      setVideoUrl: game.currentTrickVideoUrl,
+      matchVideoUrl: game.matchVideoUrl,
+      landed,
+      letterTo: landed ? null : matcherUid,
+    };
+
+    const updates: Record<string, unknown> = {
+      turnHistory: arrayUnion(turnRecord),
+      p1Letters: newP1Letters,
+      p2Letters: newP2Letters,
+      updatedAt: serverTimestamp(),
+    };
+
+    if (gameOver) {
+      updates.status = "complete";
+      updates.winner = winner;
+    } else {
+      updates.phase = "setting";
+      updates.currentSetter = nextSetter;
+      updates.currentTurn = nextSetter;
+      updates.turnDeadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
+      updates.turnNumber = game.turnNumber + 1;
+    }
+
+    tx.update(gameRef, updates);
+    return {
+      gameOver,
+      winner,
+      landed,
+      setterUid: game.currentSetter,
+      matcherUid,
+      setterUsername,
+      matcherUsername: matcherUsernameVal,
+      nextSetter,
+      turnNumber: game.turnNumber,
+    };
+  });
+  recordTurnAction(gameId);
+
+  if (result.gameOver && result.winner) {
+    metrics.gameCompleted(gameId, result.winner, result.turnNumber);
+    analytics.gameCompleted(gameId, result.winner === result.matcherUid);
+  }
+
+  // Notifications (best-effort)
+  // In dispute resolution, only the matcher can gain a letter, so the setter
+  // is always the winner when the game ends. Notify matcher of loss.
+  if (result.gameOver) {
+    writeNotification({
+      senderUid: result.setterUid,
+      recipientUid: result.matcherUid,
+      type: "game_lost",
+      title: "Game Over",
+      body: `vs @${result.setterUsername}`,
+      gameId,
+    });
+  } else if (result.landed) {
+    // Accept: matcher landed, becomes next setter
+    writeNotification({
+      senderUid: result.setterUid,
+      recipientUid: result.matcherUid,
+      type: "your_turn",
+      title: "Your Turn to Set!",
+      body: `You landed! Set a trick for @${result.setterUsername}`,
+      gameId,
+    });
+  } else {
+    // Dispute: matcher gets letter, setter keeps setting
+    writeNotification({
+      senderUid: result.setterUid,
+      recipientUid: result.matcherUid,
+      type: "your_turn",
+      title: "Your Turn to Set!",
+      body: `Set a trick for @${result.matcherUsername}`,
+      gameId,
+    });
+  }
+
+  return { gameOver: result.gameOver, winner: result.winner };
+}
+
+/* ────────────────────────────────────────────
  * Forfeit expired turn
  * ──────────────────────────────────────────── */
 
-export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: boolean; winner: string | null }> {
+export async function forfeitExpiredTurn(
+  gameId: string,
+): Promise<{ forfeited: boolean; winner: string | null; disputeAutoAccepted?: boolean }> {
   const gameRef = doc(requireDb(), "games", gameId);
 
   return runTransaction(requireDb(), async (tx) => {
@@ -459,7 +630,44 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{ forfeited: b
       return { forfeited: false, winner: null };
     }
 
-    // The player whose turn it is forfeits — opponent wins
+    // ── Disputable phase expired → auto-accept matcher's "landed" call ──
+    if (game.phase === "disputable") {
+      const matcherUid = getOpponent(game, game.currentSetter);
+      const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
+      const matcherUsernameVal = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
+
+      // Roles swap: matcher (who landed) becomes next setter
+      const nextSetter = matcherUid;
+
+      const turnRecord: TurnRecord = {
+        turnNumber: game.turnNumber,
+        trickName: game.currentTrickName || "Trick",
+        setterUid: game.currentSetter,
+        setterUsername,
+        matcherUid,
+        matcherUsername: matcherUsernameVal,
+        setVideoUrl: game.currentTrickVideoUrl,
+        matchVideoUrl: game.matchVideoUrl,
+        landed: true,
+        letterTo: null,
+      };
+
+      tx.update(gameRef, {
+        phase: "setting",
+        currentSetter: nextSetter,
+        currentTurn: nextSetter,
+        turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+        turnNumber: game.turnNumber + 1,
+        turnHistory: arrayUnion(turnRecord),
+        p1Letters: game.p1Letters,
+        p2Letters: game.p2Letters,
+        updatedAt: serverTimestamp(),
+      });
+
+      return { forfeited: false, winner: null, disputeAutoAccepted: true };
+    }
+
+    // ── Normal forfeit (setting / matching) ──────────────────
     const winner = getOpponent(game, game.currentTurn);
 
     tx.update(gameRef, {
