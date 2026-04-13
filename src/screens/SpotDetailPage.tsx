@@ -76,11 +76,14 @@ export function SpotDetailPage() {
     }
   }, [commentText, id, user]);
 
+  // Route the user into the challenge flow with this spot pre-attached. The
+  // `?spot=<uuid>` query param is the contract ChallengeScreen reads, and is
+  // also what NavigationContext stashes/restores across the auth bounce so
+  // shared links survive sign-in. Mirrors SpotPreviewCard "Challenge from here".
   const handleChallenge = useCallback(() => {
-    // Game-flow integration is deferred: once the S.K.A.T.E. challenge flow
-    // accepts a spotId, swap this alert for navigation into game init.
-    alert("Coming Soon \u2014 S.K.A.T.E. challenges at spots launching soon!");
-  }, []);
+    if (!id) return;
+    navigate(`/challenge?spot=${id}`);
+  }, [id, navigate]);
 
   if (loading) {
     return (
