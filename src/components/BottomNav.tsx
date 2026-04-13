@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
-import { HomeIcon, MapPinIcon, UserIcon } from "./icons";
+import { HomeIcon, MapPinIcon, UserIcon, FilmIcon } from "./icons";
 
 /** Screens where the persistent bottom nav is rendered. */
 const NAV_VISIBLE_ON: ReadonlySet<Screen> = new Set(["lobby", "map", "record", "player", "feed"]);
