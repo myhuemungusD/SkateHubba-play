@@ -195,6 +195,10 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   // Initialize map
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
+    // Guard: without a token Mapbox silently fails network requests and the
+    // load event never fires, leaving the overlay stuck forever. The JSX
+    // below renders a dedicated unavailable-state instead.
+    if (!MAPBOX_TOKEN) return;
 
     injectPulseCSS();
     mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -396,34 +400,71 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     [setIsAddingSpot, setSelectedSpot, setSpots],
   );
 
+  // If the build is missing the Mapbox token, render a dedicated unavailable
+  // state instead of a perpetual "Loading map…" overlay. This path is hit in
+  // previews/forks that don't have VITE_MAPBOX_TOKEN wired up.
+  if (!MAPBOX_TOKEN) {
+    return (
+      <div role="alert" className="w-full flex items-center justify-center bg-[#0A0A0A]" style={{ height: "100dvh" }}>
+        <div className="text-center px-6 max-w-xs">
+          <p className="text-[#CCC] text-sm mb-2">Map is temporarily unavailable.</p>
+          <p className="text-[#666] text-xs">Check back in a few minutes.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative w-full" style={{ height: "100dvh" }}>
       <div ref={mapContainer} className="w-full h-full" />
 
       {/* Map loading overlay */}
       {mapLoading && (
-        <div className="absolute inset-0 z-40 bg-[#0A0A0A] flex items-center justify-center">
-          <div className="text-[#888] text-sm">Loading map…</div>
+        <div
+          role="status"
+          aria-live="polite"
+          aria-label="Loading map"
+          className="absolute inset-0 z-40 bg-[#0A0A0A] flex items-center justify-center"
+        >
+          <div className="flex flex-col items-center gap-4">
+            <div className="relative w-10 h-10" aria-hidden="true">
+              <div className="absolute inset-0 rounded-full border-2 border-[#222]" />
+              <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[#F97316] animate-spin" />
+            </div>
+            <div className="text-[#888] text-sm">Loading map…</div>
+          </div>
         </div>
       )}
 
       {/* GPS error banner */}
       {gpsError && (
-        <div className="absolute top-4 left-4 right-4 z-30 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-3 text-sm text-[#CCC]">
+        <div
+          role="alert"
+          aria-live="polite"
+          className="absolute top-4 left-4 right-4 z-30 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-3 text-sm text-[#CCC]"
+        >
           {gpsError}
         </div>
       )}
 
       {/* Empty state */}
       {!mapLoading && spots.length === 0 && !gpsError && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#1A1A1A]/90 backdrop-blur rounded-xl px-4 py-2 text-sm text-[#888]">
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#1A1A1A]/90 backdrop-blur rounded-xl px-4 py-2 text-sm text-[#888]"
+        >
           No spots nearby. Add one!
         </div>
       )}
 
       {/* Toast */}
       {toast && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-2 text-sm text-white">
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-2 text-sm text-white"
+        >
           {toast}
         </div>
       )}

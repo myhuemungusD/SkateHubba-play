@@ -8,6 +8,14 @@ vi.mock("../../../services/spots", () => ({
   getSpotsInBounds: (...args: unknown[]) => mockGetSpotsInBounds(...args),
 }));
 
+// Provide a fake Mapbox token so the component doesn't render the
+// unavailable-state fallback. The fake mapbox-gl below ignores the value.
+vi.mock("../../../lib/mapbox", () => ({
+  MAPBOX_TOKEN: "pk.test-token",
+  MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+  MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
+}));
+
 // Mock mapbox-gl: real GL JS requires WebGL2 which jsdom doesn't provide.
 // The mock implements just enough surface for SpotMap's lifecycle hooks
 // (constructor + addControl + on + getBounds + flyTo + remove).
@@ -142,5 +150,40 @@ describe("SpotMap", () => {
     await waitFor(() => {
       expect(mockGetSpotsInBounds).toHaveBeenCalled();
     });
+  });
+
+  it("exposes the loading overlay as an accessible status region", () => {
+    render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    // The loading overlay is present until the mocked mapbox `load` event
+    // fires on the next microtask. Query synchronously to catch it.
+    const loading = screen.getByRole("status", { name: /loading map/i });
+    expect(loading).toBeInTheDocument();
+  });
+});
+
+describe("SpotMap without a Mapbox token", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("renders a temporarily-unavailable state instead of initializing the map", async () => {
+    vi.doMock("../../../lib/mapbox", () => ({
+      MAPBOX_TOKEN: "",
+      MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+      MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
+    }));
+    const { SpotMap: SpotMapWithoutToken } = await import("../SpotMap");
+    render(
+      <MemoryRouter>
+        <SpotMapWithoutToken />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/temporarily unavailable/i);
+    // The Add-Spot FAB should NOT be rendered in the unavailable state.
+    expect(screen.queryByLabelText("Add a spot")).toBeNull();
   });
 });

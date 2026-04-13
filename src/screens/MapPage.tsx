@@ -22,9 +22,10 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryS
   render() {
     if (this.state.hasError) {
       return (
-        <div className="w-full flex items-center justify-center bg-[#0A0A0A]" style={{ height: "100dvh" }}>
-          <div className="text-center px-6">
-            <p className="text-[#888] text-sm mb-4">Map failed to load. Please refresh the page.</p>
+        <div role="alert" className="w-full flex items-center justify-center bg-[#0A0A0A]" style={{ height: "100dvh" }}>
+          <div className="text-center px-6 max-w-xs">
+            <p className="text-[#CCC] text-sm mb-1">Something went wrong loading the map.</p>
+            <p className="text-[#666] text-xs mb-5">Try reloading — this usually fixes it.</p>
             <button
               type="button"
               onClick={() => window.location.reload()}
