@@ -403,7 +403,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       {/* Map loading overlay */}
       {mapLoading && (
         <div className="absolute inset-0 z-40 bg-[#0A0A0A] flex items-center justify-center">
-          <div className="text-[#888] text-sm">Loading map\u2026</div>
+          <div className="text-[#888] text-sm">Loading map…</div>
         </div>
       )}
 
