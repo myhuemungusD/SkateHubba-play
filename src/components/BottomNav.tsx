@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { useLocation } from "react-router-dom";
-import { useNavigationContext, type Screen } from "../context/NavigationContext";
+import { Link, useLocation } from "react-router-dom";
+import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
 import { HomeIcon, MapPinIcon, UserIcon } from "./icons";
 
 /** Screens where the persistent bottom nav is rendered. */
@@ -14,6 +14,12 @@ interface NavItem {
   matchPaths?: readonly string[];
 }
 
+// Each tab is a navigation destination with a stable URL, so render it as an
+// anchor (<Link>). Using a button + imperative navigate() pushed callers
+// through a handler chain where one mis-wire silently routed Map → Challenge
+// on at least one build; a direct `to={path}` makes that class of bug
+// impossible and also gives us native link affordances (right-click, copy
+// link, screen readers announcing as "link").
 const NAV_ITEMS: readonly NavItem[] = [
   { screen: "lobby", label: "Home", Icon: HomeIcon },
   { screen: "map", label: "Map", Icon: MapPinIcon },
@@ -50,11 +56,11 @@ export function BottomNav() {
         <ul className="flex items-stretch justify-around px-2 py-2">
           {NAV_ITEMS.map((item) => {
             const active = isActive(item);
+            const path = screenToPath(item.screen);
             return (
               <li key={item.screen} className="flex-1">
-                <button
-                  type="button"
-                  onClick={() => nav.setScreen(item.screen)}
+                <Link
+                  to={path}
                   aria-current={active ? "page" : undefined}
                   aria-label={item.label}
                   className={`group relative w-full flex flex-col items-center justify-center gap-1 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
@@ -76,7 +82,7 @@ export function BottomNav() {
                       aria-hidden="true"
                     />
                   )}
-                </button>
+                </Link>
               </li>
             );
           })}
