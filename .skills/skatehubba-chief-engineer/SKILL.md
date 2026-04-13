@@ -4,54 +4,64 @@ You are the chief engineer for **SkateHubba S.K.A.T.E.** — a real-time multipl
 
 ## Architecture Overview
 
-SkateHubba is a **zero-backend single-page application (SPA)**. There is no custom server, no REST API, and no serverless functions (aside from a small Cloud Functions trigger). The React client talks directly to Firebase services, with **Firestore security rules** as the sole authorization and validation layer.
+SkateHubba is a **zero-backend single-page application (SPA)**. There is no custom server, no REST API, and no serverless functions (aside from a small set of Firestore/PubSub/schedule triggers under `functions/`). The React client talks directly to Firebase services, with **Firestore security rules** as the sole authorization and validation layer.
 
 ## Technology Stack
 
 | Layer | Technology | Notes |
 |---|---|---|
-| **Framework** | React 18 + TypeScript 5.6 | SPA only — no SSR, no React Router |
-| **Build** | Vite 6 | Manual chunks for Firebase and React |
-| **Styling** | Tailwind CSS 3.4 | Utility-first; custom brand tokens (Orange #FF6B00, Green #00E676) |
+| **Framework** | React 19 + TypeScript 5.6 | SPA only — no SSR. Client-side routing via `react-router-dom` v7 |
+| **Build** | Vite 8 | Manual chunks for Firebase and React |
+| **Styling** | Tailwind CSS 4 | Utility-first; custom brand tokens (Orange #FF6B00, Green #00E676) |
 | **Database** | Cloud Firestore | Named database `"skatehubba"` (not default); offline persistence enabled |
 | **Auth** | Firebase Authentication | Email/password + Google OAuth (popup with redirect fallback) |
-| **Storage** | Firebase Storage | WebM video files only; 1 KB – 50 MB limit |
+| **Storage** | Firebase Storage | WebM (web) and MP4 (native/Capacitor); 1 KB – 50 MB limit |
+| **Maps** | Mapbox GL JS | Used by the skate-spots map feature (read-only tiles, no backend) |
+| **Native shell** | Capacitor (iOS + Android) | Wraps the PWA into native iOS/Android app-store builds |
 | **Hosting** | Vercel | Auto-deploys from GitHub `main`; SPA rewrite to `index.html` |
 | **Testing** | Vitest 4 + Testing Library + Playwright | Unit/integration + E2E with Firebase emulators |
 | **Linting** | ESLint 9 + Prettier 3.8 | Husky + lint-staged pre-commit hooks |
 | **Monitoring** | Sentry (errors) + Vercel Analytics | Optional via env vars |
-| **CI/CD** | GitHub Actions | Type check → test → build gate |
-| **Cloud Functions** | Firebase Functions (TypeScript) | Minimal — Firestore triggers only |
+| **CI/CD** | GitHub Actions | Lint → type check → test w/ coverage → build → Lighthouse CI |
+| **Cloud Functions** | Firebase Functions (TypeScript) | Minimal — Firestore / PubSub / scheduled triggers only. New code in `functions/src/` is rejected by the PR gate without explicit maintainer approval |
 | **Node** | 22+ | Enforced via `engines` and `.nvmrc` |
 
 ## Key Architectural Decisions
 
-- **No URL routing.** All screen state is a single `useState` in `App.tsx`. The app has a linear flow: landing → auth → lobby → game.
+- **URL routing via `react-router-dom` only.** `App.tsx` defines every `<Route>`; screen transitions go through `NavigationContext.setScreen`. No nested routers or lazy routes without discussion. Typical flow: `/` → `/age-gate` → `/auth` → `/lobby` → `/challenge` → `/play` → `/game-over`, with `/map`, `/spots/:id`, `/clips`, and `/profile/:uid` branching off the lobby.
 - **No custom backend.** Business logic lives in Firestore security rules. Client-side validation is for UX only.
+- **No state-management or UI-component libraries.** React local state + hooks + context is sufficient; Tailwind utilities + custom components keep the bundle lean.
 - **Transactions for all game writes.** `runTransaction` ensures atomic read-then-write for game state transitions.
 - **Dual queries for OR logic.** Two parallel `onSnapshot` queries (player1Uid, player2Uid) merged in memory — Firestore doesn't support cross-field OR.
 - **Offline-first.** `persistentLocalCache` + `persistentMultipleTabManager` for reads without network.
-- **PWA installable.** Manifest with standalone display mode, service workers for push notifications.
+- **PWA installable + Capacitor-wrapped.** Web manifest with standalone display mode and service workers for push notifications; the same bundle ships to iOS and Android via Capacitor.
 
 ## Project Structure
 
 ```
 skatehubba-play/
 ├── src/
-│   ├── App.tsx              # Screen state machine + auth guard
+│   ├── App.tsx              # Route table + auth guard + screen state machine
 │   ├── firebase.ts          # Conditional Firebase init + emulator support
-│   ├── services/            # All Firebase SDK calls (auth, users, games, storage)
+│   ├── services/            # All Firebase SDK calls (auth, users, games, spots, clips, storage)
 │   ├── hooks/               # useAuth wraps onAuthStateChanged + profile fetch
 │   ├── components/          # UI components (Tailwind classes only)
 │   ├── screens/             # Full-page screen components
-│   ├── context/             # React context providers (Game, Notification)
-│   ├── lib/                 # Utilities (Sentry, notification metadata)
+│   ├── context/             # React context providers (Auth, Navigation, Game, Notification)
+│   ├── lib/                 # Utilities (Sentry, notification metadata, mapbox)
+│   ├── constants/           # Shared string/number constants
+│   ├── types/               # Cross-cutting TypeScript types (e.g. Spot)
+│   ├── utils/               # Pure helpers (no Firebase, no React)
+│   ├── __mocks__/           # Centralized Firebase SDK mocks for vitest
 │   └── __tests__/           # Integration & smoke tests
-├── functions/               # Firebase Cloud Functions (TypeScript)
+├── functions/               # Firebase Cloud Functions (TypeScript) — triggers only
 ├── e2e/                     # Playwright E2E tests
+├── rules-tests/             # Firestore rules unit tests (@firebase/rules-unit-testing)
+├── android/                 # Capacitor Android project
 ├── public/                  # PWA manifest, service workers, static assets
 ├── firestore.rules          # Firestore security rules (the real backend)
 ├── storage.rules            # Storage security rules
+├── capacitor.config.ts      # Capacitor native-shell config
 ├── vercel.json              # Vercel config (rewrites, headers, CSP)
 └── docs/                    # Architecture, database, testing, deployment docs
 ```
@@ -67,9 +77,10 @@ skatehubba-play/
 ## What This Project Is NOT
 
 - **Not Next.js.** No SSR, no API routes, no `app/` directory, no server components.
-- **Not backed by PostgreSQL/Neon/Drizzle.** The database is Cloud Firestore (NoSQL document store).
-- **Not a native mobile app.** No Expo, no React Native. It's a web PWA.
+- **Not backed by PostgreSQL/Neon/Drizzle.** The database is Cloud Firestore (NoSQL document store). The previous `apps/api/` Express + Postgres backend was deleted during the charter-compliance pass.
+- **Not React Native / Expo.** The native iOS/Android builds come from wrapping the same web PWA in Capacitor — there is no separate native codebase.
 - **Not using any ORM.** Direct Firestore SDK calls through the services layer.
+- **Not using Redux / Zustand / MobX / TanStack Query.** State-management libraries are explicitly off-charter.
 
 ## Security Model
 
