@@ -194,7 +194,6 @@ VITE_APP_URL=https://...        # optional — email action redirects
 | [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md)         | Game rules and turn flow                    |
 | [docs/GAME_STATE_MACHINE.md](docs/GAME_STATE_MACHINE.md) | State transitions and lifecycle             |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                   | Architecture decision records               |
-| [DEPENDENCY_AUDIT.md](DEPENDENCY_AUDIT.md)               | Dependency versions, vulnerabilities, audit |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                       | How to contribute                           |
 | [SECURITY.md](SECURITY.md)                               | Security policy and vulnerability reporting |
 | [CHANGELOG.md](CHANGELOG.md)                             | Version history                             |
