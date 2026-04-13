@@ -8,6 +8,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Version
 
 ## [Unreleased]
 
+### Added
+
+**Judge system (optional dispute resolution)**
+
+- Challenge screen now has an optional "Add a judge?" friend picker — nominate a third player who rules on disputes and "Call BS" claims.
+- Nominated judges receive a notification and can accept or decline the invite from inside the game screen.
+- While the invite is pending (or declined), the game operates on the honor system — no disputes or BS calls.
+- Once the judge accepts, two new paths unlock:
+  - **Dispute**: When the matcher claims "landed," the judge reviews both videos and rules landed or missed. Judge (never the setter) has 24 h; after that, the matcher's call auto-accepts.
+  - **Call BS on setter**: Before attempting, the matcher can send the setter's video to the judge. Judge rules clean (matcher must attempt) or sketchy (setter re-sets). 24 h timeout → set stands (benefit of the doubt to the setter).
+- Both players see a "Judge Pending / Judge / No Judge" badge on the game screen so they always know which resolution path is live.
+- Judges appear in their own game list and see a neutral "Judge's Call" / "Call BS Review" UI — they never record, never hold a letter.
+
+### Changed
+
+- Honor-system (no judge) games skip the `disputable` phase entirely. A claimed-landed attempt now swaps roles immediately; a claimed-missed attempt applies a letter immediately. The 24 h review window no longer sits in the middle of every turn when there's no judge to arbitrate.
+- Dispute resolution is now judge-only. The setter never self-judges — that was the point of inviting a neutral third party. Existing games without a judge continue to run on the honor system.
+
+### Schema
+
+- `GameDoc` gains `judgeId: string | null`, `judgeUsername: string | null`, `judgeStatus: 'pending' | 'accepted' | 'declined' | null`, `judgeReviewFor: string | null`.
+- New `GamePhase` value: `setReview` (judge reviewing a "Call BS" on the set trick).
+- `TurnRecord.judgedBy` records the judge UID when a turn was judged (null otherwise).
+- Firestore security rules validate judge immutability, judge-only dispute paths, and participant-scoped reads (player or judge).
+
 ---
 
 ## [1.0.0] — 2024-12-01

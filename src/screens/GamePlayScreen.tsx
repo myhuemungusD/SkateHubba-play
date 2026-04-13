@@ -1,6 +1,17 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { GameDoc } from "../services/games";
-import { setTrick, failSetTrick, submitMatchAttempt, resolveDispute, forfeitExpiredTurn } from "../services/games";
+import {
+  setTrick,
+  failSetTrick,
+  submitMatchAttempt,
+  resolveDispute,
+  forfeitExpiredTurn,
+  callBSOnSetTrick,
+  judgeRuleSetTrick,
+  acceptJudgeInvite,
+  declineJudgeInvite,
+  isJudgeActive,
+} from "../services/games";
 import { uploadVideo, type UploadProgress as UploadProgressData } from "../services/storage";
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl, parseFirebaseError } from "../utils/helpers";
@@ -49,11 +60,18 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     setForfeitChecked(true);
   }, [game.id, game.status, forfeitChecked, game.turnDeadline]);
 
-  const isSetter = game.phase === "setting" && game.currentSetter === profile.uid;
-  const isMatcher = game.phase === "matching" && game.currentTurn === profile.uid;
-  const isDisputeReviewer = game.phase === "disputable" && game.currentTurn === profile.uid;
+  const isPlayer = game.player1Uid === profile.uid || game.player2Uid === profile.uid;
+  const isJudge = !!game.judgeId && game.judgeId === profile.uid;
+  const judgeActive = isJudgeActive(game);
 
-  // Resolve dispute: setter accepts or disputes the matcher's "landed" claim
+  const isSetter = isPlayer && game.phase === "setting" && game.currentSetter === profile.uid;
+  const isMatcher = isPlayer && game.phase === "matching" && game.currentTurn === profile.uid;
+  // Dispute (matcher claimed landed) and setReview (matcher called BS) are
+  // judge-only. The setter never self-judges in the judge-enabled flow.
+  const isDisputeReviewer = isJudge && game.phase === "disputable" && game.currentTurn === profile.uid;
+  const isSetTrickReviewer = isJudge && game.phase === "setReview" && game.currentTurn === profile.uid;
+
+  // Resolve dispute: judge accepts or disputes the matcher's "landed" claim
   const [disputeSubmitting, setDisputeSubmitting] = useState(false);
   const disputeSubmittedRef = useRef(false);
   const handleResolveDispute = useCallback(
@@ -74,10 +92,80 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     },
     [game.id],
   );
+
+  // Judge rules on a "Call BS" of the setter's trick
+  const [setReviewSubmitting, setSetReviewSubmitting] = useState(false);
+  const setReviewSubmittedRef = useRef(false);
+  const handleRuleSetTrick = useCallback(
+    async (clean: boolean) => {
+      if (setReviewSubmittedRef.current) return;
+      setReviewSubmittedRef.current = true;
+      setSetReviewSubmitting(true);
+      setError("");
+      try {
+        await judgeRuleSetTrick(game.id, clean);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to rule");
+        captureException(err, { extra: { context: "judgeRuleSetTrick", gameId: game.id, clean } });
+        setReviewSubmittedRef.current = false;
+      } finally {
+        setSetReviewSubmitting(false);
+      }
+    },
+    [game.id],
+  );
+
+  // Matcher calls BS on the setter's trick
+  const [callBSSubmitting, setCallBSSubmitting] = useState(false);
+  const callBSSubmittedRef = useRef(false);
+  const handleCallBS = useCallback(async () => {
+    if (callBSSubmittedRef.current) return;
+    callBSSubmittedRef.current = true;
+    setCallBSSubmitting(true);
+    setError("");
+    try {
+      await callBSOnSetTrick(game.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to call BS");
+      captureException(err, { extra: { context: "callBSOnSetTrick", gameId: game.id } });
+      callBSSubmittedRef.current = false;
+    } finally {
+      setCallBSSubmitting(false);
+    }
+  }, [game.id]);
+
+  // Judge can accept or decline a pending invite
+  const [judgeActionSubmitting, setJudgeActionSubmitting] = useState(false);
+  const handleJudgeAccept = useCallback(async () => {
+    setJudgeActionSubmitting(true);
+    setError("");
+    try {
+      await acceptJudgeInvite(game.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to accept judge invite");
+      captureException(err, { extra: { context: "acceptJudgeInvite", gameId: game.id } });
+    } finally {
+      setJudgeActionSubmitting(false);
+    }
+  }, [game.id]);
+  const handleJudgeDecline = useCallback(async () => {
+    setJudgeActionSubmitting(true);
+    setError("");
+    try {
+      await declineJudgeInvite(game.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to decline judge invite");
+      captureException(err, { extra: { context: "declineJudgeInvite", gameId: game.id } });
+    } finally {
+      setJudgeActionSubmitting(false);
+    }
+  }, [game.id]);
+
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
   const opponentIsPro = game.player1Uid === profile.uid ? game.player2IsVerifiedPro : game.player1IsVerifiedPro;
   const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
   const setterIsPro = game.player1Uid === game.currentSetter ? game.player1IsVerifiedPro : game.player2IsVerifiedPro;
+  const matcherUsername = game.currentSetter === game.player1Uid ? game.player2Username : game.player1Username;
 
   const trimmedTrickName = trickName.trim();
   if (isSetter && trimmedTrickName) recorderRevealedRef.current = true;
@@ -169,8 +257,11 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
   const deadline = game.turnDeadline?.toMillis?.() || Date.now() + 86400000;
 
+  // Judge with a pending invite — show accept/decline card before anything else.
+  const isJudgeInvitePending = isJudge && game.judgeStatus === "pending" && game.status === "active";
+
   // ── Waiting screen (not your turn) ──
-  if (!isSetter && !isMatcher && !isDisputeReviewer) {
+  if (!isSetter && !isMatcher && !isDisputeReviewer && !isSetTrickReviewer && !isJudgeInvitePending) {
     return <WaitingScreen game={game} profile={profile} onBack={onBack} />;
   }
 
@@ -193,73 +284,125 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         />
         <div className="flex items-center gap-3">
           <Timer deadline={deadline} />
-          <button
-            type="button"
-            onClick={() => setShowReport(true)}
-            disabled={reported}
-            aria-label="Report opponent"
-            title={reported ? "Already reported" : "Report opponent"}
-            className="font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {reported ? "Reported" : "Flag"}
-          </button>
+          {/* Only players can flag opponents — judges are observers. */}
+          {isPlayer && (
+            <button
+              type="button"
+              onClick={() => setShowReport(true)}
+              disabled={reported}
+              aria-label="Report opponent"
+              title={reported ? "Already reported" : "Report opponent"}
+              className="font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {reported ? "Reported" : "Flag"}
+            </button>
+          )}
         </div>
       </div>
 
       <div className="px-5 pt-5 max-w-md mx-auto">
-        <div className="flex justify-center gap-5 mb-6">
-          <LetterDisplay
-            count={myLetters}
-            name={`@${profile.username}`}
-            active={isSetter}
-            isVerifiedPro={profile.isVerifiedPro}
-          />
-          <div className="flex items-center font-display text-2xl text-subtle">VS</div>
-          <LetterDisplay
-            count={theirLetters}
-            name={`@${opponentName}`}
-            active={isMatcher}
-            isVerifiedPro={opponentIsPro}
-          />
-        </div>
-
-        {isSetter ? (
-          <div className="text-center mb-5 rounded-2xl border bg-brand-orange/[0.06] backdrop-blur-sm border-brand-orange/30 shadow-[0_0_20px_rgba(255,107,0,0.06)]">
-            <label
-              htmlFor="trickNameInput"
-              className="font-display text-[11px] tracking-[0.2em] text-brand-orange block pt-3"
-            >
-              TRICK NAME
-            </label>
-            <input
-              id="trickNameInput"
-              type="text"
-              value={trickName}
-              onChange={(e) => setTrickName(e.target.value)}
-              placeholder="Name your trick"
-              maxLength={60}
-              disabled={videoRecorded}
-              autoCapitalize="words"
-              autoComplete="off"
-              autoCorrect="off"
-              spellCheck={false}
-              className="w-full bg-transparent text-center font-display text-base tracking-wider text-brand-orange py-1 px-4 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
-            />
-            {trimmedTrickName && (
-              <p className="font-body text-xs text-brand-orange/80 pb-1">Set your {trimmedTrickName}</p>
-            )}
-            {!showRecorder && !trimmedTrickName && (
-              <span className="text-xs text-faint pb-2 block">Name your trick to start recording</span>
-            )}
-          </div>
-        ) : (
-          <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-brand-green/[0.06] backdrop-blur-sm border-brand-green/30 shadow-[0_0_20px_rgba(0,230,118,0.06)]">
-            <span className="font-display text-xl tracking-wider text-brand-green">
-              Match <ProUsername username={setterUsername} isVerifiedPro={setterIsPro} />
-              &apos;s {game.currentTrickName || "trick"}
-            </span>
+        {/* Judge state badge — visible to players so they know whether
+            disputes/BS are available. Judges themselves always know. */}
+        {!isJudge && game.judgeUsername && game.judgeStatus === "pending" && game.status === "active" && (
+          <div
+            className="mb-4 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle"
+            data-testid="judge-pending-badge"
+          >
+            <span className="font-display tracking-wider">JUDGE PENDING</span>
+            <span className="font-body">@{game.judgeUsername} — honor system applies</span>
           </div>
         )}
+        {!isJudge && game.judgeUsername && game.judgeStatus === "accepted" && game.status === "active" && (
+          <div
+            className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/[0.06] px-3 py-1 text-[11px] text-brand-orange"
+            data-testid="judge-active-badge"
+          >
+            <span className="font-display tracking-wider">JUDGE</span>
+            <span className="font-body">@{game.judgeUsername} rules disputes</span>
+          </div>
+        )}
+        {!isJudge && game.judgeUsername && game.judgeStatus === "declined" && game.status === "active" && (
+          <div
+            className="mb-4 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle"
+            data-testid="judge-declined-badge"
+          >
+            <span className="font-display tracking-wider">NO JUDGE</span>
+            <span className="font-body">Honor system</span>
+          </div>
+        )}
+        {isJudge ? (
+          <div className="flex justify-center gap-5 mb-6">
+            <LetterDisplay
+              count={game.p1Letters}
+              name={`@${game.player1Username}`}
+              active={game.currentSetter === game.player1Uid && game.phase === "setting"}
+              isVerifiedPro={game.player1IsVerifiedPro}
+            />
+            <div className="flex items-center font-display text-2xl text-subtle">VS</div>
+            <LetterDisplay
+              count={game.p2Letters}
+              name={`@${game.player2Username}`}
+              active={game.currentSetter === game.player2Uid && game.phase === "setting"}
+              isVerifiedPro={game.player2IsVerifiedPro}
+            />
+          </div>
+        ) : (
+          <div className="flex justify-center gap-5 mb-6">
+            <LetterDisplay
+              count={myLetters}
+              name={`@${profile.username}`}
+              active={isSetter}
+              isVerifiedPro={profile.isVerifiedPro}
+            />
+            <div className="flex items-center font-display text-2xl text-subtle">VS</div>
+            <LetterDisplay
+              count={theirLetters}
+              name={`@${opponentName}`}
+              active={isMatcher}
+              isVerifiedPro={opponentIsPro}
+            />
+          </div>
+        )}
+
+        {/* Judges never see the setter/matcher banner — they only ever review. */}
+        {!isJudge &&
+          (isSetter ? (
+            <div className="text-center mb-5 rounded-2xl border bg-brand-orange/[0.06] backdrop-blur-sm border-brand-orange/30 shadow-[0_0_20px_rgba(255,107,0,0.06)]">
+              <label
+                htmlFor="trickNameInput"
+                className="font-display text-[11px] tracking-[0.2em] text-brand-orange block pt-3"
+              >
+                TRICK NAME
+              </label>
+              <input
+                id="trickNameInput"
+                type="text"
+                value={trickName}
+                onChange={(e) => setTrickName(e.target.value)}
+                placeholder="Name your trick"
+                maxLength={60}
+                disabled={videoRecorded}
+                autoCapitalize="words"
+                autoComplete="off"
+                autoCorrect="off"
+                spellCheck={false}
+                className="w-full bg-transparent text-center font-display text-base tracking-wider text-brand-orange py-1 px-4 outline-none placeholder:text-brand-orange/60 disabled:opacity-40 disabled:cursor-not-allowed"
+              />
+              {trimmedTrickName && (
+                <p className="font-body text-xs text-brand-orange/80 pb-1">Set your {trimmedTrickName}</p>
+              )}
+              {!showRecorder && !trimmedTrickName && (
+                <span className="text-xs text-faint pb-2 block">Name your trick to start recording</span>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-brand-green/[0.06] backdrop-blur-sm border-brand-green/30 shadow-[0_0_20px_rgba(0,230,118,0.06)]">
+              <span className="font-display text-xl tracking-wider text-brand-green">
+                Match <ProUsername username={setterUsername} isVerifiedPro={setterIsPro} />
+                &apos;s {game.currentTrickName || "trick"}
+              </span>
+            </div>
+          ))}
 
         {isMatcher && (
           <div className="mb-5">
@@ -281,10 +424,33 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                 No video recorded — just match the trick!
               </p>
             )}
+
+            {/* "Call BS" is only available when a judge is actively seated AND
+                the matcher hasn't started recording yet. Clicking it hands the
+                set video to the judge instead of attempting the trick. */}
+            {judgeActive && !videoRecorded && !callBSSubmitting && !error && (
+              <div className="mt-3" role="group" aria-label="Attempt or call BS">
+                <Btn
+                  onClick={handleCallBS}
+                  variant="secondary"
+                  disabled={callBSSubmitting}
+                  data-testid="call-bs-button"
+                >
+                  Call BS on this trick
+                </Btn>
+                <p className="font-body text-xs text-subtle mt-2 text-center">
+                  Judge @{game.judgeUsername} will rule clean or sketchy.
+                </p>
+              </div>
+            )}
+            {callBSSubmitting && (
+              <p className="font-display text-sm text-amber-400 mt-3 text-center animate-pulse">Sending to judge...</p>
+            )}
           </div>
         )}
 
-        {showRecorder && (
+        {/* Judges never record — they only review. */}
+        {!isJudge && (isSetter || isMatcher) && showRecorder && (
           <VideoRecorder
             onRecorded={handleRecorded}
             label={isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
@@ -365,22 +531,24 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         {isDisputeReviewer && (
           <div className="mt-5">
             <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-amber-500/[0.06] backdrop-blur-sm border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.06)]">
-              <span className="font-display text-sm tracking-wider text-amber-400">REVIEW MATCH</span>
+              <span className="font-display text-sm tracking-wider text-amber-400">JUDGE&apos;S CALL</span>
               <p className="font-body text-sm text-muted mt-1">
-                @{opponentName} claims they landed your {game.currentTrickName || "trick"}. Watch both videos and
-                decide.
+                @{matcherUsername} claims they landed @{setterUsername}&apos;s {game.currentTrickName || "trick"}. Watch
+                both videos and rule.
               </p>
             </div>
 
             {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) && (
               <div className="mb-4">
-                <p className="font-display text-sm tracking-wider text-brand-orange mb-2">YOUR TRICK</p>
+                <p className="font-display text-sm tracking-wider text-brand-orange mb-2">
+                  @{setterUsername.toUpperCase()}&apos;S SET
+                </p>
                 <video
                   src={game.currentTrickVideoUrl}
                   controls
                   playsInline
                   preload="metadata"
-                  aria-label={`Your ${game.currentTrickName || "trick"} video`}
+                  aria-label={`${setterUsername}'s ${game.currentTrickName || "trick"} video`}
                   className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
                 />
               </div>
@@ -389,14 +557,14 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             {game.matchVideoUrl && isFirebaseStorageUrl(game.matchVideoUrl) && (
               <div className="mb-4">
                 <p className="font-display text-sm tracking-wider text-brand-green mb-2">
-                  @{opponentName.toUpperCase()}&apos;S ATTEMPT
+                  @{matcherUsername.toUpperCase()}&apos;S ATTEMPT
                 </p>
                 <video
                   src={game.matchVideoUrl}
                   controls
                   playsInline
                   preload="metadata"
-                  aria-label={`${opponentName}'s match attempt video`}
+                  aria-label={`${matcherUsername}'s match attempt video`}
                   className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
                 />
               </div>
@@ -404,19 +572,19 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
             {!game.currentTrickVideoUrl && !game.matchVideoUrl && (
               <p className="font-body text-sm text-subtle text-center py-4 mb-4">
-                No videos recorded — decide based on the claim.
+                No videos recorded — rule based on the claim.
               </p>
             )}
 
             {!disputeSubmitting && !error && (
-              <div role="group" aria-label="Accept or dispute the match result">
+              <div role="group" aria-label="Rule landed or missed">
                 <p className="font-display text-xl text-white text-center mb-4">Did they land it?</p>
                 <div className="flex gap-3">
                   <Btn onClick={() => handleResolveDispute(true)} variant="success" disabled={disputeSubmitting}>
-                    Accept
+                    Landed
                   </Btn>
                   <Btn onClick={() => handleResolveDispute(false)} variant="danger" disabled={disputeSubmitting}>
-                    Dispute
+                    Missed
                   </Btn>
                 </div>
               </div>
@@ -432,6 +600,84 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                   Retry
                 </Btn>
               </div>
+            )}
+          </div>
+        )}
+
+        {isSetTrickReviewer && (
+          <div className="mt-5">
+            <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-amber-500/[0.06] backdrop-blur-sm border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.06)]">
+              <span className="font-display text-sm tracking-wider text-amber-400">CALL BS REVIEW</span>
+              <p className="font-body text-sm text-muted mt-1">
+                @{matcherUsername} called BS on @{setterUsername}&apos;s {game.currentTrickName || "trick"}. Rule clean
+                or sketchy.
+              </p>
+            </div>
+
+            {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
+              <div className="mb-4">
+                <p className="font-display text-sm tracking-wider text-brand-orange mb-2">
+                  @{setterUsername.toUpperCase()}&apos;S SET
+                </p>
+                <video
+                  src={game.currentTrickVideoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  aria-label={`${setterUsername}'s ${game.currentTrickName || "trick"} video`}
+                  className="w-full max-w-[360px] mx-auto aspect-[9/16] rounded-2xl bg-black object-cover border border-border"
+                />
+              </div>
+            ) : (
+              <p className="font-body text-sm text-subtle text-center py-4 mb-4">
+                No set video recorded — rule based on the claim.
+              </p>
+            )}
+
+            {!setReviewSubmitting && !error && (
+              <div role="group" aria-label="Rule clean or sketchy">
+                <p className="font-display text-xl text-white text-center mb-4">Is the set clean?</p>
+                <div className="flex gap-3">
+                  <Btn onClick={() => handleRuleSetTrick(true)} variant="success" disabled={setReviewSubmitting}>
+                    Clean
+                  </Btn>
+                  <Btn onClick={() => handleRuleSetTrick(false)} variant="danger" disabled={setReviewSubmitting}>
+                    Sketchy
+                  </Btn>
+                </div>
+              </div>
+            )}
+            {setReviewSubmitting && (
+              <div className="text-center">
+                <span className="font-display text-lg text-amber-400 tracking-wider animate-pulse">Ruling...</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {isJudgeInvitePending && (
+          <div className="mt-5" data-testid="judge-invite-card">
+            <div className="text-center py-4 px-5 mb-5 rounded-2xl border bg-brand-orange/[0.06] backdrop-blur-sm border-brand-orange/30 shadow-[0_0_20px_rgba(255,107,0,0.06)]">
+              <span className="font-display text-sm tracking-wider text-brand-orange">JUDGE INVITE</span>
+              <p className="font-body text-sm text-muted mt-1">
+                @{game.player1Username} asked you to judge their game vs @{game.player2Username}. Accept to rule on
+                disputes and &quot;Call BS&quot; claims. Declining (or no response in 24h) lets the game continue on the
+                honor system.
+              </p>
+            </div>
+
+            {!judgeActionSubmitting && (
+              <div className="flex gap-3" role="group" aria-label="Accept or decline judge invite">
+                <Btn onClick={handleJudgeAccept} variant="success" disabled={judgeActionSubmitting}>
+                  Accept
+                </Btn>
+                <Btn onClick={handleJudgeDecline} variant="secondary" disabled={judgeActionSubmitting}>
+                  Decline
+                </Btn>
+              </div>
+            )}
+            {judgeActionSubmitting && (
+              <p className="font-display text-sm text-brand-orange text-center animate-pulse">Submitting...</p>
             )}
           </div>
         )}

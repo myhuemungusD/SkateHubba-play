@@ -57,6 +57,13 @@ vi.mock("../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
   failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
   submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
+  resolveDispute: vi.fn().mockResolvedValue(undefined),
+  callBSOnSetTrick: vi.fn().mockResolvedValue(undefined),
+  judgeRuleSetTrick: vi.fn().mockResolvedValue(undefined),
+  acceptJudgeInvite: vi.fn().mockResolvedValue(undefined),
+  declineJudgeInvite: vi.fn().mockResolvedValue(undefined),
+  isJudgeActive: (game: { judgeId?: string | null; judgeStatus?: string | null }) =>
+    !!game.judgeId && game.judgeStatus === "accepted",
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
