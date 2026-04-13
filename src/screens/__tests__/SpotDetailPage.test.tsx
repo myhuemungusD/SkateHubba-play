@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import type { Spot, SpotComment } from "../../types/spot";
 
 const mockGetSpot = vi.fn();
@@ -46,11 +46,22 @@ const FIXTURE_COMMENT: SpotComment = {
   createdAt: "2026-04-10T00:00:00.000Z",
 };
 
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <div data-testid="dest">
+      {location.pathname}
+      {location.search}
+    </div>
+  );
+}
+
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={[`/spots/${FIXTURE_SPOT.id}`]}>
       <Routes>
         <Route path="/spots/:id" element={<SpotDetailPage />} />
+        <Route path="/challenge" element={<LocationProbe />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -114,6 +125,17 @@ describe("SpotDetailPage", () => {
     await waitFor(() => {
       expect(mockAddSpotComment).toHaveBeenCalledWith(FIXTURE_SPOT.id, "rad", "viewer-uid");
       expect(screen.getByText("rad")).toBeInTheDocument();
+    });
+  });
+
+  it("'Challenge to S.K.A.T.E. here' navigates to /challenge?spot=<id>", async () => {
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Challenge to S\.K\.A\.T\.E\. here/i })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Challenge to S\.K\.A\.T\.E\. here/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId("dest").textContent).toBe(`/challenge?spot=${FIXTURE_SPOT.id}`);
     });
   });
 
