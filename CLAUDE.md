@@ -129,7 +129,7 @@ When something breaks, work through this in order:
 - Don't add `console.log` — use `console.warn` for expected error paths, Sentry for everything else
 - Don't import Firebase SDK in components — go through `src/services/`
 - Don't write CSS — use Tailwind utility classes
-- Don't add dependencies without justification — check `DEPENDENCY_AUDIT.md`
+- Don't add dependencies without justification — keep the bundle lean and audit-clean
 - Don't modify `.github/workflows/` without maintainer sign-off — CI gate flags it
 - Don't guess at Firestore rule behavior — test against emulators
 - Don't skip tests to "ship faster" — the coverage thresholds exist because a bug here means corrupted game state for real users
