@@ -18,6 +18,7 @@ import {
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
+import { deleteUserClips } from "./clips";
 
 export interface UserProfile {
   uid: string;
@@ -133,7 +134,8 @@ export async function createProfile(
  *
  * Phase 1: Delete video files from Storage for non-active games.
  * Phase 2: Delete non-active game documents.
- * Phase 3: Atomically delete profile + username reservation.
+ * Phase 3: Delete clips authored by this user (App Store / GDPR cascade).
+ * Phase 4: Atomically delete profile + username reservation.
  */
 export async function deleteUserData(uid: string, username: string): Promise<void> {
   const db = requireDb();
@@ -162,7 +164,12 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // Phase 2: Delete game documents
   await Promise.all(nonActiveGameIds.map((gameId) => deleteDoc(doc(db, "games", gameId))));
 
-  // Phase 3: Delete profile + username atomically (no reads needed, batch is cheaper)
+  // Phase 3: Scrub clips authored by this user from the feed. Best-effort —
+  // the owner-delete rule in firestore.rules only allows deleting your own
+  // clips, so this runs before the auth/profile teardown.
+  await deleteUserClips(uid);
+
+  // Phase 4: Delete profile + username atomically (no reads needed, batch is cheaper)
   const batch = writeBatch(db);
   batch.delete(doc(db, "users", uid));
   batch.delete(doc(db, "usernames", username.toLowerCase().trim()));

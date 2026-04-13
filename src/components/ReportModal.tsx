@@ -11,6 +11,7 @@ export function ReportModal({
   reportedUid,
   reportedUsername,
   gameId,
+  clipId,
   onClose,
   onSubmitted,
 }: {
@@ -18,6 +19,8 @@ export function ReportModal({
   reportedUid: string;
   reportedUsername: string;
   gameId: string;
+  /** Deterministic clip id when reporting a feed clip; omit for game-level reports. */
+  clipId?: string;
   onClose: () => void;
   onSubmitted: () => void;
 }) {
@@ -45,6 +48,7 @@ export function ReportModal({
         gameId,
         reason,
         description,
+        ...(clipId ? { clipId } : {}),
       });
       onSubmitted();
     } catch (err: unknown) {

@@ -63,6 +63,11 @@ vi.mock("../storage", () => ({
   deleteGameVideos: (...args: unknown[]) => mockDeleteGameVideos(...args),
 }));
 
+const mockDeleteUserClips = vi.fn().mockResolvedValue(undefined);
+vi.mock("../clips", () => ({
+  deleteUserClips: (...args: unknown[]) => mockDeleteUserClips(...args),
+}));
+
 import {
   getUserProfile,
   isUsernameAvailable,
@@ -229,6 +234,9 @@ describe("users service", () => {
       expect(mockDeleteGameVideos).toHaveBeenCalledWith("g2");
       // Game docs deleted individually
       expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
+      // Clips cascade invoked before the profile/username batch so the
+      // owner-delete rule still has a valid auth context to match playerUid.
+      expect(mockDeleteUserClips).toHaveBeenCalledWith("u1");
       // Profile + username deleted via batch
       const batch = mockWriteBatch();
       expect(batch.delete).toHaveBeenCalledTimes(2);

@@ -69,6 +69,30 @@ describe("submitReport", () => {
     mockAddDoc.mockRejectedValueOnce(new Error("Firestore unavailable"));
     await expect(submitReport(validParams)).rejects.toThrow("Failed to submit report");
   });
+
+  it("omits clipId by default (game-level report)", async () => {
+    await submitReport(validParams);
+    const docData = mockAddDoc.mock.calls[0][1];
+    expect(docData).not.toHaveProperty("clipId");
+  });
+
+  it("writes clipId when reporting a specific feed clip", async () => {
+    await submitReport({ ...validParams, clipId: "game1_3_match" });
+    const docData = mockAddDoc.mock.calls[0][1];
+    expect(docData.clipId).toBe("game1_3_match");
+  });
+
+  it("caps clipId at 128 characters (defense against rule boundary)", async () => {
+    await submitReport({ ...validParams, clipId: "x".repeat(300) });
+    const docData = mockAddDoc.mock.calls[0][1];
+    expect(docData.clipId).toHaveLength(128);
+  });
+
+  it("drops an empty clipId rather than writing an empty string", async () => {
+    await submitReport({ ...validParams, clipId: "" });
+    const docData = mockAddDoc.mock.calls[0][1];
+    expect(docData).not.toHaveProperty("clipId");
+  });
 });
 
 describe("hasReportedGame", () => {
