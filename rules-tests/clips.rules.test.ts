@@ -71,6 +71,7 @@ function makeValidClip(overrides: Record<string, unknown> = {}): Record<string, 
     videoUrl: "https://example.com/clip.webm",
     spotId: null,
     createdAt: serverTimestamp(),
+    moderationStatus: "active",
     ...overrides,
   };
 }
@@ -241,21 +242,26 @@ describe("clips — create", () => {
   it("rejects a spotId longer than 64 characters", async () => {
     await assertFails(setDoc(clipRef(asP1(), deterministicId()), makeValidClip({ spotId: "x".repeat(65) })));
   });
+
+  it("rejects a clip that tries to start in 'hidden' moderation state (bypass attempt)", async () => {
+    await assertFails(setDoc(clipRef(asP1(), deterministicId()), makeValidClip({ moderationStatus: "hidden" })));
+  });
+
+  it("rejects a clip missing the moderationStatus field", async () => {
+    const clip = makeValidClip();
+    delete (clip as Record<string, unknown>).moderationStatus;
+    await assertFails(setDoc(clipRef(asP1(), deterministicId()), clip));
+  });
 });
 
 /* ────────────────────────────────────────────
- * UPDATE / DELETE (immutable)
+ * UPDATE (immutable by client — Admin SDK only)
  * ──────────────────────────────────────────── */
 
-describe("clips — immutability", () => {
-  it("even the original writer CANNOT update a clip", async () => {
+describe("clips — update forbidden", () => {
+  it("even the original writer CANNOT update a clip's trick name", async () => {
     const id = await seedClip();
     await assertFails(setDoc(clipRef(asP1(), id), makeValidClip({ trickName: "revised" })));
-  });
-
-  it("even the original writer CANNOT delete a clip", async () => {
-    const id = await seedClip();
-    await assertFails(deleteDoc(clipRef(asP1(), id)));
   });
 
   it("strangers CANNOT update a clip", async () => {
@@ -263,8 +269,40 @@ describe("clips — immutability", () => {
     await assertFails(setDoc(clipRef(asStranger(), id), makeValidClip({ trickName: "hacked" })));
   });
 
-  it("strangers CANNOT delete a clip", async () => {
+  it("the clip owner CANNOT flip moderationStatus themselves (takedown path is Admin SDK only)", async () => {
+    const id = await seedClip();
+    await assertFails(setDoc(clipRef(asP1(), id), makeValidClip({ moderationStatus: "hidden" })));
+  });
+});
+
+/* ────────────────────────────────────────────
+ * DELETE (owner-only, backs account-deletion cascade)
+ * ──────────────────────────────────────────── */
+
+describe("clips — delete (owner-only)", () => {
+  it("the owning player CAN delete their own clip (GDPR/CCPA cascade)", async () => {
+    const id = await seedClip();
+    await assertSucceeds(deleteDoc(clipRef(asP1(), id)));
+  });
+
+  it("the opponent CANNOT delete someone else's clip", async () => {
+    const id = await seedClip();
+    await assertFails(deleteDoc(clipRef(asP2(), id)));
+  });
+
+  it("the nominated judge CANNOT delete a clip they didn't author", async () => {
+    await seedGame({ judgeId: JUDGE_UID, judgeStatus: "accepted", judgeUsername: "judge" });
+    const id = await seedClip();
+    await assertFails(deleteDoc(clipRef(asJudge(), id)));
+  });
+
+  it("strangers CANNOT delete clips", async () => {
     const id = await seedClip();
     await assertFails(deleteDoc(clipRef(asStranger(), id)));
+  });
+
+  it("anonymous users CANNOT delete clips", async () => {
+    const id = await seedClip();
+    await assertFails(deleteDoc(clipRef(asAnonymous(), id)));
   });
 });

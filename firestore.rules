@@ -824,7 +824,17 @@ service cloud.firestore {
         && request.resource.data.reason in ['inappropriate_video', 'abusive_behavior', 'cheating', 'spam', 'other']
         && request.resource.data.description is string
         && request.resource.data.description.size() <= 500
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status == 'pending'
+        // Optional clipId: when a report targets a clip from the feed rather
+        // than an in-game video, it carries the clip's deterministic id
+        // (`${gameId}_${turnNumber}_${role}`). Shape-only check here —
+        // moderators dedupe and action via Admin SDK.
+        && (
+          !('clipId' in request.resource.data)
+          || (request.resource.data.clipId is string
+              && request.resource.data.clipId.size() > 0
+              && request.resource.data.clipId.size() <= 128)
+        );
 
       // Reports are immutable — only Admin SDK can update (for moderation)
       allow update: if false;
@@ -854,13 +864,17 @@ service cloud.firestore {
     // clips: `set` (setter's landed set) and `match` (matcher's landed match,
     // only when they actually landed it).
     //
-    // Integrity rests on three constraints:
+    // Integrity rests on four constraints:
     //   1. Deterministic doc id `${gameId}_${turnNumber}_${role}` — idempotent
     //      under transaction retry and prevents duplicates.
     //   2. Writer must be a participant of the referenced game (verified via
     //      get() against the game doc), matching the write privileges that
     //      already govern turnHistory growth.
-    //   3. Immutable once written — no updates, no deletes through the client.
+    //   3. Create sets moderationStatus == 'active' and cannot be updated by
+    //      clients — transitions to 'hidden' happen via Admin SDK in response
+    //      to a user report (App Store Guideline 1.2 moderation requirement).
+    //   4. Owner (playerUid) can delete their own clip — closes the GDPR /
+    //      CCPA right-to-erasure loop from the account-deletion flow.
     //
     // Reads are open to any signed-in user: blocklist filtering is applied
     // client-side (see useBlockedUsers), matching how the rest of the app
@@ -891,6 +905,10 @@ service cloud.firestore {
             || (request.resource.data.spotId is string
                 && request.resource.data.spotId.size() <= 64))
         && request.resource.data.createdAt == request.time
+        // Moderation status must start as 'active'. Transitions to 'hidden'
+        // are server-side only (Admin SDK), keeping the App Store takedown
+        // path out of client reach.
+        && request.resource.data.moderationStatus == 'active'
         // Writer must be a game participant (player OR nominated judge).
         && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
         // playerUid must be one of the game's two players — never the judge,
@@ -900,9 +918,17 @@ service cloud.firestore {
           || request.resource.data.playerUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
         );
 
-      // Clips are immutable once written — no edits, no tombstones through
-      // the client. Account-deletion flows scrub via Admin SDK.
-      allow update, delete: if false;
+      // Clips are immutable once written — content edits and moderation
+      // flips both go through Admin SDK to keep the audit trail clean.
+      allow update: if false;
+
+      // The owning player (the one who actually landed the trick) can delete
+      // their own clip. This backs the account-deletion cascade in
+      // clips.ts#deleteUserClips and lets a user scrub a clip they no longer
+      // want in the feed. Strangers, the opponent, and even the judge cannot
+      // delete — only the clip's author.
+      allow delete: if isSignedIn()
+        && request.auth.uid == resource.data.playerUid;
     }
   }
 }

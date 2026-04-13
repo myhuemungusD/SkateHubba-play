@@ -31,6 +31,7 @@ import { AgeGate } from "./screens/AgeGate";
 import { NotFound } from "./screens/NotFound";
 import { MapPage } from "./screens/MapPage";
 import { SpotDetailPage } from "./screens/SpotDetailPage";
+import { ClipsScreen } from "./screens/ClipsScreen";
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -428,6 +429,23 @@ function AppRoutes() {
 
           <Route path="/map" element={<MapPage />} />
           <Route path="/spots/:id" element={<SpotDetailPage />} />
+
+          <Route
+            path="/feed"
+            element={
+              auth.activeProfile ? (
+                <ClipsScreen
+                  profile={auth.activeProfile}
+                  onViewPlayer={nav.navigateToPlayer}
+                  onChallengeUser={(username: string) => {
+                    directChallenge(username);
+                  }}
+                />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
 
           <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />
 

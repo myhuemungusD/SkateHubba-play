@@ -23,6 +23,7 @@
 
 import {
   collection,
+  deleteDoc,
   doc,
   documentId,
   getDocs,
@@ -32,6 +33,7 @@ import {
   serverTimestamp,
   startAfter,
   Timestamp,
+  where,
   type DocumentSnapshot,
   type FieldValue,
   type QueryConstraint,
@@ -39,12 +41,24 @@ import {
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
+import { logger } from "./logger";
+import { parseFirebaseError } from "../utils/helpers";
 
 /* ────────────────────────────────────────────
  * Types
  * ──────────────────────────────────────────── */
 
 export type ClipRole = "set" | "match";
+
+/**
+ * Client-writable moderation state. Clients can only ever create clips with
+ * `active` status; transitions to `hidden` happen server-side (Admin SDK,
+ * via a trust-and-safety tooling path outside this repo) when a clip is
+ * taken down in response to a user report. App Store Guideline 1.2
+ * compliance requires the feed to never surface hidden clips, so the
+ * feed query filters `moderationStatus == 'active'` explicitly.
+ */
+export type ClipModerationStatus = "active" | "hidden";
 
 export interface ClipDoc {
   id: string;
@@ -57,6 +71,7 @@ export interface ClipDoc {
   videoUrl: string;
   spotId: string | null;
   createdAt: Timestamp | null;
+  moderationStatus: ClipModerationStatus;
 }
 
 /**
@@ -118,6 +133,7 @@ interface ClipWritePayload {
   videoUrl: string;
   spotId: string | null;
   createdAt: FieldValue;
+  moderationStatus: ClipModerationStatus;
 }
 
 function buildClipPayload(ctx: Omit<ClipWritePayload, "createdAt">, createdAt: FieldValue): ClipWritePayload {
@@ -150,6 +166,7 @@ export function writeLandedClipsInTransaction(tx: Transaction, ctx: LandedClipCo
           trickName: ctx.trickName,
           videoUrl: ctx.setVideoUrl,
           spotId: ctx.spotId,
+          moderationStatus: "active",
         },
         createdAt,
       ),
@@ -170,6 +187,7 @@ export function writeLandedClipsInTransaction(tx: Transaction, ctx: LandedClipCo
           trickName: ctx.trickName,
           videoUrl: ctx.matchVideoUrl,
           spotId: ctx.spotId,
+          moderationStatus: "active",
         },
         createdAt,
       ),
@@ -208,6 +226,11 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
         ? (createdAtRaw as Timestamp)
         : null;
 
+  // Older docs (pre-moderation-hardening) lack the field. Treat missing as
+  // `active` so existing clips remain visible; any hidden-by-moderation clip
+  // is already excluded upstream by the feed query's where() filter.
+  const moderationStatus: ClipModerationStatus = raw.moderationStatus === "hidden" ? "hidden" : "active";
+
   return {
     id: snap.id,
     gameId: raw.gameId,
@@ -219,6 +242,7 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
     videoUrl: raw.videoUrl,
     spotId: typeof raw.spotId === "string" ? raw.spotId : null,
     createdAt,
+    moderationStatus,
   };
 }
 
@@ -232,7 +256,15 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
 export async function fetchClipsFeed(cursor: ClipsFeedCursor | null = null, pageSize = 20): Promise<ClipsFeedPage> {
   const boundedSize = Math.max(1, Math.min(50, pageSize));
 
-  const constraints: QueryConstraint[] = [orderBy("createdAt", "desc"), orderBy(documentId(), "desc")];
+  // App Store Guideline 1.2 requires offensive UGC to be removable from
+  // the feed. Hidden clips (moderationStatus === 'hidden') are filtered
+  // out server-side. Paired with the (moderationStatus, createdAt desc,
+  // __name__ desc) composite index in firestore.indexes.json.
+  const constraints: QueryConstraint[] = [
+    where("moderationStatus", "==", "active"),
+    orderBy("createdAt", "desc"),
+    orderBy(documentId(), "desc"),
+  ];
   if (cursor) {
     constraints.push(startAfter(cursor.createdAt, cursor.id));
   }
@@ -246,4 +278,36 @@ export async function fetchClipsFeed(cursor: ClipsFeedCursor | null = null, page
   const nextCursor: ClipsFeedCursor | null = last && last.createdAt ? { createdAt: last.createdAt, id: last.id } : null;
 
   return { clips, cursor: nextCursor };
+}
+
+/* ────────────────────────────────────────────
+ * Account-deletion cascade
+ * ──────────────────────────────────────────── */
+
+/**
+ * Delete every clip owned by `uid`. Invoked from `deleteUserData` when a
+ * user removes their account — closes the GDPR/CCPA "right to erasure"
+ * loop so clips don't outlive the account that produced them.
+ *
+ * Best-effort: logs and swallows per-doc delete failures so a partial
+ * cascade never blocks the larger account-deletion flow. The owner-only
+ * delete rule in firestore.rules means this caller must be authenticated
+ * AS `uid` — servicing another user's deletion requires Admin SDK.
+ */
+export async function deleteUserClips(uid: string): Promise<void> {
+  const db = requireDb();
+  let snap;
+  try {
+    snap = await withRetry(() => getDocs(query(clipsRef(), where("playerUid", "==", uid))));
+  } catch (err) {
+    logger.warn("clips_delete_query_failed", { uid, error: parseFirebaseError(err) });
+    return;
+  }
+
+  const results = await Promise.allSettled(snap.docs.map((d) => deleteDoc(doc(db, "clips", d.id))));
+
+  const failed = results.filter((r) => r.status === "rejected").length;
+  if (failed > 0) {
+    logger.warn("clips_delete_partial", { uid, total: results.length, failed });
+  }
 }

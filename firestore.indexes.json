@@ -7,6 +7,15 @@
         { "fieldPath": "isActive", "order": "ASCENDING" },
         { "fieldPath": "latitude", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "clips",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "moderationStatus", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

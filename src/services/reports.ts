@@ -20,6 +20,13 @@ interface SubmitReportParams {
   gameId: string;
   reason: ReportReason;
   description: string;
+  /**
+   * Optional id of the specific clip being reported. Passed from the feed's
+   * report button so moderators can action a single video instead of the
+   * whole game. Shape matches clips.ts deterministic id
+   * (`${gameId}_${turnNumber}_${role}`).
+   */
+  clipId?: string;
 }
 
 /**
@@ -29,13 +36,13 @@ interface SubmitReportParams {
  * existing report before writing; Firestore rules enforce this server-side.
  */
 export async function submitReport(params: SubmitReportParams): Promise<string> {
-  const { reporterUid, reportedUid, reportedUsername, gameId, reason, description } = params;
+  const { reporterUid, reportedUid, reportedUsername, gameId, reason, description, clipId } = params;
 
   if (!reason) throw new Error("Please select a reason for your report.");
   if (reporterUid === reportedUid) throw new Error("You cannot report yourself.");
 
   try {
-    const docRef = await addDoc(collection(requireDb(), "reports"), {
+    const payload: Record<string, unknown> = {
       reporterUid,
       reportedUid,
       reportedUsername,
@@ -44,7 +51,11 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
       description: description.trim().slice(0, 500),
       status: "pending",
       createdAt: serverTimestamp(),
-    });
+    };
+    if (typeof clipId === "string" && clipId.length > 0) {
+      payload.clipId = clipId.slice(0, 128);
+    }
+    const docRef = await addDoc(collection(requireDb(), "reports"), payload);
     return docRef.id;
   } catch (err) {
     logger.warn("report_submit_failed", {

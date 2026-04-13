@@ -5,11 +5,13 @@ const {
   mockCollection,
   mockDoc,
   mockQuery,
+  mockWhere,
   mockOrderBy,
   mockLimit,
   mockStartAfter,
   mockDocumentId,
   mockGetDocs,
+  mockDeleteDoc,
   mockServerTimestamp,
   FakeTimestamp,
 } = vi.hoisted(() => {
@@ -26,11 +28,13 @@ const {
       id,
     })),
     mockQuery: vi.fn((...args: unknown[]) => ({ __query: args })),
+    mockWhere: vi.fn((field: unknown, op: unknown, value: unknown) => ({ __where: { field, op, value } })),
     mockOrderBy: vi.fn((field: unknown, dir: unknown) => ({ __orderBy: { field, dir } })),
     mockLimit: vi.fn((n: number) => ({ __limit: n })),
     mockStartAfter: vi.fn((...values: unknown[]) => ({ __startAfter: values })),
     mockDocumentId: vi.fn(() => ({ __documentId: true })),
     mockGetDocs: vi.fn(),
+    mockDeleteDoc: vi.fn().mockResolvedValue(undefined),
     mockServerTimestamp: vi.fn(() => "SERVER_TS"),
     FakeTimestamp,
   };
@@ -40,18 +44,26 @@ vi.mock("firebase/firestore", () => ({
   collection: mockCollection,
   doc: mockDoc,
   query: mockQuery,
+  where: mockWhere,
   orderBy: mockOrderBy,
   limit: mockLimit,
   startAfter: mockStartAfter,
   documentId: mockDocumentId,
   getDocs: mockGetDocs,
+  deleteDoc: mockDeleteDoc,
   serverTimestamp: mockServerTimestamp,
   Timestamp: FakeTimestamp,
 }));
 
 vi.mock("../../firebase");
 
-import { writeLandedClipsInTransaction, fetchClipsFeed, type LandedClipContext, type ClipsFeedCursor } from "../clips";
+import {
+  writeLandedClipsInTransaction,
+  fetchClipsFeed,
+  deleteUserClips,
+  type LandedClipContext,
+  type ClipsFeedCursor,
+} from "../clips";
 
 /* ── Helpers ────────────────────────────────── */
 
@@ -103,6 +115,7 @@ describe("writeLandedClipsInTransaction", () => {
       videoUrl: "https://example.com/set.webm",
       spotId: "spot-abc",
       createdAt: "SERVER_TS",
+      moderationStatus: "active",
     });
 
     const [, matchPayload] = tx.set.mock.calls[1];
@@ -112,6 +125,7 @@ describe("writeLandedClipsInTransaction", () => {
       playerUsername: "bob",
       videoUrl: "https://example.com/match.webm",
       createdAt: "SERVER_TS",
+      moderationStatus: "active",
     });
   });
 
@@ -180,12 +194,13 @@ function validClipData(overrides: Record<string, unknown> = {}) {
     videoUrl: "https://example.com/x.webm",
     spotId: "spot-1",
     createdAt: new FakeTimestamp(1_700_000_000_000),
+    moderationStatus: "active",
     ...overrides,
   };
 }
 
 describe("fetchClipsFeed", () => {
-  it("queries clips ordered by createdAt desc (with docId tiebreaker) and returns mapped docs", async () => {
+  it("queries active clips ordered by createdAt desc (with docId tiebreaker) and returns mapped docs", async () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [
         makeClipSnap("g1_2_set", validClipData()),
@@ -195,18 +210,37 @@ describe("fetchClipsFeed", () => {
 
     const page = await fetchClipsFeed();
 
+    // Feed must filter to active clips only so hidden-by-moderation content
+    // never reaches users (App Store Guideline 1.2).
+    expect(mockWhere).toHaveBeenCalledWith("moderationStatus", "==", "active");
     expect(mockOrderBy).toHaveBeenCalledWith("createdAt", "desc");
     expect(mockOrderBy).toHaveBeenCalledWith({ __documentId: true }, "desc");
     expect(mockLimit).toHaveBeenCalledWith(20);
     expect(mockStartAfter).not.toHaveBeenCalled();
 
     expect(page.clips).toHaveLength(2);
-    expect(page.clips[0]).toMatchObject({ id: "g1_2_set", role: "set", playerUid: "p1" });
+    expect(page.clips[0]).toMatchObject({ id: "g1_2_set", role: "set", playerUid: "p1", moderationStatus: "active" });
     expect(page.clips[1]).toMatchObject({ id: "g1_2_match", role: "match", playerUid: "p2" });
     expect(page.cursor).toEqual({
       createdAt: expect.any(FakeTimestamp),
       id: "g1_2_match",
     });
+  });
+
+  it("defaults moderationStatus to 'active' on legacy docs that predate the field", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("legacy", validClipData({ moderationStatus: undefined }))],
+    });
+    const page = await fetchClipsFeed();
+    expect(page.clips[0].moderationStatus).toBe("active");
+  });
+
+  it("preserves 'hidden' moderationStatus when the backend surfaces one (defense in depth)", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_2_set", validClipData({ moderationStatus: "hidden" }))],
+    });
+    const page = await fetchClipsFeed();
+    expect(page.clips[0].moderationStatus).toBe("hidden");
   });
 
   it("applies the cursor via startAfter(createdAt, id) when provided", async () => {
@@ -287,5 +321,49 @@ describe("fetchClipsFeed", () => {
 
     const page = await fetchClipsFeed();
     expect(page.clips[0].createdAt).toBe(duck);
+  });
+});
+
+/* ── deleteUserClips (account-deletion cascade) ──────────────── */
+
+describe("deleteUserClips", () => {
+  it("queries clips by playerUid and deletes each one", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: "g1_2_set" }, { id: "g7_4_match" }],
+    });
+
+    await deleteUserClips("p1");
+
+    expect(mockWhere).toHaveBeenCalledWith("playerUid", "==", "p1");
+    expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
+    const deletedIds = mockDeleteDoc.mock.calls.map(([ref]: [{ id: string }]) => ref.id);
+    expect(deletedIds).toEqual(["g1_2_set", "g7_4_match"]);
+  });
+
+  it("is a no-op when the user owns no clips", async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    await deleteUserClips("stranger");
+
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
+
+  it("swallows the query error and returns so account deletion can continue", async () => {
+    // Use a permanent error code so withRetry aborts immediately rather than
+    // retrying into the default `undefined` mock return.
+    mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+
+    await expect(deleteUserClips("p1")).resolves.toBeUndefined();
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
+
+  it("tolerates per-doc delete failures without throwing", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: "ok" }, { id: "fails" }],
+    });
+    mockDeleteDoc.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("transient"));
+
+    await expect(deleteUserClips("p1")).resolves.toBeUndefined();
+    expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
   });
 });
