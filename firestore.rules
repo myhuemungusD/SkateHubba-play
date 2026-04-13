@@ -846,5 +846,63 @@ service cloud.firestore {
 
       allow delete: if false;
     }
+
+    // ── Clips (landed-trick feed) ──
+    // Denormalized from games.turnHistory, written atomically inside the same
+    // runTransaction that appends the TurnRecord (see src/services/clips.ts
+    // writeLandedClipsInTransaction). Each landed turn can produce up to two
+    // clips: `set` (setter's landed set) and `match` (matcher's landed match,
+    // only when they actually landed it).
+    //
+    // Integrity rests on three constraints:
+    //   1. Deterministic doc id `${gameId}_${turnNumber}_${role}` — idempotent
+    //      under transaction retry and prevents duplicates.
+    //   2. Writer must be a participant of the referenced game (verified via
+    //      get() against the game doc), matching the write privileges that
+    //      already govern turnHistory growth.
+    //   3. Immutable once written — no updates, no deletes through the client.
+    //
+    // Reads are open to any signed-in user: blocklist filtering is applied
+    // client-side (see useBlockedUsers), matching how the rest of the app
+    // handles cross-user content.
+    match /clips/{clipId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        // Deterministic id must match the clip's self-described coordinates.
+        && clipId == (request.resource.data.gameId + '_'
+                      + string(request.resource.data.turnNumber) + '_'
+                      + request.resource.data.role)
+        && request.resource.data.gameId is string
+        && request.resource.data.turnNumber is int
+        && request.resource.data.turnNumber > 0
+        && request.resource.data.role in ['set', 'match']
+        && request.resource.data.playerUid is string
+        && request.resource.data.playerUsername is string
+        && request.resource.data.playerUsername.size() > 0
+        && request.resource.data.playerUsername.size() <= 20
+        && request.resource.data.trickName is string
+        && request.resource.data.trickName.size() > 0
+        && request.resource.data.trickName.size() <= 100
+        && request.resource.data.videoUrl is string
+        && request.resource.data.videoUrl.size() > 0
+        && request.resource.data.videoUrl.size() <= 2048
+        && (request.resource.data.spotId == null
+            || (request.resource.data.spotId is string
+                && request.resource.data.spotId.size() <= 64))
+        && request.resource.data.createdAt == request.time
+        // Writer must be a game participant (player OR nominated judge).
+        && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
+        // playerUid must be one of the game's two players — never the judge,
+        // never an arbitrary UID.
+        && (
+          request.resource.data.playerUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
+          || request.resource.data.playerUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+        );
+
+      // Clips are immutable once written — no edits, no tombstones through
+      // the client. Account-deletion flows scrub via Admin SDK.
+      allow update, delete: if false;
+    }
   }
 }

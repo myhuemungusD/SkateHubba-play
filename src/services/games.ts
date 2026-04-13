@@ -22,6 +22,7 @@ import { analytics } from "./analytics";
 import { logger, metrics } from "./logger";
 import { captureException } from "../lib/sentry";
 import { writeNotification } from "./notifications";
+import { writeLandedClipsInTransaction } from "./clips";
 
 /* ────────────────────────────────────────────
  * Types
@@ -545,6 +546,22 @@ export async function submitMatchAttempt(
         updatedAt: serverTimestamp(),
       });
 
+      // Denormalize into the clips feed. Honor-system landed → both set and
+      // match are confirmed landed clips.
+      writeLandedClipsInTransaction(tx, {
+        gameId,
+        turnNumber: game.turnNumber,
+        trickName: game.currentTrickName || "Trick",
+        setterUid: game.currentSetter,
+        setterUsername,
+        matcherUid,
+        matcherUsername: matcherUsernameVal,
+        setVideoUrl: game.currentTrickVideoUrl,
+        matchVideoUrl,
+        matcherLanded: true,
+        spotId: game.spotId ?? null,
+      });
+
       return {
         outcome: "landed_honor" as const,
         gameOver: false,
@@ -604,6 +621,24 @@ export async function submitMatchAttempt(
     }
 
     tx.update(gameRef, updates);
+
+    // Set clip still enters the feed — the setter landed their set trick
+    // (failed sets never reach this code path). The missed match attempt
+    // is intentionally excluded.
+    writeLandedClipsInTransaction(tx, {
+      gameId,
+      turnNumber: game.turnNumber,
+      trickName: game.currentTrickName || "Trick",
+      setterUid: game.currentSetter,
+      setterUsername,
+      matcherUid,
+      matcherUsername: matcherUsernameVal,
+      setVideoUrl: game.currentTrickVideoUrl,
+      matchVideoUrl,
+      matcherLanded: false,
+      spotId: game.spotId ?? null,
+    });
+
     return {
       outcome: "missed" as const,
       gameOver,
@@ -896,6 +931,23 @@ export async function resolveDispute(
     }
 
     tx.update(gameRef, updates);
+
+    // Set clip always enters the feed here (setter's set was landed). Match
+    // clip only if the judge upheld the matcher's "landed" call.
+    writeLandedClipsInTransaction(tx, {
+      gameId,
+      turnNumber: game.turnNumber,
+      trickName: game.currentTrickName || "Trick",
+      setterUid: game.currentSetter,
+      setterUsername,
+      matcherUid,
+      matcherUsername: matcherUsernameVal,
+      setVideoUrl: game.currentTrickVideoUrl,
+      matchVideoUrl: game.matchVideoUrl,
+      matcherLanded: landed,
+      spotId: game.spotId ?? null,
+    });
+
     return {
       gameOver,
       winner,
@@ -1010,6 +1062,22 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{
         p2Letters: game.p2Letters,
         judgeReviewFor: null,
         updatedAt: serverTimestamp(),
+      });
+
+      // Auto-accept: matcher's landed call stands, so both set and match are
+      // confirmed landed clips for the feed.
+      writeLandedClipsInTransaction(tx, {
+        gameId,
+        turnNumber: game.turnNumber,
+        trickName: game.currentTrickName || "Trick",
+        setterUid: game.currentSetter,
+        setterUsername,
+        matcherUid,
+        matcherUsername: matcherUsernameVal,
+        setVideoUrl: game.currentTrickVideoUrl,
+        matchVideoUrl: game.matchVideoUrl,
+        matcherLanded: true,
+        spotId: game.spotId ?? null,
       });
 
       return { forfeited: false, winner: null, disputeAutoAccepted: true };
