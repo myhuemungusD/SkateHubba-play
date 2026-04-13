@@ -58,6 +58,13 @@ vi.mock("../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
   failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
   submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
+  resolveDispute: vi.fn().mockResolvedValue(undefined),
+  callBSOnSetTrick: vi.fn().mockResolvedValue(undefined),
+  judgeRuleSetTrick: vi.fn().mockResolvedValue(undefined),
+  acceptJudgeInvite: vi.fn().mockResolvedValue(undefined),
+  declineJudgeInvite: vi.fn().mockResolvedValue(undefined),
+  isJudgeActive: (game: { judgeId?: string | null; judgeStatus?: string | null }) =>
+    !!game.judgeId && game.judgeStatus === "accepted",
   forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
   subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
   subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
@@ -170,7 +177,13 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined, undefined);
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
+        challengerIsVerifiedPro: undefined,
+        opponentIsVerifiedPro: undefined,
+        spotId: null,
+        judgeUid: null,
+        judgeUsername: null,
+      });
     });
   });
 
@@ -307,7 +320,13 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined, undefined);
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
+        challengerIsVerifiedPro: undefined,
+        opponentIsVerifiedPro: undefined,
+        spotId: null,
+        judgeUid: null,
+        judgeUsername: null,
+      });
     });
   });
 
@@ -333,7 +352,13 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
     await waitFor(() => {
       // Should call createGame with the opponent's uid and username
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", undefined, undefined, undefined);
+      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
+        challengerIsVerifiedPro: undefined,
+        opponentIsVerifiedPro: undefined,
+        spotId: null,
+        judgeUid: null,
+        judgeUsername: null,
+      });
     });
   });
 

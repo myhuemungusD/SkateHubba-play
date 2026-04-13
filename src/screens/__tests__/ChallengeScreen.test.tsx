@@ -170,7 +170,11 @@ describe("ChallengeScreen", () => {
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("u2", "rival", VALID_SPOT_ID);
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
+        spotId: VALID_SPOT_ID,
+        judgeUid: null,
+        judgeUsername: null,
+      });
     });
   });
 
@@ -183,7 +187,11 @@ describe("ChallengeScreen", () => {
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("u2", "rival", null);
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
+        spotId: null,
+        judgeUid: null,
+        judgeUsername: null,
+      });
     });
   });
 
@@ -198,7 +206,11 @@ describe("ChallengeScreen", () => {
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("u2", "rival", null);
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
+        spotId: null,
+        judgeUid: null,
+        judgeUsername: null,
+      });
     });
     // No chip should render for garbled input, and neither analytics nor
     // the fetch helper should ever see the garbled value.
@@ -257,6 +269,45 @@ describe("ChallengeScreen", () => {
     await waitFor(() => {
       expect(screen.getByTestId("challenge-spot-chip")).toHaveTextContent("Challenging at Hollenbeck Hubba");
     });
+  });
+
+  it("forwards judge username to onSend when a valid judge is added", async () => {
+    // Resolve opponent first, then judge.
+    mockGetUidByUsername.mockResolvedValueOnce("u2").mockResolvedValueOnce("u3");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    // Open the judge picker, then type a judge username.
+    await userEvent.click(screen.getByTestId("add-judge-toggle"));
+    const allHandleInputs = screen.getAllByPlaceholderText("their_handle");
+    await userEvent.type(allHandleInputs[allHandleInputs.length - 1], "judge");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
+        spotId: null,
+        judgeUid: "u3",
+        judgeUsername: "judge",
+      });
+    });
+  });
+
+  it("rejects a judge that matches the opponent", async () => {
+    mockGetUidByUsername.mockResolvedValueOnce("u2").mockResolvedValueOnce("u2");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByTestId("add-judge-toggle"));
+    const allHandleInputs = screen.getAllByPlaceholderText("their_handle");
+    await userEvent.type(allHandleInputs[allHandleInputs.length - 1], "rivalsame");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Judge must be a third player/)).toBeInTheDocument();
+    });
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   it("falls back to a generic label when the spot name fetch fails", async () => {

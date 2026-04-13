@@ -8,12 +8,18 @@ import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger } from "../services/logger";
 
+export interface StartChallengeOptions {
+  spotId?: string | null;
+  judgeUid?: string | null;
+  judgeUsername?: string | null;
+}
+
 export interface GameContextValue {
   games: GameDoc[];
   activeGame: GameDoc | null;
   setActiveGame: (g: GameDoc | null) => void;
   openGame: (g: GameDoc) => void;
-  startChallenge: (opponentUid: string, opponentUsername: string, spotId?: string | null) => Promise<void>;
+  startChallenge: (opponentUid: string, opponentUsername: string, options?: StartChallengeOptions) => Promise<void>;
   hasMoreGames: boolean;
   loadMoreGames: () => void;
   gamesLoading: boolean;
@@ -143,10 +149,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   const startChallenge = useCallback(
-    async (opponentUid: string, opponentUsername: string, spotId?: string | null) => {
+    async (opponentUid: string, opponentUsername: string, options?: StartChallengeOptions) => {
       /* v8 ignore start -- null guard unreachable in tests; button disabled when user/profile is null */
       if (!user || !activeProfile) return;
       /* v8 ignore stop */
+      const spotId = options?.spotId ?? null;
+      const judgeUid = options?.judgeUid ?? null;
+      const judgeUsername = options?.judgeUsername ?? null;
       // Defense-in-depth: check block status client-side (Firestore rules enforce server-side)
       const [blockedByMe, blockedByThem] = await Promise.all([
         isUserBlocked(user.uid, opponentUid),
@@ -156,17 +165,24 @@ export function GameProvider({ children }: { children: ReactNode }) {
         throw new Error("Cannot challenge this player.");
       }
       const opponentProfile = await getUserProfile(opponentUid);
-      const gameId = await createGame(
+      const gameId = await createGame(user.uid, activeProfile.username, opponentUid, opponentUsername, {
+        challengerIsVerifiedPro: activeProfile.isVerifiedPro,
+        opponentIsVerifiedPro: opponentProfile?.isVerifiedPro,
+        spotId,
+        judgeUid,
+        judgeUsername,
+      });
+      analytics.gameCreated(gameId);
+      const shell = newGameShell(
+        gameId,
         user.uid,
         activeProfile.username,
         opponentUid,
         opponentUsername,
-        activeProfile.isVerifiedPro,
-        opponentProfile?.isVerifiedPro,
         spotId,
+        judgeUid,
+        judgeUsername,
       );
-      analytics.gameCreated(gameId);
-      const shell = newGameShell(gameId, user.uid, activeProfile.username, opponentUid, opponentUsername, spotId);
       setActiveGame(shell);
       setScreen("game");
     },
