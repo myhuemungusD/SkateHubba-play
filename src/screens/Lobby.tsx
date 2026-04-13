@@ -12,6 +12,7 @@ import { PushPermissionBanner } from "../components/PushPermissionBanner";
 import { LobbyTimer } from "../components/LobbyTimer";
 import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
 import { ProUsername } from "../components/ProUsername";
+import { FeaturedClipCard } from "../components/FeaturedClipCard";
 
 function relativeJoinDate(createdAt: unknown): string {
   if (
@@ -204,6 +205,13 @@ export function Lobby({
             </button>
           </p>
         )}
+
+        <FeaturedClipCard
+          myUid={profile.uid}
+          onChallengeUser={onChallengeUser}
+          onViewPlayer={onViewPlayer ?? (() => {})}
+          canChallenge={Boolean(user?.emailVerified)}
+        />
 
         {/* Active games */}
         {active.length > 0 && (
