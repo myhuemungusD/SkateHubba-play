@@ -3,7 +3,7 @@ import { useAuthContext } from "./AuthContext";
 import { useNavigationContext } from "./NavigationContext";
 import { updatePlayerStats, getUserProfile } from "../services/users";
 import { isUserBlocked } from "../services/blocking";
-import { createGame, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
+import { createGame, forfeitExpiredTurn, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger } from "../services/logger";
@@ -46,6 +46,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Track which games have already had stats recorded this session
   const processedStatsRef = useRef(new Set<string>());
 
+  // Track which expired games have already had forfeit attempted this session,
+  // so the subscription firing repeatedly (after any game update) doesn't spam
+  // forfeitExpiredTurn for the same game.
+  const forfeitAttemptedRef = useRef(new Set<string>());
+
   // Pagination state
   const [gamesLimit, setGamesLimit] = useState(GAMES_PAGE_SIZE);
   const [hasMoreGames, setHasMoreGames] = useState(false);
@@ -62,6 +67,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       setGames([]);
       setActiveGame(null);
       processedStatsRef.current.clear();
+      forfeitAttemptedRef.current.clear();
     }
   }, [user]);
 
@@ -74,8 +80,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       (updatedGames) => {
         setGames(updatedGames);
         setGamesLoading(false);
-        // Catch up on stats for games that completed while user was away
+        const now = Date.now();
         for (const g of updatedGames) {
+          // Catch up on stats for games that completed while user was away
           if ((g.status === "complete" || g.status === "forfeit") && g.winner && !processedStatsRef.current.has(g.id)) {
             processedStatsRef.current.add(g.id);
             const won = g.winner === user.uid;
@@ -86,6 +93,25 @@ export function GameProvider({ children }: { children: ReactNode }) {
               });
               processedStatsRef.current.delete(g.id);
             });
+          }
+
+          // Auto-resolve games whose turn deadline passed while nobody was
+          // watching. Mirrors the per-game check in GamePlayScreen but runs
+          // against the full list so stale "active" games don't linger in
+          // the lobby counter. The transaction re-checks the deadline
+          // server-side, so this is safe to fire for every expired game.
+          if (g.status === "active" && !forfeitAttemptedRef.current.has(g.id)) {
+            const deadline = g.turnDeadline?.toMillis?.() ?? 0;
+            if (deadline > 0 && deadline <= now) {
+              forfeitAttemptedRef.current.add(g.id);
+              forfeitExpiredTurn(g.id).catch((err) => {
+                logger.warn("forfeit_expired_failed", {
+                  gameId: g.id,
+                  error: parseFirebaseError(err),
+                });
+                forfeitAttemptedRef.current.delete(g.id);
+              });
+            }
           }
         }
       },
