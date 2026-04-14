@@ -3,6 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { fetchSpotName } from "../services/spots";
 import { analytics } from "../services/analytics";
+import { captureException } from "../lib/sentry";
+import { getUserMessage } from "../utils/helpers";
 import type { StartChallengeOptions } from "../context/GameContext";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
@@ -112,14 +114,25 @@ export function ChallengeScreen({
 
     setLoading(true);
     try {
-      // Resolve both usernames in parallel so the optional judge field never
-      // serializes a second round-trip on top of the opponent lookup. Keeps
-      // game-start latency identical whether or not a judge is nominated.
-      const [uid, resolvedJudgeUid] = await Promise.all([
+      // Resolve both usernames in parallel via allSettled so the optional
+      // judge lookup never holds up — or blows up — the required opponent
+      // path. A transient network blip on the judge field surfaces as a
+      // specific actionable error instead of a generic "Could not start
+      // game", and the user can retry or remove the judge to proceed.
+      const [opponentResult, judgeResult] = await Promise.allSettled([
         getUidByUsername(normalized),
         judgeNormalized ? getUidByUsername(judgeNormalized) : Promise.resolve(null),
       ]);
 
+      if (opponentResult.status === "rejected") {
+        captureException(opponentResult.reason, {
+          extra: { context: "challenge.opponent_lookup", username: normalized },
+        });
+        setError(getUserMessage(opponentResult.reason, "Couldn't reach the player directory. Try again."));
+        return;
+      }
+
+      const uid = opponentResult.value;
       if (!uid) {
         setError(`@${normalized} doesn't exist yet. They need to sign up first.`);
         return;
@@ -132,6 +145,14 @@ export function ChallengeScreen({
       let judgeUid: string | null = null;
       let judgeUsername: string | null = null;
       if (judgeNormalized) {
+        if (judgeResult.status === "rejected") {
+          captureException(judgeResult.reason, {
+            extra: { context: "challenge.judge_lookup", username: judgeNormalized },
+          });
+          setError(`Couldn't look up judge @${judgeNormalized}. Try again or remove the judge to start now.`);
+          return;
+        }
+        const resolvedJudgeUid = judgeResult.value;
         if (!resolvedJudgeUid) {
           setError(`Judge @${judgeNormalized} doesn't exist yet. They need to sign up first.`);
           return;
@@ -150,7 +171,9 @@ export function ChallengeScreen({
 
       await onSend(uid, normalized, { spotId, judgeUid, judgeUsername });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not start game");
+      // Reaches here only on onSend rejection — the lookups above settle to
+      // explicit setError + return paths.
+      setError(getUserMessage(err, "Could not start game"));
     } finally {
       setLoading(false);
     }
@@ -200,6 +223,7 @@ export function ChallengeScreen({
             submit();
           }}
           noValidate
+          aria-busy={loading}
         >
           <Field
             label="Opponent Username"

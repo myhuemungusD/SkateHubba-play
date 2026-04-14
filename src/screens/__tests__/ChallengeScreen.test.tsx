@@ -339,6 +339,106 @@ describe("ChallengeScreen", () => {
     });
   });
 
+  it("surfaces a specific opponent-lookup error when the directory call rejects", async () => {
+    // Network/permissions failure on the opponent lookup — judge field empty
+    // so only the opponent promise is in flight. Should surface the rejection
+    // message instead of the generic "Could not start game" fallback, and
+    // must not call onSend.
+    mockGetUidByUsername.mockRejectedValueOnce(new Error("Network unreachable"));
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(screen.getByText("Network unreachable")).toBeInTheDocument();
+    });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("falls back to a friendly opponent-lookup error when the rejection has no message", async () => {
+    mockGetUidByUsername.mockRejectedValueOnce("opaque-non-error");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(screen.getByText("Couldn't reach the player directory. Try again.")).toBeInTheDocument();
+    });
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a judge-specific error and lets the user retry without losing opponent state", async () => {
+    // Opponent resolves cleanly, judge lookup network-fails. The error must
+    // name the judge field specifically so the user knows they can either
+    // retry or remove the judge — the start flow must never be silently
+    // blocked by an optional field.
+    mockGetUidByUsername.mockResolvedValueOnce("u2").mockRejectedValueOnce(new Error("timeout"));
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByTestId("add-judge-toggle"));
+    const inputs = screen.getAllByPlaceholderText("their_handle");
+    await userEvent.type(inputs[inputs.length - 1], "judge");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Couldn't look up judge @judge. Try again or remove the judge to start now."),
+      ).toBeInTheDocument();
+    });
+    // Opponent lookup result wasn't wasted — onSend must NOT have been called
+    // (we don't silently drop the judge), but the opponent input is preserved
+    // so the user can retry without re-typing. Both opponent and judge fields
+    // are still rendered (judge picker stays open after the error).
+    expect(onSend).not.toHaveBeenCalled();
+    const allInputs = screen.getAllByPlaceholderText("their_handle") as HTMLInputElement[];
+    expect(allInputs[0].value).toBe("rival");
+    expect(allInputs[allInputs.length - 1].value).toBe("judge");
+  });
+
+  it("opponent error wins when both lookups reject", async () => {
+    // Both rejections — opponent error takes priority because it's the
+    // required field. Avoids confusing the user with two simultaneous
+    // banners and keeps the feedback aligned with what they need to fix
+    // first.
+    mockGetUidByUsername.mockRejectedValueOnce(new Error("opp-down")).mockRejectedValueOnce(new Error("judge-down"));
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByTestId("add-judge-toggle"));
+    const inputs = screen.getAllByPlaceholderText("their_handle");
+    await userEvent.type(inputs[inputs.length - 1], "judge");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(screen.getByText("opp-down")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Couldn't look up judge/)).not.toBeInTheDocument();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("marks the form aria-busy while a submit is in flight", async () => {
+    mockGetUidByUsername.mockImplementation(() => new Promise(() => {})); // hang
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
+
+    const input = screen.getByPlaceholderText("their_handle");
+    const form = input.closest("form")!;
+    expect(form).not.toHaveAttribute("aria-busy", "true");
+
+    await userEvent.type(input, "rival");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(form).toHaveAttribute("aria-busy", "true");
+    });
+  });
+
   it("rejects a judge that matches the opponent", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2").mockResolvedValueOnce("u2");
     const onSend = vi.fn().mockResolvedValue(undefined);
