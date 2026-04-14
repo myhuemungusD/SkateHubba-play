@@ -26,10 +26,13 @@ import {
   deleteDoc,
   doc,
   documentId,
+  getCountFromServer,
+  getDoc,
   getDocs,
   limit as limitFn,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   startAfter,
   Timestamp,
@@ -43,6 +46,7 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { fetchSpotName } from "./spots";
 
 /* ────────────────────────────────────────────
  * Types
@@ -278,6 +282,180 @@ export async function fetchClipsFeed(cursor: ClipsFeedCursor | null = null, page
   const nextCursor: ClipsFeedCursor | null = last && last.createdAt ? { createdAt: last.createdAt, id: last.id } : null;
 
   return { clips, cursor: nextCursor };
+}
+
+/* ────────────────────────────────────────────
+ * Featured clip + upvotes
+ * ──────────────────────────────────────────── */
+
+/**
+ * Presentational shape of the lobby's featured clip. A snapshot — not a live
+ * subscription. The upvote count is computed server-side at fetch time via
+ * an aggregate query on `/clipVotes`, keeping `/clips` immutable per the
+ * existing rule (`allow update: if false`).
+ */
+export interface FeaturedClip {
+  id: string;
+  videoUrl: string;
+  trickName: string;
+  playerUid: string;
+  playerUsername: string;
+  spotName: string | null;
+  createdAt: Timestamp | null;
+  upvoteCount: number;
+  /** True when the current user already upvoted this clip. */
+  alreadyUpvoted: boolean;
+}
+
+/**
+ * Thrown by `upvoteClip` when the caller has already upvoted the target
+ * clip. Spec: single-tap upvote, no undo — the UI converts this into the
+ * "already filled" state without surfacing an error toast.
+ */
+export class AlreadyUpvotedError extends Error {
+  constructor(public readonly clipId: string) {
+    super(`already_upvoted:${clipId}`);
+    this.name = "AlreadyUpvotedError";
+  }
+}
+
+function clipVotesRef() {
+  return collection(requireDb(), "clipVotes");
+}
+
+/** Deterministic clipVote doc id — the source of the uniqueness guarantee. */
+function clipVoteId(uid: string, clipId: string): string {
+  return `${uid}_${clipId}`;
+}
+
+/** Size of the recency window we random-pick from. Bounded so a single page
+ *  of reads always covers it; larger windows would need a second roundtrip. */
+const FEATURED_CLIP_WINDOW = 50;
+
+async function countClipUpvotes(clipId: string): Promise<number> {
+  try {
+    const q = query(clipVotesRef(), where("clipId", "==", clipId));
+    const snap = await withRetry(() => getCountFromServer(q));
+    return snap.data().count;
+  } catch (err) {
+    logger.warn("clip_upvote_count_failed", { clipId, error: parseFirebaseError(err) });
+    return 0;
+  }
+}
+
+async function hasUserUpvoted(uid: string, clipId: string): Promise<boolean> {
+  try {
+    const snap = await withRetry(() => getDoc(doc(requireDb(), "clipVotes", clipVoteId(uid, clipId))));
+    return snap.exists();
+  } catch (err) {
+    logger.warn("clip_upvote_check_failed", { clipId, error: parseFirebaseError(err) });
+    return false;
+  }
+}
+
+/**
+ * Fetch one random clip from the most-recent `FEATURED_CLIP_WINDOW` landed
+ * tricks, excluding ids the caller has already been shown. Returns null when
+ * the window is empty after exclusion — callers hide the card silently per
+ * spec (the active-games list is the primary content).
+ *
+ * Randomness is client-side: Firestore has no native random and adding an
+ * equivalent via a secondary index (random-float field on each clip) is a
+ * future optimization. At a 50-row window this is trivial work.
+ *
+ * Enrichment (spot name + upvote count + current-user-has-upvoted flag)
+ * runs in parallel to keep the card's time-to-interactive low.
+ */
+export async function fetchFeaturedClip(
+  uid: string,
+  excludeIds: ReadonlyArray<string> = [],
+): Promise<FeaturedClip | null> {
+  const q = query(
+    clipsRef(),
+    where("moderationStatus", "==", "active"),
+    orderBy("createdAt", "desc"),
+    orderBy(documentId(), "desc"),
+    limitFn(FEATURED_CLIP_WINDOW),
+  );
+
+  let snap;
+  try {
+    snap = await withRetry(() => getDocs(q));
+  } catch (err) {
+    logger.warn("featured_clip_query_failed", { error: parseFirebaseError(err) });
+    return null;
+  }
+
+  const exclude = new Set(excludeIds);
+  const candidates: ClipDoc[] = [];
+  for (const d of snap.docs) {
+    try {
+      const clip = toClipDoc(d);
+      if (!exclude.has(clip.id)) candidates.push(clip);
+    } catch (err) {
+      logger.warn("featured_clip_malformed", { docId: d.id, error: parseFirebaseError(err) });
+    }
+  }
+  if (candidates.length === 0) return null;
+
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+
+  const [spotName, upvoteCount, alreadyUpvoted] = await Promise.all([
+    pick.spotId ? fetchSpotName(pick.spotId) : Promise.resolve(null),
+    countClipUpvotes(pick.id),
+    hasUserUpvoted(uid, pick.id),
+  ]);
+
+  return {
+    id: pick.id,
+    videoUrl: pick.videoUrl,
+    trickName: pick.trickName,
+    playerUid: pick.playerUid,
+    playerUsername: pick.playerUsername,
+    spotName,
+    createdAt: pick.createdAt,
+    upvoteCount,
+    alreadyUpvoted,
+  };
+}
+
+/**
+ * Record a single upvote on a clip and return the resulting count.
+ *
+ * Uniqueness is enforced by the deterministic `{uid}_{clipId}` doc id: the
+ * transaction reads the doc and throws `AlreadyUpvotedError` when it already
+ * exists. The `clipVotes` rule additionally enforces this via
+ * `allow update/delete: if false` so a rule-only client can't double-vote
+ * by setDoc-ing over the existing entry.
+ */
+export async function upvoteClip(uid: string, clipId: string): Promise<number> {
+  const db = requireDb();
+  const voteRef = doc(db, "clipVotes", clipVoteId(uid, clipId));
+
+  try {
+    await runTransaction(db, async (tx) => {
+      const existing = await tx.get(voteRef);
+      if (existing.exists()) throw new AlreadyUpvotedError(clipId);
+      tx.set(voteRef, {
+        uid,
+        clipId,
+        createdAt: serverTimestamp(),
+      });
+    });
+  } catch (err) {
+    if (err instanceof AlreadyUpvotedError) throw err;
+    // permission-denied here means the security rules blocked a clean
+    // create — most likely because the vote doc already exists and the
+    // `allow update: if false` rule rejected an implicit overwrite
+    // (e.g. emulator without runTransaction instrumentation). Surface it
+    // as the same business-level error rather than a raw permission
+    // failure so callers have a single error to handle.
+    const code = (err as { code?: string }).code;
+    if (code === "permission-denied") throw new AlreadyUpvotedError(clipId);
+    throw err;
+  }
+
+  return countClipUpvotes(clipId);
 }
 
 /* ────────────────────────────────────────────
