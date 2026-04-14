@@ -13,6 +13,7 @@ import { LobbyTimer } from "../components/LobbyTimer";
 import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
 import { ProUsername } from "../components/ProUsername";
 import { FeaturedClipCard } from "../components/FeaturedClipCard";
+import { ClipsFeed } from "../components/ClipsFeed";
 
 function relativeJoinDate(createdAt: unknown): string {
   if (
@@ -488,6 +489,10 @@ export function Lobby({
             </div>
           </div>
         )}
+
+        {/* Community feed — formerly the standalone /feed tab, merged into the
+            lobby so the home surface contains every browse/discovery section. */}
+        <ClipsFeed profile={profile} onViewPlayer={onViewPlayer ?? (() => {})} onChallengeUser={onChallengeUser} />
 
         {/* Delete Account */}
         <div className="mt-8 flex justify-center">
