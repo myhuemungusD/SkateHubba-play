@@ -26,6 +26,18 @@ vi.mock("../../services/users", () => ({
 }));
 vi.mock("../../services/blocking", () => ({
   getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
+  // useBlockedUsers (used transitively by the embedded ClipsFeed) calls
+  // subscribeToBlockedUsers; return a no-op unsubscribe so the hook is happy.
+  subscribeToBlockedUsers: vi.fn(() => () => {}),
+}));
+// ClipsFeed (embedded in Lobby) calls fetchClipsFeed; FeaturedClipCard
+// (also embedded) calls fetchFeaturedClip + upvoteClip. Both have their
+// own test files — here we just keep them from hitting Firebase.
+vi.mock("../../services/clips", () => ({
+  fetchClipsFeed: vi.fn().mockResolvedValue({ clips: [], cursor: null }),
+  fetchFeaturedClip: vi.fn().mockResolvedValue(null),
+  upvoteClip: vi.fn().mockResolvedValue(0),
+  AlreadyUpvotedError: class extends Error {},
 }));
 
 import { getPlayerDirectory } from "../../services/users";

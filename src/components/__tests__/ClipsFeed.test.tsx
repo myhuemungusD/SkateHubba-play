@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ClipsScreen } from "../ClipsScreen";
+import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
 import type { ClipDoc } from "../../services/clips";
 
@@ -19,7 +19,7 @@ vi.mock("../../services/logger", () => ({
 }));
 
 // ReportModal depends on services we don't need to exercise here.
-vi.mock("../../components/ReportModal", () => ({
+vi.mock("../ReportModal", () => ({
   ReportModal: ({ onClose, onSubmitted }: { onClose: () => void; onSubmitted: () => void }) => (
     <div role="dialog" aria-label="report-modal">
       <button onClick={onSubmitted}>__submit__</button>
@@ -57,22 +57,22 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("ClipsScreen", () => {
+describe("ClipsFeed", () => {
   it("shows the loading state on first mount", () => {
     mockFetchClipsFeed.mockImplementation(() => new Promise(() => {}));
-    render(<ClipsScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     expect(screen.getByRole("status", { name: /loading clips/i })).toBeInTheDocument();
   });
 
   it("renders the empty state when the feed comes back with no clips", async () => {
     mockFetchClipsFeed.mockResolvedValueOnce({ clips: [], cursor: null });
-    render(<ClipsScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText(/No clips yet\./i)).toBeInTheDocument());
   });
 
   it("renders clips with player + trick + role + timestamp", async () => {
     mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
-    render(<ClipsScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
     expect(screen.getByText("@alice")).toBeInTheDocument();
     expect(screen.getByText("SET")).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe("ClipsScreen", () => {
     const user = userEvent.setup();
     const onViewPlayer = vi.fn();
     mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
-    render(<ClipsScreen profile={profile} onViewPlayer={onViewPlayer} onChallengeUser={vi.fn()} />);
+    render(<ClipsFeed profile={profile} onViewPlayer={onViewPlayer} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
     await user.click(screen.getByText("@alice"));
@@ -94,7 +94,7 @@ describe("ClipsScreen", () => {
     const user = userEvent.setup();
     const onChallengeUser = vi.fn();
     mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
-    render(<ClipsScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={onChallengeUser} />);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={onChallengeUser} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: /challenge/i }));
@@ -106,7 +106,7 @@ describe("ClipsScreen", () => {
       clips: [makeClip({ playerUid: profile.uid, playerUsername: profile.username })],
       cursor: null,
     });
-    render(<ClipsScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /challenge/i })).not.toBeInTheDocument();
   });
@@ -114,7 +114,7 @@ describe("ClipsScreen", () => {
   it("opens the report modal and optimistically hides the reported clip", async () => {
     const user = userEvent.setup();
     mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
-    render(<ClipsScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: /report clip by @alice/i }));
@@ -137,7 +137,7 @@ describe("ClipsScreen", () => {
         cursor: null,
       });
 
-    render(<ClipsScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("TrickA0")).toBeInTheDocument());
     expect(screen.queryByText("TrickB0")).not.toBeInTheDocument();
 
@@ -153,7 +153,7 @@ describe("ClipsScreen", () => {
       .mockRejectedValueOnce(new Error("boom"))
       .mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
 
-    render(<ClipsScreen profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText(/Couldn't load the feed/i)).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: /try again/i }));
