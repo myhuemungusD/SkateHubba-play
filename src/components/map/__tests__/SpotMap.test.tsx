@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, waitFor, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
 const mockGetSpotsInBounds = vi.fn();
@@ -162,6 +163,83 @@ describe("SpotMap", () => {
     // fires on the next microtask. Query synchronously to catch it.
     const loading = screen.getByRole("status", { name: /loading map/i });
     expect(loading).toBeInTheDocument();
+  });
+
+  it("renders the filter/search bar after the map has loaded", async () => {
+    render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    const searchbox = await screen.findByRole("searchbox", { name: /search spots/i });
+    expect(searchbox).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /filters/i })).toBeInTheDocument();
+  });
+
+  it("removes markers when a filter hides every spot, and restores them on clear", async () => {
+    render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(document.querySelector(`[data-testid="spot-marker-${FIXTURE.id}"]`)).not.toBeNull();
+    });
+
+    const search = await screen.findByRole("searchbox", { name: /search spots/i });
+    await userEvent.type(search, "does-not-match-any-spot");
+
+    await waitFor(() => {
+      expect(document.querySelector(`[data-testid="spot-marker-${FIXTURE.id}"]`)).toBeNull();
+    });
+
+    // The no-matches empty state is the source of truth that filtering
+    // actually applied to the marker layer.
+    expect(screen.getByText(/No spots match your filters/i)).toBeInTheDocument();
+
+    await userEvent.clear(search);
+
+    await waitFor(() => {
+      expect(document.querySelector(`[data-testid="spot-marker-${FIXTURE.id}"]`)).not.toBeNull();
+    });
+  });
+});
+
+describe("SpotMap load timeout", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("surfaces a friendly retry state when mapbox never fires `load`", () => {
+    // Temporarily swallow the `load` event so the component stays in loading
+    // state and the 15s safety timeout fires.
+    const realQueueMicrotask = globalThis.queueMicrotask;
+    globalThis.queueMicrotask = () => {};
+    try {
+      render(
+        <MemoryRouter>
+          <SpotMap />
+        </MemoryRouter>,
+      );
+      // Still loading — the normal overlay.
+      expect(screen.getByRole("status", { name: /loading map/i })).toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(15_000);
+      });
+
+      // jsdom doesn't implement navigator.geolocation, so the GPS banner also
+      // carries role="alert" in this environment. Assert by text to pick the
+      // right one rather than failing on the generic role lookup.
+      expect(screen.getByText(/map is taking too long to load/i)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+    } finally {
+      globalThis.queueMicrotask = realQueueMicrotask;
+    }
   });
 });
 

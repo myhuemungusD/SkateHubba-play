@@ -1,20 +1,23 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Crosshair, Plus } from "lucide-react";
+import { Crosshair, Plus, X } from "lucide-react";
 import type { Spot } from "../../types/spot";
 import { getSpotsInBounds } from "../../services/spots";
 import { logger } from "../../services/logger";
 import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS } from "../../lib/mapbox";
 import { SpotPreviewCard } from "./SpotPreviewCard";
 import { AddSpotSheet } from "./AddSpotSheet";
+import { SpotFilterBar, applySpotFilters, DEFAULT_SPOT_FILTERS, type SpotFilters } from "./SpotFilterBar";
 
 interface SpotMapProps {
   activeGameSpotId?: string;
   onSpotSelect?: (spot: Spot) => void;
 }
 
-// Inject pulsing marker CSS once
+// Inject pulsing marker CSS once. Respects prefers-reduced-motion: users who
+// opt out of motion (vestibular, accessibility) get a static ring instead of
+// the infinite pulse — per WCAG 2.3.3.
 const PULSE_CSS_ID = "spot-pulse-css";
 function injectPulseCSS(): void {
   if (document.getElementById(PULSE_CSS_ID)) return;
@@ -33,6 +36,12 @@ function injectPulseCSS(): void {
       border: 2px solid #F97316;
       animation: spot-pulse 1.8s ease-out infinite;
       pointer-events: none;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .spot-pulse-ring {
+        animation: none;
+        opacity: 0.7;
+      }
     }
     .spot-user-dot {
       width: 12px;
@@ -93,6 +102,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   const prevActiveSpotRef = useRef<string | undefined>(undefined);
 
   const [spots, setSpots] = useState<Spot[]>([]);
+  const [filters, setFilters] = useState<SpotFilters>(DEFAULT_SPOT_FILTERS);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
   const [isAddingSpot, setIsAddingSpot] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
@@ -101,8 +111,18 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   const [gpsError, setGpsError] = useState<string | null>(() =>
     "geolocation" in navigator ? null : "Geolocation not supported by your browser",
   );
+  const [gpsBannerDismissed, setGpsBannerDismissed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [mapLoading, setMapLoading] = useState(true);
+  // Surface a friendly error when Mapbox never fires `load` (blocked network,
+  // invalid token, tile host unreachable) — otherwise the overlay would spin
+  // forever, which is the loudest "broken app" complaint on competitor apps.
+  const [mapLoadTimeout, setMapLoadTimeout] = useState(false);
+
+  // Spots to actually render on the map after applying client-side filters.
+  // Kept as a memoized derivation so marker diffing below doesn't re-run when
+  // the filter object is referentially stable.
+  const visibleSpots = useMemo(() => applySpotFilters(spots, filters), [spots, filters]);
 
   // Keep ref in sync
   useEffect(() => {
@@ -231,9 +251,22 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       fetchSpots(m);
     });
 
+    // Safety net: if the load event doesn't fire within 15s (e.g. offline,
+    // blocked CSP, tile server 5xx), show the friendly error state instead
+    // of a perpetually spinning overlay.
+    const loadTimeout = setTimeout(() => {
+      setMapLoadTimeout((v) => {
+        if (!v) {
+          logger.warn("map_load_timeout", {});
+        }
+        return true;
+      });
+    }, 15_000);
+
     map.current = m;
 
     return () => {
+      clearTimeout(loadTimeout);
       m.remove();
       map.current = null;
     };
@@ -248,6 +281,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
         const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
         setUserLocation(loc);
         setGpsError(null);
+        setGpsBannerDismissed(false);
 
         // Fly to user on first GPS lock, then user can pan freely
         if (!hasLockedRef.current && map.current) {
@@ -300,11 +334,13 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     }
   }, [userLocation, isTrackingUser]);
 
-  // Update spot markers — track listeners for proper cleanup
+  // Update spot markers — track listeners for proper cleanup.
+  // Driven off `visibleSpots` so toggling filters immediately removes markers
+  // from the map (and restores them on clear) without a new Firestore read.
   useEffect(() => {
     if (!map.current) return;
 
-    const currentIds = new Set(spots.map((s) => s.id));
+    const currentIds = new Set(visibleSpots.map((s) => s.id));
     const existingIds = new Set(markersRef.current.keys());
 
     // If the active game spot changed, evict the previously-active marker
@@ -338,7 +374,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     }
 
     // Add new markers (including any we just evicted above)
-    for (const spot of spots) {
+    for (const spot of visibleSpots) {
       if (markersRef.current.has(spot.id)) continue;
 
       const isActiveGame = spot.id === activeGameSpotId;
@@ -360,7 +396,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
         cleanup: () => el.removeEventListener("click", listener),
       });
     }
-  }, [spots, activeGameSpotId, createMarkerEl, setSelectedSpot, onSpotSelect]);
+  }, [visibleSpots, activeGameSpotId, createMarkerEl, setSelectedSpot, onSpotSelect]);
 
   // Cleanup all timers and markers on unmount. The stale-fetch guard is
   // handled via fetchGenerationRef above, not via AbortController.
@@ -418,8 +454,9 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
     <div className="relative w-full" style={{ height: "100dvh" }}>
       <div ref={mapContainer} className="w-full h-full" />
 
-      {/* Map loading overlay */}
-      {mapLoading && (
+      {/* Map loading overlay. If the load event doesn't fire within 15s we
+          swap to a recoverable error instead of an endless spinner. */}
+      {mapLoading && !mapLoadTimeout && (
         <div
           role="status"
           aria-live="polite"
@@ -436,25 +473,89 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
         </div>
       )}
 
-      {/* GPS error banner */}
-      {gpsError && (
+      {mapLoading && mapLoadTimeout && (
         <div
           role="alert"
           aria-live="polite"
-          className="absolute top-4 left-4 right-4 z-30 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-3 text-sm text-[#CCC]"
+          className="absolute inset-0 z-40 bg-[#0A0A0A] flex items-center justify-center"
         >
-          {gpsError}
+          <div className="text-center px-6 max-w-xs">
+            <p className="text-[#CCC] text-sm mb-1">The map is taking too long to load.</p>
+            <p className="text-[#666] text-xs mb-5">Check your connection and try again.</p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-6 py-2.5 bg-[#F97316] text-white rounded-xl font-semibold text-sm
+                         hover:bg-[#EA580C] transition-colors"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Empty state */}
-      {!mapLoading && spots.length === 0 && !gpsError && (
+      {/* Filter + search bar — hidden until the map is ready so it never
+          obscures the loading state. */}
+      {!mapLoading && (
+        <SpotFilterBar
+          filters={filters}
+          onChange={setFilters}
+          totalCount={spots.length}
+          matchCount={visibleSpots.length}
+        />
+      )}
+
+      {/* GPS error banner — dismissible so it doesn't permanently squat on
+          the top of the viewport for users who intentionally declined
+          location permission. */}
+      {gpsError && !gpsBannerDismissed && (
+        <div
+          role="alert"
+          aria-live="polite"
+          className="absolute top-16 left-3 right-3 z-30 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-3
+                     text-sm text-[#CCC] flex items-start gap-2"
+        >
+          <span className="flex-1">{gpsError}</span>
+          <button
+            type="button"
+            onClick={() => setGpsBannerDismissed(true)}
+            aria-label="Dismiss location notice"
+            className="text-[#888] hover:text-white flex-shrink-0 -mr-1 -mt-0.5"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Empty state — two distinct messages: (1) nothing in the viewport at
+          all → invite the user to add one; (2) spots exist but filters are
+          hiding them → hint to loosen filters. */}
+      {!mapLoading && spots.length === 0 && (
         <div
           role="status"
           aria-live="polite"
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-[#1A1A1A]/90 backdrop-blur rounded-xl px-4 py-2 text-sm text-[#888]"
+          className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-[#1A1A1A]/95 backdrop-blur border border-[#333]
+                     rounded-xl px-4 py-3 text-sm text-[#CCC] flex flex-col items-center gap-2 max-w-[86%]"
         >
-          No spots nearby. Add one!
+          <span>No spots in view yet.</span>
+          <button
+            type="button"
+            onClick={() => setIsAddingSpot(true)}
+            className="text-xs font-semibold text-[#F97316] hover:underline"
+          >
+            Add the first spot here
+          </button>
+        </div>
+      )}
+
+      {!mapLoading && spots.length > 0 && visibleSpots.length === 0 && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-[#1A1A1A]/95 backdrop-blur border border-[#333]
+                     rounded-xl px-4 py-2 text-sm text-[#CCC]"
+        >
+          No spots match your filters.
         </div>
       )}
 
@@ -463,21 +564,28 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
         <div
           role="status"
           aria-live="polite"
-          className="absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-2 text-sm text-white"
+          className="absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-[#1A1A1A] border border-[#333] rounded-xl px-4 py-2 text-sm text-white"
         >
           {toast}
         </div>
       )}
 
-      {/* Recenter button */}
+      {/* Recenter button — bumped from 32px to 40px to hit WCAG 2.5.5 min
+          target size, and the border / fill change when tracking is active
+          so users can tell at a glance whether the map will follow them. */}
       <button
         type="button"
         onClick={handleRecenter}
-        className="absolute bottom-36 right-2.5 z-20 w-8 h-8 bg-[#1A1A1A] border border-[#333] rounded-lg
-                   flex items-center justify-center text-white hover:bg-[#333] transition-colors"
-        aria-label="Recenter to my location"
+        aria-label={isTrackingUser ? "Following your location" : "Recenter to my location"}
+        aria-pressed={isTrackingUser}
+        className={`absolute bottom-36 right-2.5 z-20 w-10 h-10 rounded-lg
+                    flex items-center justify-center transition-colors ${
+                      isTrackingUser
+                        ? "bg-[#F97316] border border-[#F97316] text-white"
+                        : "bg-[#1A1A1A] border border-[#333] text-white hover:bg-[#333]"
+                    }`}
       >
-        <Crosshair size={16} />
+        <Crosshair size={18} aria-hidden="true" />
       </button>
 
       {/* Add spot FAB */}
@@ -493,7 +601,13 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
       </button>
 
       {/* Spot preview card */}
-      {selectedSpot && <SpotPreviewCard spot={selectedSpot} onClose={() => setSelectedSpot(null)} />}
+      {selectedSpot && (
+        <SpotPreviewCard
+          spot={selectedSpot}
+          onClose={() => setSelectedSpot(null)}
+          activeGameSpotId={activeGameSpotId}
+        />
+      )}
 
       {/* Add spot sheet */}
       {isAddingSpot && (
