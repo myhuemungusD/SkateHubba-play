@@ -1,14 +1,41 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchClipsFeed, type ClipDoc, type ClipsFeedCursor } from "../services/clips";
+import {
+  AlreadyUpvotedError,
+  fetchClipsFeed,
+  fetchClipUpvoteState,
+  upvoteClip,
+  type ClipDoc,
+  type ClipsFeedCursor,
+  type ClipUpvoteState,
+} from "../services/clips";
 import { logger } from "../services/logger";
+import { parseFirebaseError } from "../utils/helpers";
 import { useBlockedUsers } from "../hooks/useBlockedUsers";
 import { ReportModal } from "./ReportModal";
 import { Btn } from "./ui/Btn";
-import { FilmIcon, ChevronRightIcon, FlagIcon } from "./icons";
+import { FilmIcon, FlameIcon, ChevronRightIcon, FlagIcon } from "./icons";
 import { ProUsername } from "./ProUsername";
 import type { UserProfile } from "../services/users";
 
 const PAGE_SIZE = 12;
+
+/** Firestore error codes that map to "service-side issue, not your network".
+ *  Used to swap the misleading "check your connection" copy for something
+ *  truer when the failure is permission-denied / index missing / unauthed. */
+const SERVICE_ERROR_CODES = new Set(["permission-denied", "failed-precondition", "unauthenticated"]);
+
+function errorCodeFor(err: unknown): string | undefined {
+  return typeof err === "object" && err && typeof (err as { code?: unknown }).code === "string"
+    ? (err as { code: string }).code
+    : undefined;
+}
+
+function copyForError(code: string | undefined): string {
+  if (code && SERVICE_ERROR_CODES.has(code)) {
+    return "Feed temporarily unavailable — please try again in a moment.";
+  }
+  return "Couldn't load the feed. Check your connection and try again.";
+}
 
 /** Human-readable "2m ago" / "3h ago" / "Apr 12" timestamp. */
 function relativeClipTime(createdAt: ClipDoc["createdAt"]): string {
@@ -49,9 +76,16 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [endOfFeed, setEndOfFeed] = useState(false);
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
   const [reportedClipIds, setReportedClipIds] = useState<ReadonlySet<string>>(new Set());
+  // Per-clip upvote state, keyed by clip id. Defaults to {0,false} when
+  // an entry is missing (e.g. the batch fetch failed for that page).
+  const [upvoteState, setUpvoteState] = useState<ReadonlyMap<string, ClipUpvoteState>>(new Map());
+  // Tracks an in-flight upvote tap so a user can't double-fire on the same
+  // clip before the optimistic update settles.
+  const [upvotingIds, setUpvotingIds] = useState<ReadonlySet<string>>(new Set());
 
   const blockedUids = useBlockedUsers(profile.uid);
 
@@ -64,22 +98,67 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     };
   }, []);
 
+  // Mirror `upvotingIds` in a ref so `hydrateUpvotes` can see it without
+  // being re-memoized on every tap (which would retrigger hydration).
+  const upvotingIdsRef = useRef<ReadonlySet<string>>(upvotingIds);
+  useEffect(() => {
+    upvotingIdsRef.current = upvotingIds;
+  }, [upvotingIds]);
+
+  // Hydrate upvote state for a freshly-loaded page of clips. Best-effort:
+  // failures here just leave entries missing (UI defaults to count=0,
+  // not-upvoted) — never block the feed render. Own clips are skipped
+  // because they can't be upvoted; no sense paying for those reads.
+  const hydrateUpvotes = useCallback(
+    async (pageClips: readonly ClipDoc[]) => {
+      const ids = pageClips.filter((c) => c.playerUid !== profile.uid).map((c) => c.id);
+      if (ids.length === 0) return;
+      try {
+        const map = await fetchClipUpvoteState(profile.uid, ids);
+        if (!mountedRef.current) return;
+        setUpvoteState((prev) => {
+          const next = new Map(prev);
+          for (const [id, state] of map) {
+            // Race guard: if the user has already optimistically upvoted
+            // (or a vote is in-flight), the hydrated pre-vote snapshot
+            // would clobber their tap. Keep the user-initiated state.
+            const existing = prev.get(id);
+            if (existing?.alreadyUpvoted || upvotingIdsRef.current.has(id)) continue;
+            next.set(id, state);
+          }
+          return next;
+        });
+      } catch (err) {
+        logger.warn("clips_feed_upvote_hydrate_failed", { error: parseFirebaseError(err) });
+      }
+    },
+    [profile.uid],
+  );
+
   const loadFirstPage = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setErrorCode(null);
     try {
       const page = await fetchClipsFeed(null, PAGE_SIZE);
       if (!mountedRef.current) return;
       setClips(page.clips);
       setCursor(page.cursor);
       setEndOfFeed(page.clips.length < PAGE_SIZE);
+      // Hydration is fire-and-forget — feed renders immediately, upvote
+      // counts pop in once the batch resolves.
+      void hydrateUpvotes(page.clips);
     } catch (err) {
-      logger.warn("clips_feed_load_failed", { error: err instanceof Error ? err.message : String(err) });
-      if (mountedRef.current) setError("Couldn't load the feed. Check your connection and try again.");
+      const code = errorCodeFor(err);
+      logger.warn("clips_feed_load_failed", { code, error: parseFirebaseError(err) });
+      if (mountedRef.current) {
+        setError(copyForError(code));
+        setErrorCode(code ?? null);
+      }
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [hydrateUpvotes]);
 
   useEffect(() => {
     loadFirstPage();
@@ -94,12 +173,67 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       setClips((prev) => [...prev, ...page.clips]);
       setCursor(page.cursor);
       if (page.clips.length < PAGE_SIZE) setEndOfFeed(true);
+      void hydrateUpvotes(page.clips);
     } catch (err) {
-      logger.warn("clips_feed_loadmore_failed", { error: err instanceof Error ? err.message : String(err) });
+      const code = errorCodeFor(err);
+      logger.warn("clips_feed_loadmore_failed", { code, error: parseFirebaseError(err) });
     } finally {
       if (mountedRef.current) setLoadingMore(false);
     }
-  }, [cursor, loadingMore, endOfFeed]);
+  }, [cursor, loadingMore, endOfFeed, hydrateUpvotes]);
+
+  const handleUpvote = useCallback(
+    async (clip: ClipDoc) => {
+      if (clip.playerUid === profile.uid) return;
+      const current = upvoteState.get(clip.id) ?? { count: 0, alreadyUpvoted: false };
+      if (current.alreadyUpvoted || upvotingIds.has(clip.id)) return;
+
+      setUpvotingIds((prev) => {
+        const next = new Set(prev);
+        next.add(clip.id);
+        return next;
+      });
+      // Optimistic flip — feels instant, rolled back below if the write
+      // fails for any reason other than AlreadyUpvotedError.
+      setUpvoteState((prev) => {
+        const next = new Map(prev);
+        next.set(clip.id, { count: current.count + 1, alreadyUpvoted: true });
+        return next;
+      });
+
+      try {
+        const nextCount = await upvoteClip(profile.uid, clip.id);
+        if (!mountedRef.current) return;
+        setUpvoteState((prev) => {
+          const next = new Map(prev);
+          next.set(clip.id, { count: nextCount, alreadyUpvoted: true });
+          return next;
+        });
+      } catch (err) {
+        if (err instanceof AlreadyUpvotedError) {
+          // Server already has our vote (e.g. a second device or stale
+          // local state). Optimistic state matches truth — keep it.
+          return;
+        }
+        logger.warn("clips_feed_upvote_failed", { clipId: clip.id, error: parseFirebaseError(err) });
+        if (!mountedRef.current) return;
+        setUpvoteState((prev) => {
+          const next = new Map(prev);
+          next.set(clip.id, current);
+          return next;
+        });
+      } finally {
+        if (mountedRef.current) {
+          setUpvotingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(clip.id);
+            return next;
+          });
+        }
+      }
+    },
+    [profile.uid, upvoteState, upvotingIds],
+  );
 
   // Filter blocked users out on the client (matches how games/directory work).
   const visibleClips = useMemo(
@@ -125,6 +259,12 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       {error && !loading && (
         <div className="glass-card rounded-2xl p-5 mb-3 border border-brand-red/30">
           <p className="font-body text-sm text-white/80 mb-3">{error}</p>
+          {/* Surface the Firestore error code in dev so "Couldn't load" is
+              actually diagnosable from a dev-tools screenshot. Hidden in
+              prod to keep the user-facing copy clean. */}
+          {errorCode && import.meta.env.DEV && (
+            <p className="font-body text-[10px] text-faint mb-3">code: {errorCode}</p>
+          )}
           <Btn onClick={loadFirstPage} variant="secondary">
             Try again
           </Btn>
@@ -154,81 +294,120 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       {/* Clips list */}
       {!loading && visibleClips.length > 0 && (
         <ul className="space-y-4" aria-label="Clips feed">
-          {visibleClips.map((clip) => (
-            <li key={clip.id} className="glass-card rounded-2xl overflow-hidden">
-              {/* Top meta row: player + time + role badge */}
-              <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
-                <button
-                  type="button"
-                  onClick={() => onViewPlayer(clip.playerUid)}
-                  className="flex items-center gap-2 rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
-                >
-                  <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
-                    <span className="font-display text-[11px] text-brand-orange leading-none">
-                      {clip.playerUsername[0]?.toUpperCase() ?? "?"}
-                    </span>
-                  </div>
-                  <ProUsername
-                    username={clip.playerUsername}
-                    className="font-body text-xs text-white/80 group-hover:text-brand-orange transition-colors duration-200"
-                  />
-                </button>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`font-display text-[10px] tracking-[0.2em] px-2 py-0.5 rounded-md border ${
-                      clip.role === "set"
-                        ? "text-brand-orange border-brand-orange/30 bg-brand-orange/5"
-                        : "text-brand-green border-brand-green/30 bg-brand-green/5"
-                    }`}
-                    aria-label={clip.role === "set" ? "Setter's landed trick" : "Matcher's landed response"}
-                  >
-                    {clip.role === "set" ? "SET" : "MATCH"}
-                  </span>
-                  <span className="font-body text-[11px] text-faint">{relativeClipTime(clip.createdAt)}</span>
-                </div>
-              </div>
-
-              {/* Video */}
-              <div className="px-4">
-                <video
-                  src={clip.videoUrl}
-                  controls
-                  playsInline
-                  preload="metadata"
-                  className="w-full aspect-[9/16] max-h-[560px] rounded-xl bg-black object-cover border border-border"
-                />
-              </div>
-
-              {/* Trick name */}
-              <div className="px-4 pt-3">
-                <h2 className="font-display text-xl text-white tracking-wide leading-tight">{clip.trickName}</h2>
-              </div>
-
-              {/* Actions */}
-              <div className="px-4 pt-3 pb-4 flex items-center gap-2">
-                {clip.playerUid !== myUid && (
+          {visibleClips.map((clip, index) => {
+            const isOwnClip = clip.playerUid === myUid;
+            const upvote = upvoteState.get(clip.id) ?? { count: 0, alreadyUpvoted: false };
+            const isUpvoting = upvotingIds.has(clip.id);
+            const upvoteDisabled = isOwnClip || upvote.alreadyUpvoted || isUpvoting;
+            return (
+              <li key={clip.id} className="glass-card rounded-2xl overflow-hidden">
+                {/* Top meta row: player + time + role badge */}
+                <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
                   <button
                     type="button"
-                    onClick={() => onChallengeUser(clip.playerUsername)}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all duration-300 shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08]"
+                    onClick={() => onViewPlayer(clip.playerUid)}
+                    className="flex items-center gap-2 rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
                   >
-                    <span>Challenge</span>
-                    <ChevronRightIcon size={14} />
+                    <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
+                      <span className="font-display text-[11px] text-brand-orange leading-none">
+                        {clip.playerUsername[0]?.toUpperCase() ?? "?"}
+                      </span>
+                    </div>
+                    <ProUsername
+                      username={clip.playerUsername}
+                      className="font-body text-xs text-white/80 group-hover:text-brand-orange transition-colors duration-200"
+                    />
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setReportTarget(clip)}
-                  disabled={clip.playerUid === myUid}
-                  aria-label={`Report clip by @${clip.playerUsername}`}
-                  className="flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 font-display text-[11px] tracking-[0.15em] text-faint border border-border hover:text-white hover:border-border-hover hover:bg-white/[0.02] disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300"
-                >
-                  <FlagIcon size={13} />
-                  REPORT
-                </button>
-              </div>
-            </li>
-          ))}
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-display text-[10px] tracking-[0.2em] px-2 py-0.5 rounded-md border ${
+                        clip.role === "set"
+                          ? "text-brand-orange border-brand-orange/30 bg-brand-orange/5"
+                          : "text-brand-green border-brand-green/30 bg-brand-green/5"
+                      }`}
+                      aria-label={clip.role === "set" ? "Setter's landed trick" : "Matcher's landed response"}
+                    >
+                      {clip.role === "set" ? "SET" : "MATCH"}
+                    </span>
+                    <span className="font-body text-[11px] text-faint">{relativeClipTime(clip.createdAt)}</span>
+                  </div>
+                </div>
+
+                {/* Video — top clip autoplays muted with tap-to-unmute (mirrors
+                    FeaturedClipCard's idiom). Subsequent clips stay
+                    click-to-play to keep mobile data + battery sane. The key
+                    forces a fresh muted state whenever the top clip identity
+                    changes (e.g. the previous top was blocked/reported). */}
+                <div className="px-4">
+                  {index === 0 ? (
+                    <TopClipVideo key={clip.id} src={clip.videoUrl} />
+                  ) : (
+                    <video
+                      src={clip.videoUrl}
+                      controls
+                      playsInline
+                      preload="metadata"
+                      className="w-full aspect-[9/16] max-h-[560px] rounded-xl bg-black object-cover border border-border"
+                    />
+                  )}
+                </div>
+
+                {/* Trick name */}
+                <div className="px-4 pt-3">
+                  <h2 className="font-display text-xl text-white tracking-wide leading-tight">{clip.trickName}</h2>
+                </div>
+
+                {/* Actions */}
+                <div className="px-4 pt-3 pb-4 flex items-center gap-2">
+                  {!isOwnClip && (
+                    <button
+                      type="button"
+                      onClick={() => handleUpvote(clip)}
+                      disabled={upvoteDisabled}
+                      aria-pressed={upvote.alreadyUpvoted}
+                      aria-label={
+                        upvote.alreadyUpvoted
+                          ? `Upvoted · ${upvote.count}`
+                          : `Upvote clip by @${clip.playerUsername} · current count ${upvote.count}`
+                      }
+                      className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 border transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed active:scale-[0.97] ${
+                        upvote.alreadyUpvoted
+                          ? "border-brand-orange/40 bg-brand-orange/15 text-brand-orange"
+                          : "border-border bg-surface/60 text-white/90 hover:border-brand-orange/30 hover:bg-brand-orange/5"
+                      }`}
+                    >
+                      <FlameIcon
+                        size={14}
+                        className={upvote.alreadyUpvoted ? "text-brand-orange" : "text-brand-orange/80"}
+                      />
+                      <span className="font-display text-xs tracking-wider tabular-nums">{upvote.count}</span>
+                    </button>
+                  )}
+                  {!isOwnClip && (
+                    <button
+                      type="button"
+                      onClick={() => onChallengeUser(clip.playerUsername)}
+                      aria-label={`Challenge @${clip.playerUsername}`}
+                      className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all duration-300 shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                    >
+                      <span>Challenge</span>
+                      <ChevronRightIcon size={14} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setReportTarget(clip)}
+                    disabled={isOwnClip}
+                    aria-label={`Report clip by @${clip.playerUsername}`}
+                    className="flex items-center justify-center gap-1.5 rounded-xl px-3.5 py-2.5 font-display text-[11px] tracking-[0.15em] text-faint border border-border hover:text-white hover:border-border-hover hover:bg-white/[0.02] disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300"
+                  >
+                    <FlagIcon size={13} />
+                    REPORT
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -266,5 +445,89 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         />
       )}
     </section>
+  );
+}
+
+/**
+ * Auto-playing top-of-feed clip with a tap-to-unmute affordance.
+ *
+ * Mirrors the playback idiom used by `FeaturedClipCard` (autoplay+loop+muted
+ * by default; tapping the video toggles audio). Lives inline rather than as
+ * a shared component because the three video surfaces in the app
+ * (`FeaturedClipCard`, this top-of-feed, `TurnHistoryViewer.ClipVideo`) all
+ * have slightly different chrome — premature abstraction would obscure more
+ * than it would save.
+ *
+ * Pauses when scrolled out of the viewport so the clip isn't silently
+ * decoding audio/video frames while the user reads the rest of the feed
+ * — a meaningful battery and cellular-data saving on mobile.
+ */
+function TopClipVideo({ src }: { src: string }) {
+  const [muted, setMuted] = useState(true);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const containerRef = useRef<HTMLButtonElement | null>(null);
+
+  const toggleMute = useCallback(() => {
+    setMuted((prev) => {
+      const next = !prev;
+      const el = videoRef.current;
+      if (el) el.muted = next;
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    const container = containerRef.current;
+    // IntersectionObserver is unavailable in some older browsers and most
+    // jsdom test environments — skip the pause-on-scroll enhancement
+    // rather than crash. Autoplay continues in full uninterrupted mode.
+    if (!video || !container || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return;
+        if (entry.isIntersecting) {
+          // play() returns a Promise that rejects on interrupted
+          // autoplay (e.g. user tab-switches mid-resume). Swallow —
+          // the browser will retry on next intersection tick.
+          video.play().catch(() => undefined);
+        } else {
+          video.pause();
+        }
+      },
+      { threshold: 0.25 },
+    );
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <button
+      ref={containerRef}
+      type="button"
+      onClick={toggleMute}
+      aria-label={muted ? "Unmute clip" : "Mute clip"}
+      className="relative block w-full text-left rounded-xl overflow-hidden border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+    >
+      <video
+        ref={videoRef}
+        src={src}
+        autoPlay
+        loop
+        muted
+        playsInline
+        preload="metadata"
+        className="w-full aspect-[9/16] max-h-[560px] bg-black object-cover"
+      />
+      {muted && (
+        <span
+          aria-hidden="true"
+          className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-display tracking-[0.2em] text-white backdrop-blur"
+        >
+          MUTED · TAP
+        </span>
+      )}
+    </button>
   );
 }
