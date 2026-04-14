@@ -686,8 +686,11 @@ describe("Smoke: Gameplay", () => {
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
     await userEvent.click(gameButton);
 
+    // GameContext auto-forfeit fires once when the subscription pushes the
+    // expired game, then GamePlayScreen's forfeit check fires once after
+    // navigation. Neither should retry on subsequent re-renders.
     await waitFor(() => {
-      expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(1);
+      expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(2);
     });
   });
 
