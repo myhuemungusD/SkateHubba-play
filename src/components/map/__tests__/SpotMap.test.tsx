@@ -9,14 +9,23 @@ vi.mock("../../../services/spots", () => ({
   getSpotsInBounds: (...args: unknown[]) => mockGetSpotsInBounds(...args),
 }));
 
-// Logger is mocked so the missing-token / load-timeout warn assertions have a
-// spy to inspect. Production logger.warn would route to Sentry breadcrumbs.
-// `vi.hoisted` is required because `vi.mock` factories are hoisted above all
-// top-level variables — a plain `const` would throw "cannot access before
-// initialization" at factory evaluation time.
-const { mockLoggerWarn } = vi.hoisted(() => ({ mockLoggerWarn: vi.fn() }));
+// Logger + Sentry are mocked so the missing-token / map-loaded / load-timeout
+// assertions have spies to inspect. `vi.hoisted` is required because
+// `vi.mock` factories are hoisted above all top-level variables — a plain
+// `const` would throw "cannot access before initialization" at factory
+// evaluation time.
+const { mockLoggerInfo, mockLoggerWarn, mockCaptureMessage } = vi.hoisted(() => ({
+  mockLoggerInfo: vi.fn(),
+  mockLoggerWarn: vi.fn(),
+  mockCaptureMessage: vi.fn(),
+}));
 vi.mock("../../../services/logger", () => ({
-  logger: { info: vi.fn(), debug: vi.fn(), warn: mockLoggerWarn, error: vi.fn() },
+  logger: { info: mockLoggerInfo, debug: vi.fn(), warn: mockLoggerWarn, error: vi.fn() },
+}));
+vi.mock("../../../lib/sentry", () => ({
+  captureMessage: mockCaptureMessage,
+  captureException: vi.fn(),
+  addBreadcrumb: vi.fn(),
 }));
 
 // Provide a fake Mapbox token so the component doesn't render the
@@ -135,6 +144,10 @@ describe("SpotMap", () => {
     await waitFor(() => {
       expect(mockGetSpotsInBounds).toHaveBeenCalled();
     });
+    // Close the observability loop: the happy-path success is logged so
+    // we can compute load-success rate alongside `map_token_missing` and
+    // `map_load_timeout`.
+    expect(mockLoggerInfo).toHaveBeenCalledWith("map_loaded", {});
     const args = mockGetSpotsInBounds.mock.calls[0][0];
     expect(args.north).toBe(34.1);
     expect(args.south).toBe(34.0);
@@ -262,10 +275,11 @@ describe("SpotMap without a Mapbox token", () => {
   beforeEach(() => {
     vi.resetModules();
     mockLoggerWarn.mockClear();
+    mockCaptureMessage.mockClear();
     fakeMapConstructorCalls = 0;
   });
 
-  it("renders a temporarily-unavailable state, logs the outage, and never constructs a map", async () => {
+  it("renders the polished unavailable state, reports to Sentry, and never constructs a map", async () => {
     vi.doMock("../../../lib/mapbox", () => ({
       MAPBOX_TOKEN: "",
       MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
@@ -278,13 +292,35 @@ describe("SpotMap without a Mapbox token", () => {
       </MemoryRouter>,
     );
     expect(screen.getByRole("alert")).toHaveTextContent(/temporarily unavailable/i);
+    // Polished fallback: Retry button renders so users can recover from a
+    // transient bundling/env-var miss without a full page reload.
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
     // The Add-Spot FAB should NOT be rendered in the unavailable state.
     expect(screen.queryByLabelText("Add a spot")).toBeNull();
-    // Ops telemetry: the one-shot warn lets Sentry page us instead of
-    // waiting on a user screenshot.
+    // Ops telemetry: a breadcrumb for context on any downstream errors…
     expect(mockLoggerWarn).toHaveBeenCalledWith("map_token_missing", {});
+    // …and a real Sentry event so alert rules can actually fire — a
+    // breadcrumb by itself never triggers an issue.
+    expect(mockCaptureMessage).toHaveBeenCalledWith("map_token_missing", "warning");
     // Sanity: we short-circuited before mapbox-gl was touched.
     expect(fakeMapConstructorCalls).toBe(0);
+  });
+
+  it("calls onRetry instead of reloading when the fallback Retry is clicked", async () => {
+    vi.doMock("../../../lib/mapbox", () => ({
+      MAPBOX_TOKEN: "",
+      MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+      MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
+    }));
+    const { SpotMap: SpotMapWithoutToken } = await import("../SpotMap");
+    const onRetry = vi.fn();
+    render(
+      <MemoryRouter>
+        <SpotMapWithoutToken onRetry={onRetry} />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { Crosshair, Plus, X } from "lucide-react";
+import { Crosshair, MapPinOff, Plus, X } from "lucide-react";
 import type { Spot } from "../../types/spot";
 import { getSpotsInBounds } from "../../services/spots";
 import { logger } from "../../services/logger";
+import { captureMessage } from "../../lib/sentry";
 import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS } from "../../lib/mapbox";
 import { SpotPreviewCard } from "./SpotPreviewCard";
 import { AddSpotSheet } from "./AddSpotSheet";
@@ -139,11 +140,17 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProp
 
   // Surface the missing-token condition to telemetry so ops notice the
   // outage without waiting on a user screenshot. `MAPBOX_TOKEN` is a module
-  // constant, so this effect fires at most once per mount. The matching
-  // fallback UI is rendered below.
+  // constant, so this effect fires at most once per mount.
+  //
+  // Two channels on purpose:
+  //   - logger.warn → structured console + Sentry breadcrumb (context for
+  //     any subsequent errors in this session).
+  //   - captureMessage → a real Sentry event so alert rules can fire; a
+  //     breadcrumb alone never creates an issue.
   useEffect(() => {
     if (!MAPBOX_TOKEN) {
       logger.warn("map_token_missing", {});
+      captureMessage("map_token_missing", "warning");
     }
   }, []);
 
@@ -263,9 +270,12 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProp
       fetchSpots(m);
     });
 
-    // Initial fetch after load
+    // Initial fetch after load. The info-level log closes the observability
+    // loop — paired with `map_token_missing` / `map_load_timeout` it lets us
+    // compute a real load-success rate in Sentry instead of guessing.
     m.on("load", () => {
       setMapLoading(false);
+      logger.info("map_loaded", {});
       fetchSpots(m);
     });
 
@@ -457,12 +467,37 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProp
   // If the build is missing the Mapbox token, render a dedicated unavailable
   // state instead of a perpetual "Loading map…" overlay. This path is hit in
   // previews/forks that don't have VITE_MAPBOX_TOKEN wired up.
+  //
+  // Visually matched to the load-timeout state (icon + copy + Retry) so the
+  // screen reads as an intentional empty state rather than a broken app.
+  // `onRetry` is still offered: in the rare case the token was missing due
+  // to a transient bundling issue, a remount can recover without a full
+  // page reload that would throw away session state.
   if (!MAPBOX_TOKEN) {
     return (
-      <div role="alert" className="w-full flex items-center justify-center bg-[#0A0A0A]" style={{ height: "100dvh" }}>
-        <div className="text-center px-6 max-w-xs">
-          <p className="text-[#CCC] text-sm mb-2">Map is temporarily unavailable.</p>
-          <p className="text-[#666] text-xs">Check back in a few minutes.</p>
+      <div
+        role="alert"
+        aria-live="polite"
+        className="w-full flex items-center justify-center bg-[#0A0A0A]"
+        style={{ height: "100dvh" }}
+      >
+        <div className="text-center px-6 max-w-xs flex flex-col items-center">
+          <div
+            className="w-14 h-14 rounded-full bg-[#1A1A1A] border border-[#333] flex items-center justify-center mb-4"
+            aria-hidden="true"
+          >
+            <MapPinOff size={24} className="text-[#F97316]" />
+          </div>
+          <p className="text-[#CCC] text-sm mb-1">Map is temporarily unavailable.</p>
+          <p className="text-[#666] text-xs mb-5">Check back in a few minutes.</p>
+          <button
+            type="button"
+            onClick={() => (onRetry ? onRetry() : window.location.reload())}
+            className="px-6 py-2.5 bg-[#F97316] text-white rounded-xl font-semibold text-sm
+                       hover:bg-[#EA580C] transition-colors"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
