@@ -276,10 +276,29 @@ export async function fetchClipsFeed(cursor: ClipsFeedCursor | null = null, page
 
   const q = query(clipsRef(), ...constraints);
   const snap = await withRetry(() => getDocs(q));
-  const clips = snap.docs.map((d) => toClipDoc(d));
 
-  const last = clips[clips.length - 1];
-  const nextCursor: ClipsFeedCursor | null = last && last.createdAt ? { createdAt: last.createdAt, id: last.id } : null;
+  // Per-doc try/catch so one malformed clip can't blank the entire page.
+  // Mirrors the resilience pattern already used by `fetchFeaturedClip`.
+  // Cursor advancement still uses the last *raw* doc so pagination doesn't
+  // stall on a window that happens to contain an unparseable trailing row.
+  const clips: ClipDoc[] = [];
+  for (const d of snap.docs) {
+    try {
+      clips.push(toClipDoc(d));
+    } catch (err) {
+      logger.warn("clips_feed_doc_malformed", { docId: d.id, error: parseFirebaseError(err) });
+    }
+  }
+
+  const lastRaw = snap.docs[snap.docs.length - 1];
+  const lastRawCreatedAt = lastRaw ? (lastRaw.data() as { createdAt?: unknown } | undefined)?.createdAt : undefined;
+  const nextCursor: ClipsFeedCursor | null =
+    lastRaw && lastRawCreatedAt instanceof Timestamp
+      ? { createdAt: lastRawCreatedAt, id: lastRaw.id }
+      : (() => {
+          const last = clips[clips.length - 1];
+          return last && last.createdAt ? { createdAt: last.createdAt, id: last.id } : null;
+        })();
 
   return { clips, cursor: nextCursor };
 }
@@ -417,6 +436,49 @@ export async function fetchFeaturedClip(
     upvoteCount,
     alreadyUpvoted,
   };
+}
+
+/** Per-clip upvote state for the lobby feed: live count + whether the
+ *  current viewer has already upvoted (controls the filled/disabled UI). */
+export interface ClipUpvoteState {
+  count: number;
+  alreadyUpvoted: boolean;
+}
+
+/**
+ * Batch-fetch upvote state for a page of clips.
+ *
+ * Fires `2 * clipIds.length` Firestore reads in parallel — one aggregate
+ * count + one vote-doc existence check per clip. At a feed PAGE_SIZE of 12
+ * that's 24 small reads, well under the per-page budget. Per-clip failures
+ * are swallowed and default to `{ count: 0, alreadyUpvoted: false }` so the
+ * feed can render even when the aggregate index is unavailable or App Check
+ * blocks a single read.
+ *
+ * Returns a Map keyed by clipId so callers can look up state by id without
+ * a linear scan. Missing entries (e.g. caller passed an empty array) simply
+ * won't appear in the Map; callers should treat absence as `{0,false}`.
+ */
+export async function fetchClipUpvoteState(
+  uid: string,
+  clipIds: ReadonlyArray<string>,
+): Promise<Map<string, ClipUpvoteState>> {
+  const result = new Map<string, ClipUpvoteState>();
+  if (clipIds.length === 0) return result;
+
+  // countClipUpvotes and hasUserUpvoted both swallow errors and return
+  // safe defaults (0 / false), so this Promise.all never rejects in
+  // practice — a per-id failure leaves that clip's entry at {0,false}
+  // without taking down the whole batch.
+  const settled = await Promise.all(
+    clipIds.map(async (id): Promise<readonly [string, ClipUpvoteState]> => {
+      const [count, alreadyUpvoted] = await Promise.all([countClipUpvotes(id), hasUserUpvoted(uid, id)]);
+      return [id, { count, alreadyUpvoted }] as const;
+    }),
+  );
+
+  for (const [id, state] of settled) result.set(id, state);
+  return result;
 }
 
 /**

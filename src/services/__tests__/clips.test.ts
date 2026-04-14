@@ -78,6 +78,7 @@ import {
   deleteUserClips,
   fetchFeaturedClip,
   upvoteClip,
+  fetchClipUpvoteState,
   AlreadyUpvotedError,
   type LandedClipContext,
   type ClipsFeedCursor,
@@ -307,28 +308,61 @@ describe("fetchClipsFeed", () => {
     expect(page.clips[0].spotId).toBeNull();
   });
 
-  it("throws on a doc with empty data", async () => {
+  it("filters out a doc with empty data instead of throwing the whole page away", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: "broken", data: () => undefined }, makeClipSnap("g1_2_set", validClipData())],
+    });
+
+    const page = await fetchClipsFeed();
+    expect(page.clips).toHaveLength(1);
+    expect(page.clips[0].id).toBe("g1_2_set");
+  });
+
+  it("filters out a doc with an invalid role", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("bad", validClipData({ role: "judge" })), makeClipSnap("g1_2_set", validClipData())],
+    });
+
+    const page = await fetchClipsFeed();
+    expect(page.clips).toHaveLength(1);
+    expect(page.clips[0].id).toBe("g1_2_set");
+  });
+
+  it("filters out docs with missing or wrong-typed required fields", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("bad", validClipData({ videoUrl: 42 })), makeClipSnap("g1_2_set", validClipData())],
+    });
+
+    const page = await fetchClipsFeed();
+    expect(page.clips).toHaveLength(1);
+    expect(page.clips[0].id).toBe("g1_2_set");
+  });
+
+  it("returns an empty clips array (not a throw) when the entire page is malformed", async () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [{ id: "broken", data: () => undefined }],
     });
 
-    await expect(fetchClipsFeed()).rejects.toThrow(/Malformed clip document: broken/);
+    const page = await fetchClipsFeed();
+    expect(page.clips).toHaveLength(0);
+    // Cursor stays null so the caller can stop paginating cleanly.
+    expect(page.cursor).toBeNull();
   });
 
-  it("throws on an invalid role", async () => {
+  it("advances the cursor past a malformed trailing doc using the raw timestamp", async () => {
+    // A real-world page where the trailing doc is malformed: pagination must
+    // still progress so the next fetch doesn't re-receive the same window.
+    const trailingTs = new FakeTimestamp(1_700_000_000_500);
     mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("bad", validClipData({ role: "judge" }))],
+      docs: [
+        makeClipSnap("g1_2_set", validClipData()),
+        { id: "g1_3_set", data: () => ({ ...validClipData(), createdAt: trailingTs, role: "judge" }) },
+      ],
     });
 
-    await expect(fetchClipsFeed()).rejects.toThrow(/role/);
-  });
-
-  it("throws when required fields are missing or wrong types", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("bad", validClipData({ videoUrl: 42 }))],
-    });
-
-    await expect(fetchClipsFeed()).rejects.toThrow(/fields/);
+    const page = await fetchClipsFeed();
+    expect(page.clips).toHaveLength(1);
+    expect(page.cursor).toEqual({ createdAt: trailingTs, id: "g1_3_set" });
   });
 
   it("accepts a createdAt that implements toMillis() but isn't a Timestamp instance", async () => {
@@ -526,5 +560,58 @@ describe("upvoteClip", () => {
   it("propagates unexpected transaction errors", async () => {
     mockRunTransaction.mockRejectedValueOnce(new Error("unavailable"));
     await expect(upvoteClip("me", "g1_2_set")).rejects.toThrow(/unavailable/);
+  });
+});
+
+/* ── fetchClipUpvoteState ──────────────────────── */
+
+describe("fetchClipUpvoteState", () => {
+  it("returns an empty Map when no clip ids are passed (no Firestore reads)", async () => {
+    const map = await fetchClipUpvoteState("me", []);
+    expect(map.size).toBe(0);
+    expect(mockGetCountFromServer).not.toHaveBeenCalled();
+    expect(mockGetDoc).not.toHaveBeenCalled();
+  });
+
+  it("stitches per-clip count + alreadyUpvoted into a Map keyed by clip id", async () => {
+    // Mocks resolve in definition order — match the (count, alreadyUpvoted)
+    // pair structure for each id by interleaving the two mock streams.
+    mockGetCountFromServer
+      .mockResolvedValueOnce(countSnap(3))
+      .mockResolvedValueOnce(countSnap(0))
+      .mockResolvedValueOnce(countSnap(11));
+    mockGetDoc
+      .mockResolvedValueOnce({ exists: () => true })
+      .mockResolvedValueOnce({ exists: () => false })
+      .mockResolvedValueOnce({ exists: () => false });
+
+    const map = await fetchClipUpvoteState("me", ["c1", "c2", "c3"]);
+
+    expect(map.get("c1")).toEqual({ count: 3, alreadyUpvoted: true });
+    expect(map.get("c2")).toEqual({ count: 0, alreadyUpvoted: false });
+    expect(map.get("c3")).toEqual({ count: 11, alreadyUpvoted: false });
+  });
+
+  it("defaults a clip's state to {0,false} when its count read fails (other clips unaffected)", async () => {
+    // First clip's count fails (with a permanent code so withRetry doesn't loop);
+    // second clip succeeds. countClipUpvotes already swallows internally and
+    // returns 0, so the failing clip should still appear with default state.
+    mockGetCountFromServer
+      .mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }))
+      .mockResolvedValueOnce(countSnap(5));
+    mockGetDoc.mockResolvedValueOnce({ exists: () => false }).mockResolvedValueOnce({ exists: () => true });
+
+    const map = await fetchClipUpvoteState("me", ["broken", "ok"]);
+
+    expect(map.get("broken")).toEqual({ count: 0, alreadyUpvoted: false });
+    expect(map.get("ok")).toEqual({ count: 5, alreadyUpvoted: true });
+  });
+
+  it("defaults to {0,false} when the vote-doc check fails", async () => {
+    mockGetCountFromServer.mockResolvedValueOnce(countSnap(2));
+    mockGetDoc.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+
+    const map = await fetchClipUpvoteState("me", ["c1"]);
+    expect(map.get("c1")).toEqual({ count: 2, alreadyUpvoted: false });
   });
 });

@@ -5,9 +5,26 @@ import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
 import type { ClipDoc } from "../../services/clips";
 
-const mockFetchClipsFeed = vi.fn();
+const { mockFetchClipsFeed, mockFetchClipUpvoteState, mockUpvoteClip, MockAlreadyUpvotedError } = vi.hoisted(() => {
+  class MockAlreadyUpvotedError extends Error {
+    constructor(public readonly clipId: string) {
+      super(`already_upvoted:${clipId}`);
+      this.name = "AlreadyUpvotedError";
+    }
+  }
+  return {
+    mockFetchClipsFeed: vi.fn(),
+    mockFetchClipUpvoteState: vi.fn(),
+    mockUpvoteClip: vi.fn(),
+    MockAlreadyUpvotedError,
+  };
+});
+
 vi.mock("../../services/clips", () => ({
   fetchClipsFeed: (...args: unknown[]) => mockFetchClipsFeed(...args),
+  fetchClipUpvoteState: (...args: unknown[]) => mockFetchClipUpvoteState(...args),
+  upvoteClip: (...args: unknown[]) => mockUpvoteClip(...args),
+  AlreadyUpvotedError: MockAlreadyUpvotedError,
 }));
 
 vi.mock("../../hooks/useBlockedUsers", () => ({
@@ -15,7 +32,7 @@ vi.mock("../../hooks/useBlockedUsers", () => ({
 }));
 
 vi.mock("../../services/logger", () => ({
-  logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
 // ReportModal depends on services we don't need to exercise here.
@@ -55,6 +72,9 @@ function makeClip(overrides: Partial<ClipDoc> = {}): ClipDoc {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: upvote hydration succeeds with no entries (UI defaults each
+  // clip to {0,false}). Individual tests override with a populated Map.
+  mockFetchClipUpvoteState.mockResolvedValue(new Map());
 });
 
 describe("ClipsFeed", () => {
@@ -158,5 +178,145 @@ describe("ClipsFeed", () => {
 
     await user.click(screen.getByRole("button", { name: /try again/i }));
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+  });
+
+  it("uses service-side error copy when the failure is permission-denied (not a network issue)", async () => {
+    mockFetchClipsFeed.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() =>
+      expect(screen.getByText(/Feed temporarily unavailable — please try again in a moment\./i)).toBeInTheDocument(),
+    );
+    // Generic "check your connection" copy must not appear when the cause
+    // is server-side, otherwise the user wastes time toggling Wi-Fi.
+    expect(screen.queryByText(/Check your connection/i)).not.toBeInTheDocument();
+  });
+
+  it("uses service-side error copy for failed-precondition (missing index)", async () => {
+    mockFetchClipsFeed.mockRejectedValueOnce(
+      Object.assign(new Error("index missing"), { code: "failed-precondition" }),
+    );
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() =>
+      expect(screen.getByText(/Feed temporarily unavailable — please try again in a moment\./i)).toBeInTheDocument(),
+    );
+  });
+
+  it("renders an upvote button next to challenge with the hydrated count", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
+    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 4, alreadyUpvoted: false }]]));
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Upvote clip by @alice · current count 4/i })).toBeInTheDocument(),
+    );
+  });
+
+  it("does not render an upvote button on the viewer's own clip (no self-upvote)", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce({
+      clips: [makeClip({ playerUid: profile.uid, playerUsername: profile.username })],
+      cursor: null,
+    });
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: /Upvote clip/i })).not.toBeInTheDocument();
+  });
+
+  it("optimistically increments and locks the upvote button on tap", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
+    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
+    mockUpvoteClip.mockResolvedValueOnce(3);
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+
+    await user.click(upvoteBtn);
+
+    expect(mockUpvoteClip).toHaveBeenCalledWith(profile.uid, "g1_2_set");
+    // After the server confirms (returns 3), the button stays in the
+    // "Upvoted · 3" state and is now disabled (no double-vote).
+    await waitFor(() => expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeDisabled();
+  });
+
+  it("rolls back the optimistic upvote on a non-AlreadyUpvotedError failure", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
+    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
+    mockUpvoteClip.mockRejectedValueOnce(new Error("network down"));
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+
+    await user.click(upvoteBtn);
+
+    // Count returns to 2 and the button is re-enabled so the user can retry.
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i })).toBeEnabled(),
+    );
+  });
+
+  it("keeps the optimistic upvoted state when the server already had our vote", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
+    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
+    mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+
+    await user.click(upvoteBtn);
+
+    // Stays at the optimistic count (3) because server says we did upvote.
+    await waitFor(() => expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeDisabled();
+  });
+
+  it("renders the top clip with autoplay/muted attributes and a tap-to-unmute affordance", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce({
+      clips: [makeClip({ id: "top", trickName: "TopTrick" }), makeClip({ id: "next", trickName: "NextTrick" })],
+      cursor: null,
+    });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TopTrick")).toBeInTheDocument());
+
+    // Top-of-feed clip wraps its <video> in an unmute button.
+    const unmuteBtn = screen.getByRole("button", { name: /Unmute clip/i });
+    expect(unmuteBtn).toBeInTheDocument();
+    expect(screen.getByText(/MUTED · TAP/i)).toBeInTheDocument();
+  });
+
+  it("shows controls (no autoplay button) on non-top clips", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce({
+      clips: [makeClip({ id: "top", trickName: "TopTrick" }), makeClip({ id: "next", trickName: "NextTrick" })],
+      cursor: null,
+    });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("NextTrick")).toBeInTheDocument());
+
+    // Only one Unmute button exists (for the top clip), not one per row.
+    expect(screen.getAllByRole("button", { name: /Unmute clip/i })).toHaveLength(1);
+  });
+
+  it("toggles mute on the top clip when the unmute affordance is tapped", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+
+    const unmuteBtn = screen.getByRole("button", { name: /Unmute clip/i });
+    await user.click(unmuteBtn);
+
+    // Button label flips to "Mute clip" (now playing with audio).
+    await waitFor(() => expect(screen.getByRole("button", { name: /Mute clip/i })).toBeInTheDocument());
+    // The MUTED chip is gone.
+    expect(screen.queryByText(/MUTED · TAP/i)).not.toBeInTheDocument();
   });
 });
