@@ -489,24 +489,6 @@ export function Lobby({
           </div>
         )}
 
-        {/* Coming Soon */}
-        <div className="p-5 rounded-2xl glass-card">
-          <h3 className="font-display text-[10px] tracking-[0.25em] text-brand-orange mb-4">COMING SOON</h3>
-          <div>
-            {["Spot Map & Discovery", "Trick Clips Feed", "Crew Challenges"].map((f, i) => (
-              <div key={f} className="flex items-center justify-between py-2.5 border-b border-border last:border-0">
-                <div className="flex items-center gap-3">
-                  <span className="font-display text-[10px] text-brand-orange w-4 leading-none tabular-nums">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span className="font-body text-sm text-dim">{f}</span>
-                </div>
-                <ChevronRightIcon size={11} className="text-brand-orange" />
-              </div>
-            ))}
-          </div>
-        </div>
-
         {/* Delete Account */}
         <div className="mt-8 flex justify-center">
           <button
