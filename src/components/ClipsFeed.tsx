@@ -98,19 +98,34 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     };
   }, []);
 
+  // Mirror `upvotingIds` in a ref so `hydrateUpvotes` can see it without
+  // being re-memoized on every tap (which would retrigger hydration).
+  const upvotingIdsRef = useRef<ReadonlySet<string>>(upvotingIds);
+  useEffect(() => {
+    upvotingIdsRef.current = upvotingIds;
+  }, [upvotingIds]);
+
   // Hydrate upvote state for a freshly-loaded page of clips. Best-effort:
   // failures here just leave entries missing (UI defaults to count=0,
-  // not-upvoted) — never block the feed render.
+  // not-upvoted) — never block the feed render. Own clips are skipped
+  // because they can't be upvoted; no sense paying for those reads.
   const hydrateUpvotes = useCallback(
     async (pageClips: readonly ClipDoc[]) => {
-      const ids = pageClips.map((c) => c.id);
+      const ids = pageClips.filter((c) => c.playerUid !== profile.uid).map((c) => c.id);
       if (ids.length === 0) return;
       try {
         const map = await fetchClipUpvoteState(profile.uid, ids);
         if (!mountedRef.current) return;
         setUpvoteState((prev) => {
           const next = new Map(prev);
-          for (const [id, state] of map) next.set(id, state);
+          for (const [id, state] of map) {
+            // Race guard: if the user has already optimistically upvoted
+            // (or a vote is in-flight), the hydrated pre-vote snapshot
+            // would clobber their tap. Keep the user-initiated state.
+            const existing = prev.get(id);
+            if (existing?.alreadyUpvoted || upvotingIdsRef.current.has(id)) continue;
+            next.set(id, state);
+          }
           return next;
         });
       } catch (err) {
@@ -320,10 +335,12 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
                 {/* Video — top clip autoplays muted with tap-to-unmute (mirrors
                     FeaturedClipCard's idiom). Subsequent clips stay
-                    click-to-play to keep mobile data + battery sane. */}
+                    click-to-play to keep mobile data + battery sane. The key
+                    forces a fresh muted state whenever the top clip identity
+                    changes (e.g. the previous top was blocked/reported). */}
                 <div className="px-4">
                   {index === 0 ? (
-                    <TopClipVideo src={clip.videoUrl} />
+                    <TopClipVideo key={clip.id} src={clip.videoUrl} />
                   ) : (
                     <video
                       src={clip.videoUrl}
@@ -370,7 +387,8 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
                     <button
                       type="button"
                       onClick={() => onChallengeUser(clip.playerUsername)}
-                      className="flex-1 flex items-center justify-center gap-1.5 rounded-xl py-2.5 font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all duration-300 shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08]"
+                      aria-label={`Challenge @${clip.playerUsername}`}
+                      className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all duration-300 shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                     >
                       <span>Challenge</span>
                       <ChevronRightIcon size={14} />
@@ -439,10 +457,15 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
  * (`FeaturedClipCard`, this top-of-feed, `TurnHistoryViewer.ClipVideo`) all
  * have slightly different chrome — premature abstraction would obscure more
  * than it would save.
+ *
+ * Pauses when scrolled out of the viewport so the clip isn't silently
+ * decoding audio/video frames while the user reads the rest of the feed
+ * — a meaningful battery and cellular-data saving on mobile.
  */
 function TopClipVideo({ src }: { src: string }) {
   const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const containerRef = useRef<HTMLButtonElement | null>(null);
 
   const toggleMute = useCallback(() => {
     setMuted((prev) => {
@@ -453,8 +476,35 @@ function TopClipVideo({ src }: { src: string }) {
     });
   }, []);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    const container = containerRef.current;
+    // IntersectionObserver is unavailable in some older browsers and most
+    // jsdom test environments — skip the pause-on-scroll enhancement
+    // rather than crash. Autoplay continues in full uninterrupted mode.
+    if (!video || !container || typeof IntersectionObserver === "undefined") return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return;
+        if (entry.isIntersecting) {
+          // play() returns a Promise that rejects on interrupted
+          // autoplay (e.g. user tab-switches mid-resume). Swallow —
+          // the browser will retry on next intersection tick.
+          video.play().catch(() => undefined);
+        } else {
+          video.pause();
+        }
+      },
+      { threshold: 0.25 },
+    );
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <button
+      ref={containerRef}
       type="button"
       onClick={toggleMute}
       aria-label={muted ? "Unmute clip" : "Mute clip"}
