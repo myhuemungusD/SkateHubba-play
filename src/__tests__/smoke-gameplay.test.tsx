@@ -686,8 +686,12 @@ describe("Smoke: Gameplay", () => {
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
     await userEvent.click(gameButton);
 
+    // Lobby's auto-forfeit effect fires once on mount, then GamePlayScreen's
+    // forfeit check fires once after navigation. Neither should retry on
+    // subsequent re-renders — the key invariant is "once per component", not
+    // "once per session".
     await waitFor(() => {
-      expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(1);
+      expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(2);
     });
   });
 

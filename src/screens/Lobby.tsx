@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { logger } from "../services/logger";
-import type { GameDoc } from "../services/games";
+import { forfeitExpiredTurn, type GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
 import { InviteButton } from "../components/InviteButton";
 import { DeleteAccountModal } from "../components/DeleteAccountModal";
@@ -13,6 +13,12 @@ import { LobbyTimer } from "../components/LobbyTimer";
 import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
 import { ProUsername } from "../components/ProUsername";
 import { FeaturedClipCard } from "../components/FeaturedClipCard";
+
+/** True when a game's turn deadline has passed. */
+function isGameExpired(g: GameDoc): boolean {
+  const deadline = g.turnDeadline?.toMillis?.() ?? 0;
+  return deadline > 0 && deadline <= Date.now();
+}
 
 function relativeJoinDate(createdAt: unknown): string {
   if (
@@ -86,8 +92,33 @@ export function Lobby({
     };
   }, [profile.uid]);
 
+  // All games the server still considers active (used for rendering the
+  // ACTIVE list — expired games remain visible so users can tap to resolve
+  // them if auto-forfeit below hasn't completed yet).
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
+
+  // Games where the turn deadline has passed aren't truly playable — they're
+  // pending forfeit resolution. Use this narrower count for the header and
+  // section badge so the lobby reflects reality, not stale server state.
+  const liveActive = active.filter((g) => !isGameExpired(g));
+
+  // Auto-resolve expired games: mirrors the pattern in GamePlayScreen so a
+  // player who checks the lobby cleans up stale games without having to open
+  // each one. The forfeitExpiredTurn transaction re-checks the deadline
+  // server-side and is a no-op if the deadline hasn't actually passed.
+  const forfeitAttemptedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const g of games) {
+      if (g.status !== "active" || !isGameExpired(g)) continue;
+      if (forfeitAttemptedRef.current.has(g.id)) continue;
+      forfeitAttemptedRef.current.add(g.id);
+      forfeitExpiredTurn(g.id).catch((err) => {
+        logger.warn("[Lobby] forfeit_expired_failed", err);
+        forfeitAttemptedRef.current.delete(g.id); // allow retry
+      });
+    }
+  }, [games]);
 
   const opponent = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Username : g.player1Username);
   const opponentUid = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Uid : g.player1Uid);
@@ -154,7 +185,7 @@ export function Lobby({
           <h1 className="font-display text-fluid-4xl leading-none text-white tracking-wide">Your Games</h1>
           {games.length > 0 && (
             <p className="font-body text-xs text-brand-green mt-1.5">
-              {active.length > 0 ? `${active.length} active` : "No active games"}
+              {liveActive.length > 0 ? `${liveActive.length} active` : "No active games"}
               {done.length > 0 ? ` · ${done.length} completed` : ""}
             </p>
           )}
@@ -219,7 +250,7 @@ export function Lobby({
             <div className="flex items-center gap-2 mb-3">
               <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">ACTIVE</h3>
               <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
-                {active.length}
+                {liveActive.length}
               </span>
             </div>
             <div className="space-y-2">
