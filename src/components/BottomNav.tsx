@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
-import { HomeIcon, MapPinIcon, UserIcon, FilmIcon } from "./icons";
+import { HomeIcon, MapPinIcon, UserIcon } from "./icons";
 
 /** Screens where the persistent bottom nav is rendered. */
-const NAV_VISIBLE_ON: ReadonlySet<Screen> = new Set(["lobby", "map", "record", "player", "feed"]);
+const NAV_VISIBLE_ON: ReadonlySet<Screen> = new Set(["lobby", "map", "record", "player"]);
 
 interface NavItem {
   screen: Screen;
@@ -22,7 +22,6 @@ interface NavItem {
 // link, screen readers announcing as "link").
 const NAV_ITEMS: readonly NavItem[] = [
   { screen: "lobby", label: "Home", Icon: HomeIcon },
-  { screen: "feed", label: "Feed", Icon: FilmIcon },
   { screen: "map", label: "Map", Icon: MapPinIcon },
   { screen: "record", label: "Me", Icon: UserIcon, matchPaths: ["/record", "/player"] },
 ];

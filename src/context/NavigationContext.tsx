@@ -31,7 +31,6 @@ export type Screen =
   | "record"
   | "player"
   | "map"
-  | "feed"
   | "privacy"
   | "terms"
   | "datadeletion"
@@ -50,7 +49,6 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   record: "/record",
   player: "/player",
   map: "/map",
-  feed: "/feed",
   privacy: "/privacy",
   terms: "/terms",
   datadeletion: "/data-deletion",
