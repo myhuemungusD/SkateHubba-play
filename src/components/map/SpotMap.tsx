@@ -13,6 +13,14 @@ import { SpotFilterBar, applySpotFilters, DEFAULT_SPOT_FILTERS, type SpotFilters
 interface SpotMapProps {
   activeGameSpotId?: string;
   onSpotSelect?: (spot: Spot) => void;
+  /**
+   * Called when the user clicks "Retry" on the load-timeout error state.
+   * The parent is expected to remount this component (e.g. by bumping a
+   * `key` prop) so Mapbox re-initializes with fresh state — preferred over
+   * a full `window.location.reload()` which throws away unrelated app state
+   * (auth session, GameContext, analytics session).
+   */
+  onRetry?: () => void;
 }
 
 // Inject pulsing marker CSS once. Respects prefers-reduced-motion: users who
@@ -84,7 +92,7 @@ function getGpsErrorMessage(err: GeolocationPositionError): string {
   }
 }
 
-export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
+export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<Map<string, MarkerEntry>>(new Map());
@@ -128,6 +136,16 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
   useEffect(() => {
     userLocationRef.current = userLocation;
   }, [userLocation]);
+
+  // Surface the missing-token condition to telemetry so ops notice the
+  // outage without waiting on a user screenshot. `MAPBOX_TOKEN` is a module
+  // constant, so this effect fires at most once per mount. The matching
+  // fallback UI is rendered below.
+  useEffect(() => {
+    if (!MAPBOX_TOKEN) {
+      logger.warn("map_token_missing", {});
+    }
+  }, []);
 
   // Show toast briefly with proper cleanup
   const showToast = useCallback((msg: string) => {
@@ -484,7 +502,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect }: SpotMapProps) {
             <p className="text-[#666] text-xs mb-5">Check your connection and try again.</p>
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={() => (onRetry ? onRetry() : window.location.reload())}
               className="px-6 py-2.5 bg-[#F97316] text-white rounded-xl font-semibold text-sm
                          hover:bg-[#EA580C] transition-colors"
             >

@@ -1,4 +1,7 @@
-export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string;
+// Typed as `string | undefined` on purpose: the build does not fail when the
+// token is missing (previews/forks don't have it), and the consuming code must
+// treat that case explicitly. See SpotMap.tsx for the fallback render path.
+export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 
 // SkateHubba dark map style
 // Placeholder: using Mapbox `dark-v11` until a custom Mapbox Studio style

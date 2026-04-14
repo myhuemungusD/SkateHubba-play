@@ -9,6 +9,16 @@ vi.mock("../../../services/spots", () => ({
   getSpotsInBounds: (...args: unknown[]) => mockGetSpotsInBounds(...args),
 }));
 
+// Logger is mocked so the missing-token / load-timeout warn assertions have a
+// spy to inspect. Production logger.warn would route to Sentry breadcrumbs.
+// `vi.hoisted` is required because `vi.mock` factories are hoisted above all
+// top-level variables — a plain `const` would throw "cannot access before
+// initialization" at factory evaluation time.
+const { mockLoggerWarn } = vi.hoisted(() => ({ mockLoggerWarn: vi.fn() }));
+vi.mock("../../../services/logger", () => ({
+  logger: { info: vi.fn(), debug: vi.fn(), warn: mockLoggerWarn, error: vi.fn() },
+}));
+
 // Provide a fake Mapbox token so the component doesn't render the
 // unavailable-state fallback. The fake mapbox-gl below ignores the value.
 vi.mock("../../../lib/mapbox", () => ({
@@ -21,6 +31,9 @@ vi.mock("../../../lib/mapbox", () => ({
 // The mock implements just enough surface for SpotMap's lifecycle hooks
 // (constructor + addControl + on + getBounds + flyTo + remove).
 const mapEventHandlers: Record<string, Array<() => void>> = {};
+// Observable count — the missing-token fallback test asserts that the map
+// constructor is never invoked when VITE_MAPBOX_TOKEN is unset.
+let fakeMapConstructorCalls = 0;
 
 vi.mock("mapbox-gl", () => {
   class FakeMarker {
@@ -42,6 +55,7 @@ vi.mock("mapbox-gl", () => {
   }
   class FakeMap {
     constructor(opts: { container: HTMLElement }) {
+      fakeMapConstructorCalls += 1;
       // Trigger the load event on the next microtask so SpotMap's load
       // listener fires after the constructor returns.
       queueMicrotask(() => mapEventHandlers["load"]?.forEach((cb) => cb()));
@@ -97,6 +111,7 @@ const FIXTURE: Spot = {
 beforeEach(() => {
   vi.clearAllMocks();
   for (const k of Object.keys(mapEventHandlers)) delete mapEventHandlers[k];
+  fakeMapConstructorCalls = 0;
   mockGetSpotsInBounds.mockResolvedValue([FIXTURE]);
 });
 
@@ -246,9 +261,11 @@ describe("SpotMap load timeout", () => {
 describe("SpotMap without a Mapbox token", () => {
   beforeEach(() => {
     vi.resetModules();
+    mockLoggerWarn.mockClear();
+    fakeMapConstructorCalls = 0;
   });
 
-  it("renders a temporarily-unavailable state instead of initializing the map", async () => {
+  it("renders a temporarily-unavailable state, logs the outage, and never constructs a map", async () => {
     vi.doMock("../../../lib/mapbox", () => ({
       MAPBOX_TOKEN: "",
       MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
@@ -263,5 +280,42 @@ describe("SpotMap without a Mapbox token", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/temporarily unavailable/i);
     // The Add-Spot FAB should NOT be rendered in the unavailable state.
     expect(screen.queryByLabelText("Add a spot")).toBeNull();
+    // Ops telemetry: the one-shot warn lets Sentry page us instead of
+    // waiting on a user screenshot.
+    expect(mockLoggerWarn).toHaveBeenCalledWith("map_token_missing", {});
+    // Sanity: we short-circuited before mapbox-gl was touched.
+    expect(fakeMapConstructorCalls).toBe(0);
+  });
+});
+
+describe("SpotMap load-timeout retry", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("invokes the onRetry callback instead of reloading the window", () => {
+    const realQueueMicrotask = globalThis.queueMicrotask;
+    globalThis.queueMicrotask = () => {};
+    const onRetry = vi.fn();
+    try {
+      render(
+        <MemoryRouter>
+          <SpotMap onRetry={onRetry} />
+        </MemoryRouter>,
+      );
+      act(() => {
+        vi.advanceTimersByTime(15_000);
+      });
+      const retryBtn = screen.getByRole("button", { name: /retry/i });
+      act(() => {
+        retryBtn.click();
+      });
+      expect(onRetry).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.queueMicrotask = realQueueMicrotask;
+    }
   });
 });

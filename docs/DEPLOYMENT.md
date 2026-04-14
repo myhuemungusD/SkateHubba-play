@@ -108,11 +108,19 @@ VITE_FIREBASE_PROJECT_ID
 VITE_FIREBASE_STORAGE_BUCKET
 VITE_FIREBASE_MESSAGING_SENDER_ID
 VITE_FIREBASE_APP_ID
+
+VITE_MAPBOX_TOKEN    — Required for /map. Without this the map page renders
+                       a "temporarily unavailable" fallback and a
+                       `map_token_missing` warning is emitted to Sentry.
+                       Get a public token from Mapbox Dashboard → Access Tokens.
 ```
 
 ### Optional
 
 ```
+VITE_MAPBOX_STYLE_URL — Custom Mapbox Studio style URL. Defaults to
+                        mapbox://styles/mapbox/dark-v11 if unset.
+
 VITE_APP_URL         — Set to https://skatehubba.com in production.
                        Used as the redirect URL in Firebase email action links
                        (password reset, verification). Falls back to
@@ -124,9 +132,21 @@ VITE_USE_EMULATORS   — Development only. Do NOT set this in Vercel.
 
 ### Vercel scoping
 
-Set `VITE_FIREBASE_*` for both **Production** and **Preview** scopes — preview deployments need Firebase to work for testing.
+Set `VITE_FIREBASE_*` and `VITE_MAPBOX_TOKEN` for both **Production** and **Preview** scopes — preview deployments need Firebase and the map to work for testing.
 
 Set `VITE_APP_URL` for **Production only** — preview deployments have auto-generated URLs that you don't know in advance.
+
+### Mapbox token hardening
+
+Public Mapbox tokens (`pk.…`) are bundled into the client JS and visible to anyone viewing source. Restrict the token in the Mapbox dashboard to:
+
+- `https://skatehubba.com/*` (production)
+- `https://*.vercel.app/*` (preview deployments)
+- `http://localhost:*/*` (local development)
+
+Without a URL restriction a leaked token can be used to burn through your Mapbox tile quota.
+
+Vercel does **not** redeploy on env-var changes. After adding `VITE_MAPBOX_TOKEN`, trigger a manual redeploy (Deployments → "…" → Redeploy) for the value to take effect.
 
 ---
 
@@ -184,6 +204,16 @@ If you approach these limits, upgrade to the Blaze (pay-as-you-go) plan. Blaze h
 The app shows this when `VITE_FIREBASE_API_KEY` is not set.
 
 **Fix:** Vercel Dashboard → Project Settings → Environment Variables → verify the variable is set and scoped to the correct environment (Production / Preview).
+
+### "Map is temporarily unavailable" on `/map`
+
+The app shows this when `VITE_MAPBOX_TOKEN` is not set in the deployed build. A `map_token_missing` warning is emitted to Sentry on every page view in this state.
+
+**Fix:**
+
+1. Vercel Dashboard → Project Settings → Environment Variables → add `VITE_MAPBOX_TOKEN` (public token from Mapbox Dashboard → Access Tokens), scoped to Production **and** Preview.
+2. Deployments → most recent deployment → "…" → Redeploy. Env var changes do not trigger an automatic rebuild.
+3. Verify the Mapbox token is URL-restricted (see [Mapbox token hardening](#mapbox-token-hardening)).
 
 ### Build fails on `tsc -b`
 
