@@ -119,4 +119,26 @@ describe("Landing", () => {
     await userEvent.click(screen.getByText("Data Deletion"));
     expect(onNav).toHaveBeenCalledWith("datadeletion");
   });
+
+  it("exposes a labelled primary nav", () => {
+    render(<Landing {...defaultProps} />);
+    expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
+  });
+
+  it("links the logo back to the hero", () => {
+    render(<Landing {...defaultProps} />);
+    const logoLink = screen.getByRole("link", { name: "SkateHubba home" });
+    expect(logoLink).toHaveAttribute("href", "#hero");
+  });
+
+  it("renders an interactive scroll indicator that targets the demo section", () => {
+    render(<Landing {...defaultProps} />);
+    const scrollLink = screen.getByRole("link", { name: "Scroll to demo" });
+    expect(scrollLink).toHaveAttribute("href", "#demo");
+  });
+
+  it("labels the demo section with a visually hidden heading", () => {
+    render(<Landing {...defaultProps} />);
+    expect(screen.getByRole("heading", { name: "Gameplay demo" })).toBeInTheDocument();
+  });
 });

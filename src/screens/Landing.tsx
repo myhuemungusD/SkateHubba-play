@@ -78,9 +78,21 @@ export function Landing({
   return (
     <div className="min-h-dvh pb-28 md:pb-0">
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/[0.05]">
+      <nav aria-label="Primary" className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/[0.05]">
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
-          <img src="/logonew.webp" alt="SkateHubba" draggable={false} className="h-9 md:h-11 w-auto select-none" />
+          <a
+            href="#hero"
+            aria-label="SkateHubba home"
+            className="inline-flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <img
+              src="/logonew.webp"
+              alt="SkateHubba"
+              draggable={false}
+              fetchPriority="high"
+              className="h-9 md:h-11 w-auto select-none"
+            />
+          </a>
           <div className="flex items-center gap-4">
             <button
               type="button"
@@ -107,7 +119,11 @@ export function Landing({
       </nav>
 
       {/* ─── Hero Section (full viewport) ───────────────── */}
-      <section className="relative min-h-dvh flex flex-col items-center justify-center overflow-hidden">
+      <section
+        id="hero"
+        aria-labelledby="hero-heading"
+        className="relative min-h-dvh flex flex-col items-center justify-center overflow-hidden"
+      >
         {/* Layered ambient glow */}
         <div className="absolute inset-0 pointer-events-none bg-hero-glow" />
 
@@ -119,7 +135,10 @@ export function Landing({
           </span>
 
           {/* Main headline */}
-          <h1 className="font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)]">
+          <h1
+            id="hero-heading"
+            className="font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)]"
+          >
             <span className="block text-brand-orange [text-shadow:0_0_60px_rgba(255,107,0,0.35),0_0_120px_rgba(255,107,0,0.15)]">
               SKATEHUBBA
             </span>
@@ -152,7 +171,11 @@ export function Landing({
         </div>
 
         {/* Scroll indicator */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-scroll-hint">
+        <a
+          href="#demo"
+          aria-label="Scroll to demo"
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-scroll-hint p-2 rounded-full text-white/30 hover:text-white/60 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        >
           <svg
             width="20"
             height="20"
@@ -160,16 +183,18 @@ export function Landing({
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
-            className="text-white/30"
             aria-hidden="true"
           >
             <polyline points="6 9 12 15 18 9" />
           </svg>
-        </div>
+        </a>
       </section>
 
       {/* ─── Demo Video ──────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-6 py-16 md:py-24">
+      <section id="demo" aria-labelledby="demo-heading" className="max-w-5xl mx-auto px-6 py-16 md:py-24 scroll-mt-20">
+        <h2 id="demo-heading" className="sr-only">
+          Gameplay demo
+        </h2>
         <div className="video-showcase">
           <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] shadow-[0_0_80px_rgba(255,107,0,0.06),0_20px_60px_rgba(0,0,0,0.4)]">
             <video
@@ -198,7 +223,11 @@ export function Landing({
       </section>
 
       {/* ─── How It Works ───────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 py-16 md:py-28" aria-label="How it works">
+      <section
+        id="how-it-works"
+        aria-label="How it works"
+        className="max-w-6xl mx-auto px-6 py-16 md:py-28 scroll-mt-20"
+      >
         <div className="text-center mb-14 md:mb-20">
           <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">THE DEAL</span>
           <h2 className="font-display text-fluid-3xl text-white tracking-wider">HOW IT WORKS</h2>
@@ -234,7 +263,7 @@ export function Landing({
       </section>
 
       {/* ─── Game Preview / Phone Mockup ────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 py-16 md:py-28">
+      <section id="game" aria-label="Game preview" className="max-w-6xl mx-auto px-6 py-16 md:py-28 scroll-mt-20">
         <div className="flex flex-col md:flex-row items-center gap-12 md:gap-20">
           {/* Phone mockup */}
           <div className="relative flex-shrink-0 animate-float">
@@ -306,7 +335,7 @@ export function Landing({
       </section>
 
       {/* ─── Features Grid ──────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 py-16 md:py-28" aria-label="Features">
+      <section id="features" aria-label="Features" className="max-w-6xl mx-auto px-6 py-16 md:py-28 scroll-mt-20">
         <div className="text-center mb-14 md:mb-20">
           <span className="font-display text-xs tracking-[0.3em] text-brand-orange/60 mb-3 block">WHAT YOU GET</span>
           <h2 className="font-display text-fluid-3xl text-white tracking-wider">BUILT DIFFERENT</h2>
@@ -329,11 +358,14 @@ export function Landing({
       </section>
 
       {/* ─── CTA / Bottom Section ───────────────────────── */}
-      <section className="relative overflow-hidden">
+      <section id="cta" aria-labelledby="cta-heading" className="relative overflow-hidden scroll-mt-20">
         {/* Strong ambient glow */}
         <div className="absolute inset-0 pointer-events-none bg-cta-glow" />
         <div className="relative max-w-6xl mx-auto px-6 py-24 md:py-32 flex flex-col items-center text-center">
-          <h2 className="font-display text-white tracking-wider mb-4 leading-[0.95] text-[clamp(2rem,1.5rem_+_3vw,4.5rem)]">
+          <h2
+            id="cta-heading"
+            className="font-display text-white tracking-wider mb-4 leading-[0.95] text-[clamp(2rem,1.5rem_+_3vw,4.5rem)]"
+          >
             QUIT SCROLLING.
           </h2>
           <p className="font-body text-dim mb-10 max-w-xs leading-relaxed">
