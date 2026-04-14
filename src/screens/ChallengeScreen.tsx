@@ -101,7 +101,7 @@ export function ChallengeScreen({
       setError("Judge username is too short");
       return;
     }
-    if (judgeNormalized === profile.username) {
+    if (judgeNormalized && judgeNormalized === profile.username) {
       setError("You can't be your own judge");
       return;
     }
@@ -112,7 +112,14 @@ export function ChallengeScreen({
 
     setLoading(true);
     try {
-      const uid = await getUidByUsername(normalized);
+      // Resolve both usernames in parallel so the optional judge field never
+      // serializes a second round-trip on top of the opponent lookup. Keeps
+      // game-start latency identical whether or not a judge is nominated.
+      const [uid, resolvedJudgeUid] = await Promise.all([
+        getUidByUsername(normalized),
+        judgeNormalized ? getUidByUsername(judgeNormalized) : Promise.resolve(null),
+      ]);
+
       if (!uid) {
         setError(`@${normalized} doesn't exist yet. They need to sign up first.`);
         return;
@@ -125,7 +132,6 @@ export function ChallengeScreen({
       let judgeUid: string | null = null;
       let judgeUsername: string | null = null;
       if (judgeNormalized) {
-        const resolvedJudgeUid = await getUidByUsername(judgeNormalized);
         if (!resolvedJudgeUid) {
           setError(`Judge @${judgeNormalized} doesn't exist yet. They need to sign up first.`);
           return;

@@ -293,6 +293,52 @@ describe("ChallengeScreen", () => {
     });
   });
 
+  it("issues opponent + judge UID lookups in parallel (no extra latency on game start)", async () => {
+    // Both lookups must be in flight before either resolves — locks in the
+    // Promise.all parallelization so a future refactor can't quietly
+    // re-serialize the judge lookup and double the start-game round-trip.
+    let resolveOpp: (v: string) => void = () => {};
+    let resolveJudge: (v: string) => void = () => {};
+    const oppPromise = new Promise<string>((r) => {
+      resolveOpp = r;
+    });
+    const judgePromise = new Promise<string>((r) => {
+      resolveJudge = r;
+    });
+    mockGetUidByUsername.mockReturnValueOnce(oppPromise).mockReturnValueOnce(judgePromise);
+
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    await userEvent.click(screen.getByTestId("add-judge-toggle"));
+    const inputs = screen.getAllByPlaceholderText("their_handle");
+    await userEvent.type(inputs[inputs.length - 1], "judge");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    // Both calls fire before either resolves — the assertion that proves
+    // parallelism. With the previous serial flow, the judge call would not
+    // have been issued until after the opponent promise resolved.
+    await waitFor(() => {
+      expect(mockGetUidByUsername).toHaveBeenCalledTimes(2);
+    });
+    expect(mockGetUidByUsername).toHaveBeenNthCalledWith(1, "rival");
+    expect(mockGetUidByUsername).toHaveBeenNthCalledWith(2, "judge");
+
+    // Resolve in reverse order so the judge promise settling first cannot
+    // race ahead of opponent error-handling — we still gate on opponent uid.
+    resolveJudge("u3");
+    resolveOpp("u2");
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
+        spotId: null,
+        judgeUid: "u3",
+        judgeUsername: "judge",
+      });
+    });
+  });
+
   it("rejects a judge that matches the opponent", async () => {
     mockGetUidByUsername.mockResolvedValueOnce("u2").mockResolvedValueOnce("u2");
     const onSend = vi.fn().mockResolvedValue(undefined);
