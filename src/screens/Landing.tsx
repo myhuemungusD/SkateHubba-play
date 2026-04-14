@@ -1,8 +1,21 @@
+import { useCallback } from "react";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
 import { SkateButton } from "../components/SkateButton";
 import { playOlliePop } from "../utils/ollieSound";
 import { VideoIcon, ClockIcon, FlameIcon, ShieldIcon, TrophyIcon, UsersIcon } from "../components/icons";
+
+/* ── Types ───────────────────────────────────────────────── */
+
+type AuthMode = "signup" | "signin";
+type LegalScreen = "privacy" | "terms" | "datadeletion";
+
+export type LandingProps = {
+  onGo: (mode: AuthMode) => void;
+  onGoogle: () => void;
+  googleLoading: boolean;
+  onNav: (screen: LegalScreen) => void;
+};
 
 /* ── Data ────────────────────────────────────────────────── */
 
@@ -64,17 +77,20 @@ const FEATURES = [
 
 /* ── Component ───────────────────────────────────────────── */
 
-export function Landing({
-  onGo,
-  onGoogle,
-  googleLoading,
-  onNav,
-}: {
-  onGo: (mode: "signup" | "signin") => void;
-  onGoogle: () => void;
-  googleLoading: boolean;
-  onNav: (screen: "privacy" | "terms" | "datadeletion") => void;
-}) {
+export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) {
+  const handleAuth = useCallback(
+    (mode: AuthMode) => () => {
+      playOlliePop();
+      onGo(mode);
+    },
+    [onGo],
+  );
+
+  const handleGoogle = useCallback(() => {
+    playOlliePop();
+    onGoogle();
+  }, [onGoogle]);
+
   return (
     <div className="min-h-dvh pb-28 md:pb-0">
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
@@ -93,24 +109,18 @@ export function Landing({
               className="h-9 md:h-11 w-auto select-none"
             />
           </a>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => {
-                playOlliePop();
-                onGo("signin");
-              }}
-              className="font-body text-sm text-dim hover:text-white transition-colors duration-200"
+              onClick={handleAuth("signin")}
+              className="font-body text-sm text-dim hover:text-white px-3 py-2 rounded-md transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               Log in
             </button>
             <button
               type="button"
-              onClick={() => {
-                playOlliePop();
-                onGo("signup");
-              }}
-              className="font-body text-sm font-medium bg-white text-[#0A0A0A] px-5 py-2 rounded-lg hover:bg-white/90 transition-all duration-200 active:scale-[0.97]"
+              onClick={handleAuth("signup")}
+              className="font-body text-sm font-medium bg-white text-[#0A0A0A] px-5 py-2 rounded-lg hover:bg-white/90 transition-all duration-200 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               Sign up
             </button>
@@ -152,14 +162,8 @@ export function Landing({
 
           {/* Auth Buttons */}
           <div className="w-full max-w-sm flex flex-col gap-3">
-            <GoogleButton
-              onClick={() => {
-                playOlliePop();
-                onGoogle();
-              }}
-              loading={googleLoading}
-            />
-            <div className="flex items-center gap-3 my-0.5">
+            <GoogleButton onClick={handleGoogle} loading={googleLoading} />
+            <div className="flex items-center gap-3 my-0.5" aria-hidden="true">
               <div className="flex-1 h-px bg-white/[0.06]" />
               <span className="font-body text-xs text-[#555]">or</span>
               <div className="flex-1 h-px bg-white/[0.06]" />
@@ -203,6 +207,8 @@ export function Landing({
               muted
               playsInline
               preload="metadata"
+              disablePictureInPicture
+              controlsList="nodownload noplaybackrate"
               className="w-full aspect-video object-cover bg-surface"
               aria-label="SkateHubba gameplay demo"
             >
@@ -265,8 +271,8 @@ export function Landing({
       {/* ─── Game Preview / Phone Mockup ────────────────── */}
       <section id="game" aria-label="Game preview" className="max-w-6xl mx-auto px-6 py-16 md:py-28 scroll-mt-20">
         <div className="flex flex-col md:flex-row items-center gap-12 md:gap-20">
-          {/* Phone mockup */}
-          <div className="relative flex-shrink-0 animate-float">
+          {/* Phone mockup — purely decorative visual */}
+          <div className="relative flex-shrink-0 animate-float" aria-hidden="true">
             <div className="w-[220px] h-[400px] md:w-[260px] md:h-[480px] rounded-[2.5rem] border border-white/[0.08] bg-[#111] overflow-hidden relative shadow-glass">
               {/* Dynamic Island */}
               <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-16 h-4 bg-[#0A0A0A] rounded-full z-10" />
@@ -392,6 +398,8 @@ export function Landing({
               src="/logonew.webp"
               alt=""
               draggable={false}
+              loading="lazy"
+              decoding="async"
               className="h-6 w-auto select-none opacity-40"
               aria-hidden="true"
             />

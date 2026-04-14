@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Landing } from "../Landing";
+import { playOlliePop } from "../../utils/ollieSound";
 
 vi.mock("../../utils/ollieSound", () => ({
   playOlliePop: vi.fn(),
@@ -140,5 +141,24 @@ describe("Landing", () => {
   it("labels the demo section with a visually hidden heading", () => {
     render(<Landing {...defaultProps} />);
     expect(screen.getByRole("heading", { name: "Gameplay demo" })).toBeInTheDocument();
+  });
+
+  it("plays the ollie pop sound when the Log in nav button is clicked", async () => {
+    render(<Landing {...defaultProps} />);
+    await userEvent.click(screen.getByText("Log in"));
+    expect(playOlliePop).toHaveBeenCalled();
+  });
+
+  it("plays the ollie pop sound when the Google button is clicked", async () => {
+    render(<Landing {...defaultProps} />);
+    await userEvent.click(screen.getByText("Continue with Google"));
+    expect(playOlliePop).toHaveBeenCalled();
+  });
+
+  it("hardens the demo video against download and picture-in-picture", () => {
+    render(<Landing {...defaultProps} />);
+    const video = screen.getByLabelText("SkateHubba gameplay demo");
+    expect(video).toHaveAttribute("disablepictureinpicture");
+    expect(video.getAttribute("controlslist")).toContain("nodownload");
   });
 });
