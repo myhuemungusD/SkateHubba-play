@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { logger } from "../services/logger";
-import { forfeitExpiredTurn, type GameDoc } from "../services/games";
+import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
 import { InviteButton } from "../components/InviteButton";
 import { DeleteAccountModal } from "../components/DeleteAccountModal";
@@ -92,33 +92,15 @@ export function Lobby({
     };
   }, [profile.uid]);
 
-  // All games the server still considers active (used for rendering the
-  // ACTIVE list — expired games remain visible so users can tap to resolve
-  // them if auto-forfeit below hasn't completed yet).
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
 
-  // Games where the turn deadline has passed aren't truly playable — they're
-  // pending forfeit resolution. Use this narrower count for the header and
-  // section badge so the lobby reflects reality, not stale server state.
+  // Games whose turn deadline has passed aren't truly playable — they're
+  // pending forfeit resolution (GameContext auto-triggers forfeitExpiredTurn
+  // on the subscription, but there's a brief window before Firestore pushes
+  // the updated status). Show the narrower count so the counter reflects
+  // reality, not stale server state.
   const liveActive = active.filter((g) => !isGameExpired(g));
-
-  // Auto-resolve expired games: mirrors the pattern in GamePlayScreen so a
-  // player who checks the lobby cleans up stale games without having to open
-  // each one. The forfeitExpiredTurn transaction re-checks the deadline
-  // server-side and is a no-op if the deadline hasn't actually passed.
-  const forfeitAttemptedRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    for (const g of games) {
-      if (g.status !== "active" || !isGameExpired(g)) continue;
-      if (forfeitAttemptedRef.current.has(g.id)) continue;
-      forfeitAttemptedRef.current.add(g.id);
-      forfeitExpiredTurn(g.id).catch((err) => {
-        logger.warn("[Lobby] forfeit_expired_failed", err);
-        forfeitAttemptedRef.current.delete(g.id); // allow retry
-      });
-    }
-  }, [games]);
 
   const opponent = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Username : g.player1Username);
   const opponentUid = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Uid : g.player1Uid);

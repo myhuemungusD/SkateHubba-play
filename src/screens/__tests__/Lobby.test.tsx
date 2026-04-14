@@ -27,15 +27,10 @@ vi.mock("../../services/users", () => ({
 vi.mock("../../services/blocking", () => ({
   getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
 }));
-vi.mock("../../services/games", () => ({
-  forfeitExpiredTurn: vi.fn().mockResolvedValue({ forfeited: false, winner: null }),
-}));
 
 import { getPlayerDirectory } from "../../services/users";
-import { forfeitExpiredTurn } from "../../services/games";
 
 const mockGetPlayerDirectory = getPlayerDirectory as ReturnType<typeof vi.fn>;
-const mockForfeitExpiredTurn = forfeitExpiredTurn as ReturnType<typeof vi.fn>;
 
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
 
@@ -539,32 +534,5 @@ describe("Lobby", () => {
 
     const badge = screen.getByText("ACTIVE").parentElement!.querySelector(".tabular-nums")!;
     expect(badge.textContent).toBe("1");
-  });
-
-  it("auto-triggers forfeitExpiredTurn for expired active games", async () => {
-    const expired = makeGame({ id: "exp", turnDeadline: { toMillis: () => Date.now() - 1000 } });
-    const live = makeGame({ id: "live", turnDeadline: { toMillis: () => Date.now() + 3600_000 } });
-    renderWithProviders(<Lobby {...defaultProps} games={[expired, live]} />);
-
-    await waitFor(() => {
-      expect(mockForfeitExpiredTurn).toHaveBeenCalledWith("exp");
-    });
-    // Live game should not trigger a forfeit
-    expect(mockForfeitExpiredTurn).not.toHaveBeenCalledWith("live");
-  });
-
-  it("does not re-attempt forfeit for the same game on re-render", async () => {
-    const expired = makeGame({ id: "exp", turnDeadline: { toMillis: () => Date.now() - 1000 } });
-    const ui = <Lobby {...defaultProps} games={[expired]} />;
-    const { rerender } = renderWithProviders(ui);
-
-    await waitFor(() => {
-      expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(1);
-    });
-
-    // Re-render with the same games array — the processed-ref should
-    // short-circuit and prevent a second call.
-    rerender(ui);
-    expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(1);
   });
 });
