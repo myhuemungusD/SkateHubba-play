@@ -454,17 +454,32 @@ describe("ClipsFeed", () => {
       const playSpy = vi.spyOn(videoEl, "play").mockResolvedValue();
       const pauseSpy = vi.spyOn(videoEl, "pause").mockImplementation(() => undefined);
 
-      // IO fired an intersecting entry on mount — we didn't capture that
-      // one before spying. Fire an out-of-viewport event now.
+      // Regression guard: an out-of-viewport callback BEFORE any successful
+      // play() must NOT call pause(). On mobile Safari, an early pause()
+      // revokes the muted-autoplay grant so subsequent play() calls
+      // silently fail — that was the "feed loads but no clips play" bug.
       expect(ioCallback).toBeTruthy();
-      const fakeEntry = { isIntersecting: false, target: videoEl } as unknown as IntersectionObserverEntry;
-      ioCallback!([fakeEntry], {} as IntersectionObserver);
-      expect(pauseSpy).toHaveBeenCalled();
+      const outOfView = { isIntersecting: false, target: videoEl } as unknown as IntersectionObserverEntry;
+      ioCallback!([outOfView], {} as IntersectionObserver);
+      expect(pauseSpy).not.toHaveBeenCalled();
 
-      // Scroll back into view → play() is invoked.
+      // Scroll into view → play() is invoked.
       const intersecting = { isIntersecting: true, target: videoEl } as unknown as IntersectionObserverEntry;
       ioCallback!([intersecting], {} as IntersectionObserver);
       expect(playSpy).toHaveBeenCalled();
+
+      // Wait for the play() promise to resolve so hasPlayedRef flips true.
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // Now scroll back out → pause() fires because the video has played.
+      ioCallback!([outOfView], {} as IntersectionObserver);
+      expect(pauseSpy).toHaveBeenCalled();
+
+      // Scroll back into view → play() is invoked again.
+      const playCalls = playSpy.mock.calls.length;
+      ioCallback!([intersecting], {} as IntersectionObserver);
+      expect(playSpy.mock.calls.length).toBeGreaterThan(playCalls);
     } finally {
       globalThis.IntersectionObserver = originalIO;
     }

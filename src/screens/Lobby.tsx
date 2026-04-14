@@ -163,6 +163,12 @@ export function Lobby({
       </div>
 
       <div className="px-5 pt-7 max-w-lg mx-auto">
+        {/* Community feed — surfaced at the top of the lobby so the first
+            thing users see is a live, autoplaying clip. Placement also
+            keeps the top clip in the viewport on mount, which is what
+            makes muted autoplay actually fire on mobile browsers. */}
+        <ClipsFeed profile={profile} onViewPlayer={onViewPlayer ?? (() => {})} onChallengeUser={onChallengeUser} />
+
         {/* Page header */}
         <div className="mb-7">
           <h1 className="font-display text-fluid-4xl leading-none text-white tracking-wide">Your Games</h1>
@@ -502,10 +508,6 @@ export function Lobby({
             </div>
           </div>
         )}
-
-        {/* Community feed — formerly the standalone /feed tab, merged into the
-            lobby so the home surface contains every browse/discovery section. */}
-        <ClipsFeed profile={profile} onViewPlayer={onViewPlayer ?? (() => {})} onChallengeUser={onChallengeUser} />
 
         {/* Delete Account */}
         <div className="mt-8 flex justify-center">
