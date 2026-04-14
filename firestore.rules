@@ -930,5 +930,39 @@ service cloud.firestore {
       allow delete: if isSignedIn()
         && request.auth.uid == resource.data.playerUid;
     }
+
+    // ── Clip upvotes ──
+    //
+    // One vote per (uid, clipId) enforced by the deterministic document id
+    // (`${uid}_${clipId}`). The id is verified at create time so a client
+    // cannot impersonate another user's vote. Votes are immutable:
+    //
+    //   - update forbidden — guarantees a single upvote cannot be silently
+    //     overwritten into a different shape (spec: no undo).
+    //   - delete owner-only — backs any future account-deletion cascade.
+    //
+    // Reads are open to signed-in users because the featured-clip card
+    // aggregates votes via `getCountFromServer` and checks whether the
+    // current user already upvoted via a direct get — both require read
+    // permission on the collection / doc.
+    match /clipVotes/{voteId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && voteId == (request.auth.uid + '_' + request.resource.data.clipId)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.clipId is string
+        && request.resource.data.clipId.size() > 0
+        && request.resource.data.clipId.size() <= 128
+        && request.resource.data.createdAt == request.time
+        // Vote target must exist — prevents orphaned votes on clips that
+        // were deleted between client-side discovery and the write.
+        && exists(/databases/$(database)/documents/clips/$(request.resource.data.clipId));
+
+      allow update: if false;
+
+      allow delete: if isSignedIn()
+        && request.auth.uid == resource.data.uid;
+    }
   }
 }
