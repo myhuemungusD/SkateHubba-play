@@ -34,11 +34,14 @@ const FIXTURE_SPOT: Spot = {
  * Route at /destination so we can assert which path the buttons navigate to
  * by reading the resulting location.
  */
-function renderCard(spot: Spot, onClose: () => void = vi.fn()): ReactElement {
+function renderCard(spot: Spot, onClose: () => void = vi.fn(), activeGameSpotId?: string): ReactElement {
   return (
     <MemoryRouter initialEntries={["/"]}>
       <Routes>
-        <Route path="/" element={<SpotPreviewCard spot={spot} onClose={onClose} />} />
+        <Route
+          path="/"
+          element={<SpotPreviewCard spot={spot} onClose={onClose} activeGameSpotId={activeGameSpotId} />}
+        />
         <Route path="/challenge" element={<LocationProbe tag="challenge" />} />
         <Route path="/spots/:id" element={<LocationProbe tag="spots" />} />
       </Routes>
@@ -103,5 +106,50 @@ describe("SpotPreviewCard", () => {
     fireEvent.touchStart(dialog, { touches: [{ clientY: 200 }] });
     fireEvent.touchEnd(dialog, { changedTouches: [{ clientY: 195 }] });
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("renders a Get-Directions link to Google Maps with the spot coordinates", () => {
+    render(renderCard(FIXTURE_SPOT));
+    const link = screen.getByRole("link", { name: /get directions to Hollenbeck Hubba/i });
+    const href = link.getAttribute("href") ?? "";
+    expect(href).toContain("google.com/maps/dir/");
+    expect(href).toContain(`destination=${FIXTURE_SPOT.latitude},${FIXTURE_SPOT.longitude}`);
+    // Security: must open in a new tab and not leak opener.
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toContain("noopener");
+  });
+
+  it("shows the verified badge only for verified spots", () => {
+    const { rerender } = render(renderCard(FIXTURE_SPOT));
+    expect(screen.queryByLabelText(/verified spot/i)).toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <SpotPreviewCard spot={{ ...FIXTURE_SPOT, isVerified: true }} onClose={vi.fn()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByLabelText(/verified spot/i)).toBeInTheDocument();
+  });
+
+  it("renders the active-game badge only when the spot is the active game spot", () => {
+    const { rerender } = render(renderCard(FIXTURE_SPOT));
+    expect(screen.queryByTestId("active-game-badge")).toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <SpotPreviewCard spot={FIXTURE_SPOT} onClose={vi.fn()} activeGameSpotId={FIXTURE_SPOT.id} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByTestId("active-game-badge")).toBeInTheDocument();
+    expect(screen.getByTestId("active-game-badge").textContent?.toLowerCase()).toContain("your active game");
+  });
+
+  it("swaps the photo to a graceful placeholder when the image fails to load", () => {
+    render(renderCard(FIXTURE_SPOT));
+    const img = screen.getByAltText(/Hollenbeck Hubba photo/);
+    fireEvent.error(img);
+    // The broken <img> is replaced by the placeholder with an accessible label.
+    expect(screen.getByLabelText(/Photo unavailable for Hollenbeck Hubba/i)).toBeInTheDocument();
+    expect(screen.queryByAltText(/Hollenbeck Hubba photo/)).toBeNull();
   });
 });

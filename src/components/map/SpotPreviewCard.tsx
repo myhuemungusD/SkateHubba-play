@@ -1,6 +1,6 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { X } from "lucide-react";
+import { X, Navigation, BadgeCheck, ImageOff, Flag } from "lucide-react";
 import type { Spot } from "../../types/spot";
 import { GnarRating } from "./GnarRating";
 import { BustRisk } from "./BustRisk";
@@ -8,13 +8,27 @@ import { BustRisk } from "./BustRisk";
 interface SpotPreviewCardProps {
   spot: Spot;
   onClose: () => void;
+  /** When this matches spot.id, the preview shows the "active game" badge. */
+  activeGameSpotId?: string;
 }
 
 const MAX_VISIBLE_OBSTACLES = 4;
 
-export function SpotPreviewCard({ spot, onClose }: SpotPreviewCardProps) {
+/**
+ * Build a cross-platform maps deep link. `google.com/maps/dir/?api=1` is a
+ * universal link that iOS/Android/web all respect — Apple Maps intercepts it
+ * on iOS, Google Maps on Android, web fallback in desktop browsers. This
+ * avoids the `geo:` / `maps:` URL-scheme sniffing tarpit that competitor
+ * apps routinely get wrong.
+ */
+function directionsUrl(lat: number, lng: number): string {
+  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+}
+
+export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreviewCardProps) {
   const navigate = useNavigate();
   const touchStartY = useRef<number | null>(null);
+  const [photoFailed, setPhotoFailed] = useState(false);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
@@ -34,6 +48,8 @@ export function SpotPreviewCard({ spot, onClose }: SpotPreviewCardProps) {
 
   const visibleObstacles = spot.obstacles.slice(0, MAX_VISIBLE_OBSTACLES);
   const hiddenCount = spot.obstacles.length - MAX_VISIBLE_OBSTACLES;
+  const isActiveGame = activeGameSpotId === spot.id;
+  const hasPhoto = spot.photoUrls.length > 0 && !photoFailed;
 
   return (
     <>
@@ -63,18 +79,54 @@ export function SpotPreviewCard({ spot, onClose }: SpotPreviewCardProps) {
         </button>
 
         <div className="flex gap-3">
-          {/* Photo thumbnail */}
+          {/* Photo thumbnail with graceful fallback.
+              Competitor complaint: "white rectangle where a picture is supposed
+              to be". We render a dimmed placeholder instead of a broken-image
+              icon or an empty frame. */}
           {spot.photoUrls.length > 0 && (
-            <img
-              src={spot.photoUrls[0]}
-              alt={`${spot.name} photo`}
-              className="w-20 h-20 object-cover rounded-lg flex-shrink-0"
-            />
+            <div className="w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-[#0A0A0A] border border-[#2A2A2A] flex items-center justify-center">
+              {hasPhoto ? (
+                <img
+                  src={spot.photoUrls[0]}
+                  alt={`${spot.name} photo`}
+                  loading="lazy"
+                  decoding="async"
+                  onError={() => setPhotoFailed(true)}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div
+                  className="flex flex-col items-center justify-center text-[#555]"
+                  role="img"
+                  aria-label={`Photo unavailable for ${spot.name}`}
+                >
+                  <ImageOff size={22} aria-hidden="true" />
+                </div>
+              )}
+            </div>
           )}
 
           <div className="flex-1 min-w-0">
-            {/* Name */}
-            <h3 className="text-white text-base font-semibold truncate">{spot.name}</h3>
+            {/* Name + verified badge */}
+            <div className="flex items-center gap-1.5">
+              <h3 className="text-white text-base font-semibold truncate">{spot.name}</h3>
+              {spot.isVerified && (
+                <BadgeCheck size={16} className="text-[#22C55E] flex-shrink-0" aria-label="Verified spot" />
+              )}
+            </div>
+
+            {/* Active-game hint — reinforces the map pulse ring with a label,
+                so users coming in from a direct URL know why the card matters. */}
+            {isActiveGame && (
+              <div
+                className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold tracking-wide
+                           uppercase text-[#F97316]"
+                data-testid="active-game-badge"
+              >
+                <Flag size={10} aria-hidden="true" />
+                Your active game
+              </div>
+            )}
 
             {/* Ratings */}
             <div className="flex items-center gap-3 mt-1">
@@ -116,15 +168,31 @@ export function SpotPreviewCard({ spot, onClose }: SpotPreviewCardProps) {
           Challenge from here
         </button>
 
-        {/* View Spot — secondary action for users who just want context. */}
-        <button
-          type="button"
-          onClick={() => navigate(`/spots/${spot.id}`)}
-          className="mt-2 w-full py-2.5 rounded-xl bg-[#1A1A1A] border border-[#333] text-[#CCC]
-                     font-semibold text-sm hover:bg-[#222] hover:border-[#444] transition-colors"
-        >
-          View Spot
-        </button>
+        {/* Secondary actions: View + Directions, split 50/50 so neither steals
+            real estate from the primary CTA. "Get directions" is the #1
+            requested feature missing from ShredSpots/Smap per user reviews. */}
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(`/spots/${spot.id}`)}
+            className="py-2.5 rounded-xl bg-[#1A1A1A] border border-[#333] text-[#CCC]
+                       font-semibold text-sm hover:bg-[#222] hover:border-[#444] transition-colors"
+          >
+            View Spot
+          </button>
+          <a
+            href={directionsUrl(spot.latitude, spot.longitude)}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Get directions to ${spot.name}`}
+            className="py-2.5 rounded-xl bg-[#1A1A1A] border border-[#333] text-[#CCC]
+                       font-semibold text-sm hover:bg-[#222] hover:border-[#444] transition-colors
+                       flex items-center justify-center gap-1.5"
+          >
+            <Navigation size={14} aria-hidden="true" />
+            Directions
+          </a>
+        </div>
       </div>
     </>
   );
