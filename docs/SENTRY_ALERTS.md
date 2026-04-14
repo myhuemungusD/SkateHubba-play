@@ -60,6 +60,16 @@ In Sentry → **Alerts** → **Create Alert Rule**:
 - **Filter:** `event.environment:production`
 - **Then:** Send notification to **Email** + **Slack**
 
+#### Map Outage Alert (`map_token_missing`)
+
+Fires on the first page view where `VITE_MAPBOX_TOKEN` is unset in production — the deploy is serving the "Map is temporarily unavailable" fallback. Emitted as a warning-level Sentry message from `src/components/map/SpotMap.tsx`.
+
+- **When:** A new issue is created
+- **Filter:** `event.environment:production AND message:"map_token_missing"`
+- **Then:** Send notification to **Slack** `#skatehubba-alerts`
+- **Action interval:** Once per issue (not every occurrence — the event fires on every page view when the token is missing, so high volume is expected)
+- **Remediation:** Add `VITE_MAPBOX_TOKEN` in Vercel → Project Settings → Environment Variables and redeploy (env var changes do not auto-rebuild). See `docs/DEPLOYMENT.md#map-is-temporarily-unavailable-on-map`.
+
 ### 3. Slack Integration
 
 1. Sentry → **Settings** → **Integrations** → **Slack**

@@ -1,4 +1,4 @@
-import { Component, useEffect, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useState, type ReactNode } from "react";
 import { SpotMap } from "../components/map/SpotMap";
 import { useGameContext } from "../context/GameContext";
 import { analytics } from "../services/analytics";
@@ -44,6 +44,10 @@ class MapErrorBoundary extends Component<{ children: ReactNode }, ErrorBoundaryS
 
 export function MapPage() {
   const { activeGame } = useGameContext();
+  // Bumping this key remounts SpotMap, which is how the load-timeout "Retry"
+  // button recovers without a full `window.location.reload()`. Preserves
+  // auth session, GameContext, and analytics session through the retry.
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     // Top of the map funnel — fires once per mount, including direct URL
@@ -52,11 +56,17 @@ export function MapPage() {
     analytics.mapViewed();
   }, []);
 
+  const handleRetry = useCallback(() => {
+    setRetryKey((n) => n + 1);
+  }, []);
+
   return (
     <MapErrorBoundary>
       <SpotMap
+        key={retryKey}
         activeGameSpotId={activeGame?.spotId ?? undefined}
         onSpotSelect={(spot) => analytics.spotPreviewed(spot.id)}
+        onRetry={handleRetry}
       />
     </MapErrorBoundary>
   );
