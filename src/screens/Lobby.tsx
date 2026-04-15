@@ -125,9 +125,11 @@ export function Lobby({
 
   // Activate a card on Enter/Space. Game cards are div[role="button"] (not
   // native <button>) so we can host the inner Profile <button> without the
-  // invalid-HTML nested-interactive tree; this helper replicates the native
-  // button's keyboard semantics. e.repeat guards against auto-repeat when a
-  // key is held — matching how a native button behaves on Space.
+  // invalid-HTML nested-interactive tree; this helper approximates native
+  // button keyboard semantics. (A true native button fires Space on keyup
+  // so the user can move focus off to cancel — we activate on keydown for
+  // both keys, which is the common pragmatic shortcut.) e.repeat guards
+  // against auto-repeat when a key is held.
   const activateOnKey = (handler: () => void) => (e: KeyboardEvent<HTMLElement>) => {
     if (e.repeat) return;
     if (e.key === "Enter" || e.key === " ") {
