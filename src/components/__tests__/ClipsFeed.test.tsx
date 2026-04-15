@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
@@ -575,6 +575,36 @@ describe("ClipsFeed", () => {
       const tricks = Array.from(document.querySelectorAll("h2")).map((h) => h.textContent);
       expect(tricks[0]).toBe("TrickA");
     });
+  });
+
+  it("advances rotation off the initial implicit head even if `ended` fires at first paint (CI race guard)", async () => {
+    // Regression guard: `topClipId` starts as null while the DOM is
+    // already rendering visibleClips[0] as the implicit top. If `ended`
+    // fires in that window, `advanceTopClip` used to compute `current=null
+    // → index 0 → advance to index 0 again`, which React's state setter
+    // bails on (referential equality) and the feed would freeze on clip 0.
+    // Resolving `current` through `visibleClips` (same path as the DOM)
+    // makes the first `ended` always advance to index 1.
+    mockFetchClipsFeed.mockResolvedValueOnce({
+      clips: [
+        makeClip({ id: "a", trickName: "TrickA", playerUid: "p1", playerUsername: "alice" }),
+        makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
+      ],
+      cursor: null,
+    });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    // As soon as TrickA appears, fire `ended` — without an extra settle
+    // step that would hide the race.
+    await screen.findByText("TrickA");
+    await act(async () => {
+      fireEvent.ended(document.querySelectorAll("video")[0] as HTMLVideoElement);
+    });
+
+    // B must be on top after one `ended`. If we silently no-op'd on
+    // `current=null`, the first trick would still be "TrickA" here.
+    const tricks = Array.from(document.querySelectorAll("h2")).map((h) => h.textContent);
+    expect(tricks[0]).toBe("TrickB");
   });
 
   it("loops the single visible clip natively (no rotation available, don't leave it stalled)", async () => {

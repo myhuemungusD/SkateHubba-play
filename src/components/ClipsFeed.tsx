@@ -251,25 +251,29 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   // gets reported, a blocked user's clip is filtered out, pagination
   // inserts new clips). Identity tracking keeps the "currently playing"
   // clip stable across those mutations.
+  //
+  // `topClipId` holds the user's rotation selection; `effectiveTopClipId`
+  // resolves it against the live `visibleClips` list. Deriving the
+  // effective id via memo (instead of sync'ing via `useEffect`) removes
+  // the render-window where state is null but the DOM is already showing
+  // visibleClips[0] — that window was the source of a CI race where an
+  // `ended` event arrived before the sync effect had run and rotation
+  // silently no-op'd back onto the clip already playing.
   const [topClipId, setTopClipId] = useState<string | null>(null);
-
-  // Keep topClipId in sync with what's visible. Falls back to the
-  // reverse-chron head (visibleClips[0]) when either no clip has been
-  // selected yet, or the current top has dropped out (reported, blocked).
-  useEffect(() => {
-    if (visibleClips.length === 0) {
-      if (topClipId !== null) setTopClipId(null);
-      return;
-    }
-    if (topClipId === null || !visibleClips.some((c) => c.id === topClipId)) {
-      setTopClipId(visibleClips[0].id);
-    }
+  const effectiveTopClipId = useMemo<string | null>(() => {
+    if (visibleClips.length === 0) return null;
+    if (topClipId && visibleClips.some((c) => c.id === topClipId)) return topClipId;
+    return visibleClips[0].id;
   }, [visibleClips, topClipId]);
 
   const advanceTopClip = useCallback(() => {
+    if (visibleClips.length === 0) return;
     setTopClipId((current) => {
-      if (visibleClips.length === 0) return null;
-      const currentIndex = current ? visibleClips.findIndex((c) => c.id === current) : -1;
+      // Resolve the "current" selection the same way the DOM does via
+      // `effectiveTopClipId` — a stale or null `current` still maps to
+      // visibleClips[0], so advancing always moves forward by one slot.
+      const resolved = current && visibleClips.some((c) => c.id === current) ? current : visibleClips[0].id;
+      const currentIndex = visibleClips.findIndex((c) => c.id === resolved);
       const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % visibleClips.length;
       // Approaching the end of what's loaded? Kick off a load-more so the
       // rotation has fresh material before we wrap back to clip 0.
@@ -287,10 +291,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   // keeps its reverse-chronological order behind it.
   const orderedClips = useMemo(() => {
     if (visibleClips.length === 0) return visibleClips;
-    const idx = topClipId ? visibleClips.findIndex((c) => c.id === topClipId) : -1;
+    const idx = effectiveTopClipId ? visibleClips.findIndex((c) => c.id === effectiveTopClipId) : -1;
     if (idx <= 0) return visibleClips;
     return [visibleClips[idx], ...visibleClips.filter((_, i) => i !== idx)];
-  }, [visibleClips, topClipId]);
+  }, [visibleClips, effectiveTopClipId]);
 
   return (
     <section className="mb-6" aria-label="Community feed">
