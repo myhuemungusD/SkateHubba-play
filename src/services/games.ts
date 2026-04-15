@@ -209,6 +209,18 @@ export interface CreateGameOptions {
   judgeUsername?: string | null;
 }
 
+/**
+ * Create a new SKATE game between two players. Returns the new game ID.
+ *
+ * Preconditions / throws:
+ *   • caller must be `challengerUid` (enforced by Firestore rules)
+ *   • challenger email must be verified (rules)
+ *   • rate limited: one game per `GAME_CREATE_COOLDOWN_MS` per client
+ *   • if `judgeUid` is supplied, `judgeUsername` MUST also be supplied and
+ *     `judgeUid` MUST differ from both players
+ *
+ * The challenger is assigned as `player1` and sets first.
+ */
 export async function createGame(
   challengerUid: string,
   challengerUsername: string,
@@ -325,6 +337,11 @@ export async function createGame(
  *                judgeStatus flipped so rules know not to route to them)
  * ──────────────────────────────────────────── */
 
+/**
+ * Accept a pending referee invite. Must be called by the nominated referee;
+ * rejects if the game is over, has no referee, or the invite is no longer
+ * pending (already accepted / declined / 24h expired).
+ */
 export async function acceptJudgeInvite(gameId: string): Promise<void> {
   const gameRef = doc(requireDb(), "games", gameId);
   await runTransaction(requireDb(), async (tx) => {
@@ -342,6 +359,11 @@ export async function acceptJudgeInvite(gameId: string): Promise<void> {
   });
 }
 
+/**
+ * Decline a pending referee invite. The game continues on the honor system;
+ * `judgeId` is preserved for history but `judgeStatus` flips to `declined`
+ * so BS / dispute flows route back to honor-system behavior.
+ */
 export async function declineJudgeInvite(gameId: string): Promise<void> {
   const gameRef = doc(requireDb(), "games", gameId);
   await runTransaction(requireDb(), async (tx) => {
@@ -1006,10 +1028,19 @@ export async function resolveDispute(
   return { gameOver: result.gameOver, winner: result.winner };
 }
 
-/* ────────────────────────────────────────────
- * Forfeit expired turn
- * ──────────────────────────────────────────── */
-
+/**
+ * Advance the game when the current turn's deadline has passed.
+ *
+ * Safe to call speculatively: returns `{ forfeited: false }` when the game
+ * is over, the deadline hasn't passed, or no turn is active. Any client
+ * observing an expired turn should call this — Firestore rules ensure only
+ * a legal transition is written.
+ *
+ * Expiration branches:
+ *   • `setting` / `matching`  → active player forfeits (opponent wins)
+ *   • `disputable`            → matcher's "landed" call auto-accepted
+ *   • `setReview`             → setter's trick auto-ruled clean
+ */
 export async function forfeitExpiredTurn(gameId: string): Promise<{
   forfeited: boolean;
   winner: string | null;

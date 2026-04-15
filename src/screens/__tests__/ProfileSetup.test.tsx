@@ -11,6 +11,11 @@ vi.mock("../../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
   getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
   isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
+  // ProfileSetup imports these shared validation constants — mirror the
+  // real values so the mocked module still exports them.
+  USERNAME_MIN: 3,
+  USERNAME_MAX: 20,
+  USERNAME_RE: /^[a-z0-9_]+$/,
 }));
 
 beforeEach(() => {

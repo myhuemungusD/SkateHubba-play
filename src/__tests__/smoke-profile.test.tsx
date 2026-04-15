@@ -51,6 +51,10 @@ vi.mock("../services/users", () => ({
   getLeaderboard: vi.fn().mockResolvedValue([]),
   getUserProfile: vi.fn().mockResolvedValue(null),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
+  // Shared validation constants imported by ProfileSetup.
+  USERNAME_MIN: 3,
+  USERNAME_MAX: 20,
+  USERNAME_RE: /^[a-z0-9_]+$/,
 }));
 vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),

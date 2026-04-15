@@ -29,6 +29,12 @@ function getActionCodeSettings(): ActionCodeSettings {
   return { url, handleCodeInApp: false };
 }
 
+/**
+ * Subscribe to Firebase Auth state changes. The callback fires immediately
+ * with the current user (or null) and then again on every sign-in / sign-out.
+ * Returns an unsubscribe function. Safe to call before Firebase initialises —
+ * the callback will be invoked once with null in that case.
+ */
 export function onAuthChange(cb: (user: User | null) => void) {
   if (!auth) {
     logger.warn("auth_change_no_firebase", { reason: "auth instance is null" });
@@ -51,6 +57,17 @@ export interface SignUpResult {
   verificationEmailSent: boolean;
 }
 
+/**
+ * Create a new email/password account and send a verification email.
+ *
+ * Resolves with `verificationEmailSent: false` if the verification email fails
+ * (e.g. the continue-URI is not in Firebase's authorized domains). The caller
+ * should surface a non-blocking warning — the account is still created and the
+ * user can request another verification email via {@link resendVerification}.
+ *
+ * Rejects with a Firebase Auth error code on sign-up failure (email in use,
+ * weak password, etc). Callers should translate codes via `parseFirebaseError`.
+ */
 export async function signUp(email: string, password: string): Promise<SignUpResult> {
   logger.info("sign_up_attempt", { email });
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
@@ -86,6 +103,12 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
   return { user: cred.user, verificationEmailSent };
 }
 
+/**
+ * Sign in with an existing email/password. Rejects with a Firebase Auth
+ * error code on failure (wrong password, user not found, etc). Callers
+ * must not surface the raw error — translate via `parseFirebaseError` to
+ * avoid leaking account-existence signals.
+ */
 export async function signIn(email: string, password: string): Promise<User> {
   logger.info("sign_in_attempt", { email });
   const cred = await signInWithEmailAndPassword(requireAuth(), email, password);
@@ -93,12 +116,18 @@ export async function signIn(email: string, password: string): Promise<User> {
   return cred.user;
 }
 
+/** Sign the current user out. No-op if no user is signed in. */
 export async function signOut(): Promise<void> {
   logger.info("sign_out");
   await fbSignOut(requireAuth());
   logger.info("sign_out_success");
 }
 
+/**
+ * Request a password-reset email. By design, Firebase does not reveal whether
+ * the address has an account — callers should show the same confirmation
+ * message regardless of outcome to prevent account enumeration.
+ */
 export async function resetPassword(email: string): Promise<void> {
   logger.info("password_reset_attempt", { email });
   await sendPasswordResetEmail(requireAuth(), email, getActionCodeSettings());
@@ -127,6 +156,11 @@ export async function reloadUser(): Promise<boolean | null> {
   return user.emailVerified;
 }
 
+/**
+ * Resend the email-verification link for the currently signed-in user.
+ * Silently no-ops if no user is signed in. Falls back to Firebase's default
+ * continue-URI when the configured one is not in the authorized-domains list.
+ */
 export async function resendVerification(): Promise<void> {
   const user = requireAuth().currentUser;
   if (!user) {

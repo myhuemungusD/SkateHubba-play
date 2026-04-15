@@ -25,6 +25,10 @@ vi.mock("./services/users", () => ({
   isUsernameAvailable: vi.fn(),
   getUidByUsername: vi.fn(),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
+  // Shared validation constants imported by ProfileSetup.
+  USERNAME_MIN: 3,
+  USERNAME_MAX: 20,
+  USERNAME_RE: /^[a-z0-9_]+$/,
 }));
 
 vi.mock("./services/games", () => ({
