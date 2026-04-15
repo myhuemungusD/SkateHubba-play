@@ -230,13 +230,9 @@ The service worker imports a hardcoded Firebase v11.0.0 CDN URL, but `package.js
 
 **Recommendation:** Dynamically inject the Firebase version at build time, or pin the SW import to match the resolved lockfile version.
 
-### 18. STL Asset Storage Undocumented (DEC-002)
+### 18. Deferred Landing Page Features (DEC-001)
 
-Already tracked in `docs/DECISIONS.md`. Needs resolution to prevent asset loss.
-
-### 19. Deferred Landing Page Features (DEC-001)
-
-Autoplay hero video and custom fonts. Already documented — revisit when design resources are available.
+Autoplay hero video and custom fonts. Documented in `docs/DECISIONS.md` — revisit when design resources are available.
 
 ---
 
