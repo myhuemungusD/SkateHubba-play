@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
@@ -483,5 +483,235 @@ describe("ClipsFeed", () => {
     } finally {
       globalThis.IntersectionObserver = originalIO;
     }
+  });
+
+  it("also flips the play-gate via the native `play` event (covers autoplay-attribute wins race)", async () => {
+    // If the browser fires the `autoPlay` attribute BEFORE our IO-driven
+    // play() resolves, the `<video>`'s own `play` event is our only
+    // signal that the muted-autoplay grant landed. Without flipping
+    // hasPlayedRef there, a subsequent scroll-away would no-op and the
+    // clip would keep silently decoding off-screen (battery drain).
+    type IOCallback = ConstructorParameters<typeof IntersectionObserver>[0];
+    let ioCallback: IOCallback | null = null;
+    const originalIO = globalThis.IntersectionObserver;
+    globalThis.IntersectionObserver = class {
+      constructor(cb: IOCallback) {
+        ioCallback = cb;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() {
+        return [];
+      }
+      root = null;
+      rootMargin = "";
+      thresholds = [];
+    } as unknown as typeof IntersectionObserver;
+
+    try {
+      mockFetchClipsFeed.mockResolvedValueOnce({ clips: [makeClip()], cursor: null });
+
+      render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+      await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+
+      const videoEl = document.querySelector("video") as HTMLVideoElement;
+      const pauseSpy = vi.spyOn(videoEl, "pause").mockImplementation(() => undefined);
+
+      // Simulate autoplay-attribute succeeding without any IO tick yet:
+      // fire the native `play` event directly on the <video>.
+      fireEvent.play(videoEl);
+
+      // Now the IO tells us we're off-screen → pause() should fire,
+      // because the `play` event already flipped the gate.
+      expect(ioCallback).toBeTruthy();
+      ioCallback!(
+        [{ isIntersecting: false, target: videoEl } as unknown as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+      expect(pauseSpy).toHaveBeenCalled();
+    } finally {
+      globalThis.IntersectionObserver = originalIO;
+    }
+  });
+
+  it("rotates the top clip to the next clip when the current one ends", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce({
+      clips: [
+        makeClip({ id: "a", trickName: "TrickA", playerUid: "p1", playerUsername: "alice" }),
+        makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
+        makeClip({ id: "c", trickName: "TrickC", playerUid: "p3", playerUsername: "carol" }),
+      ],
+      cursor: null,
+    });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
+
+    // Top clip is the first <video> element in DOM order.
+    const videos = () => document.querySelectorAll("video");
+    expect(videos()[0]?.getAttribute("src")).toBe(makeClip({ id: "a" }).videoUrl);
+
+    // Fire `ended` on the top clip → rotation should advance to B.
+    fireEvent.ended(videos()[0] as HTMLVideoElement);
+
+    await waitFor(() => {
+      // After rotation, B's clip is at index 0 in the feed.
+      // Trick names in DOM order should start with TrickB now.
+      const tricks = Array.from(document.querySelectorAll("h2")).map((h) => h.textContent);
+      expect(tricks[0]).toBe("TrickB");
+    });
+
+    // Rotation again → C.
+    fireEvent.ended(document.querySelectorAll("video")[0] as HTMLVideoElement);
+    await waitFor(() => {
+      const tricks = Array.from(document.querySelectorAll("h2")).map((h) => h.textContent);
+      expect(tricks[0]).toBe("TrickC");
+    });
+
+    // Rotation wraps back to A.
+    fireEvent.ended(document.querySelectorAll("video")[0] as HTMLVideoElement);
+    await waitFor(() => {
+      const tricks = Array.from(document.querySelectorAll("h2")).map((h) => h.textContent);
+      expect(tricks[0]).toBe("TrickA");
+    });
+  });
+
+  it("loops the single visible clip natively (no rotation available, don't leave it stalled)", async () => {
+    // Regression guard: removing the `loop` attribute unconditionally
+    // would leave a single-clip feed frozen on the last frame forever,
+    // because `advanceTopClip` reduces to a no-op when there's only one
+    // clip to rotate to. Verify the one-clip case still sets `loop`.
+    mockFetchClipsFeed.mockResolvedValueOnce({
+      clips: [makeClip({ id: "only", trickName: "OnlyTrick" })],
+      cursor: null,
+    });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("OnlyTrick")).toBeInTheDocument());
+
+    const video = document.querySelector("video") as HTMLVideoElement;
+    expect(video).toBeTruthy();
+    // React forwards the boolean to the DOM as the `loop` IDL attribute.
+    expect(video.loop).toBe(true);
+  });
+
+  it("does NOT loop the top clip when there are multiple clips (rotation handles replay)", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce({
+      clips: [
+        makeClip({ id: "a", trickName: "TrickA" }),
+        makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
+      ],
+      cursor: null,
+    });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
+
+    const videos = document.querySelectorAll("video");
+    // Top-of-feed video must expose `loop=false` so the `ended` event
+    // fires and rotation can advance to the next clip.
+    expect((videos[0] as HTMLVideoElement).loop).toBe(false);
+  });
+
+  it("keeps the current top clip stable when a different clip is reported (identity-based rotation)", async () => {
+    // Regression guard for the index-based rotation bug: if we tracked
+    // rotation by positional index, reporting a clip ahead of the
+    // current top would silently shift every subsequent clip up one
+    // slot and the "currently playing" index would now point at a
+    // different clip — the viewer would see an unexpected jump.
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce({
+      clips: [
+        makeClip({ id: "a", trickName: "TrickA", playerUid: "p1", playerUsername: "alice" }),
+        makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
+        makeClip({ id: "c", trickName: "TrickC", playerUid: "p3", playerUsername: "carol" }),
+      ],
+      cursor: null,
+    });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
+
+    // Advance rotation: A ends → B is top.
+    fireEvent.ended(document.querySelectorAll("video")[0] as HTMLVideoElement);
+    await waitFor(() => {
+      const tricks = Array.from(document.querySelectorAll("h2")).map((h) => h.textContent);
+      expect(tricks[0]).toBe("TrickB");
+    });
+
+    // Now report A (which is NOT the current top). B must remain on top.
+    await user.click(screen.getByRole("button", { name: /report clip by @alice/i }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /report-modal/i })).toBeInTheDocument());
+    await user.click(screen.getByText("__submit__"));
+
+    await waitFor(() => expect(screen.queryByText("TrickA")).not.toBeInTheDocument());
+    const tricksAfter = Array.from(document.querySelectorAll("h2")).map((h) => h.textContent);
+    expect(tricksAfter[0]).toBe("TrickB");
+  });
+
+  it("falls back to the head of the feed when the current top clip is reported", async () => {
+    // Complementary guard: when the current top disappears, we pick the
+    // reverse-chron head rather than crashing or freezing on a stale id.
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce({
+      clips: [
+        makeClip({ id: "a", trickName: "TrickA", playerUid: "p1", playerUsername: "alice" }),
+        makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
+      ],
+      cursor: null,
+    });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
+
+    // Report A (which IS the current top).
+    await user.click(screen.getByRole("button", { name: /report clip by @alice/i }));
+    await waitFor(() => expect(screen.getByRole("dialog", { name: /report-modal/i })).toBeInTheDocument());
+    await user.click(screen.getByText("__submit__"));
+
+    // A is hidden; B promotes to top.
+    await waitFor(() => expect(screen.queryByText("TrickA")).not.toBeInTheDocument());
+    const tricks = Array.from(document.querySelectorAll("h2")).map((h) => h.textContent);
+    expect(tricks[0]).toBe("TrickB");
+  });
+
+  it("prefetches the next page when rotation approaches the tail of the loaded set", async () => {
+    // When we're two clips away from wrapping, we kick off a load-more
+    // so the rotation can keep growing instead of cycling a stale page.
+    // The first page must be a FULL page (PAGE_SIZE clips) so endOfFeed
+    // stays false — otherwise the prefetch is correctly suppressed.
+    const firstCursor = { createdAt: { toMillis: () => 1 } as ClipDoc["createdAt"], id: "g1_2_set" };
+    const firstPage = Array.from({ length: 12 }, (_, i) =>
+      makeClip({ id: `p1_${i}`, trickName: `First${i}`, playerUid: `p1_${i}`, playerUsername: `u${i}` }),
+    );
+    mockFetchClipsFeed.mockResolvedValueOnce({ clips: firstPage, cursor: firstCursor }).mockResolvedValueOnce({
+      clips: [makeClip({ id: "p2_0", trickName: "Second0", playerUid: "p2_0", playerUsername: "v0" })],
+      cursor: null,
+    });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("First0")).toBeInTheDocument());
+
+    // Advance rotation to clip 10 (second-from-last). On that tick the
+    // next rotation will be `nextIndex=10 >= 12-2=10` → prefetch fires.
+    // Fire ended 10 times to reach clip index 10 as the current top.
+    for (let step = 0; step < 10; step++) {
+      fireEvent.ended(document.querySelectorAll("video")[0] as HTMLVideoElement);
+      // Let React flush between ended events so each rotation commits
+      // before the next ended event reads the updated state.
+      await waitFor(() => {
+        const tricks = Array.from(document.querySelectorAll("h2")).map((h) => h.textContent);
+        expect(tricks[0]).toBe(`First${step + 1}`);
+      });
+    }
+
+    // Now the top is First10. The next rotation would land us at
+    // nextIndex=11 >= 10 → prefetch must fire.
+    fireEvent.ended(document.querySelectorAll("video")[0] as HTMLVideoElement);
+
+    await waitFor(() => {
+      expect(mockFetchClipsFeed).toHaveBeenLastCalledWith(firstCursor, 12);
+    });
   });
 });

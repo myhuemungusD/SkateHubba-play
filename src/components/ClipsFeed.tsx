@@ -245,30 +245,40 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   // landed-trick clips so the lobby always feels alive — once one clip
   // finishes, the next plays. Wraps back to the start at the end of the
   // loaded page (and tries to fetch more so the rotation can keep growing).
-  const [rotationIndex, setRotationIndex] = useState(0);
+  //
+  // Tracked by clip id rather than positional index: a positional index
+  // silently points at a different clip whenever the list mutates (a clip
+  // gets reported, a blocked user's clip is filtered out, pagination
+  // inserts new clips). Identity tracking keeps the "currently playing"
+  // clip stable across those mutations.
+  const [topClipId, setTopClipId] = useState<string | null>(null);
 
-  // If the visible list shrinks (clip reported, user blocked, page reload),
-  // clamp the rotation index so it can't point past the end of the array.
+  // Keep topClipId in sync with what's visible. Falls back to the
+  // reverse-chron head (visibleClips[0]) when either no clip has been
+  // selected yet, or the current top has dropped out (reported, blocked).
   useEffect(() => {
     if (visibleClips.length === 0) {
-      setRotationIndex(0);
+      if (topClipId !== null) setTopClipId(null);
       return;
     }
-    setRotationIndex((i) => (i >= visibleClips.length ? 0 : i));
-  }, [visibleClips.length]);
+    if (topClipId === null || !visibleClips.some((c) => c.id === topClipId)) {
+      setTopClipId(visibleClips[0].id);
+    }
+  }, [visibleClips, topClipId]);
 
   const advanceTopClip = useCallback(() => {
-    setRotationIndex((i) => {
-      if (visibleClips.length === 0) return 0;
-      const next = (i + 1) % visibleClips.length;
+    setTopClipId((current) => {
+      if (visibleClips.length === 0) return null;
+      const currentIndex = current ? visibleClips.findIndex((c) => c.id === current) : -1;
+      const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % visibleClips.length;
       // Approaching the end of what's loaded? Kick off a load-more so the
       // rotation has fresh material before we wrap back to clip 0.
-      if (next >= visibleClips.length - 2 && !endOfFeed && !loadingMore && cursor) {
+      if (nextIndex >= visibleClips.length - 2 && !endOfFeed && !loadingMore && cursor) {
         void loadMore();
       }
-      return next;
+      return visibleClips[nextIndex].id;
     });
-  }, [visibleClips.length, endOfFeed, loadingMore, cursor, loadMore]);
+  }, [visibleClips, endOfFeed, loadingMore, cursor, loadMore]);
 
   const myUid = profile.uid;
 
@@ -277,10 +287,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   // keeps its reverse-chronological order behind it.
   const orderedClips = useMemo(() => {
     if (visibleClips.length === 0) return visibleClips;
-    const safeIndex = rotationIndex % visibleClips.length;
-    if (safeIndex === 0) return visibleClips;
-    return [visibleClips[safeIndex], ...visibleClips.filter((_, i) => i !== safeIndex)];
-  }, [visibleClips, rotationIndex]);
+    const idx = topClipId ? visibleClips.findIndex((c) => c.id === topClipId) : -1;
+    if (idx <= 0) return visibleClips;
+    return [visibleClips[idx], ...visibleClips.filter((_, i) => i !== idx)];
+  }, [visibleClips, topClipId]);
 
   return (
     <section className="mb-6" aria-label="Community feed">
@@ -378,10 +388,18 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
                     the lobby always feels alive even before the user
                     scrolls. Subsequent clips stay click-to-play to keep
                     mobile data + battery sane. The key forces a fresh
-                    muted state on every rotation tick. */}
+                    muted state on every rotation tick.
+                    When only one clip is visible, there's nothing to
+                    rotate to — hand off to the native `loop` attribute
+                    so the single clip replays without a stall gap. */}
                 <div className="px-4">
                   {index === 0 ? (
-                    <TopClipVideo key={clip.id} src={clip.videoUrl} onEnded={advanceTopClip} />
+                    <TopClipVideo
+                      key={clip.id}
+                      src={clip.videoUrl}
+                      loop={visibleClips.length <= 1}
+                      onEnded={visibleClips.length > 1 ? advanceTopClip : undefined}
+                    />
                   ) : (
                     <video
                       src={clip.videoUrl}
@@ -503,7 +521,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
  * decoding audio/video frames while the user reads the rest of the feed
  * — a meaningful battery and cellular-data saving on mobile.
  */
-function TopClipVideo({ src, onEnded }: { src: string; onEnded?: () => void }) {
+function TopClipVideo({ src, loop = false, onEnded }: { src: string; loop?: boolean; onEnded?: () => void }) {
   const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLButtonElement | null>(null);
@@ -513,6 +531,12 @@ function TopClipVideo({ src, onEnded }: { src: string; onEnded?: () => void }) {
   // grant as revoked and silently rejects every subsequent play() — which
   // is exactly the "feed loaded but no clips play" symptom.
   const hasPlayedRef = useRef(false);
+  const handlePlay = useCallback(() => {
+    // Belt-and-suspenders: if the native `autoPlay` attribute fires
+    // before (or instead of) our IO-driven play() call, flip the gate
+    // here too so a subsequent out-of-viewport pause() is still allowed.
+    hasPlayedRef.current = true;
+  }, []);
 
   const toggleMute = useCallback(() => {
     setMuted((prev) => {
@@ -572,9 +596,11 @@ function TopClipVideo({ src, onEnded }: { src: string; onEnded?: () => void }) {
         ref={videoRef}
         src={src}
         autoPlay
+        loop={loop}
         muted
         playsInline
         preload="metadata"
+        onPlay={handlePlay}
         onEnded={onEnded}
         className="w-full aspect-[9/16] max-h-[560px] bg-black object-cover"
       />
