@@ -23,32 +23,27 @@ Both were verbally pushed back due to bandwidth constraints and uncertainty abou
 
 Neither feature is included in the current landing page (`src/screens/Landing.tsx`). They are deferred to a future iteration.
 
-### Backlog items
+### Future work (not scheduled)
 
-- [ ] Evaluate autoplay hero video (asset source, file size budget, mobile fallback image).
-- [ ] Evaluate custom font additions (licensing, FOUT/FOIT strategy, performance impact).
+- Evaluate autoplay hero video (asset source, file size budget, mobile fallback image).
+- Evaluate custom font additions (licensing, FOUT/FOIT strategy, performance impact).
 
 ---
 
-## DEC-002 — STL assets: storage location and usage path undocumented
+## DEC-002 — STL assets: storage location unknown, not tracked
 
 **Date:** 2026-03-20
-**Status:** Open
+**Last reviewed:** 2026-04-15
+**Status:** Accepted — assets untracked
 **Category:** Assets / Ops
 
 ### Context
 
-Logo plaque and staircase STL files were generated for potential physical merchandise or 3D-printing use. The files are not checked into version control (no `.stl` files exist in the repo) and their current storage location is undocumented.
+Logo plaque and staircase STL files were generated at some point for potential physical merchandise or 3D-printing use. They are not checked into version control (no `.stl` files exist in the repo), and as of the 2026-04-15 review their current storage location is not known.
 
 ### Decision
 
-STL files should **not** be committed to the git repo (binary bloat). They need a documented home.
-
-### Action items
-
-- [ ] Confirm current storage location of STL files (Google Drive, local machine, etc.) and record it here.
-- [ ] Add STL file references to project asset inventory once a storage location is chosen.
-- [ ] Decide whether STL assets need versioning (e.g., Git LFS or a shared drive with named versions).
+STL files are **not** required for the app and will not be tracked. If physical merch or 3D-printing needs arise later, the files will be regenerated from source (CAD / modelling tools) rather than recovered. STL binaries should never be committed to the git repo (binary bloat); if they need a home in the future, use Git LFS or a shared drive with named versions.
 
 ---
 
@@ -78,8 +73,8 @@ This caps each listener at 50 documents per side (up to 100 total after dedup), 
 - Users with > 50 games as player1 **or** > 50 games as player2 will not see their oldest games.
 - No warning is surfaced to the user when the cap is hit.
 
-### Action items
+### Future work (not scheduled)
 
-- [ ] Add `startAfter` cursor support and a "Load more" button when game count approaches 50.
-- [ ] Consider adding a Firestore composite index on `(playerXUid, updatedAt)` to support ordered pagination.
-- [ ] Optionally surface an in-app notice when the 50-game cap is reached.
+- Add `startAfter` cursor support and a "Load more" button when game count approaches 50.
+- Consider adding a Firestore composite index on `(playerXUid, updatedAt)` to support ordered pagination.
+- Optionally surface an in-app notice when the 50-game cap is reached.

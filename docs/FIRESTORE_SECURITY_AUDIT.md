@@ -2,8 +2,8 @@
 
 **Date:** 2026-03-20
 **Auditor:** Claude (automated, pre-beta security gate)
-**Scope:** Line-by-line review of `firestore.rules` (304 lines) against all client-side write paths, attack vectors, and the existing DATABASE_AUDIT.md findings.
-**Prior audit:** DATABASE_AUDIT.md (2026-03-17) fixed F1 (forfeit deadline) and F2 (confirmation locking). This audit is a second pass.
+**Scope:** Line-by-line review of `firestore.rules` (304 lines) against all client-side write paths, attack vectors, and the existing `archive/DATABASE_AUDIT.md` findings.
+**Prior audit:** [`archive/DATABASE_AUDIT.md`](./archive/DATABASE_AUDIT.md) (2026-03-17) fixed F1 (forfeit deadline) and F2 (confirmation locking). This audit is a second pass.
 
 ---
 
