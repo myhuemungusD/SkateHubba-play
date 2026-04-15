@@ -82,3 +82,44 @@ jobs:
           else
             echo "No workflow changes detected."
           fi
+
+  validate-firebase-rules:
+    name: Validate Firebase rules changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect rules-related changes
+        id: changed
+        run: |
+          if git diff origin/main...HEAD --name-only | \
+             grep -qE '^(firestore\.rules|firestore\.indexes\.json|storage\.rules|rules-tests/)'; then
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "touched=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changed.outputs.touched == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        if: steps.changed.outputs.touched == 'true'
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+        if: steps.changed.outputs.touched == 'true'
+
+      - name: Run Firestore rules tests
+        if: steps.changed.outputs.touched == 'true'
+        run: npm run test:rules
+
+      - name: Skip note
+        if: steps.changed.outputs.touched != 'true'
+        run: echo "No rules-related changes — skipping rules emulator tests."

@@ -30,11 +30,22 @@ gcloud storage buckets add-iam-policy-binding "gs://${BUCKET_NAME}" \
   --member="serviceAccount:${SA}" \
   --role="roles/storage.admin"
 
-# 3. Create daily backup schedule (retained 7 days)
-gcloud firestore backups schedules create \
+# 3. Create daily backup schedule (retained 7 days) — idempotent
+# `schedules create` errors if a schedule with matching recurrence exists,
+# so check first and skip creation if daily is already set up.
+EXISTING=$(gcloud firestore backups schedules list \
   --project="${PROJECT_ID}" \
   --database="${DATABASE_ID}" \
-  --recurrence=daily \
-  --retention=7d
+  --format='value(recurrence)' 2>/dev/null || true)
+
+if echo "${EXISTING}" | grep -q "daily"; then
+  echo "Daily backup schedule already exists — skipping."
+else
+  gcloud firestore backups schedules create \
+    --project="${PROJECT_ID}" \
+    --database="${DATABASE_ID}" \
+    --recurrence=daily \
+    --retention=7d
+fi
 
 echo "Daily Firestore backup configured (7-day retention)."
