@@ -77,6 +77,11 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  // Separate from `error`/`errorCode` so a load-more failure doesn't replace
+  // the whole feed — existing clips stay visible and the error renders where
+  // the Load more button was.
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [loadMoreErrorCode, setLoadMoreErrorCode] = useState<string | null>(null);
   const [endOfFeed, setEndOfFeed] = useState(false);
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
   const [reportedClipIds, setReportedClipIds] = useState<ReadonlySet<string>>(new Set());
@@ -167,6 +172,8 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore || endOfFeed) return;
     setLoadingMore(true);
+    setLoadMoreError(null);
+    setLoadMoreErrorCode(null);
     try {
       const page = await fetchClipsFeed(cursor, PAGE_SIZE);
       if (!mountedRef.current) return;
@@ -177,6 +184,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     } catch (err) {
       const code = errorCodeFor(err);
       logger.warn("clips_feed_loadmore_failed", { code, error: parseFirebaseError(err) });
+      if (mountedRef.current) {
+        setLoadMoreError(copyForError(code));
+        setLoadMoreErrorCode(code ?? null);
+      }
     } finally {
       if (mountedRef.current) setLoadingMore(false);
     }
@@ -474,10 +485,25 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       )}
 
       {/* Pagination */}
-      {!loading && visibleClips.length > 0 && !endOfFeed && (
+      {!loading && visibleClips.length > 0 && !endOfFeed && !loadMoreError && (
         <div className="mt-4">
           <Btn onClick={loadMore} variant="secondary" disabled={loadingMore}>
             {loadingMore ? "Loading…" : "Load more"}
+          </Btn>
+        </div>
+      )}
+
+      {/* Load-more failure — shown in place of the Load more button so the
+          already-loaded clips above stay visible and the user sees a real
+          affordance to retry (rather than a silently stuck feed). */}
+      {!loading && visibleClips.length > 0 && !endOfFeed && loadMoreError && (
+        <div className="glass-card rounded-2xl p-5 mt-4 border border-brand-red/30">
+          <p className="font-body text-sm text-white/80 mb-3">{loadMoreError}</p>
+          {loadMoreErrorCode && import.meta.env.DEV && (
+            <p className="font-body text-[10px] text-faint mb-3">code: {loadMoreErrorCode}</p>
+          )}
+          <Btn onClick={loadMore} variant="secondary" disabled={loadingMore}>
+            {loadingMore ? "Loading…" : "Try again"}
           </Btn>
         </div>
       )}
