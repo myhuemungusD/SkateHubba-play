@@ -1,7 +1,6 @@
 # Feature Completion Status Report
 
 **Generated:** 2026-04-15
-**Branch:** `claude/update-stale-docs-XfA8j`
 **Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`, `docs/COMPREHENSIVE_GAP_ANALYSIS.md`
 
 Status legend:
@@ -70,7 +69,7 @@ Status legend:
 | Clip save (local download)       | **Done** | `clip_saved` analytic, `ClipsFeed.tsx`                                                                  |
 | Game share (post-game)           | **Done** | `game_shared` analytic                                                                                  |
 
-**Phase 2 verdict:** All listed Phase 2 mechanics are shipped. Roadmap label "in progress" in README is now **stale** — recommend promoting to "shipped."
+**Phase 2 verdict:** All listed Phase 2 mechanics are shipped; README roadmap matches.
 
 ---
 
@@ -193,7 +192,7 @@ Status legend:
 
 **Overall product completion (shipped + in-review, excluding deferred):** 56 of 64 non-deferred items ≈ **88%**. Including the single deferred item (spectator), 56 of 65 ≈ 86%.
 **Active focus:** Vote-driven clip ranking (Phase 3 In Progress).
-**Production gate:** Green (per gap analysis: 9.6/10, all P0 closed).
+**Production gate:** Green (per gap analysis: 9.7/10, all P0 closed).
 
 ---
 
