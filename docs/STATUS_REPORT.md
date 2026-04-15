@@ -65,7 +65,7 @@ Status legend:
 | Push notification registration    | **Done**          | `src/services/fcm.ts`, `src/components/PushPermissionBanner.tsx`          |
 | In-app notification bell          | **Done**          | `src/components/NotificationBell.tsx`, `src/services/notifications.ts`    |
 | Game notification watcher         | **Done**          | `src/components/GameNotificationWatcher.tsx`                              |
-| Deep-link from push → game        | **Done**          | `App.tsx:147-157` (`skatehubba:open-game` event)                          |
+| Deep-link from push → game        | **Done**          | `App.tsx:154-155` (wires `skatehubba:open-game` listener inside the `useEffect` spanning lines 147-157) |
 | Clip sharing (social platforms)   | **Done**          | `src/components/ClipsFeed.tsx`, `src/services/clips.ts` + `clip_shared`   |
 | Clip save (local download)        | **Done**          | `clip_saved` analytic, `ClipsFeed.tsx`                                    |
 | Game share (post-game)            | **Done**          | `game_shared` analytic                                                    |
@@ -83,13 +83,13 @@ Status legend:
 | Leaderboard                      | **Done**        | `src/components/Leaderboard.tsx` + tests                              |
 | Featured clip surface            | **Done**        | `src/components/FeaturedClipCard.tsx`                                 |
 | Cross-game clips feed            | **Done**        | `src/components/ClipsFeed.tsx`, `src/services/clips.ts`               |
-| Clip upvote primitives           | **Done**        | `upvoteClip()`, `clipVotes` collection, `firestore.rules:934-960`, `AlreadyUpvotedError`, UI in `FeaturedClipCard` + `ClipsFeed` |
+| Clip upvote primitives           | **Done**        | `upvoteClip()`, `clipVotes` collection, `firestore.rules:948-966` (match block for `/clipVotes/{voteId}`), `AlreadyUpvotedError`, UI in `FeaturedClipCard` + `ClipsFeed` |
 | Vote-driven clip ranking         | **In Progress** | ⚠️ Confirmed: featured clip is currently picked **at random** from a 50-row recent window — see `fetchFeaturedClip()` at `src/services/clips.ts:388` (line 420: `Math.floor(Math.random() * candidates.length)`). The feed itself is chronological. Upvote counts are surfaced in the UI but don't drive ordering anywhere yet — that's the active work item |
 | Block / report users             | **Done**        | `src/services/blocking.ts`, `src/services/reports.ts`, `ReportModal`  |
 | Spectator mode (watch live)      | **Deferred**    | Pushed back per product call (2026-04-15) — revisit after vote-driven ranking ships |
 | Pro username badge               | **Done**        | `src/components/ProUsername.tsx`                                      |
 
-**Phase 3 verdict:** ~90% complete on the post-defer scope. Vote-driven ranking is the active focus; spectator is parked.
+**Phase 3 verdict:** 8 / 9 ≈ **89% complete on the post-defer scope** (excludes the deferred spectator item), or 8 / 10 = **80% of the full roadmap slate** including it. The Roadmap Completion Summary in §8 uses the full-slate denominator; this one uses the active-scope denominator — pick whichever matches the conversation. Vote-driven ranking is the active focus; spectator is parked.
 
 ---
 
@@ -187,7 +187,7 @@ Status legend:
 | Phase 4 — Network Effects          | 7     | 0    | 0         | 4           | 0        | 3       | **0%**    |
 | Unreleased — Judge System          | 9     | 0    | 9         | 0           | 0        | 0       | **In review** |
 
-**Overall product completion (shipped + in-review):** ~83% of in-scope roadmapped features (spectator excluded — deferred).
+**Overall product completion (shipped + in-review, excluding deferred):** 57 of 65 non-deferred items ≈ **88%**. Including the single deferred item (spectator), 57 of 66 ≈ 86%.
 **Active focus:** Vote-driven clip ranking (Phase 3 In Progress).
 **Production gate:** Green (per gap analysis: 9.6/10, all P0 closed).
 
