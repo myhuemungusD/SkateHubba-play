@@ -1,7 +1,7 @@
 # Feature Completion Status Report
 
 **Generated:** 2026-04-15
-**Branch:** `claude/add-status-report-75JXt`
+**Branch:** `claude/update-stale-docs-XfA8j`
 **Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`, `docs/COMPREHENSIVE_GAP_ANALYSIS.md`
 
 Status legend:
@@ -108,21 +108,26 @@ Status legend:
 
 ---
 
-## 5. Unreleased — Judge System (`[Unreleased]` in CHANGELOG)
+## 5. Unreleased — Referee System (`[Unreleased]` in CHANGELOG)
 
-| Feature                             | Status        | Evidence                                                    |
-| ----------------------------------- | ------------- | ----------------------------------------------------------- |
-| Optional judge nomination at create | **In Review** | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[Unreleased]` |
-| Judge accept / decline notification | **In Review** | `src/services/notifications.ts`                             |
-| Dispute → judge ruling (24 h)       | **In Review** | `src/services/games.ts`, `firestore.rules`                  |
-| "Call BS" on setter (24 h)          | **In Review** | `src/services/games.ts`                                     |
-| Judge-only `setReview` phase        | **In Review** | New `GamePhase` value                                       |
-| Honor system path (no judge)        | **In Review** | CHANGELOG `Changed` section                                 |
-| `judgeId` / `judgeStatus` schema    | **In Review** | `GameDoc` extension                                         |
-| `TurnRecord.judgedBy`               | **In Review** | Schema change                                               |
-| Rules: judge immutability + scoping | **In Review** | `firestore.rules` updates                                   |
+> **Naming note:** User-facing copy says **referee** (commit `91b90f1`), but the
+> data model keeps the original `judge*` field names to avoid a Firestore
+> migration for in-flight games. Rows that reference product behavior use
+> "referee"; rows that reference schema fields keep the literal `judge*` names.
 
-**Verdict:** Code complete, awaiting next release tag. Honor-system path replaces the old `disputable` mid-turn pause for non-judged games.
+| Feature                                 | Status        | Evidence                                                          |
+| --------------------------------------- | ------------- | ----------------------------------------------------------------- |
+| Optional referee nomination at create   | **In Review** | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[Unreleased]`       |
+| Referee accept / decline notification   | **In Review** | `src/services/notifications.ts`                                   |
+| Dispute → referee ruling (24 h)         | **In Review** | `src/services/games.ts`, `firestore.rules`                        |
+| "Call BS" on setter (24 h)              | **In Review** | `src/services/games.ts`                                           |
+| Referee-only `setReview` phase          | **In Review** | New `GamePhase` value                                             |
+| Honor system path (no referee)          | **In Review** | CHANGELOG `Changed` section                                       |
+| `judgeId` / `judgeStatus` schema        | **In Review** | `GameDoc` extension (internal names preserved)                    |
+| `TurnRecord.judgedBy`                   | **In Review** | Schema change (internal name preserved)                           |
+| Rules: referee immutability + scoping   | **In Review** | `firestore.rules` updates                                         |
+
+**Verdict:** Code complete, awaiting next release tag. Honor-system path replaces the old `disputable` mid-turn pause for non-refereed games.
 
 ---
 
@@ -184,7 +189,7 @@ Status legend:
 | Phase 2 — Viral Mechanics          |     9 |    9 |         0 |           0 |        0 |       0 |      **100%** |
 | Phase 3 — Social Graph & Discovery |     9 |    7 |         0 |           1 |        1 |       0 |       **78%** |
 | Phase 4 — Network Effects          |     7 |    0 |         0 |           4 |        0 |       3 |        **0%** |
-| Unreleased — Judge System          |     9 |    0 |         9 |           0 |        0 |       0 | **In review** |
+| Unreleased — Referee System        |     9 |    0 |         9 |           0 |        0 |       0 | **In review** |
 
 **Overall product completion (shipped + in-review, excluding deferred):** 56 of 64 non-deferred items ≈ **88%**. Including the single deferred item (spectator), 56 of 65 ≈ 86%.
 **Active focus:** Vote-driven clip ranking (Phase 3 In Progress).
@@ -200,7 +205,7 @@ Status legend:
    - Backfill an aggregate `upvoteCount` field on the clip doc (or denormalised counter doc) so feed sorting doesn't require N aggregate queries per page.
    - Instrument `clip_upvoted` analytics event to measure tap-through on the new ranking surface.
    - Add Firestore rules-test coverage for the new ranked query path (read-only, but worth pinning).
-2. **Cut a release tag** for the Judge System so CHANGELOG `[Unreleased]` rolls into a `v1.x.0`.
+2. **Cut a release tag** for the Referee System so CHANGELOG `[Unreleased]` rolls into a `v1.x.0`.
 3. **Land remaining spots/map UI** to flip Phase 4 spot tagging from In Progress → Done.
 4. ~~Spec spectator mode~~ — **deferred**; revisit after vote-driven ranking is in production and we can read the engagement numbers.
 5. **Schedule the P1 ops items** (rules deploy, backups, video purge, branch protection) — these are blockers for scaling, not for shipping.
