@@ -166,25 +166,65 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
   const opponentName = game.player1Uid === profile.uid ? game.player2Username : game.player1Username;
   const opponentIsPro = game.player1Uid === profile.uid ? game.player2IsVerifiedPro : game.player1IsVerifiedPro;
+  // A judge observing (not acting) lands here between review phases. The
+  // player-centric `myLetters` / `opponentName` derivations above fall back
+  // to player2 / player1 for a non-player viewer, which would otherwise
+  // display the wrong scores and mislabel the Nudge / Report actions. We
+  // branch on this flag to render a neutral p1-vs-p2 header and suppress
+  // player-only controls.
+  const isJudge = !!game.judgeId && game.judgeId === profile.uid;
+  // When the viewer is the judge, the "active player" is whoever currentTurn
+  // points at (setter in setting phase, matcher in matching phase). Judge
+  // review phases would route to GamePlayScreen's review UI, not here.
+  const activePlayerUsername = game.player1Uid === game.currentTurn ? game.player1Username : game.player2Username;
   const [fallbackDeadline] = useState(() => Date.now() + 86400000);
   const deadline = game.turnDeadline?.toMillis?.() || fallbackDeadline;
   const nudgeAvailable = nudgeStatus === "idle";
   // Judge-driven phases surface a different "who are we waiting on" copy.
   const isJudgeTurn = game.phase === "disputable" || game.phase === "setReview";
-  const waitingOnLabel = isJudgeTurn && game.judgeUsername ? `@${game.judgeUsername}` : `@${opponentName}`;
+  const waitingOnLabel = isJudge
+    ? `@${activePlayerUsername}`
+    : isJudgeTurn && game.judgeUsername
+      ? `@${game.judgeUsername}`
+      : `@${opponentName}`;
 
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
       <div className="text-center w-full max-w-sm animate-scale-in">
         <div className="flex justify-center gap-5 mb-4">
-          <LetterDisplay
-            count={myLetters}
-            name={`@${profile.username}`}
-            active={false}
-            isVerifiedPro={profile.isVerifiedPro}
-          />
-          <div className="flex items-center font-display text-2xl text-subtle">VS</div>
-          <LetterDisplay count={theirLetters} name={`@${opponentName}`} active={false} isVerifiedPro={opponentIsPro} />
+          {isJudge ? (
+            <>
+              <LetterDisplay
+                count={game.p1Letters}
+                name={`@${game.player1Username}`}
+                active={game.currentTurn === game.player1Uid}
+                isVerifiedPro={game.player1IsVerifiedPro}
+              />
+              <div className="flex items-center font-display text-2xl text-subtle">VS</div>
+              <LetterDisplay
+                count={game.p2Letters}
+                name={`@${game.player2Username}`}
+                active={game.currentTurn === game.player2Uid}
+                isVerifiedPro={game.player2IsVerifiedPro}
+              />
+            </>
+          ) : (
+            <>
+              <LetterDisplay
+                count={myLetters}
+                name={`@${profile.username}`}
+                active={false}
+                isVerifiedPro={profile.isVerifiedPro}
+              />
+              <div className="flex items-center font-display text-2xl text-subtle">VS</div>
+              <LetterDisplay
+                count={theirLetters}
+                name={`@${opponentName}`}
+                active={false}
+                isVerifiedPro={opponentIsPro}
+              />
+            </>
+          )}
         </div>
 
         <div className="flex justify-center mb-4">
@@ -193,26 +233,30 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
         <h2 className="font-display text-fluid-2xl text-white mb-2">Waiting on {waitingOnLabel}</h2>
         {game.judgeUsername && game.judgeStatus === "pending" && (
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle">
-            <span className="font-display tracking-wider">JUDGE PENDING</span>
+            <span className="font-display tracking-wider">REFEREE PENDING</span>
             <span className="font-body">@{game.judgeUsername} hasn&apos;t responded — honor system applies</span>
           </div>
         )}
         {game.judgeUsername && game.judgeStatus === "declined" && (
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle">
-            <span className="font-display tracking-wider">NO JUDGE</span>
+            <span className="font-display tracking-wider">NO REFEREE</span>
             <span className="font-body">Honor system — no disputes</span>
           </div>
         )}
         <p className="font-body text-sm text-muted mb-2">
           {game.phase === "disputable"
             ? game.judgeUsername
-              ? `Judge is reviewing the match call.`
+              ? `Referee is reviewing the match call.`
               : "They're reviewing your match attempt."
             : game.phase === "setReview"
-              ? `Judge is ruling clean or sketchy on the set.`
+              ? `Referee is ruling clean or sketchy on the set.`
               : game.phase === "setting"
-                ? "They're setting a trick for you to match."
-                : "They're attempting to match your trick."}
+                ? isJudge
+                  ? `@${activePlayerUsername} is setting a trick.`
+                  : "They're setting a trick for you to match."
+                : isJudge
+                  ? `@${activePlayerUsername} is attempting the match.`
+                  : "They're attempting to match your trick."}
         </p>
         <Timer deadline={deadline} />
 
@@ -309,7 +353,7 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
           </div>
         )}
 
-        {game.status === "active" && (
+        {game.status === "active" && !isJudge && (
           <div className="mt-6">
             <Btn
               onClick={async () => {
@@ -348,18 +392,20 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
           <Btn onClick={onBack} variant="ghost">
             ← Back to Games
           </Btn>
-          <button
-            type="button"
-            onClick={() => setShowReport(true)}
-            disabled={reported}
-            className="font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {reported ? "Reported" : "Report opponent"}
-          </button>
+          {!isJudge && (
+            <button
+              type="button"
+              onClick={() => setShowReport(true)}
+              disabled={reported}
+              className="font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {reported ? "Reported" : "Report opponent"}
+            </button>
+          )}
         </div>
       </div>
 
-      {showReport && (
+      {showReport && !isJudge && (
         <ReportModal
           reporterUid={profile.uid}
           reportedUid={game.player1Uid === profile.uid ? game.player2Uid : game.player1Uid}
