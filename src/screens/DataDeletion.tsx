@@ -18,6 +18,16 @@ export function DataDeletion({ onBack }: { onBack: () => void }) {
           Your data, your choice. Here&apos;s how to delete your information.
         </p>
 
+        <Section title="Download a Copy of Your Data">
+          <p>
+            Under the GDPR&apos;s right to data portability (Article 20) and CCPA, you can download a machine-readable
+            copy of everything we store about you. When signed in, scroll to the bottom of the lobby and tap{" "}
+            <strong className="text-white">&quot;Download My Data&quot;</strong>. We package your profile, game history,
+            landed clips, reports you filed, and the list of users you blocked into a single JSON file that downloads to
+            your device.
+          </p>
+        </Section>
+
         <Section title="Delete Your Account (In-App)">
           <p>
             The fastest way to delete all your data is directly in the app. When signed in, scroll to the bottom of the

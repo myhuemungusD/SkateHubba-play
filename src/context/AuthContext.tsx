@@ -3,6 +3,7 @@ import { useAuth } from "../hooks/useAuth";
 import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
 import { deleteUserData } from "../services/users";
 import type { UserProfile } from "../services/users";
+import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
@@ -21,6 +22,7 @@ export interface AuthContextValue {
   setGoogleError: (e: string) => void;
   handleSignOut: () => Promise<void>;
   handleDeleteAccount: () => Promise<void>;
+  handleDownloadData: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -150,6 +152,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveProfile(null);
   }, [activeProfile]);
 
+  /**
+   * GDPR Article 20 / CCPA data-portability export. Collects the user's data
+   * from Firestore, packs it into a JSON bundle, and triggers a browser
+   * download. Runs entirely client-side so there's no server dependency and
+   * the same auth context that gates normal reads gates the export.
+   */
+  const handleDownloadData = useCallback(async () => {
+    /* v8 ignore start -- null guard unreachable in tests; button hidden when profile is null */
+    if (!activeProfile) return;
+    /* v8 ignore stop */
+    logger.info("download_data_start", { uid: activeProfile.uid });
+    const bundle = await exportUserData(activeProfile.uid, activeProfile.username);
+    const blob = new Blob([serializeUserData(bundle)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    try {
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = userDataFilename(bundle);
+      anchor.rel = "noopener";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+    logger.info("download_data_done", {
+      uid: activeProfile.uid,
+      games: bundle.games.length,
+      clips: bundle.clips.length,
+      reports: bundle.reports.length,
+    });
+  }, [activeProfile]);
+
   const value: AuthContextValue = {
     loading,
     user,
@@ -163,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setGoogleError,
     handleSignOut,
     handleDeleteAccount,
+    handleDownloadData,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

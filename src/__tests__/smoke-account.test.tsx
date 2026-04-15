@@ -62,6 +62,21 @@ vi.mock("../services/users", () => ({
   getUserProfile: vi.fn().mockResolvedValue(null),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../services/userData", () => ({
+  exportUserData: vi.fn().mockResolvedValue({
+    schemaVersion: 1,
+    exportedAt: "2026-04-15T00:00:00.000Z",
+    subject: { uid: "u1", username: "sk8r" },
+    profile: null,
+    usernameReservation: null,
+    games: [],
+    clips: [],
+    blockedUsers: [],
+    reports: [],
+  }),
+  serializeUserData: vi.fn(() => "{}"),
+  userDataFilename: vi.fn(() => "export.json"),
+}));
 vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
