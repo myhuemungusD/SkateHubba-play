@@ -153,7 +153,19 @@ export async function createProfile(
   emailVerified = false,
 ): Promise<void> {
   await Promise.all([
-    writeDoc("users", uid, { uid, username, email, stance: "Regular", emailVerified }),
+    // Client-side `Date` approximation of the production `serverTimestamp()`
+    // at src/services/users.ts:113.  Accurate enough for getPlayerDirectory()'s
+    // `orderBy("createdAt","desc")` on a single seeded user; callers that need
+    // deterministic multi-user ordering should pass explicit `createdAt`
+    // values via `overrides` instead of relying on the local clock.
+    writeDoc("users", uid, {
+      uid,
+      username,
+      email,
+      stance: "Regular",
+      emailVerified,
+      createdAt: new Date(),
+    }),
     writeDoc("usernames", username.toLowerCase(), { uid }),
   ]);
 }
@@ -170,7 +182,8 @@ export async function createGame(
   p2Username: string,
   overrides: Record<string, unknown> = {},
 ): Promise<void> {
-  const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const deadline = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   await writeDoc("games", gameId, {
     player1Uid: p1Uid,
     player2Uid: p2Uid,
@@ -188,6 +201,8 @@ export async function createGame(
     turnDeadline: deadline,
     turnNumber: 1,
     winner: null,
+    createdAt: now,
+    updatedAt: now,
     ...overrides,
   });
 }

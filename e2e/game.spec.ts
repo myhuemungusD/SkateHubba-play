@@ -166,7 +166,7 @@ test("setter records trick → game moves to matching phase", async ({ browser }
 
   // P1 is the setter — name the trick (this reveals the recorder)
   await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
-  await p1.getByPlaceholder("e.g. Kickflip, 360 Flip").fill("Kickflip");
+  await p1.getByPlaceholder("Name your trick").fill("Kickflip");
 
   // The VideoRecorder should auto-open the camera
   await expect(p1.getByRole("button", { name: /Stop Recording|Record/i })).toBeVisible({
@@ -204,7 +204,7 @@ test("matcher records response and misses → earns a letter", async ({ browser 
   await p1.getByRole("button", { name: /Send Challenge/i }).click();
 
   await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
-  await p1.getByPlaceholder("e.g. Kickflip, 360 Flip").fill("Heelflip");
+  await p1.getByPlaceholder("Name your trick").fill("Heelflip");
   await recordVideo(p1, "Land Your Trick", "Recorded");
   await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
 
@@ -238,10 +238,79 @@ test("matcher records response and misses → earns a letter", async ({ browser 
   //  so P2 should now see the waiting screen since it's P1's turn to set again)
   await expect(p2Page.getByText(/Waiting on @p1skater/i)).toBeVisible({ timeout: 15_000 });
 
-  // P1's lobby shows the game with P2 having 1 letter
-  await p1.getByText("← Back to Games").click();
-  // The game card should show P2 has earned the letter "S"
-  await expect(p1.getByText("S")).toBeVisible({ timeout: 5_000 });
+  // Assert on P2's WaitingScreen — it renders <LetterDisplay> with a stable
+  // testid. Previously this pointed at P1's Lobby, which uses inline <span>
+  // loops (no testid) and would never resolve.
+  await expect(p2Page.locator(`[data-testid="letter-display-${P2.username}"]`)).toHaveAttribute(
+    "data-letter-count",
+    "1",
+    { timeout: 10_000 },
+  );
+  await expect(p2Page.locator(`[data-testid="letter-display-${P1.username}"]`)).toHaveAttribute(
+    "data-letter-count",
+    "0",
+  );
+
+  await p1Ctx.close();
+  await p2Ctx.close();
+});
+
+// ─── Match trick (land → roles swap) ─────────────────────────────────────────
+
+test("matcher records response and lands → roles swap, no letters earned", async ({ browser }) => {
+  // Covers submitMatchAttempt(landed=true) honor-system path — the most
+  // important game mechanic that was previously uncovered end-to-end.
+  const p2 = await createUser(P2.email, P2.password);
+  await createProfile(p2.uid, P2.username, P2.email, false);
+
+  // P1 signs up, verifies, challenges P2, and sets a trick.
+  const p1Ctx: BrowserContext = await browser.newContext();
+  const p1: Page = await p1Ctx.newPage();
+  await mockMedia(p1);
+  await signUpAndSetupProfile(p1, P1.email, P1.password, P1.username);
+  await verifyEmail(P1.email);
+  await p1.reload();
+  await forceTokenRefresh(p1);
+
+  await p1.getByRole("button", { name: "Challenge Someone" }).click();
+  await p1.getByPlaceholder("their_handle").fill(P2.username);
+  await p1.getByRole("button", { name: /Send Challenge/i }).click();
+
+  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
+  await p1.getByPlaceholder("Name your trick").fill("Ollie");
+  await recordVideo(p1, "Land Your Trick", "Recorded");
+  await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
+
+  // P2 signs in, opens the game, records a match, and claims LANDED.
+  const p2Ctx: BrowserContext = await browser.newContext();
+  const p2Page: Page = await p2Ctx.newPage();
+  await mockMedia(p2Page);
+  await signInViaUI(p2Page, P2.email, P2.password);
+
+  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  await expect(p2Page.getByText(/Match @p1skater's Ollie/i)).toBeVisible({ timeout: 10_000 });
+
+  await recordVideo(p2Page, "Match the Ollie", "Recorded");
+  await p2Page.getByRole("button", { name: "✓ Landed" }).click();
+
+  // Roles swap: P2 becomes the setter for turn 2 (GamePlayScreen remounts via
+  // `key={game.turnNumber}` in App.tsx). P2 should see the fresh setter UI
+  // with the trick-name input (NOT a stale matcher confirmation).
+  await expect(p2Page.getByPlaceholder("Name your trick")).toBeVisible({ timeout: 15_000 });
+
+  // No letters were earned on either side.
+  await expect(p2Page.locator(`[data-testid="letter-display-${P1.username}"]`)).toHaveAttribute(
+    "data-letter-count",
+    "0",
+  );
+  await expect(p2Page.locator(`[data-testid="letter-display-${P2.username}"]`)).toHaveAttribute(
+    "data-letter-count",
+    "0",
+  );
+
+  // P1 reloads — still watching, but now waiting on P2 (who is the new setter).
+  await p1.reload();
+  await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
 
   await p1Ctx.close();
   await p2Ctx.close();

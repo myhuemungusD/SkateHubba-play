@@ -213,6 +213,7 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
               <LetterDisplay
                 count={myLetters}
                 name={`@${profile.username}`}
+                testId={`letter-display-${profile.username}`}
                 active={false}
                 isVerifiedPro={profile.isVerifiedPro}
               />
@@ -220,6 +221,7 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
               <LetterDisplay
                 count={theirLetters}
                 name={`@${opponentName}`}
+                testId={`letter-display-${opponentName}`}
                 active={false}
                 isVerifiedPro={opponentIsPro}
               />

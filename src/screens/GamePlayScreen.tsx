@@ -351,6 +351,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <LetterDisplay
               count={myLetters}
               name={`@${profile.username}`}
+              testId={`letter-display-${profile.username}`}
               active={isSetter}
               isVerifiedPro={profile.isVerifiedPro}
             />
@@ -358,6 +359,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             <LetterDisplay
               count={theirLetters}
               name={`@${opponentName}`}
+              testId={`letter-display-${opponentName}`}
               active={isMatcher}
               isVerifiedPro={opponentIsPro}
             />
