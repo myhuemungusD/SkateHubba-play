@@ -38,6 +38,14 @@ S.K.A.T.E. is the skateboarding version of HORSE. One player sets a trick; the o
 
 This app brings that to your phone, async. Set your trick whenever, opponent matches whenever. No need to be at the same spot or online at the same time.
 
+> **Try it now:** [skatehubba.com](https://skatehubba.com) — sign up and start a game in under 30 seconds.
+
+---
+
+## Contents
+
+[Screenshots](#screenshots) · [Tech Stack](#tech-stack) · [Features](#features) · [Quick Start](#quick-start) · [Scripts](#scripts) · [Project Structure](#project-structure) · [Environment Variables](#environment-variables) · [Documentation](#documentation) · [Deployment](#deployment) · [Traction](#traction) · [Analytics](#event-instrumentation--core-funnel) · [Roadmap](#roadmap-async-gameplay--network-effects) · [Contributing](#contributing)
+
 ---
 
 ## Screenshots
@@ -81,30 +89,52 @@ No custom backend. No serverless functions. The client talks directly to Firebas
 
 ## Features
 
-- **Async gameplay** — players take turns on their own schedule
-- **Video tricks** — record one-take videos in-browser (WebM) or native app (MP4)
-- **Real-time updates** — both players see game state the moment it changes
+### Gameplay
+
+- **Async multiplayer** — players take turns on their own schedule, no live coordination needed
+- **Video tricks** — one-take recording in-browser (WebM) or native app (MP4)
+- **Real-time updates** — both players see state changes the moment they happen via Firestore snapshots
 - **24-hour turn timer** — games don't stall; expired turns auto-forfeit
-- **Google OAuth** — popup sign-in with redirect fallback for mobile/Safari
+- **Optional judge** _(in review)_ — nominate a neutral third player to rule on disputes and "Call BS"
+
+### Identity & Trust
+
+- **Google OAuth + email auth** — popup sign-in with redirect fallback for mobile/Safari
 - **Email verification** — required before play; resend from the app
 - **Atomic username reservation** — no two players share a handle (Firestore transaction)
-- **Invite & share** — SMS, link copy, native share for invites and trick clips
-- **Offline support** — Firestore local cache lets you read games without internet
+- **Block & report** — moderation tools backed by Firestore rules
+- **Server-side game logic** — Firestore rules enforce turn order, scores, and rate limits — clients can't cheat
+
+### Social & Discovery
+
+- **Invite & share** — SMS, link copy, and native share for invites and trick clips
+- **Push notifications** — FCM "your turn" alerts that deep-link into the game
+- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed
+- **Featured clip surface** — a recent landed clip rotates at the top of the lobby _(vote-driven ranking in progress)_
+- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules
+- **Leaderboard** — ranked players by wins
+- **Player profiles** — public per-user pages with full game history
+- **Spots map** _(in progress)_ — geo-tagged skate spots with gnar rating + bust risk
+
+### Platform
+
 - **Native apps** — Capacitor builds for iOS and Android
 - **PWA-ready** — installable from the browser
-- **Security rules** — all game logic validated server-side; client can't cheat scores
-- **Cookie-free analytics** — Vercel Analytics with full funnel instrumentation
+- **Offline support** — Firestore local cache lets you read games without internet
+- **Cookie-free analytics** — Vercel Analytics with full funnel instrumentation (GDPR-safe)
 
 ---
 
 ## Quick Start
 
+**Prerequisites:** Node ≥22 (`.nvmrc` pinned), npm 10+, a Firebase project with Auth + Firestore + Storage enabled.
+
 ```bash
 git clone https://github.com/myhuemungusD/SkateHubba-play.git
 cd SkateHubba-play
+nvm use            # picks up Node 22 from .nvmrc
 npm install
-cp .env.example .env.local
-# Fill in your Firebase config values in .env.local
+cp .env.example .env.local   # then fill in your Firebase config
 npm run dev
 ```
 
@@ -116,17 +146,23 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 
 ## Scripts
 
-| Command                 | Description                                   |
-| ----------------------- | --------------------------------------------- |
-| `npm run dev`           | Start dev server at localhost:5173            |
-| `npm run build`         | Type-check + production build → dist/         |
-| `npm run preview`       | Preview the production build locally          |
-| `npm test`              | Run test suite once                           |
-| `npm run test:watch`    | Run tests in watch mode                       |
-| `npm run test:coverage` | Run tests with coverage report                |
-| `npm run test:e2e`      | Run Playwright E2E tests (requires emulators) |
-| `npm run lint`          | Lint source files with ESLint                 |
-| `npm run emulators`     | Start Firebase emulators locally              |
+| Command                  | Description                                                   |
+| ------------------------ | ------------------------------------------------------------- |
+| `npm run dev`            | Start the Vite dev server at `http://localhost:5173`          |
+| `npm run build`          | Type-check + production build → `dist/`                       |
+| `npm run preview`        | Preview the production build locally                          |
+| `npm test`               | Run the unit + component test suite once                      |
+| `npm run test:watch`     | Run tests in watch mode                                       |
+| `npm run test:coverage`  | Run tests with coverage report (CI gate)                      |
+| `npm run test:rules`     | Run Firestore security-rules tests against the rules emulator |
+| `npm run test:e2e`       | Run Playwright E2E tests (auto-starts emulators)              |
+| `npm run lint`           | Lint source files with ESLint                                 |
+| `npm run lint:fix`       | Lint and auto-fix where possible                              |
+| `npm run format`         | Format `src/**/*.{ts,tsx}` with Prettier                      |
+| `npm run emulators`      | Start the Firebase emulator suite locally                     |
+| `npm run cap:sync`       | Sync the web build into iOS/Android Capacitor projects        |
+| `npm run cap:open:ios`   | Open the iOS project in Xcode                                 |
+| `npm run cap:open:android` | Open the Android project in Android Studio                  |
 
 ---
 
@@ -134,50 +170,71 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 
 ```
 skatehubba-play/
-├── public/                  # Static assets served at /
+├── public/                    # Static assets served at /
 ├── src/
-│   ├── App.tsx              # Router + app state machine (15 routes)
-│   ├── firebase.ts          # Firebase init (named DB "skatehubba")
-│   ├── main.tsx             # React entry + Sentry init
-│   ├── index.css            # Tailwind v4 @theme + custom animations
-│   ├── components/          # Reusable UI (VideoRecorder, Leaderboard, etc.)
-│   ├── screens/             # Full-page components (Lobby, GamePlay, etc.)
-│   ├── context/             # AuthContext, GameContext, NavigationContext
-│   ├── hooks/               # useAuth, useOnlineStatus, usePlayerProfile
-│   ├── services/
-│   │   ├── auth.ts          # Sign up, sign in, Google OAuth, password reset
-│   │   ├── users.ts         # Profiles + atomic username reservation
-│   │   ├── games.ts         # Game CRUD + real-time subscriptions
-│   │   ├── storage.ts       # Video upload (WebM/MP4, 1KB–50MB, retry)
-│   │   ├── analytics.ts     # Vercel Analytics event tracking
-│   │   └── notifications.ts # Push notification registration
-│   └── __tests__/           # Smoke tests + E2E
-├── e2e/                     # Playwright E2E tests
-├── docs/                    # Documentation suite
-│   └── screenshots/         # README images + brand assets
-├── firestore.rules          # Firestore security rules (turn order, scores, timer)
-├── storage.rules            # Storage security rules (auth, size, content-type)
-├── .env.example             # Environment variable template
-└── vercel.json              # CSP headers, HSTS, SPA rewrites, domain redirects
+│   ├── App.tsx                # Router + top-level providers (Auth/Game/Navigation)
+│   ├── main.tsx               # React entry + Sentry init
+│   ├── firebase.ts            # Firebase init (named database "skatehubba")
+│   ├── index.css              # Tailwind v4 @theme + custom animations
+│   ├── components/            # Reusable UI (VideoRecorder, Leaderboard, ClipsFeed, …)
+│   │   └── map/               # Spots map UI (SpotMap, AddSpotSheet, BustRisk, …)
+│   ├── screens/               # Full-page components (Lobby, GamePlay, MapPage, …)
+│   ├── context/               # AuthContext, GameContext, NavigationContext, NotificationContext
+│   ├── hooks/                 # useAuth, useOnlineStatus, usePlayerProfile, useBlockedUsers
+│   ├── services/              # Single entry point for all Firebase calls
+│   │   ├── auth.ts            #   sign up / sign in / Google OAuth / password reset
+│   │   ├── users.ts           #   profiles + atomic username reservation
+│   │   ├── games.ts           #   game CRUD + transactions + real-time subscriptions
+│   │   ├── clips.ts           #   landed-trick clips feed + upvotes
+│   │   ├── spots.ts           #   skate spots (geo-tagged map)
+│   │   ├── storage.ts         #   video upload (WebM/MP4, 1KB–50MB, retry)
+│   │   ├── notifications.ts   #   in-app + FCM push notifications
+│   │   ├── blocking.ts        #   block / unblock users
+│   │   ├── reports.ts         #   user + content reports
+│   │   └── analytics.ts       #   Vercel Analytics event wrapper
+│   ├── lib/                   # Third-party bridges (Sentry, Mapbox)
+│   ├── utils/                 # Helpers, retry logic, error parsing
+│   └── types/                 # Shared TypeScript types
+├── e2e/                       # Playwright E2E tests (auth, game, map)
+├── rules-tests/               # Firestore rules unit tests (clips, spots, notifications)
+├── functions/                 # (unused — kept for future serverless use; gated by CI)
+├── docs/                      # Documentation suite
+│   └── screenshots/           # README images + brand assets
+├── firestore.rules            # Firestore security rules (turn order, scores, rate limits)
+├── storage.rules              # Storage security rules (auth, size, content-type)
+├── .env.example               # Environment variable template
+└── vercel.json                # CSP headers, HSTS, SPA rewrites, domain redirects
 ```
 
 ---
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in values from your Firebase project:
+Copy `.env.example` to `.env.local` and fill in the values. The full template (with comments and source-of-truth links) lives in [`.env.example`](.env.example).
 
-```
-VITE_FIREBASE_API_KEY=
-VITE_FIREBASE_AUTH_DOMAIN=
-VITE_FIREBASE_PROJECT_ID=
-VITE_FIREBASE_STORAGE_BUCKET=
-VITE_FIREBASE_MESSAGING_SENDER_ID=
-VITE_FIREBASE_APP_ID=
-VITE_FIREBASE_MEASUREMENT_ID=   # optional — Analytics
-VITE_USE_EMULATORS=true         # optional — local emulators
-VITE_APP_URL=https://...        # optional — email action redirects
-```
+**Required**
+
+| Variable                              | Source                                                          |
+| ------------------------------------- | --------------------------------------------------------------- |
+| `VITE_FIREBASE_API_KEY`               | Firebase Console → Project Settings → General → Your Apps       |
+| `VITE_FIREBASE_AUTH_DOMAIN`           | "                                                               |
+| `VITE_FIREBASE_PROJECT_ID`            | "                                                               |
+| `VITE_FIREBASE_STORAGE_BUCKET`        | "                                                               |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID`   | "                                                               |
+| `VITE_FIREBASE_APP_ID`                | "                                                               |
+| `VITE_MAPBOX_TOKEN`                   | Mapbox Dashboard → Access Tokens (required for the `/map` page) |
+
+**Optional (recommended in production)**
+
+| Variable                          | Purpose                                                                       |
+| --------------------------------- | ----------------------------------------------------------------------------- |
+| `VITE_FIREBASE_MEASUREMENT_ID`    | Firebase Analytics                                                            |
+| `VITE_FIREBASE_VAPID_KEY`         | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)     |
+| `VITE_RECAPTCHA_SITE_KEY`         | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                     |
+| `VITE_SENTRY_DSN`                 | Sentry error tracking; without it, errors only appear in the browser console  |
+| `VITE_APP_URL`                    | Production domain for Firebase email action links + invite URLs               |
+| `VITE_MAPBOX_STYLE_URL`           | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`   |
+| `VITE_USE_EMULATORS=true`         | Local-only — point the client at the Firebase emulator suite                  |
 
 ---
 
@@ -193,6 +250,7 @@ VITE_APP_URL=https://...        # optional — email action redirects
 | [docs/TESTING.md](docs/TESTING.md)                       | Test suite overview and how to run          |
 | [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md)         | Game rules and turn flow                    |
 | [docs/GAME_STATE_MACHINE.md](docs/GAME_STATE_MACHINE.md) | State transitions and lifecycle             |
+| [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md)           | Per-feature completion status               |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                   | Architecture decision records               |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                       | How to contribute                           |
 | [SECURITY.md](SECURITY.md)                               | Security policy and vulnerability reporting |
@@ -210,25 +268,21 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 
 ---
 
-## Live Demo
-
-**[skatehubba.com](https://skatehubba.com)** — create an account and start a game in under 30 seconds.
-
----
-
 ## Traction
 
-| Metric                | Status                                           |
-| --------------------- | ------------------------------------------------ |
-| Live at               | [skatehubba.com](https://skatehubba.com)         |
-| Auth methods          | Email/password + Google OAuth                    |
-| Real-time multiplayer | Firestore `onSnapshot` — sub-second updates      |
-| Video infrastructure  | WebM (web) + MP4 (native), 1KB–50MB per clip     |
-| Native apps           | Capacitor builds for iOS + Android               |
-| CI pipeline           | Type-check → lint → test:coverage → build → E2E  |
-| Test coverage         | 100% on services + hooks (enforced by CI)        |
-| Security posture      | 0 npm vulnerabilities, Firestore rules validated |
-| Bundle size (gzip)    | ~289 kB total (Firebase 148 kB, app 71 kB)       |
+| Metric                | Status                                                                  |
+| --------------------- | ----------------------------------------------------------------------- |
+| Live at               | [skatehubba.com](https://skatehubba.com)                                |
+| Auth methods          | Email/password + Google OAuth (with verification + popup→redirect)      |
+| Real-time multiplayer | Firestore `onSnapshot` — sub-second updates                             |
+| Video infrastructure  | WebM (web) + MP4 (native), 1 KB – 50 MB per clip, retry w/ backoff      |
+| Turn timer            | 24 h per turn, server-validated forfeit                                 |
+| Native apps           | Capacitor builds for iOS + Android                                      |
+| CI pipeline           | Lint → type-check → unit tests + coverage → build → Lighthouse → E2E    |
+| Test coverage         | 100% on `src/services/**` and `src/hooks/**` (enforced by CI thresholds) |
+| Rules tests           | `@firebase/rules-unit-testing` against the Firestore emulator           |
+| Security posture      | App Check (reCAPTCHA v3), CSP/HSTS, Firestore rules enforce game logic  |
+| Bundle size (gzip)    | ~289 kB total (Firebase 148 kB, app 71 kB) — code-split vendor chunks   |
 
 ---
 
@@ -238,28 +292,34 @@ All analytics flow through a single wrapper (`src/services/analytics.ts`) backed
 
 ### Instrumented Events
 
-| Event             | Fires When                            | Properties                    |
-| ----------------- | ------------------------------------- | ----------------------------- |
-| `sign_up`         | New account created                   | `method` (email / google)     |
-| `sign_in`         | User logs in                          | `method` (email / google)     |
-| `game_created`    | Player creates a new challenge        | `gameId`                      |
-| `trick_set`       | Setter records and submits a trick    | `gameId`, `trickName`         |
-| `match_submitted` | Matcher submits their attempt         | `gameId`, `landed` (bool)     |
-| `game_completed`  | Game reaches a final state (win/loss) | `gameId`, `won` (bool)        |
-| `video_uploaded`  | Trick video successfully uploaded     | `durationMs`, `sizeBytes`     |
-| `invite_sent`     | Player shares an invite link          | `method` (sms / copy / share) |
-| `clip_shared`     | Player shares a trick clip            | `method`, `context`           |
-| `clip_saved`      | Player saves a trick clip locally     | `context`                     |
-| `game_shared`     | Player shares a completed game        | `context`, `method`           |
+| Event                 | Fires When                                | Properties                       |
+| --------------------- | ----------------------------------------- | -------------------------------- |
+| `sign_up`             | New account created                       | `method` (email / google)        |
+| `sign_in`             | User logs in                              | `method` (email / google)        |
+| `game_created`        | Player creates a new challenge            | `gameId`                         |
+| `trick_set`           | Setter records and submits a trick        | `gameId`, `trickName`            |
+| `match_submitted`     | Matcher submits their attempt             | `gameId`, `landed` (bool)        |
+| `game_completed`      | Game reaches a final state (win/loss)     | `gameId`, `won` (bool)           |
+| `video_uploaded`      | Trick video successfully uploaded         | `durationMs`, `sizeBytes`        |
+| `invite_sent`         | Player shares an invite link              | `method` (sms / copy / share)    |
+| `clip_shared`         | Player shares a trick clip                | `method`, `context`              |
+| `clip_saved`          | Player saves a trick clip locally         | `context`                        |
+| `game_shared`         | Player shares a completed game            | `context`, `method`              |
+| `map_viewed`          | Spots map screen mounts                   | —                                |
+| `spot_previewed`      | User taps a spot marker → preview opens   | `spotId`                         |
+| `challenge_from_spot` | Challenge screen opened with `?spot=` ref | `spotId`                         |
 
 ### Core Funnel
 
 ```
 sign_up → game_created → trick_set → match_submitted → game_completed
-                                          ↓
-                                   invite_sent (viral loop)
-                                          ↓
-                                   clip_shared (content flywheel)
+              ▲                              ↓
+              │                       invite_sent (viral loop)
+              │                              ↓
+              │                       clip_shared (content flywheel)
+              │
+   map_viewed → spot_previewed → challenge_from_spot
+                       (spot-driven acquisition path)
 ```
 
 Each step maps 1:1 to a tracked event. Drop-off between any two stages is visible in the Vercel Analytics dashboard.
@@ -268,7 +328,11 @@ Each step maps 1:1 to a tracked event. Drop-off between any two stages is visibl
 
 ## Roadmap: Async Gameplay → Network Effects
 
-### Phase 1 — Core Loop (shipped)
+For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md).
+
+> **Legend:** ✅ shipped · 🚧 in progress · 🧑‍⚖️ in review · 🧊 deferred · ⏳ planned
+
+### Phase 1 — Core Loop ✅ shipped
 
 - Async S.K.A.T.E. gameplay with video proof
 - Google OAuth + email auth with verification
@@ -276,26 +340,40 @@ Each step maps 1:1 to a tracked event. Drop-off between any two stages is visibl
 - 24-hour turn timer with auto-forfeit
 - Player profiles with game history
 
-### Phase 2 — Viral Mechanics (in progress)
+### Phase 2 — Viral Mechanics ✅ shipped
 
 - **Invite flow** — SMS/link/native share to pull friends in (instrumented: `invite_sent`)
 - **Clip sharing** — share trick clips to social platforms (instrumented: `clip_shared`)
 - **Rematch** — one-tap rematch at game over to keep engagement loops tight
-- **Push notifications** — "Your turn" alerts to reduce churn between turns
+- **Push notifications** — FCM "Your turn" alerts with deep-link into the game
 
-### Phase 3 — Social Graph & Discovery
+### Phase 3 — Social Graph & Discovery 🟢 mostly shipped
 
-- **Leaderboard** — ranked players by win rate, creating aspirational targets
-- **Player profiles** — public game archives that double as social proof
-- **Challenge anyone** — search/invite by username, expanding beyond existing friend groups
-- **Spectator mode** — watch active games, turning players into content creators
+- ✅ **Leaderboard** — ranked players by wins, creating aspirational targets
+- ✅ **Player profiles** — public game archives that double as social proof
+- ✅ **Challenge anyone** — search/invite by username, expanding beyond existing friend groups
+- ✅ **Block & report** — moderation tooling backed by Firestore rules
+- ✅ **Cross-game clips feed + featured clip** — landed tricks become a discovery surface
+- ✅ **Clip upvotes** — single-tap, no-undo upvotes on every clip (per-vote rules + double-vote guard)
+- 🚧 **Vote-driven clip ranking** — promote the feed and featured clip from chronological/random to upvote-ranked (next up)
+- 🧊 **Spectator mode** — deferred; revisit after vote-driven ranking lands
 
-### Phase 4 — Network Effects Flywheel
+### Phase 4 — Network Effects Flywheel 🟡 in progress
 
-- **Crew challenges** — team-based S.K.A.T.E. (3v3) multiplies each invite by 6 players
-- **Spot tagging** — geo-tagged trick locations create a skater map (UGC moat)
-- **Trick library** — community trick index with video proof, building a defensible content layer
-- **Tournaments** — bracket-style competitions that drive appointment engagement and shareability
+- 🚧 **Spot tagging** — geo-tagged trick locations create a skater map (UGC moat) — map UI, spots service, Firestore rules, and rules-tests are landed; final UI polish in progress
+- ⏳ **Crew challenges** — team-based S.K.A.T.E. (3v3) multiplies each invite by 6 players
+- ⏳ **Trick library** — community trick index with video proof, a defensible content layer
+- ⏳ **Tournaments** — bracket-style competitions for appointment engagement
+
+### Unreleased — Judge System 🧑‍⚖️ in review
+
+Optional third player who arbitrates disputes. See `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
+
+- Nominate a judge at challenge time; honor system runs by default if declined or absent
+- **Dispute path** — judge rules on a matcher's "landed" claim (24 h, then auto-accept)
+- **Call BS path** — matcher can flag the setter's video before attempting (24 h, then set stands)
+- New `setReview` phase + `judgeId` / `judgeStatus` / `judgeReviewFor` schema fields
+- Honor-system games skip the `disputable` phase entirely — landed swaps roles instantly
 
 **The thesis:** Each game produces shareable video content. Each shared clip is a free acquisition channel. Each new player brings their crew. The game mechanic (asynchronous, video-first) removes the coordination cost that kills most multiplayer apps — you don't need to be online at the same time or at the same spot.
 

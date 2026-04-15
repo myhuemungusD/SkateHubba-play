@@ -55,24 +55,23 @@ The matcher must:
 On submit (`submitMatchAttempt`):
 
 - **Missed:** The matcher admits they missed. A letter is assigned immediately. The setter keeps setting. Turn resolves instantly.
-- **Landed:** The matcher claims they landed. The game enters the **disputable** phase.
+- **Landed (honor system, no judge):** Roles swap immediately. No letter, no review step, no `disputable` phase.
+- **Landed (judge accepted):** The game enters the **disputable** phase. The judge — never the setter — has 24 h to rule.
 
-### Phase 3 — Disputable (setter reviews "landed" claim)
+### Phase 3 — Disputable (judge reviews "landed" claim) _— only with an active judge_
 
-When the matcher claims "landed", the setter has 24 hours to review both videos and decide whether to accept or dispute.
+When the matcher claims "landed" and an accepted judge is on the game, the **judge** (not the setter) has 24 hours to review both videos and decide whether to accept or dispute. Honor-system games skip this phase entirely.
 
-On submit (`resolveDispute`):
+On submit (`resolveDispute`, judge-only):
 
 | Result  | Letter assigned          | Next setter                                 |
 | ------- | ------------------------ | ------------------------------------------- |
 | Accept  | None                     | Matcher becomes the new setter (roles swap) |
 | Dispute | Matcher earns one letter | Setter keeps setting                        |
 
-If the setter does not respond within 24 hours, the matcher's "landed" call is **auto-accepted** — no letter is assigned and roles swap. This keeps the game loop moving; a stalled game is worse than an occasionally wrong call.
+If the judge does not rule within 24 hours, the matcher's "landed" call is **auto-accepted** — no letter is assigned and roles swap. This keeps the game loop moving; a stalled game is worse than an occasionally wrong call.
 
-The disputable phase only triggers when the matcher claims "landed" (~50% of turns). When the matcher admits "missed", the turn resolves immediately with no review step.
-
-The `turnNumber` increments after every completed trick round (one full set → match → resolve cycle).
+The `turnNumber` increments after every completed trick round (one full set → match → [optional review] cycle).
 
 ---
 
@@ -138,10 +137,26 @@ From the game-over screen, either player can start a rematch. A rematch creates 
 
 ## Dispute System
 
-The matcher self-judges whether they landed the trick. If the matcher claims "missed", the letter is assigned immediately and no review is needed. If the matcher claims "landed", the setter gets a 24-hour window to review both videos and either accept or dispute the call.
+The matcher self-judges whether they landed the trick. If the matcher claims "missed", the letter is assigned immediately and no review is needed. What happens on a claimed "landed" depends on whether the game has a judge:
 
-- **Accept**: the setter agrees the trick was landed. No letter is assigned and the matcher becomes the next setter.
-- **Dispute**: the setter overrules the claim. The matcher earns a letter and the setter keeps setting.
+### Honor system (default — no judge)
+
+If no judge is nominated, or if a nominated judge declined the invite, a "landed" claim **immediately swaps roles**. No review, no waiting, no letter. This is the new default behaviour — most games never enter a `disputable` phase.
+
+### With an active judge
+
+When the challenger nominated a third player as judge and that judge accepted the invite, a claimed "landed" routes to the judge — never to the setter — for a 24-hour review:
+
+- **Accept**: the judge confirms the trick was landed. No letter, matcher becomes the next setter.
+- **Dispute**: the judge overrules the claim. The matcher earns a letter, setter keeps setting.
 - **No response (24 h)**: auto-accept. The matcher's "landed" call stands. This prevents stalled games.
 
-There is no community jury system — disputes are resolved between the two players with the setter having final say. Videos are stored and visible to both players for transparency. A community jury is a roadmap item for when the user base is large enough to make it viable.
+### "Call BS" on a set trick (judge-only)
+
+Before attempting, the matcher can flag the setter's video for judge review (`setReview` phase). The judge rules:
+
+- **Clean**: matcher must attempt the trick.
+- **Sketchy**: setter has to re-set.
+- **No response (24 h)**: set stands (benefit of the doubt to the setter).
+
+Both players see a "Judge Pending / Judge / No Judge" badge so they always know which resolution path is live. Videos remain stored and visible to both players (and the judge) for transparency.

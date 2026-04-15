@@ -106,6 +106,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               alt="SkateHubba"
               draggable={false}
               fetchPriority="high"
+              decoding="async"
               className="h-9 md:h-11 w-auto select-none"
             />
           </a>
