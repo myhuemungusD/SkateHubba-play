@@ -564,6 +564,21 @@ describe("Lobby", () => {
     expect(container.querySelectorAll("button button").length).toBe(0);
   });
 
+  // A held key (auto-repeat) should not re-fire navigation — matches native
+  // <button> semantics and avoids stuttered double-navigation on the card.
+  it("active game card ignores repeated keydown from a held key", () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame();
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+
+    const card = screen.getByRole("button", { name: /vs @rival/i });
+    // Simulate auto-repeat (e.repeat === true on held key)
+    card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, repeat: true }));
+    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, repeat: true }));
+
+    expect(onOpenGame).not.toHaveBeenCalled();
+  });
+
   it("Profile button on active game card opens profile without opening game", async () => {
     const onOpenGame = vi.fn();
     const onViewPlayer = vi.fn();

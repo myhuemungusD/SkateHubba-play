@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type KeyboardEvent } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { logger } from "../services/logger";
@@ -121,6 +121,19 @@ export function Lobby({
     }
     if (g.phase === "matching") return `Matching: ${trick}`;
     return "They're setting a trick";
+  };
+
+  // Activate a card on Enter/Space. Game cards are div[role="button"] (not
+  // native <button>) so we can host the inner Profile <button> without the
+  // invalid-HTML nested-interactive tree; this helper replicates the native
+  // button's keyboard semantics. e.repeat guards against auto-repeat when a
+  // key is held — matching how a native button behaves on Space.
+  const activateOnKey = (handler: () => void) => (e: KeyboardEvent<HTMLElement>) => {
+    if (e.repeat) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handler();
+    }
   };
 
   return (
@@ -249,14 +262,8 @@ export function Lobby({
                   tabIndex={0}
                   key={g.id}
                   onClick={() => onOpenGame(g)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onOpenGame(g);
-                    }
-                  }}
-                  aria-label={`vs @${opponent(g)} · ${turnLabel(g)}`}
-                  className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
+                  onKeyDown={activateOnKey(() => onOpenGame(g))}
+                  className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer select-none transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
                     ${
                       isMyTurn(g)
                         ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5"
@@ -374,14 +381,8 @@ export function Lobby({
                   tabIndex={0}
                   key={g.id}
                   onClick={() => onOpenGame(g)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onOpenGame(g);
-                    }
-                  }}
-                  aria-label={`vs @${opponent(g)} · ${g.winner === profile.uid ? "won" : "lost"}${g.status === "forfeit" ? " by forfeit" : ""}`}
-                  className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
+                  onKeyDown={activateOnKey(() => onOpenGame(g))}
+                  className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer select-none transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
                 >
                   <div>
                     <div className="flex items-center gap-2 mb-1">
