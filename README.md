@@ -95,7 +95,7 @@ No custom backend. No serverless functions. The client talks directly to Firebas
 - **Video tricks** — one-take recording in-browser (WebM) or native app (MP4)
 - **Real-time updates** — both players see state changes the moment they happen via Firestore snapshots
 - **24-hour turn timer** — games don't stall; expired turns auto-forfeit
-- **Optional judge** _(in review)_ — nominate a neutral third player to rule on disputes and "Call BS"
+- **Optional referee** _(in review)_ — nominate a neutral third player to rule on disputes and "Call BS"
 
 ### Identity & Trust
 
@@ -364,14 +364,14 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 - ⏳ **Trick library** — community trick index with video proof, a defensible content layer
 - ⏳ **Tournaments** — bracket-style competitions for appointment engagement
 
-### Unreleased — Judge System 🧑‍⚖️ in review
+### Unreleased — Referee System 🧑‍⚖️ in review
 
 Optional third player who arbitrates disputes. See `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
 
-- Nominate a judge at challenge time; honor system runs by default if declined or absent
-- **Dispute path** — judge rules on a matcher's "landed" claim (24 h, then auto-accept)
+- Nominate a referee at challenge time; honor system runs by default if declined or absent
+- **Dispute path** — referee rules on a matcher's "landed" claim (24 h, then auto-accept)
 - **Call BS path** — matcher can flag the setter's video before attempting (24 h, then set stands)
-- New `setReview` phase + `judgeId` / `judgeStatus` / `judgeReviewFor` schema fields
+- New `setReview` phase + `judgeId` / `judgeStatus` / `judgeReviewFor` schema fields (internal names preserved to avoid a migration for in-flight games)
 - Honor-system games skip the `disputable` phase entirely — landed swaps roles instantly
 
 **The thesis:** Each game produces shareable video content. Each shared clip is a free acquisition channel. Each new player brings their crew. The game mechanic (asynchronous, video-first) removes the coordination cost that kills most multiplayer apps — you don't need to be online at the same time or at the same spot.
