@@ -153,7 +153,7 @@ describe("games service", () => {
 
     it("throws when no judge is on the game", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, judgeId: null }));
-      await expect(acceptJudgeInvite("g1")).rejects.toThrow("No judge was nominated");
+      await expect(acceptJudgeInvite("g1")).rejects.toThrow("No referee was nominated");
     });
 
     it("throws when invite is not pending", async () => {
@@ -203,7 +203,7 @@ describe("games service", () => {
     it("throws when judge is not active (honor system)", async () => {
       const honorSystem = { ...matchingWithJudge, judgeStatus: "pending" };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(honorSystem));
-      await expect(callBSOnSetTrick("g1")).rejects.toThrow("Call BS is only available when a judge is active");
+      await expect(callBSOnSetTrick("g1")).rejects.toThrow("Call BS is only available when a referee is active");
     });
 
     it("throws when not in matching phase", async () => {
@@ -285,7 +285,7 @@ describe("games service", () => {
 
     it("throws when judge is missing", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...setReviewGame, judgeId: null }));
-      await expect(judgeRuleSetTrick("g1", true)).rejects.toThrow("No judge on this game");
+      await expect(judgeRuleSetTrick("g1", true)).rejects.toThrow("No referee on this game");
     });
 
     it("sketchy — notifies setter (covers notification path)", async () => {
@@ -331,7 +331,7 @@ describe("games service", () => {
 
     it("declineJudgeInvite throws when no judge is on the game", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, judgeId: null }));
-      await expect(declineJudgeInvite("g1")).rejects.toThrow("No judge was nominated");
+      await expect(declineJudgeInvite("g1")).rejects.toThrow("No referee was nominated");
     });
 
     it("declineJudgeInvite throws when invite is not pending", async () => {
@@ -977,7 +977,7 @@ describe("games service", () => {
     it("throws when no judge is set on the game (honor-system should never reach this)", async () => {
       const noJudge = { ...disputableGame, judgeId: null, judgeStatus: null };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(noJudge));
-      await expect(resolveDispute("g1", true)).rejects.toThrow("No judge on this game");
+      await expect(resolveDispute("g1", true)).rejects.toThrow("No referee on this game");
     });
 
     it("accept — sends your_turn notification to new setter", async () => {

@@ -388,7 +388,7 @@ describe("ChallengeScreen", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Couldn't look up judge @judge. Try again or remove the judge to start now."),
+        screen.getByText("Couldn't look up referee @judge. Try again or remove the referee to start now."),
       ).toBeInTheDocument();
     });
     // Opponent lookup result wasn't wasted — onSend must NOT have been called
@@ -451,7 +451,7 @@ describe("ChallengeScreen", () => {
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
-      expect(screen.getByText(/Judge must be a third player/)).toBeInTheDocument();
+      expect(screen.getByText(/Referee must be a third player/)).toBeInTheDocument();
     });
     expect(onSend).not.toHaveBeenCalled();
   });

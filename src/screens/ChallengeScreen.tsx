@@ -97,28 +97,28 @@ export function ChallengeScreen({
       return;
     }
 
-    // Judge picker is optional — only validate when the user filled it in.
+    // Referee picker is optional — only validate when the user filled it in.
     const judgeNormalized = judge.toLowerCase().trim();
     if (judgeNormalized && judgeNormalized.length < 3) {
-      setError("Judge username is too short");
+      setError("Referee username is too short");
       return;
     }
     if (judgeNormalized && judgeNormalized === profile.username) {
-      setError("You can't be your own judge");
+      setError("You can't be your own referee");
       return;
     }
     if (judgeNormalized && judgeNormalized === normalized) {
-      setError("Judge must be a third player");
+      setError("Referee must be a third player");
       return;
     }
 
     setLoading(true);
     try {
       // Resolve both usernames in parallel via allSettled so the optional
-      // judge lookup never holds up — or blows up — the required opponent
-      // path. A transient network blip on the judge field surfaces as a
+      // referee lookup never holds up — or blows up — the required opponent
+      // path. A transient network blip on the referee field surfaces as a
       // specific actionable error instead of a generic "Could not start
-      // game", and the user can retry or remove the judge to proceed.
+      // game", and the user can retry or remove the referee to proceed.
       const [opponentResult, judgeResult] = await Promise.allSettled([
         getUidByUsername(normalized),
         judgeNormalized ? getUidByUsername(judgeNormalized) : Promise.resolve(null),
@@ -149,20 +149,20 @@ export function ChallengeScreen({
           captureException(judgeResult.reason, {
             extra: { context: "challenge.judge_lookup", username: judgeNormalized },
           });
-          setError(`Couldn't look up judge @${judgeNormalized}. Try again or remove the judge to start now.`);
+          setError(`Couldn't look up referee @${judgeNormalized}. Try again or remove the referee to start now.`);
           return;
         }
         const resolvedJudgeUid = judgeResult.value;
         if (!resolvedJudgeUid) {
-          setError(`Judge @${judgeNormalized} doesn't exist yet. They need to sign up first.`);
+          setError(`Referee @${judgeNormalized} doesn't exist yet. They need to sign up first.`);
           return;
         }
         if (resolvedJudgeUid === uid) {
-          setError("Judge must be a third player");
+          setError("Referee must be a third player");
           return;
         }
         if (blockedUids?.has(resolvedJudgeUid)) {
-          setError("You cannot nominate a blocked player as judge.");
+          setError("You cannot nominate a blocked player as referee.");
           return;
         }
         judgeUid = resolvedJudgeUid;
@@ -237,8 +237,9 @@ export function ChallengeScreen({
             autoFocus
           />
 
-          {/* Optional judge picker — collapsed by default. Games without a judge
-              run on the honor system with no disputes or "Call BS" flows. */}
+          {/* Optional referee picker — collapsed by default. Games without a
+              referee run on the honor system with no disputes or "Call BS"
+              flows. */}
           <div className="mb-4">
             {!judgePickerOpen ? (
               <button
@@ -248,12 +249,12 @@ export function ChallengeScreen({
                 className="font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40"
                 data-testid="add-judge-toggle"
               >
-                + Add a judge? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
+                + Add a referee? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
               </button>
             ) : (
               <div>
                 <Field
-                  label="Judge Username (optional)"
+                  label="Referee Username (optional)"
                   value={judge}
                   onChange={(v) => {
                     if (!loading) setJudge(v.replace(/[^a-zA-Z0-9_]/g, ""));
