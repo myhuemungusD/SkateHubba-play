@@ -241,7 +241,60 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     [clips, blockedUids, reportedClipIds],
   );
 
+  // Top-of-feed rotation. The top slot auto-advances through the visible
+  // landed-trick clips so the lobby always feels alive — once one clip
+  // finishes, the next plays. Wraps back to the start at the end of the
+  // loaded page (and tries to fetch more so the rotation can keep growing).
+  //
+  // Tracked by clip id rather than positional index: a positional index
+  // silently points at a different clip whenever the list mutates (a clip
+  // gets reported, a blocked user's clip is filtered out, pagination
+  // inserts new clips). Identity tracking keeps the "currently playing"
+  // clip stable across those mutations.
+  //
+  // `topClipId` holds the user's rotation selection; `effectiveTopClipId`
+  // resolves it against the live `visibleClips` list. Deriving the
+  // effective id via memo (instead of sync'ing via `useEffect`) removes
+  // the render-window where state is null but the DOM is already showing
+  // visibleClips[0] — that window was the source of a CI race where an
+  // `ended` event arrived before the sync effect had run and rotation
+  // silently no-op'd back onto the clip already playing.
+  const [topClipId, setTopClipId] = useState<string | null>(null);
+  const effectiveTopClipId = useMemo<string | null>(() => {
+    if (visibleClips.length === 0) return null;
+    if (topClipId && visibleClips.some((c) => c.id === topClipId)) return topClipId;
+    return visibleClips[0].id;
+  }, [visibleClips, topClipId]);
+
+  const advanceTopClip = useCallback(() => {
+    if (visibleClips.length === 0) return;
+    setTopClipId((current) => {
+      // Resolve the "current" selection the same way the DOM does via
+      // `effectiveTopClipId` — a stale or null `current` still maps to
+      // visibleClips[0], so advancing always moves forward by one slot.
+      const resolved = current && visibleClips.some((c) => c.id === current) ? current : visibleClips[0].id;
+      const currentIndex = visibleClips.findIndex((c) => c.id === resolved);
+      const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % visibleClips.length;
+      // Approaching the end of what's loaded? Kick off a load-more so the
+      // rotation has fresh material before we wrap back to clip 0.
+      if (nextIndex >= visibleClips.length - 2 && !endOfFeed && !loadingMore && cursor) {
+        void loadMore();
+      }
+      return visibleClips[nextIndex].id;
+    });
+  }, [visibleClips, endOfFeed, loadingMore, cursor, loadMore]);
+
   const myUid = profile.uid;
+
+  // Reorder so the rotating clip is always rendered at index 0 (and thus
+  // gets the autoplay TopClipVideo branch below). The rest of the feed
+  // keeps its reverse-chronological order behind it.
+  const orderedClips = useMemo(() => {
+    if (visibleClips.length === 0) return visibleClips;
+    const idx = effectiveTopClipId ? visibleClips.findIndex((c) => c.id === effectiveTopClipId) : -1;
+    if (idx <= 0) return visibleClips;
+    return [visibleClips[idx], ...visibleClips.filter((_, i) => i !== idx)];
+  }, [visibleClips, effectiveTopClipId]);
 
   return (
     <section className="mb-6" aria-label="Community feed">
@@ -294,7 +347,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       {/* Clips list */}
       {!loading && visibleClips.length > 0 && (
         <ul className="space-y-4" aria-label="Clips feed">
-          {visibleClips.map((clip, index) => {
+          {orderedClips.map((clip, index) => {
             const isOwnClip = clip.playerUid === myUid;
             const upvote = upvoteState.get(clip.id) ?? { count: 0, alreadyUpvoted: false };
             const isUpvoting = upvotingIds.has(clip.id);
@@ -334,13 +387,23 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
                 </div>
 
                 {/* Video — top clip autoplays muted with tap-to-unmute (mirrors
-                    FeaturedClipCard's idiom). Subsequent clips stay
-                    click-to-play to keep mobile data + battery sane. The key
-                    forces a fresh muted state whenever the top clip identity
-                    changes (e.g. the previous top was blocked/reported). */}
+                    FeaturedClipCard's idiom). When the top clip ends it
+                    rotates to the next landed-trick clip in the feed, so
+                    the lobby always feels alive even before the user
+                    scrolls. Subsequent clips stay click-to-play to keep
+                    mobile data + battery sane. The key forces a fresh
+                    muted state on every rotation tick.
+                    When only one clip is visible, there's nothing to
+                    rotate to — hand off to the native `loop` attribute
+                    so the single clip replays without a stall gap. */}
                 <div className="px-4">
                   {index === 0 ? (
-                    <TopClipVideo key={clip.id} src={clip.videoUrl} />
+                    <TopClipVideo
+                      key={clip.id}
+                      src={clip.videoUrl}
+                      loop={visibleClips.length <= 1}
+                      onEnded={visibleClips.length > 1 ? advanceTopClip : undefined}
+                    />
                   ) : (
                     <video
                       src={clip.videoUrl}
@@ -462,10 +525,22 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
  * decoding audio/video frames while the user reads the rest of the feed
  * — a meaningful battery and cellular-data saving on mobile.
  */
-function TopClipVideo({ src }: { src: string }) {
+function TopClipVideo({ src, loop = false, onEnded }: { src: string; loop?: boolean; onEnded?: () => void }) {
   const [muted, setMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLButtonElement | null>(null);
+  // Tracks whether the video has ever successfully started playing. We use
+  // this to gate the IntersectionObserver's pause(): if pause() runs before
+  // the first play() resolves, mobile Safari treats the muted-autoplay
+  // grant as revoked and silently rejects every subsequent play() — which
+  // is exactly the "feed loaded but no clips play" symptom.
+  const hasPlayedRef = useRef(false);
+  const handlePlay = useCallback(() => {
+    // Belt-and-suspenders: if the native `autoPlay` attribute fires
+    // before (or instead of) our IO-driven play() call, flip the gate
+    // here too so a subsequent out-of-viewport pause() is still allowed.
+    hasPlayedRef.current = true;
+  }, []);
 
   const toggleMute = useCallback(() => {
     setMuted((prev) => {
@@ -490,9 +565,20 @@ function TopClipVideo({ src }: { src: string }) {
         if (entry.isIntersecting) {
           // play() returns a Promise that rejects on interrupted
           // autoplay (e.g. user tab-switches mid-resume). Swallow —
-          // the browser will retry on next intersection tick.
-          video.play().catch(() => undefined);
-        } else {
+          // the browser will retry on next intersection tick. We call
+          // play() explicitly rather than rely on the `autoPlay`
+          // attribute, because autoPlay only fires on element insert
+          // and is unreliable when the element mounts off-screen.
+          video
+            .play()
+            .then(() => {
+              hasPlayedRef.current = true;
+            })
+            .catch(() => undefined);
+        } else if (hasPlayedRef.current) {
+          // Only pause once the video has actually started playing. The
+          // mount-time "below the fold" callback would otherwise race
+          // the autoplay attempt and revoke the muted-autoplay grant.
           video.pause();
         }
       },
@@ -514,10 +600,12 @@ function TopClipVideo({ src }: { src: string }) {
         ref={videoRef}
         src={src}
         autoPlay
-        loop
+        loop={loop}
         muted
         playsInline
         preload="metadata"
+        onPlay={handlePlay}
+        onEnded={onEnded}
         className="w-full aspect-[9/16] max-h-[560px] bg-black object-cover"
       />
       {muted && (
