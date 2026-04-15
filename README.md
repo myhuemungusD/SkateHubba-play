@@ -109,9 +109,8 @@ No custom backend. No serverless functions. The client talks directly to Firebas
 
 - **Invite & share** — SMS, link copy, and native share for invites and trick clips
 - **Push notifications** — FCM "your turn" alerts that deep-link into the game
-- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed
-- **Featured clip surface** — a recent landed clip rotates at the top of the lobby _(vote-driven ranking in progress)_
-- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules
+- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips
+- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules _(vote-driven ranking in progress)_
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
 - **Spots map** _(in progress)_ — geo-tagged skate spots with gnar rating + bust risk
@@ -146,23 +145,23 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 
 ## Scripts
 
-| Command                  | Description                                                   |
-| ------------------------ | ------------------------------------------------------------- |
-| `npm run dev`            | Start the Vite dev server at `http://localhost:5173`          |
-| `npm run build`          | Type-check + production build → `dist/`                       |
-| `npm run preview`        | Preview the production build locally                          |
-| `npm test`               | Run the unit + component test suite once                      |
-| `npm run test:watch`     | Run tests in watch mode                                       |
-| `npm run test:coverage`  | Run tests with coverage report (CI gate)                      |
-| `npm run test:rules`     | Run Firestore security-rules tests against the rules emulator |
-| `npm run test:e2e`       | Run Playwright E2E tests (auto-starts emulators)              |
-| `npm run lint`           | Lint source files with ESLint                                 |
-| `npm run lint:fix`       | Lint and auto-fix where possible                              |
-| `npm run format`         | Format `src/**/*.{ts,tsx}` with Prettier                      |
-| `npm run emulators`      | Start the Firebase emulator suite locally                     |
-| `npm run cap:sync`       | Sync the web build into iOS/Android Capacitor projects        |
-| `npm run cap:open:ios`   | Open the iOS project in Xcode                                 |
-| `npm run cap:open:android` | Open the Android project in Android Studio                  |
+| Command                    | Description                                                   |
+| -------------------------- | ------------------------------------------------------------- |
+| `npm run dev`              | Start the Vite dev server at `http://localhost:5173`          |
+| `npm run build`            | Type-check + production build → `dist/`                       |
+| `npm run preview`          | Preview the production build locally                          |
+| `npm test`                 | Run the unit + component test suite once                      |
+| `npm run test:watch`       | Run tests in watch mode                                       |
+| `npm run test:coverage`    | Run tests with coverage report (CI gate)                      |
+| `npm run test:rules`       | Run Firestore security-rules tests against the rules emulator |
+| `npm run test:e2e`         | Run Playwright E2E tests (auto-starts emulators)              |
+| `npm run lint`             | Lint source files with ESLint                                 |
+| `npm run lint:fix`         | Lint and auto-fix where possible                              |
+| `npm run format`           | Format `src/**/*.{ts,tsx}` with Prettier                      |
+| `npm run emulators`        | Start the Firebase emulator suite locally                     |
+| `npm run cap:sync`         | Sync the web build into iOS/Android Capacitor projects        |
+| `npm run cap:open:ios`     | Open the iOS project in Xcode                                 |
+| `npm run cap:open:android` | Open the Android project in Android Studio                    |
 
 ---
 
@@ -214,27 +213,27 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 
 **Required**
 
-| Variable                              | Source                                                          |
-| ------------------------------------- | --------------------------------------------------------------- |
-| `VITE_FIREBASE_API_KEY`               | Firebase Console → Project Settings → General → Your Apps       |
-| `VITE_FIREBASE_AUTH_DOMAIN`           | "                                                               |
-| `VITE_FIREBASE_PROJECT_ID`            | "                                                               |
-| `VITE_FIREBASE_STORAGE_BUCKET`        | "                                                               |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID`   | "                                                               |
-| `VITE_FIREBASE_APP_ID`                | "                                                               |
-| `VITE_MAPBOX_TOKEN`                   | Mapbox Dashboard → Access Tokens (required for the `/map` page) |
+| Variable                            | Source                                                          |
+| ----------------------------------- | --------------------------------------------------------------- |
+| `VITE_FIREBASE_API_KEY`             | Firebase Console → Project Settings → General → Your Apps       |
+| `VITE_FIREBASE_AUTH_DOMAIN`         | "                                                               |
+| `VITE_FIREBASE_PROJECT_ID`          | "                                                               |
+| `VITE_FIREBASE_STORAGE_BUCKET`      | "                                                               |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | "                                                               |
+| `VITE_FIREBASE_APP_ID`              | "                                                               |
+| `VITE_MAPBOX_TOKEN`                 | Mapbox Dashboard → Access Tokens (required for the `/map` page) |
 
 **Optional (recommended in production)**
 
-| Variable                          | Purpose                                                                       |
-| --------------------------------- | ----------------------------------------------------------------------------- |
-| `VITE_FIREBASE_MEASUREMENT_ID`    | Firebase Analytics                                                            |
-| `VITE_FIREBASE_VAPID_KEY`         | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)     |
-| `VITE_RECAPTCHA_SITE_KEY`         | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                     |
-| `VITE_SENTRY_DSN`                 | Sentry error tracking; without it, errors only appear in the browser console  |
-| `VITE_APP_URL`                    | Production domain for Firebase email action links + invite URLs               |
-| `VITE_MAPBOX_STYLE_URL`           | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`   |
-| `VITE_USE_EMULATORS=true`         | Local-only — point the client at the Firebase emulator suite                  |
+| Variable                       | Purpose                                                                      |
+| ------------------------------ | ---------------------------------------------------------------------------- |
+| `VITE_FIREBASE_MEASUREMENT_ID` | Firebase Analytics                                                           |
+| `VITE_FIREBASE_VAPID_KEY`      | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)    |
+| `VITE_RECAPTCHA_SITE_KEY`      | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                    |
+| `VITE_SENTRY_DSN`              | Sentry error tracking; without it, errors only appear in the browser console |
+| `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs              |
+| `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`  |
+| `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                 |
 
 ---
 
@@ -270,19 +269,19 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 
 ## Traction
 
-| Metric                | Status                                                                  |
-| --------------------- | ----------------------------------------------------------------------- |
-| Live at               | [skatehubba.com](https://skatehubba.com)                                |
-| Auth methods          | Email/password + Google OAuth (with verification + popup→redirect)      |
-| Real-time multiplayer | Firestore `onSnapshot` — sub-second updates                             |
-| Video infrastructure  | WebM (web) + MP4 (native), 1 KB – 50 MB per clip, retry w/ backoff      |
-| Turn timer            | 24 h per turn, server-validated forfeit                                 |
-| Native apps           | Capacitor builds for iOS + Android                                      |
-| CI pipeline           | Lint → type-check → unit tests + coverage → build → Lighthouse → E2E    |
+| Metric                | Status                                                                   |
+| --------------------- | ------------------------------------------------------------------------ |
+| Live at               | [skatehubba.com](https://skatehubba.com)                                 |
+| Auth methods          | Email/password + Google OAuth (with verification + popup→redirect)       |
+| Real-time multiplayer | Firestore `onSnapshot` — sub-second updates                              |
+| Video infrastructure  | WebM (web) + MP4 (native), 1 KB – 50 MB per clip, retry w/ backoff       |
+| Turn timer            | 24 h per turn, server-validated forfeit                                  |
+| Native apps           | Capacitor builds for iOS + Android                                       |
+| CI pipeline           | Lint → type-check → unit tests + coverage → build → Lighthouse → E2E     |
 | Test coverage         | 100% on `src/services/**` and `src/hooks/**` (enforced by CI thresholds) |
-| Rules tests           | `@firebase/rules-unit-testing` against the Firestore emulator           |
-| Security posture      | App Check (reCAPTCHA v3), CSP/HSTS, Firestore rules enforce game logic  |
-| Bundle size (gzip)    | ~289 kB total (Firebase 148 kB, app 71 kB) — code-split vendor chunks   |
+| Rules tests           | `@firebase/rules-unit-testing` against the Firestore emulator            |
+| Security posture      | App Check (reCAPTCHA v3), CSP/HSTS, Firestore rules enforce game logic   |
+| Bundle size (gzip)    | ~289 kB total (Firebase 148 kB, app 71 kB) — code-split vendor chunks    |
 
 ---
 
@@ -292,22 +291,22 @@ All analytics flow through a single wrapper (`src/services/analytics.ts`) backed
 
 ### Instrumented Events
 
-| Event                 | Fires When                                | Properties                       |
-| --------------------- | ----------------------------------------- | -------------------------------- |
-| `sign_up`             | New account created                       | `method` (email / google)        |
-| `sign_in`             | User logs in                              | `method` (email / google)        |
-| `game_created`        | Player creates a new challenge            | `gameId`                         |
-| `trick_set`           | Setter records and submits a trick        | `gameId`, `trickName`            |
-| `match_submitted`     | Matcher submits their attempt             | `gameId`, `landed` (bool)        |
-| `game_completed`      | Game reaches a final state (win/loss)     | `gameId`, `won` (bool)           |
-| `video_uploaded`      | Trick video successfully uploaded         | `durationMs`, `sizeBytes`        |
-| `invite_sent`         | Player shares an invite link              | `method` (sms / copy / share)    |
-| `clip_shared`         | Player shares a trick clip                | `method`, `context`              |
-| `clip_saved`          | Player saves a trick clip locally         | `context`                        |
-| `game_shared`         | Player shares a completed game            | `context`, `method`              |
-| `map_viewed`          | Spots map screen mounts                   | —                                |
-| `spot_previewed`      | User taps a spot marker → preview opens   | `spotId`                         |
-| `challenge_from_spot` | Challenge screen opened with `?spot=` ref | `spotId`                         |
+| Event                 | Fires When                                | Properties                    |
+| --------------------- | ----------------------------------------- | ----------------------------- |
+| `sign_up`             | New account created                       | `method` (email / google)     |
+| `sign_in`             | User logs in                              | `method` (email / google)     |
+| `game_created`        | Player creates a new challenge            | `gameId`                      |
+| `trick_set`           | Setter records and submits a trick        | `gameId`, `trickName`         |
+| `match_submitted`     | Matcher submits their attempt             | `gameId`, `landed` (bool)     |
+| `game_completed`      | Game reaches a final state (win/loss)     | `gameId`, `won` (bool)        |
+| `video_uploaded`      | Trick video successfully uploaded         | `durationMs`, `sizeBytes`     |
+| `invite_sent`         | Player shares an invite link              | `method` (sms / copy / share) |
+| `clip_shared`         | Player shares a trick clip                | `method`, `context`           |
+| `clip_saved`          | Player saves a trick clip locally         | `context`                     |
+| `game_shared`         | Player shares a completed game            | `context`, `method`           |
+| `map_viewed`          | Spots map screen mounts                   | —                             |
+| `spot_previewed`      | User taps a spot marker → preview opens   | `spotId`                      |
+| `challenge_from_spot` | Challenge screen opened with `?spot=` ref | `spotId`                      |
 
 ### Core Funnel
 
@@ -353,9 +352,9 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 - ✅ **Player profiles** — public game archives that double as social proof
 - ✅ **Challenge anyone** — search/invite by username, expanding beyond existing friend groups
 - ✅ **Block & report** — moderation tooling backed by Firestore rules
-- ✅ **Cross-game clips feed + featured clip** — landed tricks become a discovery surface
+- ✅ **Cross-game clips feed** — landed tricks become a discovery surface with an autoplaying top-slot that rotates through the visible clips
 - ✅ **Clip upvotes** — single-tap, no-undo upvotes on every clip (per-vote rules + double-vote guard)
-- 🚧 **Vote-driven clip ranking** — promote the feed and featured clip from chronological/random to upvote-ranked (next up)
+- 🚧 **Vote-driven clip ranking** — promote the feed from chronological to upvote-ranked (next up)
 - 🧊 **Spectator mode** — deferred; revisit after vote-driven ranking lands
 
 ### Phase 4 — Network Effects Flywheel 🟡 in progress
