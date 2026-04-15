@@ -244,10 +244,18 @@ export function Lobby({
             </div>
             <div className="space-y-2">
               {active.map((g) => (
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   key={g.id}
                   onClick={() => onOpenGame(g)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onOpenGame(g);
+                    }
+                  }}
+                  aria-label={`vs @${opponent(g)} · ${turnLabel(g)}`}
                   className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
                     ${
                       isMyTurn(g)
@@ -327,7 +335,7 @@ export function Lobby({
                     size={15}
                     className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-faint"}`}
                   />
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -361,10 +369,18 @@ export function Lobby({
             </div>
             <div className="space-y-2">
               {done.map((g) => (
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   key={g.id}
                   onClick={() => onOpenGame(g)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onOpenGame(g);
+                    }
+                  }}
+                  aria-label={`vs @${opponent(g)} · ${g.winner === profile.uid ? "won" : "lost"}${g.status === "forfeit" ? " by forfeit" : ""}`}
                   className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
                 >
                   <div>
@@ -394,7 +410,7 @@ export function Lobby({
                     </span>
                   </div>
                   <ChevronRightIcon size={15} className="text-faint shrink-0" />
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -512,6 +528,7 @@ export function Lobby({
         {/* Delete Account */}
         <div className="mt-8 flex justify-center">
           <button
+            type="button"
             onClick={() => setShowDeleteModal(true)}
             className="font-body text-xs text-dim underline underline-offset-2 hover:text-brand-red transition-colors"
           >
