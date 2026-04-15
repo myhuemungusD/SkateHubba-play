@@ -30,12 +30,12 @@ vi.mock("../../services/blocking", () => ({
   // subscribeToBlockedUsers; return a no-op unsubscribe so the hook is happy.
   subscribeToBlockedUsers: vi.fn(() => () => {}),
 }));
-// ClipsFeed (embedded in Lobby) calls fetchClipsFeed; FeaturedClipCard
-// (also embedded) calls fetchFeaturedClip + upvoteClip. Both have their
-// own test files — here we just keep them from hitting Firebase.
+// ClipsFeed (embedded in Lobby) calls fetchClipsFeed + fetchClipUpvoteState
+// + upvoteClip. The feed has its own test file — here we just keep it from
+// hitting Firebase.
 vi.mock("../../services/clips", () => ({
   fetchClipsFeed: vi.fn().mockResolvedValue({ clips: [], cursor: null }),
-  fetchFeaturedClip: vi.fn().mockResolvedValue(null),
+  fetchClipUpvoteState: vi.fn().mockResolvedValue(new Map()),
   upvoteClip: vi.fn().mockResolvedValue(0),
   AlreadyUpvotedError: class extends Error {},
 }));

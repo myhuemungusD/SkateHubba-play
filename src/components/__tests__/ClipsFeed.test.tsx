@@ -179,6 +179,63 @@ describe("ClipsFeed", () => {
     expect(mockFetchClipsFeed).toHaveBeenLastCalledWith(firstCursor, 12);
   });
 
+  it("surfaces a load-more error with a retry affordance (never silently stalls the feed)", async () => {
+    // Regression guard: loadMore used to swallow errors and reset loadingMore
+    // back to the default "Load more" label, which looked identical to the
+    // happy path — the feed would just stop growing with no explanation.
+    const user = userEvent.setup();
+    const firstCursor = { createdAt: { toMillis: () => 1 } as ClipDoc["createdAt"], id: "g1_2_set" };
+    mockFetchClipsFeed
+      .mockResolvedValueOnce({
+        clips: Array.from({ length: 12 }, (_, i) => makeClip({ id: `g1_${i}_set`, trickName: `TrickA${i}` })),
+        cursor: firstCursor,
+      })
+      .mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA0")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /load more/i }));
+
+    // Error copy + retry CTA are visible; existing clips stay rendered above.
+    await waitFor(() =>
+      expect(screen.getByText(/Feed temporarily unavailable — please try again in a moment\./i)).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
+    expect(screen.getByText("TrickA0")).toBeInTheDocument();
+    // Load more button is replaced by the error card — not both on screen.
+    expect(screen.queryByRole("button", { name: /load more/i })).not.toBeInTheDocument();
+  });
+
+  it("clears the load-more error and recovers when Try again succeeds", async () => {
+    const user = userEvent.setup();
+    const firstCursor = { createdAt: { toMillis: () => 1 } as ClipDoc["createdAt"], id: "g1_2_set" };
+    mockFetchClipsFeed
+      .mockResolvedValueOnce({
+        clips: Array.from({ length: 12 }, (_, i) => makeClip({ id: `g1_${i}_set`, trickName: `TrickA${i}` })),
+        cursor: firstCursor,
+      })
+      .mockRejectedValueOnce(new Error("transient"))
+      .mockResolvedValueOnce({
+        clips: [makeClip({ id: "g2_1_set", trickName: "TrickB0" })],
+        cursor: null,
+      });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA0")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /load more/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: /try again/i }));
+
+    // Next page lands, error banner is gone, caught-up label renders.
+    await waitFor(() => expect(screen.getByText("TrickB0")).toBeInTheDocument());
+    expect(screen.queryByText(/Couldn't load the feed/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /try again/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/You're all caught up/i)).toBeInTheDocument();
+  });
+
   it("renders an error state with retry when the initial fetch fails", async () => {
     const user = userEvent.setup();
     mockFetchClipsFeed
