@@ -32,6 +32,11 @@ Configure these in **GitHub → Settings → Branches → Add rule** (pattern: `
   - `build-and-test` (from `.github/workflows/main.yml`)
   - `enforce-pr-policy` (from `.github/workflows/pr-gate.yml`)
   - `verify-no-cloud-functions` (from `.github/workflows/pr-gate.yml`)
+  - `validate-firebase-rules` (from `.github/workflows/pr-gate.yml`)
+
+> **Automation:** `scripts/apply-branch-protection.sh` applies all of the
+> rules below via `gh api`. Run it whenever this checklist changes so the
+> remote repo stays in sync with the documented policy.
 
 ### 3. Require conversation resolution before merging
 
@@ -60,13 +65,16 @@ Configure these in **GitHub → Settings → Branches → Add rule** (pattern: `
 
 In addition to GitHub's branch protection settings, the following CI checks run on every PR to `main`:
 
-| Check | Workflow | Purpose |
-|---|---|---|
-| `enforce-pr-policy` | `pr-gate.yml` | Confirms the change arrived via PR |
-| `verify-no-cloud-functions` | `pr-gate.yml` | Rejects new Cloud Functions code in `functions/src/` |
-| `verify-workflow-changes` | `pr-gate.yml` | Warns when `.github/workflows/` files are modified |
-| `build-and-test` | `main.yml` | Lint, type check, tests, build |
-| `lighthouse` | `main.yml` | Performance regression check |
+| Check                       | Workflow                    | Purpose                                                                                      |
+| --------------------------- | --------------------------- | -------------------------------------------------------------------------------------------- |
+| `enforce-pr-policy`         | `pr-gate.yml`               | Confirms the change arrived via PR                                                           |
+| `verify-no-cloud-functions` | `pr-gate.yml`               | Rejects new Cloud Functions code in `functions/src/`                                         |
+| `verify-workflow-changes`   | `pr-gate.yml`               | Warns when `.github/workflows/` files are modified                                           |
+| `validate-firebase-rules`   | `pr-gate.yml`               | Runs emulator rules tests when Firestore/Storage rules change                                |
+| `build-and-test`            | `main.yml`                  | Lint, type check, tests, build                                                               |
+| `lighthouse`                | `main.yml`                  | Performance regression check                                                                 |
+| Rules deploy                | `firebase-rules-deploy.yml` | Pushes `firestore.rules` / `storage.rules` / indexes to production on merge to `main`        |
+| Infra setup                 | `firebase-infra-setup.yml`  | Manual workflow for daily Firestore backups + 90-day Storage lifecycle (`workflow_dispatch`) |
 
 ---
 
@@ -88,7 +96,13 @@ The `.github/CODEOWNERS` file assigns `@myhuemungusD` as the default owner for a
 
 ## Setup Checklist
 
-Use this checklist when configuring branch protection on GitHub:
+You can apply the entire ruleset in one command:
+
+```bash
+GITHUB_REPO=myhuemungusD/skatehubba-play bash scripts/apply-branch-protection.sh
+```
+
+Or click through the UI:
 
 - [ ] Go to GitHub → Settings → Branches → Add branch protection rule
 - [ ] Set branch name pattern to `main`
@@ -99,7 +113,7 @@ Use this checklist when configuring branch protection on GitHub:
 - [ ] Enable "Require approval of the most recent reviewable push"
 - [ ] Enable "Require status checks to pass before merging"
 - [ ] Enable "Require branches to be up to date before merging"
-- [ ] Add required status checks: `build-and-test`, `enforce-pr-policy`, `verify-no-cloud-functions`
+- [ ] Add required status checks: `build-and-test`, `enforce-pr-policy`, `verify-no-cloud-functions`, `validate-firebase-rules`
 - [ ] Enable "Require conversation resolution before merging"
 - [ ] Enable "Do not allow bypassing the above settings"
 - [ ] Enable "Restrict who can push to matching branches" (add `@myhuemungusD`)
