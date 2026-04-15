@@ -92,6 +92,7 @@ No custom backend. No serverless functions. The client talks directly to Firebas
 - **Push notifications** — FCM "your turn" alerts with deep-link into the game
 - **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed
 - **Featured clip surface** — top of lobby rotates the freshest landed clips
+- **Clip upvotes** — single-tap upvote on every clip (no undo, double-vote-proof via Firestore rules)
 - **Leaderboard** — ranked players by wins (aspirational targets)
 - **Player profiles** — public per-user pages with full game history
 - **Block & report** — moderation tools backed by Firestore rules
@@ -307,7 +308,9 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 - ✅ **Challenge anyone** — search/invite by username, expanding beyond existing friend groups
 - ✅ **Block & report** — moderation tooling backed by Firestore rules
 - ✅ **Cross-game clips feed + featured clip** — landed tricks become a discovery surface
-- ⏳ **Spectator mode** — watch active games (planned)
+- ✅ **Clip upvotes** — single-tap, no-undo upvotes on every clip (per-vote rules + double-vote guard)
+- 🚧 **Vote-driven clip ranking** — promote the feed and featured clip from chronological/random to upvote-ranked (next up)
+- 🧊 **Spectator mode** — deferred; revisit after vote-driven ranking lands
 
 ### Phase 4 — Network Effects Flywheel 🟡 in progress
 

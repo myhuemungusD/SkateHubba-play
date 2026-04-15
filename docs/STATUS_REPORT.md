@@ -9,6 +9,7 @@ Status legend:
 - **Done** — shipped to `main`, in production, covered by tests
 - **In Review** — code on a branch / `[Unreleased]` in CHANGELOG, not yet released
 - **In Progress** — partial implementation in repo (code, types, or rules present but feature not user-facing)
+- **Deferred** — explicitly de-prioritized; pulled off the active roadmap pending a future revisit
 - **Planned** — on the roadmap, no code yet
 - **Ops Pending** — code is ready; deployment / infra task remains
 
@@ -82,11 +83,13 @@ Status legend:
 | Leaderboard                      | **Done**        | `src/components/Leaderboard.tsx` + tests                              |
 | Featured clip surface            | **Done**        | `src/components/FeaturedClipCard.tsx`                                 |
 | Cross-game clips feed            | **Done**        | `src/components/ClipsFeed.tsx`, `src/services/clips.ts`               |
+| Clip upvote primitives           | **Done**        | `upvoteClip()`, `clipVotes` collection, `firestore.rules:934-960`, `AlreadyUpvotedError`, UI in `FeaturedClipCard` + `ClipsFeed` |
+| Vote-driven clip ranking         | **In Progress** | ⚠️ Confirmed: featured clip is currently picked **at random** from a 50-row recent window — see `fetchFeaturedClip()` at `src/services/clips.ts:388` (line 420: `Math.floor(Math.random() * candidates.length)`). The feed itself is chronological. Upvote counts are surfaced in the UI but don't drive ordering anywhere yet — that's the active work item |
 | Block / report users             | **Done**        | `src/services/blocking.ts`, `src/services/reports.ts`, `ReportModal`  |
-| Spectator mode (watch live)      | **Planned**     | No code yet                                                           |
+| Spectator mode (watch live)      | **Deferred**    | Pushed back per product call (2026-04-15) — revisit after vote-driven ranking ships |
 | Pro username badge               | **Done**        | `src/components/ProUsername.tsx`                                      |
 
-**Phase 3 verdict:** ~85% complete. Spectator mode is the only unimplemented item.
+**Phase 3 verdict:** ~90% complete on the post-defer scope. Vote-driven ranking is the active focus; spectator is parked.
 
 ---
 
@@ -176,24 +179,30 @@ Status legend:
 
 ## 8. Roadmap Completion Summary
 
-| Phase                              | Items | Done | In Review | In Progress | Planned | % Shipped |
-| ---------------------------------- | ----: | ---: | --------: | ----------: | ------: | --------: |
-| Phase 1 — Core Loop                | 31    | 31   | 0         | 0           | 0       | **100%**  |
-| Phase 2 — Viral Mechanics          | 9     | 9    | 0         | 0           | 0       | **100%**  |
-| Phase 3 — Social Graph & Discovery | 8     | 7    | 0         | 0           | 1       | **88%**   |
-| Phase 4 — Network Effects          | 7     | 0    | 0         | 4           | 3       | **0%**    |
-| Unreleased — Judge System          | 9     | 0    | 9         | 0           | 0       | **In review** |
+| Phase                              | Items | Done | In Review | In Progress | Deferred | Planned | % Shipped |
+| ---------------------------------- | ----: | ---: | --------: | ----------: | -------: | ------: | --------: |
+| Phase 1 — Core Loop                | 31    | 31   | 0         | 0           | 0        | 0       | **100%**  |
+| Phase 2 — Viral Mechanics          | 9     | 9    | 0         | 0           | 0        | 0       | **100%**  |
+| Phase 3 — Social Graph & Discovery | 10    | 8    | 0         | 1           | 1        | 0       | **80%**   |
+| Phase 4 — Network Effects          | 7     | 0    | 0         | 4           | 0        | 3       | **0%**    |
+| Unreleased — Judge System          | 9     | 0    | 9         | 0           | 0        | 0       | **In review** |
 
-**Overall product completion (shipped + in-review):** ~83% of all roadmapped features.
+**Overall product completion (shipped + in-review):** ~83% of in-scope roadmapped features (spectator excluded — deferred).
+**Active focus:** Vote-driven clip ranking (Phase 3 In Progress).
 **Production gate:** Green (per gap analysis: 9.6/10, all P0 closed).
 
 ---
 
 ## 9. Recommended Next Actions
 
-1. **Cut a release tag** for the Judge System so CHANGELOG `[Unreleased]` rolls into a `v1.x.0`.
-2. **Promote Phase 2 in README** from "in progress" to "shipped" — it's stale.
+1. **Ship vote-driven clip ranking** _(active focus)_:
+   - Replace the random pick in `fetchFeaturedClip()` (`src/services/clips.ts:388`) with an upvote-count-ranked query, falling back to recency when vote counts tie or are zero.
+   - Add a "Top" / "New" toggle on `ClipsFeed` so the feed can sort by upvotes over a rolling window (24 h / 7 d / all-time).
+   - Backfill an aggregate `upvoteCount` field on the clip doc (or denormalised counter doc) so feed sorting doesn't require N aggregate queries per page.
+   - Instrument `clip_upvoted` analytics event to measure tap-through on the new ranking surface.
+   - Add Firestore rules-test coverage for the new ranked query path (read-only, but worth pinning).
+2. **Cut a release tag** for the Judge System so CHANGELOG `[Unreleased]` rolls into a `v1.x.0`.
 3. **Land remaining spots/map UI** to flip Phase 4 spot tagging from In Progress → Done.
-4. **Spec spectator mode** — last Phase 3 gap; low complexity (read-only `onSnapshot` on a non-participant game).
+4. ~~Spec spectator mode~~ — **deferred**; revisit after vote-driven ranking is in production and we can read the engagement numbers.
 5. **Schedule the P1 ops items** (rules deploy, backups, video purge, branch protection) — these are blockers for scaling, not for shipping.
 6. **Decide on Crew / Trick Library / Tournaments** sequencing — these are the biggest remaining bets and should be prioritised against learnings from the spots/map launch.
