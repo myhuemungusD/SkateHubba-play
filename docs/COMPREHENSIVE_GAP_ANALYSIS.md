@@ -1,6 +1,6 @@
 # Comprehensive Gap Analysis — SkateHubba-Play
 
-**Date:** 2026-03-24
+**Date:** 2026-04-15 (updated from 2026-03-24)
 **Stack:** React 18 + TypeScript (strict) + Firebase (Auth / Firestore / Storage) + Vercel
 **Verification gate:** `tsc -b` ✓ | `lint` ✓ | `761/761 tests` ✓ | `build` ✓
 
@@ -10,11 +10,21 @@
 
 SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript errors, 100% service/hook test coverage, comprehensive Firestore security rules, Sentry error tracking, and a clean CI pipeline. This analysis covers every dimension of the codebase and categorises remaining gaps by severity and ownership.
 
-**Current score: 9.6/10** (up from 9.5 — gaps closed in this review)
+**Current score: 9.7/10** (up from 9.6 — dev-side P3 polish gaps closed)
 
 ---
 
-## Gaps Closed in This Review
+## Gaps Closed Since Last Review (2026-04-15)
+
+| #    | Gap                                                                                  | Fix                                                                                                                                                                                                                                                                                | File(s)                                                      |
+| ---- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| V1   | Username constraints defined in both `services/users.ts` and `ProfileSetup.tsx`      | `ProfileSetup.tsx` now imports `USERNAME_MIN/MAX/RE` from the service. Rules file annotated with pointer comments so all 3 sites reference one TS source of truth                                                                                                                  | `screens/ProfileSetup.tsx`, `firestore.rules`                |
+| DOC1 | Exported service functions lacked JSDoc preconditions                                | Added JSDoc to `onAuthChange`, `signUp`, `signIn`, `signOut`, `resetPassword`, `resendVerification`, `createGame`, `acceptJudgeInvite`, `declineJudgeInvite`, `forfeitExpiredTurn` — documenting auth preconditions, rate limits, turn-order requirements, and expiration branches | `services/auth.ts`, `services/games.ts`                      |
+| DOC2 | Firestore rules' username length/regex magic numbers had no link to the TS constants | Inline pointer comments added next to username size/regex checks, plus a docblock on the `users/{uid}` match explaining the cross-layer contract                                                                                                                                   | `firestore.rules`                                            |
+| A1   | `DeleteAccountModal` needed focus trap                                               | `useFocusTrap` hook already created + wired into modal `panelRef`; `Tab` now cycles within the dialog and focus restores on close                                                                                                                                                  | `components/DeleteAccountModal.tsx`, `hooks/useFocusTrap.ts` |
+| P3   | Landing-page hero logo lacked `decoding="async"`                                     | Added async decoding so the priority-fetched hero logo no longer blocks the main thread on decode                                                                                                                                                                                  | `screens/Landing.tsx`                                        |
+
+## Gaps Closed in Prior Review
 
 | #   | Gap                                                              | Fix                                                                              | File(s)                             |
 | --- | ---------------------------------------------------------------- | -------------------------------------------------------------------------------- | ----------------------------------- |
@@ -112,11 +122,10 @@ SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript er
 
 **Remaining gaps:**
 
-| #   | Gap                                    | Severity | Owner | Details                                                                                                  |
-| --- | -------------------------------------- | -------- | ----- | -------------------------------------------------------------------------------------------------------- |
-| A1  | No focus trap in modals                | P2       | Dev   | DeleteAccountModal allows Tab to escape the modal. Needs focus trap library or manual implementation     |
-| A2  | Video elements lack captions           | P3       | Dev   | User-generated video content has no caption/transcript support. Low priority for skateboard trick videos |
-| A3  | Notification dropdown lacks focus trap | P3       | Dev   | NotificationBell dropdown closes on Escape (good) but doesn't trap focus                                 |
+| #   | Gap                                    | Severity | Owner | Details                                                                                                                                    |
+| --- | -------------------------------------- | -------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| A2  | Video elements lack captions           | P3       | Dev   | User-generated video content has no caption/transcript support. Low priority for skateboard trick videos                                   |
+| A3  | Notification dropdown lacks focus trap | P3       | Dev   | NotificationBell dropdown closes on Escape (good) but doesn't trap focus. Arguable — a non-modal popover traditionally does not trap focus |
 
 ### 6. Validation & Data Integrity — 9/10
 
@@ -133,10 +142,9 @@ SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript er
 
 **Remaining gaps:**
 
-| #   | Gap                                      | Severity | Owner | Details                                                                                           |
-| --- | ---------------------------------------- | -------- | ----- | ------------------------------------------------------------------------------------------------- |
-| V1  | Username constraints defined in 3 places | P3       | Dev   | `users.ts`, `ProfileSetup.tsx`, `firestore.rules` — risk of drift. Could extract shared constants |
-| V2  | Email regex is permissive                | Info     | —     | Matches `a@b.cd`. Acceptable: Firebase Auth validates on backend                                  |
+| #   | Gap                       | Severity | Owner | Details                                                          |
+| --- | ------------------------- | -------- | ----- | ---------------------------------------------------------------- |
+| V2  | Email regex is permissive | Info     | —     | Matches `a@b.cd`. Acceptable: Firebase Auth validates on backend |
 
 ### 7. Performance — 8/10
 
@@ -151,11 +159,11 @@ SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript er
 
 **Remaining gaps:**
 
-| #   | Gap                                              | Severity | Owner | Details                                                                               |
-| --- | ------------------------------------------------ | -------- | ----- | ------------------------------------------------------------------------------------- |
-| P1  | `lastTurnActionAt` map pruning threshold is 50   | Info     | —     | Pruned when size > 50. Could grow in long sessions but bounded by pruning. Acceptable |
-| P2  | localStorage notifications capped at 50 per user | Info     | —     | No eviction by time. Acceptable for current scale                                     |
-| P3  | No image lazy loading on Landing page            | P3       | Dev   | Feature icons/images load eagerly                                                     |
+| #   | Gap                                              | Severity | Owner | Details                                                                                                                                                                                                   |
+| --- | ------------------------------------------------ | -------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P1  | `lastTurnActionAt` map pruning threshold is 50   | Info     | —     | Pruned when size > 50. Could grow in long sessions but bounded by pruning. Acceptable                                                                                                                     |
+| P2  | localStorage notifications capped at 50 per user | Info     | —     | No eviction by time. Acceptable for current scale                                                                                                                                                         |
+| P3  | Feature icons/images are SVG components          | Info     | —     | Previously flagged as "missing lazy-load"; the feature grid is inline SVG React, not `<img>`. Footer logo is already `loading="lazy"`; hero logo now `decoding="async"`. Video uses `preload="metadata"`. |
 
 ### 8. CI/CD — 8/10
 
@@ -211,31 +219,33 @@ These are out of scope for the code repo but critical for production:
 - File-specific knowledge table in CLAUDE.md
 - Inline comments on complex logic (fisheye shader, OR query merge, rate limiting)
 
-**Remaining gaps:**
+**Remaining gaps:** (none)
 
-| #    | Gap                                            | Severity | Owner | Details                                                                     |
-| ---- | ---------------------------------------------- | -------- | ----- | --------------------------------------------------------------------------- |
-| DOC1 | No JSDoc on exported service functions         | P3       | Dev   | Hard to discover preconditions (e.g., `deleteAccount` requires recent auth) |
-| DOC2 | Firestore rules lack inline rationale comments | P3       | Dev   | Complex rules (rate limit, turn order) have no "why" comments               |
+All public service functions now carry JSDoc describing preconditions,
+rate limits, and side-effects. Firestore rules already had extensive
+rationale comments on the complex branches (rate limit, turn order,
+instant-forfeit attack); the remaining cross-layer link between the
+username regex/size checks and the shared TS constants is now
+annotated in-file.
 
 ---
 
 ## Summary Scorecard
 
-| Category       | Score      | Change | Notes                                                      |
-| -------------- | ---------- | ------ | ---------------------------------------------------------- |
-| Security       | 8.5/10     | —      | Strong Firestore rules, App Check, CSP. Broad storage read |
-| Error Handling | 10/10      | —      | Sentry + ErrorBoundary + withRetry covers all paths        |
-| Testing        | 8/10       | —      | 100% service coverage. No E2E (P2)                         |
-| Type Safety    | 10/10      | —      | Strict mode, zero errors, no `any`                         |
-| Accessibility  | 7.5/10     | ↑ +0.5 | aria-invalid, autoFocus added. Focus trap still missing    |
-| Validation     | 9/10       | ↑ +0.5 | Control char sanitisation added                            |
-| Performance    | 8/10       | —      | Code splitting, preconnect, Lighthouse CI                  |
-| CI/CD          | 8/10       | ↑      | SW placeholder warning added                               |
-| Data Privacy   | 10/10      | —      | GDPR, COPPA, consent banner, account deletion              |
-| Infrastructure | 6/10       | —      | No backups, no video purge (ops work)                      |
-| Documentation  | 8/10       | —      | Comprehensive, minor JSDoc gap                             |
-| **Overall**    | **9.6/10** | ↑ 0.1  | Code-level gaps closed. Remaining are ops/infra            |
+| Category       | Score      | Change | Notes                                                                               |
+| -------------- | ---------- | ------ | ----------------------------------------------------------------------------------- |
+| Security       | 8.5/10     | —      | Strong Firestore rules, App Check, CSP. Broad storage read                          |
+| Error Handling | 10/10      | —      | Sentry + ErrorBoundary + withRetry covers all paths                                 |
+| Testing        | 8/10       | —      | 100% service coverage. No E2E (P2)                                                  |
+| Type Safety    | 10/10      | —      | Strict mode, zero errors, no `any`                                                  |
+| Accessibility  | 8.5/10     | ↑ +1.0 | A1 focus trap wired into DeleteAccountModal. Only A2 (captions) / A3 (popover) left |
+| Validation     | 9.5/10     | ↑ +0.5 | V1 closed — username constants consolidated in `services/users.ts`                  |
+| Performance    | 8/10       | —      | Code splitting, preconnect, Lighthouse CI                                           |
+| CI/CD          | 8/10       | —      | SW placeholder warning added                                                        |
+| Data Privacy   | 10/10      | —      | GDPR, COPPA, consent banner, account deletion                                       |
+| Infrastructure | 6/10       | —      | No backups, no video purge (ops work)                                               |
+| Documentation  | 9/10       | ↑ +1.0 | DOC1/DOC2 closed — JSDoc on all public service exports + rules cross-ref comments   |
+| **Overall**    | **9.7/10** | ↑ 0.1  | Dev-side P3 polish gaps closed. Remaining are ops/infra                             |
 
 ---
 
@@ -254,17 +264,17 @@ These are out of scope for the code repo but critical for production:
 ### P2 — Quality (Dev)
 
 6. Add E2E tests for critical user flows
-7. Add focus trap to modals (DeleteAccountModal, NotificationBell)
+7. ~~Add focus trap to modals~~ — DONE for DeleteAccountModal; NotificationBell popover intentionally left without trap (matches popover semantics)
 8. Add Firestore rule unit tests
 9. Add accessibility testing in CI (axe-core)
 10. Add TTL cleanup for username reservations
 
 ### P3 — Polish (Dev)
 
-11. Extract shared username validation constants
-12. Add JSDoc to exported service functions
-13. Add inline rationale to Firestore rules
-14. Add smoke tests for RecordScreen
+11. ~~Extract shared username validation constants~~ — DONE (see V1 above)
+12. ~~Add JSDoc to exported service functions~~ — DONE (see DOC1 above)
+13. ~~Add inline rationale to Firestore rules~~ — DONE (see DOC2 above)
+14. ~~Add smoke tests for RecordScreen~~ — N/A (no `RecordScreen` exists; recording happens via the `VideoRecorder` component, which already has coverage)
 
 ---
 

@@ -45,6 +45,11 @@ service cloud.firestore {
     // ── Users ──
     // Users can read any profile (for opponent lookup)
     // Users can only write their own profile (created once)
+    //
+    // Username constraints MUST match `USERNAME_MIN`, `USERNAME_MAX`, and
+    // `USERNAME_RE` in src/services/users.ts. Rules are the source of truth
+    // at the security boundary; the TS constants exist so the UI can reject
+    // invalid input before a round-trip. Update BOTH when changing limits.
     match /users/{uid} {
       allow read: if isSignedIn();
       allow create: if isOwner(uid)
@@ -52,10 +57,10 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/users/$(uid))
         && request.resource.data.uid == uid
         && request.resource.data.username is string
-        && request.resource.data.username.size() >= 3
-        && request.resource.data.username.size() <= 20
+        && request.resource.data.username.size() >= 3  // USERNAME_MIN
+        && request.resource.data.username.size() <= 20 // USERNAME_MAX
         // Enforce lowercase alphanumeric + underscore only (matches client-side normalisation)
-        && request.resource.data.username.matches('[a-z0-9_]+')
+        && request.resource.data.username.matches('[a-z0-9_]+') // USERNAME_RE body
         // wins/losses must start at zero if present (prevents leaderboard inflation
         // by injecting arbitrary stats at profile creation time)
         && (!('wins' in request.resource.data) || request.resource.data.wins == 0)
@@ -113,14 +118,16 @@ service cloud.firestore {
     }
 
     // ── Usernames (reservation docs for uniqueness) ──
+    // Same constraints as users/{uid}.username above — keep in sync with
+    // USERNAME_MIN/MAX/RE in src/services/users.ts.
     match /usernames/{username} {
       allow read: if isSignedIn();
       allow create: if isSignedIn()
         && request.resource.data.uid == request.auth.uid
-        && username.size() >= 3
-        && username.size() <= 20
+        && username.size() >= 3  // USERNAME_MIN
+        && username.size() <= 20 // USERNAME_MAX
         // Reservation key must be a valid username (lowercase alphanum + underscore)
-        && username.matches('[a-z0-9_]+');
+        && username.matches('[a-z0-9_]+'); // USERNAME_RE body
       // Cannot be updated; only the owning user can delete (account deletion flow)
       allow update: if false;
       allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
