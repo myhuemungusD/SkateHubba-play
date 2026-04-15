@@ -295,13 +295,16 @@ export async function createGame(
     body: `@${challengerUsername} challenged you to S.K.A.T.E.`,
     gameId: docRef.id,
   });
-  // Notify the judge (if any) that they've been nominated (best-effort)
+  // Notify the referee (if any) that they've been nominated (best-effort).
+  // The notification `type` code stays "judge_invite" for schema stability —
+  // existing docs and any listeners keyed on it must keep working. Only the
+  // user-visible title copy is renamed.
   if (hasValidJudge) {
     writeNotification({
       senderUid: challengerUid,
       recipientUid: judgeUid,
       type: "judge_invite",
-      title: "You've been asked to judge",
+      title: "You've been asked to referee",
       body: `@${challengerUsername} vs @${opponentUsername} — accept to rule on disputes`,
       gameId: docRef.id,
     });
@@ -329,8 +332,8 @@ export async function acceptJudgeInvite(gameId: string): Promise<void> {
     if (!snap.exists()) throw new Error("Game not found");
     const game = toGameDoc(snap);
     if (game.status !== "active") throw new Error("Game is already over");
-    if (!game.judgeId) throw new Error("No judge was nominated for this game");
-    if (game.judgeStatus !== "pending") throw new Error("Judge invite is no longer pending");
+    if (!game.judgeId) throw new Error("No referee was nominated for this game");
+    if (game.judgeStatus !== "pending") throw new Error("Referee invite is no longer pending");
 
     tx.update(gameRef, {
       judgeStatus: "accepted",
@@ -346,8 +349,8 @@ export async function declineJudgeInvite(gameId: string): Promise<void> {
     if (!snap.exists()) throw new Error("Game not found");
     const game = toGameDoc(snap);
     if (game.status !== "active") throw new Error("Game is already over");
-    if (!game.judgeId) throw new Error("No judge was nominated for this game");
-    if (game.judgeStatus !== "pending") throw new Error("Judge invite is no longer pending");
+    if (!game.judgeId) throw new Error("No referee was nominated for this game");
+    if (game.judgeStatus !== "pending") throw new Error("Referee invite is no longer pending");
 
     tx.update(gameRef, {
       judgeStatus: "declined",
@@ -738,7 +741,7 @@ export async function callBSOnSetTrick(gameId: string): Promise<void> {
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "matching") throw new Error("Not in matching phase");
     if (!isJudgeActive(game) || !game.judgeId) {
-      throw new Error("Call BS is only available when a judge is active");
+      throw new Error("Call BS is only available when a referee is active");
     }
 
     const matcherUid = getOpponent(game, game.currentSetter);
@@ -790,7 +793,7 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
     const game = toGameDoc(snap);
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "setReview") throw new Error("Not in setReview phase");
-    if (!game.judgeId) throw new Error("No judge on this game");
+    if (!game.judgeId) throw new Error("No referee on this game");
 
     const matcherUid = getOpponent(game, game.currentSetter);
     const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
@@ -835,7 +838,7 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
       senderUid: result.setterUid,
       recipientUid: result.matcherUid,
       type: "your_turn",
-      title: "Judge ruled: Clean",
+      title: "Referee ruled: Clean",
       body: `The set stands. Match @${result.setterUsername}'s trick.`,
       gameId,
     });
@@ -845,7 +848,7 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
       senderUid: result.matcherUid,
       recipientUid: result.setterUid,
       type: "your_turn",
-      title: "Judge ruled: Sketchy",
+      title: "Referee ruled: Sketchy",
       body: `Set a new trick for @${result.matcherUsername}.`,
       gameId,
     });
@@ -876,7 +879,7 @@ export async function resolveDispute(
     const game = toGameDoc(snap);
     if (game.status !== "active") throw new Error("Game is already over");
     if (game.phase !== "disputable") throw new Error("Not in disputable phase");
-    if (!game.judgeId) throw new Error("No judge on this game");
+    if (!game.judgeId) throw new Error("No referee on this game");
 
     const matcherUid = getOpponent(game, game.currentSetter);
     const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
@@ -985,7 +988,7 @@ export async function resolveDispute(
       senderUid: result.judgeUid,
       recipientUid: result.matcherUid,
       type: "your_turn",
-      title: "Judge ruled: Landed",
+      title: "Referee ruled: Landed",
       body: `You landed! Set a trick for @${result.setterUsername}`,
       gameId,
     });
@@ -994,7 +997,7 @@ export async function resolveDispute(
       senderUid: result.judgeUid,
       recipientUid: result.matcherUid,
       type: "your_turn",
-      title: "Judge ruled: Missed",
+      title: "Referee ruled: Missed",
       body: `Set a trick for @${result.matcherUsername}`,
       gameId,
     });
