@@ -1,0 +1,199 @@
+# Feature Completion Status Report
+
+**Generated:** 2026-04-15
+**Branch:** `claude/add-status-report-75JXt`
+**Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`, `docs/COMPREHENSIVE_GAP_ANALYSIS.md`
+
+Status legend:
+
+- **Done** — shipped to `main`, in production, covered by tests
+- **In Review** — code on a branch / `[Unreleased]` in CHANGELOG, not yet released
+- **In Progress** — partial implementation in repo (code, types, or rules present but feature not user-facing)
+- **Planned** — on the roadmap, no code yet
+- **Ops Pending** — code is ready; deployment / infra task remains
+
+---
+
+## 1. Phase 1 — Core Loop (Released v1.0.0)
+
+| Feature                        | Status   | Evidence                                                                    |
+| ------------------------------ | -------- | --------------------------------------------------------------------------- |
+| Email/password sign-up         | **Done** | `src/services/auth.ts`, `e2e/auth.spec.ts`                                  |
+| Email/password sign-in         | **Done** | `src/services/auth.ts`                                                      |
+| Email verification + resend    | **Done** | `src/services/auth.ts`, `src/components/VerifyEmailBanner.tsx`              |
+| Google OAuth (popup+redirect)  | **Done** | `src/services/auth.ts`, `src/services/__tests__/auth-google.test.ts`        |
+| Password reset                 | **Done** | `src/services/auth.ts`                                                      |
+| Atomic username reservation    | **Done** | `src/services/users.ts` (uses `runTransaction`)                             |
+| Profile setup (stance, name)   | **Done** | `src/screens/ProfileSetup.tsx`                                              |
+| Challenge by username          | **Done** | `src/screens/ChallengeScreen.tsx`                                           |
+| Setting phase (record + name)  | **Done** | `src/screens/GamePlayScreen.tsx`, `src/components/VideoRecorder.tsx`        |
+| Matching phase (watch+attempt) | **Done** | `src/screens/GamePlayScreen.tsx`                                            |
+| Self-judging (landed/missed)   | **Done** | `src/services/games.ts`                                                     |
+| S.K.A.T.E. letter accumulation | **Done** | `src/components/LetterDisplay.tsx`, rules in `firestore.rules`              |
+| Win condition (5 letters)      | **Done** | `src/screens/GameOverScreen.tsx`, `firestore.rules`                         |
+| Real-time game updates         | **Done** | `src/services/games.ts` (dual `onSnapshot` for OR query)                    |
+| 24-hour turn timer             | **Done** | `src/components/Timer.tsx`, `src/components/LobbyTimer.tsx`                 |
+| Auto-forfeit on expiry         | **Done** | `src/services/games.ts`                                                     |
+| WebM video recording (web)     | **Done** | `src/components/VideoRecorder.tsx`                                          |
+| MP4 capture (native)           | **Done** | `src/services/nativeVideo.ts`                                               |
+| Video upload + size guard      | **Done** | `src/services/storage.ts` (1 KB – 50 MB, retry w/ backoff)                  |
+| Lobby (active+completed games) | **Done** | `src/screens/Lobby.tsx`                                                     |
+| Player profile + game history  | **Done** | `src/screens/PlayerProfileScreen.tsx`                                       |
+| Privacy Policy / ToS / Data    | **Done** | `src/screens/PrivacyPolicy.tsx`, `TermsOfService.tsx`, `DataDeletion.tsx`   |
+| Account deletion               | **Done** | `src/services/auth.ts`, `src/components/DeleteAccountModal.tsx`             |
+| Age gate (COPPA, 13+)          | **Done** | `src/screens/AgeGate.tsx`                                                   |
+| Consent banner                 | **Done** | `src/components/ConsentBanner.tsx`                                          |
+| Offline read support           | **Done** | `src/firebase.ts` (persistent cache), `src/components/OfflineBanner.tsx`    |
+| PWA install                    | **Done** | `index.html`, `public/manifest`                                             |
+| Capacitor iOS/Android shells   | **Done** | `capacitor.config.ts`, `android/`, `ios/` (per `cap:open:*` scripts)        |
+| Sentry error tracking          | **Done** | `src/lib/sentry`, `src/main.tsx`                                            |
+| Vercel Analytics + Speed       | **Done** | `src/App.tsx` (`Analytics`, `SpeedInsights`)                                |
+| Firestore security rules       | **Done** | `firestore.rules` (51 KB, validated turn order + scores + rate limits)      |
+| Storage security rules         | **Done** | `storage.rules`                                                             |
+
+**Phase 1 verdict:** 100% complete, in production at [skatehubba.com](https://skatehubba.com).
+
+---
+
+## 2. Phase 2 — Viral Mechanics
+
+| Feature                           | Status            | Evidence                                                                  |
+| --------------------------------- | ----------------- | ------------------------------------------------------------------------- |
+| Invite flow (SMS / link / share)  | **Done**          | `src/components/InviteButton.tsx` + `invite_sent` analytics               |
+| Rematch from Game Over            | **Done**          | `src/screens/GameOverScreen.tsx`, `App.tsx:351-365`                       |
+| Push notification registration    | **Done**          | `src/services/fcm.ts`, `src/components/PushPermissionBanner.tsx`          |
+| In-app notification bell          | **Done**          | `src/components/NotificationBell.tsx`, `src/services/notifications.ts`    |
+| Game notification watcher         | **Done**          | `src/components/GameNotificationWatcher.tsx`                              |
+| Deep-link from push → game        | **Done**          | `App.tsx:147-157` (`skatehubba:open-game` event)                          |
+| Clip sharing (social platforms)   | **Done**          | `src/components/ClipsFeed.tsx`, `src/services/clips.ts` + `clip_shared`   |
+| Clip save (local download)        | **Done**          | `clip_saved` analytic, `ClipsFeed.tsx`                                    |
+| Game share (post-game)            | **Done**          | `game_shared` analytic                                                    |
+
+**Phase 2 verdict:** All listed Phase 2 mechanics are shipped. Roadmap label "in progress" in README is now **stale** — recommend promoting to "shipped."
+
+---
+
+## 3. Phase 3 — Social Graph & Discovery
+
+| Feature                          | Status          | Evidence                                                              |
+| -------------------------------- | --------------- | --------------------------------------------------------------------- |
+| Public player profiles           | **Done**        | `src/screens/PlayerProfileScreen.tsx`, route `/player/:uid`           |
+| Search / challenge by username   | **Done**        | `src/screens/ChallengeScreen.tsx` (uses `getUidByUsername`)           |
+| Leaderboard                      | **Done**        | `src/components/Leaderboard.tsx` + tests                              |
+| Featured clip surface            | **Done**        | `src/components/FeaturedClipCard.tsx`                                 |
+| Cross-game clips feed            | **Done**        | `src/components/ClipsFeed.tsx`, `src/services/clips.ts`               |
+| Block / report users             | **Done**        | `src/services/blocking.ts`, `src/services/reports.ts`, `ReportModal`  |
+| Spectator mode (watch live)      | **Planned**     | No code yet                                                           |
+| Pro username badge               | **Done**        | `src/components/ProUsername.tsx`                                      |
+
+**Phase 3 verdict:** ~85% complete. Spectator mode is the only unimplemented item.
+
+---
+
+## 4. Phase 4 — Network Effects
+
+| Feature                          | Status            | Evidence                                                                  |
+| -------------------------------- | ----------------- | ------------------------------------------------------------------------- |
+| Spot tagging (geo-tagged map)    | **In Progress**   | `src/screens/MapPage.tsx`, `SpotDetailPage.tsx`, `src/components/map/*`, `src/services/spots.ts`, `e2e/map.spec.ts`, `rules-tests/spots.rules.test.ts` |
+| Spot ↔ game linkage              | **In Progress**   | `rules-tests/games-spotId.rules.test.ts` (rules) — UI tie-in pending     |
+| Add a Spot UX                    | **In Progress**   | `src/components/map/AddSpotSheet.tsx`                                     |
+| Spot filters (gnar / bust risk)  | **In Progress**   | `src/components/map/SpotFilterBar.tsx`, `BustRisk.tsx`, `GnarRating.tsx`  |
+| Crew challenges (3v3)            | **Planned**       | No code yet                                                               |
+| Trick library                    | **Planned**       | No code yet                                                               |
+| Tournaments                      | **Planned**       | No code yet                                                               |
+
+**Phase 4 verdict:** Spots/Map sub-feature is the only Phase 4 item under development. Crew, library, and tournaments remain on the roadmap.
+
+---
+
+## 5. Unreleased — Judge System (`[Unreleased]` in CHANGELOG)
+
+| Feature                              | Status        | Evidence                                                          |
+| ------------------------------------ | ------------- | ----------------------------------------------------------------- |
+| Optional judge nomination at create  | **In Review** | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[Unreleased]`       |
+| Judge accept / decline notification  | **In Review** | `src/services/notifications.ts`                                   |
+| Dispute → judge ruling (24 h)        | **In Review** | `src/services/games.ts`, `firestore.rules`                        |
+| "Call BS" on setter (24 h)           | **In Review** | `src/services/games.ts`                                           |
+| Judge-only `setReview` phase         | **In Review** | New `GamePhase` value                                             |
+| Honor system path (no judge)         | **In Review** | CHANGELOG `Changed` section                                       |
+| `judgeId` / `judgeStatus` schema     | **In Review** | `GameDoc` extension                                               |
+| `TurnRecord.judgedBy`                | **In Review** | Schema change                                                     |
+| Rules: judge immutability + scoping  | **In Review** | `firestore.rules` updates                                         |
+
+**Verdict:** Code complete, awaiting next release tag. Honor-system path replaces the old `disputable` mid-turn pause for non-judged games.
+
+---
+
+## 6. Cross-Cutting Quality
+
+| Concern                          | Status        | Notes                                                                                |
+| -------------------------------- | ------------- | ------------------------------------------------------------------------------------ |
+| TypeScript strict, no `any`      | **Done**      | `tsc -b` green, lint enforced                                                        |
+| Unit + component tests           | **Done**      | 71 files / 761 tests (per latest gap analysis)                                       |
+| 100% coverage on services/hooks  | **Done**      | Enforced by Vitest thresholds                                                        |
+| Firestore rules unit tests       | **Done**      | `rules-tests/clips.rules.test.ts`, `spots.rules.test.ts`, `games-spotId`, `notifications` (closes prior gap T2) |
+| E2E (Playwright)                 | **Done**      | `e2e/auth.spec.ts`, `e2e/game.spec.ts`, `e2e/map.spec.ts` (closes prior gap T1)      |
+| Lighthouse CI                    | **Done**      | `.lighthouserc.json` in repo root                                                    |
+| GitHub Actions CI gate           | **Done**      | `.github/workflows/`                                                                 |
+| Conventional commits             | **Done**      | Husky + lint-staged + commitlint setup                                               |
+| Sentry + PII scrubbing           | **Done**      | `src/lib/sentry`, `docs/SENTRY_ALERTS.md`                                            |
+| App Check (reCAPTCHA v3)         | **Done**      | `src/firebase.ts` (silent fallback if env missing — gap S1)                          |
+| Dark theme + custom tokens       | **Done**      | `src/index.css` (Tailwind v4 `@theme`)                                               |
+
+---
+
+## 7. Outstanding Gaps (from `docs/COMPREHENSIVE_GAP_ANALYSIS.md`)
+
+### P1 — Infrastructure / Ops (not code-blocked)
+
+| Item                                     | Status         | Owner |
+| ---------------------------------------- | -------------- | ----- |
+| Automate Firebase rules deploy in CI     | **Ops Pending**| Ops   |
+| Daily Firestore managed exports          | **Ops Pending**| Ops   |
+| Storage lifecycle rule for old videos    | **Ops Pending**| Ops   |
+| GitHub branch protection rules           | **Ops Pending**| Ops   |
+| "Download My Data" (GDPR Art. 20)        | **Planned**    | Dev   |
+
+### P2 — Quality
+
+| Item                                     | Status         |
+| ---------------------------------------- | -------------- |
+| Focus trap in modals                     | **Planned**    |
+| Accessibility (axe-core) in CI           | **Planned**    |
+| TTL cleanup for username reservations    | **Planned**    |
+
+### P3 — Polish
+
+| Item                                                  | Status      |
+| ----------------------------------------------------- | ----------- |
+| Extract shared username validation constants          | **Planned** |
+| JSDoc on exported service functions                   | **Planned** |
+| Inline rationale comments in `firestore.rules`        | **Planned** |
+| Smoke tests for `RecordScreen` (now PlayerProfile)    | **Planned** |
+| Lazy-load Landing page imagery                        | **Planned** |
+
+---
+
+## 8. Roadmap Completion Summary
+
+| Phase                              | Items | Done | In Review | In Progress | Planned | % Shipped |
+| ---------------------------------- | ----: | ---: | --------: | ----------: | ------: | --------: |
+| Phase 1 — Core Loop                | 31    | 31   | 0         | 0           | 0       | **100%**  |
+| Phase 2 — Viral Mechanics          | 9     | 9    | 0         | 0           | 0       | **100%**  |
+| Phase 3 — Social Graph & Discovery | 8     | 7    | 0         | 0           | 1       | **88%**   |
+| Phase 4 — Network Effects          | 7     | 0    | 0         | 4           | 3       | **0%**    |
+| Unreleased — Judge System          | 9     | 0    | 9         | 0           | 0       | **In review** |
+
+**Overall product completion (shipped + in-review):** ~83% of all roadmapped features.
+**Production gate:** Green (per gap analysis: 9.6/10, all P0 closed).
+
+---
+
+## 9. Recommended Next Actions
+
+1. **Cut a release tag** for the Judge System so CHANGELOG `[Unreleased]` rolls into a `v1.x.0`.
+2. **Promote Phase 2 in README** from "in progress" to "shipped" — it's stale.
+3. **Land remaining spots/map UI** to flip Phase 4 spot tagging from In Progress → Done.
+4. **Spec spectator mode** — last Phase 3 gap; low complexity (read-only `onSnapshot` on a non-participant game).
+5. **Schedule the P1 ops items** (rules deploy, backups, video purge, branch protection) — these are blockers for scaling, not for shipping.
+6. **Decide on Crew / Trick Library / Tournaments** sequencing — these are the biggest remaining bets and should be prioritised against learnings from the spots/map launch.
