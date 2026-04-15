@@ -948,10 +948,11 @@ service cloud.firestore {
     //     overwritten into a different shape (spec: no undo).
     //   - delete owner-only — backs any future account-deletion cascade.
     //
-    // Reads are open to signed-in users because the featured-clip card
-    // aggregates votes via `getCountFromServer` and checks whether the
-    // current user already upvoted via a direct get — both require read
-    // permission on the collection / doc.
+    // Reads are open to signed-in users because the clips feed aggregates
+    // votes via `getCountFromServer` and checks whether the current user
+    // already upvoted via a direct get — both in `fetchClipUpvoteState`
+    // (see src/services/clips.ts), and both require read permission on
+    // the collection / doc.
     match /clipVotes/{voteId} {
       allow read: if isSignedIn();
 
