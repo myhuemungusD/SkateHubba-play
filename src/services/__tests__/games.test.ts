@@ -58,6 +58,7 @@ vi.mock("../../firebase");
 import {
   createGame,
   _resetCreateGameRateLimit,
+  _turnActionMapSize,
   setTrick,
   failSetTrick,
   submitMatchAttempt,
@@ -561,42 +562,30 @@ describe("games service", () => {
       await expect(setTrick("g2", "Heelflip", null)).resolves.toBeUndefined();
     });
 
-    it("prunes stale rate-limit entries when map exceeds 50 entries", async () => {
-      // Fill the rate-limit map with 51 entries by calling setTrick on distinct game IDs.
-      // We fake Date.now so the first 51 entries appear old (> 60s ago), then advance time.
-      const realDateNow = Date.now;
-      let fakeNow = 1_000_000;
+    it("prunes stale rate-limit entries on every turn action", async () => {
+      // Accumulate several entries on distinct game IDs, then advance time past
+      // the cooldown window. The next record call should drop all stale entries
+      // inline, keeping the map bounded without relying on a size threshold.
+      let fakeNow = 100_000;
       vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
 
-      for (let i = 0; i < 51; i++) {
-        _resetCreateGameRateLimit();
-        // We only need to reset the *game create* cooldown; turn-action entries accumulate.
-        // Actually, _resetCreateGameRateLimit clears the map, so we need a different approach.
-      }
-
-      // Restore and use a manual approach: call setTrick on 51 different game IDs
-      vi.spyOn(Date, "now").mockRestore();
-      _resetCreateGameRateLimit();
-
-      // Set fakeNow to a point in the past so entries are "old"
-      fakeNow = 100_000;
-      vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
-
-      // Perform 51 turn actions on different game IDs
-      for (let i = 0; i < 51; i++) {
+      // Perform 5 turn actions on different game IDs
+      for (let i = 0; i < 5; i++) {
         mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
         await setTrick(`prune-game-${i}`, "Trick", null);
       }
 
-      // Now advance time by more than 60s so entries become stale
-      fakeNow = 100_000 + 61_000;
+      expect(_turnActionMapSize()).toBe(5);
 
-      // The next call will trigger pruning (map.size > 50) and remove stale entries
+      // Advance time past the cooldown so all existing entries are eligible for pruning
+      fakeNow += 4_000;
+
+      // The next record call prunes all stale entries inline; only the new
+      // entry should remain in the map.
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
       await setTrick("prune-game-new", "Trick", null);
 
-      // If pruning works, no error is thrown — the test passes.
-      expect(mockTxUpdate).toHaveBeenCalled();
+      expect(_turnActionMapSize()).toBe(1);
 
       vi.spyOn(Date, "now").mockRestore();
     });

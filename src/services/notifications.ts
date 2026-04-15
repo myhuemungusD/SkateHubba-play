@@ -75,14 +75,16 @@ export async function writeNotification(params: WriteNotificationParams): Promis
       createdAt: serverTimestamp(),
     });
 
-    lastNotificationAt.set(key, Date.now());
+    const now = Date.now();
+    lastNotificationAt.set(key, now);
 
-    // Prune stale entries to prevent unbounded growth
-    if (lastNotificationAt.size > 50) {
-      const cutoff = Date.now() - 60_000;
-      for (const [k, ts] of lastNotificationAt) {
-        if (ts < cutoff) lastNotificationAt.delete(k);
-      }
+    // Prune stale entries on every write. Any entry older than the cooldown
+    // window can no longer rate-limit a future call, so it is safe to drop.
+    // This keeps the map bounded by recent-unique-notifications rather than
+    // by an arbitrary size threshold.
+    const cutoff = now - NOTIFICATION_COOLDOWN_MS;
+    for (const [k, ts] of lastNotificationAt) {
+      if (ts < cutoff) lastNotificationAt.delete(k);
     }
 
     // Record rate-limit timestamp for server-side enforcement (fire-and-forget).
