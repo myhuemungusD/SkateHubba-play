@@ -153,8 +153,11 @@ export async function createProfile(
   emailVerified = false,
 ): Promise<void> {
   await Promise.all([
-    // `createdAt` mirrors the serverTimestamp written by src/services/users.ts.
-    // Required by getPlayerDirectory() which orders by createdAt desc.
+    // Client-side `Date` approximation of the production `serverTimestamp()`
+    // at src/services/users.ts:113.  Accurate enough for getPlayerDirectory()'s
+    // `orderBy("createdAt","desc")` on a single seeded user; callers that need
+    // deterministic multi-user ordering should pass explicit `createdAt`
+    // values via `overrides` instead of relying on the local clock.
     writeDoc("users", uid, {
       uid,
       username,

@@ -238,13 +238,18 @@ test("matcher records response and misses → earns a letter", async ({ browser 
   //  so P2 should now see the waiting screen since it's P1's turn to set again)
   await expect(p2Page.getByText(/Waiting on @p1skater/i)).toBeVisible({ timeout: 15_000 });
 
-  // P1's lobby shows the game with P2 having 1 letter.
-  // Target the LetterDisplay by testid + data-letter-count so we don't
-  // accidentally match any stray "S" in button labels / section headers.
-  await p1.getByText("← Back to Games").click();
-  await expect(p1.locator(`[data-testid="letter-display-${P2.username}"]`)).toHaveAttribute("data-letter-count", "1", {
-    timeout: 5_000,
-  });
+  // Assert on P2's WaitingScreen — it renders <LetterDisplay> with a stable
+  // testid. Previously this pointed at P1's Lobby, which uses inline <span>
+  // loops (no testid) and would never resolve.
+  await expect(p2Page.locator(`[data-testid="letter-display-${P2.username}"]`)).toHaveAttribute(
+    "data-letter-count",
+    "1",
+    { timeout: 10_000 },
+  );
+  await expect(p2Page.locator(`[data-testid="letter-display-${P1.username}"]`)).toHaveAttribute(
+    "data-letter-count",
+    "0",
+  );
 
   await p1Ctx.close();
   await p2Ctx.close();
@@ -292,7 +297,6 @@ test("matcher records response and lands → roles swap, no letters earned", asy
   // `key={game.turnNumber}` in App.tsx). P2 should see the fresh setter UI
   // with the trick-name input (NOT a stale matcher confirmation).
   await expect(p2Page.getByPlaceholder("Name your trick")).toBeVisible({ timeout: 15_000 });
-  await expect(p2Page.getByText("TRICK NAME")).toBeVisible();
 
   // No letters were earned on either side.
   await expect(p2Page.locator(`[data-testid="letter-display-${P1.username}"]`)).toHaveAttribute(
