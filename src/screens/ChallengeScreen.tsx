@@ -3,6 +3,8 @@ import { useSearchParams } from "react-router-dom";
 import { getUidByUsername, type UserProfile } from "../services/users";
 import { fetchSpotName } from "../services/spots";
 import { analytics } from "../services/analytics";
+import { captureException } from "../lib/sentry";
+import { getUserMessage } from "../utils/helpers";
 import type { StartChallengeOptions } from "../context/GameContext";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
@@ -95,24 +97,42 @@ export function ChallengeScreen({
       return;
     }
 
-    // Judge picker is optional — only validate when the user filled it in.
+    // Referee picker is optional — only validate when the user filled it in.
     const judgeNormalized = judge.toLowerCase().trim();
     if (judgeNormalized && judgeNormalized.length < 3) {
-      setError("Judge username is too short");
+      setError("Referee username is too short");
       return;
     }
-    if (judgeNormalized === profile.username) {
-      setError("You can't be your own judge");
+    if (judgeNormalized && judgeNormalized === profile.username) {
+      setError("You can't be your own referee");
       return;
     }
     if (judgeNormalized && judgeNormalized === normalized) {
-      setError("Judge must be a third player");
+      setError("Referee must be a third player");
       return;
     }
 
     setLoading(true);
     try {
-      const uid = await getUidByUsername(normalized);
+      // Resolve both usernames in parallel via allSettled so the optional
+      // referee lookup never holds up — or blows up — the required opponent
+      // path. A transient network blip on the referee field surfaces as a
+      // specific actionable error instead of a generic "Could not start
+      // game", and the user can retry or remove the referee to proceed.
+      const [opponentResult, judgeResult] = await Promise.allSettled([
+        getUidByUsername(normalized),
+        judgeNormalized ? getUidByUsername(judgeNormalized) : Promise.resolve(null),
+      ]);
+
+      if (opponentResult.status === "rejected") {
+        captureException(opponentResult.reason, {
+          extra: { context: "challenge.opponent_lookup", username: normalized },
+        });
+        setError(getUserMessage(opponentResult.reason, "Couldn't reach the player directory. Try again."));
+        return;
+      }
+
+      const uid = opponentResult.value;
       if (!uid) {
         setError(`@${normalized} doesn't exist yet. They need to sign up first.`);
         return;
@@ -125,17 +145,24 @@ export function ChallengeScreen({
       let judgeUid: string | null = null;
       let judgeUsername: string | null = null;
       if (judgeNormalized) {
-        const resolvedJudgeUid = await getUidByUsername(judgeNormalized);
+        if (judgeResult.status === "rejected") {
+          captureException(judgeResult.reason, {
+            extra: { context: "challenge.judge_lookup", username: judgeNormalized },
+          });
+          setError(`Couldn't look up referee @${judgeNormalized}. Try again or remove the referee to start now.`);
+          return;
+        }
+        const resolvedJudgeUid = judgeResult.value;
         if (!resolvedJudgeUid) {
-          setError(`Judge @${judgeNormalized} doesn't exist yet. They need to sign up first.`);
+          setError(`Referee @${judgeNormalized} doesn't exist yet. They need to sign up first.`);
           return;
         }
         if (resolvedJudgeUid === uid) {
-          setError("Judge must be a third player");
+          setError("Referee must be a third player");
           return;
         }
         if (blockedUids?.has(resolvedJudgeUid)) {
-          setError("You cannot nominate a blocked player as judge.");
+          setError("You cannot nominate a blocked player as referee.");
           return;
         }
         judgeUid = resolvedJudgeUid;
@@ -144,7 +171,9 @@ export function ChallengeScreen({
 
       await onSend(uid, normalized, { spotId, judgeUid, judgeUsername });
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not start game");
+      // Reaches here only on onSend rejection — the lookups above settle to
+      // explicit setError + return paths.
+      setError(getUserMessage(err, "Could not start game"));
     } finally {
       setLoading(false);
     }
@@ -194,6 +223,7 @@ export function ChallengeScreen({
             submit();
           }}
           noValidate
+          aria-busy={loading}
         >
           <Field
             label="Opponent Username"
@@ -207,8 +237,9 @@ export function ChallengeScreen({
             autoFocus
           />
 
-          {/* Optional judge picker — collapsed by default. Games without a judge
-              run on the honor system with no disputes or "Call BS" flows. */}
+          {/* Optional referee picker — collapsed by default. Games without a
+              referee run on the honor system with no disputes or "Call BS"
+              flows. */}
           <div className="mb-4">
             {!judgePickerOpen ? (
               <button
@@ -218,12 +249,12 @@ export function ChallengeScreen({
                 className="font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40"
                 data-testid="add-judge-toggle"
               >
-                + Add a judge? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
+                + Add a referee? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
               </button>
             ) : (
               <div>
                 <Field
-                  label="Judge Username (optional)"
+                  label="Referee Username (optional)"
                   value={judge}
                   onChange={(v) => {
                     if (!loading) setJudge(v.replace(/[^a-zA-Z0-9_]/g, ""));

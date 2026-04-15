@@ -689,7 +689,7 @@ describe("GamePlayScreen", () => {
     });
     render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
-    expect(screen.getByText(/JUDGE'S CALL/)).toBeInTheDocument();
+    expect(screen.getByText(/REFEREE'S CALL/)).toBeInTheDocument();
     expect(screen.getByText(/claims they landed/)).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Rule landed or missed" })).toBeInTheDocument();
     expect(screen.getByText("Landed")).toBeInTheDocument();
@@ -771,8 +771,8 @@ describe("GamePlayScreen", () => {
     });
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
-    // Waiting-on label flips to the judge when the judge holds the turn.
-    expect(screen.getByText(/Judge is reviewing the match call/)).toBeInTheDocument();
+    // Waiting-on label flips to the referee when they hold the turn.
+    expect(screen.getByText(/Referee is reviewing the match call/)).toBeInTheDocument();
     expect(screen.getByText(/Waiting on @judge/)).toBeInTheDocument();
   });
 

@@ -142,7 +142,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     try {
       await acceptJudgeInvite(game.id);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to accept judge invite");
+      setError(err instanceof Error ? err.message : "Failed to accept referee invite");
       captureException(err, { extra: { context: "acceptJudgeInvite", gameId: game.id } });
     } finally {
       setJudgeActionSubmitting(false);
@@ -154,7 +154,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     try {
       await declineJudgeInvite(game.id);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to decline judge invite");
+      setError(err instanceof Error ? err.message : "Failed to decline referee invite");
       captureException(err, { extra: { context: "declineJudgeInvite", gameId: game.id } });
     } finally {
       setJudgeActionSubmitting(false);
@@ -308,7 +308,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             className="mb-4 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle"
             data-testid="judge-pending-badge"
           >
-            <span className="font-display tracking-wider">JUDGE PENDING</span>
+            <span className="font-display tracking-wider">REFEREE PENDING</span>
             <span className="font-body">@{game.judgeUsername} — honor system applies</span>
           </div>
         )}
@@ -317,7 +317,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/[0.06] px-3 py-1 text-[11px] text-brand-orange"
             data-testid="judge-active-badge"
           >
-            <span className="font-display tracking-wider">JUDGE</span>
+            <span className="font-display tracking-wider">REFEREE</span>
             <span className="font-body">@{game.judgeUsername} rules disputes</span>
           </div>
         )}
@@ -326,7 +326,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             className="mb-4 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle"
             data-testid="judge-declined-badge"
           >
-            <span className="font-display tracking-wider">NO JUDGE</span>
+            <span className="font-display tracking-wider">NO REFEREE</span>
             <span className="font-body">Honor system</span>
           </div>
         )}
@@ -439,12 +439,14 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                   Call BS on this trick
                 </Btn>
                 <p className="font-body text-xs text-subtle mt-2 text-center">
-                  Judge @{game.judgeUsername} will rule clean or sketchy.
+                  Referee @{game.judgeUsername} will rule clean or sketchy.
                 </p>
               </div>
             )}
             {callBSSubmitting && (
-              <p className="font-display text-sm text-amber-400 mt-3 text-center animate-pulse">Sending to judge...</p>
+              <p className="font-display text-sm text-amber-400 mt-3 text-center animate-pulse">
+                Sending to referee...
+              </p>
             )}
           </div>
         )}
@@ -531,7 +533,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         {isDisputeReviewer && (
           <div className="mt-5">
             <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-amber-500/[0.06] backdrop-blur-sm border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.06)]">
-              <span className="font-display text-sm tracking-wider text-amber-400">JUDGE&apos;S CALL</span>
+              <span className="font-display text-sm tracking-wider text-amber-400">REFEREE&apos;S CALL</span>
               <p className="font-body text-sm text-muted mt-1">
                 @{matcherUsername} claims they landed @{setterUsername}&apos;s {game.currentTrickName || "trick"}. Watch
                 both videos and rule.
@@ -658,16 +660,16 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         {isJudgeInvitePending && (
           <div className="mt-5" data-testid="judge-invite-card">
             <div className="text-center py-4 px-5 mb-5 rounded-2xl border bg-brand-orange/[0.06] backdrop-blur-sm border-brand-orange/30 shadow-[0_0_20px_rgba(255,107,0,0.06)]">
-              <span className="font-display text-sm tracking-wider text-brand-orange">JUDGE INVITE</span>
+              <span className="font-display text-sm tracking-wider text-brand-orange">REFEREE INVITE</span>
               <p className="font-body text-sm text-muted mt-1">
-                @{game.player1Username} asked you to judge their game vs @{game.player2Username}. Accept to rule on
+                @{game.player1Username} asked you to referee their game vs @{game.player2Username}. Accept to rule on
                 disputes and &quot;Call BS&quot; claims. Declining (or no response in 24h) lets the game continue on the
                 honor system.
               </p>
             </div>
 
             {!judgeActionSubmitting && (
-              <div className="flex gap-3" role="group" aria-label="Accept or decline judge invite">
+              <div className="flex gap-3" role="group" aria-label="Accept or decline referee invite">
                 <Btn onClick={handleJudgeAccept} variant="success" disabled={judgeActionSubmitting}>
                   Accept
                 </Btn>

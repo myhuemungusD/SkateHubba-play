@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type KeyboardEvent } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { logger } from "../services/logger";
@@ -123,6 +123,21 @@ export function Lobby({
     return "They're setting a trick";
   };
 
+  // Activate a card on Enter/Space. Game cards are div[role="button"] (not
+  // native <button>) so we can host the inner Profile <button> without the
+  // invalid-HTML nested-interactive tree; this helper approximates native
+  // button keyboard semantics. (A true native button fires Space on keyup
+  // so the user can move focus off to cancel — we activate on keydown for
+  // both keys, which is the common pragmatic shortcut.) e.repeat guards
+  // against auto-repeat when a key is held.
+  const activateOnKey = (handler: () => void) => (e: KeyboardEvent<HTMLElement>) => {
+    if (e.repeat) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handler();
+    }
+  };
+
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/40 pb-24">
       {/* Header */}
@@ -244,11 +259,13 @@ export function Lobby({
             </div>
             <div className="space-y-2">
               {active.map((g) => (
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   key={g.id}
                   onClick={() => onOpenGame(g)}
-                  className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
+                  onKeyDown={activateOnKey(() => onOpenGame(g))}
+                  className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer select-none transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
                     ${
                       isMyTurn(g)
                         ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5"
@@ -327,7 +344,7 @@ export function Lobby({
                     size={15}
                     className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-faint"}`}
                   />
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -361,11 +378,13 @@ export function Lobby({
             </div>
             <div className="space-y-2">
               {done.map((g) => (
-                <button
-                  type="button"
+                <div
+                  role="button"
+                  tabIndex={0}
                   key={g.id}
                   onClick={() => onOpenGame(g)}
-                  className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
+                  onKeyDown={activateOnKey(() => onOpenGame(g))}
+                  className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer select-none transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
                 >
                   <div>
                     <div className="flex items-center gap-2 mb-1">
@@ -394,7 +413,7 @@ export function Lobby({
                     </span>
                   </div>
                   <ChevronRightIcon size={15} className="text-faint shrink-0" />
-                </button>
+                </div>
               ))}
             </div>
           </div>
@@ -512,6 +531,7 @@ export function Lobby({
         {/* Delete Account */}
         <div className="mt-8 flex justify-center">
           <button
+            type="button"
             onClick={() => setShowDeleteModal(true)}
             className="font-body text-xs text-dim underline underline-offset-2 hover:text-brand-red transition-colors"
           >
