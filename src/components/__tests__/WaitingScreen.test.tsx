@@ -216,6 +216,77 @@ describe("WaitingScreen", () => {
     expect(screen.getByText("Game Clips (1 round)")).toBeInTheDocument();
   });
 
+  // ── Judge viewer coverage ───────────────────────────────────────────────
+  //
+  // A nominated judge lands on WaitingScreen between review phases (e.g.
+  // while the players are in setting/matching). The old player-centric
+  // derivations silently fell back to player2's letters / player1 as
+  // "opponent", which meant the judge saw the wrong scores, a wrong
+  // "Waiting on @x" label, and a Nudge / Report opponent flow that would
+  // have acted on a player they have no relationship with. These tests
+  // lock in the neutral-observer rendering.
+
+  describe("judge viewer", () => {
+    const judgeProfile: UserProfile = {
+      uid: "judge-uid",
+      username: "ref",
+      stance: "regular",
+      createdAt: null,
+      emailVerified: true,
+    };
+    const judgeGame = (overrides?: Partial<GameDoc>): GameDoc =>
+      makeGame({
+        judgeId: "judge-uid",
+        judgeUsername: "ref",
+        judgeStatus: "accepted",
+        ...overrides,
+      });
+
+    it("shows both players' letters (not the judge's player2 fallback)", () => {
+      render(
+        <WaitingScreen
+          game={judgeGame({ p1Letters: 3, p2Letters: 1, phase: "matching", currentTurn: "u2", currentSetter: "u1" })}
+          profile={judgeProfile}
+          onBack={onBack}
+        />,
+      );
+      // Judge sees both players side by side, by name, with their own letter counts.
+      expect(screen.getByText("@alice")).toBeInTheDocument();
+      expect(screen.getByText("@bob")).toBeInTheDocument();
+    });
+
+    it("names the currently-acting player in the waiting label, not the judge", () => {
+      // Matching phase, currentTurn → u2 (bob is matching).
+      render(
+        <WaitingScreen
+          game={judgeGame({ phase: "matching", currentTurn: "u2", currentSetter: "u1" })}
+          profile={judgeProfile}
+          onBack={onBack}
+        />,
+      );
+      expect(screen.getByText("Waiting on @bob")).toBeInTheDocument();
+      expect(screen.getByText("@bob is attempting the match.")).toBeInTheDocument();
+    });
+
+    it("names the setter in the waiting label when phase is setting", () => {
+      render(
+        <WaitingScreen
+          game={judgeGame({ phase: "setting", currentTurn: "u1", currentSetter: "u1" })}
+          profile={judgeProfile}
+          onBack={onBack}
+        />,
+      );
+      expect(screen.getByText("Waiting on @alice")).toBeInTheDocument();
+      expect(screen.getByText("@alice is setting a trick.")).toBeInTheDocument();
+    });
+
+    it("hides the Nudge button and Report opponent link (judges have no opponent)", () => {
+      render(<WaitingScreen game={judgeGame()} profile={judgeProfile} onBack={onBack} />);
+      expect(screen.queryByText("Nudge")).not.toBeInTheDocument();
+      expect(screen.queryByText("Report opponent")).not.toBeInTheDocument();
+    });
+  });
+
   it("handles non-Error throw from sendNudge", async () => {
     mockSendNudge.mockRejectedValue("string error");
     render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
