@@ -77,6 +77,11 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  // Separate from `error`/`errorCode` so a load-more failure doesn't replace
+  // the whole feed — existing clips stay visible and the error renders where
+  // the Load more button was.
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [loadMoreErrorCode, setLoadMoreErrorCode] = useState<string | null>(null);
   const [endOfFeed, setEndOfFeed] = useState(false);
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
   const [reportedClipIds, setReportedClipIds] = useState<ReadonlySet<string>>(new Set());
@@ -167,6 +172,8 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const loadMore = useCallback(async () => {
     if (!cursor || loadingMore || endOfFeed) return;
     setLoadingMore(true);
+    setLoadMoreError(null);
+    setLoadMoreErrorCode(null);
     try {
       const page = await fetchClipsFeed(cursor, PAGE_SIZE);
       if (!mountedRef.current) return;
@@ -177,6 +184,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     } catch (err) {
       const code = errorCodeFor(err);
       logger.warn("clips_feed_loadmore_failed", { code, error: parseFirebaseError(err) });
+      if (mountedRef.current) {
+        setLoadMoreError(copyForError(code));
+        setLoadMoreErrorCode(code ?? null);
+      }
     } finally {
       if (mountedRef.current) setLoadingMore(false);
     }
@@ -386,13 +397,12 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
                   </div>
                 </div>
 
-                {/* Video — top clip autoplays muted with tap-to-unmute (mirrors
-                    FeaturedClipCard's idiom). When the top clip ends it
-                    rotates to the next landed-trick clip in the feed, so
-                    the lobby always feels alive even before the user
-                    scrolls. Subsequent clips stay click-to-play to keep
-                    mobile data + battery sane. The key forces a fresh
-                    muted state on every rotation tick.
+                {/* Video — top clip autoplays muted with tap-to-unmute. When
+                    the top clip ends it rotates to the next landed-trick
+                    clip in the feed, so the lobby always feels alive even
+                    before the user scrolls. Subsequent clips stay
+                    click-to-play to keep mobile data + battery sane. The
+                    key forces a fresh muted state on every rotation tick.
                     When only one clip is visible, there's nothing to
                     rotate to — hand off to the native `loop` attribute
                     so the single clip replays without a stall gap. */}
@@ -475,10 +485,25 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       )}
 
       {/* Pagination */}
-      {!loading && visibleClips.length > 0 && !endOfFeed && (
+      {!loading && visibleClips.length > 0 && !endOfFeed && !loadMoreError && (
         <div className="mt-4">
           <Btn onClick={loadMore} variant="secondary" disabled={loadingMore}>
             {loadingMore ? "Loading…" : "Load more"}
+          </Btn>
+        </div>
+      )}
+
+      {/* Load-more failure — shown in place of the Load more button so the
+          already-loaded clips above stay visible and the user sees a real
+          affordance to retry (rather than a silently stuck feed). */}
+      {!loading && visibleClips.length > 0 && !endOfFeed && loadMoreError && (
+        <div className="glass-card rounded-2xl p-5 mt-4 border border-brand-red/30">
+          <p className="font-body text-sm text-white/80 mb-3">{loadMoreError}</p>
+          {loadMoreErrorCode && import.meta.env.DEV && (
+            <p className="font-body text-[10px] text-faint mb-3">code: {loadMoreErrorCode}</p>
+          )}
+          <Btn onClick={loadMore} variant="secondary" disabled={loadingMore}>
+            {loadingMore ? "Loading…" : "Try again"}
           </Btn>
         </div>
       )}
@@ -514,12 +539,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 /**
  * Auto-playing top-of-feed clip with a tap-to-unmute affordance.
  *
- * Mirrors the playback idiom used by `FeaturedClipCard` (autoplay+loop+muted
- * by default; tapping the video toggles audio). Lives inline rather than as
- * a shared component because the three video surfaces in the app
- * (`FeaturedClipCard`, this top-of-feed, `TurnHistoryViewer.ClipVideo`) all
- * have slightly different chrome — premature abstraction would obscure more
- * than it would save.
+ * Autoplay+muted by default; tapping the video toggles audio. Lives inline
+ * rather than as a shared component because this surface and
+ * `TurnHistoryViewer.ClipVideo` have slightly different chrome — premature
+ * abstraction would obscure more than it would save.
  *
  * Pauses when scrolled out of the viewport so the clip isn't silently
  * decoding audio/video frames while the user reads the rest of the feed

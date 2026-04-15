@@ -1,5 +1,13 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
-import { createProfile, getUserProfile, isUsernameAvailable, type UserProfile } from "../services/users";
+import {
+  createProfile,
+  getUserProfile,
+  isUsernameAvailable,
+  USERNAME_MAX,
+  USERNAME_MIN,
+  USERNAME_RE,
+  type UserProfile,
+} from "../services/users";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
@@ -15,9 +23,8 @@ const STANCES = [
 ] as const;
 
 const DEBOUNCE_MS = 400;
-const USERNAME_MIN = 3;
-const USERNAME_MAX = 20;
-const USERNAME_RE = /^[a-z0-9_]+$/;
+// Sanitisation regex is the inverse of USERNAME_RE — strips any char that
+// wouldn't pass validation. Kept local because only the UI pre-filters input.
 const SANITIZE_RE = /[^a-z0-9_]/g;
 
 /* ── Shared ───────────────────────────────────────────────────── */
