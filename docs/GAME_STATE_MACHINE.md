@@ -9,13 +9,25 @@ in `src/services/games.ts`.
 
 ## States
 
-| `status`   | `phase`      | Description                                           |
-| ---------- | ------------ | ----------------------------------------------------- |
-| `active`   | `setting`    | Current setter must name & record a trick             |
-| `active`   | `matching`   | Matcher must attempt the trick                        |
-| `active`   | `disputable` | Setter reviews matcher's "landed" claim (24 h window) |
-| `complete` | —            | A player reached 5 letters; winner is recorded        |
-| `forfeit`  | —            | Turn timer expired; opponent wins automatically       |
+| `status`   | `phase`      | Description                                                                          |
+| ---------- | ------------ | ------------------------------------------------------------------------------------ |
+| `active`   | `setting`    | Current setter must name & record a trick                                            |
+| `active`   | `matching`   | Matcher must attempt the trick (or "Call BS" on the set, if a judge is active)       |
+| `active`   | `setReview`  | Judge reviews the setter's video after a "Call BS" from the matcher (judge-only)     |
+| `active`   | `disputable` | Judge reviews matcher's "landed" claim (judge-only — honor games skip this entirely) |
+| `complete` | —            | A player reached 5 letters; winner is recorded                                       |
+| `forfeit`  | —            | Turn timer expired; opponent wins automatically                                      |
+
+### Judge status (game-level, independent of `phase`)
+
+| `judgeStatus` | Meaning                                                                |
+| ------------- | ---------------------------------------------------------------------- |
+| `null`        | No judge was nominated — game runs on the honor system                 |
+| `pending`     | Judge nominated but hasn't accepted yet — honor-system rules in effect |
+| `accepted`    | Judge accepted — `disputable` and `setReview` paths unlock             |
+| `declined`    | Judge declined — permanent honor system for this game                  |
+
+`isJudgeActive(game)` returns true only when `judgeStatus === "accepted"`.
 
 ---
 
@@ -33,40 +45,51 @@ in `src/services/games.ts`.
                  ┌─────────────────┐                               │
                  │ active:matching │                               │
                  └───────┬─────────┘                               │
-                         │ submitMatchAttempt()                    │
-              ┌──────────┴──────────┐                              │
-              │                     │                              │
-       landed=false           landed=true                          │
-              │                     │                              │
-   letters++ for matcher            ▼                              │
-              │          ┌──────────────────────┐                  │
-       letters >= 5?     │ active:disputable    │                  │
-       ┌──────┴──────┐   └───────┬──────────────┘                  │
-       │             │           │                                 │
-    YES             NO    setter reviews (24 h)                    │
-       │             │    resolveDispute()                         │
-       ▼             │    ┌──────┴──────────┐                      │
- ┌──────────┐        │    │                 │                      │
- │ complete │        │  accept           dispute                   │
- └──────────┘        │  (or auto-accept  (setter overrules)        │
-                     │   after 24 h)          │                    │
-                     │    │          letters++ for matcher          │
-                     │    │                   │                    │
-                     │    │           letters >= 5?                │
-                     │    │           ┌───────┴───────┐            │
-                     │    │        YES               NO            │
-                     │    │           │               │            │
-                     │    │           ▼        setter keeps        │
-                     │    │     ┌──────────┐   setting             │
-                     │    │     │ complete │        │              │
-                     │    │     └──────────┘        │              │
-                     │    │                         │              │
-                     │    │  roles swap             │              │
-                     │    │  (matcher → setter)     │              │
-                     │    └─────────────────────────┘──────────────┘
-                     │                                             │
-                     │   setter keeps setting                      │
-                     └─────────────────────────────────────────────┘
+                         │                                         │
+        ┌────────────────┼───────────────────────────┐             │
+        │ callBs()       │ submitMatchAttempt()      │             │
+        │ (judge only)   │                           │             │
+        ▼                │                           │             │
+┌────────────────┐       ▼                           ▼             │
+│active:setReview│   landed=false                landed=true       │
+└───────┬────────┘   letters++ for matcher           │             │
+        │            (turn resolves)                 │             │
+        │ resolveSetReview()  letters>=5?            │             │
+        │ (judge)        ┌────┴────┐                 │             │
+        │              YES        NO                 │             │
+        │               │          └───►(setter keeps setting)─────┤
+        │               ▼                            │             │
+        │         ┌──────────┐                       │             │
+        │         │ complete │                       │             │
+        │         └──────────┘                       │             │
+        │                                            │             │
+        │       ┌────────────────┬───────────────────┘             │
+        │       │ judge active?  │                                 │
+        │     NO│                │YES                              │
+        │       ▼                ▼                                 │
+        │  roles swap     ┌──────────────────────┐                 │
+        │  immediately    │ active:disputable    │                 │
+        │  (honor system) └───────┬──────────────┘                 │
+        │       │                 │ judge reviews (24 h)           │
+        │       │                 │ resolveDispute()               │
+        │       │           ┌─────┴────────┐                       │
+        │       │         accept         dispute                   │
+        │       │       (or auto-accept) (judge overrules)         │
+        │       │           │              │                       │
+        │       │     roles swap     letters++ for matcher         │
+        │       │           │              │                       │
+        │       │           │       letters>=5?                    │
+        │       │           │       ┌──────┴──────┐                │
+        │       │           │     YES            NO                │
+        │       │           │       │             │                │
+        │       │           │       ▼     setter keeps setting     │
+        │       │           │ ┌──────────┐        │                │
+        │       │           │ │ complete │        │                │
+        │       │           │ └──────────┘        │                │
+        │       │           │                     │                │
+        │       └───────────┴─────────────────────┴────────────────┘
+        │  (set re-set / clean rulings route back to setting/matching)
+        └────────────────────────────────────────────────────────────
 
 
   setting/matching + turnDeadline expired
@@ -77,11 +100,17 @@ in `src/services/games.ts`.
         │ forfeit  │
         └──────────┘
 
-  disputable + turnDeadline expired
+  disputable + turnDeadline expired (judge didn't rule)
               │
               │ forfeitExpiredTurn() → auto-accept
               ▼
         back to active:setting (matcher's call stands)
+
+  setReview + turnDeadline expired (judge didn't rule on Call BS)
+              │
+              │ forfeitExpiredTurn() → set stands
+              ▼
+        back to active:matching (matcher must attempt)
 ```
 
 ---
@@ -131,37 +160,61 @@ in `src/services/games.ts`.
 - Turn recorded in `turnHistory`
 - **Result state:** `active:setting` or `complete`
 
-#### Path B — Matcher claims landed (`landed === true`)
+#### Path B — Matcher claims landed, no active judge (`landed === true`, honor system)
+
+- No letters awarded
+- Roles swap immediately — `currentSetter` → matcher
+- `phase: "setting"`, `turnNumber++`
+- Turn recorded in `turnHistory` with `landed: true`, `judgedBy: null`
+- **Result state:** `active:setting`
+
+#### Path C — Matcher claims landed, judge accepted (`landed === true`, judge active)
 
 - No letters awarded, no turn history recorded yet
-- `phase: "disputable"`, `matchVideoUrl` set
-- `currentTurn` → setter (setter reviews the claim)
+- `phase: "disputable"`, `matchVideoUrl` set, `judgeReviewFor` = matcher
+- `currentTurn` → `judgeId` (judge reviews — never the setter)
 - `turnDeadline` → now + 24 h
 - **Result state:** `active:disputable`
 
+### `callBSOnSetTrick(gameId)`
+
+**File:** `src/services/games.ts` — `callBSOnSetTrick()` _(judge-only path)_
+
+- **Pre-conditions:** `status === "active"`, `phase === "matching"`, judge active, caller is matcher
+- **Writes:** `phase: "setReview"`, `currentTurn` → `judgeId`, `judgeReviewFor` = setter, fresh deadline
+- **Result state:** `active:setReview`
+
+### `judgeRuleSetTrick(gameId, clean)`
+
+**File:** `src/services/games.ts` — `judgeRuleSetTrick()` _(judge-only)_
+
+- **Pre-conditions:** `status === "active"`, `phase === "setReview"`, caller is `judgeId`
+- **Path A — clean (`clean === true`):** matcher must attempt → `phase: "matching"`, `currentTurn` → matcher
+- **Path B — sketchy (`clean === false`):** setter must re-set → `phase: "setting"`, `currentTurn` → setter, set video cleared
+
 ### `resolveDispute(gameId, accept)`
 
-**File:** `src/services/games.ts` — `resolveDispute()`
+**File:** `src/services/games.ts` — `resolveDispute()` _(judge-only)_
 
 - **Pre-conditions (validated inside transaction):**
   - `status === "active"`
   - `phase === "disputable"`
-  - Caller is `currentTurn` (the setter reviewing the claim)
+  - Caller is the `judgeId` (the setter never self-judges — that was the point of inviting a third party)
 
 #### Path A — Accept (`accept === true`)
 
 - No letters awarded
 - `currentSetter` → matcher (roles swap — they landed, so they set next)
 - `phase: "setting"`, `turnNumber++`
-- Turn recorded in `turnHistory` with `landed: true`
+- Turn recorded in `turnHistory` with `landed: true`, `judgedBy: judgeId`
 - **Result state:** `active:setting`
 
 #### Path B — Dispute, no game over (`accept === false`, letters < 5)
 
-- Matcher gains 1 letter (setter overrules the "landed" claim)
+- Matcher gains 1 letter (judge overrules the "landed" claim)
 - `currentSetter` stays the same (setter keeps setting)
 - `phase: "setting"`, `turnNumber++`
-- Turn recorded in `turnHistory` with `landed: false`
+- Turn recorded in `turnHistory` with `landed: false`, `judgedBy: judgeId`
 - **Result state:** `active:setting`
 
 #### Path C — Dispute, game over (`accept === false`, letters === 5)
@@ -169,6 +222,14 @@ in `src/services/games.ts`.
 - Matcher gains the 5th letter
 - `status: "complete"`, `winner` = opponent of the player with 5 letters
 - **Result state:** `complete`
+
+### `acceptJudgeInvite(gameId)` / `declineJudgeInvite(gameId)`
+
+**File:** `src/services/games.ts`
+
+- Pre-condition: caller is `judgeId`, `judgeStatus === "pending"`
+- Accept → `judgeStatus: "accepted"` (unlocks dispute + Call BS paths)
+- Decline → `judgeStatus: "declined"` (permanent honor system; `judgeId` preserved for history)
 
 ### `forfeitExpiredTurn(gameId)`
 
@@ -180,12 +241,18 @@ in `src/services/games.ts`.
 - **Writes:** `status: "forfeit"`, `winner` = opponent of `currentTurn`
 - **Result state:** `forfeit`
 
-#### Disputable phase expired (auto-accept)
+#### Disputable phase expired (judge didn't rule → auto-accept)
 
 - **Pre-conditions:** `status === "active"`, `phase === "disputable"`, deadline passed
 - **Writes:** matcher's "landed" call stands (no letters, roles swap), `phase: "setting"`, `turnNumber++`
 - Turn recorded in `turnHistory` with `landed: true`
 - **Result state:** `active:setting`
+
+#### setReview phase expired (judge didn't rule on Call BS → set stands)
+
+- **Pre-conditions:** `status === "active"`, `phase === "setReview"`, deadline passed
+- **Writes:** matcher must attempt — `phase: "matching"`, `currentTurn` → matcher, fresh deadline
+- **Result state:** `active:matching` (benefit of the doubt to the setter)
 
 **Trigger:** Called on game-screen mount when deadline has passed
 

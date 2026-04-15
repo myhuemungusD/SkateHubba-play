@@ -89,6 +89,14 @@ No custom backend. No serverless functions. The client talks directly to Firebas
 - **Email verification** — required before play; resend from the app
 - **Atomic username reservation** — no two players share a handle (Firestore transaction)
 - **Invite & share** — SMS, link copy, native share for invites and trick clips
+- **Push notifications** — FCM "your turn" alerts with deep-link into the game
+- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed
+- **Featured clip surface** — top of lobby rotates the freshest landed clips
+- **Leaderboard** — ranked players by wins (aspirational targets)
+- **Player profiles** — public per-user pages with full game history
+- **Block & report** — moderation tools backed by Firestore rules
+- **Spots map** — geo-tagged skate spots with gnar rating + bust risk (in progress)
+- **Optional judge** — nominate a neutral third player to rule on disputes and "Call BS" (in review)
 - **Offline support** — Firestore local cache lets you read games without internet
 - **Native apps** — Capacitor builds for iOS and Android
 - **PWA-ready** — installable from the browser
@@ -193,6 +201,7 @@ VITE_APP_URL=https://...        # optional — email action redirects
 | [docs/TESTING.md](docs/TESTING.md)                       | Test suite overview and how to run          |
 | [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md)         | Game rules and turn flow                    |
 | [docs/GAME_STATE_MACHINE.md](docs/GAME_STATE_MACHINE.md) | State transitions and lifecycle             |
+| [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md)           | Per-feature completion status               |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                   | Architecture decision records               |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                       | How to contribute                           |
 | [SECURITY.md](SECURITY.md)                               | Security policy and vulnerability reporting |
@@ -238,28 +247,34 @@ All analytics flow through a single wrapper (`src/services/analytics.ts`) backed
 
 ### Instrumented Events
 
-| Event             | Fires When                            | Properties                    |
-| ----------------- | ------------------------------------- | ----------------------------- |
-| `sign_up`         | New account created                   | `method` (email / google)     |
-| `sign_in`         | User logs in                          | `method` (email / google)     |
-| `game_created`    | Player creates a new challenge        | `gameId`                      |
-| `trick_set`       | Setter records and submits a trick    | `gameId`, `trickName`         |
-| `match_submitted` | Matcher submits their attempt         | `gameId`, `landed` (bool)     |
-| `game_completed`  | Game reaches a final state (win/loss) | `gameId`, `won` (bool)        |
-| `video_uploaded`  | Trick video successfully uploaded     | `durationMs`, `sizeBytes`     |
-| `invite_sent`     | Player shares an invite link          | `method` (sms / copy / share) |
-| `clip_shared`     | Player shares a trick clip            | `method`, `context`           |
-| `clip_saved`      | Player saves a trick clip locally     | `context`                     |
-| `game_shared`     | Player shares a completed game        | `context`, `method`           |
+| Event                 | Fires When                                | Properties                       |
+| --------------------- | ----------------------------------------- | -------------------------------- |
+| `sign_up`             | New account created                       | `method` (email / google)        |
+| `sign_in`             | User logs in                              | `method` (email / google)        |
+| `game_created`        | Player creates a new challenge            | `gameId`                         |
+| `trick_set`           | Setter records and submits a trick        | `gameId`, `trickName`            |
+| `match_submitted`     | Matcher submits their attempt             | `gameId`, `landed` (bool)        |
+| `game_completed`      | Game reaches a final state (win/loss)     | `gameId`, `won` (bool)           |
+| `video_uploaded`      | Trick video successfully uploaded         | `durationMs`, `sizeBytes`        |
+| `invite_sent`         | Player shares an invite link              | `method` (sms / copy / share)    |
+| `clip_shared`         | Player shares a trick clip                | `method`, `context`              |
+| `clip_saved`          | Player saves a trick clip locally         | `context`                        |
+| `game_shared`         | Player shares a completed game            | `context`, `method`              |
+| `map_viewed`          | Spots map screen mounts                   | —                                |
+| `spot_previewed`      | User taps a spot marker → preview opens   | `spotId`                         |
+| `challenge_from_spot` | Challenge screen opened with `?spot=` ref | `spotId`                         |
 
 ### Core Funnel
 
 ```
 sign_up → game_created → trick_set → match_submitted → game_completed
-                                          ↓
-                                   invite_sent (viral loop)
-                                          ↓
-                                   clip_shared (content flywheel)
+              ▲                              ↓
+              │                       invite_sent (viral loop)
+              │                              ↓
+              │                       clip_shared (content flywheel)
+              │
+   map_viewed → spot_previewed → challenge_from_spot
+                       (spot-driven acquisition path)
 ```
 
 Each step maps 1:1 to a tracked event. Drop-off between any two stages is visible in the Vercel Analytics dashboard.
@@ -268,7 +283,9 @@ Each step maps 1:1 to a tracked event. Drop-off between any two stages is visibl
 
 ## Roadmap: Async Gameplay → Network Effects
 
-### Phase 1 — Core Loop (shipped)
+For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md).
+
+### Phase 1 — Core Loop ✅ shipped
 
 - Async S.K.A.T.E. gameplay with video proof
 - Google OAuth + email auth with verification
@@ -276,26 +293,38 @@ Each step maps 1:1 to a tracked event. Drop-off between any two stages is visibl
 - 24-hour turn timer with auto-forfeit
 - Player profiles with game history
 
-### Phase 2 — Viral Mechanics (in progress)
+### Phase 2 — Viral Mechanics ✅ shipped
 
 - **Invite flow** — SMS/link/native share to pull friends in (instrumented: `invite_sent`)
 - **Clip sharing** — share trick clips to social platforms (instrumented: `clip_shared`)
 - **Rematch** — one-tap rematch at game over to keep engagement loops tight
-- **Push notifications** — "Your turn" alerts to reduce churn between turns
+- **Push notifications** — FCM "Your turn" alerts with deep-link into the game
 
-### Phase 3 — Social Graph & Discovery
+### Phase 3 — Social Graph & Discovery 🟢 mostly shipped
 
-- **Leaderboard** — ranked players by win rate, creating aspirational targets
-- **Player profiles** — public game archives that double as social proof
-- **Challenge anyone** — search/invite by username, expanding beyond existing friend groups
-- **Spectator mode** — watch active games, turning players into content creators
+- ✅ **Leaderboard** — ranked players by wins, creating aspirational targets
+- ✅ **Player profiles** — public game archives that double as social proof
+- ✅ **Challenge anyone** — search/invite by username, expanding beyond existing friend groups
+- ✅ **Block & report** — moderation tooling backed by Firestore rules
+- ✅ **Cross-game clips feed + featured clip** — landed tricks become a discovery surface
+- ⏳ **Spectator mode** — watch active games (planned)
 
-### Phase 4 — Network Effects Flywheel
+### Phase 4 — Network Effects Flywheel 🟡 in progress
 
-- **Crew challenges** — team-based S.K.A.T.E. (3v3) multiplies each invite by 6 players
-- **Spot tagging** — geo-tagged trick locations create a skater map (UGC moat)
-- **Trick library** — community trick index with video proof, building a defensible content layer
-- **Tournaments** — bracket-style competitions that drive appointment engagement and shareability
+- 🚧 **Spot tagging** — geo-tagged trick locations create a skater map (UGC moat) — map UI, spots service, Firestore rules, and rules-tests are landed; final UI polish in progress
+- ⏳ **Crew challenges** — team-based S.K.A.T.E. (3v3) multiplies each invite by 6 players
+- ⏳ **Trick library** — community trick index with video proof, a defensible content layer
+- ⏳ **Tournaments** — bracket-style competitions for appointment engagement
+
+### Unreleased — Judge System 🧑‍⚖️ in review
+
+Optional third player who arbitrates disputes. See `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
+
+- Nominate a judge at challenge time; honor system runs by default if declined or absent
+- **Dispute path** — judge rules on a matcher's "landed" claim (24 h, then auto-accept)
+- **Call BS path** — matcher can flag the setter's video before attempting (24 h, then set stands)
+- New `setReview` phase + `judgeId` / `judgeStatus` / `judgeReviewFor` schema fields
+- Honor-system games skip the `disputable` phase entirely — landed swaps roles instantly
 
 **The thesis:** Each game produces shareable video content. Each shared clip is a free acquisition channel. Each new player brings their crew. The game mechanic (asynchronous, video-first) removes the coordination cost that kills most multiplayer apps — you don't need to be online at the same time or at the same spot.
 
