@@ -16,7 +16,6 @@ const {
   mockGetCountFromServer,
   mockGetDoc,
   mockRunTransaction,
-  mockFetchSpotName,
   FakeTimestamp,
 } = vi.hoisted(() => {
   class FakeTimestamp {
@@ -43,7 +42,6 @@ const {
     mockGetCountFromServer: vi.fn(),
     mockGetDoc: vi.fn(),
     mockRunTransaction: vi.fn(),
-    mockFetchSpotName: vi.fn(),
     FakeTimestamp,
   };
 });
@@ -66,17 +64,12 @@ vi.mock("firebase/firestore", () => ({
   Timestamp: FakeTimestamp,
 }));
 
-vi.mock("../spots", () => ({
-  fetchSpotName: mockFetchSpotName,
-}));
-
 vi.mock("../../firebase");
 
 import {
   writeLandedClipsInTransaction,
   fetchClipsFeed,
   deleteUserClips,
-  fetchFeaturedClip,
   upvoteClip,
   fetchClipUpvoteState,
   AlreadyUpvotedError,
@@ -420,106 +413,11 @@ describe("deleteUserClips", () => {
   });
 });
 
-/* ── fetchFeaturedClip ─────────────────────────── */
+/* ── upvoteClip ────────────────────────────────── */
 
 function countSnap(count: number) {
   return { data: () => ({ count }) };
 }
-
-describe("fetchFeaturedClip", () => {
-  beforeEach(() => {
-    mockFetchSpotName.mockResolvedValue(null);
-    mockGetCountFromServer.mockResolvedValue(countSnap(0));
-    mockGetDoc.mockResolvedValue({ exists: () => false });
-  });
-
-  it("returns null when the window is empty", async () => {
-    mockGetDocs.mockResolvedValueOnce({ docs: [] });
-    const result = await fetchFeaturedClip("me");
-    expect(result).toBeNull();
-  });
-
-  it("returns null when every candidate is already excluded", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("g1_2_set", validClipData())],
-    });
-    const result = await fetchFeaturedClip("me", ["g1_2_set"]);
-    expect(result).toBeNull();
-  });
-
-  it("picks the sole candidate and enriches with spot name, upvote count, and upvote flag", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("g1_2_set", validClipData({ spotId: "spot-xyz" }))],
-    });
-    mockFetchSpotName.mockResolvedValueOnce("Pier 7");
-    mockGetCountFromServer.mockResolvedValueOnce(countSnap(12));
-    mockGetDoc.mockResolvedValueOnce({ exists: () => true });
-
-    const result = await fetchFeaturedClip("me");
-
-    expect(result).toEqual({
-      id: "g1_2_set",
-      videoUrl: "https://example.com/x.webm",
-      trickName: "kickflip",
-      playerUid: "p1",
-      playerUsername: "alice",
-      spotName: "Pier 7",
-      createdAt: expect.any(FakeTimestamp),
-      upvoteCount: 12,
-      alreadyUpvoted: true,
-    });
-    expect(mockFetchSpotName).toHaveBeenCalledWith("spot-xyz");
-  });
-
-  it("skips the spot lookup when the clip has no spotId", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("g1_2_set", validClipData({ spotId: undefined }))],
-    });
-
-    const result = await fetchFeaturedClip("me");
-
-    expect(result?.spotName).toBeNull();
-    expect(mockFetchSpotName).not.toHaveBeenCalled();
-  });
-
-  it("filters malformed docs out of the candidate pool instead of throwing", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [{ id: "broken", data: () => undefined }, makeClipSnap("g1_2_set", validClipData())],
-    });
-
-    const result = await fetchFeaturedClip("me");
-    expect(result?.id).toBe("g1_2_set");
-  });
-
-  it("returns null when the window query fails (card is hidden silently)", async () => {
-    mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
-    await expect(fetchFeaturedClip("me")).resolves.toBeNull();
-  });
-
-  it("defaults upvoteCount to 0 when the aggregate query fails", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("g1_2_set", validClipData())],
-    });
-    mockGetCountFromServer.mockRejectedValueOnce(
-      Object.assign(new Error("unavailable"), { code: "permission-denied" }),
-    );
-
-    const result = await fetchFeaturedClip("me");
-    expect(result?.upvoteCount).toBe(0);
-  });
-
-  it("defaults alreadyUpvoted to false when the vote-doc lookup fails", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("g1_2_set", validClipData())],
-    });
-    mockGetDoc.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
-
-    const result = await fetchFeaturedClip("me");
-    expect(result?.alreadyUpvoted).toBe(false);
-  });
-});
-
-/* ── upvoteClip ────────────────────────────────── */
 
 describe("upvoteClip", () => {
   it("writes the vote inside a transaction and returns the refreshed count", async () => {

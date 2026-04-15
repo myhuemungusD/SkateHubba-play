@@ -386,13 +386,12 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
                   </div>
                 </div>
 
-                {/* Video — top clip autoplays muted with tap-to-unmute (mirrors
-                    FeaturedClipCard's idiom). When the top clip ends it
-                    rotates to the next landed-trick clip in the feed, so
-                    the lobby always feels alive even before the user
-                    scrolls. Subsequent clips stay click-to-play to keep
-                    mobile data + battery sane. The key forces a fresh
-                    muted state on every rotation tick.
+                {/* Video — top clip autoplays muted with tap-to-unmute. When
+                    the top clip ends it rotates to the next landed-trick
+                    clip in the feed, so the lobby always feels alive even
+                    before the user scrolls. Subsequent clips stay
+                    click-to-play to keep mobile data + battery sane. The
+                    key forces a fresh muted state on every rotation tick.
                     When only one clip is visible, there's nothing to
                     rotate to — hand off to the native `loop` attribute
                     so the single clip replays without a stall gap. */}
@@ -514,12 +513,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 /**
  * Auto-playing top-of-feed clip with a tap-to-unmute affordance.
  *
- * Mirrors the playback idiom used by `FeaturedClipCard` (autoplay+loop+muted
- * by default; tapping the video toggles audio). Lives inline rather than as
- * a shared component because the three video surfaces in the app
- * (`FeaturedClipCard`, this top-of-feed, `TurnHistoryViewer.ClipVideo`) all
- * have slightly different chrome — premature abstraction would obscure more
- * than it would save.
+ * Autoplay+muted by default; tapping the video toggles audio. Lives inline
+ * rather than as a shared component because this surface and
+ * `TurnHistoryViewer.ClipVideo` have slightly different chrome — premature
+ * abstraction would obscure more than it would save.
  *
  * Pauses when scrolled out of the viewport so the clip isn't silently
  * decoding audio/video frames while the user reads the rest of the feed

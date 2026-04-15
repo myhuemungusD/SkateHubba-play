@@ -46,7 +46,6 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
-import { fetchSpotName } from "./spots";
 
 /* ────────────────────────────────────────────
  * Types
@@ -278,7 +277,6 @@ export async function fetchClipsFeed(cursor: ClipsFeedCursor | null = null, page
   const snap = await withRetry(() => getDocs(q));
 
   // Per-doc try/catch so one malformed clip can't blank the entire page.
-  // Mirrors the resilience pattern already used by `fetchFeaturedClip`.
   // Cursor advancement still uses the last *raw* doc so pagination doesn't
   // stall on a window that happens to contain an unparseable trailing row.
   const clips: ClipDoc[] = [];
@@ -304,27 +302,8 @@ export async function fetchClipsFeed(cursor: ClipsFeedCursor | null = null, page
 }
 
 /* ────────────────────────────────────────────
- * Featured clip + upvotes
+ * Upvotes
  * ──────────────────────────────────────────── */
-
-/**
- * Presentational shape of the lobby's featured clip. A snapshot — not a live
- * subscription. The upvote count is computed server-side at fetch time via
- * an aggregate query on `/clipVotes`, keeping `/clips` immutable per the
- * existing rule (`allow update: if false`).
- */
-export interface FeaturedClip {
-  id: string;
-  videoUrl: string;
-  trickName: string;
-  playerUid: string;
-  playerUsername: string;
-  spotName: string | null;
-  createdAt: Timestamp | null;
-  upvoteCount: number;
-  /** True when the current user already upvoted this clip. */
-  alreadyUpvoted: boolean;
-}
 
 /**
  * Thrown by `upvoteClip` when the caller has already upvoted the target
@@ -347,10 +326,6 @@ function clipVoteId(uid: string, clipId: string): string {
   return `${uid}_${clipId}`;
 }
 
-/** Size of the recency window we random-pick from. Bounded so a single page
- *  of reads always covers it; larger windows would need a second roundtrip. */
-const FEATURED_CLIP_WINDOW = 50;
-
 async function countClipUpvotes(clipId: string): Promise<number> {
   try {
     const q = query(clipVotesRef(), where("clipId", "==", clipId));
@@ -370,72 +345,6 @@ async function hasUserUpvoted(uid: string, clipId: string): Promise<boolean> {
     logger.warn("clip_upvote_check_failed", { clipId, error: parseFirebaseError(err) });
     return false;
   }
-}
-
-/**
- * Fetch one random clip from the most-recent `FEATURED_CLIP_WINDOW` landed
- * tricks, excluding ids the caller has already been shown. Returns null when
- * the window is empty after exclusion — callers hide the card silently per
- * spec (the active-games list is the primary content).
- *
- * Randomness is client-side: Firestore has no native random and adding an
- * equivalent via a secondary index (random-float field on each clip) is a
- * future optimization. At a 50-row window this is trivial work.
- *
- * Enrichment (spot name + upvote count + current-user-has-upvoted flag)
- * runs in parallel to keep the card's time-to-interactive low.
- */
-export async function fetchFeaturedClip(
-  uid: string,
-  excludeIds: ReadonlyArray<string> = [],
-): Promise<FeaturedClip | null> {
-  const q = query(
-    clipsRef(),
-    where("moderationStatus", "==", "active"),
-    orderBy("createdAt", "desc"),
-    orderBy(documentId(), "desc"),
-    limitFn(FEATURED_CLIP_WINDOW),
-  );
-
-  let snap;
-  try {
-    snap = await withRetry(() => getDocs(q));
-  } catch (err) {
-    logger.warn("featured_clip_query_failed", { error: parseFirebaseError(err) });
-    return null;
-  }
-
-  const exclude = new Set(excludeIds);
-  const candidates: ClipDoc[] = [];
-  for (const d of snap.docs) {
-    try {
-      const clip = toClipDoc(d);
-      if (!exclude.has(clip.id)) candidates.push(clip);
-    } catch (err) {
-      logger.warn("featured_clip_malformed", { docId: d.id, error: parseFirebaseError(err) });
-    }
-  }
-  if (candidates.length === 0) return null;
-
-  const pick = candidates[Math.floor(Math.random() * candidates.length)];
-
-  const [spotName, upvoteCount, alreadyUpvoted] = await Promise.all([
-    pick.spotId ? fetchSpotName(pick.spotId) : Promise.resolve(null),
-    countClipUpvotes(pick.id),
-    hasUserUpvoted(uid, pick.id),
-  ]);
-
-  return {
-    id: pick.id,
-    videoUrl: pick.videoUrl,
-    trickName: pick.trickName,
-    playerUid: pick.playerUid,
-    playerUsername: pick.playerUsername,
-    spotName,
-    createdAt: pick.createdAt,
-    upvoteCount,
-    alreadyUpvoted,
-  };
 }
 
 /** Per-clip upvote state for the lobby feed: live count + whether the
