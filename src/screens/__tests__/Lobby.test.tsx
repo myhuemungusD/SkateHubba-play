@@ -547,4 +547,151 @@ describe("Lobby", () => {
     const badge = screen.getByText("ACTIVE").parentElement!.querySelector(".tabular-nums")!;
     expect(badge.textContent).toBe("1");
   });
+
+  // Regression: game cards must not nest an interactive element inside another.
+  // The Profile sub-button used to live inside the card <button>, which is
+  // invalid HTML (no interactive descendants of <button>) and relied on
+  // stopPropagation to keep the card's onClick from firing on Profile clicks.
+  it("active game card does not nest a button inside another button", () => {
+    const game = makeGame();
+    const { container } = renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
+    expect(container.querySelectorAll("button button").length).toBe(0);
+  });
+
+  it("completed game card does not nest a button inside another button", () => {
+    const game = makeGame({ status: "complete", winner: "u1" });
+    const { container } = renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
+    expect(container.querySelectorAll("button button").length).toBe(0);
+  });
+
+  // A held key (auto-repeat) should not re-fire navigation — matches native
+  // <button> semantics and avoids stuttered double-navigation on the card.
+  it("active game card ignores repeated keydown from a held key", () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame();
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+
+    const card = screen.getByRole("button", { name: /vs @rival/i });
+    // Simulate auto-repeat (e.repeat === true on held key)
+    card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, repeat: true }));
+    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, repeat: true }));
+
+    expect(onOpenGame).not.toHaveBeenCalled();
+  });
+
+  it("Profile button on active game card opens profile without opening game", async () => {
+    const onOpenGame = vi.fn();
+    const onViewPlayer = vi.fn();
+    const game = makeGame();
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} onViewPlayer={onViewPlayer} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /View @rival's profile/i }));
+
+    expect(onViewPlayer).toHaveBeenCalledWith("u2");
+    expect(onOpenGame).not.toHaveBeenCalled();
+  });
+
+  it("Profile button on completed game card opens profile without opening game", async () => {
+    const onOpenGame = vi.fn();
+    const onViewPlayer = vi.fn();
+    const game = makeGame({ status: "complete", winner: "u1" });
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} onViewPlayer={onViewPlayer} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /View @rival's profile/i }));
+
+    expect(onViewPlayer).toHaveBeenCalledWith("u2");
+    expect(onOpenGame).not.toHaveBeenCalled();
+  });
+
+  it("active game card click opens game", async () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame();
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
+  it("completed game card click opens game", async () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame({ status: "complete", winner: "u1" });
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
+
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
+  it("primary Challenge Someone CTA fires onChallenge when email verified", async () => {
+    const onChallenge = vi.fn();
+    renderWithProviders(<Lobby {...defaultProps} onChallenge={onChallenge} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Challenge Someone/i }));
+
+    expect(onChallenge).toHaveBeenCalledTimes(1);
+  });
+
+  it("primary Challenge Someone CTA is disabled when email not verified", () => {
+    renderWithProviders(<Lobby {...defaultProps} user={{ emailVerified: false }} />);
+
+    expect(screen.getByRole("button", { name: /Challenge Someone/i })).toBeDisabled();
+    expect(screen.getByText("Verify your email to start challenging")).toBeInTheDocument();
+  });
+
+  it("@mikewhite fallback link fires onChallengeUser", async () => {
+    const onChallengeUser = vi.fn();
+    renderWithProviders(<Lobby {...defaultProps} onChallengeUser={onChallengeUser} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Challenge @mikewhite/i }));
+
+    expect(onChallengeUser).toHaveBeenCalledWith("mikewhite");
+  });
+
+  it("@mikewhite fallback link is hidden when email not verified", () => {
+    renderWithProviders(<Lobby {...defaultProps} user={{ emailVerified: false }} />);
+    expect(screen.queryByRole("button", { name: /Challenge @mikewhite/i })).not.toBeInTheDocument();
+  });
+
+  it("Sign Out button fires onSignOut", async () => {
+    const onSignOut = vi.fn();
+    renderWithProviders(<Lobby {...defaultProps} onSignOut={onSignOut} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Sign Out" }));
+
+    expect(onSignOut).toHaveBeenCalledTimes(1);
+  });
+
+  it("View my record header button fires onViewRecord", async () => {
+    const onViewRecord = vi.fn();
+    renderWithProviders(<Lobby {...defaultProps} onViewRecord={onViewRecord} />);
+
+    // Accessible name comes from the `title` tooltip on the avatar/username button
+    const btn = screen.getByTitle("View my record");
+    await userEvent.click(btn);
+
+    expect(onViewRecord).toHaveBeenCalledTimes(1);
+  });
+
+  it("Load More button fires onLoadMore", async () => {
+    const onLoadMore = vi.fn();
+    const game = makeGame();
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} hasMoreGames={true} onLoadMore={onLoadMore} />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Load More Games" }));
+
+    expect(onLoadMore).toHaveBeenCalledTimes(1);
+  });
+
+  it("Load More button is disabled while gamesLoading", () => {
+    const game = makeGame();
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} hasMoreGames={true} gamesLoading={true} />);
+    expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
+  });
+
+  it("Delete Account trigger button has type='button'", () => {
+    renderWithProviders(<Lobby {...defaultProps} />);
+    const btn = screen.getByRole("button", { name: "Delete Account" });
+    expect(btn).toHaveAttribute("type", "button");
+  });
 });
