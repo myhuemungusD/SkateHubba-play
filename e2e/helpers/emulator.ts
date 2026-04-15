@@ -153,7 +153,16 @@ export async function createProfile(
   emailVerified = false,
 ): Promise<void> {
   await Promise.all([
-    writeDoc("users", uid, { uid, username, email, stance: "Regular", emailVerified }),
+    // `createdAt` mirrors the serverTimestamp written by src/services/users.ts.
+    // Required by getPlayerDirectory() which orders by createdAt desc.
+    writeDoc("users", uid, {
+      uid,
+      username,
+      email,
+      stance: "Regular",
+      emailVerified,
+      createdAt: new Date(),
+    }),
     writeDoc("usernames", username.toLowerCase(), { uid }),
   ]);
 }
@@ -170,7 +179,8 @@ export async function createGame(
   p2Username: string,
   overrides: Record<string, unknown> = {},
 ): Promise<void> {
-  const deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const now = new Date();
+  const deadline = new Date(now.getTime() + 24 * 60 * 60 * 1000);
   await writeDoc("games", gameId, {
     player1Uid: p1Uid,
     player2Uid: p2Uid,
@@ -188,6 +198,8 @@ export async function createGame(
     turnDeadline: deadline,
     turnNumber: 1,
     winner: null,
+    createdAt: now,
+    updatedAt: now,
     ...overrides,
   });
 }
