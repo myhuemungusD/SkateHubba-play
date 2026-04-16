@@ -166,13 +166,13 @@ function checkTurnActionRate(gameId: string): void {
 }
 
 function recordTurnAction(gameId: string): void {
-  lastTurnActionAt.set(gameId, Date.now());
-  // Prevent unbounded growth: prune entries older than 60s
-  if (lastTurnActionAt.size > 50) {
-    const cutoff = Date.now() - 60_000;
-    for (const [id, ts] of lastTurnActionAt) {
-      if (ts < cutoff) lastTurnActionAt.delete(id);
-    }
+  const now = Date.now();
+  lastTurnActionAt.set(gameId, now);
+  // Drop entries past the cooldown window so the map stays bounded by
+  // concurrently-active games, not an arbitrary size threshold.
+  const cutoff = now - TURN_ACTION_COOLDOWN_MS;
+  for (const [id, ts] of lastTurnActionAt) {
+    if (ts < cutoff) lastTurnActionAt.delete(id);
   }
 }
 
@@ -180,6 +180,11 @@ function recordTurnAction(gameId: string): void {
 export function _resetCreateGameRateLimit() {
   lastGameCreatedAt = 0;
   lastTurnActionAt.clear();
+}
+
+/** @internal Inspect the turn-action rate-limit map size (for tests only) */
+export function _turnActionMapSize(): number {
+  return lastTurnActionAt.size;
 }
 
 /* ────────────────────────────────────────────

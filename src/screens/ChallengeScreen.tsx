@@ -235,6 +235,7 @@ export function ChallengeScreen({
             icon="@"
             maxLength={20}
             autoFocus
+            disabled={loading}
           />
 
           {/* Optional referee picker — collapsed by default. Games without a
@@ -262,6 +263,7 @@ export function ChallengeScreen({
                   placeholder="their_handle"
                   icon="@"
                   maxLength={20}
+                  disabled={loading}
                 />
                 <div className="flex items-center justify-between -mt-2 mb-2">
                   <p className="font-body text-xs text-subtle">

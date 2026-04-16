@@ -232,4 +232,45 @@ describe("GameOverScreen", () => {
     render(<GameOverScreen game={makeGame()} profile={profile} onRematch={vi.fn()} onBack={vi.fn()} />);
     expect(screen.getByText(/Invite/)).toBeInTheDocument();
   });
+
+  // ── Referee badge tests ──
+
+  it("shows REFEREED badge when judge was accepted", () => {
+    render(
+      <GameOverScreen
+        game={makeGame({ judgeId: "u3", judgeUsername: "ref", judgeStatus: "accepted" })}
+        profile={profile}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("REFEREED")).toBeInTheDocument();
+    expect(screen.getByText("by @ref")).toBeInTheDocument();
+  });
+
+  it("hides REFEREED badge when no judge was nominated", () => {
+    render(<GameOverScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+    expect(screen.queryByText("REFEREED")).not.toBeInTheDocument();
+  });
+
+  it("hides REFEREED badge when judge was pending", () => {
+    render(
+      <GameOverScreen
+        game={makeGame({ judgeId: "u3", judgeUsername: "ref", judgeStatus: "pending" })}
+        profile={profile}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("REFEREED")).not.toBeInTheDocument();
+  });
+
+  it("hides REFEREED badge when judge declined", () => {
+    render(
+      <GameOverScreen
+        game={makeGame({ judgeId: "u3", judgeUsername: "ref", judgeStatus: "declined" })}
+        profile={profile}
+        onBack={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("REFEREED")).not.toBeInTheDocument();
+  });
 });

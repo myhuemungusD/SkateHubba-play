@@ -242,6 +242,15 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
             <span className="font-body">@{game.judgeUsername} hasn&apos;t responded — honor system applies</span>
           </div>
         )}
+        {game.judgeUsername && game.judgeStatus === "accepted" && (
+          <div
+            className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/[0.06] px-3 py-1 text-[11px] text-brand-orange"
+            data-testid="judge-active-badge"
+          >
+            <span className="font-display tracking-wider">REFEREE</span>
+            <span className="font-body">@{game.judgeUsername} rules disputes</span>
+          </div>
+        )}
         {game.judgeUsername && game.judgeStatus === "declined" && (
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle">
             <span className="font-display tracking-wider">NO REFEREE</span>
@@ -270,7 +279,9 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
             <div className="text-center py-2 px-4 mb-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06]">
               <span className="font-display text-xs tracking-wider text-amber-400">UNDER REVIEW</span>
               <p className="font-body text-xs text-muted mt-0.5">
-                You claimed landed — waiting for @{opponentName}&apos;s decision.
+                {game.judgeUsername && game.judgeStatus === "accepted"
+                  ? `You claimed landed — referee @${game.judgeUsername} is ruling.`
+                  : `You claimed landed — waiting for @${opponentName}'s decision.`}
               </p>
             </div>
             {game.matchVideoUrl && isFirebaseStorageUrl(game.matchVideoUrl) && (
