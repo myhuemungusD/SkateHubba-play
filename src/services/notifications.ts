@@ -238,7 +238,12 @@ export function subscribeToNotifications(uid: string, onNotification: (notif: No
           });
           initialIds.add(change.doc.id);
 
-          markNotificationRead(change.doc.id);
+          markNotificationRead(change.doc.id).catch((err) => {
+            logger.warn("auto_mark_read_failed", {
+              notificationId: change.doc.id,
+              error: parseFirebaseError(err),
+            });
+          });
         }
       }
 

@@ -609,7 +609,8 @@ function GameHistoryCard({
       trackEvent("game_shared", { context: "archive", method: "clipboard" });
       setTimeout(() => setShareLabel("Share Game"), 2000);
     } catch {
-      // Clipboard not available
+      setShareLabel("Copy failed");
+      setTimeout(() => setShareLabel("Share Game"), 2000);
     }
   }, [game]);
 

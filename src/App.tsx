@@ -126,6 +126,10 @@ function AppRoutes() {
   const [challengeTarget, setChallengeTarget] = useState("");
   const directChallenge = useCallback(
     async (username: string) => {
+      if (!auth.user?.emailVerified) {
+        nav.setScreen("lobby");
+        return;
+      }
       const normalized = username.toLowerCase().trim();
       try {
         const uid = await getUidByUsername(normalized);
@@ -140,7 +144,7 @@ function AppRoutes() {
         nav.setScreen("challenge");
       }
     },
-    [nav, game],
+    [auth.user?.emailVerified, nav, game],
   );
 
   // Deep-link into a game when a push notification is tapped (service worker postMessage)
@@ -213,10 +217,8 @@ function AppRoutes() {
                   auth.setGoogleError("");
                   if (nav.authMode === "signin") {
                     // Switching to signup — require age gate if not already completed
-                    if (nav.ageGateDob) {
-                      nav.setAuthMode("signup");
-                    } else {
-                      nav.setAuthMode("signup");
+                    nav.setAuthMode("signup");
+                    if (!nav.ageGateDob) {
                       nav.setScreen("agegate");
                     }
                     return;
@@ -352,14 +354,15 @@ function AppRoutes() {
                     onRematch={
                       auth.user.emailVerified
                         ? async (): Promise<void> => {
+                            if (!game.activeGame || !auth.user) return;
                             const opponentUid =
-                              game.activeGame!.player1Uid === auth.user!.uid
-                                ? game.activeGame!.player2Uid
-                                : game.activeGame!.player1Uid;
+                              game.activeGame.player1Uid === auth.user.uid
+                                ? game.activeGame.player2Uid
+                                : game.activeGame.player1Uid;
                             const opponentName =
-                              game.activeGame!.player1Uid === auth.user!.uid
-                                ? game.activeGame!.player2Username
-                                : game.activeGame!.player1Username;
+                              game.activeGame.player1Uid === auth.user.uid
+                                ? game.activeGame.player2Username
+                                : game.activeGame.player1Username;
                             await game.startChallenge(opponentUid, opponentName);
                           }
                         : undefined

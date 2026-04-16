@@ -91,7 +91,8 @@ export function GameOverScreen({
       setShareLabel("Copied!");
       setTimeout(() => setShareLabel("Share Game Recap"), 2000);
     } catch {
-      // Clipboard not available
+      setShareLabel("Copy failed");
+      setTimeout(() => setShareLabel("Share Game Recap"), 2000);
     }
   }, [game, myUsername, opponentName, isForfeit]);
 
