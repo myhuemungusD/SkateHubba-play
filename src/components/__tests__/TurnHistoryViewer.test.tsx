@@ -196,4 +196,25 @@ describe("TurnHistoryViewer", () => {
     // Since letterTo ("u1") !== matcherUid ("u2"), it shows setter's name
     expect(screen.getByText(/@alice gets a letter/)).toBeInTheDocument();
   });
+
+  // ── Referee indicator tests ──
+
+  it("shows 'Refereed' indicator when turn has judgedBy set", () => {
+    const turn = makeTurn(1, { judgedBy: "judge-uid" });
+    render(<TurnHistoryViewer turns={[turn]} currentUserUid="u1" defaultExpanded />);
+    expect(screen.getByText("Refereed")).toBeInTheDocument();
+  });
+
+  it("hides 'Refereed' indicator when turn has no judgedBy", () => {
+    const turn = makeTurn(1, { judgedBy: null });
+    render(<TurnHistoryViewer turns={[turn]} currentUserUid="u1" defaultExpanded />);
+    expect(screen.queryByText("Refereed")).not.toBeInTheDocument();
+  });
+
+  it("hides 'Refereed' indicator when judgedBy is undefined (honor system)", () => {
+    const turn = makeTurn(1);
+    // Default makeTurn doesn't set judgedBy (undefined)
+    render(<TurnHistoryViewer turns={[turn]} currentUserUid="u1" defaultExpanded />);
+    expect(screen.queryByText("Refereed")).not.toBeInTheDocument();
+  });
 });

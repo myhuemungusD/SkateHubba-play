@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { playChime, isSoundEnabled, setSoundEnabled, type ChimeType } from "../services/sounds";
-import { deleteNotification, deleteUserNotifications } from "../services/notifications";
+import { deleteNotification, deleteUserNotifications, markNotificationRead } from "../services/notifications";
 import { TOAST_DURATION } from "../constants/ui";
 
 /* ── Types ─────────────────────────────────── */
@@ -16,6 +16,8 @@ export interface AppNotification {
   read: boolean;
   chime?: ChimeType;
   gameId?: string;
+  /** Firestore document ID — present when the notification originated from a Firestore doc */
+  firestoreId?: string;
 }
 
 interface NotifyOpts {
@@ -24,6 +26,7 @@ interface NotifyOpts {
   message: string;
   chime?: ChimeType;
   gameId?: string;
+  firestoreId?: string;
 }
 
 interface NotificationContextValue {
@@ -122,6 +125,7 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
       read: false,
       chime: opts.chime,
       gameId: opts.gameId,
+      firestoreId: opts.firestoreId,
     };
 
     // Add to persistent notifications
@@ -152,11 +156,33 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
   }, []);
 
   const markRead = useCallback((id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setNotifications((prev) => {
+      const target = prev.find((n) => n.id === id);
+      if (target?.firestoreId && !target.read) {
+        queueMicrotask(() =>
+          markNotificationRead(target.firestoreId!).catch(() => {
+            /* best-effort */
+          }),
+        );
+      }
+      return prev.map((n) => (n.id === id ? { ...n, read: true } : n));
+    });
   }, []);
 
   const markAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => (n.read ? n : { ...n, read: true })));
+    setNotifications((prev) => {
+      const toMark = prev.filter((n) => !n.read && n.firestoreId).map((n) => n.firestoreId!);
+      if (toMark.length > 0) {
+        queueMicrotask(() => {
+          for (const fsId of toMark) {
+            markNotificationRead(fsId).catch(() => {
+              /* best-effort */
+            });
+          }
+        });
+      }
+      return prev.map((n) => (n.read ? n : { ...n, read: true }));
+    });
   }, []);
 
   const clearAll = useCallback(() => {
@@ -170,9 +196,17 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
   }, []);
 
   const dismissNotification = useCallback((id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-    deleteNotification(id).catch(() => {
-      /* best-effort */
+    setNotifications((prev) => {
+      const target = prev.find((n) => n.id === id);
+      if (target?.firestoreId) {
+        const fsId = target.firestoreId;
+        queueMicrotask(() =>
+          deleteNotification(fsId).catch(() => {
+            /* best-effort */
+          }),
+        );
+      }
+      return prev.filter((n) => n.id !== id);
     });
   }, []);
 

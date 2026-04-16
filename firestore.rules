@@ -785,13 +785,18 @@ service cloud.firestore {
         && request.resource.data.gameId == resource.data.gameId
         && request.resource.data.createdAt == resource.data.createdAt;
 
-      allow delete: if false;
+      // Only the recipient can delete their own notifications.
+      allow delete: if isSignedIn()
+        && resource.data.recipientUid == request.auth.uid;
     }
 
     // ── Notification rate limits ──
     // One doc per sender+game+type combo, enforces 5-second cooldown server-side.
     match /notification_limits/{limitId} {
-      allow read: if isSignedIn();
+      // NOTE: Clients only write to this collection (setDoc). If a future
+      // read path is added, handle the non-existent-doc case (resource == null).
+      allow read: if isSignedIn()
+        && resource.data.senderUid == request.auth.uid;
 
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.senderUid
@@ -851,7 +856,10 @@ service cloud.firestore {
     // ── Nudge rate limits ──
     // One doc per sender+game pair, enforces 1-hour cooldown server-side.
     match /nudge_limits/{limitId} {
-      allow read: if isSignedIn();
+      // NOTE: Clients only write to this collection (setDoc). If a future
+      // read path is added, handle the non-existent-doc case (resource == null).
+      allow read: if isSignedIn()
+        && resource.data.senderUid == request.auth.uid;
 
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.senderUid

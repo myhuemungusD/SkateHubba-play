@@ -285,6 +285,71 @@ describe("WaitingScreen", () => {
       expect(screen.queryByText("Nudge")).not.toBeInTheDocument();
       expect(screen.queryByText("Report opponent")).not.toBeInTheDocument();
     });
+
+    it("shows active referee badge when judge is accepted", () => {
+      render(
+        <WaitingScreen
+          game={judgeGame({ phase: "matching", currentTurn: "u2", currentSetter: "u1" })}
+          profile={judgeProfile}
+          onBack={onBack}
+        />,
+      );
+      expect(screen.getByTestId("judge-active-badge")).toBeInTheDocument();
+      expect(screen.getByText("@ref rules disputes")).toBeInTheDocument();
+    });
+  });
+
+  it("shows active referee badge for players when judge is accepted", () => {
+    render(
+      <WaitingScreen
+        game={makeGame({
+          judgeId: "judge-uid",
+          judgeUsername: "ref",
+          judgeStatus: "accepted",
+          phase: "matching",
+          currentTurn: "u2",
+          currentSetter: "u1",
+        })}
+        profile={profile}
+        onBack={onBack}
+      />,
+    );
+    expect(screen.getByTestId("judge-active-badge")).toBeInTheDocument();
+  });
+
+  it("references referee in disputable banner when judge is active", () => {
+    render(
+      <WaitingScreen
+        game={makeGame({
+          phase: "disputable",
+          currentTurn: "judge-uid",
+          currentSetter: "u2",
+          judgeId: "judge-uid",
+          judgeUsername: "ref",
+          judgeStatus: "accepted",
+          matchVideoUrl: "https://firebasestorage.googleapis.com/match.webm",
+        })}
+        profile={profile}
+        onBack={onBack}
+      />,
+    );
+    expect(screen.getByText(/referee @ref is ruling/)).toBeInTheDocument();
+  });
+
+  it("references opponent in disputable banner when no judge", () => {
+    render(
+      <WaitingScreen
+        game={makeGame({
+          phase: "disputable",
+          currentTurn: "u2",
+          currentSetter: "u2",
+          matchVideoUrl: "https://firebasestorage.googleapis.com/match.webm",
+        })}
+        profile={profile}
+        onBack={onBack}
+      />,
+    );
+    expect(screen.getByText(/waiting for @bob's decision/)).toBeInTheDocument();
   });
 
   it("handles non-Error throw from sendNudge", async () => {

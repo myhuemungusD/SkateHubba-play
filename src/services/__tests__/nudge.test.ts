@@ -29,17 +29,17 @@ beforeEach(() => {
 
 describe("canNudge", () => {
   it("returns true when no previous nudge exists", () => {
-    expect(canNudge("g1")).toBe(true);
+    expect(canNudge("g1", "u1")).toBe(true);
   });
 
   it("returns false when nudged recently", () => {
-    localStorage.setItem("nudge_g1", String(Date.now()));
-    expect(canNudge("g1")).toBe(false);
+    localStorage.setItem("nudge_u1_g1", String(Date.now()));
+    expect(canNudge("g1", "u1")).toBe(false);
   });
 
   it("returns true after cooldown expires", () => {
-    localStorage.setItem("nudge_g1", String(Date.now() - 1 * 60 * 60 * 1000 - 1));
-    expect(canNudge("g1")).toBe(true);
+    localStorage.setItem("nudge_u1_g1", String(Date.now() - 1 * 60 * 60 * 1000 - 1));
+    expect(canNudge("g1", "u1")).toBe(true);
   });
 });
 
@@ -74,17 +74,17 @@ describe("sendNudge", () => {
 
   it("records timestamp in localStorage after success", async () => {
     await sendNudge(params);
-    const stored = parseInt(localStorage.getItem("nudge_g1") || "0", 10);
+    const stored = parseInt(localStorage.getItem("nudge_u1_g1") || "0", 10);
     expect(Date.now() - stored).toBeLessThan(1000);
   });
 
   it("throws when nudged within cooldown", async () => {
-    localStorage.setItem("nudge_g1", String(Date.now()));
+    localStorage.setItem("nudge_u1_g1", String(Date.now()));
     await expect(sendNudge(params)).rejects.toThrow("once per hour");
   });
 
   it("does not write to localStorage when cooldown check fails", async () => {
-    localStorage.setItem("nudge_g1", String(Date.now()));
+    localStorage.setItem("nudge_u1_g1", String(Date.now()));
     await expect(sendNudge(params)).rejects.toThrow();
     // Timestamp should still be the original, not updated
     expect(mockSetDoc).not.toHaveBeenCalled();

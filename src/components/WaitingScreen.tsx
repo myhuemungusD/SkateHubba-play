@@ -4,6 +4,7 @@ import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { sendNudge, canNudge } from "../services/nudge";
 import { trackEvent } from "../services/analytics";
+import { captureException } from "../lib/sentry";
 import { Btn } from "./ui/Btn";
 import { LetterDisplay } from "./LetterDisplay";
 import { Timer } from "./Timer";
@@ -46,7 +47,8 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
       setSaveStatus("saved");
       trackEvent("clip_saved", { context: "waiting_screen" });
       safeTimeout(() => setSaveStatus("idle"), 2000);
-    } catch {
+    } catch (err) {
+      captureException(err, { extra: { context: "ClipShareButtons.save", videoUrl, trickName } });
       setSaveStatus("failed");
       safeTimeout(() => setSaveStatus("idle"), 2000);
     }
@@ -83,7 +85,8 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
       }
       setShareStatus("shared");
       safeTimeout(() => setShareStatus("idle"), 2000);
-    } catch {
+    } catch (err) {
+      captureException(err, { extra: { context: "ClipShareButtons.share", videoUrl, trickName } });
       setShareStatus("failed");
       safeTimeout(() => setShareStatus("idle"), 2000);
     }
@@ -162,7 +165,7 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
 
 export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [nudgeStatus, setNudgeStatus] = useState<"idle" | "pending" | "sent" | "error">(() =>
-    canNudge(game.id) ? "idle" : "sent",
+    canNudge(game.id, profile.uid) ? "idle" : "sent",
   );
   const [nudgeError, setNudgeError] = useState("");
   const [showReport, setShowReport] = useState(false);
@@ -171,12 +174,12 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
   // Re-check nudge cooldown periodically so the button re-enables after cooldown
   useEffect(() => {
     const id = window.setInterval(() => {
-      if (canNudge(game.id)) {
+      if (canNudge(game.id, profile.uid)) {
         setNudgeStatus((prev) => (prev === "sent" ? "idle" : prev));
       }
     }, 60_000);
     return () => clearInterval(id);
-  }, [game.id]);
+  }, [game.id, profile.uid]);
 
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
@@ -255,6 +258,15 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
             <span className="font-body">@{game.judgeUsername} hasn&apos;t responded — honor system applies</span>
           </div>
         )}
+        {game.judgeUsername && game.judgeStatus === "accepted" && (
+          <div
+            className="mb-3 inline-flex items-center gap-2 rounded-full border border-brand-orange/30 bg-brand-orange/[0.06] px-3 py-1 text-[11px] text-brand-orange"
+            data-testid="judge-active-badge"
+          >
+            <span className="font-display tracking-wider">REFEREE</span>
+            <span className="font-body">@{game.judgeUsername} rules disputes</span>
+          </div>
+        )}
         {game.judgeUsername && game.judgeStatus === "declined" && (
           <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-subtle/40 bg-white/[0.03] px-3 py-1 text-[11px] text-subtle">
             <span className="font-display tracking-wider">NO REFEREE</span>
@@ -283,7 +295,9 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
             <div className="text-center py-2 px-4 mb-3 rounded-xl border border-amber-500/30 bg-amber-500/[0.06]">
               <span className="font-display text-xs tracking-wider text-amber-400">UNDER REVIEW</span>
               <p className="font-body text-xs text-muted mt-0.5">
-                You claimed landed — waiting for @{opponentName}&apos;s decision.
+                {game.judgeUsername && game.judgeStatus === "accepted"
+                  ? `You claimed landed — referee @${game.judgeUsername} is ruling.`
+                  : `You claimed landed — waiting for @${opponentName}'s decision.`}
               </p>
             </div>
             {game.matchVideoUrl && isFirebaseStorageUrl(game.matchVideoUrl) && (

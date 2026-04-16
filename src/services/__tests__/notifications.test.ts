@@ -456,7 +456,7 @@ describe("subscribeToNotifications", () => {
     expect(mockLimit).toHaveBeenCalledWith(10);
   });
 
-  it("fires onNotification for newly added docs and marks them read", async () => {
+  it("fires onNotification for newly added docs with firestoreId", async () => {
     const onNotification = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -489,13 +489,15 @@ describe("subscribeToNotifications", () => {
     });
 
     expect(onNotification).toHaveBeenCalledWith({
+      firestoreId: "n1",
       type: "your_turn",
       title: "Your Turn!",
       body: "vs @bob",
       gameId: "g1",
     });
-    // markNotificationRead is called (via updateDoc)
-    expect(mockUpdateDoc).toHaveBeenCalledTimes(1);
+    // markNotificationRead is no longer called by the subscription —
+    // the caller is responsible for marking read when the user sees it.
+    expect(mockUpdateDoc).not.toHaveBeenCalled();
   });
 
   it("caps tracked IDs at 50 to prevent unbounded growth", async () => {
@@ -569,6 +571,7 @@ describe("subscribeToNotifications", () => {
     });
 
     expect(onNotification).toHaveBeenCalledWith({
+      firestoreId: "n1",
       type: "",
       title: "SkateHubba",
       body: "",
