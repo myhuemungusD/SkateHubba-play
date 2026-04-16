@@ -1,6 +1,6 @@
 # Feature Completion Status Report
 
-**Generated:** 2026-04-15
+**Generated:** 2026-04-16
 **Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`, `docs/COMPREHENSIVE_GAP_ANALYSIS.md`
 
 Status legend:
@@ -95,15 +95,17 @@ Status legend:
 
 | Feature                         | Status          | Evidence                                                                                                                                               |
 | ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Spot tagging (geo-tagged map)   | **In Progress** | `src/screens/MapPage.tsx`, `SpotDetailPage.tsx`, `src/components/map/*`, `src/services/spots.ts`, `e2e/map.spec.ts`, `rules-tests/spots.rules.test.ts` |
-| Spot ↔ game linkage             | **In Progress** | `rules-tests/games-spotId.rules.test.ts` (rules) — UI tie-in pending                                                                                   |
-| Add a Spot UX                   | **In Progress** | `src/components/map/AddSpotSheet.tsx`                                                                                                                  |
-| Spot filters (gnar / bust risk) | **In Progress** | `src/components/map/SpotFilterBar.tsx`, `BustRisk.tsx`, `GnarRating.tsx`                                                                               |
+| Spot tagging (geo-tagged map)   | **Done**        | `src/screens/MapPage.tsx`, `SpotDetailPage.tsx`, `src/components/map/*`, `src/services/spots.ts`, `e2e/map.spec.ts`, `rules-tests/spots.rules.test.ts` |
+| Spot ↔ game linkage             | **Done**        | `SpotDetailPage.tsx` challenge button navigates to `/challenge?spot=`, `SpotPreviewCard.tsx` mirrors the flow, `rules-tests/games-spotId.rules.test.ts` |
+| Add a Spot UX                   | **Done**        | `src/components/map/AddSpotSheet.tsx`                                                                                                                  |
+| Spot filters (gnar / bust risk) | **Done**        | `src/components/map/SpotFilterBar.tsx`, `BustRisk.tsx`, `GnarRating.tsx`                                                                               |
+| Bottom tab bar (Home/Map/Me)    | **Done**        | `src/components/BottomNav.tsx`, persistent navigation across main screens                                                                              |
+| Custom Mapbox style             | **In Progress** | Issue [#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191) — design + infra task, no code change needed                                 |
 | Crew challenges (3v3)           | **Planned**     | No code yet                                                                                                                                            |
 | Trick library                   | **Planned**     | No code yet                                                                                                                                            |
 | Tournaments                     | **Planned**     | No code yet                                                                                                                                            |
 
-**Phase 4 verdict:** Spots/Map sub-feature is the only Phase 4 item under development. Crew, library, and tournaments remain on the roadmap.
+**Phase 4 verdict:** Spots/Map sub-feature is shipped (map UI, CRUD, filters, spot↔game linkage, tab bar). Custom Mapbox style is a design/infra task in progress. Crew, library, and tournaments remain on the roadmap.
 
 ---
 
@@ -187,11 +189,11 @@ Status legend:
 | Phase 1 — Core Loop                |    31 |   31 |         0 |           0 |        0 |       0 |      **100%** |
 | Phase 2 — Viral Mechanics          |     9 |    9 |         0 |           0 |        0 |       0 |      **100%** |
 | Phase 3 — Social Graph & Discovery |     9 |    7 |         0 |           1 |        1 |       0 |       **78%** |
-| Phase 4 — Network Effects          |     7 |    0 |         0 |           4 |        0 |       3 |        **0%** |
+| Phase 4 — Network Effects          |     9 |    5 |         0 |           1 |        0 |       3 |       **56%** |
 | Unreleased — Referee System        |     9 |    0 |         9 |           0 |        0 |       0 | **In review** |
 
-**Overall product completion (shipped + in-review, excluding deferred):** 56 of 64 non-deferred items ≈ **88%**. Including the single deferred item (spectator), 56 of 65 ≈ 86%.
-**Active focus:** Vote-driven clip ranking (Phase 3 In Progress).
+**Overall product completion (shipped + in-review, excluding deferred):** 61 of 66 non-deferred items ≈ **92%**. Including the single deferred item (spectator), 61 of 67 ≈ 91%.
+**Active focus:** Vote-driven clip ranking (Phase 3), custom Mapbox style (Phase 4 — design/infra).
 **Production gate:** Green (per gap analysis: 9.7/10, all P0 closed).
 
 ---
@@ -205,7 +207,7 @@ Status legend:
    - Instrument `clip_upvoted` analytics event to measure tap-through on the new ranking surface.
    - Add Firestore rules-test coverage for the new ranked query path (read-only, but worth pinning).
 2. **Cut a release tag** for the Referee System so CHANGELOG `[Unreleased]` rolls into a `v1.x.0`.
-3. **Land remaining spots/map UI** to flip Phase 4 spot tagging from In Progress → Done.
+3. **Custom Mapbox style** ([#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191)) — design a branded dark-base style in Mapbox Studio and set `VITE_MAPBOX_STYLE_URL` in Vercel. No code change needed; `src/lib/mapbox.ts` already reads the env var.
 4. ~~Spec spectator mode~~ — **deferred**; revisit after vote-driven ranking is in production and we can read the engagement numbers.
 5. **Schedule the P1 ops items** (rules deploy, backups, video purge, branch protection) — these are blockers for scaling, not for shipping.
 6. **Decide on Crew / Trick Library / Tournaments** sequencing — these are the biggest remaining bets and should be prioritised against learnings from the spots/map launch.
