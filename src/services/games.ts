@@ -170,9 +170,8 @@ function recordTurnAction(gameId: string): void {
   lastTurnActionAt.set(gameId, now);
   // Drop entries past the cooldown window so the map stays bounded by
   // concurrently-active games, not an arbitrary size threshold.
-  // Snapshot keys first to avoid mutating during iteration.
   const cutoff = now - TURN_ACTION_COOLDOWN_MS;
-  for (const [id, ts] of Array.from(lastTurnActionAt)) {
+  for (const [id, ts] of lastTurnActionAt) {
     if (ts < cutoff) lastTurnActionAt.delete(id);
   }
 }

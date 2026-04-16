@@ -194,6 +194,23 @@ describe("Smoke: Challenge", () => {
     expect(sendBtn.closest("button")).toBeDisabled();
   });
 
+  it("unverified user bounced from challenge route to lobby", async () => {
+    // renderLobby uses authedUser (emailVerified: false)
+    await renderLobby([]);
+
+    // The /challenge route requires emailVerified — unverified users are
+    // redirected back to /lobby by the route guard in App.tsx.
+    const challengeBtn = await screen.findByText(/Challenge Someone/);
+    await userEvent.click(challengeBtn);
+
+    // Should stay on lobby, not reach the challenge screen
+    await waitFor(() => {
+      expect(screen.getByText("Your Games")).toBeInTheDocument();
+    });
+    expect(screen.queryByPlaceholderText("their_handle")).not.toBeInTheDocument();
+    expect(mockCreateGame).not.toHaveBeenCalled();
+  });
+
   it("challenge back button returns to lobby", async () => {
     await renderVerifiedLobby([]);
 
