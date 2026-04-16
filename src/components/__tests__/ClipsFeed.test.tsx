@@ -581,7 +581,9 @@ describe("ClipsFeed", () => {
 
       // Now the IO tells us we're off-screen → pause() should fire,
       // because the `play` event already flipped the gate.
-      expect(ioCallback).toBeTruthy();
+      // waitFor guards against slow CI runners where the IO effect hasn't
+      // flushed by the time the synchronous assertion runs.
+      await waitFor(() => expect(ioCallback).toBeTruthy());
       ioCallback!(
         [{ isIntersecting: false, target: videoEl } as unknown as IntersectionObserverEntry],
         {} as IntersectionObserver,

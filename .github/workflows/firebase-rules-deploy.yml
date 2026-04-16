@@ -1,0 +1,136 @@
+name: Deploy Firebase Rules
+
+# Automates deployment of Firestore security rules, Firestore composite
+# indexes, and Cloud Storage rules whenever those files land on `main`.
+#
+# Only the rules/indexes surface is deployed — Cloud Functions, Hosting, and
+# app code are explicitly excluded to preserve the "no Cloud Functions in
+# PRs" invariant documented in .github/BRANCH_PROTECTION.md and CLAUDE.md.
+#
+# Authentication:
+#   Uses Google Cloud Workload Identity Federation via
+#   `google-github-actions/auth@v2` when both `FIREBASE_WIF_PROVIDER` and
+#   `FIREBASE_WIF_SERVICE_ACCOUNT` secrets are set. Falls back to the legacy
+#   `FIREBASE_TOKEN` secret so existing projects keep working.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "storage.rules"
+      - "firebase.json"
+      - ".firebaserc"
+      - ".github/workflows/firebase-rules-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Validate only — skip the actual deploy step."
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: firebase-rules-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  validate-rules:
+    name: Validate rules against emulator
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - run: npm ci
+
+      - name: Run Firestore rules unit tests
+        run: npm run test:rules
+
+  deploy:
+    name: Deploy to Firebase
+    needs: validate-rules
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Resolve Firebase project
+        id: project
+        run: |
+          PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"
+          if [ -z "$PROJECT_ID" ]; then
+            echo "::error::FIREBASE_PROJECT_ID secret is not set."
+            echo "Add it in GitHub → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate via Workload Identity Federation
+        id: wif
+        if: ${{ secrets.FIREBASE_WIF_PROVIDER != '' && secrets.FIREBASE_WIF_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.FIREBASE_WIF_PROVIDER }}
+          service_account: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
+
+      - name: Verify authentication method
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          WIF_PROVIDER: ${{ secrets.FIREBASE_WIF_PROVIDER }}
+        run: |
+          if [ -n "$WIF_PROVIDER" ]; then
+            echo "Using Workload Identity Federation."
+          elif [ -n "$FIREBASE_TOKEN" ]; then
+            echo "Using legacy FIREBASE_TOKEN. Migrate to WIF when convenient."
+          else
+            echo "::error::No Firebase credentials available."
+            echo "Set FIREBASE_WIF_PROVIDER + FIREBASE_WIF_SERVICE_ACCOUNT (preferred),"
+            echo "or FIREBASE_TOKEN (legacy) in GitHub → Settings → Secrets."
+            exit 1
+          fi
+
+      - name: Deploy rules and indexes
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          # Only pass FIREBASE_TOKEN when WIF isn't configured — firebase-tools
+          # prefers FIREBASE_TOKEN over Application Default Credentials, so
+          # leaving both set silently bypasses WIF.
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_WIF_PROVIDER == '' && secrets.FIREBASE_TOKEN || '' }}
+          PROJECT_ID: ${{ steps.project.outputs.project_id }}
+        run: |
+          npx firebase-tools@14 deploy \
+            --project "$PROJECT_ID" \
+            --only firestore:rules,firestore:indexes,storage:rules \
+            --non-interactive \
+            --force
+
+      - name: Dry-run summary
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          echo "### Dry run" >> "$GITHUB_STEP_SUMMARY"
+          echo "Rules validated against the emulator; deploy step skipped." >> "$GITHUB_STEP_SUMMARY"

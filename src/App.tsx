@@ -271,6 +271,7 @@ function AppRoutes() {
                   onOpenGame={game.openGame}
                   onSignOut={auth.handleSignOut}
                   onDeleteAccount={auth.handleDeleteAccount}
+                  onDownloadData={auth.handleDownloadData}
                   onViewRecord={() => nav.setScreen("record")}
                   hasMoreGames={game.hasMoreGames}
                   onLoadMore={game.loadMoreGames}
