@@ -2,6 +2,7 @@ import { useState, useCallback, memo } from "react";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
+import { captureException } from "../lib/sentry";
 
 interface TurnHistoryViewerProps {
   turns: TurnRecord[];
@@ -33,7 +34,12 @@ function ClipVideo({ url, label }: { url: string; label: string }) {
       playsInline
       preload="metadata"
       aria-label={label}
-      onError={() => setFailed(true)}
+      onError={(e) => {
+        setFailed(true);
+        captureException(new Error("Video playback failed"), {
+          extra: { context: "ClipVideo", url, label, mediaError: (e.target as HTMLVideoElement).error?.message },
+        });
+      }}
       className="w-full max-w-[280px] mx-auto aspect-[9/16] rounded-xl bg-black object-cover border border-border"
     />
   );
@@ -157,7 +163,8 @@ function DownloadBtn({ url, filename }: { url: string; filename: string }) {
       setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 2000);
-    } catch {
+    } catch (err) {
+      captureException(err, { extra: { context: "DownloadBtn", url, filename } });
       setStatus("failed");
       setTimeout(() => setStatus("idle"), 2000);
     }
@@ -222,7 +229,8 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
       }
       setStatus("shared");
       setTimeout(() => setStatus("idle"), 2000);
-    } catch {
+    } catch (err) {
+      captureException(err, { extra: { context: "ShareBtn", url, trickName } });
       setStatus("failed");
       setTimeout(() => setStatus("idle"), 2000);
     }
