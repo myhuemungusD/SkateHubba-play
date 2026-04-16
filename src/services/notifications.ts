@@ -79,8 +79,9 @@ export async function writeNotification(params: WriteNotificationParams): Promis
     lastNotificationAt.set(key, now);
 
     // Drop entries past the cooldown window so the map stays bounded.
+    // Snapshot keys first to avoid mutating during iteration.
     const cutoff = now - NOTIFICATION_COOLDOWN_MS;
-    for (const [k, ts] of lastNotificationAt) {
+    for (const [k, ts] of Array.from(lastNotificationAt)) {
       if (ts < cutoff) lastNotificationAt.delete(k);
     }
 
