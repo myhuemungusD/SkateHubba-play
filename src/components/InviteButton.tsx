@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { trackEvent } from "../services/analytics";
 import { playOlliePop } from "../utils/ollieSound";
 
@@ -6,6 +6,22 @@ export function InviteButton({ username, className = "" }: { username?: string; 
   const [showPanel, setShowPanel] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
   const [copied, setCopied] = useState(false);
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const id of timers) clearTimeout(id);
+    };
+  }, []);
+
+  const safeTimeout = (fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      timersRef.current.delete(id);
+      fn();
+    }, ms);
+    timersRef.current.add(id);
+  };
 
   const url = import.meta.env.VITE_APP_URL || window.location.origin;
   const text = username
@@ -17,7 +33,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
 
   const flash = (msg: string, ms = 3000) => {
     setStatusMsg(msg);
-    setTimeout(() => setStatusMsg(""), ms);
+    safeTimeout(() => setStatusMsg(""), ms);
   };
 
   const handleContacts = async () => {
@@ -53,7 +69,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
     try {
       await navigator.clipboard.writeText(fullMessage);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      safeTimeout(() => setCopied(false), 2000);
       trackEvent("invite_sent", { method: "copy_link" });
     } catch {
       flash("Could not copy — try long-pressing to copy instead.");

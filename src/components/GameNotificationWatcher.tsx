@@ -16,6 +16,7 @@ const fcmChimeMap: Record<string, ChimeType> = {
   new_challenge: "new_challenge",
   game_won: "game_won",
   game_lost: "game_lost",
+  judge_invite: "general",
 };
 
 /**
@@ -23,7 +24,7 @@ const fcmChimeMap: Record<string, ChimeType> = {
  * When the app is in the foreground, the FCM push for these types would
  * duplicate the Firestore-driven toast. We suppress them here.
  */
-const FIRESTORE_HANDLED_TYPES = new Set(["your_turn", "new_challenge", "game_won", "game_lost"]);
+const FIRESTORE_HANDLED_TYPES = new Set(["your_turn", "new_challenge", "game_won", "game_lost", "judge_invite"]);
 
 /**
  * Watches game state changes and triggers notifications.
@@ -239,6 +240,7 @@ export function GameNotificationWatcher() {
           message: notif.body,
           chime,
           gameId: notif.gameId,
+          firestoreId: notif.firestoreId,
         });
       });
       return unsub;

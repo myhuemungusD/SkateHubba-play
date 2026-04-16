@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
 import { blockUser, unblockUser } from "../services/blocking";
@@ -571,6 +571,13 @@ function GameHistoryCard({
   const won = game.winner === profileUid;
   const hasTurns = (game.turnHistory?.length ?? 0) > 0;
   const [shareLabel, setShareLabel] = useState("Share Game");
+  const shareLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (shareLabelTimerRef.current) clearTimeout(shareLabelTimerRef.current);
+    };
+  }, []);
 
   const handleShareGame = useCallback(async () => {
     const turns = game.turnHistory ?? [];
@@ -607,9 +614,10 @@ function GameHistoryCard({
       await navigator.clipboard.writeText(text);
       setShareLabel("Copied!");
       trackEvent("game_shared", { context: "archive", method: "clipboard" });
-      setTimeout(() => setShareLabel("Share Game"), 2000);
+      shareLabelTimerRef.current = setTimeout(() => setShareLabel("Share Game"), 2000);
     } catch {
-      // Clipboard not available
+      setShareLabel("Copy failed");
+      shareLabelTimerRef.current = setTimeout(() => setShareLabel("Share Game"), 2000);
     }
   }, [game]);
 

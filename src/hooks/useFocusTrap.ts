@@ -44,7 +44,9 @@ export function useFocusTrap(containerRef: React.RefObject<HTMLElement | null>, 
 
     return () => {
       document.removeEventListener("keydown", handleKeyDown);
-      previousFocusRef.current?.focus();
+      if (previousFocusRef.current && document.body.contains(previousFocusRef.current)) {
+        previousFocusRef.current.focus();
+      }
     };
   }, [containerRef, enabled]);
 }

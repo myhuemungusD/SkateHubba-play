@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { sendNudge, canNudge } from "../services/nudge";
 import { trackEvent } from "../services/analytics";
+import { captureException } from "../lib/sentry";
 import { Btn } from "./ui/Btn";
 import { LetterDisplay } from "./LetterDisplay";
 import { Timer } from "./Timer";
@@ -14,6 +15,22 @@ import { ReportModal } from "./ReportModal";
 function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName: string }) {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "shared" | "failed">("idle");
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const id of timers) clearTimeout(id);
+    };
+  }, []);
+
+  const safeTimeout = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      timersRef.current.delete(id);
+      fn();
+    }, ms);
+    timersRef.current.add(id);
+  }, []);
 
   const handleSave = useCallback(async () => {
     setSaveStatus("saving");
@@ -26,15 +43,16 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
       a.href = objectUrl;
       a.download = `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`;
       a.click();
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+      safeTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
       setSaveStatus("saved");
       trackEvent("clip_saved", { context: "waiting_screen" });
-      setTimeout(() => setSaveStatus("idle"), 2000);
-    } catch {
+      safeTimeout(() => setSaveStatus("idle"), 2000);
+    } catch (err) {
+      captureException(err, { extra: { context: "ClipShareButtons.save", videoUrl, trickName } });
       setSaveStatus("failed");
-      setTimeout(() => setSaveStatus("idle"), 2000);
+      safeTimeout(() => setSaveStatus("idle"), 2000);
     }
-  }, [videoUrl, trickName]);
+  }, [videoUrl, trickName, safeTimeout]);
 
   const handleShare = useCallback(async () => {
     setShareStatus("sharing");
@@ -66,12 +84,13 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
         trackEvent("clip_shared", { method: "clipboard", context: "waiting_screen" });
       }
       setShareStatus("shared");
-      setTimeout(() => setShareStatus("idle"), 2000);
-    } catch {
+      safeTimeout(() => setShareStatus("idle"), 2000);
+    } catch (err) {
+      captureException(err, { extra: { context: "ClipShareButtons.share", videoUrl, trickName } });
       setShareStatus("failed");
-      setTimeout(() => setShareStatus("idle"), 2000);
+      safeTimeout(() => setShareStatus("idle"), 2000);
     }
-  }, [videoUrl, trickName]);
+  }, [videoUrl, trickName, safeTimeout]);
 
   const saveLabel = { idle: "Save Clip", saving: "Saving...", saved: "Saved!", failed: "Save failed" }[saveStatus];
   const shareLabel = { idle: "Share Clip", sharing: "Sharing...", shared: "Shared!", failed: "Share failed" }[
@@ -146,7 +165,7 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
 
 export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [nudgeStatus, setNudgeStatus] = useState<"idle" | "pending" | "sent" | "error">(() =>
-    canNudge(game.id) ? "idle" : "sent",
+    canNudge(game.id, profile.uid) ? "idle" : "sent",
   );
   const [nudgeError, setNudgeError] = useState("");
   const [showReport, setShowReport] = useState(false);
@@ -155,12 +174,12 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
   // Re-check nudge cooldown periodically so the button re-enables after cooldown
   useEffect(() => {
     const id = window.setInterval(() => {
-      if (canNudge(game.id)) {
+      if (canNudge(game.id, profile.uid)) {
         setNudgeStatus((prev) => (prev === "sent" ? "idle" : prev));
       }
     }, 60_000);
     return () => clearInterval(id);
-  }, [game.id]);
+  }, [game.id, profile.uid]);
 
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
