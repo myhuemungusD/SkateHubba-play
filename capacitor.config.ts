@@ -14,7 +14,8 @@ import type { CapacitorConfig } from "@capacitor/cli";
  *   CAP_SERVER_URL=http://192.168.1.42:5173 npm run cap:run:ios
  */
 
-const devServerUrl = process.env.CAP_SERVER_URL;
+const isDev = process.env.NODE_ENV !== "production";
+const devServerUrl = isDev ? process.env.CAP_SERVER_URL : undefined;
 
 const config: CapacitorConfig = {
   appId: "com.skatehubba.app",
@@ -23,14 +24,9 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: "https",
     iosScheme: "https",
-    // Only inject a dev URL when explicitly opted in — production builds must
-    // load the bundled `dist/` assets so CSP + asset integrity hold.
     ...(devServerUrl ? { url: devServerUrl, cleartext: true } : {}),
   },
   android: {
-    // Required so the WebView can load bundled file:// assets alongside
-    // https:// Firebase endpoints in the same document.
-    allowMixedContent: true,
     backgroundColor: "#0A0A0A",
   },
   ios: {
