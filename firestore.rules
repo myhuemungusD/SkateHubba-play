@@ -793,6 +793,8 @@ service cloud.firestore {
     // ── Notification rate limits ──
     // One doc per sender+game+type combo, enforces 5-second cooldown server-side.
     match /notification_limits/{limitId} {
+      // NOTE: Clients only write to this collection (setDoc). If a future
+      // read path is added, handle the non-existent-doc case (resource == null).
       allow read: if isSignedIn()
         && resource.data.senderUid == request.auth.uid;
 
@@ -854,6 +856,8 @@ service cloud.firestore {
     // ── Nudge rate limits ──
     // One doc per sender+game pair, enforces 1-hour cooldown server-side.
     match /nudge_limits/{limitId} {
+      // NOTE: Clients only write to this collection (setDoc). If a future
+      // read path is added, handle the non-existent-doc case (resource == null).
       allow read: if isSignedIn()
         && resource.data.senderUid == request.auth.uid;
 

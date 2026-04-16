@@ -243,7 +243,7 @@ describe("markRead / markAllRead / clearAll", () => {
     expect(result.current.notifications.find((n) => n.id !== id)?.read).toBe(false);
   });
 
-  it("markRead calls markNotificationRead when firestoreId is present", () => {
+  it("markRead calls markNotificationRead when firestoreId is present", async () => {
     const { result } = renderHook(() => useNotifications(), { wrapper });
 
     act(() => {
@@ -255,6 +255,9 @@ describe("markRead / markAllRead / clearAll", () => {
     act(() => {
       result.current.markRead(id);
     });
+
+    // Flush the queueMicrotask scheduled by the updater
+    await act(async () => {});
 
     expect(mockMarkNotificationRead).toHaveBeenCalledWith("fs1");
   });
@@ -290,7 +293,7 @@ describe("markRead / markAllRead / clearAll", () => {
     expect(result.current.notifications.every((n) => n.read)).toBe(true);
   });
 
-  it("markAllRead calls markNotificationRead for unread notifications with firestoreIds", () => {
+  it("markAllRead calls markNotificationRead for unread notifications with firestoreIds", async () => {
     const { result } = renderHook(() => useNotifications(), { wrapper });
 
     act(() => {
@@ -302,6 +305,9 @@ describe("markRead / markAllRead / clearAll", () => {
     act(() => {
       result.current.markAllRead();
     });
+
+    // Flush the queueMicrotask scheduled by the updater
+    await act(async () => {});
 
     expect(mockMarkNotificationRead).toHaveBeenCalledTimes(2);
     expect(mockMarkNotificationRead).toHaveBeenCalledWith("fs1");
@@ -344,7 +350,7 @@ describe("markRead / markAllRead / clearAll", () => {
 });
 
 describe("dismissNotification", () => {
-  it("uses firestoreId for Firestore delete when present", () => {
+  it("uses firestoreId for Firestore delete when present", async () => {
     const { result } = renderHook(() => useNotifications(), { wrapper });
 
     act(() => {
@@ -356,6 +362,9 @@ describe("dismissNotification", () => {
     act(() => {
       result.current.dismissNotification(id);
     });
+
+    // Flush the queueMicrotask scheduled by the updater
+    await act(async () => {});
 
     expect(mockDeleteNotification).toHaveBeenCalledWith("fs1");
     expect(result.current.notifications).toHaveLength(0);

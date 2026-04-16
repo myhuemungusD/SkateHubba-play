@@ -159,9 +159,11 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
     setNotifications((prev) => {
       const target = prev.find((n) => n.id === id);
       if (target?.firestoreId && !target.read) {
-        markNotificationRead(target.firestoreId).catch(() => {
-          /* best-effort */
-        });
+        queueMicrotask(() =>
+          markNotificationRead(target.firestoreId!).catch(() => {
+            /* best-effort */
+          }),
+        );
       }
       return prev.map((n) => (n.id === id ? { ...n, read: true } : n));
     });
@@ -169,12 +171,15 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) => {
-      for (const n of prev) {
-        if (!n.read && n.firestoreId) {
-          markNotificationRead(n.firestoreId).catch(() => {
-            /* best-effort */
-          });
-        }
+      const toMark = prev.filter((n) => !n.read && n.firestoreId).map((n) => n.firestoreId!);
+      if (toMark.length > 0) {
+        queueMicrotask(() => {
+          for (const fsId of toMark) {
+            markNotificationRead(fsId).catch(() => {
+              /* best-effort */
+            });
+          }
+        });
       }
       return prev.map((n) => (n.read ? n : { ...n, read: true }));
     });
@@ -194,9 +199,12 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
     setNotifications((prev) => {
       const target = prev.find((n) => n.id === id);
       if (target?.firestoreId) {
-        deleteNotification(target.firestoreId).catch(() => {
-          /* best-effort */
-        });
+        const fsId = target.firestoreId;
+        queueMicrotask(() =>
+          deleteNotification(fsId).catch(() => {
+            /* best-effort */
+          }),
+        );
       }
       return prev.filter((n) => n.id !== id);
     });
