@@ -78,10 +78,7 @@ export async function writeNotification(params: WriteNotificationParams): Promis
     const now = Date.now();
     lastNotificationAt.set(key, now);
 
-    // Prune stale entries on every write. Any entry older than the cooldown
-    // window can no longer rate-limit a future call, so it is safe to drop.
-    // This keeps the map bounded by recent-unique-notifications rather than
-    // by an arbitrary size threshold.
+    // Drop entries past the cooldown window so the map stays bounded.
     const cutoff = now - NOTIFICATION_COOLDOWN_MS;
     for (const [k, ts] of lastNotificationAt) {
       if (ts < cutoff) lastNotificationAt.delete(k);

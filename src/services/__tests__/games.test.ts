@@ -563,28 +563,20 @@ describe("games service", () => {
     });
 
     it("prunes stale rate-limit entries on every turn action", async () => {
-      // Accumulate several entries on distinct game IDs, then advance time past
-      // the cooldown window. The next record call should drop all stale entries
-      // inline, keeping the map bounded without relying on a size threshold.
       let fakeNow = 100_000;
       vi.spyOn(Date, "now").mockImplementation(() => fakeNow);
 
-      // Perform 5 turn actions on different game IDs
       for (let i = 0; i < 5; i++) {
         mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
         await setTrick(`prune-game-${i}`, "Trick", null);
       }
-
       expect(_turnActionMapSize()).toBe(5);
 
-      // Advance time past the cooldown so all existing entries are eligible for pruning
+      // Advance past the 3s cooldown window — all 5 entries become stale
       fakeNow += 4_000;
 
-      // The next record call prunes all stale entries inline; only the new
-      // entry should remain in the map.
       mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
       await setTrick("prune-game-new", "Trick", null);
-
       expect(_turnActionMapSize()).toBe(1);
 
       vi.spyOn(Date, "now").mockRestore();

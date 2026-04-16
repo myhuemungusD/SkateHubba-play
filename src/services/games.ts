@@ -168,11 +168,8 @@ function checkTurnActionRate(gameId: string): void {
 function recordTurnAction(gameId: string): void {
   const now = Date.now();
   lastTurnActionAt.set(gameId, now);
-  // Prune entries older than the cooldown window on every record. Any entry
-  // older than TURN_ACTION_COOLDOWN_MS cannot rate-limit a future call, so
-  // it is safe to drop. This keeps the map bounded by actually-active games
-  // rather than by an arbitrary size threshold. Iteration cost is negligible
-  // for a map that realistically holds only a handful of in-flight games.
+  // Drop entries past the cooldown window so the map stays bounded by
+  // concurrently-active games, not an arbitrary size threshold.
   const cutoff = now - TURN_ACTION_COOLDOWN_MS;
   for (const [id, ts] of lastTurnActionAt) {
     if (ts < cutoff) lastTurnActionAt.delete(id);
