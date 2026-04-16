@@ -1,6 +1,6 @@
 # Technical Debt Assessment
 
-**Date:** 2026-03-21 (refreshed)
+**Date:** 2026-04-15 (refreshed)
 **Scope:** Full codebase review of `skatehubba-play`
 **Tech Stack:** React 18 + TypeScript + Vite + Firebase (Auth/Firestore/Storage) + Tailwind CSS + Capacitor
 
@@ -230,27 +230,17 @@ The service worker imports a hardcoded Firebase v11.0.0 CDN URL, but `package.js
 
 **Recommendation:** Dynamically inject the Firebase version at build time, or pin the SW import to match the resolved lockfile version.
 
-### 18. `.lighthouserc.json` Not Wired into CI
+### 18. Lighthouse CI Reports But Does Not Enforce
 
-**Location:** `.lighthouserc.json`, `.github/workflows/main.yml`
+**Location:** `.lighthouserc.json`
 
-A Lighthouse CI config exists (performance >=0.8, accessibility >=0.9) but the `main.yml` workflow's Lighthouse job may not be fully integrated.
+The Lighthouse job is wired into `.github/workflows/main.yml:120-142` and runs on every PR, but all four category assertions (`performance`, `accessibility`, `best-practices`, `seo`) are set to `"warn"` — so regressions below the thresholds surface in the report but do not fail the CI gate.
 
-**Recommendation:** Verify Lighthouse CI runs on every PR and fails the gate if thresholds regress.
+**Recommendation:** Flip the assertions to `"error"` once the current scores are known to be above the thresholds consistently, so performance/a11y regressions block merges rather than just getting logged.
 
-### 19. No `.nvmrc` File
+### 19. Deferred Landing Page Features (DEC-001)
 
-No `.nvmrc` exists at the project root. CI uses Node 22 and `package.json` specifies `>=22`, but local developer environments have no enforcement.
-
-**Recommendation:** Add `.nvmrc` with `22` for consistency across developer machines.
-
-### 20. STL Asset Storage Undocumented (DEC-002)
-
-Already tracked in `docs/DECISIONS.md`. Needs resolution to prevent asset loss.
-
-### 21. Deferred Landing Page Features (DEC-001)
-
-Autoplay hero video and custom fonts. Already documented — revisit when design resources are available.
+Autoplay hero video and custom fonts. Documented in `docs/DECISIONS.md` — revisit when design resources are available.
 
 ---
 
@@ -291,8 +281,7 @@ Autoplay hero video and custom fonts. Already documented — revisit when design
 | P3       | Type environment variables                 | Small   | Low — prevents runtime config errors        |
 | P3       | Audit package.json overrides               | Small   | Low — removes stale workarounds             |
 | P3       | Fix Firebase Messaging SW version mismatch | Small   | Low — prevents SW/app version drift         |
-| P3       | Wire Lighthouse CI into PR gate            | Small   | Low — catches performance regressions       |
-| P3       | Add `.nvmrc` file                          | Trivial | Low — developer environment consistency     |
+| P3       | Flip Lighthouse assertions to `error`      | Trivial | Low — makes perf/a11y regressions block CI  |
 
 ---
 
