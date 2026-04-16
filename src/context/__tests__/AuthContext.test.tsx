@@ -15,6 +15,11 @@ vi.mock("../../services/auth", () => ({
 vi.mock("../../services/users", () => ({
   deleteUserData: vi.fn(),
 }));
+vi.mock("../../services/userData", () => ({
+  exportUserData: vi.fn(),
+  serializeUserData: vi.fn(() => "{}"),
+  userDataFilename: vi.fn(() => "export.json"),
+}));
 vi.mock("../../services/analytics", () => ({
   analytics: { signIn: vi.fn() },
 }));

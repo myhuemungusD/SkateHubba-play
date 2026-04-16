@@ -250,6 +250,66 @@ describe("Lobby", () => {
     });
   });
 
+  it("hides Download My Data button when handler is not provided", () => {
+    renderWithProviders(<Lobby {...defaultProps} />);
+    expect(screen.queryByRole("button", { name: /download a copy of my data/i })).not.toBeInTheDocument();
+  });
+
+  it("invokes onDownloadData when the button is clicked", async () => {
+    const onDownloadData = vi.fn().mockResolvedValue(undefined);
+    renderWithProviders(<Lobby {...defaultProps} onDownloadData={onDownloadData} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /download a copy of my data/i }));
+
+    await waitFor(() => {
+      expect(onDownloadData).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("surfaces download error message", async () => {
+    const onDownloadData = vi.fn().mockRejectedValueOnce(new Error("network down"));
+    renderWithProviders(<Lobby {...defaultProps} onDownloadData={onDownloadData} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /download a copy of my data/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("network down");
+    });
+  });
+
+  it("falls back to generic message when download error is not an Error", async () => {
+    const onDownloadData = vi.fn().mockRejectedValueOnce("boom");
+    renderWithProviders(<Lobby {...defaultProps} onDownloadData={onDownloadData} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /download a copy of my data/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("Export failed — try again");
+    });
+  });
+
+  it("ignores re-clicks while an export is in flight", async () => {
+    let resolver: (() => void) | undefined;
+    const onDownloadData = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolver = resolve;
+        }),
+    );
+    renderWithProviders(<Lobby {...defaultProps} onDownloadData={onDownloadData} />);
+
+    const btn = screen.getByRole("button", { name: /download a copy of my data/i });
+    await userEvent.click(btn);
+    await waitFor(() => expect(btn).toBeDisabled());
+    // Second click is ignored because the button is disabled while loading.
+    await userEvent.click(btn);
+
+    resolver?.();
+    await waitFor(() => expect(btn).not.toBeDisabled());
+
+    expect(onDownloadData).toHaveBeenCalledTimes(1);
+  });
+
   it("helper functions work for player2 perspective", () => {
     const game = makeGame({
       player1Uid: "other",

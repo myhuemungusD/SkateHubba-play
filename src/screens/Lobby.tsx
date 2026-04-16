@@ -49,6 +49,7 @@ export function Lobby({
   onOpenGame,
   onSignOut,
   onDeleteAccount,
+  onDownloadData,
   onViewRecord,
   user,
   hasMoreGames = false,
@@ -63,6 +64,7 @@ export function Lobby({
   onOpenGame: (g: GameDoc) => void;
   onSignOut: () => void;
   onDeleteAccount: () => Promise<void>;
+  onDownloadData?: () => Promise<void>;
   onViewRecord: () => void;
   user: { emailVerified?: boolean } | null;
   hasMoreGames?: boolean;
@@ -71,6 +73,8 @@ export function Lobby({
   onViewPlayer?: (uid: string) => void;
 }) {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [downloadingData, setDownloadingData] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
   const [players, setPlayers] = useState<UserProfile[]>([]);
   const [playersLoading, setPlayersLoading] = useState(true);
   useEffect(() => {
@@ -521,7 +525,34 @@ export function Lobby({
         )}
 
         {/* Delete Account */}
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex flex-col items-center gap-3">
+          {onDownloadData && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (downloadingData) return;
+                setDownloadError("");
+                setDownloadingData(true);
+                try {
+                  await onDownloadData();
+                } catch (err) {
+                  setDownloadError(err instanceof Error ? err.message : "Export failed — try again");
+                } finally {
+                  setDownloadingData(false);
+                }
+              }}
+              disabled={downloadingData}
+              aria-label="Download a copy of my data"
+              className="font-body text-xs text-dim underline underline-offset-2 hover:text-brand-orange transition-colors disabled:opacity-60 disabled:cursor-wait"
+            >
+              {downloadingData ? "Preparing your data…" : "Download My Data"}
+            </button>
+          )}
+          {downloadError && (
+            <p role="alert" className="font-body text-xs text-brand-red max-w-xs text-center">
+              {downloadError}
+            </p>
+          )}
           <button
             type="button"
             onClick={() => setShowDeleteModal(true)}
