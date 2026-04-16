@@ -126,8 +126,7 @@ export function Lobby({
         if (g.phase === "disputable") return "Rule: landed or missed?";
         if (g.phase === "setReview") return "Rule: clean or sketchy?";
       }
-      if (g.phase === "disputable") return "Awaiting your ruling";
-      if (g.phase === "setReview") return "Awaiting your ruling";
+      if (g.phase === "disputable" || g.phase === "setReview") return "Awaiting your ruling";
       if (g.phase === "matching") return `Matching: ${trick}`;
       return "Setting a trick";
     }
