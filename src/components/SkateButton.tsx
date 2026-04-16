@@ -1,4 +1,4 @@
-import { useState, useId, type ReactNode } from "react";
+import { useState, useEffect, useRef, useId, type ReactNode } from "react";
 import { playOlliePop } from "../utils/ollieSound";
 
 /**
@@ -19,12 +19,20 @@ export function SkateButton({
 }) {
   const [popping, setPopping] = useState(false);
   const uid = useId().replace(/:/g, "");
+  const popTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (popTimerRef.current) clearTimeout(popTimerRef.current);
+    };
+  }, []);
 
   const handleClick = () => {
     if (disabled) return;
     setPopping(true);
     playOlliePop();
-    setTimeout(() => setPopping(false), 500);
+    if (popTimerRef.current) clearTimeout(popTimerRef.current);
+    popTimerRef.current = setTimeout(() => setPopping(false), 500);
     onClick?.();
   };
 

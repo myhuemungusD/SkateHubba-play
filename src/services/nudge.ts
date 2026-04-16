@@ -19,7 +19,7 @@ interface SendNudgeParams {
 export async function sendNudge({ gameId, senderUid, senderUsername, recipientUid }: SendNudgeParams): Promise<void> {
   // Client-side cooldown check (keyed by user+game to avoid cross-user interference)
   const key = `nudge_${senderUid}_${gameId}`;
-  const last = parseInt(localStorage.getItem(key) || "0", 10);
+  const last = parseInt(localStorage.getItem(key) ?? "0", 10) || 0;
   if (Date.now() - last < COOLDOWN_MS) {
     throw new Error("You can only nudge once per hour per game");
   }
@@ -51,6 +51,6 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
  */
 export function canNudge(gameId: string, senderUid: string): boolean {
   const key = `nudge_${senderUid}_${gameId}`;
-  const last = parseInt(localStorage.getItem(key) || "0", 10);
+  const last = parseInt(localStorage.getItem(key) ?? "0", 10) || 0;
   return Date.now() - last >= COOLDOWN_MS;
 }
