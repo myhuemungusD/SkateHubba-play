@@ -38,7 +38,7 @@ EXISTING=$(gcloud firestore backups schedules list \
   --database="${DATABASE_ID}" \
   --format='value(recurrence)' 2>/dev/null || true)
 
-if echo "${EXISTING}" | grep -q "daily"; then
+if echo "${EXISTING}" | grep -qFx "daily"; then
   echo "Daily backup schedule already exists — skipping."
 else
   gcloud firestore backups schedules create \

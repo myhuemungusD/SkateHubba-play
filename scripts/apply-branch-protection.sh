@@ -45,9 +45,9 @@ REQUIRED_CHECKS=(
 echo "→ Applying branch protection to ${REPO}@${BRANCH}"
 
 # Build the JSON payload on the fly so the required-status-checks array can
-# be populated from the shell list above.
-CHECK_CONTEXTS_JSON=$(printf '%s\n' "${REQUIRED_CHECKS[@]}" | \
-  python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')
+# be populated from the shell list above. Uses jq (available on ubuntu-latest
+# and any machine with gh CLI) instead of python3 for portability.
+CHECK_CONTEXTS_JSON=$(printf '%s\n' "${REQUIRED_CHECKS[@]}" | jq -R -s 'split("\n") | map(select(length > 0))')
 
 PAYLOAD=$(cat <<EOF
 {

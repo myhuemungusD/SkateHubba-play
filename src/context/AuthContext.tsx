@@ -163,10 +163,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!activeProfile) return;
     /* v8 ignore stop */
     logger.info("download_data_start", { uid: activeProfile.uid });
-    const bundle = await exportUserData(activeProfile.uid, activeProfile.username);
-    const blob = new Blob([serializeUserData(bundle)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
     try {
+      const bundle = await exportUserData(activeProfile.uid, activeProfile.username);
+      const blob = new Blob([serializeUserData(bundle)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = userDataFilename(bundle);
@@ -174,15 +174,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-    } finally {
-      URL.revokeObjectURL(url);
+      // Defer revocation so Safari/WebKit doesn't cancel the download mid-
+      // flight — modern Chrome/Firefox queue the save before click() returns,
+      // but older WebKit historically races the blob fetch.
+      setTimeout(() => URL.revokeObjectURL(url), 0);
+      logger.info("download_data_done", {
+        uid: activeProfile.uid,
+        games: bundle.games.length,
+        clips: bundle.clips.length,
+        reports: bundle.reports.length,
+      });
+    } catch (err) {
+      captureException(err, {
+        extra: { context: "download_data_failed", uid: activeProfile.uid },
+      });
+      throw err; // Lobby still surfaces the message to the user
     }
-    logger.info("download_data_done", {
-      uid: activeProfile.uid,
-      games: bundle.games.length,
-      clips: bundle.clips.length,
-      reports: bundle.reports.length,
-    });
   }, [activeProfile]);
 
   const value: AuthContextValue = {

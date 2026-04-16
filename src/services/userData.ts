@@ -1,4 +1,14 @@
-import { Timestamp, collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import {
+  Timestamp,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit as limitFn,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
@@ -23,13 +33,24 @@ export interface ExportedDoc {
 }
 
 /**
+ * Per-surface cap for collection reads. High enough to cover any realistic
+ * user while bounding read cost and memory. If a user truly has more than
+ * this many docs in a surface, the bundle's `capped` flag will be `true`.
+ */
+const EXPORT_QUERY_LIMIT = 500;
+
+/**
  * Full GDPR Article 20 data bundle for one user.
  *
  * Covers every collection where the user is a principal author or subject:
  *   - `users/{uid}`                    — their profile
  *   - `usernames/{username}`           — their reservation
- *   - `games` (player1Uid|player2Uid)  — full game docs they played in
+ *   - `games` (player1Uid|player2Uid|judgeId) — games they played or judged
  *   - `clips` (playerUid == uid)       — landed-trick clips they authored
+ *   - `clipVotes` (uid == uid)         — upvotes they cast
+ *   - `spots` (createdBy == uid)       — skate spots they added
+ *   - `notifications` (recipientUid)   — notifications received
+ *   - `nudges` (senderUid|recipientUid) — nudges sent or received
  *   - `users/{uid}/blocked_users/*`    — people they have blocked
  *   - `reports` (reporterUid == uid)   — reports they filed
  *
@@ -37,10 +58,20 @@ export interface ExportedDoc {
  *   - Other users' profile/game data (not the exporter's data)
  *   - Video binaries (linked via `videoUrl`; download separately if needed)
  *   - Server-side analytics that don't identify this user
+ *   - `spots/{id}/comments` subcollections — comments are keyed by spot, not
+ *     by user, and there is no cross-spot index. A full export would require
+ *     enumerating every spot then reading its comments subcollection, which
+ *     is infeasible client-side. Spot comments are included transitively via
+ *     the `spots` surface (the spot doc itself is exported).
+ *
+ * Each collection read is capped at {@link EXPORT_QUERY_LIMIT} docs. If any
+ * surface hits the cap, `capped` is set to `true` so the consumer knows the
+ * dump may be incomplete.
  */
 export interface UserDataExport {
   schemaVersion: typeof USER_DATA_EXPORT_SCHEMA_VERSION;
   exportedAt: string;
+  capped: boolean;
   subject: {
     uid: string;
     username: string;
@@ -49,6 +80,10 @@ export interface UserDataExport {
   usernameReservation: ExportedDoc | null;
   games: ExportedDoc[];
   clips: ExportedDoc[];
+  clipVotes: ExportedDoc[];
+  spots: ExportedDoc[];
+  notifications: ExportedDoc[];
+  nudges: ExportedDoc[];
   blockedUsers: ExportedDoc[];
   reports: ExportedDoc[];
 }
@@ -104,37 +139,122 @@ export async function exportUserData(uid: string, username: string): Promise<Use
   const normalizedUsername = username.toLowerCase().trim();
   const db = requireDb();
 
-  const [profile, usernameReservation, gamesAsP1, gamesAsP2, clips, blocked, reports] = await Promise.all([
+  const cap = EXPORT_QUERY_LIMIT;
+  const gamesCol = collection(db, "games");
+  const clipsCol = collection(db, "clips");
+
+  const [
+    profile,
+    usernameReservation,
+    gamesAsP1,
+    gamesAsP2,
+    gamesAsJudge,
+    clips,
+    clipVotes,
+    spots,
+    notifications,
+    nudgesSent,
+    nudgesReceived,
+    blocked,
+    reports,
+  ] = await Promise.all([
     readDoc(`users/${uid}`, () => getDoc(doc(db, "users", uid))),
     normalizedUsername
       ? readDoc(`usernames/${normalizedUsername}`, () => getDoc(doc(db, "usernames", normalizedUsername)))
       : Promise.resolve(null),
-    readCollection("games (player1)", () => getDocs(query(collection(db, "games"), where("player1Uid", "==", uid)))),
-    readCollection("games (player2)", () => getDocs(query(collection(db, "games"), where("player2Uid", "==", uid)))),
-    readCollection("clips", () => getDocs(query(collection(db, "clips"), where("playerUid", "==", uid)))),
+    readCollection("games (player1)", () =>
+      getDocs(query(gamesCol, where("player1Uid", "==", uid), orderBy("createdAt", "desc"), limitFn(cap))),
+    ),
+    readCollection("games (player2)", () =>
+      getDocs(query(gamesCol, where("player2Uid", "==", uid), orderBy("createdAt", "desc"), limitFn(cap))),
+    ),
+    readCollection("games (judge)", () =>
+      getDocs(query(gamesCol, where("judgeId", "==", uid), orderBy("createdAt", "desc"), limitFn(cap))),
+    ),
+    readCollection("clips", () =>
+      getDocs(query(clipsCol, where("playerUid", "==", uid), orderBy("createdAt", "desc"), limitFn(cap))),
+    ),
+    readCollection("clipVotes", () =>
+      getDocs(query(collection(db, "clipVotes"), where("uid", "==", uid), limitFn(cap))),
+    ),
+    readCollection("spots", () =>
+      getDocs(
+        query(collection(db, "spots"), where("createdBy", "==", uid), orderBy("createdAt", "desc"), limitFn(cap)),
+      ),
+    ),
+    readCollection("notifications", () =>
+      getDocs(
+        query(
+          collection(db, "notifications"),
+          where("recipientUid", "==", uid),
+          orderBy("createdAt", "desc"),
+          limitFn(cap),
+        ),
+      ),
+    ),
+    readCollection("nudges (sent)", () =>
+      getDocs(query(collection(db, "nudges"), where("senderUid", "==", uid), limitFn(cap))),
+    ),
+    readCollection("nudges (received)", () =>
+      getDocs(query(collection(db, "nudges"), where("recipientUid", "==", uid), limitFn(cap))),
+    ),
     readCollection("blocked_users", () => getDocs(collection(db, "users", uid, "blocked_users"))),
-    readCollection("reports", () => getDocs(query(collection(db, "reports"), where("reporterUid", "==", uid)))),
+    readCollection("reports", () =>
+      getDocs(query(collection(db, "reports"), where("reporterUid", "==", uid), limitFn(cap))),
+    ),
   ]);
 
-  // Deduplicate games — a user can only be player1 OR player2, but surface any
-  // overlap defensively in case of historical rows.
+  // Deduplicate games — a user can appear as player1, player2, or judge on
+  // the same game doc.
   const seenGames = new Set<string>();
   const games: ExportedDoc[] = [];
-  for (const d of [...gamesAsP1, ...gamesAsP2]) {
+  for (const d of [...gamesAsP1, ...gamesAsP2, ...gamesAsJudge]) {
     if (!seenGames.has(d.id)) {
       seenGames.add(d.id);
       games.push(d);
     }
   }
 
+  // Deduplicate nudges (user may be both sender and recipient of different
+  // nudges, but could theoretically appear in both queries for the same doc).
+  const seenNudges = new Set<string>();
+  const nudges: ExportedDoc[] = [];
+  for (const d of [...nudgesSent, ...nudgesReceived]) {
+    if (!seenNudges.has(d.id)) {
+      seenNudges.add(d.id);
+      nudges.push(d);
+    }
+  }
+
+  // Flag if any surface hit the per-query cap.
+  const allSurfaces = [
+    gamesAsP1,
+    gamesAsP2,
+    gamesAsJudge,
+    clips,
+    clipVotes,
+    spots,
+    notifications,
+    nudgesSent,
+    nudgesReceived,
+    blocked,
+    reports,
+  ];
+  const capped = allSurfaces.some((s) => s.length >= cap);
+
   return {
     schemaVersion: USER_DATA_EXPORT_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
+    capped,
     subject: { uid, username: normalizedUsername },
     profile,
     usernameReservation,
     games,
     clips,
+    clipVotes,
+    spots,
+    notifications,
+    nudges,
     blockedUsers: blocked,
     reports,
   };

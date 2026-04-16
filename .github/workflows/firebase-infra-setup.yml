@@ -49,8 +49,19 @@ jobs:
           fi
           echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
 
+      - name: Verify credentials are configured
+        env:
+          WIF_PROVIDER: ${{ secrets.FIREBASE_WIF_PROVIDER }}
+          WIF_SA: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$WIF_PROVIDER" ] || [ -z "$WIF_SA" ]; then
+            echo "::error::FIREBASE_WIF_PROVIDER and FIREBASE_WIF_SERVICE_ACCOUNT secrets are required."
+            echo "The infra scripts need gcloud credentials. Set both secrets in"
+            echo "GitHub → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
       - name: Authenticate to Google Cloud
-        if: ${{ secrets.FIREBASE_WIF_PROVIDER != '' && secrets.FIREBASE_WIF_SERVICE_ACCOUNT != '' }}
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.FIREBASE_WIF_PROVIDER }}
