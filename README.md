@@ -359,7 +359,11 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 
 ### Phase 4 — Network Effects Flywheel 🟡 in progress
 
-- 🚧 **Spot tagging** — geo-tagged trick locations create a skater map (UGC moat) — map UI, spots service, Firestore rules, and rules-tests are landed; final UI polish in progress
+- ✅ **Spot tagging** — geo-tagged skate spots with gnar rating + bust risk, full CRUD, Firestore rules, and security-rule tests
+- ✅ **Spot map UI** — Mapbox GL integration with markers, filters (gnar/bust risk), spot preview cards, and add-spot sheet
+- ✅ **Spot ↔ game linkage** — challenge from any spot detail page or map preview; `?spot=` query param flows through to the game doc
+- ✅ **Bottom tab bar** — persistent Home / Map / Me navigation across all main screens
+- 🚧 **Custom Mapbox style** — branded dark-base map style via Mapbox Studio ([#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191))
 - ⏳ **Crew challenges** — team-based S.K.A.T.E. (3v3) multiplies each invite by 6 players
 - ⏳ **Trick library** — community trick index with video proof, a defensible content layer
 - ⏳ **Tournaments** — bracket-style competitions for appointment engagement
