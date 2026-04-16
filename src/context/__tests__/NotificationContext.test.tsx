@@ -20,6 +20,16 @@ vi.mock("../../constants/ui", () => ({
   TOAST_DURATION: 100,
 }));
 
+const mockMarkNotificationRead = vi.fn().mockResolvedValue(undefined);
+const mockDeleteNotification = vi.fn().mockResolvedValue(undefined);
+const mockDeleteUserNotifications = vi.fn().mockResolvedValue(undefined);
+
+vi.mock("../../services/notifications", () => ({
+  markNotificationRead: (...args: unknown[]) => mockMarkNotificationRead(...args),
+  deleteNotification: (...args: unknown[]) => mockDeleteNotification(...args),
+  deleteUserNotifications: (...args: unknown[]) => mockDeleteUserNotifications(...args),
+}));
+
 /* ── Helpers ────────────────────────────────── */
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -233,6 +243,41 @@ describe("markRead / markAllRead / clearAll", () => {
     expect(result.current.notifications.find((n) => n.id !== id)?.read).toBe(false);
   });
 
+  it("markRead calls markNotificationRead when firestoreId is present", async () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.notify({ type: "info", title: "A", message: "1", firestoreId: "fs1" });
+    });
+
+    const id = result.current.notifications[0].id;
+
+    act(() => {
+      result.current.markRead(id);
+    });
+
+    // Flush the queueMicrotask scheduled by the updater
+    await act(async () => {});
+
+    expect(mockMarkNotificationRead).toHaveBeenCalledWith("fs1");
+  });
+
+  it("markRead does not call markNotificationRead without firestoreId", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.notify({ type: "info", title: "A", message: "1" });
+    });
+
+    const id = result.current.notifications[0].id;
+
+    act(() => {
+      result.current.markRead(id);
+    });
+
+    expect(mockMarkNotificationRead).not.toHaveBeenCalled();
+  });
+
   it("markAllRead sets read:true on all notifications", () => {
     const { result } = renderHook(() => useNotifications(), { wrapper });
 
@@ -246,6 +291,27 @@ describe("markRead / markAllRead / clearAll", () => {
     });
 
     expect(result.current.notifications.every((n) => n.read)).toBe(true);
+  });
+
+  it("markAllRead calls markNotificationRead for unread notifications with firestoreIds", async () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.notify({ type: "info", title: "A", message: "1", firestoreId: "fs1" });
+      result.current.notify({ type: "info", title: "B", message: "2", firestoreId: "fs2" });
+      result.current.notify({ type: "info", title: "C", message: "3" }); // no firestoreId
+    });
+
+    act(() => {
+      result.current.markAllRead();
+    });
+
+    // Flush the queueMicrotask scheduled by the updater
+    await act(async () => {});
+
+    expect(mockMarkNotificationRead).toHaveBeenCalledTimes(2);
+    expect(mockMarkNotificationRead).toHaveBeenCalledWith("fs1");
+    expect(mockMarkNotificationRead).toHaveBeenCalledWith("fs2");
   });
 
   it("clearAll empties notification list", () => {
@@ -280,6 +346,62 @@ describe("markRead / markAllRead / clearAll", () => {
       result.current.markAllRead();
     });
     expect(result.current.unreadCount).toBe(0);
+  });
+});
+
+describe("dismissNotification", () => {
+  it("uses firestoreId for Firestore delete when present", async () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.notify({ type: "info", title: "A", message: "1", firestoreId: "fs1" });
+    });
+
+    const id = result.current.notifications[0].id;
+
+    act(() => {
+      result.current.dismissNotification(id);
+    });
+
+    // Flush the queueMicrotask scheduled by the updater
+    await act(async () => {});
+
+    expect(mockDeleteNotification).toHaveBeenCalledWith("fs1");
+    expect(result.current.notifications).toHaveLength(0);
+  });
+
+  it("does not call Firestore delete when firestoreId is absent", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.notify({ type: "info", title: "A", message: "1" });
+    });
+
+    const id = result.current.notifications[0].id;
+
+    act(() => {
+      result.current.dismissNotification(id);
+    });
+
+    expect(mockDeleteNotification).not.toHaveBeenCalled();
+    expect(result.current.notifications).toHaveLength(0);
+  });
+});
+
+describe("clearAll", () => {
+  it("calls deleteUserNotifications for the current user", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.notify({ type: "info", title: "A", message: "1" });
+    });
+
+    act(() => {
+      result.current.clearAll();
+    });
+
+    expect(mockDeleteUserNotifications).toHaveBeenCalledWith("u1");
+    expect(result.current.notifications).toHaveLength(0);
   });
 });
 

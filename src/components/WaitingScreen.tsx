@@ -149,7 +149,7 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
 
 export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const [nudgeStatus, setNudgeStatus] = useState<"idle" | "pending" | "sent" | "error">(() =>
-    canNudge(game.id) ? "idle" : "sent",
+    canNudge(game.id, profile.uid) ? "idle" : "sent",
   );
   const [nudgeError, setNudgeError] = useState("");
   const [showReport, setShowReport] = useState(false);
@@ -158,12 +158,12 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
   // Re-check nudge cooldown periodically so the button re-enables after cooldown
   useEffect(() => {
     const id = window.setInterval(() => {
-      if (canNudge(game.id)) {
+      if (canNudge(game.id, profile.uid)) {
         setNudgeStatus((prev) => (prev === "sent" ? "idle" : prev));
       }
     }, 60_000);
     return () => clearInterval(id);
-  }, [game.id]);
+  }, [game.id, profile.uid]);
 
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;

@@ -192,6 +192,7 @@ export function subscribeToNudges(uid: string, onNudge: (nudge: NudgeEvent) => v
 }
 
 export interface NotificationEvent {
+  firestoreId: string;
   type: string;
   title: string;
   body: string;
@@ -200,7 +201,8 @@ export interface NotificationEvent {
 
 /**
  * Subscribe to unread notifications for a user. Fires `onNotification`
- * for newly added docs and automatically marks them as read.
+ * for newly added docs. The caller is responsible for marking notifications
+ * as read when the user has actually seen them (via `markNotificationRead`).
  */
 export function subscribeToNotifications(uid: string, onNotification: (notif: NotificationEvent) => void): Unsubscribe {
   const db = requireDb();
@@ -231,14 +233,13 @@ export function subscribeToNotifications(uid: string, onNotification: (notif: No
         if (change.type === "added" && !initialIds.has(change.doc.id)) {
           const data = change.doc.data();
           onNotification({
+            firestoreId: change.doc.id,
             type: data.type ?? "",
             title: data.title ?? "SkateHubba",
             body: data.body ?? "",
             gameId: data.gameId,
           });
           initialIds.add(change.doc.id);
-
-          markNotificationRead(change.doc.id);
         }
       }
 

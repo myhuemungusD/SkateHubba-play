@@ -17,8 +17,8 @@ interface SendNudgeParams {
  * Rate-limited both client-side (localStorage) and server-side (Firestore rules).
  */
 export async function sendNudge({ gameId, senderUid, senderUsername, recipientUid }: SendNudgeParams): Promise<void> {
-  // Client-side cooldown check
-  const key = `nudge_${gameId}`;
+  // Client-side cooldown check (keyed by user+game to avoid cross-user interference)
+  const key = `nudge_${senderUid}_${gameId}`;
   const last = parseInt(localStorage.getItem(key) || "0", 10);
   if (Date.now() - last < COOLDOWN_MS) {
     throw new Error("You can only nudge once per hour per game");
@@ -49,8 +49,8 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
 /**
  * Check if the nudge cooldown has elapsed for a specific game.
  */
-export function canNudge(gameId: string): boolean {
-  const key = `nudge_${gameId}`;
+export function canNudge(gameId: string, senderUid: string): boolean {
+  const key = `nudge_${senderUid}_${gameId}`;
   const last = parseInt(localStorage.getItem(key) || "0", 10);
   return Date.now() - last >= COOLDOWN_MS;
 }
