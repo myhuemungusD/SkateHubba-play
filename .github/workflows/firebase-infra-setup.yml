@@ -1,0 +1,95 @@
+name: Firebase Infra Setup
+
+# Manually-triggered workflow that provisions (or re-applies) the one-time
+# Firebase infrastructure that can't live alongside normal code deploys:
+#
+#   1. Daily Firestore managed-backup schedule for the `skatehubba` database
+#   2. Cloud Storage lifecycle rule that deletes `games/` videos after 90 days
+#
+# Both operations are idempotent — re-running this workflow is safe and only
+# replays the gcloud commands in infra/*.sh. They live behind
+# `workflow_dispatch` (not a push trigger) because they need project-level
+# IAM and should only run deliberately.
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Which infra task to run"
+        required: true
+        default: "all"
+        type: choice
+        options:
+          - all
+          - firestore-backups
+          - storage-lifecycle
+
+concurrency:
+  group: firebase-infra-setup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve GCP project
+        id: project
+        run: |
+          PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"
+          if [ -z "$PROJECT_ID" ]; then
+            echo "::error::FIREBASE_PROJECT_ID secret is not set."
+            exit 1
+          fi
+          echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Verify credentials are configured
+        env:
+          WIF_PROVIDER: ${{ secrets.FIREBASE_WIF_PROVIDER }}
+          WIF_SA: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
+        run: |
+          if [ -z "$WIF_PROVIDER" ] || [ -z "$WIF_SA" ]; then
+            echo "::error::FIREBASE_WIF_PROVIDER and FIREBASE_WIF_SERVICE_ACCOUNT secrets are required."
+            echo "The infra scripts need gcloud credentials. Set both secrets in"
+            echo "GitHub → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.FIREBASE_WIF_PROVIDER }}
+          service_account: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Enable Firestore daily backups
+        if: ${{ github.event.inputs.task == 'all' || github.event.inputs.task == 'firestore-backups' }}
+        env:
+          GCP_PROJECT_ID: ${{ steps.project.outputs.project_id }}
+        run: bash infra/firestore-backup.sh
+
+      - name: Apply Storage lifecycle rule
+        if: ${{ github.event.inputs.task == 'all' || github.event.inputs.task == 'storage-lifecycle' }}
+        env:
+          GCP_PROJECT_ID: ${{ steps.project.outputs.project_id }}
+        run: bash infra/storage-lifecycle.sh
+
+      - name: Summary
+        run: |
+          {
+            echo "### Firebase infra setup"
+            echo ""
+            echo "- Task: \`${{ github.event.inputs.task }}\`"
+            echo "- Project: \`${{ steps.project.outputs.project_id }}\`"
+            echo ""
+            echo "Firestore backups are retained for 7 days (daily schedule)."
+            echo "Storage lifecycle purges \`games/**\` videos older than 90 days."
+          } >> "$GITHUB_STEP_SUMMARY"
