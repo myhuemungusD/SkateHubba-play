@@ -519,6 +519,7 @@ describe("notifications listener", () => {
     expect(notifCb).toBeDefined();
 
     notifCb!({
+      firestoreId: "fs1",
       type: "your_turn",
       title: "Your Turn",
       body: "Go play!",
@@ -532,6 +533,7 @@ describe("notifications listener", () => {
         message: "Go play!",
         chime: "your_turn",
         gameId: "g1",
+        firestoreId: "fs1",
       }),
     );
   });
@@ -543,6 +545,7 @@ describe("notifications listener", () => {
     expect(notifCb).toBeDefined();
 
     notifCb!({
+      firestoreId: "fs2",
       type: "unknown_type",
       title: "X",
       body: "Y",
