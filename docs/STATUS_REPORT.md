@@ -99,7 +99,7 @@ Status legend:
 | Spot ↔ game linkage             | **Done**        | `SpotDetailPage.tsx` challenge button navigates to `/challenge?spot=`, `SpotPreviewCard.tsx` mirrors the flow, `rules-tests/games-spotId.rules.test.ts` |
 | Add a Spot UX                   | **Done**        | `src/components/map/AddSpotSheet.tsx`                                                                                                                  |
 | Spot filters (gnar / bust risk) | **Done**        | `src/components/map/SpotFilterBar.tsx`, `BustRisk.tsx`, `GnarRating.tsx`                                                                               |
-| Bottom tab bar (Home/Map/Me)    | **Done**        | `src/components/BottomTabBar.tsx`, persistent navigation across main screens                                                                           |
+| Bottom tab bar (Home/Map/Me)    | **Done**        | `src/components/BottomNav.tsx`, persistent navigation across main screens                                                                              |
 | Custom Mapbox style             | **In Progress** | Issue [#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191) — design + infra task, no code change needed                                 |
 | Crew challenges (3v3)           | **Planned**     | No code yet                                                                                                                                            |
 | Trick library                   | **Planned**     | No code yet                                                                                                                                            |
