@@ -4,6 +4,7 @@ import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { sendNudge, canNudge } from "../services/nudge";
 import { trackEvent } from "../services/analytics";
+import { captureException } from "../lib/sentry";
 import { Btn } from "./ui/Btn";
 import { LetterDisplay } from "./LetterDisplay";
 import { Timer } from "./Timer";
@@ -30,7 +31,8 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
       setSaveStatus("saved");
       trackEvent("clip_saved", { context: "waiting_screen" });
       setTimeout(() => setSaveStatus("idle"), 2000);
-    } catch {
+    } catch (err) {
+      captureException(err, { extra: { context: "ClipShareButtons.save", videoUrl, trickName } });
       setSaveStatus("failed");
       setTimeout(() => setSaveStatus("idle"), 2000);
     }
@@ -67,7 +69,8 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
       }
       setShareStatus("shared");
       setTimeout(() => setShareStatus("idle"), 2000);
-    } catch {
+    } catch (err) {
+      captureException(err, { extra: { context: "ClipShareButtons.share", videoUrl, trickName } });
       setShareStatus("failed");
       setTimeout(() => setShareStatus("idle"), 2000);
     }
