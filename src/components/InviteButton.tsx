@@ -9,8 +9,9 @@ export function InviteButton({ username, className = "" }: { username?: string; 
   const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
 
   useEffect(() => {
+    const timers = timersRef.current;
     return () => {
-      for (const id of timersRef.current) clearTimeout(id);
+      for (const id of timers) clearTimeout(id);
     };
   }, []);
 
