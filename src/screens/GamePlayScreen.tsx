@@ -73,11 +73,13 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
   // Resolve dispute: judge accepts or disputes the matcher's "landed" claim
   const [disputeSubmitting, setDisputeSubmitting] = useState(false);
+  const [lastDisputeAction, setLastDisputeAction] = useState<boolean | null>(null);
   const disputeSubmittedRef = useRef(false);
   const handleResolveDispute = useCallback(
     async (accept: boolean) => {
       if (disputeSubmittedRef.current) return;
       disputeSubmittedRef.current = true;
+      setLastDisputeAction(accept);
       setDisputeSubmitting(true);
       setError("");
       try {
@@ -95,11 +97,13 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
   // Judge rules on a "Call BS" of the setter's trick
   const [setReviewSubmitting, setSetReviewSubmitting] = useState(false);
+  const [lastSetReviewAction, setLastSetReviewAction] = useState<boolean | null>(null);
   const setReviewSubmittedRef = useRef(false);
   const handleRuleSetTrick = useCallback(
     async (clean: boolean) => {
       if (setReviewSubmittedRef.current) return;
       setReviewSubmittedRef.current = true;
+      setLastSetReviewAction(clean);
       setSetReviewSubmitting(true);
       setError("");
       try {
@@ -598,9 +602,9 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
                 <span className="font-display text-lg text-amber-400 tracking-wider animate-pulse">Resolving...</span>
               </div>
             )}
-            {!disputeSubmitting && error && (
+            {!disputeSubmitting && error && lastDisputeAction !== null && (
               <div className="mt-3">
-                <Btn onClick={() => handleResolveDispute(true)} variant="secondary">
+                <Btn onClick={() => handleResolveDispute(lastDisputeAction)} variant="secondary">
                   Retry
                 </Btn>
               </div>
@@ -654,6 +658,13 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             {setReviewSubmitting && (
               <div className="text-center">
                 <span className="font-display text-lg text-amber-400 tracking-wider animate-pulse">Ruling...</span>
+              </div>
+            )}
+            {!setReviewSubmitting && error && lastSetReviewAction !== null && (
+              <div className="mt-3">
+                <Btn onClick={() => handleRuleSetTrick(lastSetReviewAction)} variant="secondary">
+                  Retry
+                </Btn>
               </div>
             )}
           </div>
