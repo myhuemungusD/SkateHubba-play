@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
 import { LETTERS } from "../utils/helpers";
@@ -55,6 +55,13 @@ export function GameOverScreen({
   const [shareLabel, setShareLabel] = useState("Share Game Recap");
   const [showReport, setShowReport] = useState(false);
   const [reported, setReported] = useState(false);
+  const shareLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (shareLabelTimerRef.current) clearTimeout(shareLabelTimerRef.current);
+    };
+  }, []);
 
   const handleShareGame = useCallback(async () => {
     const turns = game.turnHistory ?? [];
@@ -89,10 +96,10 @@ export function GameOverScreen({
     try {
       await navigator.clipboard.writeText(text);
       setShareLabel("Copied!");
-      setTimeout(() => setShareLabel("Share Game Recap"), 2000);
+      shareLabelTimerRef.current = setTimeout(() => setShareLabel("Share Game Recap"), 2000);
     } catch {
       setShareLabel("Copy failed");
-      setTimeout(() => setShareLabel("Share Game Recap"), 2000);
+      shareLabelTimerRef.current = setTimeout(() => setShareLabel("Share Game Recap"), 2000);
     }
   }, [game, myUsername, opponentName, isForfeit]);
 

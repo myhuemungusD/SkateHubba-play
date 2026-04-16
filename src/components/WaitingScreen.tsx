@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { GameDoc } from "../services/games";
 import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl } from "../utils/helpers";
@@ -14,6 +14,21 @@ import { ReportModal } from "./ReportModal";
 function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName: string }) {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [shareStatus, setShareStatus] = useState<"idle" | "sharing" | "shared" | "failed">("idle");
+  const timersRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  useEffect(() => {
+    return () => {
+      for (const id of timersRef.current) clearTimeout(id);
+    };
+  }, []);
+
+  const safeTimeout = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      timersRef.current.delete(id);
+      fn();
+    }, ms);
+    timersRef.current.add(id);
+  }, []);
 
   const handleSave = useCallback(async () => {
     setSaveStatus("saving");
@@ -26,15 +41,15 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
       a.href = objectUrl;
       a.download = `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`;
       a.click();
-      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
+      safeTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
       setSaveStatus("saved");
       trackEvent("clip_saved", { context: "waiting_screen" });
-      setTimeout(() => setSaveStatus("idle"), 2000);
+      safeTimeout(() => setSaveStatus("idle"), 2000);
     } catch {
       setSaveStatus("failed");
-      setTimeout(() => setSaveStatus("idle"), 2000);
+      safeTimeout(() => setSaveStatus("idle"), 2000);
     }
-  }, [videoUrl, trickName]);
+  }, [videoUrl, trickName, safeTimeout]);
 
   const handleShare = useCallback(async () => {
     setShareStatus("sharing");
@@ -66,12 +81,12 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
         trackEvent("clip_shared", { method: "clipboard", context: "waiting_screen" });
       }
       setShareStatus("shared");
-      setTimeout(() => setShareStatus("idle"), 2000);
+      safeTimeout(() => setShareStatus("idle"), 2000);
     } catch {
       setShareStatus("failed");
-      setTimeout(() => setShareStatus("idle"), 2000);
+      safeTimeout(() => setShareStatus("idle"), 2000);
     }
-  }, [videoUrl, trickName]);
+  }, [videoUrl, trickName, safeTimeout]);
 
   const saveLabel = { idle: "Save Clip", saving: "Saving...", saved: "Saved!", failed: "Save failed" }[saveStatus];
   const shareLabel = { idle: "Share Clip", sharing: "Sharing...", shared: "Shared!", failed: "Share failed" }[
