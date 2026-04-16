@@ -106,6 +106,8 @@ export function Lobby({
   // reality, not stale server state.
   const liveActive = active.filter((g) => !isGameExpired(g));
 
+  const isJudge = (g: GameDoc) => !!g.judgeId && g.judgeId === profile.uid;
+  const isPlayer = (g: GameDoc) => g.player1Uid === profile.uid || g.player2Uid === profile.uid;
   const opponent = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Username : g.player1Username);
   const opponentUid = (g: GameDoc) => (g.player1Uid === profile.uid ? g.player2Uid : g.player1Uid);
   const opponentIsVerifiedPro = (g: GameDoc) =>
@@ -118,6 +120,20 @@ export function Lobby({
 
   const turnLabel = (g: GameDoc) => {
     const trick = g.currentTrickName || "Trick";
+    // Judge-specific labels
+    if (isJudge(g) && !isPlayer(g)) {
+      if (isMyTurn(g)) {
+        if (g.phase === "disputable") return "Rule: landed or missed?";
+        if (g.phase === "setReview") return "Rule: clean or sketchy?";
+      }
+      if (g.phase === "disputable" || g.phase === "setReview") return "Awaiting your ruling";
+      if (g.phase === "matching") return `Matching: ${trick}`;
+      return "Setting a trick";
+    }
+    // Player-specific labels
+    if (g.phase === "disputable" || g.phase === "setReview") {
+      return g.judgeUsername ? `Referee @${g.judgeUsername} reviewing` : "Under review";
+    }
     if (isMyTurn(g)) {
       if (g.phase === "matching") return `Match: ${trick}`;
       return "Your turn to set";
@@ -254,94 +270,138 @@ export function Lobby({
               </span>
             </div>
             <div className="space-y-2">
-              {active.map((g) => (
-                <div
-                  role="button"
-                  tabIndex={0}
-                  key={g.id}
-                  onClick={() => onOpenGame(g)}
-                  onKeyDown={activateOnKey(() => onOpenGame(g))}
-                  className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer select-none transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
+              {active.map((g) => {
+                const judgeViewer = isJudge(g) && !isPlayer(g);
+                return (
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    key={g.id}
+                    onClick={() => onOpenGame(g)}
+                    onKeyDown={activateOnKey(() => onOpenGame(g))}
+                    className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer select-none transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
                     ${
                       isMyTurn(g)
                         ? "glass-card border-brand-orange/30 shadow-glow-sm hover:shadow-glow-md hover:-translate-y-0.5"
                         : "glass-card hover:border-white/[0.1] hover:-translate-y-0.5"
                     }`}
-                >
-                  {isMyTurn(g) && (
-                    <div
-                      className="absolute left-0 top-0 bottom-0 w-[3px] bg-brand-orange rounded-l-2xl"
-                      aria-hidden="true"
-                    />
-                  )}
-                  <div className="pl-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-display text-[19px] text-white leading-none">
-                        vs <ProUsername username={opponent(g)} isVerifiedPro={opponentIsVerifiedPro(g)} />
-                      </span>
-                      {onViewPlayer && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onViewPlayer(opponentUid(g));
-                          }}
-                          className="font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] transition-colors shrink-0"
-                          aria-label={`View @${opponent(g)}'s profile`}
+                  >
+                    {isMyTurn(g) && (
+                      <div
+                        className="absolute left-0 top-0 bottom-0 w-[3px] bg-brand-orange rounded-l-2xl"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <div className="pl-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        {judgeViewer ? (
+                          <span className="font-display text-[19px] text-white leading-none">
+                            <span className="text-amber-400 text-[11px] tracking-wider align-middle mr-1.5">REF</span>@
+                            {g.player1Username} vs @{g.player2Username}
+                          </span>
+                        ) : (
+                          <span className="font-display text-[19px] text-white leading-none">
+                            vs <ProUsername username={opponent(g)} isVerifiedPro={opponentIsVerifiedPro(g)} />
+                          </span>
+                        )}
+                        {onViewPlayer && !judgeViewer && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onViewPlayer(opponentUid(g));
+                            }}
+                            className="font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] transition-colors shrink-0"
+                            aria-label={`View @${opponent(g)}'s profile`}
+                          >
+                            Profile
+                          </button>
+                        )}
+                        {isMyTurn(g) && (
+                          <span
+                            className={`px-2 py-0.5 rounded font-display text-[10px] text-white tracking-wider leading-none shrink-0 ${judgeViewer ? "bg-amber-500" : "bg-brand-orange"}`}
+                          >
+                            {judgeViewer ? "RULE" : "PLAY"}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`font-body text-[11px] ${isMyTurn(g) ? (judgeViewer ? "text-amber-400" : "text-brand-orange") : "text-brand-green"}`}
                         >
-                          Profile
-                        </button>
-                      )}
-                      {isMyTurn(g) && (
-                        <span className="px-2 py-0.5 rounded bg-brand-orange font-display text-[10px] text-white tracking-wider leading-none shrink-0">
-                          PLAY
+                          {turnLabel(g)}
                         </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`font-body text-[11px] ${isMyTurn(g) ? "text-brand-orange" : "text-brand-green"}`}
-                      >
-                        {turnLabel(g)}
-                      </span>
-                      <LobbyTimer deadline={g.turnDeadline?.toMillis?.() ?? 0} isMyTurn={isMyTurn(g)} />
-                    </div>
-                    <div className="flex items-center gap-3 mt-2.5">
-                      <div className="flex items-center gap-1">
-                        <span className="font-body text-[10px] text-brand-orange uppercase tracking-wider mr-0.5">
-                          You
-                        </span>
-                        {LETTERS.map((l, i) => (
-                          <span
-                            key={i}
-                            className={`font-display text-[13px] leading-none tracking-wide ${i < myLetters(g) ? "text-brand-red" : "text-faint"}`}
-                          >
-                            {l}
-                          </span>
-                        ))}
+                        <LobbyTimer deadline={g.turnDeadline?.toMillis?.() ?? 0} isMyTurn={isMyTurn(g)} />
                       </div>
-                      <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
-                      <div className="flex items-center gap-1">
-                        <span className="font-body text-[10px] text-brand-orange uppercase tracking-wider mr-0.5">
-                          Them
-                        </span>
-                        {LETTERS.map((l, i) => (
-                          <span
-                            key={i}
-                            className={`font-display text-[13px] leading-none tracking-wide ${i < theirLetters(g) ? "text-brand-red" : "text-[#2E2E2E]"}`}
-                          >
-                            {l}
-                          </span>
-                        ))}
-                      </div>
+                      {judgeViewer ? (
+                        <div className="flex items-center gap-3 mt-2.5">
+                          <div className="flex items-center gap-1">
+                            <span className="font-body text-[10px] text-amber-400 uppercase tracking-wider mr-0.5">
+                              @{g.player1Username}
+                            </span>
+                            {LETTERS.map((l, i) => (
+                              <span
+                                key={i}
+                                className={`font-display text-[13px] leading-none tracking-wide ${i < g.p1Letters ? "text-brand-red" : "text-faint"}`}
+                              >
+                                {l}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
+                          <div className="flex items-center gap-1">
+                            <span className="font-body text-[10px] text-amber-400 uppercase tracking-wider mr-0.5">
+                              @{g.player2Username}
+                            </span>
+                            {LETTERS.map((l, i) => (
+                              <span
+                                key={i}
+                                className={`font-display text-[13px] leading-none tracking-wide ${i < g.p2Letters ? "text-brand-red" : "text-[#2E2E2E]"}`}
+                              >
+                                {l}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-3 mt-2.5">
+                          <div className="flex items-center gap-1">
+                            <span className="font-body text-[10px] text-brand-orange uppercase tracking-wider mr-0.5">
+                              You
+                            </span>
+                            {LETTERS.map((l, i) => (
+                              <span
+                                key={i}
+                                className={`font-display text-[13px] leading-none tracking-wide ${i < myLetters(g) ? "text-brand-red" : "text-faint"}`}
+                              >
+                                {l}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="w-px h-3 bg-border shrink-0" aria-hidden="true" />
+                          <div className="flex items-center gap-1">
+                            <span className="font-body text-[10px] text-brand-orange uppercase tracking-wider mr-0.5">
+                              Them
+                            </span>
+                            {LETTERS.map((l, i) => (
+                              <span
+                                key={i}
+                                className={`font-display text-[13px] leading-none tracking-wide ${i < theirLetters(g) ? "text-brand-red" : "text-[#2E2E2E]"}`}
+                              >
+                                {l}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
+                    <ChevronRightIcon
+                      size={15}
+                      className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-faint"}`}
+                    />
                   </div>
-                  <ChevronRightIcon
-                    size={15}
-                    className={`shrink-0 ml-3 ${isMyTurn(g) ? "text-brand-orange" : "text-faint"}`}
-                  />
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -373,44 +433,56 @@ export function Lobby({
               </span>
             </div>
             <div className="space-y-2">
-              {done.map((g) => (
-                <div
-                  role="button"
-                  tabIndex={0}
-                  key={g.id}
-                  onClick={() => onOpenGame(g)}
-                  onKeyDown={activateOnKey(() => onOpenGame(g))}
-                  className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer select-none transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
-                >
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-display text-[19px] text-white leading-none">
-                        vs <ProUsername username={opponent(g)} isVerifiedPro={opponentIsVerifiedPro(g)} />
+              {done.map((g) => {
+                const judgeViewer = isJudge(g) && !isPlayer(g);
+                const winnerName = g.winner === g.player1Uid ? g.player1Username : g.player2Username;
+                return (
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    key={g.id}
+                    onClick={() => onOpenGame(g)}
+                    onKeyDown={activateOnKey(() => onOpenGame(g))}
+                    className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer select-none transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        {judgeViewer ? (
+                          <span className="font-display text-[19px] text-white leading-none">
+                            <span className="text-amber-400 text-[11px] tracking-wider align-middle mr-1.5">REF</span>@
+                            {g.player1Username} vs @{g.player2Username}
+                          </span>
+                        ) : (
+                          <span className="font-display text-[19px] text-white leading-none">
+                            vs <ProUsername username={opponent(g)} isVerifiedPro={opponentIsVerifiedPro(g)} />
+                          </span>
+                        )}
+                        {onViewPlayer && !judgeViewer && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onViewPlayer(opponentUid(g));
+                            }}
+                            className="font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] transition-colors shrink-0"
+                            aria-label={`View @${opponent(g)}'s profile`}
+                          >
+                            Profile
+                          </button>
+                        )}
+                      </div>
+                      <span
+                        className={`font-body text-[11px] ${judgeViewer ? "text-subtle" : g.winner === profile.uid ? "text-brand-green" : "text-brand-red"}`}
+                      >
+                        {judgeViewer
+                          ? `@${winnerName} won${g.status === "forfeit" ? " · forfeit" : ""}`
+                          : `${g.winner === profile.uid ? "You won" : "You lost"}${g.status === "forfeit" ? " · forfeit" : ""}`}
                       </span>
-                      {onViewPlayer && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onViewPlayer(opponentUid(g));
-                          }}
-                          className="font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] transition-colors shrink-0"
-                          aria-label={`View @${opponent(g)}'s profile`}
-                        >
-                          Profile
-                        </button>
-                      )}
                     </div>
-                    <span
-                      className={`font-body text-[11px] ${g.winner === profile.uid ? "text-brand-green" : "text-brand-red"}`}
-                    >
-                      {g.winner === profile.uid ? "You won" : "You lost"}
-                      {g.status === "forfeit" ? " · forfeit" : ""}
-                    </span>
+                    <ChevronRightIcon size={15} className="text-faint shrink-0" />
                   </div>
-                  <ChevronRightIcon size={15} className="text-faint shrink-0" />
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

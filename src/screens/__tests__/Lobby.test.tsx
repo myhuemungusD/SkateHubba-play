@@ -754,4 +754,92 @@ describe("Lobby", () => {
     const btn = screen.getByRole("button", { name: "Delete Account" });
     expect(btn).toHaveAttribute("type", "button");
   });
+
+  // ── Judge/referee game card tests ──
+
+  describe("judge-aware game cards", () => {
+    const judgeProfile = { uid: "j1", username: "ref", stance: "regular", emailVerified: true, createdAt: null };
+    const judgeProps = { ...defaultProps, profile: judgeProfile };
+
+    function makeJudgeGame(overrides: Record<string, unknown> = {}) {
+      return makeGame({
+        player1Uid: "u1",
+        player2Uid: "u2",
+        player1Username: "sk8r",
+        player2Username: "rival",
+        judgeId: "j1",
+        judgeUsername: "ref",
+        judgeStatus: "accepted",
+        ...overrides,
+      });
+    }
+
+    it("shows REF label and both player names for judge viewer on active game", () => {
+      const game = makeJudgeGame();
+      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+
+      expect(screen.getByText(/REF/)).toBeInTheDocument();
+      expect(screen.getByText(/@sk8r vs @rival/)).toBeInTheDocument();
+    });
+
+    it("shows RULE badge instead of PLAY when it is the judge's turn", () => {
+      const game = makeJudgeGame({ currentTurn: "j1", phase: "disputable" });
+      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+
+      expect(screen.getByText("RULE")).toBeInTheDocument();
+      expect(screen.queryByText("PLAY")).not.toBeInTheDocument();
+    });
+
+    it("shows 'Rule: landed or missed?' for judge during disputable phase", () => {
+      const game = makeJudgeGame({ currentTurn: "j1", phase: "disputable" });
+      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+
+      expect(screen.getByText("Rule: landed or missed?")).toBeInTheDocument();
+    });
+
+    it("shows 'Rule: clean or sketchy?' for judge during setReview phase", () => {
+      const game = makeJudgeGame({ currentTurn: "j1", phase: "setReview" });
+      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+
+      expect(screen.getByText("Rule: clean or sketchy?")).toBeInTheDocument();
+    });
+
+    it("shows 'Setting a trick' for judge during setting phase", () => {
+      const game = makeJudgeGame({ currentTurn: "u1", phase: "setting" });
+      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+
+      expect(screen.getByText("Setting a trick")).toBeInTheDocument();
+    });
+
+    it("shows both players' letter scores (not You/Them) for judge viewer", () => {
+      const game = makeJudgeGame({ p1Letters: 2, p2Letters: 3 });
+      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+
+      expect(screen.getByText("@sk8r")).toBeInTheDocument();
+      expect(screen.getByText("@rival")).toBeInTheDocument();
+      expect(screen.queryByText("You")).not.toBeInTheDocument();
+      expect(screen.queryByText("Them")).not.toBeInTheDocument();
+    });
+
+    it("shows '@winner won' for judge viewer on completed game", () => {
+      const game = makeJudgeGame({ status: "complete", winner: "u1" });
+      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+
+      expect(screen.getByText(/@sk8r won/)).toBeInTheDocument();
+    });
+
+    it("shows referee reviewing label for players during disputable phase", () => {
+      const game = makeJudgeGame({ currentTurn: "j1", phase: "disputable" });
+      renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
+
+      expect(screen.getByText("Referee @ref reviewing")).toBeInTheDocument();
+    });
+
+    it("hides Profile button on active judge game card (judge is not a player)", () => {
+      const game = makeJudgeGame();
+      renderWithProviders(<Lobby {...judgeProps} games={[game]} onViewPlayer={vi.fn()} />);
+
+      expect(screen.queryByRole("button", { name: /View.*profile/i })).not.toBeInTheDocument();
+    });
+  });
 });

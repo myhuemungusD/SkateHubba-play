@@ -806,4 +806,206 @@ describe("GamePlayScreen", () => {
 
     expect(screen.getByText(/No videos recorded/)).toBeInTheDocument();
   });
+
+  it("dispute retry preserves the original action (false for Missed)", async () => {
+    mockResolveDispute.mockRejectedValueOnce(new Error("Network error"));
+    mockResolveDispute.mockResolvedValueOnce({ gameOver: false, winner: null });
+    const game = makeJudgeGame({
+      phase: "disputable",
+      currentTurn: "u3",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    // Judge clicks Missed, which fails
+    await userEvent.click(screen.getByText("Missed"));
+    await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
+
+    // Retry should call resolveDispute(game1, false) — NOT true
+    await userEvent.click(screen.getByText("Retry"));
+    await waitFor(() => {
+      expect(mockResolveDispute).toHaveBeenCalledTimes(2);
+      expect(mockResolveDispute).toHaveBeenLastCalledWith("game1", false);
+    });
+  });
+
+  it("shows setReview UI with Clean/Sketchy buttons", () => {
+    const game = makeJudgeGame({
+      phase: "setReview",
+      currentTurn: "u3",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+    });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    expect(screen.getByText(/CALL BS REVIEW/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Rule clean or sketchy" })).toBeInTheDocument();
+    expect(screen.getByText("Clean")).toBeInTheDocument();
+    expect(screen.getByText("Sketchy")).toBeInTheDocument();
+  });
+
+  it("calls judgeRuleSetTrick(true) when judge clicks Clean", async () => {
+    mockJudgeRuleSetTrick.mockResolvedValueOnce(undefined);
+    const game = makeJudgeGame({
+      phase: "setReview",
+      currentTurn: "u3",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Clean"));
+    await waitFor(() => {
+      expect(mockJudgeRuleSetTrick).toHaveBeenCalledWith("game1", true);
+    });
+  });
+
+  it("calls judgeRuleSetTrick(false) when judge clicks Sketchy", async () => {
+    mockJudgeRuleSetTrick.mockResolvedValueOnce(undefined);
+    const game = makeJudgeGame({
+      phase: "setReview",
+      currentTurn: "u3",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Sketchy"));
+    await waitFor(() => {
+      expect(mockJudgeRuleSetTrick).toHaveBeenCalledWith("game1", false);
+    });
+  });
+
+  it("shows retry for setReview when judgeRuleSetTrick fails, preserving the action", async () => {
+    mockJudgeRuleSetTrick.mockRejectedValueOnce(new Error("Timeout"));
+    mockJudgeRuleSetTrick.mockResolvedValueOnce(undefined);
+    const game = makeJudgeGame({
+      phase: "setReview",
+      currentTurn: "u3",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Sketchy"));
+    await waitFor(() => expect(screen.getByText("Timeout")).toBeInTheDocument());
+
+    // Retry should call judgeRuleSetTrick(game1, false)
+    await userEvent.click(screen.getByText("Retry"));
+    await waitFor(() => {
+      expect(mockJudgeRuleSetTrick).toHaveBeenCalledTimes(2);
+      expect(mockJudgeRuleSetTrick).toHaveBeenLastCalledWith("game1", false);
+    });
+  });
+
+  it("shows judge pending badge to players", () => {
+    const game = makeGame({
+      judgeId: "u3",
+      judgeUsername: "judge",
+      judgeStatus: "pending",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByTestId("judge-pending-badge")).toBeInTheDocument();
+    expect(screen.getByText(/honor system applies/)).toBeInTheDocument();
+  });
+
+  it("shows judge active badge to players", () => {
+    const game = makeJudgeGame();
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByTestId("judge-active-badge")).toBeInTheDocument();
+    expect(screen.getByText(/@judge rules disputes/)).toBeInTheDocument();
+  });
+
+  it("shows judge invite card for pending judge", () => {
+    const game = makeJudgeGame({ judgeStatus: "pending" });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    expect(screen.getByTestId("judge-invite-card")).toBeInTheDocument();
+    expect(screen.getByText(/REFEREE INVITE/)).toBeInTheDocument();
+  });
+
+  it("calls acceptJudgeInvite when judge clicks Accept", async () => {
+    mockAcceptJudgeInvite.mockResolvedValueOnce(undefined);
+    const game = makeJudgeGame({ judgeStatus: "pending" });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Accept"));
+    await waitFor(() => {
+      expect(mockAcceptJudgeInvite).toHaveBeenCalledWith("game1");
+    });
+  });
+
+  it("calls declineJudgeInvite when judge clicks Decline", async () => {
+    mockDeclineJudgeInvite.mockResolvedValueOnce(undefined);
+    const game = makeJudgeGame({ judgeStatus: "pending" });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Decline"));
+    await waitFor(() => {
+      expect(mockDeclineJudgeInvite).toHaveBeenCalledWith("game1");
+    });
+  });
+
+  it("shows 'Ruling...' during setReview submission", async () => {
+    mockJudgeRuleSetTrick.mockImplementation(() => new Promise(() => {}));
+    const game = makeJudgeGame({
+      phase: "setReview",
+      currentTurn: "u3",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Clean"));
+    await waitFor(() => {
+      expect(screen.getByText("Ruling...")).toBeInTheDocument();
+    });
+  });
+
+  it("matcher sees Call BS button when judge is active", () => {
+    const game = makeJudgeGame({
+      currentTurn: "u1",
+      currentSetter: "u2",
+      phase: "matching",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText("Call BS on this trick")).toBeInTheDocument();
+    expect(screen.getByText(/Referee @judge will rule/)).toBeInTheDocument();
+  });
+
+  it("calls callBSOnSetTrick when matcher clicks Call BS", async () => {
+    mockCallBS.mockResolvedValueOnce(undefined);
+    const game = makeJudgeGame({
+      currentTurn: "u1",
+      currentSetter: "u2",
+      phase: "matching",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm",
+    });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Call BS on this trick"));
+    await waitFor(() => {
+      expect(mockCallBS).toHaveBeenCalledWith("game1");
+    });
+  });
+
+  it("hides Flag button for judges (only players can report)", () => {
+    const game = makeJudgeGame({
+      phase: "disputable",
+      currentTurn: "u3",
+      currentSetter: "u1",
+      currentTrickName: "Kickflip",
+    });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    expect(screen.queryByLabelText("Report opponent")).not.toBeInTheDocument();
+  });
 });
