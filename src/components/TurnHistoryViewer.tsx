@@ -123,6 +123,9 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                   </div>
                 </div>
 
+                {/* Referee ruling indicator */}
+                {turn.judgedBy && <p className="font-body text-[11px] text-amber-400/70 mt-2 text-center">Refereed</p>}
+
                 {/* Letter outcome */}
                 {!turn.landed && turn.letterTo && (
                   <p className="font-body text-xs text-[#888] mt-2 text-center">

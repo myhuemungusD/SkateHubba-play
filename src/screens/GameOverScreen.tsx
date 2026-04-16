@@ -135,6 +135,13 @@ export function GameOverScreen({
           </button>
         )}
 
+        {game.judgeUsername && game.judgeStatus === "accepted" && (
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/[0.06] px-3 py-1 text-[11px] text-amber-400">
+            <span className="font-display tracking-wider">REFEREED</span>
+            <span className="font-body">by @{game.judgeUsername}</span>
+          </div>
+        )}
+
         <div className="flex justify-center gap-5 mb-6">
           <LetterDisplay
             count={myLetters}
