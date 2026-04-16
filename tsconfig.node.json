@@ -1,14 +1,23 @@
 {
   "compilerOptions": {
+    /* Language & environment */
     "target": "ES2022",
     "lib": ["ES2023"],
+
+    /* Modules */
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "esModuleInterop": true,
+
+    /* Type checking */
     "strict": true,
+
+    /* Emit */
     "noEmit": true,
     "skipLibCheck": true,
-    "esModuleInterop": true,
-    "isolatedModules": true,
+
+    /* Project references */
     "composite": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsBuildInfo"
   },
