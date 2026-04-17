@@ -17,6 +17,7 @@ import type { UserProfile } from "../services/users";
 import { isFirebaseStorageUrl, parseFirebaseError } from "../utils/helpers";
 import { captureException } from "../lib/sentry";
 import { logger } from "../services/logger";
+import { playHaptic } from "../services/haptics";
 import { Btn } from "../components/ui/Btn";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { LetterDisplay } from "../components/LetterDisplay";
@@ -183,6 +184,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
       /* v8 ignore stop */
       submittedRef.current = true;
       setSetterAction("landed");
+      playHaptic("trick_landed");
       setSubmitting(true);
       setError("");
       try {
@@ -209,6 +211,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
     if (submittedRef.current) return;
     submittedRef.current = true;
     setSetterAction("missed");
+    playHaptic("trick_missed");
     setSubmitting(true);
     setError("");
     try {
@@ -235,6 +238,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
       /* v8 ignore stop */
       matchSubmittedRef.current = true;
       setMatcherLanded(landed);
+      playHaptic(landed ? "trick_landed" : "trick_missed");
       setSubmitting(true);
       setError("");
       try {

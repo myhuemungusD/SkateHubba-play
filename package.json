@@ -31,6 +31,7 @@
     "@capacitor/android": "^8.2.0",
     "@capacitor/camera": "^8.0.2",
     "@capacitor/core": "^8.2.0",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.2.0",
     "@sentry/react": "^10.43.0",
     "@vercel/analytics": "^2.0.1",

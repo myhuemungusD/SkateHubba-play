@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useId, type ReactNode } from "react";
 import { playOlliePop } from "../utils/ollieSound";
+import { playHaptic } from "../services/haptics";
 
 /**
  * A skateboard deck-shaped button that does an ollie animation on click.
@@ -31,6 +32,7 @@ export function SkateButton({
     if (disabled) return;
     setPopping(true);
     playOlliePop();
+    playHaptic("button_primary");
     if (popTimerRef.current) clearTimeout(popTimerRef.current);
     popTimerRef.current = setTimeout(() => setPopping(false), 500);
     onClick?.();

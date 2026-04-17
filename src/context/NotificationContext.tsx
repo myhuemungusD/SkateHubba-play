@@ -1,7 +1,18 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { playChime, isSoundEnabled, setSoundEnabled, type ChimeType } from "../services/sounds";
+import { playHaptic, type HapticType } from "../services/haptics";
 import { deleteNotification, deleteUserNotifications, markNotificationRead } from "../services/notifications";
 import { TOAST_DURATION } from "../constants/ui";
+
+/** Chime → haptic mapping. `general` falls back to the lightweight toast pulse. */
+const chimeHapticMap: Record<ChimeType, HapticType> = {
+  your_turn: "your_turn",
+  new_challenge: "new_challenge",
+  game_won: "game_won",
+  game_lost: "game_lost",
+  nudge: "nudge",
+  general: "toast",
+};
 
 /* ── Types ─────────────────────────────────── */
 
@@ -135,8 +146,14 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
     // Add to toast queue (max 3 visible)
     setToasts((prev) => [n, ...prev].slice(0, 3));
 
-    // Play chime
-    if (opts.chime) playChime(opts.chime);
+    // Play chime + haptic. Chime-tagged events map to their semantic haptic;
+    // plain toasts still get a light tactile pulse so UI acks feel physical.
+    if (opts.chime) {
+      playChime(opts.chime);
+      playHaptic(chimeHapticMap[opts.chime]);
+    } else {
+      playHaptic("toast");
+    }
 
     // Auto-dismiss toast
     const timer = setTimeout(() => {

@@ -16,6 +16,12 @@ vi.mock("../../services/sounds", () => ({
   setSoundEnabled: (...args: unknown[]) => mockSetSoundEnabled(...args),
 }));
 
+const mockPlayHaptic = vi.fn();
+
+vi.mock("../../services/haptics", () => ({
+  playHaptic: (...args: unknown[]) => mockPlayHaptic(...args),
+}));
+
 vi.mock("../../constants/ui", () => ({
   TOAST_DURATION: 100,
 }));
@@ -131,7 +137,7 @@ describe("notify", () => {
     expect(result.current.toasts[0].title).toBe("D");
   });
 
-  it("plays chime when opts.chime provided", () => {
+  it("plays chime and mapped haptic when opts.chime provided", () => {
     const { result } = renderHook(() => useNotifications(), { wrapper });
 
     act(() => {
@@ -139,9 +145,10 @@ describe("notify", () => {
     });
 
     expect(mockPlayChime).toHaveBeenCalledWith("your_turn");
+    expect(mockPlayHaptic).toHaveBeenCalledWith("your_turn");
   });
 
-  it("does not play chime when opts.chime omitted", () => {
+  it("plays a toast haptic (no chime) when opts.chime omitted", () => {
     const { result } = renderHook(() => useNotifications(), { wrapper });
 
     act(() => {
@@ -149,6 +156,7 @@ describe("notify", () => {
     });
 
     expect(mockPlayChime).not.toHaveBeenCalled();
+    expect(mockPlayHaptic).toHaveBeenCalledWith("toast");
   });
 
   it("auto-dismisses toast after TOAST_DURATION", () => {
