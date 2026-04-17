@@ -30,6 +30,40 @@ service cloud.firestore {
         && request.auth.uid == game.judgeId;
     }
 
+    // ── COPPA age-gate helpers ──
+    // `dob` is a YYYY-MM-DD string collected at the AgeGate screen. The
+    // client-side gate rejects under-13 sign-ups, but rules are the only
+    // real enforcement: a hostile client can skip the React component and
+    // call setDoc directly. These helpers parse the string safely and
+    // gate /users/{uid} create on the user being at least 13 calendar years
+    // old relative to request.time.
+    function isDobShape(dob) {
+      return dob is string
+        // YYYY-MM-DD with strict month/day ranges — rejects 2005-13-40 etc.
+        && dob.matches('^[12][0-9]{3}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
+    }
+
+    // Compares calendar years with a month/day tie-breaker so the boundary
+    // case (user turns 13 today) is handled correctly regardless of leap
+    // years. Using calendar-year math instead of day counts avoids the 3
+    // vs 4 leap-days-in-13-years ambiguity.
+    function isOver13(dob) {
+      return isDobShape(dob)
+        && (
+          request.time.year() - int(dob.split('-')[0]) > 13
+          || (
+            request.time.year() - int(dob.split('-')[0]) == 13
+            && (
+              request.time.month() > int(dob.split('-')[1])
+              || (
+                request.time.month() == int(dob.split('-')[1])
+                && request.time.day() >= int(dob.split('-')[2])
+              )
+            )
+          )
+        );
+    }
+
     // Game doc is readable by either player OR the nominated judge.
     function isParticipant(game) {
       return isPlayer(game) || isJudge(game);
@@ -68,11 +102,26 @@ service cloud.firestore {
         // Pro fields are admin-only — clients cannot set them at creation
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
-        && !('verifiedAt' in request.resource.data);
+        && !('verifiedAt' in request.resource.data)
+        // COPPA: dob is required on every new profile and the user must be
+        // at least 13. The client AgeGate enforces this visually; the rule
+        // is the real boundary a hostile client cannot bypass.
+        && 'dob' in request.resource.data
+        && isOver13(request.resource.data.dob)
+        // Shape-check parentalConsent when present (carried for 13–17 users).
+        && (!('parentalConsent' in request.resource.data)
+            || request.resource.data.parentalConsent is bool);
       allow update: if isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
+        // dob is immutable — a user cannot retroactively claim a different age.
+        // Pre-COPPA profiles without a dob may continue to update without one.
+        && (
+          (!('dob' in resource.data) && !('dob' in request.resource.data))
+          || ('dob' in resource.data && 'dob' in request.resource.data
+              && request.resource.data.dob == resource.data.dob)
+        )
         // Pro fields are admin-only — clients cannot modify them
         && (!('isVerifiedPro' in request.resource.data) || request.resource.data.isVerifiedPro == resource.data.isVerifiedPro)
         && (!('verifiedBy' in request.resource.data) || request.resource.data.verifiedBy == resource.data.verifiedBy)

@@ -27,7 +27,12 @@ export interface UserProfile {
   /** serverTimestamp() on write; Firestore Timestamp on read. */
   createdAt: FieldValue | null;
   emailVerified: boolean;
-  /** Date of birth in YYYY-MM-DD format (collected at age gate for COPPA/CCPA compliance). */
+  /**
+   * Date of birth in YYYY-MM-DD format, collected at the AgeGate for
+   * COPPA/CCPA compliance. Required on all profiles created after the
+   * COPPA-rules rollout; may be absent on legacy profiles created before
+   * that migration, which is why the field remains optional here.
+   */
   dob?: string;
   /** Whether parental consent was given (for users 13-17 at signup). */
   parentalConsent?: boolean;
@@ -70,19 +75,28 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
   return !snap.exists();
 }
 
+/** YYYY-MM-DD shape check — mirrors the rules-side `isDobShape` regex. */
+export const DOB_RE = /^[12][0-9]{3}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$/;
+
 /**
  * Create user profile with atomic username reservation.
  * Uses a Firestore transaction to prevent race conditions:
  *   1. Check usernames/{username} doesn't exist
  *   2. Write usernames/{username} = { uid }
  *   3. Write users/{uid} = full profile
+ *
+ * `dob` (YYYY-MM-DD) is required — the Firestore rules reject any new
+ * profile without it, so shipping a client that forgets to pass the
+ * age-gate result would brick signup. We validate client-side too so the
+ * error message is "Date of birth is required" instead of an opaque
+ * permission-denied.
  */
 export async function createProfile(
   uid: string,
   username: string,
   stance: string,
-  emailVerified = false,
-  dob?: string,
+  emailVerified: boolean,
+  dob: string,
   parentalConsent?: boolean,
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
@@ -92,6 +106,9 @@ export async function createProfile(
   }
   if (!USERNAME_RE.test(normalized)) {
     throw new Error("Username may only contain lowercase letters, numbers, and underscores");
+  }
+  if (typeof dob !== "string" || !DOB_RE.test(dob)) {
+    throw new Error("Date of birth is required (YYYY-MM-DD)");
   }
 
   const db = requireDb();
@@ -112,7 +129,7 @@ export async function createProfile(
       stance,
       createdAt: serverTimestamp(),
       emailVerified,
-      ...(dob ? { dob } : {}),
+      dob,
       ...(parentalConsent !== undefined ? { parentalConsent } : {}),
     };
     tx.set(userRef, profileData);

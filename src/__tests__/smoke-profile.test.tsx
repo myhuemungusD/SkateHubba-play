@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
 import { authedUser, testProfile, renderApp, createMockHelpers } from "./smoke-helpers";
+import { ProfileSetup } from "../screens/ProfileSetup";
 
 /* ── Hoisted mocks ──────────────────────────── */
 
@@ -16,6 +18,7 @@ const mockCreateProfile = vi.fn();
 const mockIsUsernameAvailable = vi.fn();
 const mockGetUidByUsername = vi.fn();
 const mockDeleteUserData = vi.fn();
+const mockGetUserProfile = vi.fn().mockResolvedValue(null);
 
 const mockCreateGame = vi.fn();
 const mockSetTrick = vi.fn();
@@ -49,7 +52,7 @@ vi.mock("../services/users", () => ({
   deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
   getLeaderboard: vi.fn().mockResolvedValue([]),
-  getUserProfile: vi.fn().mockResolvedValue(null),
+  getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
   // Shared validation constants imported by ProfileSetup.
   USERNAME_MIN: 3,
@@ -214,18 +217,29 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup creates profile and transitions to lobby", async () => {
-    const refreshProfile = vi.fn();
+    const onDone = vi.fn();
     const newProfile = { uid: "u1", username: "newsk8r", stance: "Regular", emailVerified: false, createdAt: null };
     mockCreateProfile.mockResolvedValueOnce(newProfile);
     mockIsUsernameAvailable.mockResolvedValue(true);
+    mockGetUserProfile.mockResolvedValue(null);
 
-    mockUseAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: null,
-      refreshProfile,
-    });
-    await renderApp();
+    // Render ProfileSetup directly with the dob the AgeGate would have
+    // captured in production. The App-level routing (AgeGate → Auth →
+    // Profile) is covered by smoke-auth tests; this test focuses on the
+    // three-step form + createProfile contract. The COPPA-tightened
+    // createProfile rejects writes without a dob, so we supply one.
+    render(
+      <MemoryRouter>
+        <ProfileSetup
+          uid="u1"
+          emailVerified={false}
+          displayName={null}
+          dob="2000-01-15"
+          parentalConsent={false}
+          onDone={onDone}
+        />
+      </MemoryRouter>,
+    );
 
     // Step 1: Username
     const usernameInput = await screen.findByPlaceholderText("sk8legend");
@@ -241,20 +255,14 @@ describe("Smoke: Profile Setup", () => {
     // Step 2: Stance (keep Regular default) → Advance to Step 3
     await userEvent.click(screen.getByText("Next"));
 
-    // Mock the auth to return profile after creation
-    mockUseAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: newProfile,
-      refreshProfile,
-    });
-    withGames([]);
-
     // Step 3: Review → Lock It In
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false, undefined, false);
+      // The 5th arg is the AgeGate-captured dob; 6th is parentalConsent.
+      // COPPA: DOB flows end-to-end from the gate to the Firestore write.
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false, "2000-01-15", false);
+      expect(onDone).toHaveBeenCalledWith(newProfile);
     });
   });
 
@@ -281,15 +289,23 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("shows error when profile creation fails", async () => {
+    const onDone = vi.fn();
     mockIsUsernameAvailable.mockResolvedValue(true);
     mockCreateProfile.mockRejectedValueOnce(new Error("Firestore write failed"));
-    mockUseAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: true },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
-    await renderApp();
+    mockGetUserProfile.mockResolvedValue(null);
+
+    render(
+      <MemoryRouter>
+        <ProfileSetup
+          uid="u1"
+          emailVerified={true}
+          displayName={null}
+          dob="2000-01-15"
+          parentalConsent={false}
+          onDone={onDone}
+        />
+      </MemoryRouter>,
+    );
 
     const input = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(input, "validname");
@@ -304,6 +320,7 @@ describe("Smoke: Profile Setup", () => {
     await waitFor(() => {
       expect(screen.getByText("Firestore write failed")).toBeInTheDocument();
     });
+    expect(onDone).not.toHaveBeenCalled();
   });
 
   it("profile setup rejects username > 20 characters", async () => {

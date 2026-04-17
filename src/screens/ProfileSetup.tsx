@@ -403,10 +403,18 @@ export function ProfileSetup({
 
   const submit = async () => {
     setError("");
+    // dob is collected at the AgeGate before this screen mounts; if it's
+    // missing here, something routed around the gate (deep link, stale
+    // context, HMR edge-case). Refuse to submit so the Firestore rules
+    // don't have to: the error message steers the user back to AgeGate.
+    if (!dob) {
+      setError("Please verify your date of birth before creating a profile.");
+      return;
+    }
     setLoading(true);
     try {
       const normalized = username.trim();
-      const profile = await createProfile(uid, normalized, stance, emailVerified, dob ?? undefined, parentalConsent);
+      const profile = await createProfile(uid, normalized, stance, emailVerified, dob, parentalConsent);
       metrics.signUp("google", uid);
       analytics.signUp("google");
       onDone(profile);
