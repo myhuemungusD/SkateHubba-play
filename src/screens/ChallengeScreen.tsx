@@ -300,7 +300,7 @@ export function ChallengeScreen({
               <button
                 type="button"
                 onClick={() => setRulesOpen(true)}
-                className="font-body text-xs text-subtle hover:text-brand-orange underline underline-offset-4 decoration-subtle/40 hover:decoration-brand-orange transition-colors"
+                className="font-body text-xs text-subtle hover:text-brand-orange underline underline-offset-4 decoration-subtle/40 hover:decoration-brand-orange transition-colors min-h-[44px] inline-flex items-center"
                 data-testid="open-rules-sheet"
               >
                 See the rules

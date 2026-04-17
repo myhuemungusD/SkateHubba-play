@@ -40,7 +40,7 @@ export function RulesSheet({ onClose }: { onClose: () => void }) {
             onClick={onClose}
             aria-label="Close rules"
             autoFocus
-            className="font-body text-sm text-muted hover:text-white rounded-lg px-2 py-1 -mr-2"
+            className="font-body text-sm text-muted hover:text-white rounded-lg min-h-[44px] min-w-[44px] px-3 inline-flex items-center justify-center -mr-2"
           >
             Close
           </button>
