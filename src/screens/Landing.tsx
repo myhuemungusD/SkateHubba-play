@@ -156,13 +156,13 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           </p>
 
           {/* Auth Buttons */}
-          <div className="w-full max-w-sm flex flex-col items-center gap-4">
+          <div className="w-full max-w-sm flex flex-col gap-4">
             <GoogleButton onClick={handleGoogle} loading={googleLoading} />
             <button
               type="button"
               onClick={handleAuth("signup")}
               disabled={googleLoading}
-              className="font-body text-sm text-dim hover:text-white underline-offset-4 hover:underline transition-colors duration-200 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="self-center font-body text-sm text-dim hover:text-white underline-offset-4 hover:underline transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               Use email
             </button>
@@ -373,12 +373,10 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
             Board. Phone. That&apos;s all you need. Get in.
           </p>
 
-          <div className="w-full max-w-sm flex flex-col gap-4">
-            <div className="animate-glow-pulse rounded-xl">
-              <SkateButton onClick={() => onGo("signup")} disabled={googleLoading}>
-                Start Playing
-              </SkateButton>
-            </div>
+          <div className="w-full max-w-sm animate-glow-pulse rounded-xl">
+            <SkateButton onClick={handleAuth("signup")} disabled={googleLoading}>
+              Start Playing
+            </SkateButton>
           </div>
 
           <InviteButton className="w-full max-w-sm mt-6" />
