@@ -6,16 +6,35 @@ import { ProfileSetup } from "../ProfileSetup";
 const mockCreateProfile = vi.fn();
 const mockGetUserProfile = vi.fn();
 const mockIsUsernameAvailable = vi.fn();
+const mockNavigate = vi.fn();
+
+// The error class needs to round-trip into the mocked module. Stash it via
+// vi.hoisted so both the `new` call below and the mock factory reference the
+// same constructor (factory runs before top-level classes initialize).
+const { AgeVerificationRequiredError: MockAgeVerificationRequiredError } = vi.hoisted(() => {
+  class AgeVerificationRequiredError extends Error {
+    constructor() {
+      super("Age verification required");
+      this.name = "AgeVerificationRequiredError";
+    }
+  }
+  return { AgeVerificationRequiredError };
+});
 
 vi.mock("../../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
   getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
   isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
+  AgeVerificationRequiredError: MockAgeVerificationRequiredError,
   // ProfileSetup imports these shared validation constants — mirror the
   // real values so the mocked module still exports them.
   USERNAME_MIN: 3,
   USERNAME_MAX: 20,
   USERNAME_RE: /^[a-z0-9_]+$/,
+}));
+
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => mockNavigate,
 }));
 
 beforeEach(() => {
@@ -322,5 +341,22 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByText("Back"));
 
     expect(screen.getByText("STEP 2 OF 3")).toBeInTheDocument();
+  });
+
+  it("redirects to /age-gate when createProfile rejects with AgeVerificationRequiredError (COPPA)", async () => {
+    mockCreateProfile.mockRejectedValue(new MockAgeVerificationRequiredError());
+
+    render(<ProfileSetup {...defaultProps} />);
+    await fillUsernameAndAdvance();
+    await userEvent.click(screen.getByText("Next"));
+    expect(screen.getByText("STEP 3 OF 3")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByText("Lock It In"));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/age-gate", { replace: true });
+    });
+    // Error banner should NOT be rendered for this case — we redirect instead.
+    expect(screen.queryByText(/Age verification required/)).not.toBeInTheDocument();
   });
 });

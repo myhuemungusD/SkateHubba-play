@@ -23,6 +23,11 @@ jobs:
 
       - run: npm ci
 
+      - name: Audit dependencies (fail on moderate+)
+        run: |
+          npm audit --audit-level=moderate
+          (cd functions && npm ci --ignore-scripts --no-audit --no-fund && npm audit --audit-level=moderate)
+
       - name: Guard against as-any in production code
         run: |
           if grep -rn "as any" src/ --include="*.ts" --include="*.tsx" | grep -v __tests__ | grep -v __mocks__ | grep -v ".test."; then

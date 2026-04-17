@@ -163,6 +163,18 @@ export function VideoRecorder({
     return () => {
       clearInterval(timerRef.current);
       clearTimeout(maxTimerRef.current);
+      // If we unmount mid-recording, stop the MediaRecorder after detaching its
+      // handlers — otherwise onstop fires post-unmount and setState warns.
+      const mr = mrRef.current;
+      if (mr && mr.state === "recording") {
+        mr.ondataavailable = null;
+        mr.onstop = null;
+        try {
+          mr.stop();
+        } catch {
+          // Already stopped / not started; safe to ignore.
+        }
+      }
       streamRef.current?.getTracks().forEach((t) => t.stop());
       fisheyeStreamRef.current = null;
       if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);

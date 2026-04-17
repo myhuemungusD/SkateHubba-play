@@ -131,6 +131,8 @@ describe("users service", () => {
   });
 
   describe("createProfile", () => {
+    const VALID_DOB = "2000-01-15";
+
     it("runs a transaction that reserves the username and creates the profile", async () => {
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
@@ -140,11 +142,12 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      const result = await createProfile("u1", "SK8R", "regular");
+      const result = await createProfile("u1", "SK8R", "regular", false, VALID_DOB);
       expect(result).toMatchObject({
         uid: "u1",
         username: "sk8r",
         stance: "regular",
+        dob: VALID_DOB,
       });
       // email should not be stored in the profile (PII reduction)
       expect(result).not.toHaveProperty("email");
@@ -174,7 +177,7 @@ describe("users service", () => {
       expect(capturedProfile).toMatchObject({ dob: "2005-06-15", parentalConsent: true });
     });
 
-    it("omits dob and parentalConsent when not provided", async () => {
+    it("omits parentalConsent (but keeps dob) when parentalConsent not provided", async () => {
       let capturedProfile: Record<string, unknown> | undefined;
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
@@ -186,21 +189,38 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      await createProfile("u1", "sk8r", "regular");
-      expect(capturedProfile).not.toHaveProperty("dob");
+      await createProfile("u1", "sk8r", "regular", false, VALID_DOB);
+      expect(capturedProfile).toHaveProperty("dob", VALID_DOB);
       expect(capturedProfile).not.toHaveProperty("parentalConsent");
     });
 
+    it("throws AgeVerificationRequiredError when dob is missing (COPPA)", async () => {
+      await expect(createProfile("u1", "sk8r", "regular")).rejects.toMatchObject({
+        name: "AgeVerificationRequiredError",
+      });
+    });
+
+    it("throws AgeVerificationRequiredError when dob is malformed", async () => {
+      await expect(createProfile("u1", "sk8r", "regular", false, "not-a-date")).rejects.toMatchObject({
+        name: "AgeVerificationRequiredError",
+      });
+      await expect(createProfile("u1", "sk8r", "regular", false, "2000/01/15")).rejects.toMatchObject({
+        name: "AgeVerificationRequiredError",
+      });
+    });
+
     it("throws when username is too short", async () => {
-      await expect(createProfile("u1", "ab", "regular")).rejects.toThrow("Username must be");
+      await expect(createProfile("u1", "ab", "regular", false, VALID_DOB)).rejects.toThrow("Username must be");
     });
 
     it("throws when username is too long", async () => {
-      await expect(createProfile("u1", "a".repeat(21), "regular")).rejects.toThrow("Username must be");
+      await expect(createProfile("u1", "a".repeat(21), "regular", false, VALID_DOB)).rejects.toThrow(
+        "Username must be",
+      );
     });
 
     it("throws when username has invalid characters", async () => {
-      await expect(createProfile("u1", "sk8r!", "regular")).rejects.toThrow(
+      await expect(createProfile("u1", "sk8r!", "regular", false, VALID_DOB)).rejects.toThrow(
         "Username may only contain lowercase letters, numbers, and underscores",
       );
     });
@@ -214,7 +234,9 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      await expect(createProfile("u1", "sk8r", "regular")).rejects.toThrow("Username is already taken");
+      await expect(createProfile("u1", "sk8r", "regular", false, VALID_DOB)).rejects.toThrow(
+        "Username is already taken",
+      );
     });
   });
 

@@ -42,20 +42,30 @@ vi.mock("../services/auth", () => ({
   resolveGoogleRedirect: (...args: unknown[]) => mockResolveGoogleRedirect(...args),
   deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
 }));
-vi.mock("../services/users", () => ({
-  createProfile: (...args: unknown[]) => mockCreateProfile(...args),
-  isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
-  getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
-  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
-  getPlayerDirectory: vi.fn().mockResolvedValue([]),
-  getLeaderboard: vi.fn().mockResolvedValue([]),
-  getUserProfile: vi.fn().mockResolvedValue(null),
-  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
-  // Shared validation constants imported by ProfileSetup.
-  USERNAME_MIN: 3,
-  USERNAME_MAX: 20,
-  USERNAME_RE: /^[a-z0-9_]+$/,
-}));
+vi.mock("../services/users", () => {
+  // Defined inside the factory so vitest's hoisting doesn't hit a TDZ.
+  class AgeVerificationRequiredError extends Error {
+    constructor() {
+      super("Age verification required");
+      this.name = "AgeVerificationRequiredError";
+    }
+  }
+  return {
+    createProfile: (...args: unknown[]) => mockCreateProfile(...args),
+    AgeVerificationRequiredError,
+    isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
+    getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
+    deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
+    getPlayerDirectory: vi.fn().mockResolvedValue([]),
+    getLeaderboard: vi.fn().mockResolvedValue([]),
+    getUserProfile: vi.fn().mockResolvedValue(null),
+    updatePlayerStats: vi.fn().mockResolvedValue(undefined),
+    // Shared validation constants imported by ProfileSetup.
+    USERNAME_MIN: 3,
+    USERNAME_MAX: 20,
+    USERNAME_RE: /^[a-z0-9_]+$/,
+  };
+});
 vi.mock("../services/games", () => ({
   createGame: (...args: unknown[]) => mockCreateGame(...args),
   setTrick: (...args: unknown[]) => mockSetTrick(...args),

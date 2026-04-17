@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useAuthContext } from "./AuthContext";
 import { useNavigationContext } from "./NavigationContext";
 import { updatePlayerStats, getUserProfile } from "../services/users";
@@ -215,16 +215,22 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [user, activeProfile, setScreen],
   );
 
-  const value: GameContextValue = {
-    games,
-    activeGame,
-    setActiveGame,
-    openGame,
-    startChallenge,
-    hasMoreGames,
-    loadMoreGames,
-    gamesLoading,
-  };
+  // Memoize the provider value so consumers don't re-render on every
+  // GameProvider render (e.g. pagination effect toggling gamesLoading
+  // would otherwise flush every useGameContext() consumer).
+  const value = useMemo<GameContextValue>(
+    () => ({
+      games,
+      activeGame,
+      setActiveGame,
+      openGame,
+      startChallenge,
+      hasMoreGames,
+      loadMoreGames,
+      gamesLoading,
+    }),
+    [games, activeGame, openGame, startChallenge, hasMoreGames, loadMoreGames, gamesLoading],
+  );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;
 }

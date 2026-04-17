@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
 import {
+  AgeVerificationRequiredError,
   createProfile,
   getUserProfile,
   isUsernameAvailable,
@@ -298,6 +300,7 @@ export function ProfileSetup({
   dob?: string | null;
   parentalConsent?: boolean;
 }) {
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>(1);
   const [username, setUsername] = useState(() => sanitizeDisplayName(displayName));
   const [stance, setStance] = useState("Regular");
@@ -411,6 +414,13 @@ export function ProfileSetup({
       analytics.signUp("google");
       onDone(profile);
     } catch (err: unknown) {
+      // COPPA: if the service rejects for missing dob (deep-link to /auth, or
+      // Google sign-in that bypassed /age-gate), bounce back to /age-gate so
+      // the user can complete verification before retrying profile creation.
+      if (err instanceof AgeVerificationRequiredError) {
+        navigate("/age-gate", { replace: true });
+        return;
+      }
       setError(err instanceof Error ? err.message : "Could not create profile");
     } finally {
       setLoading(false);

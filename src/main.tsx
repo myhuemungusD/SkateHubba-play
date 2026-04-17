@@ -15,6 +15,16 @@ const APP_RELEASE =
   (import.meta.env.VITE_GIT_SHA as string | undefined) ||
   undefined;
 
+// Regex listing param names we must never ship to Sentry. Match is
+// case-insensitive and anchored only to a leading boundary (?, &, or start)
+// so it won't accidentally eat substrings of unrelated keys.
+const PII_PARAM_RE =
+  /([?&;]|^)(email|token|api[_-]?key|access[_-]?token|id[_-]?token|auth|authorization|password|phone|otp|verification[_-]?code)=([^&#]*)/gi;
+
+function scrubUrl(url: string): string {
+  return url.replace(PII_PARAM_RE, (_match, sep: string, key: string) => `${sep}${key}=[REDACTED]`);
+}
+
 // Initialise Sentry only when a DSN is provided (set VITE_SENTRY_DSN in
 // Vercel → Project Settings → Environment Variables).
 // initSentry() dynamically imports @sentry/react so the SDK is never
@@ -29,13 +39,20 @@ if (import.meta.env.VITE_SENTRY_DSN) {
     // Capture 100% of transactions in development; 10% in production to
     // stay within the free quota. Adjust as traffic grows.
     tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
-    // Strip PII from breadcrumbs / event data.
+    // Strip PII from breadcrumbs / event data. We scrub both the request URL
+    // and any breadcrumb data.url since a reported event often carries
+    // navigation history (fetch, history.pushState) picked up automatically
+    // by the browser integrations — those are a more common PII leak than
+    // the report URL itself.
     beforeSend(event) {
-      // Strip email query params from URLs wherever they appear.
-      // Using a global replace (not anchored to ?/&) catches edge cases like
-      // email= at the start of a query string or after a hash.
       if (event.request?.url) {
-        event.request.url = event.request.url.replace(/email=[^&]*/gi, "email=[REDACTED]");
+        event.request.url = scrubUrl(event.request.url);
+      }
+      if (event.breadcrumbs) {
+        for (const crumb of event.breadcrumbs) {
+          const url = crumb.data?.url;
+          if (typeof url === "string") crumb.data!.url = scrubUrl(url);
+        }
       }
       return event;
     },
