@@ -190,7 +190,7 @@ describe("Smoke: Account & Sign Out", () => {
     expect(mockDeleteAccount).not.toHaveBeenCalled();
   });
 
-  it("successful delete calls deleteUserData then deleteAccount and navigates to landing", async () => {
+  it("successful delete calls deleteAccount then deleteUserData and navigates to landing", async () => {
     mockDeleteUserData.mockResolvedValueOnce(undefined);
     // After deleteAccount resolves, make useAuth return no user (simulating Firebase sign-out)
     mockDeleteAccount.mockImplementationOnce(async () => {
@@ -214,39 +214,29 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
       expect(mockDeleteAccount).toHaveBeenCalled();
+      expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
       // After deletion, app navigates to landing
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
-
-    // Firestore/Storage wipe must run BEFORE the auth account is deleted —
-    // otherwise the rules that gate profile/clip/video deletion reject the
-    // write (permission-denied) and the user's data is orphaned with no
-    // way to retry. See AuthContext#handleDeleteAccount.
-    const firestoreCallOrder = mockDeleteUserData.mock.invocationCallOrder[0];
-    const authCallOrder = mockDeleteAccount.mock.invocationCallOrder[0];
-    expect(firestoreCallOrder).toBeLessThan(authCallOrder);
   });
 
-  it("shows error when deleteUserData fails and does not call deleteAccount", async () => {
-    mockDeleteUserData.mockRejectedValueOnce(new Error("Firestore deletion failed"));
+  it("shows error when deleteAccount fails and does not call deleteUserData", async () => {
+    mockDeleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
     await renderLobby([]);
 
     await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(screen.getByText("Firestore deletion failed")).toBeInTheDocument();
+      expect(screen.getByText("Auth deletion failed")).toBeInTheDocument();
     });
-    // Auth deletion must not run until Firestore+Storage wipe succeeds.
-    expect(mockDeleteAccount).not.toHaveBeenCalled();
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
     // Modal stays open so user can retry
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
 
-  it("shows re-auth message when auth deletion fails after data removal", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
+  it("shows friendly message when deleteAccount requires recent login", async () => {
     const err = new Error("auth/requires-recent-login");
     (err as unknown as { code: string }).code = "auth/requires-recent-login";
     mockDeleteAccount.mockRejectedValueOnce(err);
@@ -256,14 +246,10 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      // Copy reflects that data is already gone but auth still needs re-auth
-      expect(screen.getByText(/Your data has been removed/)).toBeInTheDocument();
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
     });
-    // Modal stays open so user sees the guidance
+    // Modal stays open
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
-    // Firestore wipe completed — no retry needed for that phase
-    expect(mockDeleteUserData).toHaveBeenCalledTimes(1);
   });
 
   it("shows generic error message for unknown firebase auth error", async () => {

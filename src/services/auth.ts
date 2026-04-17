@@ -225,18 +225,9 @@ export async function signInWithGoogle(): Promise<User | null> {
 /**
  * Permanently delete the currently signed-in Firebase Auth account.
  *
- * ORDER MATTERS. Callers (see AuthContext#handleDeleteAccount) MUST invoke
- * {@link ../users#deleteUserData} BEFORE this function. Firestore security
- * rules require an active auth context to delete the profile doc, username
- * reservation, clips, and Storage videos — once the auth account is gone,
- * those writes would fail with permission-denied and the data would be
- * orphaned with no way to retry.
- *
- * Firebase requires recent authentication; if this throws
- * `auth/requires-recent-login` the caller should sign the user out and ask
- * them to re-authenticate. By this point the Firestore/Storage data has
- * already been wiped, so a retry only needs to complete the auth-side
- * deletion.
+ * IMPORTANT: Call deleteUserData() from users.ts first to clean up Firestore.
+ * Firebase requires recent authentication; if this throws auth/requires-recent-login
+ * the caller should sign the user out and ask them to re-authenticate.
  */
 export async function deleteAccount(): Promise<void> {
   const user = requireAuth().currentUser;
