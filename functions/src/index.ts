@@ -157,24 +157,28 @@ export const onGameUpdated = onDocumentUpdated({ document: "games/{gameId}", dat
       }),
     );
 
-    // Update win/loss stats for both players using FieldValue.increment()
-    // to avoid contention with concurrent client-side updates.
-    // Uses lastStatsGameId as idempotency key — safe if the client also
-    // calls updatePlayerStats or if this trigger fires more than once.
+    // Update win/loss stats for both players. A transaction is required
+    // because onGameUpdated and checkExpiredTurns can race (a game that
+    // naturally completes between the scheduler's query and its write
+    // would otherwise get incremented twice). lastStatsGameId is the
+    // idempotency key; the transaction re-reads it after acquiring the
+    // lock so a parallel writer loses the race cleanly.
     const db = getFirestore(DB_NAME);
     await Promise.all(
       players.map(async (player) => {
         const won = winnerUid === player.uid;
         const userRef = db.doc(`users/${player.uid}`);
 
-        const snap = await userRef.get();
-        if (!snap.exists) return;
-        if (snap.data()!.lastStatsGameId === gameId) return;
+        await db.runTransaction(async (tx) => {
+          const snap = await tx.get(userRef);
+          if (!snap.exists) return;
+          if (snap.data()!.lastStatsGameId === gameId) return;
 
-        const field = won ? "wins" : "losses";
-        await userRef.update({
-          [field]: FieldValue.increment(1),
-          lastStatsGameId: gameId,
+          const field = won ? "wins" : "losses";
+          tx.update(userRef, {
+            [field]: FieldValue.increment(1),
+            lastStatsGameId: gameId,
+          });
         });
       }),
     );
@@ -289,17 +293,31 @@ export const checkExpiredTurns = onSchedule("every 15 minutes", async () => {
       // Winner is the opponent of whoever's turn expired
       const winner = currentTurn === game.player1Uid ? game.player2Uid : game.player1Uid;
 
-      await doc.ref.update({
-        status: "forfeit",
-        winner,
-        updatedAt: FieldValue.serverTimestamp(),
+      // Forfeit under a lease: another invocation (retry, overlapping run)
+      // may have already settled this game between our query and our write.
+      // The transaction re-reads status to ensure we only transition from
+      // "active" → "forfeit" exactly once.
+      const didForfeit = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(doc.ref);
+        if (!snap.exists) return false;
+        if (snap.data()!.status !== "active") return false;
+        tx.update(doc.ref, {
+          status: "forfeit",
+          winner,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
+        return true;
       });
 
-      // Update win/loss stats inline using FieldValue.increment()
-      // to avoid contention (defense-in-depth).
-      // onGameUpdated also updates stats, but if it fails (e.g. push
-      // notification error) these stats would be lost. The
-      // lastStatsGameId idempotency key prevents double-counting.
+      if (!didForfeit) {
+        logger.info("checkExpiredTurns: already settled, skipping", { gameId: doc.id });
+        return;
+      }
+
+      // Update win/loss stats in a transaction so a concurrent
+      // onGameUpdated (or retry) can't double-count. lastStatsGameId
+      // is the idempotency key — re-checked after the tx acquires its
+      // lock, so only one writer ever wins the increment.
       const loser = currentTurn;
       const statsPlayers = [
         { uid: winner, won: true },
@@ -309,13 +327,15 @@ export const checkExpiredTurns = onSchedule("every 15 minutes", async () => {
       await Promise.allSettled(
         statsPlayers.map(async ({ uid, won }) => {
           const userRef = db.doc(`users/${uid}`);
-          const snap = await userRef.get();
-          if (!snap.exists) return;
-          if (snap.data()!.lastStatsGameId === doc.id) return;
-          const field = won ? "wins" : "losses";
-          await userRef.update({
-            [field]: FieldValue.increment(1),
-            lastStatsGameId: doc.id,
+          await db.runTransaction(async (tx) => {
+            const snap = await tx.get(userRef);
+            if (!snap.exists) return;
+            if (snap.data()!.lastStatsGameId === doc.id) return;
+            const field = won ? "wins" : "losses";
+            tx.update(userRef, {
+              [field]: FieldValue.increment(1),
+              lastStatsGameId: doc.id,
+            });
           });
         }),
       );

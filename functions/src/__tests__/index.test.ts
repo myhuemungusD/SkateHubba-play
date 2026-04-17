@@ -186,17 +186,15 @@ describe("onGameUpdated", () => {
     mockUserTokens(["token-p2"]);
     mockSendSuccess(1);
 
-    // Non-transactional reads for stats idempotency check (one per player)
-    mockGet.mockResolvedValueOnce({
+    // Stats are now read+written inside a transaction — use the tx mocks.
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 3, losses: 1, lastStatsGameId: "old-game" }),
     });
-    mockGet.mockResolvedValueOnce({
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 0, losses: 2, lastStatsGameId: "old-game" }),
     });
-    mockUpdate.mockResolvedValueOnce(undefined);
-    mockUpdate.mockResolvedValueOnce(undefined);
 
     await onGameUpdated({
       data: {
@@ -226,16 +224,18 @@ describe("onGameUpdated", () => {
     // Push notifications sent for both players
     expect(mockSendEachForMulticast).toHaveBeenCalledTimes(2);
 
-    // Stats updated via FieldValue.increment (no transactions)
-    expect(mockRunTransaction).not.toHaveBeenCalled();
-    expect(mockUpdate).toHaveBeenCalledTimes(2);
+    // One transaction per player for stats idempotency.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(2);
 
     // Winner gets increment(1) on wins
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ wins: { _op: "increment", operand: 1 }, lastStatsGameId: "game-1" }),
     );
     // Loser gets increment(1) on losses
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ losses: { _op: "increment", operand: 1 }, lastStatsGameId: "game-1" }),
     );
   });
@@ -246,12 +246,13 @@ describe("onGameUpdated", () => {
     mockUserTokens(["token-p2"]);
     mockSendSuccess(1);
 
-    // Both users already have stats for this game
-    mockGet.mockResolvedValueOnce({
+    // Both users already have stats for this game — transaction reads see the
+    // idempotency key and return without writing.
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 4, losses: 1, lastStatsGameId: "game-1" }),
     });
-    mockGet.mockResolvedValueOnce({
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 0, losses: 3, lastStatsGameId: "game-1" }),
     });
@@ -281,9 +282,9 @@ describe("onGameUpdated", () => {
       params: { gameId: "game-1" },
     });
 
-    // No updates due to idempotency (no transactions used)
-    expect(mockRunTransaction).not.toHaveBeenCalled();
-    expect(mockUpdate).not.toHaveBeenCalled();
+    // Transactions ran (one per player) but neither wrote.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 
   it("skips stats for deleted user profiles", async () => {
@@ -292,13 +293,12 @@ describe("onGameUpdated", () => {
     mockUserTokens(["token-p2"]);
     mockSendSuccess(1);
 
-    // Player 1 profile deleted, player 2 exists
-    mockGet.mockResolvedValueOnce({ exists: false });
-    mockGet.mockResolvedValueOnce({
+    // Player 1 profile deleted, player 2 exists.
+    mockTxGet.mockResolvedValueOnce({ exists: false });
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 0, losses: 0, lastStatsGameId: "old-game" }),
     });
-    mockUpdate.mockResolvedValueOnce(undefined);
 
     await onGameUpdated({
       data: {
@@ -325,9 +325,11 @@ describe("onGameUpdated", () => {
       params: { gameId: "game-1" },
     });
 
-    // Only one update — the deleted profile is skipped
-    expect(mockUpdate).toHaveBeenCalledTimes(1);
-    expect(mockUpdate).toHaveBeenCalledWith(
+    // Both transactions ran; only the one for the existing profile wrote.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ wins: { _op: "increment", operand: 1 }, lastStatsGameId: "game-1" }),
     );
   });
@@ -538,17 +540,15 @@ describe("onGameUpdated — push failure resilience", () => {
     mockGet.mockRejectedValueOnce(new Error("FCM token fetch failed"));
     mockGet.mockRejectedValueOnce(new Error("FCM token fetch failed"));
 
-    // Non-transactional reads for stats idempotency check
-    mockGet.mockResolvedValueOnce({
+    // Transactional reads for stats idempotency check.
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 2, losses: 0, lastStatsGameId: "old-game" }),
     });
-    mockGet.mockResolvedValueOnce({
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 0, losses: 1, lastStatsGameId: "old-game" }),
     });
-    mockUpdate.mockResolvedValueOnce(undefined);
-    mockUpdate.mockResolvedValueOnce(undefined);
 
     await onGameUpdated({
       data: {
@@ -575,16 +575,18 @@ describe("onGameUpdated — push failure resilience", () => {
       params: { gameId: "game-forfeit" },
     });
 
-    // Push failed but stats must still be updated (no transactions)
-    expect(mockRunTransaction).not.toHaveBeenCalled();
-    expect(mockUpdate).toHaveBeenCalledTimes(2);
+    // Push failed but stats still run in transactions (one per player).
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(2);
 
     // Loser (user-1) gets increment(1) on losses
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ losses: { _op: "increment", operand: 1 }, lastStatsGameId: "game-forfeit" }),
     );
     // Winner (user-2) gets increment(1) on wins
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ wins: { _op: "increment", operand: 1 }, lastStatsGameId: "game-forfeit" }),
     );
   });
@@ -610,38 +612,43 @@ describe("checkExpiredTurns", () => {
       ],
     });
 
-    // Non-transactional reads for stats idempotency check (winner then loser)
-    mockGet.mockResolvedValueOnce({
+    // Three sequential tx.get() calls per game:
+    //   1. forfeit lease — game doc, must show status "active"
+    //   2. winner stats  — user doc, idempotency key stale
+    //   3. loser  stats  — user doc, idempotency key stale
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ status: "active" }),
+    });
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 5, losses: 0, lastStatsGameId: "old" }),
     });
-    mockGet.mockResolvedValueOnce({
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 0, losses: 3, lastStatsGameId: "old" }),
     });
-    mockUpdate.mockResolvedValueOnce(undefined);
-    mockUpdate.mockResolvedValueOnce(undefined);
 
     await checkExpiredTurns();
 
-    // Game doc updated to forfeit
-    expect(mockDocRef.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: "forfeit",
-        winner: "user-2",
-      }),
+    // Three transactions: forfeit + 2 stats.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(3);
+
+    // Forfeit is written through the transaction now, not doc.ref.update.
+    expect(mockDocRef.update).not.toHaveBeenCalled();
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      mockDocRef,
+      expect.objectContaining({ status: "forfeit", winner: "user-2" }),
     );
 
-    // Stats updated via FieldValue.increment (no transactions)
-    expect(mockRunTransaction).not.toHaveBeenCalled();
-    expect(mockUpdate).toHaveBeenCalledTimes(2);
-
     // Winner (user-2) gets increment(1) on wins
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ wins: { _op: "increment", operand: 1 }, lastStatsGameId: "expired-game-1" }),
     );
     // Loser (user-1) gets increment(1) on losses
-    expect(mockUpdate).toHaveBeenCalledWith(
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ losses: { _op: "increment", operand: 1 }, lastStatsGameId: "expired-game-1" }),
     );
   });
@@ -655,7 +662,8 @@ describe("checkExpiredTurns", () => {
 
     await checkExpiredTurns();
 
-    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(mockRunTransaction).not.toHaveBeenCalled();
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 
   it("uses idempotency key to prevent double-counting", async () => {
@@ -677,23 +685,58 @@ describe("checkExpiredTurns", () => {
       ],
     });
 
-    // Both users already have stats for this game
-    mockGet.mockResolvedValueOnce({
+    // Forfeit lease sees the game still active.
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ status: "active" }),
+    });
+    // Both users already have stats for this game.
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 5, losses: 0, lastStatsGameId: "game-already-counted" }),
     });
-    mockGet.mockResolvedValueOnce({
+    mockTxGet.mockResolvedValueOnce({
       exists: true,
       data: () => ({ wins: 0, losses: 3, lastStatsGameId: "game-already-counted" }),
     });
 
     await checkExpiredTurns();
 
-    // Game doc updated
-    expect(mockDocRef.update).toHaveBeenCalled();
+    // Three transactions ran (forfeit + 2 stats) but only the forfeit wrote.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(3);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+    expect(mockTxUpdate).toHaveBeenCalledWith(mockDocRef, expect.objectContaining({ status: "forfeit" }));
+  });
 
-    // No stats updates due to idempotency (no transactions used)
-    expect(mockRunTransaction).not.toHaveBeenCalled();
-    expect(mockUpdate).not.toHaveBeenCalled();
+  it("skips games whose lease was already taken by another invocation", async () => {
+    const mockDocRef = { update: vi.fn().mockResolvedValue(undefined) };
+
+    mockCollectionGet.mockResolvedValueOnce({
+      empty: false,
+      size: 1,
+      docs: [
+        {
+          id: "already-settled",
+          ref: mockDocRef,
+          data: () => ({
+            currentTurn: "user-1",
+            player1Uid: "user-1",
+            player2Uid: "user-2",
+          }),
+        },
+      ],
+    });
+
+    // Forfeit lease sees the game has been settled since we queried.
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ status: "forfeit" }),
+    });
+
+    await checkExpiredTurns();
+
+    // Only the forfeit lease transaction ran; no update, no stats calls.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 });
