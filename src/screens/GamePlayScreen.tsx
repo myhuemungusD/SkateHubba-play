@@ -275,7 +275,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
 
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/80 pb-10">
-      <div className="px-5 py-4 border-b border-white/[0.04] glass flex justify-between items-center">
+      <div className="px-5 pt-safe pb-4 border-b border-white/[0.04] glass flex justify-between items-center">
         <button
           type="button"
           onClick={onBack}

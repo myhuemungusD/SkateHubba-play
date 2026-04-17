@@ -596,6 +596,37 @@
     radial-gradient(ellipse at 70% 60%, rgba(255, 61, 0, 0.04) 0%, transparent 50%), rgba(10, 10, 10, 0.85);
 }
 
+/* ── Safe-area insets ────────────────────────────────── */
+/* iOS Dynamic Island / home-indicator aware padding. On non-notched viewports
+   env(safe-area-inset-*) returns 0, so we max() with a sensible fallback that
+   matches the app's existing pt-5 / pb-3 spacing. Requires
+   <meta name="viewport" content="...viewport-fit=cover"> (set in index.html). */
+.pt-safe {
+  padding-top: max(env(safe-area-inset-top), 1.25rem);
+}
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+}
+/* Inset-only variants: pure env() without a minimum. Use when you want to
+   preserve an existing layout on non-notched devices and only add the inset
+   on notched ones (e.g. a fixed nav that already has its own height). */
+.pt-safe-inset {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe-inset {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.pl-safe {
+  padding-left: max(env(safe-area-inset-left), 0px);
+}
+.pr-safe {
+  padding-right: max(env(safe-area-inset-right), 0px);
+}
+.px-safe {
+  padding-left: max(env(safe-area-inset-left), 0px);
+  padding-right: max(env(safe-area-inset-right), 0px);
+}
+
 /* ── Reduced motion ────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,

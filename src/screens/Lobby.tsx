@@ -160,7 +160,7 @@ export function Lobby({
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/40 pb-24">
       {/* Header */}
-      <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-2xl mx-auto">
+      <div className="px-5 pt-safe pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-2xl mx-auto">
         <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
         <div className="flex items-center gap-2.5">
           <button

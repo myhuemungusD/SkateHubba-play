@@ -107,7 +107,7 @@ export function GameOverScreen({
 
   return (
     <div
-      className={`min-h-dvh flex flex-col items-center px-6 py-10 overflow-y-auto ${isWinner ? "bg-win-glow" : "bg-loss-glow"}`}
+      className={`min-h-dvh flex flex-col items-center px-6 pt-[max(env(safe-area-inset-top),2.5rem)] pb-10 overflow-y-auto ${isWinner ? "bg-win-glow" : "bg-loss-glow"}`}
     >
       <div className="text-center w-full max-w-md animate-scale-in">
         <div className="flex justify-center mb-4">

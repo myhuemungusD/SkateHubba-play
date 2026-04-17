@@ -182,7 +182,7 @@ export function ChallengeScreen({
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/80">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-white/[0.04] glass flex justify-between items-center mb-6">
+      <div className="px-5 pt-safe pb-4 border-b border-white/[0.04] glass flex justify-between items-center mb-6">
         <button
           type="button"
           onClick={onBack}
