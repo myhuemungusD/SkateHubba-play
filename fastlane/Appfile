@@ -1,0 +1,12 @@
+# Apple + Google Play identifiers.
+# Values can be overridden per-lane via env vars; Appfile supplies defaults.
+
+app_identifier "com.skatehubba.app"
+apple_id ENV["APPLE_ID"]
+team_id ENV["APPLE_TEAM_ID"]
+
+# Google Play — service-account auth preferred over JSON key path so CI
+# doesn't have to write credentials to disk. Lanes read this env var
+# directly via upload_to_play_store(json_key_data: ...).
+# json_key_data_raw is provided by GOOGLE_PLAY_SERVICE_ACCOUNT_JSON secret.
+package_name "com.skatehubba.app"

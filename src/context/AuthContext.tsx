@@ -7,7 +7,8 @@ import { exportUserData, serializeUserData, userDataFilename } from "../services
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
-import { captureException } from "../lib/sentry";
+import { captureException, setUser as setSentryUser } from "../lib/sentry";
+import { identify as posthogIdentify, resetIdentity as posthogReset } from "../lib/posthog";
 
 export interface AuthContextValue {
   loading: boolean;
@@ -104,6 +105,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (profile) setActiveProfile(profile);
   }, [profile]);
+
+  // Keep analytics + error-tracking identity in sync with Firebase auth
+  // state. PostHog.reset() must fire on sign-out so the next anonymous
+  // session doesn't inherit the previous user's distinct_id (which would
+  // silently merge cohorts). Sentry uses the same uid for scoped issues.
+  useEffect(() => {
+    if (user) {
+      const username = activeProfile?.username;
+      posthogIdentify(user.uid, username ? { username } : undefined);
+      setSentryUser({ id: user.uid, ...(username ? { username } : {}) });
+    } else {
+      posthogReset();
+      setSentryUser(null);
+    }
+  }, [user, activeProfile?.username]);
 
   const handleSignOut = useCallback(async () => {
     logger.info("user_sign_out");

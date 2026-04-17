@@ -1,0 +1,136 @@
+# Fastlane configuration for SkateHubba.
+#
+# Automates beta + production releases for iOS (TestFlight + App Store) and
+# Android (internal + closed + production tracks on Google Play). All lanes
+# read credentials from GitHub Actions secrets (see `.github/workflows/
+# fastlane-*.yml` once they're added) so nothing sensitive lives in the repo.
+#
+# Run a lane locally:
+#   bundle exec fastlane ios beta
+#   bundle exec fastlane android internal
+#
+# Every lane assumes `npm run build && npx cap sync` has already produced a
+# fresh web bundle. CI jobs chain those steps explicitly.
+
+default_platform(:ios)
+
+# Shared version helper — reads the single source of truth from package.json
+# so fastlane, release-please, Sentry, and PostHog all report the same
+# release identifier. Avoids the "version drift" class of bug where the app
+# store shows v1.2.0 but Sentry still tags events with v1.1.9.
+def package_version
+  require "json"
+  JSON.parse(File.read(File.expand_path("../package.json", __dir__)))["version"]
+end
+
+# ──────────────────────────────────────────────────────────────────────────
+# iOS
+# ──────────────────────────────────────────────────────────────────────────
+platform :ios do
+  before_all do
+    # `cap add ios` must have been run at least once to materialise the
+    # ios/App/ Xcode project. On fresh checkouts (or CI) do that first.
+    unless File.exist?(File.expand_path("../ios/App", __dir__))
+      UI.user_error!("ios/App/ not found — run `npx cap add ios && npx cap sync ios` first.")
+    end
+  end
+
+  desc "Sync Apple signing certs + provisioning profiles via fastlane match"
+  lane :certificates do
+    match(
+      type: "appstore",
+      app_identifier: ["com.skatehubba.app"],
+      readonly: is_ci,
+    )
+  end
+
+  desc "Build a signed TestFlight build from the current commit"
+  lane :beta do
+    certificates
+    build_app(
+      workspace: "ios/App/App.xcworkspace",
+      scheme: "App",
+      configuration: "Release",
+      clean: true,
+      output_directory: "ios/build",
+      export_method: "app-store",
+      # Required by App Store Connect to dedupe submissions for the same
+      # marketing version — CI increments from the package.json value.
+      include_bitcode: false,
+    )
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      changelog: "Build #{package_version} — see CHANGELOG.md for details.",
+      api_key_path: ENV["APP_STORE_CONNECT_API_KEY_PATH"],
+    )
+  end
+
+  desc "Submit the latest TestFlight build for App Store review"
+  lane :release do
+    deliver(
+      submit_for_review: true,
+      automatic_release: true,
+      force: true,  # skip interactive confirmation
+      submission_information: {
+        add_id_info_uses_idfa: false,
+        export_compliance_uses_encryption: false,
+        content_rights_contains_third_party_content: false,
+      },
+      precheck_include_in_app_purchases: false,
+      api_key_path: ENV["APP_STORE_CONNECT_API_KEY_PATH"],
+    )
+  end
+end
+
+# ──────────────────────────────────────────────────────────────────────────
+# Android
+# ──────────────────────────────────────────────────────────────────────────
+platform :android do
+  desc "Build + upload an AAB to Google Play Internal Testing"
+  lane :internal do
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: "android/",
+    )
+    upload_to_play_store(
+      track: "internal",
+      aab: "android/app/build/outputs/bundle/release/app-release.aab",
+      json_key_data: ENV["GOOGLE_PLAY_SERVICE_ACCOUNT_JSON"],
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  desc "Promote the latest internal build to the closed testing (beta) track"
+  lane :beta do
+    upload_to_play_store(
+      track: "internal",
+      track_promote_to: "beta",
+      json_key_data: ENV["GOOGLE_PLAY_SERVICE_ACCOUNT_JSON"],
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  desc "Promote the latest beta build to production"
+  lane :release do
+    upload_to_play_store(
+      track: "beta",
+      track_promote_to: "production",
+      rollout: "0.1",  # 10% staged rollout — widen manually after 24-48h
+      json_key_data: ENV["GOOGLE_PLAY_SERVICE_ACCOUNT_JSON"],
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_changelogs: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+end

@@ -1,0 +1,18 @@
+# fastlane match stores Apple signing certs + provisioning profiles in an
+# encrypted private Git repo so every developer / CI runner gets the same
+# signing identity. Never commits plaintext anywhere; MATCH_PASSWORD is the
+# symmetric key.
+
+git_url ENV["MATCH_GIT_URL"]
+storage_mode "git"
+
+type "appstore"
+app_identifier ["com.skatehubba.app"]
+
+username ENV["APPLE_ID"]
+team_id ENV["APPLE_TEAM_ID"]
+
+# Read-only in CI: runners consume pre-generated certs, they don't generate.
+# Local developers running `bundle exec fastlane ios certificates` with
+# MATCH_READONLY=false can rotate.
+readonly ENV["MATCH_READONLY"] != "false"

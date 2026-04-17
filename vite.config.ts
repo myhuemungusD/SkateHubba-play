@@ -59,6 +59,14 @@ export default defineConfig({
   define: {
     "import.meta.env.VERCEL": JSON.stringify(process.env.VERCEL ?? ""),
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? ""),
+    // Release identifier stamped at build time. Prefer an explicit
+    // VITE_APP_VERSION (set by the Release workflow to the git tag, e.g.
+    // "v1.2.0") so Sentry's source-map upload and the running app agree on
+    // the same release string. Falls back to the package.json version
+    // so preview deployments still report a meaningful identifier.
+    "import.meta.env.VITE_APP_VERSION": JSON.stringify(
+      process.env.VITE_APP_VERSION ?? JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf-8")).version,
+    ),
   },
   build: {
     outDir: "dist",

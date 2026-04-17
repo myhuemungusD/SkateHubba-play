@@ -1,0 +1,4 @@
+# Fastlane plugins. Pinned to avoid surprise regressions from plugin updates.
+# Install with: `bundle exec fastlane install_plugins`
+
+gem "fastlane-plugin-versioning", "~> 0.7"
