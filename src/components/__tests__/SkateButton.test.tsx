@@ -9,6 +9,12 @@ vi.mock("../../utils/ollieSound", () => ({
   playOlliePop: () => mockPlayOlliePop(),
 }));
 
+const mockPlayHaptic = vi.fn();
+
+vi.mock("../../services/haptics", () => ({
+  playHaptic: (...args: unknown[]) => mockPlayHaptic(...args),
+}));
+
 describe("SkateButton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -24,13 +30,14 @@ describe("SkateButton", () => {
     expect(screen.getByRole("button", { name: "Kickflip" })).toBeInTheDocument();
   });
 
-  it("calls onClick and plays sound on click", async () => {
+  it("calls onClick and plays sound + haptic on click", async () => {
     vi.useRealTimers();
     const onClick = vi.fn();
     render(<SkateButton onClick={onClick}>Go</SkateButton>);
     await userEvent.click(screen.getByRole("button", { name: "Go" }));
     expect(onClick).toHaveBeenCalledTimes(1);
     expect(mockPlayOlliePop).toHaveBeenCalledTimes(1);
+    expect(mockPlayHaptic).toHaveBeenCalledWith("button_primary");
   });
 
   it("applies animate-ollie class on click and removes it after 500ms", () => {
@@ -58,6 +65,7 @@ describe("SkateButton", () => {
     fireEvent.click(btn);
     expect(onClick).not.toHaveBeenCalled();
     expect(mockPlayOlliePop).not.toHaveBeenCalled();
+    expect(mockPlayHaptic).not.toHaveBeenCalled();
   });
 
   it("does not throw when unmounted during animation timeout", () => {

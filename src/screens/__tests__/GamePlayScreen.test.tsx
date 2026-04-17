@@ -32,6 +32,12 @@ vi.mock("../../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
 }));
 
+const mockPlayHaptic = vi.fn();
+
+vi.mock("../../services/haptics", () => ({
+  playHaptic: (...args: unknown[]) => mockPlayHaptic(...args),
+}));
+
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
 
 function makeGame(overrides: Record<string, unknown> = {}) {
@@ -333,6 +339,7 @@ describe("GamePlayScreen", () => {
         true,
       );
     });
+    expect(mockPlayHaptic).toHaveBeenCalledWith("trick_landed");
   });
 
   it("forfeit check logs correctly for non-Error rejection", async () => {
@@ -442,7 +449,7 @@ describe("GamePlayScreen", () => {
     });
   });
 
-  it("setter clicking Missed calls failSetTrick", async () => {
+  it("setter clicking Missed calls failSetTrick and fires trick_missed haptic", async () => {
     mockFailSetTrick.mockResolvedValueOnce(undefined);
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
@@ -462,6 +469,7 @@ describe("GamePlayScreen", () => {
     });
     expect(mockSetTrick).not.toHaveBeenCalled();
     expect(mockUploadVideo).not.toHaveBeenCalled();
+    expect(mockPlayHaptic).toHaveBeenCalledWith("trick_missed");
   });
 
   it("retry button calls failSetTrick after a missed attempt failure", async () => {
