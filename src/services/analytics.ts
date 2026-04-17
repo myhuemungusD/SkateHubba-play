@@ -14,6 +14,7 @@
  * stay in sync because helpers below are the only surface components call.
  */
 import { captureEvent as posthogCapture } from "../lib/posthog";
+import { isAnalyticsAllowed } from "../lib/consent";
 
 type EventValue = string | number | boolean | null | undefined;
 type EventProperties = Record<string, EventValue>;
@@ -43,6 +44,7 @@ function sendToPosthog(name: string, properties?: EventProperties): void {
 }
 
 export function trackEvent(name: string, properties?: EventProperties): void {
+  if (!isAnalyticsAllowed()) return;
   sendToVercel(name, properties);
   sendToPosthog(name, properties);
 }

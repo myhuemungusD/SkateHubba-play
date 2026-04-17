@@ -6,6 +6,7 @@ vi.mock("../../lib/posthog", () => ({
 }));
 
 import { trackEvent, analytics } from "../analytics";
+import { CONSENT_KEY } from "../../lib/consent";
 
 describe("analytics service", () => {
   let vaSpy: ReturnType<typeof vi.fn>;
@@ -15,10 +16,14 @@ describe("analytics service", () => {
     mockPosthogCapture.mockClear();
 
     (window as unknown as Record<string, unknown>).va = vaSpy;
+    // Default-allow for the existing suite; the consent-gating block below
+    // covers the declined / unknown cases explicitly.
+    localStorage.setItem(CONSENT_KEY, "accepted");
   });
 
   afterEach(() => {
     delete (window as unknown as Record<string, unknown>).va;
+    localStorage.clear();
   });
 
   describe("trackEvent", () => {
@@ -63,6 +68,29 @@ describe("analytics service", () => {
         throw new Error("va broke");
       });
       expect(() => trackEvent("error_event")).not.toThrow();
+    });
+
+    it("drops events when consent has not been granted", () => {
+      localStorage.removeItem(CONSENT_KEY);
+      trackEvent("pre_consent_event", { key: "value" });
+      expect(vaSpy).not.toHaveBeenCalled();
+      expect(mockPosthogCapture).not.toHaveBeenCalled();
+    });
+
+    it("drops events when the user has declined consent", () => {
+      localStorage.setItem(CONSENT_KEY, "declined");
+      trackEvent("declined_event", { key: "value" });
+      expect(vaSpy).not.toHaveBeenCalled();
+      expect(mockPosthogCapture).not.toHaveBeenCalled();
+    });
+
+    it("emits events once consent flips from declined to accepted", () => {
+      localStorage.setItem(CONSENT_KEY, "declined");
+      trackEvent("blocked");
+      expect(vaSpy).not.toHaveBeenCalled();
+      localStorage.setItem(CONSENT_KEY, "accepted");
+      trackEvent("allowed");
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "allowed" });
     });
   });
 
