@@ -77,6 +77,19 @@ export async function isUsernameAvailable(username: string): Promise<boolean> {
  *   2. Write usernames/{username} = { uid }
  *   3. Write users/{uid} = full profile
  */
+/** DOB must be ISO-8601 YYYY-MM-DD — matches the shape the age gate emits. */
+const DOB_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Thrown by createProfile when no valid dob is supplied. UI code looks for
+ *  this error name to redirect users to /age-gate instead of showing a raw
+ *  validation message. */
+export class AgeVerificationRequiredError extends Error {
+  constructor() {
+    super("Age verification required — complete age-gate before creating a profile");
+    this.name = "AgeVerificationRequiredError";
+  }
+}
+
 export async function createProfile(
   uid: string,
   username: string,
@@ -86,6 +99,13 @@ export async function createProfile(
   parentalConsent?: boolean,
 ): Promise<UserProfile> {
   const normalized = username.toLowerCase().trim();
+
+  // COPPA: a profile must never be created without age verification. Callers
+  // that skipped /age-gate (deep-links to /auth, Google sign-in without the
+  // gate) are rejected here — the service is the canonical enforcement point.
+  if (!dob || !DOB_RE.test(dob)) {
+    throw new AgeVerificationRequiredError();
+  }
 
   if (normalized.length < USERNAME_MIN || normalized.length > USERNAME_MAX) {
     throw new Error(`Username must be ${USERNAME_MIN}–${USERNAME_MAX} characters`);
@@ -112,7 +132,7 @@ export async function createProfile(
       stance,
       createdAt: serverTimestamp(),
       emailVerified,
-      ...(dob ? { dob } : {}),
+      dob,
       ...(parentalConsent !== undefined ? { parentalConsent } : {}),
     };
     tx.set(userRef, profileData);
