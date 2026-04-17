@@ -140,12 +140,11 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      const result = await createProfile("u1", "SK8R", "regular", false, "2000-01-01");
+      const result = await createProfile("u1", "SK8R", "regular");
       expect(result).toMatchObject({
         uid: "u1",
         username: "sk8r",
         stance: "regular",
-        dob: "2000-01-01",
       });
       // email should not be stored in the profile (PII reduction)
       expect(result).not.toHaveProperty("email");
@@ -175,7 +174,7 @@ describe("users service", () => {
       expect(capturedProfile).toMatchObject({ dob: "2005-06-15", parentalConsent: true });
     });
 
-    it("omits parentalConsent when not provided but always stores dob", async () => {
+    it("omits dob and parentalConsent when not provided", async () => {
       let capturedProfile: Record<string, unknown> | undefined;
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
@@ -187,40 +186,21 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      await createProfile("u1", "sk8r", "regular", false, "2000-01-01");
-      expect(capturedProfile).toHaveProperty("dob", "2000-01-01");
+      await createProfile("u1", "sk8r", "regular");
+      expect(capturedProfile).not.toHaveProperty("dob");
       expect(capturedProfile).not.toHaveProperty("parentalConsent");
     });
 
-    it("throws when dob is missing", async () => {
-      // The rules reject profile-create writes without a dob; this client-
-      // side check gives a friendlier error before the round-trip. Casting
-      // to `any` keeps the test honest about the runtime — a hostile caller
-      // would also bypass TypeScript, so we exercise the runtime guard.
-      await expect(
-        // @ts-expect-error — deliberately omitting the required dob arg.
-        createProfile("u1", "sk8r", "regular", false),
-      ).rejects.toThrow("Date of birth is required");
-    });
-
-    it("throws when dob has an invalid shape", async () => {
-      await expect(createProfile("u1", "sk8r", "regular", false, "2000/01/01")).rejects.toThrow(
-        "Date of birth is required",
-      );
-    });
-
     it("throws when username is too short", async () => {
-      await expect(createProfile("u1", "ab", "regular", false, "2000-01-01")).rejects.toThrow("Username must be");
+      await expect(createProfile("u1", "ab", "regular")).rejects.toThrow("Username must be");
     });
 
     it("throws when username is too long", async () => {
-      await expect(createProfile("u1", "a".repeat(21), "regular", false, "2000-01-01")).rejects.toThrow(
-        "Username must be",
-      );
+      await expect(createProfile("u1", "a".repeat(21), "regular")).rejects.toThrow("Username must be");
     });
 
     it("throws when username has invalid characters", async () => {
-      await expect(createProfile("u1", "sk8r!", "regular", false, "2000-01-01")).rejects.toThrow(
+      await expect(createProfile("u1", "sk8r!", "regular")).rejects.toThrow(
         "Username may only contain lowercase letters, numbers, and underscores",
       );
     });
@@ -234,9 +214,7 @@ describe("users service", () => {
         return fn(tx);
       });
 
-      await expect(createProfile("u1", "sk8r", "regular", false, "2000-01-01")).rejects.toThrow(
-        "Username is already taken",
-      );
+      await expect(createProfile("u1", "sk8r", "regular")).rejects.toThrow("Username is already taken");
     });
   });
 

@@ -22,9 +22,4 @@ src/**/*.mov
 
 # Capacitor native platforms (generated — rebuild with `npm run cap:sync`)
 ios
-# `infra/ios/` stages iOS compliance artifacts (Privacy Manifest, Fastlane
-# configs) that are copied into `ios/App/App/` during bring-up — keep them
-# tracked even though the generated project isn't.
-!infra/ios/
-!infra/ios/**
 # android is tracked so we can customise AndroidManifest, Gradle, icons, etc.
