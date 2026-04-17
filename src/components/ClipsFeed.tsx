@@ -370,7 +370,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
                   <button
                     type="button"
                     onClick={() => onViewPlayer(clip.playerUid)}
-                    className="flex items-center gap-2 rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
+                    className="flex items-center gap-2 touch-target rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
                   >
                     <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
                       <span className="font-display text-[11px] text-brand-orange leading-none">

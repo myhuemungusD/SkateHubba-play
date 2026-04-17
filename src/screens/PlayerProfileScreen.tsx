@@ -246,7 +246,7 @@ export function PlayerProfileScreen({
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 text-muted hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded-lg"
+          className="flex items-center gap-2 touch-target text-muted hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded-lg"
           aria-label="Back to lobby"
         >
           <ChevronLeftIcon size={16} />
@@ -303,7 +303,7 @@ export function PlayerProfileScreen({
                     }
                   }}
                   disabled={blockLoading}
-                  className="font-body text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-border hover:border-border-hover disabled:opacity-50"
+                  className="touch-target inline-flex items-center justify-center font-body text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-border hover:border-border-hover disabled:opacity-50"
                 >
                   {blockLoading ? "..." : "Unblock"}
                 </button>
@@ -319,7 +319,7 @@ export function PlayerProfileScreen({
                       <button
                         type="button"
                         onClick={() => setShowBlockConfirm(false)}
-                        className="font-body text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-border"
+                        className="touch-target inline-flex items-center justify-center font-body text-xs text-muted hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-border"
                       >
                         Cancel
                       </button>
@@ -335,7 +335,7 @@ export function PlayerProfileScreen({
                           }
                         }}
                         disabled={blockLoading}
-                        className="font-body text-xs text-brand-red hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-brand-red/30 hover:bg-brand-red/20 disabled:opacity-50"
+                        className="touch-target inline-flex items-center justify-center font-body text-xs text-brand-red hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-brand-red/30 hover:bg-brand-red/20 disabled:opacity-50"
                       >
                         {blockLoading ? "..." : "Block"}
                       </button>
@@ -345,7 +345,7 @@ export function PlayerProfileScreen({
                   <button
                     type="button"
                     onClick={() => setShowBlockConfirm(true)}
-                    className="font-body text-xs text-subtle hover:text-brand-red transition-colors"
+                    className="touch-target inline-flex items-center font-body text-xs text-subtle hover:text-brand-red transition-colors"
                   >
                     Block this player
                   </button>
