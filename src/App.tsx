@@ -16,6 +16,7 @@ import { BottomNav } from "./components/BottomNav";
 import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
+import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
 import { Landing } from "./screens/Landing";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ProfileSetup } from "./screens/ProfileSetup";
@@ -123,6 +124,7 @@ function AppRoutes() {
   const nav = useNavigationContext();
   const game = useGameContext();
   const blockedUids = useBlockedUsers(auth.user?.uid ?? "");
+  const analyticsAllowed = useAnalyticsConsent();
   const [challengeTarget, setChallengeTarget] = useState("");
   const directChallenge = useCallback(
     async (username: string) => {
@@ -446,8 +448,8 @@ function AppRoutes() {
 
       <BottomNav />
       <ConsentBanner onNav={nav.setScreen} />
-      <Analytics />
-      <SpeedInsights />
+      {analyticsAllowed && <Analytics />}
+      {analyticsAllowed && <SpeedInsights />}
     </>
   );
 }

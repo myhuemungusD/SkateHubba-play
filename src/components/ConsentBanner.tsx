@@ -1,27 +1,5 @@
 import { useState } from "react";
-
-const CONSENT_KEY = "sh_analytics_consent";
-
-/** Read a key from localStorage, treating any throw (Safari private mode,
- *  disabled storage, quota errors) as "unknown" so the caller decides the
- *  default. Reading inline in useState's initializer would otherwise crash
- *  the component on mount in those environments. */
-function readConsent(): string | null {
-  try {
-    return localStorage.getItem(CONSENT_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeConsent(value: "accepted" | "declined"): void {
-  try {
-    localStorage.setItem(CONSENT_KEY, value);
-  } catch {
-    // Best-effort — in private mode we can't persist, but the session-scoped
-    // `visible=false` below still hides the banner for this tab.
-  }
-}
+import { readConsent, writeConsent } from "../lib/consent";
 
 export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") => void }) {
   // Initialise synchronously from localStorage so the banner never flickers

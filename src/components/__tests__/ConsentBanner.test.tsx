@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ConsentBanner } from "../ConsentBanner";
+import { subscribeConsent } from "../../lib/consent";
 
 beforeEach(() => {
   localStorage.clear();
@@ -36,5 +37,23 @@ describe("ConsentBanner", () => {
     render(<ConsentBanner onNav={onNav} />);
     await userEvent.click(screen.getByText("Privacy Policy"));
     expect(onNav).toHaveBeenCalledWith("privacy");
+  });
+
+  it("notifies consent subscribers when the user accepts", async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeConsent(listener);
+    render(<ConsentBanner onNav={vi.fn()} />);
+    await userEvent.click(screen.getByText("OK"));
+    expect(listener).toHaveBeenCalled();
+    unsubscribe();
+  });
+
+  it("notifies consent subscribers when the user declines", async () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeConsent(listener);
+    render(<ConsentBanner onNav={vi.fn()} />);
+    await userEvent.click(screen.getByText("No"));
+    expect(listener).toHaveBeenCalled();
+    unsubscribe();
   });
 });
