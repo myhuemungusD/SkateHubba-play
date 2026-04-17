@@ -209,10 +209,12 @@ export async function signInWithGoogle(): Promise<User | null> {
     return cred.user;
   } catch (err: unknown) {
     const code = getErrorCode(err);
-    // Safari/WebKit throws popup-closed-by-user or cancelled-popup-request
-    // instead of popup-blocked — fall back to redirect for all of these.
-    const redirectCodes = new Set(["auth/popup-blocked", "auth/popup-closed-by-user", "auth/cancelled-popup-request"]);
-    if (code && redirectCodes.has(code)) {
+    // Only fall back to redirect when the browser actually blocked the popup.
+    // popup-closed-by-user and cancelled-popup-request are intentional user
+    // aborts — force-redirecting on those traps people in a loop where
+    // tapping "cancel" in the popup still sends them to Google's OAuth page.
+    // The caller surfaces these codes as a silent dismissal.
+    if (code === "auth/popup-blocked") {
       logger.info("google_sign_in_popup_fallback_redirect", { code });
       await signInWithRedirect(a, provider);
       return null;
