@@ -29,6 +29,14 @@ interface ImportMetaEnv {
   readonly VITE_USE_EMULATORS?: string;
   readonly VITE_APP_URL?: string;
   readonly VITE_SENTRY_DSN?: string;
+  /** PostHog project API key (phc_...). Analytics is a no-op when absent. */
+  readonly VITE_POSTHOG_KEY?: string;
+  /** PostHog host URL. Defaults to https://us.i.posthog.com. */
+  readonly VITE_POSTHOG_HOST?: string;
+  /** Release tag stamped into Sentry + PostHog at build time. */
+  readonly VITE_APP_VERSION?: string;
+  /** Git commit SHA from the Vercel build environment. */
+  readonly VITE_GIT_SHA?: string;
   readonly VERCEL?: string;
 }
 

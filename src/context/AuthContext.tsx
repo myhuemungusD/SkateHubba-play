@@ -7,7 +7,8 @@ import { exportUserData, serializeUserData, userDataFilename } from "../services
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
-import { captureException } from "../lib/sentry";
+import { captureException, setUser as setSentryUser } from "../lib/sentry";
+import { identify as posthogIdentify, resetIdentity as posthogReset } from "../lib/posthog";
 
 export interface AuthContextValue {
   loading: boolean;
@@ -105,6 +106,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (profile) setActiveProfile(profile);
   }, [profile]);
 
+  // Keep analytics + error-tracking identity in sync with Firebase auth
+  // state. PostHog.reset() must fire on sign-out so the next anonymous
+  // session doesn't inherit the previous user's distinct_id (which would
+  // silently merge cohorts). Sentry uses the same uid for scoped issues.
+  useEffect(() => {
+    if (user) {
+      const username = activeProfile?.username;
+      posthogIdentify(user.uid, username ? { username } : undefined);
+      setSentryUser({ id: user.uid, ...(username ? { username } : {}) });
+    } else {
+      posthogReset();
+      setSentryUser(null);
+    }
+  }, [user, activeProfile?.username]);
+
   const handleSignOut = useCallback(async () => {
     logger.info("user_sign_out");
     try {
@@ -120,57 +136,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!activeProfile) return;
     /* v8 ignore stop */
     logger.info("delete_account_start", { uid: activeProfile.uid, username: activeProfile.username });
-
-    // Phase 1: wipe Firestore + Storage FIRST while the user is still
-    // authenticated. Rules require an active auth context to delete the
-    // profile doc, username reservation, clips, and videos. If this fails
-    // the Firebase Auth account is still intact, so the user can retry.
+    try {
+      await deleteAccount();
+    } catch (err) {
+      const code = getErrorCode(err);
+      logger.error("delete_account_auth_failed", { uid: activeProfile.uid, code });
+      if (code === "auth/requires-recent-login") {
+        throw new Error("For security, please sign out and sign back in before deleting your account.", { cause: err });
+      }
+      throw err;
+    }
+    logger.info("delete_account_auth_done", { uid: activeProfile.uid });
     try {
       await deleteUserData(activeProfile.uid, activeProfile.username);
       logger.info("delete_account_firestore_done", { uid: activeProfile.uid });
     } catch (firestoreErr) {
-      logger.error("delete_account_firestore_failed", {
+      logger.error("delete_account_firestore_orphaned", {
         uid: activeProfile.uid,
         username: activeProfile.username,
         error: firestoreErr instanceof Error ? firestoreErr.message : String(firestoreErr),
       });
       captureException(firestoreErr, {
         extra: {
-          context: "deleteUserData — aborting before auth deletion",
+          context: "deleteUserData after auth deletion — data orphaned",
           uid: activeProfile.uid,
           username: activeProfile.username,
         },
       });
-      throw firestoreErr;
     }
-
-    // Phase 2: delete the Firebase Auth account. Data is already gone; if
-    // this fails with requires-recent-login, the user must re-sign-in and
-    // re-invoke delete — but their personal data is no longer present, so
-    // the compliance surface is already clean.
-    try {
-      await deleteAccount();
-    } catch (err) {
-      const code = getErrorCode(err);
-      logger.error("delete_account_auth_failed_post_wipe", {
-        uid: activeProfile.uid,
-        code,
-      });
-      captureException(err, {
-        extra: {
-          context: "deleteAccount after successful deleteUserData — auth account orphaned",
-          uid: activeProfile.uid,
-        },
-      });
-      if (code === "auth/requires-recent-login") {
-        throw new Error(
-          "Your data has been removed. For security, please sign out and sign back in to complete account deletion.",
-          { cause: err },
-        );
-      }
-      throw err;
-    }
-    logger.info("delete_account_auth_done", { uid: activeProfile.uid });
     metrics.accountDeleted(activeProfile.uid);
     setActiveProfile(null);
   }, [activeProfile]);

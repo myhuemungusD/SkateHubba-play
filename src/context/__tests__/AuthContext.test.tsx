@@ -29,6 +29,11 @@ vi.mock("../../services/logger", () => ({
 }));
 vi.mock("../../lib/sentry", () => ({
   captureException: vi.fn(),
+  setUser: vi.fn(),
+}));
+vi.mock("../../lib/posthog", () => ({
+  identify: vi.fn(),
+  resetIdentity: vi.fn(),
 }));
 
 class ErrorCatcher extends Component<{ children: ReactNode }, { error: Error | null }> {

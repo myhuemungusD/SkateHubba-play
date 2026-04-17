@@ -35,6 +35,11 @@ vi.mock("../../lib/sentry", () => ({
   captureException: vi.fn(),
   captureMessage: vi.fn(),
   addBreadcrumb: vi.fn(),
+  setUser: vi.fn(),
+}));
+vi.mock("../../lib/posthog", () => ({
+  identify: vi.fn(),
+  resetIdentity: vi.fn(),
 }));
 
 /** Error boundary that captures the error for assertions. */

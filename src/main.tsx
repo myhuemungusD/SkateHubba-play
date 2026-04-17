@@ -2,8 +2,18 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import { initSentry, captureException } from "./lib/sentry";
+import { initPosthog } from "./lib/posthog";
 import App from "./App";
 import "./index.css";
+
+// Prefer an explicit release tag (set by the Release workflow to the
+// tag_name, e.g. "v1.2.0") and fall back to the VERCEL_GIT_COMMIT_SHA for
+// Preview builds. This single identifier lets Sentry dedupe stack traces
+// by release and lets PostHog cohort by app version.
+const APP_RELEASE =
+  (import.meta.env.VITE_APP_VERSION as string | undefined) ||
+  (import.meta.env.VITE_GIT_SHA as string | undefined) ||
+  undefined;
 
 // Initialise Sentry only when a DSN is provided (set VITE_SENTRY_DSN in
 // Vercel → Project Settings → Environment Variables).
@@ -13,9 +23,9 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   initSentry({
     dsn: String(import.meta.env.VITE_SENTRY_DSN),
     environment: import.meta.env.MODE,
-    // Tag each event with the deploy's git SHA so Sentry can track regressions
-    // per release.  VERCEL_GIT_COMMIT_SHA is injected by Vite at build time.
-    release: import.meta.env.VITE_GIT_SHA || undefined,
+    // Tag each event with the deploy's release so Sentry can track regressions
+    // across versions. Source maps uploaded in release.yml key off this string.
+    release: APP_RELEASE,
     // Capture 100% of transactions in development; 10% in production to
     // stay within the free quota. Adjust as traffic grows.
     tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
@@ -29,6 +39,22 @@ if (import.meta.env.VITE_SENTRY_DSN) {
       }
       return event;
     },
+  });
+}
+
+// Initialise PostHog only when a project API key is provided. Safe to fire-
+// and-forget: the wrapper no-ops until the dynamic import resolves, and all
+// events queued against it during that window are dropped rather than
+// bursting a boot-time network request.
+if (import.meta.env.VITE_POSTHOG_KEY) {
+  void initPosthog({
+    apiKey: String(import.meta.env.VITE_POSTHOG_KEY),
+    host: import.meta.env.VITE_POSTHOG_HOST ? String(import.meta.env.VITE_POSTHOG_HOST) : undefined,
+    release: APP_RELEASE,
+  }).catch((err) => {
+    // PostHog init failures (network, quota, bad key) must never break the
+    // app — Sentry gets the breadcrumb, the rest of the app carries on.
+    captureException(err, { extra: { context: "initPosthog" } });
   });
 }
 

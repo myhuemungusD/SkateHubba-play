@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+const mockPosthogCapture = vi.fn();
+vi.mock("../../lib/posthog", () => ({
+  captureEvent: (...args: unknown[]) => mockPosthogCapture(...args),
+}));
+
 import { trackEvent, analytics } from "../analytics";
 
 describe("analytics service", () => {
@@ -6,6 +12,7 @@ describe("analytics service", () => {
 
   beforeEach(() => {
     vaSpy = vi.fn();
+    mockPosthogCapture.mockClear();
 
     (window as unknown as Record<string, unknown>).va = vaSpy;
   });
@@ -18,6 +25,27 @@ describe("analytics service", () => {
     it("calls window.va with event name and properties", () => {
       trackEvent("test_event", { key: "value" });
       expect(vaSpy).toHaveBeenCalledWith("event", { name: "test_event", key: "value" });
+    });
+
+    it("fans out the same event to PostHog with the raw properties", () => {
+      trackEvent("test_event", { key: "value" });
+      expect(mockPosthogCapture).toHaveBeenCalledWith("test_event", { key: "value" });
+    });
+
+    it("still fires the Vercel Analytics path when PostHog throws", () => {
+      mockPosthogCapture.mockImplementationOnce(() => {
+        throw new Error("posthog broke");
+      });
+      expect(() => trackEvent("ph_error_event", { x: 1 })).not.toThrow();
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "ph_error_event", x: 1 });
+    });
+
+    it("still fires the PostHog path when Vercel Analytics throws", () => {
+      vaSpy.mockImplementationOnce(() => {
+        throw new Error("va broke");
+      });
+      expect(() => trackEvent("va_error_event", { x: 1 })).not.toThrow();
+      expect(mockPosthogCapture).toHaveBeenCalledWith("va_error_event", { x: 1 });
     });
 
     it("calls window.va with just the name when no properties", () => {
