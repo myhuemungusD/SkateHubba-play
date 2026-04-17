@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ── hoist mock functions so vi.mock factories can reference them ── */
-const { mockSignInWithPopup, mockSignInWithRedirect, mockGetRedirectResult } =
-  vi.hoisted(() => ({
-    mockSignInWithPopup: vi.fn(),
-    mockSignInWithRedirect: vi.fn(),
-    mockGetRedirectResult: vi.fn(),
-  }));
+const { mockSignInWithPopup, mockSignInWithRedirect, mockGetRedirectResult } = vi.hoisted(() => ({
+  mockSignInWithPopup: vi.fn(),
+  mockSignInWithRedirect: vi.fn(),
+  mockGetRedirectResult: vi.fn(),
+}));
 
 vi.mock("firebase/auth", () => {
   // GoogleAuthProvider must be a constructable class mock
@@ -66,6 +65,24 @@ describe("signInWithGoogle", () => {
     await expect(signInWithGoogle()).rejects.toMatchObject({
       code: "auth/account-exists-with-different-credential",
     });
+    expect(mockSignInWithRedirect).not.toHaveBeenCalled();
+  });
+
+  it("rethrows popup-closed-by-user instead of forcing a redirect", async () => {
+    // Previously this was bundled with popup-blocked as a redirect trigger,
+    // which created a loop on mobile Safari: the user closes the popup and
+    // still gets kicked to Google's OAuth page. Caller treats this as a
+    // silent dismissal.
+    mockSignInWithPopup.mockRejectedValueOnce({ code: "auth/popup-closed-by-user" });
+
+    await expect(signInWithGoogle()).rejects.toMatchObject({ code: "auth/popup-closed-by-user" });
+    expect(mockSignInWithRedirect).not.toHaveBeenCalled();
+  });
+
+  it("rethrows cancelled-popup-request instead of forcing a redirect", async () => {
+    mockSignInWithPopup.mockRejectedValueOnce({ code: "auth/cancelled-popup-request" });
+
+    await expect(signInWithGoogle()).rejects.toMatchObject({ code: "auth/cancelled-popup-request" });
     expect(mockSignInWithRedirect).not.toHaveBeenCalled();
   });
 
