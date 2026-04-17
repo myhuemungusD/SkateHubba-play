@@ -1,0 +1,33 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      # release-please reads commits since the last tag, classifies them by
+      # Conventional Commit prefix (feat/fix/perf/refactor/docs), and either
+      # updates an in-flight release PR or opens a new one. When that PR is
+      # merged, it tags HEAD and creates a GitHub Release in a single step.
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          # Scope the release to the default repo token; no PAT needed.
+          token: ${{ secrets.GITHUB_TOKEN }}
