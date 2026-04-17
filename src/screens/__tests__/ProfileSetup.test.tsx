@@ -30,6 +30,11 @@ describe("ProfileSetup", () => {
     emailVerified: false,
     displayName: null,
     onDone: vi.fn(),
+    // dob + parentalConsent are collected at AgeGate and forwarded to
+    // ProfileSetup via App.tsx. The submit() guard refuses to call
+    // createProfile without a dob, so every happy-path test must supply one.
+    dob: "2000-01-01",
+    parentalConsent: false,
   };
 
   /** Helper: wait for the existing-profile check to complete and the form to appear */
@@ -214,9 +219,26 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, undefined, undefined);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, "2000-01-01", false);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
+  });
+
+  it("refuses to submit when dob is missing and never calls createProfile", async () => {
+    const onDone = vi.fn();
+    mockIsUsernameAvailable.mockResolvedValue(true);
+
+    render(<ProfileSetup {...defaultProps} dob={null} onDone={onDone} />);
+
+    await fillUsernameAndAdvance();
+    await userEvent.click(screen.getByText("Next"));
+    await userEvent.click(screen.getByText("Lock It In"));
+
+    await waitFor(() => {
+      expect(screen.getByText(/verify your date of birth/)).toBeInTheDocument();
+    });
+    expect(mockCreateProfile).not.toHaveBeenCalled();
+    expect(onDone).not.toHaveBeenCalled();
   });
 
   it("shows error when createProfile fails", async () => {
@@ -284,7 +306,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false, undefined, undefined);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false, "2000-01-01", false);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
