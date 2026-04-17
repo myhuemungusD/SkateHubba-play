@@ -13,6 +13,7 @@
  */
 
 import { addBreadcrumb } from "../lib/sentry";
+import { redactPII } from "../utils/pii";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -44,13 +45,14 @@ function emit(level: LogLevel, event: string, data?: Record<string, unknown>): v
   }
   /* v8 ignore stop */
 
-  // Forward info+ events to Sentry as breadcrumbs for context in error reports
+  // Forward info+ events to Sentry as breadcrumbs for context in error reports.
+  // Redact PII (email, *uid) here so call sites never need to think about it.
   if (level !== "debug") {
     addBreadcrumb({
       category: "app",
       message: event,
       level: level === "info" ? "info" : level === "warn" ? "warning" : "error",
-      data,
+      data: redactPII(data),
     });
   }
 }
