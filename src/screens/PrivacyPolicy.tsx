@@ -7,7 +7,7 @@ const CONTACT_EMAIL = "privacy@skatehubba.com";
 export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (s: Screen) => void }) {
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/90 text-white">
-      <div className="px-5 py-4 border-b border-[#222] flex items-center gap-4">
+      <div className="px-5 pt-safe pb-4 border-b border-[#222] flex items-center gap-4">
         <Btn onClick={onBack} variant="ghost" className="shrink-0">
           ← Back
         </Btn>

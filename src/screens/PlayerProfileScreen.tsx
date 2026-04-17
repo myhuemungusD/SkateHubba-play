@@ -242,7 +242,7 @@ export function PlayerProfileScreen({
   return (
     <div className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow">
       {/* Header */}
-      <div className="px-5 pt-5 pb-4 flex justify-between items-center border-b border-white/[0.04] glass">
+      <div className="px-5 pt-safe pb-4 flex justify-between items-center border-b border-white/[0.04] glass">
         <button
           type="button"
           onClick={onBack}

@@ -23,7 +23,7 @@ export function ConsentBanner({ onNav }: { onNav: (screen: "privacy" | "terms") 
     <div
       role="region"
       aria-label="Cookie and analytics notice"
-      className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-safe-bottom"
+      className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-safe"
     >
       <div className="max-w-lg mx-auto mb-4 rounded-2xl glass-card px-4 py-3 shadow-glass animate-scale-in">
         <div className="flex items-center gap-3">

@@ -94,7 +94,10 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
   return (
     <div className="min-h-dvh pb-28 md:pb-0">
       {/* ─── Sticky Nav Bar ─────────────────────────────── */}
-      <nav aria-label="Primary" className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/[0.05]">
+      <nav
+        aria-label="Primary"
+        className="fixed top-0 left-0 right-0 z-50 glass border-b border-white/[0.05] pt-safe-inset"
+      >
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
           <a
             href="#hero"

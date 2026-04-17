@@ -111,7 +111,7 @@ export function SpotDetailPage() {
   return (
     <div className="min-h-dvh bg-[#0A0A0A] text-white">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0A]/95 backdrop-blur border-b border-[#222] px-4 py-3 flex items-center gap-3">
+      <div className="sticky top-0 z-10 bg-[#0A0A0A]/95 backdrop-blur border-b border-[#222] px-4 pt-safe pb-3 flex items-center gap-3">
         <button
           type="button"
           onClick={() => navigate("/map")}
