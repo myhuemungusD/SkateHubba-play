@@ -345,7 +345,7 @@ export function PlayerProfileScreen({
                   <button
                     type="button"
                     onClick={() => setShowBlockConfirm(true)}
-                    className="touch-target inline-flex items-center font-body text-xs text-subtle hover:text-brand-red transition-colors"
+                    className="touch-target inline-flex items-center justify-center font-body text-xs text-subtle hover:text-brand-red transition-colors"
                   >
                     Block this player
                   </button>
