@@ -448,8 +448,12 @@ function AppRoutes() {
 
       <BottomNav />
       <ConsentBanner onNav={nav.setScreen} />
-      {analyticsAllowed && <Analytics />}
-      {analyticsAllowed && <SpeedInsights />}
+      {analyticsAllowed && (
+        <>
+          <Analytics />
+          <SpeedInsights />
+        </>
+      )}
     </>
   );
 }

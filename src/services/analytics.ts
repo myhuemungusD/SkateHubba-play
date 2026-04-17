@@ -44,9 +44,6 @@ function sendToPosthog(name: string, properties?: EventProperties): void {
 }
 
 export function trackEvent(name: string, properties?: EventProperties): void {
-  // Hard gate — no event leaves the client until the user has explicitly
-  // accepted the ConsentBanner. `isAnalyticsAllowed` is fail-closed: a missing
-  // or "declined" value both return false.
   if (!isAnalyticsAllowed()) return;
   sendToVercel(name, properties);
   sendToPosthog(name, properties);

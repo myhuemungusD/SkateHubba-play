@@ -77,7 +77,10 @@ describe("consent helpers", () => {
       expect(listener).not.toHaveBeenCalled();
     });
 
-    it("swallows localStorage errors but still notifies subscribers", () => {
+    it("swallows localStorage errors and does not fire a misleading change event", () => {
+      // Private mode: setItem throws, so the persisted value never changed.
+      // Listeners must NOT fire — otherwise they'd re-read the old value and
+      // see a phantom "change" with no real state transition.
       const setItem = Storage.prototype.setItem;
       Storage.prototype.setItem = () => {
         throw new Error("quota");
@@ -86,11 +89,20 @@ describe("consent helpers", () => {
       const unsubscribe = subscribeConsent(listener);
       try {
         expect(() => writeConsent("accepted")).not.toThrow();
-        expect(listener).toHaveBeenCalledTimes(1);
+        expect(listener).not.toHaveBeenCalled();
       } finally {
         Storage.prototype.setItem = setItem;
         unsubscribe();
       }
+    });
+
+    it("does not notify subscribers when the value is unchanged", () => {
+      writeConsent("accepted");
+      const listener = vi.fn();
+      const unsubscribe = subscribeConsent(listener);
+      writeConsent("accepted");
+      expect(listener).not.toHaveBeenCalled();
+      unsubscribe();
     });
   });
 
