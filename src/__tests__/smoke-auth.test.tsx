@@ -128,10 +128,10 @@ describe("Smoke: Auth", () => {
     await renderApp();
 
     expect(await screen.findByText("QUIT SCROLLING.")).toBeInTheDocument();
-    expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
-    expect(screen.getByText("Log in")).toBeInTheDocument();
+    expect(screen.getByText("Use email")).toBeInTheDocument();
+    expect(screen.getByText("Account")).toBeInTheDocument();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     expect(await screen.findByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
 
     // Pass through age gate (waitFor inside passAgeGate handles lazy load)
@@ -143,7 +143,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
     expect(await screen.findByText("Welcome Back")).toBeInTheDocument();
   });
 
@@ -151,7 +151,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -173,7 +173,7 @@ describe("Smoke: Auth", () => {
     await renderApp();
 
     // Go to sign in
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
     expect(await screen.findByText("Welcome Back")).toBeInTheDocument();
 
     // Fill in credentials
@@ -249,7 +249,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
 
     const emailInput = await screen.findByPlaceholderText("you@email.com");
     await userEvent.type(emailInput, "sk8r@test.com");
@@ -266,7 +266,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -284,7 +284,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -303,7 +303,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -324,7 +324,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     await passAgeGate();
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
 
@@ -342,7 +342,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
 
     const emailInput = await screen.findByPlaceholderText("you@email.com");
     const passwordInput = screen.getAllByPlaceholderText(/•/)[0];
@@ -362,7 +362,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
 
     const emailInput = await screen.findByPlaceholderText("you@email.com");
     const passwordInput = screen.getAllByPlaceholderText(/•/)[0];
@@ -381,7 +381,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
 
     const passwordFields = await screen.findAllByPlaceholderText(/•/);
     expect(passwordFields).toHaveLength(1);
@@ -411,7 +411,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
 
     // Try reset without entering email
     await userEvent.click(await screen.findByText("Forgot password?"));
@@ -424,7 +424,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -445,7 +445,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -468,7 +468,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -490,7 +490,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
 
     await userEvent.type(await screen.findByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.click(screen.getByText("Forgot password?"));
@@ -527,7 +527,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Sign In / Sign Up"));
+    await userEvent.click(await screen.findByText("Use email"));
     await passAgeGate();
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "google@test.com");
@@ -547,7 +547,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
     await userEvent.type(await screen.findByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "wrongpass");
     await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
@@ -562,7 +562,7 @@ describe("Smoke: Auth", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Log in"));
+    await userEvent.click(await screen.findByText("Account"));
     await userEvent.type(await screen.findByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
     await userEvent.click(screen.getByRole("button", { name: "Sign In" }));

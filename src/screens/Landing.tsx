@@ -113,22 +113,13 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               className="h-9 md:h-11 w-auto select-none"
             />
           </a>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleAuth("signin")}
-              className="font-body text-sm text-dim hover:text-white px-3 py-2 rounded-md transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-            >
-              Log in
-            </button>
-            <button
-              type="button"
-              onClick={handleAuth("signup")}
-              className="font-body text-sm font-medium bg-white text-[#0A0A0A] px-5 py-2 rounded-lg hover:bg-white/90 transition-all duration-200 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-            >
-              Sign up
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleAuth("signin")}
+            className="font-body text-sm text-dim hover:text-white px-3 py-2 rounded-md transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            Account
+          </button>
         </div>
       </nav>
 
@@ -165,16 +156,16 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           </p>
 
           {/* Auth Buttons */}
-          <div className="w-full max-w-sm flex flex-col gap-3">
+          <div className="w-full max-w-sm flex flex-col items-center gap-4">
             <GoogleButton onClick={handleGoogle} loading={googleLoading} />
-            <div className="flex items-center gap-3 my-0.5" aria-hidden="true">
-              <div className="flex-1 h-px bg-white/[0.06]" />
-              <span className="font-body text-xs text-[#555]">or</span>
-              <div className="flex-1 h-px bg-white/[0.06]" />
-            </div>
-            <SkateButton onClick={() => onGo("signup")} disabled={googleLoading}>
-              Sign In / Sign Up
-            </SkateButton>
+            <button
+              type="button"
+              onClick={handleAuth("signup")}
+              disabled={googleLoading}
+              className="font-body text-sm text-dim hover:text-white underline-offset-4 hover:underline transition-colors duration-200 disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              Use email
+            </button>
           </div>
         </div>
 
