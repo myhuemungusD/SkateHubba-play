@@ -11,16 +11,8 @@ import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { Leaderboard } from "../components/Leaderboard";
-import {
-  TargetIcon,
-  FilmIcon,
-  ClockIcon,
-  XCircleIcon,
-  SkullIcon,
-  FlameIcon,
-  MapPinIcon,
-  type IconProps,
-} from "../components/icons";
+import { RulesSheet } from "../components/RulesSheet";
+import { FlameIcon, MapPinIcon } from "../components/icons";
 
 /**
  * Loose UUID shape check — rejects obvious garbage without being strict about
@@ -28,13 +20,8 @@ import {
  */
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const RULES: { Icon: (props: IconProps) => React.ReactNode; text: string; color: string }[] = [
-  { Icon: TargetIcon, text: "You set the first trick", color: "text-brand-orange" },
-  { Icon: FilmIcon, text: "One-take video only — no retries", color: "text-brand-orange" },
-  { Icon: ClockIcon, text: "24 hours per turn or forfeit", color: "text-brand-orange" },
-  { Icon: XCircleIcon, text: "Miss a match = earn a letter", color: "text-brand-red" },
-  { Icon: SkullIcon, text: "Spell S.K.A.T.E. = you lose", color: "text-brand-red" },
-];
+/** Matches the server-side minimum and the submit-path guard below. */
+const MIN_USERNAME_LENGTH = 3;
 
 export function ChallengeScreen({
   profile,
@@ -55,6 +42,7 @@ export function ChallengeScreen({
   const [opponent, setOpponent] = useState(initialOpponent);
   const [judge, setJudge] = useState("");
   const [judgePickerOpen, setJudgePickerOpen] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   // Optional spot passed in via ?spot=<uuid> (e.g. when the user taps
@@ -65,6 +53,14 @@ export function ChallengeScreen({
   const [searchParams] = useSearchParams();
   const rawSpotId = searchParams.get("spot");
   const spotId = rawSpotId && UUID_SHAPE.test(rawSpotId) ? rawSpotId : null;
+
+  // Progressive disclosure gate — referee/spot/invite/rules stay hidden
+  // until the opponent field has a plausibly valid username. Drops upfront
+  // visual load so the user commits to a name before weighing the extras.
+  // Intentionally a local-only check: no directory lookup until Send.
+  const normalizedOpponent = opponent.toLowerCase().trim();
+  const usernameLooksValid =
+    normalizedOpponent.length >= MIN_USERNAME_LENGTH && normalizedOpponent !== profile.username;
 
   // Spot name resolution is a tri-state: "loading" (initial, fetch in flight),
   // a string (resolved), or null (fetch settled with no name — either 404 or
@@ -88,7 +84,7 @@ export function ChallengeScreen({
   const submit = async () => {
     setError("");
     const normalized = opponent.toLowerCase().trim();
-    if (normalized.length < 3) {
+    if (normalized.length < MIN_USERNAME_LENGTH) {
       setError("Enter a valid username");
       return;
     }
@@ -99,7 +95,7 @@ export function ChallengeScreen({
 
     // Referee picker is optional — only validate when the user filled it in.
     const judgeNormalized = judge.toLowerCase().trim();
-    if (judgeNormalized && judgeNormalized.length < 3) {
+    if (judgeNormalized && judgeNormalized.length < MIN_USERNAME_LENGTH) {
       setError("Referee username is too short");
       return;
     }
@@ -202,18 +198,6 @@ export function ChallengeScreen({
       </div>
 
       <div className="max-w-md mx-auto px-6">
-        {spotId && spotName !== "loading" && (
-          <div
-            className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-orange/40 bg-brand-orange/10 px-3 py-1.5 text-xs text-brand-orange"
-            data-testid="challenge-spot-chip"
-            aria-label={spotName ? `Challenging at ${spotName}` : "Challenging at a saved spot"}
-          >
-            <MapPinIcon size={12} className="shrink-0" />
-            <span className="truncate max-w-[16rem]">
-              Challenging at <span className="font-semibold">{spotName ?? "a saved spot"}</span>
-            </span>
-          </div>
-        )}
         <h1 className="font-display text-fluid-4xl text-white mb-2">Challenge</h1>
         <p className="font-body text-sm text-[#888] mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 
@@ -238,56 +222,9 @@ export function ChallengeScreen({
             disabled={loading}
           />
 
-          {/* Optional referee picker — collapsed by default. Games without a
-              referee run on the honor system with no disputes or "Call BS"
-              flows. */}
-          <div className="mb-4">
-            {!judgePickerOpen ? (
-              <button
-                type="button"
-                onClick={() => setJudgePickerOpen(true)}
-                disabled={loading}
-                className="font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40"
-                data-testid="add-judge-toggle"
-              >
-                + Add a referee? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
-              </button>
-            ) : (
-              <div>
-                <Field
-                  label="Referee Username (optional)"
-                  value={judge}
-                  onChange={(v) => {
-                    if (!loading) setJudge(v.replace(/[^a-zA-Z0-9_]/g, ""));
-                  }}
-                  placeholder="their_handle"
-                  icon="@"
-                  maxLength={20}
-                  disabled={loading}
-                />
-                <div className="flex items-center justify-between -mt-2 mb-2">
-                  <p className="font-body text-xs text-subtle">
-                    A third player who rules on disputes and &quot;Call BS&quot; claims.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setJudge("");
-                      setJudgePickerOpen(false);
-                    }}
-                    disabled={loading}
-                    className="font-body text-xs text-subtle hover:text-brand-red transition-colors disabled:opacity-40 ml-2 shrink-0"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
           <ErrorBanner message={error} onDismiss={() => setError("")} />
 
-          <Btn onClick={submit} disabled={loading || opponent.length < 3}>
+          <Btn onClick={submit} disabled={loading || opponent.length < MIN_USERNAME_LENGTH}>
             {loading ? (
               "Finding..."
             ) : (
@@ -297,18 +234,81 @@ export function ChallengeScreen({
             )}
           </Btn>
 
-          <div className="p-5 rounded-2xl glass-card mb-4 mt-8">
-            <h4 className="font-display text-xs tracking-[0.15em] text-subtle mb-3">RULES</h4>
-            <div className="font-body text-sm text-muted space-y-2.5">
-              {RULES.map(({ Icon, text, color }) => (
-                <div key={text} className="flex items-center gap-2.5">
-                  <Icon size={15} className={`${color} shrink-0`} /> {text}
+          {/* Progressive-disclosure block: referee/spot context/rules/invite
+              only appear once the opponent field is plausibly a real username.
+              State for judge + rulesOpen is preserved across re-opens so a
+              user who briefly clears the opponent field doesn't lose work. */}
+          {usernameLooksValid && (
+            <div data-testid="challenge-extras">
+              {spotId && spotName !== "loading" && (
+                <div
+                  className="mt-6 inline-flex items-center gap-2 rounded-full border border-brand-orange/40 bg-brand-orange/10 px-3 py-1.5 text-xs text-brand-orange"
+                  data-testid="challenge-spot-chip"
+                  aria-label={spotName ? `Challenging at ${spotName}` : "Challenging at a saved spot"}
+                >
+                  <MapPinIcon size={12} className="shrink-0" />
+                  <span className="truncate max-w-[16rem]">
+                    Challenging at <span className="font-semibold">{spotName ?? "a saved spot"}</span>
+                  </span>
                 </div>
-              ))}
-            </div>
-          </div>
+              )}
 
-          <InviteButton username={profile.username} className="mb-6" />
+              <div className="mt-6 mb-4">
+                {!judgePickerOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setJudgePickerOpen(true)}
+                    disabled={loading}
+                    className="font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40"
+                    data-testid="add-judge-toggle"
+                  >
+                    + Add a referee? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
+                  </button>
+                ) : (
+                  <div>
+                    <Field
+                      label="Referee Username (optional)"
+                      value={judge}
+                      onChange={(v) => {
+                        if (!loading) setJudge(v.replace(/[^a-zA-Z0-9_]/g, ""));
+                      }}
+                      placeholder="their_handle"
+                      icon="@"
+                      maxLength={20}
+                      disabled={loading}
+                    />
+                    <div className="flex items-center justify-between -mt-2 mb-2">
+                      <p className="font-body text-xs text-subtle">
+                        A third player who rules on disputes and &quot;Call BS&quot; claims.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setJudge("");
+                          setJudgePickerOpen(false);
+                        }}
+                        disabled={loading}
+                        className="font-body text-xs text-subtle hover:text-brand-red transition-colors disabled:opacity-40 ml-2 shrink-0"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setRulesOpen(true)}
+                className="font-body text-xs text-subtle hover:text-brand-orange underline underline-offset-4 decoration-subtle/40 hover:decoration-brand-orange transition-colors"
+                data-testid="open-rules-sheet"
+              >
+                See the rules
+              </button>
+
+              <InviteButton username={profile.username} className="mt-6 mb-6" />
+            </div>
+          )}
         </form>
 
         <Leaderboard
@@ -317,6 +317,8 @@ export function ChallengeScreen({
           onViewPlayer={onViewPlayer}
         />
       </div>
+
+      {rulesOpen && <RulesSheet onClose={() => setRulesOpen(false)} />}
     </div>
   );
 }
