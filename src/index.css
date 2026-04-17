@@ -607,24 +607,10 @@
 .pb-safe {
   padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
 }
-/* Inset-only variants: pure env() without a minimum. Use when you want to
-   preserve an existing layout on non-notched devices and only add the inset
-   on notched ones (e.g. a fixed nav that already has its own height). */
+/* Pure env() without a minimum. Use on layouts that already have their own
+   height (e.g. a fixed nav with h-14) so non-notched viewports are unchanged. */
 .pt-safe-inset {
   padding-top: env(safe-area-inset-top);
-}
-.pb-safe-inset {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-.pl-safe {
-  padding-left: max(env(safe-area-inset-left), 0px);
-}
-.pr-safe {
-  padding-right: max(env(safe-area-inset-right), 0px);
-}
-.px-safe {
-  padding-left: max(env(safe-area-inset-left), 0px);
-  padding-right: max(env(safe-area-inset-right), 0px);
 }
 
 /* ── Reduced motion ────────────────────────────────── */
