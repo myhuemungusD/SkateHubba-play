@@ -119,6 +119,18 @@
   }
 }
 
+/* ── Touch target (iOS HIG / Material 44px minimum) ───
+   In @layer components so callers' Tailwind utilities (px-4, items-start,
+   gap-*) override these defaults — this only supplies a baseline for small
+   text controls that don't specify their own sizing. */
+@layer components {
+  .touch-target {
+    min-height: 2.75rem;
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+}
+
 /* ── Glassmorphism utilities ─────────────────────────── */
 .glass {
   background: rgba(20, 20, 20, 0.65);
