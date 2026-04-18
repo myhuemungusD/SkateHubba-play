@@ -110,12 +110,14 @@ describe("MapPage", () => {
       consoleWarnSpy.mockRestore();
     });
 
-    it("renders an alert with Try again (primary) and Reload page (secondary) when SpotMap throws", () => {
+    it("renders an alert with Try again as the sole action on first trip (no nuclear Reload yet)", () => {
       spotMapShouldThrow = true;
       render(<MapPage />);
       expect(screen.getByRole("alert")).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: /reload page/i })).toBeInTheDocument();
+      // Hard reload is withheld on first trip — in-app remount must be
+      // attempted before we escalate to the page-level escape hatch.
+      expect(screen.queryByRole("button", { name: /reload page/i })).not.toBeInTheDocument();
     });
 
     it("Try again clears the boundary and remounts SpotMap without a full reload", () => {
@@ -167,7 +169,7 @@ describe("MapPage", () => {
       expect(screen.getByRole("button", { name: /reload page/i })).toBeInTheDocument();
     });
 
-    it("Reload page triggers window.location.reload as the terminal action", () => {
+    it("Reload page only appears after an in-app retry has failed, then triggers window.location.reload", () => {
       const reloadSpy = vi.fn();
       const originalLocation = window.location;
       Object.defineProperty(window, "location", {
@@ -179,8 +181,17 @@ describe("MapPage", () => {
       try {
         spotMapShouldThrow = true;
         render(<MapPage />);
+        // First trip — Reload page is intentionally withheld.
+        expect(screen.queryByRole("button", { name: /reload page/i })).not.toBeInTheDocument();
+
+        // Attempt in-app recovery; the underlying fault persists so the
+        // boundary re-trips and now the last-resort Reload page surfaces.
         act(() => {
-          screen.getByRole("button", { name: /reload page/i }).click();
+          screen.getByRole("button", { name: /try again/i }).click();
+        });
+        const reloadBtn = screen.getByRole("button", { name: /reload page/i });
+        act(() => {
+          reloadBtn.click();
         });
         expect(reloadSpy).toHaveBeenCalledTimes(1);
       } finally {
