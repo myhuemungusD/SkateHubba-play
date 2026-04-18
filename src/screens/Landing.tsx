@@ -162,7 +162,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               type="button"
               onClick={handleAuth("signup")}
               disabled={googleLoading}
-              className="self-center font-body text-sm text-dim hover:text-white underline-offset-4 hover:underline transition-colors duration-200 disabled:opacity-40 px-4 py-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="self-center px-4 py-3 font-body text-sm text-dim hover:text-white underline-offset-4 hover:underline transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               Use email
             </button>
