@@ -166,7 +166,7 @@ export function Lobby({
           <button
             type="button"
             onClick={onViewRecord}
-            className="flex items-center gap-2 transition-all duration-300 group rounded-xl px-2 py-1.5 hover:bg-white/[0.03]"
+            className="flex items-center gap-2 transition-all duration-300 group rounded-xl px-2 py-1.5 touch-target hover:bg-white/[0.03]"
             title="View my record"
           >
             <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0 group-hover:shadow-glow-sm group-hover:border-brand-orange/40 transition-all duration-300">
@@ -184,7 +184,7 @@ export function Lobby({
           <button
             type="button"
             onClick={onSignOut}
-            className="font-body text-xs text-dim hover:text-white transition-all duration-300 px-3 py-1.5 rounded-xl border border-border hover:border-border-hover hover:bg-white/[0.02]"
+            className="font-body text-xs text-dim hover:text-white transition-all duration-300 px-3 py-1.5 touch-target inline-flex items-center justify-center rounded-xl border border-border hover:border-border-hover hover:bg-white/[0.02]"
           >
             Sign Out
           </button>
@@ -585,7 +585,7 @@ export function Lobby({
                     type="button"
                     onClick={() => onChallengeUser(p.username)}
                     disabled={!user?.emailVerified}
-                    className={`font-display text-xs shrink-0 ml-3 px-3 py-1.5 rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
+                    className={`font-display text-xs shrink-0 ml-3 px-3 py-1.5 touch-target inline-flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
                     aria-label={`Challenge @${p.username}`}
                   >
                     Challenge

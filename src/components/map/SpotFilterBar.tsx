@@ -204,7 +204,7 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
                     type="button"
                     onClick={() => toggleObstacle(o)}
                     aria-pressed={on}
-                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
+                    className={`touch-target inline-flex items-center justify-center px-2.5 py-1 text-xs rounded-full border transition-colors ${
                       on
                         ? "bg-[#F97316] border-[#F97316] text-white"
                         : "bg-transparent border-[#444] text-[#BBB] hover:border-[#666]"
@@ -229,7 +229,7 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
                     type="button"
                     onClick={() => onChange({ ...filters, minGnar: v })}
                     aria-pressed={on}
-                    className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                    className={`touch-target inline-flex items-center justify-center px-3 py-1 text-xs rounded-full border transition-colors ${
                       on
                         ? "bg-[#F97316] border-[#F97316] text-white"
                         : "bg-transparent border-[#444] text-[#BBB] hover:border-[#666]"
@@ -272,14 +272,14 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
               type="button"
               onClick={reset}
               disabled={active === 0 && filters.query.length === 0}
-              className="text-xs text-[#888] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              className="touch-target inline-flex items-center justify-center text-xs text-[#888] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Reset
             </button>
             <button
               type="button"
               onClick={() => setExpanded(false)}
-              className="px-4 py-1.5 text-xs rounded-lg bg-[#F97316] text-white font-semibold hover:bg-[#EA580C]"
+              className="touch-target inline-flex items-center justify-center px-4 py-1.5 text-xs rounded-lg bg-[#F97316] text-white font-semibold hover:bg-[#EA580C]"
             >
               Done
             </button>

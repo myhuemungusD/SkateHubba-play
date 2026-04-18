@@ -76,7 +76,7 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
         type="button"
         onClick={handleResend}
         disabled={sending || cooldown > 0}
-        className="font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange/40 rounded-xl px-3.5 py-1.5 whitespace-nowrap disabled:opacity-40 hover:bg-brand-orange/[0.08] hover:border-brand-orange/60 active:scale-[0.97] transition-all duration-300"
+        className="touch-target inline-flex items-center justify-center font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange/40 rounded-xl px-3.5 py-1.5 whitespace-nowrap disabled:opacity-40 hover:bg-brand-orange/[0.08] hover:border-brand-orange/60 active:scale-[0.97] transition-all duration-300"
         aria-label={cooldown > 0 ? `Resend available in ${cooldown} seconds` : "Resend verification email"}
       >
         {btnLabel}
