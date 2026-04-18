@@ -44,7 +44,7 @@ async function signUpAndSetupProfile(page: Page, email: string, pw: string, user
     await fetch("http://localhost:9099/", { mode: "no-cors" }).catch(() => {});
     await fetch("http://localhost:8080/", { mode: "no-cors" }).catch(() => {});
   });
-  await page.getByRole("button", { name: "Sign up", exact: true }).click();
+  await page.getByRole("button", { name: "Use email", exact: true }).click();
   await passAgeGate(page);
   // Wait for auth form to render
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
@@ -67,7 +67,7 @@ async function signUpAndSetupProfile(page: Page, email: string, pw: string, user
 
 async function signInViaUI(page: Page, email: string, pw: string) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Log in" }).click();
+  await page.getByRole("button", { name: "Account" }).click();
   // Wait for auth form to render
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);

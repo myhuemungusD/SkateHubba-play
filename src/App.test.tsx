@@ -113,12 +113,12 @@ describe("App", () => {
     renderApp();
     await waitFor(() => {
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
-      expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
-      expect(screen.getByText("Log in")).toBeInTheDocument();
+      expect(screen.getByText("Use email")).toBeInTheDocument();
+      expect(screen.getByText("Account")).toBeInTheDocument();
     });
   });
 
-  it("navigates to age gate screen when 'Get Started' is clicked", async () => {
+  it("navigates to age gate screen when 'Use email' is clicked", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: null,
@@ -127,13 +127,13 @@ describe("App", () => {
     });
     renderApp();
 
-    await userEvent.click(screen.getByText("Sign In / Sign Up"));
+    await userEvent.click(screen.getByText("Use email"));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
     });
   });
 
-  it("navigates to sign in screen when 'Log in' is clicked", async () => {
+  it("navigates to sign in screen when 'Account' is clicked", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: null,
@@ -142,7 +142,7 @@ describe("App", () => {
     });
     renderApp();
 
-    await userEvent.click(screen.getByText("Log in"));
+    await userEvent.click(screen.getByText("Account"));
     await waitFor(() => {
       expect(screen.getByText("Welcome Back")).toBeInTheDocument();
     });

@@ -21,20 +21,20 @@ describe("Landing", () => {
   it("renders hero content", () => {
     render(<Landing {...defaultProps} />);
     expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
-    expect(screen.getByText("Sign In / Sign Up")).toBeInTheDocument();
+    expect(screen.getByText("Use email")).toBeInTheDocument();
   });
 
-  it("calls onGo with signup when Sign In / Sign Up is clicked", async () => {
+  it("calls onGo with signup when Use email is clicked", async () => {
     const onGo = vi.fn();
     render(<Landing {...defaultProps} onGo={onGo} />);
-    await userEvent.click(screen.getByText("Sign In / Sign Up"));
+    await userEvent.click(screen.getByText("Use email"));
     expect(onGo).toHaveBeenCalledWith("signup");
   });
 
-  it("calls onGo with signin via Log in nav button", async () => {
+  it("calls onGo with signin via Account nav button", async () => {
     const onGo = vi.fn();
     render(<Landing {...defaultProps} onGo={onGo} />);
-    await userEvent.click(screen.getByText("Log in"));
+    await userEvent.click(screen.getByText("Account"));
     expect(onGo).toHaveBeenCalledWith("signin");
   });
 
@@ -49,13 +49,6 @@ describe("Landing", () => {
     render(<Landing {...defaultProps} />);
     expect(screen.getByText("Privacy")).toBeInTheDocument();
     expect(screen.getByText("Terms")).toBeInTheDocument();
-  });
-
-  it("calls onGo with signup when Sign up nav button is clicked", async () => {
-    const onGo = vi.fn();
-    render(<Landing {...defaultProps} onGo={onGo} />);
-    await userEvent.click(screen.getByText("Sign up"));
-    expect(onGo).toHaveBeenCalledWith("signup");
   });
 
   it("calls onGo with signup when Start Playing is clicked", async () => {
@@ -143,9 +136,9 @@ describe("Landing", () => {
     expect(screen.getByRole("heading", { name: "Gameplay demo" })).toBeInTheDocument();
   });
 
-  it("plays the ollie pop sound when the Log in nav button is clicked", async () => {
+  it("plays the ollie pop sound when the Account nav button is clicked", async () => {
     render(<Landing {...defaultProps} />);
-    await userEvent.click(screen.getByText("Log in"));
+    await userEvent.click(screen.getByText("Account"));
     expect(playOlliePop).toHaveBeenCalled();
   });
 
