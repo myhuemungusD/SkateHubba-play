@@ -11,7 +11,10 @@
 
 const EMAIL_PLACEHOLDER = "[REDACTED_EMAIL]";
 const EMAIL_KEY_RE = /^email$/i;
-const UID_KEY_RE = /uid$/i;
+// Matches the whole key `uid` OR a camelCase `*Uid` suffix. Deliberately
+// case-sensitive so we don't hash innocuous keys whose last three letters
+// happen to be "uid" — uuid, squid, druid, fluid, liquid.
+const UID_KEY_RE = /^uid$|Uid$/;
 
 // Non-cryptographic 32-bit FNV-1a. Breadcrumbs need stable correlation
 // (same uid → same surrogate within one Sentry trace), not secrecy, so a
