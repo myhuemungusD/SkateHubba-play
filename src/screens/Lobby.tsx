@@ -253,7 +253,7 @@ export function Lobby({
             <button
               type="button"
               onClick={() => onChallengeUser("mikewhite")}
-              className="text-brand-orange hover:text-[#FF7A1A] transition-colors underline underline-offset-2"
+              className="min-h-[44px] inline-flex items-center justify-center px-2 -mx-2 rounded-md text-brand-orange hover:text-[#FF7A1A] hover:bg-brand-orange/5 transition-colors underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               Challenge @mikewhite
             </button>
@@ -311,7 +311,7 @@ export function Lobby({
                               e.stopPropagation();
                               onViewPlayer(opponentUid(g));
                             }}
-                            className="font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] transition-colors shrink-0"
+                            className="min-h-[32px] inline-flex items-center justify-center px-2 -mx-2 rounded-md font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] hover:bg-brand-orange/10 transition-colors shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                             aria-label={`View @${opponent(g)}'s profile`}
                           >
                             Profile
@@ -464,7 +464,7 @@ export function Lobby({
                               e.stopPropagation();
                               onViewPlayer(opponentUid(g));
                             }}
-                            className="font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] transition-colors shrink-0"
+                            className="min-h-[32px] inline-flex items-center justify-center px-2 -mx-2 rounded-md font-display text-[10px] text-brand-orange hover:text-[#FF7A1A] hover:bg-brand-orange/10 transition-colors shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                             aria-label={`View @${opponent(g)}'s profile`}
                           >
                             Profile
@@ -597,7 +597,7 @@ export function Lobby({
         )}
 
         {/* Delete Account */}
-        <div className="mt-8 flex flex-col items-center gap-3">
+        <div className="mt-8 flex flex-col items-center gap-1">
           {onDownloadData && (
             <button
               type="button"
@@ -615,7 +615,7 @@ export function Lobby({
               }}
               disabled={downloadingData}
               aria-label="Download a copy of my data"
-              className="font-body text-xs text-dim underline underline-offset-2 hover:text-brand-orange transition-colors disabled:opacity-60 disabled:cursor-wait"
+              className="touch-target inline-flex items-center justify-center font-body text-xs text-dim underline underline-offset-2 hover:text-brand-orange transition-colors disabled:opacity-60 disabled:cursor-wait rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               {downloadingData ? "Preparing your data…" : "Download My Data"}
             </button>
@@ -628,7 +628,7 @@ export function Lobby({
           <button
             type="button"
             onClick={() => setShowDeleteModal(true)}
-            className="font-body text-xs text-dim underline underline-offset-2 hover:text-brand-red transition-colors"
+            className="touch-target inline-flex items-center justify-center font-body text-xs text-dim underline underline-offset-2 hover:text-brand-red transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
           >
             Delete Account
           </button>

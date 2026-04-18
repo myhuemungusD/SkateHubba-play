@@ -148,12 +148,12 @@ export function GameReplay({ turns }: GameReplayProps) {
           )}
 
           {/* Skip / controls */}
-          <div className="flex justify-center gap-3 mt-3">
+          <div className="flex justify-center gap-2 mt-3">
             {clipIndex < clips.length - 1 && (
               <button
                 type="button"
                 onClick={() => setClipIndex(clipIndex + 1)}
-                className="font-body text-xs text-[#888] hover:text-white transition-colors"
+                className="touch-target inline-flex items-center justify-center font-body text-xs text-[#888] hover:text-white transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 Skip →
               </button>
@@ -164,7 +164,7 @@ export function GameReplay({ turns }: GameReplayProps) {
                 setPlaying(false);
                 setFinished(false);
               }}
-              className="font-body text-xs text-[#888] hover:text-white transition-colors"
+              className="touch-target inline-flex items-center justify-center font-body text-xs text-[#888] hover:text-white transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               Close
             </button>

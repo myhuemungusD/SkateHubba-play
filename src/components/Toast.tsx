@@ -75,11 +75,13 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
         <p className="font-body text-xs text-muted mt-0.5 leading-snug truncate">{notification.message}</p>
       </div>
 
-      {/* Dismiss button */}
+      {/* Dismiss button — 44×44 tap target per iOS HIG / Material guidelines.
+          The glyph is visually small but the hit area is comfortable so thumbs
+          don't mis-tap onto the clip label below. */}
       <button
         type="button"
         onClick={dismiss}
-        className="absolute top-2 right-2 text-subtle hover:text-white transition-colors text-sm leading-none p-1"
+        className="absolute top-0 right-0 w-11 h-11 inline-flex items-center justify-center text-subtle hover:text-white transition-colors text-base leading-none rounded-tr-2xl focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-orange"
         aria-label="Dismiss notification"
       >
         ×

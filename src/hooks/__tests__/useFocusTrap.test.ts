@@ -159,4 +159,56 @@ describe("useFocusTrap", () => {
     // Should not throw
     dispatchTab();
   });
+
+  it("pulls focus onto the first focusable when focus started outside the container", () => {
+    const outer = document.createElement("button");
+    outer.textContent = "Outer";
+    document.body.appendChild(outer);
+    outer.focus();
+
+    const container = createContainer();
+    const buttons = container.querySelectorAll("button");
+
+    renderHook(() => {
+      const ref = useRef<HTMLDivElement>(container);
+      useFocusTrap(ref);
+    });
+
+    // Focus gets pulled onto the first focusable child so keyboard users land
+    // inside the trap instead of on the now-obscured trigger button.
+    expect(document.activeElement).toBe(buttons[0]);
+  });
+
+  it("leaves focus alone when an element inside the container is already focused", () => {
+    const container = createContainer();
+    const buttons = container.querySelectorAll("button");
+    (buttons[1] as HTMLElement).focus();
+
+    renderHook(() => {
+      const ref = useRef<HTMLDivElement>(container);
+      useFocusTrap(ref);
+    });
+
+    // Already inside the trap — respects explicit autoFocus on consumer components.
+    expect(document.activeElement).toBe(buttons[1]);
+  });
+
+  it("does not throw when container has no focusable children and focus starts outside", () => {
+    const outer = document.createElement("button");
+    outer.textContent = "Outer";
+    document.body.appendChild(outer);
+    outer.focus();
+
+    const container = document.createElement("div");
+    container.innerHTML = "<span>Nothing to focus</span>";
+    document.body.appendChild(container);
+
+    renderHook(() => {
+      const ref = useRef<HTMLDivElement>(container);
+      useFocusTrap(ref);
+    });
+
+    // No focusable descendants — focus remains wherever it was.
+    expect(document.activeElement).toBe(outer);
+  });
 });

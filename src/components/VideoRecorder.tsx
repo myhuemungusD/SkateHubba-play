@@ -67,11 +67,24 @@ export function VideoRecorder({
       const isPermission =
         err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
       const msg = parseFirebaseError(err);
-      setCameraError(
-        isPermission
-          ? "Camera access denied. Check your browser permissions and try again."
-          : `Camera unavailable: ${msg}`,
-      );
+      // Platform-specific recovery hint. iOS Safari requires users to toggle
+      // the permission in system Settings (the in-app re-prompt is permanent
+      // after the first denial); desktop Chrome/Firefox allow re-granting from
+      // the URL bar. We tailor the copy so users know *where* to look.
+      let permissionHint = "Check your browser permissions and try again.";
+      if (typeof navigator !== "undefined") {
+        const ua = navigator.userAgent || "";
+        const isIOS = /iPad|iPhone|iPod/.test(ua);
+        const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS/.test(ua);
+        if (isIOS) {
+          permissionHint = "Open Settings → Safari → Camera and allow access, then reload.";
+        } else if (isSafari) {
+          permissionHint = "Click the camera icon in Safari's address bar and allow access.";
+        } else {
+          permissionHint = "Tap the lock/camera icon in your address bar and allow access.";
+        }
+      }
+      setCameraError(isPermission ? `Camera access denied. ${permissionHint}` : `Camera unavailable: ${msg}`);
       logger.warn("camera_access_failed", { error: msg });
     }
   }, []);
@@ -273,13 +286,13 @@ export function VideoRecorder({
                 onClick={() => setFisheyeOn((v) => !v)}
                 aria-label={fisheyeOn ? "Disable fisheye" : "Enable fisheye"}
                 aria-pressed={fisheyeOn}
-                className={`px-2.5 py-1 rounded-md transition-all duration-200 ${
+                className={`w-11 h-11 inline-flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
                   fisheyeOn
                     ? "bg-purple-500/90 shadow-[0_0_12px_rgba(147,51,234,0.4)]"
-                    : "bg-[#333]/80 hover:bg-[#444]/80"
+                    : "bg-black/60 hover:bg-black/80 backdrop-blur-sm"
                 }`}
               >
-                <FisheyeIcon size={16} className="text-white" />
+                <FisheyeIcon size={18} className="text-white" />
               </button>
             )}
             <div className="bg-brand-orange/90 px-2.5 py-1 rounded-md">

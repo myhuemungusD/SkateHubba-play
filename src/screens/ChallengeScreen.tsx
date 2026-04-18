@@ -182,7 +182,8 @@ export function ChallengeScreen({
         <button
           type="button"
           onClick={onBack}
-          className="font-body text-sm text-muted hover:text-white flex items-center gap-1.5 transition-colors duration-300 rounded-lg py-1 -ml-1 px-1"
+          aria-label="Back to lobby"
+          className="touch-target -ml-2 inline-flex items-center gap-1.5 rounded-lg font-body text-sm text-muted hover:text-white transition-colors duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           ← Back
         </button>
@@ -211,6 +212,7 @@ export function ChallengeScreen({
         >
           <Field
             label="Opponent Username"
+            name="opponent-username"
             value={opponent}
             onChange={(v) => {
               if (!loading) setOpponent(v.replace(/[^a-zA-Z0-9_]/g, ""));
@@ -220,6 +222,9 @@ export function ChallengeScreen({
             maxLength={20}
             autoFocus
             disabled={loading}
+            autoComplete="off"
+            inputMode="text"
+            enterKeyHint="send"
           />
 
           <ErrorBanner message={error} onDismiss={() => setError("")} />
@@ -259,7 +264,7 @@ export function ChallengeScreen({
                     type="button"
                     onClick={() => setJudgePickerOpen(true)}
                     disabled={loading}
-                    className="font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40"
+                    className="touch-target inline-flex items-center gap-1 font-body text-sm text-brand-orange hover:text-white transition-colors disabled:opacity-40 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
                     data-testid="add-judge-toggle"
                   >
                     + Add a referee? <span className="text-xs text-subtle">(optional — unlocks disputes)</span>
@@ -268,6 +273,7 @@ export function ChallengeScreen({
                   <div>
                     <Field
                       label="Referee Username (optional)"
+                      name="referee-username"
                       value={judge}
                       onChange={(v) => {
                         if (!loading) setJudge(v.replace(/[^a-zA-Z0-9_]/g, ""));
@@ -276,6 +282,9 @@ export function ChallengeScreen({
                       icon="@"
                       maxLength={20}
                       disabled={loading}
+                      autoComplete="off"
+                      inputMode="text"
+                      enterKeyHint="send"
                     />
                     <div className="flex items-center justify-between -mt-2 mb-2">
                       <p className="font-body text-xs text-subtle">
@@ -288,7 +297,7 @@ export function ChallengeScreen({
                           setJudgePickerOpen(false);
                         }}
                         disabled={loading}
-                        className="font-body text-xs text-subtle hover:text-brand-red transition-colors disabled:opacity-40 ml-2 shrink-0"
+                        className="touch-target inline-flex items-center justify-center font-body text-xs text-subtle hover:text-brand-red transition-colors disabled:opacity-40 ml-2 shrink-0 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
                       >
                         Remove
                       </button>

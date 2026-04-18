@@ -179,7 +179,12 @@ describe("PlayerProfileScreen", () => {
       error: null,
     });
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
-    expect(screen.getByText("Loading player profile...")).toBeInTheDocument();
+    // Loading UX is a content-matching skeleton announced via role="status" +
+    // aria-busy so assistive tech picks it up while sighted users see the
+    // shimmering placeholders instead of a raw spinner.
+    const status = screen.getByRole("status", { name: /loading player profile/i });
+    expect(status).toBeInTheDocument();
+    expect(status).toHaveAttribute("aria-busy", "true");
   });
 
   it("shows error state when profile fails to load", () => {

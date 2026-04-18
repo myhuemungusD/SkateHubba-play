@@ -213,15 +213,83 @@ export function PlayerProfileScreen({
     return Array.from(map.values()).sort((a, b) => b.totalGames - a.totalGames);
   }, [completedGames, profile]);
 
-  // Loading state
+  // Loading state — skeleton that mirrors the eventual content layout so the
+  // viewport doesn't shift ~600px when real data arrives. Each block uses the
+  // same dimensions as its filled counterpart (avatar puck, identity rows,
+  // stat grid, H2H list) so the transition feels like a fade rather than a
+  // reflow.
   if (loading) {
     return (
-      <div className="min-h-dvh flex flex-col items-center justify-center bg-[#0A0A0A]/80">
-        <div className="relative w-10 h-10 mb-4">
-          <div className="absolute inset-0 rounded-full border-2 border-border" />
-          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-brand-orange animate-spin" />
+      <div
+        className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow"
+        role="status"
+        aria-busy="true"
+        aria-label="Loading player profile"
+      >
+        <div className="px-5 pt-safe pb-4 flex justify-between items-center border-b border-white/[0.04] glass">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-2 touch-target text-muted hover:text-white transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded-lg"
+            aria-label="Back to lobby"
+          >
+            <ChevronLeftIcon size={16} />
+            <span className="font-body text-xs">Lobby</span>
+          </button>
+          <img
+            src="/logonew.webp"
+            alt=""
+            draggable={false}
+            className="h-5 w-auto select-none opacity-40"
+            aria-hidden="true"
+          />
+          <div className="w-16" aria-hidden="true" />
         </div>
-        <span className="font-body text-xs text-muted">Loading player profile...</span>
+
+        <div className="px-5 pt-7 max-w-lg mx-auto animate-pulse">
+          {/* Identity row */}
+          <div className="flex items-center gap-4 mb-8">
+            <div className="w-14 h-14 rounded-full bg-surface-alt border border-border shrink-0" />
+            <div className="flex-1 space-y-2">
+              <div className="h-6 w-40 rounded-md bg-surface-alt" />
+              <div className="h-3 w-20 rounded-md bg-surface-alt/70" />
+            </div>
+          </div>
+
+          {/* Overall stat grid */}
+          <div className="grid grid-cols-3 gap-2.5 mb-2.5">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-20 rounded-2xl bg-surface-alt/60 border border-border" />
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-2.5 mb-2.5">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-20 rounded-2xl bg-surface-alt/60 border border-border" />
+            ))}
+          </div>
+          <div className="grid grid-cols-3 gap-2.5 mb-8">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-20 rounded-2xl bg-surface-alt/60 border border-border" />
+            ))}
+          </div>
+
+          {/* Section header + list rows */}
+          <div className="h-4 w-24 rounded-md bg-surface-alt/60 mb-3" />
+          <div className="space-y-2 mb-8">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-[68px] rounded-2xl bg-surface-alt/60 border border-border" />
+            ))}
+          </div>
+
+          {/* Game history header + rows */}
+          <div className="h-4 w-32 rounded-md bg-surface-alt/60 mb-3" />
+          <div className="space-y-2">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-[72px] rounded-2xl bg-surface-alt/60 border border-border" />
+            ))}
+          </div>
+        </div>
+        <span className="sr-only">Loading player profile…</span>
       </div>
     );
   }
