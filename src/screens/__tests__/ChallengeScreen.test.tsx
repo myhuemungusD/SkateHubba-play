@@ -232,9 +232,10 @@ describe("ChallengeScreen", () => {
       initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
     });
 
-    // While the fetch is pending, the chip must NOT be in the DOM — the
-    // tri-state render is what prevents the "Challenging at a saved spot"
-    // fallback from flashing before the real name arrives.
+    // Type a valid opponent to unlock the progressive-disclosure extras —
+    // chip lives behind that gate now. Even with the gate open, the chip
+    // must NOT render while the fetch is pending (no flash of fallback).
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
     expect(screen.queryByTestId("challenge-spot-chip")).not.toBeInTheDocument();
 
     // Resolve the fetch; chip should now appear with the fetched name.
@@ -260,11 +261,13 @@ describe("ChallengeScreen", () => {
     expect(mockChallengeFromSpot).not.toHaveBeenCalled();
   });
 
-  it("renders the spot context chip with the fetched name", async () => {
+  it("renders the spot context chip with the fetched name once the opponent is valid", async () => {
     mockFetchSpotName.mockResolvedValueOnce("Hollenbeck Hubba");
     renderWithRouter(<ChallengeScreen {...defaultProps} />, {
       initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
     });
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
 
     await waitFor(() => {
       expect(screen.getByTestId("challenge-spot-chip")).toHaveTextContent("Challenging at Hollenbeck Hubba");
@@ -462,8 +465,86 @@ describe("ChallengeScreen", () => {
       initialEntries: [`/challenge?spot=${VALID_SPOT_ID}`],
     });
 
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+
     await waitFor(() => {
       expect(screen.getByTestId("challenge-spot-chip")).toHaveTextContent("Challenging at a saved spot");
+    });
+  });
+
+  describe("progressive disclosure", () => {
+    it("hides referee/rules/invite until the opponent field looks valid", () => {
+      renderWithRouter(<ChallengeScreen {...defaultProps} />);
+      expect(screen.queryByTestId("challenge-extras")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("add-judge-toggle")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("open-rules-sheet")).not.toBeInTheDocument();
+    });
+
+    it("reveals the extras once the opponent has 3+ chars and isn't the current user", async () => {
+      renderWithRouter(<ChallengeScreen {...defaultProps} />);
+      await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+      expect(screen.getByTestId("challenge-extras")).toBeInTheDocument();
+      expect(screen.getByTestId("add-judge-toggle")).toBeInTheDocument();
+      expect(screen.getByTestId("open-rules-sheet")).toBeInTheDocument();
+    });
+
+    it("keeps the extras hidden when the opponent field matches the current user", async () => {
+      renderWithRouter(<ChallengeScreen {...defaultProps} />);
+      await userEvent.type(screen.getByPlaceholderText("their_handle"), "sk8r");
+      expect(screen.queryByTestId("challenge-extras")).not.toBeInTheDocument();
+    });
+
+    it("re-hides the extras if the user clears the opponent back below the minimum", async () => {
+      renderWithRouter(<ChallengeScreen {...defaultProps} />);
+      const input = screen.getByPlaceholderText("their_handle");
+      await userEvent.type(input, "rival");
+      expect(screen.getByTestId("challenge-extras")).toBeInTheDocument();
+      await userEvent.clear(input);
+      expect(screen.queryByTestId("challenge-extras")).not.toBeInTheDocument();
+    });
+
+    it("preserves the judge picker state when the opponent field temporarily becomes invalid", async () => {
+      renderWithRouter(<ChallengeScreen {...defaultProps} />);
+      const input = screen.getByPlaceholderText("their_handle") as HTMLInputElement;
+      await userEvent.type(input, "rival");
+      await userEvent.click(screen.getByTestId("add-judge-toggle"));
+      const handles = screen.getAllByPlaceholderText("their_handle") as HTMLInputElement[];
+      await userEvent.type(handles[handles.length - 1], "judge");
+
+      // Clear opponent → extras collapse → retype opponent → extras re-open
+      // with the judge picker still showing "judge".
+      await userEvent.clear(input);
+      expect(screen.queryByTestId("challenge-extras")).not.toBeInTheDocument();
+      await userEvent.type(input, "rival");
+      const restored = screen.getAllByPlaceholderText("their_handle") as HTMLInputElement[];
+      expect(restored[restored.length - 1].value).toBe("judge");
+    });
+  });
+
+  describe("rules bottom sheet", () => {
+    it("opens the sheet when the 'See the rules' trigger is clicked", async () => {
+      renderWithRouter(<ChallengeScreen {...defaultProps} />);
+      await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+      expect(screen.queryByTestId("rules-sheet")).not.toBeInTheDocument();
+      await userEvent.click(screen.getByTestId("open-rules-sheet"));
+      expect(screen.getByTestId("rules-sheet")).toBeInTheDocument();
+      expect(screen.getByText("Spell S.K.A.T.E. = you lose")).toBeInTheDocument();
+    });
+
+    it("closes the sheet when the Close button is clicked", async () => {
+      renderWithRouter(<ChallengeScreen {...defaultProps} />);
+      await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+      await userEvent.click(screen.getByTestId("open-rules-sheet"));
+      await userEvent.click(screen.getByRole("button", { name: /close rules/i }));
+      expect(screen.queryByTestId("rules-sheet")).not.toBeInTheDocument();
+    });
+
+    it("does not render the inline rules card any more", async () => {
+      renderWithRouter(<ChallengeScreen {...defaultProps} />);
+      await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+      // The static RULES heading used to live inline; it now only appears
+      // inside the sheet after the user opens it.
+      expect(screen.queryByRole("heading", { name: /^RULES$/ })).not.toBeInTheDocument();
     });
   });
 });
