@@ -34,6 +34,16 @@ vi.mock("firebase/storage", () => ({
   connectStorageEmulator: (...args: unknown[]) => mockConnectStorageEmulator(...args),
 }));
 
+/** Stub every VITE_FIREBASE_* var required by the Zod env schema. */
+function stubFirebaseEnv(): void {
+  vi.stubEnv("VITE_FIREBASE_API_KEY", "test-api-key");
+  vi.stubEnv("VITE_FIREBASE_AUTH_DOMAIN", "test.firebaseapp.com");
+  vi.stubEnv("VITE_FIREBASE_PROJECT_ID", "test-project");
+  vi.stubEnv("VITE_FIREBASE_STORAGE_BUCKET", "test.firebasestorage.app");
+  vi.stubEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "1234567890");
+  vi.stubEnv("VITE_FIREBASE_APP_ID", "1:1234567890:web:abc");
+}
+
 describe("firebase module", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -64,7 +74,7 @@ describe("firebase module", () => {
   });
 
   it("initializes Firebase when VITE_FIREBASE_API_KEY is set", async () => {
-    vi.stubEnv("VITE_FIREBASE_API_KEY", "test-api-key");
+    stubFirebaseEnv();
     vi.stubEnv("VITE_USE_EMULATORS", "false");
 
     const mod = await import("../firebase");
@@ -76,7 +86,7 @@ describe("firebase module", () => {
   });
 
   it("connects to emulators when VITE_USE_EMULATORS=true in DEV mode", async () => {
-    vi.stubEnv("VITE_FIREBASE_API_KEY", "test-api-key");
+    stubFirebaseEnv();
     vi.stubEnv("VITE_USE_EMULATORS", "true");
     // import.meta.env.DEV is true by default in vitest
 
@@ -90,7 +100,7 @@ describe("firebase module", () => {
   });
 
   it("does not connect to emulators when VITE_USE_EMULATORS is not set", async () => {
-    vi.stubEnv("VITE_FIREBASE_API_KEY", "test-api-key");
+    stubFirebaseEnv();
     vi.stubEnv("VITE_USE_EMULATORS", "false");
 
     await import("../firebase");
@@ -124,7 +134,7 @@ describe("firebase module", () => {
   });
 
   it("requireDb returns the db instance when initialized", async () => {
-    vi.stubEnv("VITE_FIREBASE_API_KEY", "test-api-key");
+    stubFirebaseEnv();
     vi.stubEnv("VITE_USE_EMULATORS", "false");
 
     const mod = await import("../firebase");
@@ -132,7 +142,7 @@ describe("firebase module", () => {
   });
 
   it("requireAuth returns the auth instance when initialized", async () => {
-    vi.stubEnv("VITE_FIREBASE_API_KEY", "test-api-key");
+    stubFirebaseEnv();
     vi.stubEnv("VITE_USE_EMULATORS", "false");
 
     const mod = await import("../firebase");
@@ -140,7 +150,7 @@ describe("firebase module", () => {
   });
 
   it("requireStorage returns the storage instance when initialized", async () => {
-    vi.stubEnv("VITE_FIREBASE_API_KEY", "test-api-key");
+    stubFirebaseEnv();
     vi.stubEnv("VITE_USE_EMULATORS", "false");
 
     const mod = await import("../firebase");
