@@ -80,6 +80,9 @@ export function AuthScreen({
       else if (code === "auth/too-many-requests")
         setError("Too many attempts. Please wait a few minutes and try again.");
       else if (code === "auth/network-request-failed") setError("Network error — check your connection and try again.");
+      // auth/internal-error = App Check rejection, reCAPTCHA failure, or transient Identity Toolkit 500.
+      else if (code === "auth/internal-error")
+        setError("Sign-in is temporarily unavailable. Please try again in a moment.");
       else setError(getUserMessage(err, "Something went wrong"));
     } finally {
       setLoading(false);
