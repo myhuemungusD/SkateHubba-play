@@ -66,7 +66,7 @@ function ProgressBar({ step }: { step: Step }) {
           className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${
             s <= step
               ? "bg-gradient-to-r from-brand-orange to-[#FF8533] shadow-[0_0_8px_rgba(255,107,0,0.2)]"
-              : "bg-[#2A2A2A]"
+              : "bg-border"
           }`}
         />
       ))}
@@ -258,7 +258,7 @@ function StepReview({
             { label: "Stance", value: stance },
             { label: "Record", value: "0 – 0" },
           ].map(({ label, value }) => (
-            <div key={label} className="flex-1 bg-[#0A0A0A] rounded-xl p-3 text-center">
+            <div key={label} className="flex-1 bg-background rounded-xl p-3 text-center">
               <div className="font-body text-[10px] text-subtle uppercase tracking-wider mb-1">{label}</div>
               <div className="font-display text-lg text-white">{value}</div>
             </div>

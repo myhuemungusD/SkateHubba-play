@@ -115,22 +115,22 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
     <div ref={panelRef} className="absolute top-3 left-3 right-3 z-30 pointer-events-none">
       {/* Search + filter toggle row */}
       <div className="flex items-center gap-2 pointer-events-auto">
-        <label className="flex-1 flex items-center gap-2 bg-[#1A1A1A]/95 backdrop-blur border border-[#333] rounded-xl px-3 h-10">
-          <Search size={16} className="text-[#888] flex-shrink-0" aria-hidden="true" />
+        <label className="flex-1 flex items-center gap-2 bg-surface-alt/95 backdrop-blur border border-[#333] rounded-xl px-3 h-10">
+          <Search size={16} className="text-muted flex-shrink-0" aria-hidden="true" />
           <input
             type="search"
             value={filters.query}
             onChange={(e) => onChange({ ...filters, query: e.target.value })}
             placeholder="Search spots in view"
             aria-label="Search spots in current map view"
-            className="flex-1 min-w-0 bg-transparent text-sm text-white placeholder:text-[#666] focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent text-sm text-white placeholder:text-faint focus:outline-none"
           />
           {filters.query.length > 0 && (
             <button
               type="button"
               onClick={() => onChange({ ...filters, query: "" })}
               aria-label="Clear search"
-              className="text-[#888] hover:text-white"
+              className="text-muted hover:text-white"
             >
               <X size={14} />
             </button>
@@ -147,7 +147,7 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
                       transition-colors ${
                         active > 0
                           ? "bg-[#F97316] border-[#F97316] text-white"
-                          : "bg-[#1A1A1A]/95 backdrop-blur border-[#333] text-[#CCC] hover:bg-[#222]"
+                          : "bg-surface-alt/95 backdrop-blur border-[#333] text-[#CCC] hover:bg-[#222]"
                       }`}
         >
           <SlidersHorizontal size={16} aria-hidden="true" />
@@ -163,7 +163,7 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
           map stays uncluttered. */}
       {isFiltering && totalCount > 0 && (
         <div
-          className="mt-2 inline-block pointer-events-auto bg-[#1A1A1A]/90 backdrop-blur border border-[#333]
+          className="mt-2 inline-block pointer-events-auto bg-surface-alt/90 backdrop-blur border border-[#333]
                      rounded-full px-3 py-1 text-xs text-[#CCC]"
           role="status"
           aria-live="polite"
@@ -189,12 +189,12 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
           id="spot-filter-panel"
           role="region"
           aria-label="Spot filters"
-          className="mt-2 pointer-events-auto bg-[#1A1A1A]/95 backdrop-blur border border-[#333] rounded-xl p-3
+          className="mt-2 pointer-events-auto bg-surface-alt/95 backdrop-blur border border-[#333] rounded-xl p-3
                      max-h-[55dvh] overflow-y-auto shadow-2xl"
         >
           {/* Obstacles */}
           <div>
-            <div className="text-xs text-[#888] mb-2 font-medium">Obstacles</div>
+            <div className="text-xs text-muted mb-2 font-medium">Obstacles</div>
             <div className="flex flex-wrap gap-1.5">
               {FILTERABLE_OBSTACLES.map((o) => {
                 const on = filters.obstacles.includes(o);
@@ -219,7 +219,7 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
 
           {/* Min gnar */}
           <div className="mt-3">
-            <div className="text-xs text-[#888] mb-2 font-medium">Minimum gnar</div>
+            <div className="text-xs text-muted mb-2 font-medium">Minimum gnar</div>
             <div className="flex gap-1.5">
               {([0, 3, 4, 5] as const).map((v) => {
                 const on = filters.minGnar === v;
@@ -272,7 +272,7 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
               type="button"
               onClick={reset}
               disabled={active === 0 && filters.query.length === 0}
-              className="touch-target inline-flex items-center justify-center text-xs text-[#888] hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
+              className="touch-target inline-flex items-center justify-center text-xs text-muted hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Reset
             </button>

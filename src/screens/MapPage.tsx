@@ -29,10 +29,14 @@ class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => 
   render() {
     if (this.state.hasError) {
       return (
-        <div role="alert" className="w-full flex items-center justify-center bg-[#0A0A0A]" style={{ height: "100dvh" }}>
+        <div
+          role="alert"
+          className="w-full flex items-center justify-center bg-background"
+          style={{ height: "100dvh" }}
+        >
           <div className="text-center px-6 max-w-xs">
             <p className="text-[#CCC] text-sm mb-1">Something went wrong loading the map.</p>
-            <p className="text-[#666] text-xs mb-5">Try again — this usually fixes it.</p>
+            <p className="text-faint text-xs mb-5">Try again — this usually fixes it.</p>
             <div className="flex flex-col items-stretch gap-2">
               <button
                 type="button"
@@ -45,7 +49,7 @@ class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => 
               <button
                 type="button"
                 onClick={() => window.location.reload()}
-                className="min-h-[44px] px-6 text-[#888] hover:text-white text-xs transition-colors"
+                className="min-h-[44px] px-6 text-muted hover:text-white text-xs transition-colors"
               >
                 Reload page
               </button>

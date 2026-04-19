@@ -6,7 +6,7 @@ const CONTACT_EMAIL = "privacy@skatehubba.com";
 
 export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (s: Screen) => void }) {
   return (
-    <div className="min-h-dvh bg-[#0A0A0A]/90 text-white">
+    <div className="min-h-dvh bg-background/90 text-white">
       <div className="px-5 pt-safe pb-4 border-b border-[#222] flex items-center gap-4">
         <Btn onClick={onBack} variant="ghost" className="shrink-0">
           ← Back
@@ -16,7 +16,7 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
 
       <article className="max-w-2xl mx-auto px-5 py-8 prose-invert">
         <h1 className="font-display text-4xl text-white mb-1">Privacy Policy</h1>
-        <p className="font-body text-sm text-[#666] mb-8">Effective date: {EFFECTIVE_DATE}</p>
+        <p className="font-body text-sm text-faint mb-8">Effective date: {EFFECTIVE_DATE}</p>
 
         <Section title="1. Who We Are">
           <p>
@@ -267,7 +267,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mb-8">
       <h2 className="font-display text-xl text-white tracking-wider mb-3">{title}</h2>
-      <div className="font-body text-sm text-[#999] leading-relaxed space-y-2">{children}</div>
+      <div className="font-body text-sm text-dim leading-relaxed space-y-2">{children}</div>
     </section>
   );
 }

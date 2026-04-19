@@ -216,7 +216,7 @@ export function PlayerProfileScreen({
   // Loading state
   if (loading) {
     return (
-      <div className="min-h-dvh flex flex-col items-center justify-center bg-[#0A0A0A]/80">
+      <div className="min-h-dvh flex flex-col items-center justify-center bg-background/80">
         <div className="relative w-10 h-10 mb-4">
           <div className="absolute inset-0 rounded-full border-2 border-border" />
           <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-brand-orange animate-spin" />
@@ -229,7 +229,7 @@ export function PlayerProfileScreen({
   // Error state
   if (error || !profile) {
     return (
-      <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]/80">
+      <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-background/80">
         <SkateboardIcon size={32} className="mb-4 opacity-40 text-subtle" />
         <p className="font-body text-sm text-faint mb-4">{error ?? "Player not found"}</p>
         <Btn onClick={onBack} variant="ghost">
