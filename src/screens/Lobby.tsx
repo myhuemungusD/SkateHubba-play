@@ -1,15 +1,17 @@
-import { useState, useEffect, type KeyboardEvent } from "react";
+import { useCallback, useState, useEffect, type KeyboardEvent } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { logger } from "../services/logger";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { InviteButton } from "../components/InviteButton";
 import { DeleteAccountModal } from "../components/DeleteAccountModal";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
 import { PushPermissionBanner } from "../components/PushPermissionBanner";
 import { LobbyTimer } from "../components/LobbyTimer";
+import { PullToRefreshIndicator } from "../components/PullToRefreshIndicator";
 import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
 import { ProUsername } from "../components/ProUsername";
 import { ClipsFeed } from "../components/ClipsFeed";
@@ -79,6 +81,26 @@ export function Lobby({
   const [downloadError, setDownloadError] = useState("");
   const [players, setPlayers] = useState<UserProfile[]>([]);
   const [playersLoading, setPlayersLoading] = useState(true);
+
+  // Reload the player directory + blocked-list, filtering the former by the
+  // latter. Factored out so both the initial mount effect and the
+  // pull-to-refresh gesture can kick it off from the same code path. Returns
+  // a Promise so PTR can await it before releasing the indicator.
+  const loadPlayerDirectory = useCallback(async () => {
+    try {
+      const [all, blockedIds] = await Promise.all([getPlayerDirectory(), getBlockedUserIds(profile.uid)]);
+      setPlayers(all.filter((p) => p.uid !== profile.uid && !blockedIds.has(p.uid)));
+    } catch (err) {
+      // Non-critical: show empty lobby rather than error screen
+      logger.warn("lobby_directory_load_failed", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      setPlayers([]);
+    } finally {
+      setPlayersLoading(false);
+    }
+  }, [profile.uid]);
+
   useEffect(() => {
     let stale = false;
     Promise.all([getPlayerDirectory(), getBlockedUserIds(profile.uid)])
@@ -97,6 +119,12 @@ export function Lobby({
       stale = true;
     };
   }, [profile.uid]);
+
+  // Pull-to-refresh: real-time games subscription means game cards stay fresh
+  // automatically, but the player directory is a one-shot fetch. PTR re-fetches
+  // it so a user who's been scrolling a while can pull to see new skaters /
+  // unblocked accounts without a full reload.
+  const ptr = usePullToRefresh(loadPlayerDirectory);
 
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
@@ -160,7 +188,8 @@ export function Lobby({
   };
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0A]/40 pb-24">
+    <div className="relative min-h-dvh bg-[#0A0A0A]/40 pb-24" {...ptr.containerProps}>
+      <PullToRefreshIndicator offset={ptr.offset} state={ptr.state} triggerReached={ptr.triggerReached} />
       {/* Header */}
       <div className="px-5 pt-safe pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-2xl mx-auto">
         <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
