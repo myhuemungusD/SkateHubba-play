@@ -97,6 +97,14 @@ service cloud.firestore {
             request.resource.data.losses == resource.data.losses
             || request.resource.data.losses == resource.data.losses + 1
           ))
+        )
+        // fcmTokens (push-notification registration tokens) must be a list
+        // capped at 10 entries — prevents a compromised client from writing
+        // an unbounded blob into the user doc.
+        && (
+          !('fcmTokens' in request.resource.data)
+          || (request.resource.data.fcmTokens is list
+              && request.resource.data.fcmTokens.size() <= 10)
         );
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
@@ -476,6 +484,12 @@ service cloud.firestore {
         && 'judgeStatus' in resource.data
         && resource.data.judgeStatus == 'pending'
         && request.resource.data.judgeId == resource.data.judgeId
+        // Re-verify judge isn't either player — defence-in-depth in case the
+        // create-time check was bypassed (e.g. older docs written before the
+        // check was added). Without this an account that is somehow set as
+        // both player and judge could accept their own dispute.
+        && resource.data.judgeId != resource.data.player1Uid
+        && resource.data.judgeId != resource.data.player2Uid
         && (request.resource.data.judgeStatus == 'accepted'
             || request.resource.data.judgeStatus == 'declined')
         // Everything else must stay identical.
@@ -675,7 +689,21 @@ service cloud.firestore {
           request.resource.data.description == null
           || (request.resource.data.description is string
               && request.resource.data.description.size() <= 500)
-        );
+        )
+        // Re-apply the same validation block that `create` uses for the
+        // remaining mutable fields. Without this, an owner could submit
+        // out-of-range ratings, oversized obstacle/photo lists, or wrong
+        // types via a direct API call and bypass the create-time guards.
+        && request.resource.data.gnarRating is int
+        && request.resource.data.gnarRating >= 1
+        && request.resource.data.gnarRating <= 5
+        && request.resource.data.bustRisk is int
+        && request.resource.data.bustRisk >= 1
+        && request.resource.data.bustRisk <= 5
+        && request.resource.data.obstacles is list
+        && request.resource.data.obstacles.size() <= 14
+        && request.resource.data.photoUrls is list
+        && request.resource.data.photoUrls.size() <= 5;
 
       // Delete: owner only. (Prefer soft-delete via admin in practice.)
       allow delete: if isSignedIn() && resource.data.createdBy == request.auth.uid;
@@ -748,7 +776,11 @@ service cloud.firestore {
         && request.resource.data.recipientUid != request.auth.uid
         && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite']
         && request.resource.data.title is string
+        // Hard cap on user-visible strings — prevents a malicious sender from
+        // wedging multi-megabyte notification docs into the recipient's feed.
+        && request.resource.data.title.size() <= 80
         && request.resource.data.body is string
+        && request.resource.data.body.size() <= 200
         && request.resource.data.gameId is string
         && request.resource.data.read == false
         && request.resource.data.createdAt == request.time
@@ -965,6 +997,10 @@ service cloud.firestore {
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
+        // Email verification mirrors every other content-producing rule
+        // (games, spots, comments) — without it, throwaway accounts can
+        // inflate vote counts on the public clips feed.
+        && request.auth.token.email_verified == true
         && voteId == (request.auth.uid + '_' + request.resource.data.clipId)
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.clipId is string
