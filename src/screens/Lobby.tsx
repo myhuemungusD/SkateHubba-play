@@ -3,12 +3,14 @@ import { type UserProfile } from "../services/users";
 import { usePlayerDirectory } from "../hooks/usePlayerDirectory";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
+import { usePullToRefresh } from "../hooks/usePullToRefresh";
 import { InviteButton } from "../components/InviteButton";
 import { DeleteAccountModal } from "../components/DeleteAccountModal";
 import { VerifyEmailBanner } from "../components/VerifyEmailBanner";
 import { NotificationBell } from "../components/NotificationBell";
 import { PushPermissionBanner } from "../components/PushPermissionBanner";
 import { LobbyTimer } from "../components/LobbyTimer";
+import { PullToRefreshIndicator } from "../components/PullToRefreshIndicator";
 import { SkateboardIcon, TrophyIcon, ChevronRightIcon } from "../components/icons";
 import { ProUsername } from "../components/ProUsername";
 import { ClipsFeed } from "../components/ClipsFeed";
@@ -76,7 +78,15 @@ export function Lobby({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [downloadingData, setDownloadingData] = useState(false);
   const [downloadError, setDownloadError] = useState("");
-  const { players, loading: playersLoading } = usePlayerDirectory(profile.uid);
+  // The directory hook exposes `refresh` so pull-to-refresh (wired below) can
+  // trigger a re-fetch on gesture without duplicating the load logic here.
+  const { players, loading: playersLoading, refresh: refreshPlayers } = usePlayerDirectory(profile.uid);
+
+  // Pull-to-refresh: real-time games subscription means game cards stay fresh
+  // automatically, but the player directory is a one-shot fetch. PTR re-fetches
+  // it so a user who's been scrolling a while can pull to see new skaters /
+  // unblocked accounts without a full reload.
+  const ptr = usePullToRefresh(refreshPlayers);
 
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
@@ -168,7 +178,8 @@ export function Lobby({
   });
 
   return (
-    <div className="min-h-dvh bg-background/40 pb-24">
+    <div className="relative min-h-dvh bg-background/40 pb-24" {...ptr.containerProps}>
+      <PullToRefreshIndicator offset={ptr.offset} state={ptr.state} triggerReached={ptr.triggerReached} />
       {/* Header */}
       <div className="px-5 pt-safe pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-2xl mx-auto">
         <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
@@ -592,7 +603,31 @@ export function Lobby({
         )}
 
         {/* Player Directory */}
-        {playersLoading && <p className="font-body text-xs text-brand-orange text-center mb-6">Loading skaters...</p>}
+        {playersLoading && (
+          <div className="mb-6" role="status" aria-busy="true" aria-label="Loading skaters">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">SKATERS</h3>
+            </div>
+            <div className="space-y-2 animate-pulse">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-surface-alt/60 border border-border"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-surface-alt border border-border shrink-0" />
+                    <div className="space-y-2">
+                      <div className="h-4 w-28 rounded-md bg-surface-alt" />
+                      <div className="h-3 w-20 rounded-md bg-surface-alt/70" />
+                    </div>
+                  </div>
+                  <div className="h-9 w-20 rounded-lg bg-surface-alt" />
+                </div>
+              ))}
+            </div>
+            <span className="sr-only">Loading skaters…</span>
+          </div>
+        )}
         {!playersLoading && players.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">

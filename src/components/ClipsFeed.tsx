@@ -335,15 +335,40 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         </div>
       )}
 
-      {/* Loading (first page) */}
+      {/* Loading (first page) — content-shaped skeleton so the viewport
+          doesn't jump ~600px when the feed lands. Mirrors the real clip
+          card: meta row (avatar + handle + role badge + time), 9:16 video
+          slot, trick name, action row. Announced via role="status" +
+          aria-busy so assistive tech picks up the loading state. */}
       {loading && (
-        <div className="flex flex-col items-center py-10" role="status" aria-label="Loading clips">
-          <div className="relative w-10 h-10 mb-3">
-            <div className="absolute inset-0 rounded-full border-2 border-border" />
-            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-brand-orange animate-spin" />
-          </div>
-          <p className="font-body text-xs text-faint">Loading feed…</p>
-        </div>
+        <ul className="space-y-4 animate-pulse" role="status" aria-busy="true" aria-label="Loading clips">
+          {[0, 1].map((i) => (
+            <li key={i} className="glass-card rounded-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-surface-alt border border-border" />
+                  <div className="h-3 w-20 rounded-md bg-surface-alt" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="h-4 w-10 rounded-md bg-surface-alt" />
+                  <div className="h-3 w-12 rounded-md bg-surface-alt/70" />
+                </div>
+              </div>
+              <div className="px-4">
+                <div className="w-full aspect-[9/16] max-h-[560px] rounded-xl bg-surface-alt border border-border" />
+              </div>
+              <div className="px-4 pt-3">
+                <div className="h-5 w-40 rounded-md bg-surface-alt" />
+              </div>
+              <div className="px-4 pt-3 pb-4 flex items-center gap-2">
+                <div className="h-11 w-16 rounded-xl bg-surface-alt" />
+                <div className="h-11 flex-1 rounded-xl bg-surface-alt" />
+                <div className="h-11 w-20 rounded-xl bg-surface-alt" />
+              </div>
+            </li>
+          ))}
+          <span className="sr-only">Loading feed…</span>
+        </ul>
       )}
 
       {/* Empty */}
