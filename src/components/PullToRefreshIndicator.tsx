@@ -1,4 +1,4 @@
-import type { PullToRefreshState } from "../hooks/usePullToRefresh";
+import { TRIGGER_DISTANCE, type PullToRefreshState } from "../hooks/usePullToRefresh";
 
 /**
  * Visual indicator for the pull-to-refresh gesture. Renders above the scroll
@@ -22,9 +22,13 @@ export function PullToRefreshIndicator({
 
   const label = state === "refreshing" ? "Refreshing…" : triggerReached ? "Release to refresh" : "Pull to refresh";
 
-  // Rotate the arrow based on drag progress so the user watches it commit.
-  // 0 at rest, 180° once past the trigger threshold, interpolated between.
-  const rotation = state === "refreshing" ? 0 : Math.min(180, (offset / 72) * 180);
+  // Arrow rotation: 0° at rest, scales to 180° as the drag approaches the
+  // trigger distance, and locks at 180° once committed. Keeping rotation +
+  // committed state in sync prevents the "Release to refresh" label from
+  // showing above a partially-un-rotated arrow when the user pulls back
+  // under the threshold mid-gesture. Shares TRIGGER_DISTANCE with the hook
+  // so a future threshold tune doesn't silently desync the visual calc.
+  const rotation = state === "refreshing" ? 0 : triggerReached ? 180 : Math.min(180, (offset / TRIGGER_DISTANCE) * 180);
 
   return (
     <div

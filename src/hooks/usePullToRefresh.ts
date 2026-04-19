@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { playHaptic } from "../services/haptics";
 
-/** Distance past which a drag commits to a refresh on release. */
-const TRIGGER_DISTANCE = 72;
+/** Distance past which a drag commits to a refresh on release. Exported so the
+ *  indicator component can key its arrow rotation off the same value instead
+ *  of duplicating the magic number. */
+export const TRIGGER_DISTANCE = 72;
 /** Max pixels the indicator can be dragged down. Drag past this feels elastic. */
 const MAX_DRAG = 140;
 /** Resistance factor — drag distance is attenuated so the gesture feels
@@ -58,7 +60,11 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): PullToR
     onRefreshRef.current = onRefresh;
   }, [onRefresh]);
 
-  const triggerReached = offset >= TRIGGER_DISTANCE;
+  // Drive `triggerReached` off the state machine rather than the live offset
+  // so callers see the same commit semantics the hook uses on release:
+  // once a pull has crossed the threshold on this gesture, we stay committed
+  // until cancel/release, regardless of a subsequent pullback under the line.
+  const triggerReached = state === "ready" || state === "refreshing";
 
   const reset = useCallback(() => {
     startYRef.current = null;
@@ -94,7 +100,13 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): PullToR
     const next = Math.min(MAX_DRAG, dy * RESISTANCE);
     const crossing = next >= TRIGGER_DISTANCE;
     setOffset(next);
-    setState(crossing ? "ready" : "pulling");
+    // Latch the committed visual state once the user has crossed on this
+    // pull. The commit (crossedRef) is sticky until release or cancel, so
+    // letting the label flip back to "Pull to refresh" after a partial
+    // pullback would mismatch what handlePointerUp actually does — release
+    // still fires the refresh. Keep visual + commit state in agreement:
+    // once ready, stay ready.
+    setState(crossedRef.current || crossing ? "ready" : "pulling");
     // One-shot haptic when the indicator crosses the trigger point so the
     // user feels the commitment threshold without having to watch the label.
     // Ref-guarded so rapid successive moves past the line don't re-fire.

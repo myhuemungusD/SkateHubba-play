@@ -158,6 +158,55 @@ describe("usePullToRefresh", () => {
     expect(result.current.offset).toBe(0);
   });
 
+  it("latches the ready state once crossed — pullback under threshold keeps the commit visual", () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderHook(() => usePullToRefresh(onRefresh));
+
+    act(() => {
+      result.current.containerProps.onPointerDown(pointerEvent({ clientY: 0 }));
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 300 }));
+    });
+    expect(result.current.state).toBe("ready");
+    expect(result.current.triggerReached).toBe(true);
+
+    // User pulls back to a smaller (but still positive) offset. The resistance
+    // formula for clientY=120 gives ~54px offset, which is below the 72px
+    // trigger distance. We intentionally keep state="ready" so the visual
+    // (label, color, arrow rotation) matches the commit that release will
+    // actually fire.
+    act(() => {
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 120 }));
+    });
+    expect(result.current.offset).toBeLessThan(72);
+    expect(result.current.state).toBe("ready");
+    expect(result.current.triggerReached).toBe(true);
+  });
+
+  it("clearing the gesture via upward drag resets state so a fresh pull starts in pulling", () => {
+    const { result } = renderHook(() => usePullToRefresh(vi.fn()));
+
+    act(() => {
+      result.current.containerProps.onPointerDown(pointerEvent({ clientY: 0 }));
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 300 }));
+    });
+    expect(result.current.state).toBe("ready");
+
+    // Upward drag (negative dy relative to start) cancels the commit — the
+    // user is scrolling, not refreshing. After this a subsequent downward
+    // pull must start fresh in "pulling".
+    act(() => {
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: -10 }));
+    });
+    expect(result.current.state).toBe("idle");
+    expect(result.current.triggerReached).toBe(false);
+
+    act(() => {
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 40 }));
+    });
+    expect(result.current.state).toBe("pulling");
+    expect(result.current.triggerReached).toBe(false);
+  });
+
   it("resets on pointer cancel", () => {
     const onRefresh = vi.fn();
     const { result } = renderHook(() => usePullToRefresh(onRefresh));
