@@ -79,8 +79,12 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): PullToR
     // two-finger scroll) would otherwise spuriously trigger the refresh.
     if (!e.isPrimary) return;
     // Only activate when the document is actually at the top — mid-scroll
-    // PTR would fight with normal vertical scrolling.
-    const scrollTop = typeof window !== "undefined" ? window.scrollY || document.documentElement.scrollTop || 0 : 0;
+    // PTR would fight with normal vertical scrolling. `scrollY` reads from
+    // the root scrolling element in all modern browsers; we fall through to
+    // `documentElement.scrollTop` for quirks-mode documents that still pin
+    // scroll position on <html> instead of window. No SSR guard needed —
+    // React pointer events only fire on a mounted browser DOM.
+    const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
     if (scrollTop > 0) return;
     startYRef.current = e.clientY;
   }, []);

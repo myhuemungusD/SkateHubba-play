@@ -73,6 +73,25 @@ describe("usePlayerDirectory", () => {
     expect(mockLoggerWarn).toHaveBeenCalled();
   });
 
+  it("coerces non-Error rejections to a string when the mount fetch fails", async () => {
+    // Some Firebase SDK paths throw strings instead of Error instances; the
+    // mount effect's catch handler must stringify them so the log stays
+    // searchable and the UI still falls back to an empty list.
+    mockGetPlayerDirectory.mockRejectedValue("permission-denied");
+
+    const { result } = renderHook(() => usePlayerDirectory("u1"));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.players).toEqual([]);
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      "player_directory_load_failed",
+      expect.objectContaining({ error: "permission-denied" }),
+    );
+  });
+
   it("ignores stale responses after unmount", async () => {
     let resolveFn!: (v: unknown[]) => void;
     mockGetPlayerDirectory.mockReturnValue(
@@ -121,6 +140,72 @@ describe("usePlayerDirectory", () => {
     });
 
     expect(result.current.players[0].uid).toBe("u3");
+  });
+
+  it("refresh() re-fetches the directory and updates players", async () => {
+    mockGetPlayerDirectory.mockResolvedValueOnce([mkProfile("u2", "first")]);
+
+    const { result } = renderHook(() => usePlayerDirectory("u1"));
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.players[0].username).toBe("first");
+
+    // New directory state after a blockade change on the server — the hook
+    // doesn't re-mount, so refresh() is the only way to pick it up.
+    mockGetPlayerDirectory.mockResolvedValueOnce([mkProfile("u2", "first"), mkProfile("u3", "second")]);
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.players).toHaveLength(2);
+    expect(result.current.players[1].username).toBe("second");
+  });
+
+  it("refresh() surfaces empty list and logs when the re-fetch rejects", async () => {
+    mockGetPlayerDirectory.mockResolvedValueOnce([mkProfile("u2", "first")]);
+
+    const { result } = renderHook(() => usePlayerDirectory("u1"));
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+    expect(result.current.players).toHaveLength(1);
+
+    // refresh() deliberately drops the stale-guard that protects the mount
+    // effect — the caller owns the lifecycle. On failure we log and empty
+    // out the list so the user isn't left staring at stale names.
+    mockGetPlayerDirectory.mockRejectedValueOnce(new Error("down"));
+    mockLoggerWarn.mockClear();
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(result.current.players).toEqual([]);
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      "player_directory_load_failed",
+      expect.objectContaining({ error: "down" }),
+    );
+  });
+
+  it("refresh() coerces non-Error rejections into a string for logging", async () => {
+    mockGetPlayerDirectory.mockResolvedValueOnce([]);
+    const { result } = renderHook(() => usePlayerDirectory("u1"));
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    mockGetPlayerDirectory.mockRejectedValueOnce("string-thrown");
+    mockLoggerWarn.mockClear();
+
+    await act(async () => {
+      await result.current.refresh();
+    });
+
+    expect(mockLoggerWarn).toHaveBeenCalledWith(
+      "player_directory_load_failed",
+      expect.objectContaining({ error: "string-thrown" }),
+    );
   });
 
   it("ignores stale rejections after viewerUid changes", async () => {

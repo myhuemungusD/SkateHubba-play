@@ -158,6 +158,41 @@ describe("usePullToRefresh", () => {
     expect(result.current.offset).toBe(0);
   });
 
+  it("ignores pointerMove events fired after the gesture has committed to a refresh", async () => {
+    // Hold the refresh unresolved so we stay in the committed window.
+    let resolveRefresh!: () => void;
+    const onRefresh = vi.fn().mockReturnValue(
+      new Promise<void>((r) => {
+        resolveRefresh = r;
+      }),
+    );
+    const { result } = renderHook(() => usePullToRefresh(onRefresh));
+
+    act(() => {
+      result.current.containerProps.onPointerDown(pointerEvent({ clientY: 0 }));
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 300 }));
+      result.current.containerProps.onPointerUp(pointerEvent());
+    });
+
+    // State is "refreshing"; any late pointermove (e.g. delayed synthetic
+    // event fired after release) should be ignored rather than re-positioning
+    // the indicator or stomping on the committed state.
+    expect(result.current.state).toBe("refreshing");
+    const committedOffset = result.current.offset;
+    act(() => {
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 40 }));
+    });
+    expect(result.current.state).toBe("refreshing");
+    expect(result.current.offset).toBe(committedOffset);
+
+    // Clean up so the hook resets for any downstream tests.
+    await act(async () => {
+      resolveRefresh();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  });
+
   it("latches the ready state once crossed — pullback under threshold keeps the commit visual", () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined);
     const { result } = renderHook(() => usePullToRefresh(onRefresh));
