@@ -1,5 +1,5 @@
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject, listAll } from "firebase/storage";
-import { requireStorage } from "../firebase";
+import { requireAuth, requireStorage } from "../firebase";
 import { analytics } from "./analytics";
 import { logger, metrics } from "./logger";
 
@@ -48,6 +48,13 @@ export async function uploadVideo(
   const contentType = ext === "mp4" ? "video/mp4" : "video/webm";
   const path = `games/${gameId}/turn-${turnNumber}/${role}.${ext}`;
   const storageRef = ref(requireStorage(), path);
+  // Bind the upload to the caller's UID — Storage rules verify
+  // metadata.uploaderUid == request.auth.uid so signed-in users cannot
+  // overwrite or delete each other's videos.
+  const uploaderUid = requireAuth().currentUser?.uid;
+  if (!uploaderUid) {
+    throw new Error("You must be signed in to upload a video.");
+  }
   const startTime = Date.now();
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -56,6 +63,11 @@ export async function uploadVideo(
         const task = uploadBytesResumable(storageRef, blob, {
           contentType,
           customMetadata: {
+            // Storage rules require uploaderUid == request.auth.uid on create
+            // and resource.metadata.uploaderUid == request.auth.uid on update/
+            // delete. Without this binding, any signed-in user could overwrite
+            // another player's video.
+            uploaderUid,
             gameId,
             turn: String(turnNumber),
             role,

@@ -30,7 +30,13 @@ vi.mock("firebase/storage", () => ({
   listAll: mockListAll,
 }));
 
-vi.mock("../../firebase");
+vi.mock("../../firebase", () => ({
+  // Storage upload now binds the file to the caller's UID via customMetadata
+  // so storage.rules can enforce uploaderUid == request.auth.uid. Tests must
+  // therefore expose a signed-in auth stub.
+  requireAuth: () => ({ currentUser: { uid: "test-uid" } }),
+  requireStorage: () => ({}),
+}));
 
 vi.mock("../analytics", () => ({
   trackEvent: vi.fn(),
@@ -79,6 +85,9 @@ describe("storage service", () => {
       expect(metadata.customMetadata.gameId).toBe("game1");
       expect(metadata.customMetadata.turn).toBe("2");
       expect(metadata.customMetadata.role).toBe("match");
+      // uploaderUid binding is the security-critical metadata field — storage
+      // rules reject create/update/delete unless this matches request.auth.uid.
+      expect(metadata.customMetadata.uploaderUid).toBe("test-uid");
     });
 
     it("calls onProgress callback during upload", async () => {
@@ -189,6 +198,20 @@ describe("storage service", () => {
 
       const blob = validBlob();
       await expect(uploadVideo("game1", 1, "set", blob, undefined, 0)).rejects.toThrow("Persistent failure");
+    });
+
+    it("rejects upload when no signed-in user is available", async () => {
+      // Re-mock the firebase module for this test only — currentUser undefined.
+      vi.doMock("../../firebase", () => ({
+        requireAuth: () => ({ currentUser: null }),
+        requireStorage: () => ({}),
+      }));
+      vi.resetModules();
+      const { uploadVideo: uploadVideoFresh } = await import("../storage");
+      const blob = validBlob();
+      await expect(uploadVideoFresh("game1", 1, "set", blob)).rejects.toThrow("must be signed in");
+      vi.doUnmock("../../firebase");
+      vi.resetModules();
     });
 
     it("rejects blobs that are too small (≤1 KB)", async () => {
