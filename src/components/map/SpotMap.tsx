@@ -489,7 +489,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProp
             <MapPinOff size={24} className="text-[#F97316]" />
           </div>
           <p className="text-[#CCC] text-sm mb-1">Map is temporarily unavailable.</p>
-          <p className="text-faint text-xs mb-5">Check back in a few minutes.</p>
+          <p className="text-dim text-xs mb-5">Check back in a few minutes.</p>
           <button
             type="button"
             onClick={() => (onRetry ? onRetry() : window.location.reload())}
@@ -534,7 +534,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProp
         >
           <div className="text-center px-6 max-w-xs">
             <p className="text-[#CCC] text-sm mb-1">The map is taking too long to load.</p>
-            <p className="text-faint text-xs mb-5">Check your connection and try again.</p>
+            <p className="text-dim text-xs mb-5">Check your connection and try again.</p>
             <button
               type="button"
               onClick={() => (onRetry ? onRetry() : window.location.reload())}

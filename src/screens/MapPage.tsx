@@ -5,15 +5,18 @@ import { analytics } from "../services/analytics";
 
 interface ErrorBoundaryState {
   hasError: boolean;
+  retryAttempted: boolean;
 }
 
 /** Error boundary specific to the map page — prevents a Mapbox crash from blanking the app.
  *  Recovery order: in-app reset (clears boundary + remounts SpotMap via the `onReset` callback)
- *  first; full-page reload only as the fallback when the in-app path keeps tripping. */
+ *  is always the primary action. The full-page reload option only surfaces after an in-app
+ *  retry has already been attempted and the boundary has tripped again — at that point the
+ *  hard reload is a genuine last resort, not the terminal CTA on first failure. */
 class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => void }, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false };
+  state: ErrorBoundaryState = { hasError: false, retryAttempted: false };
 
-  static getDerivedStateFromError(): ErrorBoundaryState {
+  static getDerivedStateFromError(): Pick<ErrorBoundaryState, "hasError"> {
     return { hasError: true };
   }
 
@@ -23,11 +26,12 @@ class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => 
 
   handleReset = (): void => {
     this.props.onReset?.();
-    this.setState({ hasError: false });
+    this.setState({ hasError: false, retryAttempted: true });
   };
 
   render() {
     if (this.state.hasError) {
+      const showReload = this.state.retryAttempted;
       return (
         <div
           role="alert"
@@ -35,8 +39,14 @@ class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => 
           style={{ height: "100dvh" }}
         >
           <div className="text-center px-6 max-w-xs">
-            <p className="text-[#CCC] text-sm mb-1">Something went wrong loading the map.</p>
-            <p className="text-faint text-xs mb-5">Try again — this usually fixes it.</p>
+            <p className="text-[#CCC] text-sm mb-1">
+              {showReload ? "The map still isn't loading." : "Something went wrong loading the map."}
+            </p>
+            <p className="text-dim text-xs mb-5">
+              {showReload
+                ? "Reloading the page may help if this keeps happening."
+                : "Try again — this usually fixes it."}
+            </p>
             <div className="flex flex-col items-stretch gap-2">
               <button
                 type="button"
@@ -46,13 +56,15 @@ class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => 
               >
                 Try again
               </button>
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="min-h-[44px] px-6 text-muted hover:text-white text-xs transition-colors"
-              >
-                Reload page
-              </button>
+              {showReload && (
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="min-h-[44px] px-6 text-dim hover:text-white text-xs transition-colors"
+                >
+                  Reload page
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -239,7 +239,7 @@ export function AuthScreen({
 
         <button
           type="button"
-          className="w-full font-body text-sm text-subtle text-center mt-5 cursor-pointer bg-transparent border-none transition-colors duration-300 hover:text-[#777]"
+          className="w-full font-body text-sm text-dim text-center mt-5 cursor-pointer bg-transparent border-none transition-colors duration-300 hover:text-white"
           onClick={onToggle}
         >
           {isSignup ? "Already have an account? " : "Need an account? "}

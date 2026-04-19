@@ -173,7 +173,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
         <a
           href="#demo"
           aria-label="Scroll to demo"
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-scroll-hint p-2 rounded-full text-white/30 hover:text-white/60 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-scroll-hint p-2 rounded-full text-white/60 hover:text-white/85 transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
           <svg
             width="20"
@@ -396,7 +396,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               className="h-6 w-auto select-none opacity-40"
               aria-hidden="true"
             />
-            <span className="font-body text-xs text-[#333]">For the love of the game.</span>
+            <span className="font-body text-xs text-[#888]">For the love of the game.</span>
           </div>
 
           {/* Social Links */}
@@ -405,7 +405,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               href="https://x.com/skatehubba_"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#444] hover:text-white/60 transition-colors duration-200"
+              className="text-[#888] hover:text-white transition-colors duration-200"
               aria-label="Follow on X"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -416,7 +416,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               href="https://www.instagram.com/skatehubba_app"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#444] hover:text-white/60 transition-colors duration-200"
+              className="text-[#888] hover:text-white transition-colors duration-200"
               aria-label="Follow on Instagram"
             >
               <svg
@@ -439,7 +439,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               href="https://www.facebook.com/profile.php?id=61578731058004"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-[#444] hover:text-white/60 transition-colors duration-200"
+              className="text-[#888] hover:text-white transition-colors duration-200"
               aria-label="Follow on Facebook"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
