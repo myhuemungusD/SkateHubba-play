@@ -145,6 +145,40 @@ describe("metrics", () => {
       expect.objectContaining({ message: "metric.account_deleted", data: { uid: hashUid("u1") } }),
     );
   });
+
+  it("signInAttempt emits the method with no uid", () => {
+    metrics.signInAttempt("email");
+    expect(addBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "metric.sign_in_attempt", data: { method: "email" } }),
+    );
+  });
+
+  it("signInFailure emits method + code", () => {
+    metrics.signInFailure("email", "auth/internal-error");
+    expect(addBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "metric.sign_in_failure",
+        data: { method: "email", code: "auth/internal-error" },
+      }),
+    );
+  });
+
+  it("signUpAttempt emits the method", () => {
+    metrics.signUpAttempt("google");
+    expect(addBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "metric.sign_up_attempt", data: { method: "google" } }),
+    );
+  });
+
+  it("signUpFailure emits method + code", () => {
+    metrics.signUpFailure("email", "auth/weak-password");
+    expect(addBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "metric.sign_up_failure",
+        data: { method: "email", code: "auth/weak-password" },
+      }),
+    );
+  });
 });
 
 describe("logger PII redaction", () => {

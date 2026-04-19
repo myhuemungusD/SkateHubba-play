@@ -59,6 +59,15 @@ export const analytics = {
   videoUploaded: (durationMs: number, sizeBytes: number) => trackEvent("video_uploaded", { durationMs, sizeBytes }),
   signUp: (method: string) => trackEvent("sign_up", { method }),
   signIn: (method: string) => trackEvent("sign_in", { method }),
+  // ── Auth funnel denominators for outage detection ─────────────────────
+  // Paired with signUp/signIn above, these let dashboards compute
+  // success-rate ratios and alert when the rate cliff-drops. Without the
+  // attempt counter we only see the numerator, so a 100% failure rate is
+  // indistinguishable from zero traffic.
+  signInAttempt: (method: string) => trackEvent("sign_in_attempt", { method }),
+  signInFailure: (method: string, code: string) => trackEvent("sign_in_failure", { method, code }),
+  signUpAttempt: (method: string) => trackEvent("sign_up_attempt", { method }),
+  signUpFailure: (method: string, code: string) => trackEvent("sign_up_failure", { method, code }),
   // ── Map funnel ────────────────────────────────────────────────────────
   /** Top of funnel — fires once per MapPage mount. */
   mapViewed: () => trackEvent("map_viewed"),

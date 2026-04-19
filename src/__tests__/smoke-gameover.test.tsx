@@ -95,6 +95,10 @@ vi.mock("../services/analytics", () => ({
     videoUploaded: vi.fn(),
     signUp: vi.fn(),
     signIn: vi.fn(),
+    signInAttempt: vi.fn(),
+    signInFailure: vi.fn(),
+    signUpAttempt: vi.fn(),
+    signUpFailure: vi.fn(),
   },
 }));
 vi.mock("@sentry/react", () => ({
