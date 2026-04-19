@@ -87,16 +87,16 @@ export function SpotDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-dvh bg-[#0A0A0A] flex items-center justify-center">
-        <div className="text-[#888] text-sm">Loading spot\u2026</div>
+      <div className="min-h-dvh bg-background flex items-center justify-center">
+        <div className="text-muted text-sm">Loading spot\u2026</div>
       </div>
     );
   }
 
   if (error || !spot) {
     return (
-      <div className="min-h-dvh bg-[#0A0A0A] flex flex-col items-center justify-center px-6">
-        <p className="text-[#888] text-sm mb-4">{error ?? "Spot not found"}</p>
+      <div className="min-h-dvh bg-background flex flex-col items-center justify-center px-6">
+        <p className="text-muted text-sm mb-4">{error ?? "Spot not found"}</p>
         <button
           type="button"
           onClick={() => navigate("/map")}
@@ -109,13 +109,13 @@ export function SpotDetailPage() {
   }
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0A] text-white">
+    <div className="min-h-dvh bg-background text-white">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-[#0A0A0A]/95 backdrop-blur border-b border-[#222] px-4 pt-safe pb-3 flex items-center gap-3">
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-[#222] px-4 pt-safe pb-3 flex items-center gap-3">
         <button
           type="button"
           onClick={() => navigate("/map")}
-          className="text-[#888] hover:text-white"
+          className="text-muted hover:text-white"
           aria-label="Back to map"
         >
           <ChevronLeft size={24} />
@@ -142,7 +142,7 @@ export function SpotDetailPage() {
         )}
 
         {/* Location */}
-        <div className="flex items-center gap-2 text-[#888] text-sm">
+        <div className="flex items-center gap-2 text-muted text-sm">
           <MapPin size={14} />
           <span>
             {spot.latitude.toFixed(4)}, {spot.longitude.toFixed(4)}
@@ -152,11 +152,11 @@ export function SpotDetailPage() {
         {/* Ratings */}
         <div className="flex items-center gap-6">
           <div>
-            <span className="text-xs text-[#888] block mb-1">Gnar Rating</span>
+            <span className="text-xs text-muted block mb-1">Gnar Rating</span>
             <GnarRating value={spot.gnarRating} />
           </div>
           <div>
-            <span className="text-xs text-[#888] block mb-1">Bust Risk</span>
+            <span className="text-xs text-muted block mb-1">Bust Risk</span>
             <BustRisk value={spot.bustRisk} />
           </div>
         </div>
@@ -167,10 +167,13 @@ export function SpotDetailPage() {
         {/* Obstacles */}
         {spot.obstacles.length > 0 && (
           <div>
-            <h3 className="text-xs text-[#888] mb-2">Obstacles</h3>
+            <h3 className="text-xs text-muted mb-2">Obstacles</h3>
             <div className="flex flex-wrap gap-2">
               {spot.obstacles.map((o) => (
-                <span key={o} className="px-3 py-1 text-xs rounded-full bg-[#1A1A1A] border border-[#333] text-[#CCC]">
+                <span
+                  key={o}
+                  className="px-3 py-1 text-xs rounded-full bg-surface-alt border border-[#333] text-[#CCC]"
+                >
                   {o.replace("_", " ")}
                 </span>
               ))}
@@ -200,8 +203,8 @@ export function SpotDetailPage() {
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder="Add a comment\u2026"
-              className="flex-1 bg-[#1A1A1A] border border-[#333] rounded-lg px-3 py-2 text-white text-sm
-                         placeholder:text-[#555] focus:outline-none focus:border-[#F97316]"
+              className="flex-1 bg-surface-alt border border-[#333] rounded-lg px-3 py-2 text-white text-sm
+                         placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
             />
             <button
               type="button"
@@ -219,14 +222,14 @@ export function SpotDetailPage() {
 
           {/* Comment list */}
           {comments.length === 0 ? (
-            <p className="text-[#555] text-sm">No comments yet. Be the first!</p>
+            <p className="text-subtle text-sm">No comments yet. Be the first!</p>
           ) : (
             <div className="space-y-3">
               {comments.map((c) => (
-                <div key={c.id} className="bg-[#1A1A1A] rounded-lg p-3">
+                <div key={c.id} className="bg-surface-alt rounded-lg p-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-[#888]">{c.userId.slice(0, 8)}\u2026</span>
-                    <span className="text-xs text-[#555]">{new Date(c.createdAt).toLocaleDateString()}</span>
+                    <span className="text-xs text-muted">{c.userId.slice(0, 8)}\u2026</span>
+                    <span className="text-xs text-subtle">{new Date(c.createdAt).toLocaleDateString()}</span>
                   </div>
                   <p className="text-sm text-[#CCC]">{c.content}</p>
                 </div>

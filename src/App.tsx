@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, lazy, Suspense } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -17,28 +17,33 @@ import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
+// Eager: first-paint / onboarding path (Landing, AgeGate, AuthScreen, ProfileSetup)
+// plus Lobby since it's the primary destination for returning authed users.
 import { Landing } from "./screens/Landing";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ProfileSetup } from "./screens/ProfileSetup";
 import { Lobby } from "./screens/Lobby";
-import { ChallengeScreen } from "./screens/ChallengeScreen";
-import { GamePlayScreen } from "./screens/GamePlayScreen";
-import { GameOverScreen } from "./screens/GameOverScreen";
-import { PlayerProfileScreen } from "./screens/PlayerProfileScreen";
-import { PrivacyPolicy } from "./screens/PrivacyPolicy";
-import { TermsOfService } from "./screens/TermsOfService";
-import { DataDeletion } from "./screens/DataDeletion";
 import { AgeGate } from "./screens/AgeGate";
-import { NotFound } from "./screens/NotFound";
-import { MapPage } from "./screens/MapPage";
-import { SpotDetailPage } from "./screens/SpotDetailPage";
+// Lazy: non-critical / heavy secondary screens — code-split into separate chunks.
+const ChallengeScreen = lazy(() => import("./screens/ChallengeScreen").then((m) => ({ default: m.ChallengeScreen })));
+const GamePlayScreen = lazy(() => import("./screens/GamePlayScreen").then((m) => ({ default: m.GamePlayScreen })));
+const GameOverScreen = lazy(() => import("./screens/GameOverScreen").then((m) => ({ default: m.GameOverScreen })));
+const PlayerProfileScreen = lazy(() =>
+  import("./screens/PlayerProfileScreen").then((m) => ({ default: m.PlayerProfileScreen })),
+);
+const PrivacyPolicy = lazy(() => import("./screens/PrivacyPolicy").then((m) => ({ default: m.PrivacyPolicy })));
+const TermsOfService = lazy(() => import("./screens/TermsOfService").then((m) => ({ default: m.TermsOfService })));
+const DataDeletion = lazy(() => import("./screens/DataDeletion").then((m) => ({ default: m.DataDeletion })));
+const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
+const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
+const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
+    <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-background">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-4">SKATEHUBBA™</span>
       <h1 className="font-display text-3xl text-white mb-2">Something went wrong</h1>
-      <p className="font-body text-sm text-[#888] mb-6 text-center max-w-sm">
+      <p className="font-body text-sm text-muted mb-6 text-center max-w-sm">
         This screen crashed. Your game data is safe.
       </p>
       <button
@@ -57,7 +62,7 @@ function FirebaseMissing() {
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-2">SKATEHUBBA™</span>
       <h2 className="font-display text-3xl text-white mt-4">Setup Required</h2>
-      <p className="font-body text-base text-[#888] max-w-sm mt-4 leading-relaxed">
+      <p className="font-body text-base text-muted max-w-sm mt-4 leading-relaxed">
         Firebase environment variables are missing. Add <code className="text-brand-orange">VITE_FIREBASE_*</code>{" "}
         variables in your Vercel Dashboard under Project Settings → Environment Variables.
       </p>
@@ -171,279 +176,281 @@ function AppRoutes() {
         Skip to main content
       </a>
       <main id="main-content">
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <Landing
-                onGo={(m) => {
-                  if (m === "signup") {
-                    nav.setAuthMode("signup");
-                    nav.setScreen("agegate");
-                  } else {
-                    nav.setAuthMode(m);
-                    nav.setScreen("auth");
-                  }
-                }}
-                onGoogle={auth.handleGoogleSignIn}
-                googleLoading={auth.googleLoading}
-                onNav={nav.setScreen}
-              />
-            }
-          />
-
-          <Route
-            path="/age-gate"
-            element={
-              <AgeGate
-                onVerified={(dob, parentalConsent) => {
-                  nav.setAgeGateResult(dob, parentalConsent);
-                  nav.setScreen("auth");
-                }}
-                onBack={() => nav.setScreen("landing")}
-                onNav={nav.setScreen}
-              />
-            }
-          />
-
-          <Route
-            path="/auth"
-            element={
-              <AuthScreen
-                key={nav.authMode}
-                mode={nav.authMode}
-                onDone={() => {
-                  /* auth state change triggers auto-navigate */
-                }}
-                onToggle={() => {
-                  auth.setGoogleError("");
-                  if (nav.authMode === "signin") {
-                    // Switching to signup — require age gate if not already completed
-                    nav.setAuthMode("signup");
-                    if (!nav.ageGateDob) {
+        <Suspense fallback={<Spinner />}>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <Landing
+                  onGo={(m) => {
+                    if (m === "signup") {
+                      nav.setAuthMode("signup");
                       nav.setScreen("agegate");
+                    } else {
+                      nav.setAuthMode(m);
+                      nav.setScreen("auth");
                     }
-                    return;
-                  }
-                  nav.setAuthMode("signin");
-                }}
-                onGoogle={auth.handleGoogleSignIn}
-                googleLoading={auth.googleLoading}
-                googleError={auth.googleError}
-                onGoogleErrorDismiss={() => auth.setGoogleError("")}
-              />
-            }
-          />
-
-          <Route
-            path="/profile"
-            element={
-              auth.user ? (
-                <ProfileSetup
-                  uid={auth.user.uid}
-                  emailVerified={auth.user.emailVerified}
-                  displayName={auth.user.displayName}
-                  dob={nav.ageGateDob}
-                  parentalConsent={nav.ageGateParentalConsent}
-                  onDone={async (p) => {
-                    auth.setActiveProfile(p);
-                    nav.setScreen("lobby");
-                    await auth.refreshProfile();
                   }}
+                  onGoogle={auth.handleGoogleSignIn}
+                  googleLoading={auth.googleLoading}
+                  onNav={nav.setScreen}
                 />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
+              }
+            />
 
-          <Route
-            path="/lobby"
-            element={
-              auth.activeProfile ? (
-                <Lobby
-                  profile={auth.activeProfile}
-                  games={game.games}
-                  user={auth.user}
-                  onChallenge={() => {
-                    setChallengeTarget("");
-                    nav.setScreen("challenge");
+            <Route
+              path="/age-gate"
+              element={
+                <AgeGate
+                  onVerified={(dob, parentalConsent) => {
+                    nav.setAgeGateResult(dob, parentalConsent);
+                    nav.setScreen("auth");
                   }}
-                  onChallengeUser={(username: string) => {
-                    directChallenge(username);
+                  onBack={() => nav.setScreen("landing")}
+                  onNav={nav.setScreen}
+                />
+              }
+            />
+
+            <Route
+              path="/auth"
+              element={
+                <AuthScreen
+                  key={nav.authMode}
+                  mode={nav.authMode}
+                  onDone={() => {
+                    /* auth state change triggers auto-navigate */
                   }}
-                  onOpenGame={game.openGame}
-                  onSignOut={auth.handleSignOut}
-                  onDeleteAccount={auth.handleDeleteAccount}
-                  onDownloadData={auth.handleDownloadData}
-                  onViewRecord={() => nav.setScreen("record")}
-                  hasMoreGames={game.hasMoreGames}
-                  onLoadMore={game.loadMoreGames}
-                  gamesLoading={game.gamesLoading}
-                  onViewPlayer={nav.navigateToPlayer}
+                  onToggle={() => {
+                    auth.setGoogleError("");
+                    if (nav.authMode === "signin") {
+                      // Switching to signup — require age gate if not already completed
+                      nav.setAuthMode("signup");
+                      if (!nav.ageGateDob) {
+                        nav.setScreen("agegate");
+                      }
+                      return;
+                    }
+                    nav.setAuthMode("signin");
+                  }}
+                  onGoogle={auth.handleGoogleSignIn}
+                  googleLoading={auth.googleLoading}
+                  googleError={auth.googleError}
+                  onGoogleErrorDismiss={() => auth.setGoogleError("")}
                 />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
+              }
+            />
 
-          <Route
-            path="/challenge"
-            element={
-              auth.activeProfile && auth.user?.emailVerified ? (
-                <ChallengeScreen
-                  profile={auth.activeProfile}
-                  onSend={game.startChallenge}
-                  onBack={() => nav.setScreen("lobby")}
-                  initialOpponent={challengeTarget}
-                  onViewPlayer={nav.navigateToPlayer}
-                  blockedUids={blockedUids}
-                />
-              ) : (
-                <Navigate to="/lobby" replace />
-              )
-            }
-          />
-
-          <Route
-            path="/game"
-            element={
-              game.activeGame && auth.activeProfile ? (
-                <ErrorBoundary
-                  fallback={
-                    <ScreenErrorFallback
-                      onBack={() => {
-                        game.setActiveGame(null);
-                        nav.setScreen("lobby");
-                      }}
-                    />
-                  }
-                >
-                  <GamePlayScreen
-                    key={game.activeGame.turnNumber}
-                    game={game.activeGame}
-                    profile={auth.activeProfile}
-                    onBack={() => {
-                      game.setActiveGame(null);
+            <Route
+              path="/profile"
+              element={
+                auth.user ? (
+                  <ProfileSetup
+                    uid={auth.user.uid}
+                    emailVerified={auth.user.emailVerified}
+                    displayName={auth.user.displayName}
+                    dob={nav.ageGateDob}
+                    parentalConsent={nav.ageGateParentalConsent}
+                    onDone={async (p) => {
+                      auth.setActiveProfile(p);
                       nav.setScreen("lobby");
+                      await auth.refreshProfile();
                     }}
                   />
-                </ErrorBoundary>
-              ) : (
-                <Navigate to="/lobby" replace />
-              )
-            }
-          />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/gameover"
-            element={
-              game.activeGame && auth.activeProfile && auth.user ? (
-                <ErrorBoundary
-                  fallback={
-                    <ScreenErrorFallback
-                      onBack={() => {
-                        game.setActiveGame(null);
-                        nav.setScreen("lobby");
-                      }}
-                    />
-                  }
-                >
-                  <GameOverScreen
-                    game={game.activeGame}
+            <Route
+              path="/lobby"
+              element={
+                auth.activeProfile ? (
+                  <Lobby
                     profile={auth.activeProfile}
-                    onRematch={
-                      auth.user.emailVerified
-                        ? async (): Promise<void> => {
-                            if (!game.activeGame || !auth.user) return;
-                            const opponentUid =
-                              game.activeGame.player1Uid === auth.user.uid
-                                ? game.activeGame.player2Uid
-                                : game.activeGame.player1Uid;
-                            const opponentName =
-                              game.activeGame.player1Uid === auth.user.uid
-                                ? game.activeGame.player2Username
-                                : game.activeGame.player1Username;
-                            await game.startChallenge(opponentUid, opponentName);
-                          }
-                        : undefined
-                    }
-                    onBack={() => {
-                      game.setActiveGame(null);
-                      nav.setScreen("lobby");
+                    games={game.games}
+                    user={auth.user}
+                    onChallenge={() => {
+                      setChallengeTarget("");
+                      nav.setScreen("challenge");
                     }}
+                    onChallengeUser={(username: string) => {
+                      directChallenge(username);
+                    }}
+                    onOpenGame={game.openGame}
+                    onSignOut={auth.handleSignOut}
+                    onDeleteAccount={auth.handleDeleteAccount}
+                    onDownloadData={auth.handleDownloadData}
+                    onViewRecord={() => nav.setScreen("record")}
+                    hasMoreGames={game.hasMoreGames}
+                    onLoadMore={game.loadMoreGames}
+                    gamesLoading={game.gamesLoading}
                     onViewPlayer={nav.navigateToPlayer}
                   />
-                </ErrorBoundary>
-              ) : (
-                <Navigate to="/lobby" replace />
-              )
-            }
-          />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/record"
-            element={
-              auth.activeProfile ? (
-                <PlayerProfileScreen
-                  viewedUid={auth.activeProfile.uid}
-                  currentUserProfile={auth.activeProfile}
-                  ownGames={game.games}
-                  isOwnProfile={true}
-                  onOpenGame={game.openGame}
-                  onBack={() => nav.setScreen("lobby")}
-                  onViewPlayer={nav.navigateToPlayer}
-                />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
+            <Route
+              path="/challenge"
+              element={
+                auth.activeProfile && auth.user?.emailVerified ? (
+                  <ChallengeScreen
+                    profile={auth.activeProfile}
+                    onSend={game.startChallenge}
+                    onBack={() => nav.setScreen("lobby")}
+                    initialOpponent={challengeTarget}
+                    onViewPlayer={nav.navigateToPlayer}
+                    blockedUids={blockedUids}
+                  />
+                ) : (
+                  <Navigate to="/lobby" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/player/:uid"
-            element={
-              auth.activeProfile ? (
-                <PlayerProfileRoute
-                  currentUserProfile={auth.activeProfile}
-                  ownGames={game.games}
-                  onOpenGame={game.openGame}
-                  onBack={() => nav.setScreen("lobby")}
-                  onChallenge={(_uid, username) => directChallenge(username)}
-                  onViewPlayer={nav.navigateToPlayer}
-                  blockedUids={blockedUids}
-                />
-              ) : (
-                <Navigate to="/" replace />
-              )
-            }
-          />
+            <Route
+              path="/game"
+              element={
+                game.activeGame && auth.activeProfile ? (
+                  <ErrorBoundary
+                    fallback={
+                      <ScreenErrorFallback
+                        onBack={() => {
+                          game.setActiveGame(null);
+                          nav.setScreen("lobby");
+                        }}
+                      />
+                    }
+                  >
+                    <GamePlayScreen
+                      key={game.activeGame.turnNumber}
+                      game={game.activeGame}
+                      profile={auth.activeProfile}
+                      onBack={() => {
+                        game.setActiveGame(null);
+                        nav.setScreen("lobby");
+                      }}
+                    />
+                  </ErrorBoundary>
+                ) : (
+                  <Navigate to="/lobby" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/privacy"
-            element={<PrivacyPolicy onBack={() => nav.setScreen("landing")} onNav={nav.setScreen} />}
-          />
+            <Route
+              path="/gameover"
+              element={
+                game.activeGame && auth.activeProfile && auth.user ? (
+                  <ErrorBoundary
+                    fallback={
+                      <ScreenErrorFallback
+                        onBack={() => {
+                          game.setActiveGame(null);
+                          nav.setScreen("lobby");
+                        }}
+                      />
+                    }
+                  >
+                    <GameOverScreen
+                      game={game.activeGame}
+                      profile={auth.activeProfile}
+                      onRematch={
+                        auth.user.emailVerified
+                          ? async (): Promise<void> => {
+                              if (!game.activeGame || !auth.user) return;
+                              const opponentUid =
+                                game.activeGame.player1Uid === auth.user.uid
+                                  ? game.activeGame.player2Uid
+                                  : game.activeGame.player1Uid;
+                              const opponentName =
+                                game.activeGame.player1Uid === auth.user.uid
+                                  ? game.activeGame.player2Username
+                                  : game.activeGame.player1Username;
+                              await game.startChallenge(opponentUid, opponentName);
+                            }
+                          : undefined
+                      }
+                      onBack={() => {
+                        game.setActiveGame(null);
+                        nav.setScreen("lobby");
+                      }}
+                      onViewPlayer={nav.navigateToPlayer}
+                    />
+                  </ErrorBoundary>
+                ) : (
+                  <Navigate to="/lobby" replace />
+                )
+              }
+            />
 
-          <Route path="/terms" element={<TermsOfService onBack={() => nav.setScreen("landing")} />} />
+            <Route
+              path="/record"
+              element={
+                auth.activeProfile ? (
+                  <PlayerProfileScreen
+                    viewedUid={auth.activeProfile.uid}
+                    currentUserProfile={auth.activeProfile}
+                    ownGames={game.games}
+                    isOwnProfile={true}
+                    onOpenGame={game.openGame}
+                    onBack={() => nav.setScreen("lobby")}
+                    onViewPlayer={nav.navigateToPlayer}
+                  />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
 
-          <Route
-            path="/data-deletion"
-            element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
-          />
+            <Route
+              path="/player/:uid"
+              element={
+                auth.activeProfile ? (
+                  <PlayerProfileRoute
+                    currentUserProfile={auth.activeProfile}
+                    ownGames={game.games}
+                    onOpenGame={game.openGame}
+                    onBack={() => nav.setScreen("lobby")}
+                    onChallenge={(_uid, username) => directChallenge(username)}
+                    onViewPlayer={nav.navigateToPlayer}
+                    blockedUids={blockedUids}
+                  />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
 
-          <Route path="/map" element={<MapPage />} />
-          <Route path="/spots/:id" element={<SpotDetailPage />} />
+            <Route
+              path="/privacy"
+              element={<PrivacyPolicy onBack={() => nav.setScreen("landing")} onNav={nav.setScreen} />}
+            />
 
-          {/* /feed used to live as its own route + tab — it's now embedded in
+            <Route path="/terms" element={<TermsOfService onBack={() => nav.setScreen("landing")} />} />
+
+            <Route
+              path="/data-deletion"
+              element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
+            />
+
+            <Route path="/map" element={<MapPage />} />
+            <Route path="/spots/:id" element={<SpotDetailPage />} />
+
+            {/* /feed used to live as its own route + tab — it's now embedded in
               the lobby. Redirect lingering deep-links so old shares still land. */}
-          <Route path="/feed" element={<Navigate to="/lobby" replace />} />
+            <Route path="/feed" element={<Navigate to="/lobby" replace />} />
 
-          <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />
+            <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />
 
-          {/* Catch-all: redirect unknown paths to 404 */}
-          <Route path="*" element={<Navigate to="/404" replace />} />
-        </Routes>
+            {/* Catch-all: redirect unknown paths to 404 */}
+            <Route path="*" element={<Navigate to="/404" replace />} />
+          </Routes>
+        </Suspense>
       </main>
 
       <BottomNav />

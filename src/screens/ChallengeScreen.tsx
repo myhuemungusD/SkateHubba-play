@@ -176,7 +176,7 @@ export function ChallengeScreen({
   };
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0A]/80">
+    <div className="min-h-dvh bg-background/80">
       {/* Header */}
       <div className="px-5 pt-safe pb-4 border-b border-white/[0.04] glass flex justify-between items-center mb-6">
         <button
@@ -199,7 +199,7 @@ export function ChallengeScreen({
 
       <div className="max-w-md mx-auto px-6">
         <h1 className="font-display text-fluid-4xl text-white mb-2">Challenge</h1>
-        <p className="font-body text-sm text-[#888] mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
+        <p className="font-body text-sm text-muted mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 
         <form
           onSubmit={(e) => {

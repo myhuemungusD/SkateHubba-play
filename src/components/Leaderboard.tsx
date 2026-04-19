@@ -74,8 +74,8 @@ export function Leaderboard({
           <span className="text-2xl mb-2 opacity-40" aria-hidden="true">
             🏆
           </span>
-          <p className="font-body text-xs text-[#666]">No ranked players yet</p>
-          <p className="font-body text-[11px] text-[#555] mt-0.5">Complete a game to appear on the leaderboard</p>
+          <p className="font-body text-xs text-faint">No ranked players yet</p>
+          <p className="font-body text-[11px] text-subtle mt-0.5">Complete a game to appear on the leaderboard</p>
         </div>
       </div>
     );
@@ -118,7 +118,7 @@ export function Leaderboard({
                   {rankColor ? (
                     <span className="drop-shadow-[0_0_4px_rgba(255,215,0,0.3)]">{i + 1}</span>
                   ) : (
-                    <span className="text-[#555]">{i + 1}</span>
+                    <span className="text-subtle">{i + 1}</span>
                   )}
                 </span>
 
@@ -167,7 +167,7 @@ export function Leaderboard({
                   <div className="flex items-center gap-2 mt-1">
                     <span className="font-body text-[11px] text-brand-green">{wins}W</span>
                     <span className="font-body text-[11px] text-brand-red">{losses}L</span>
-                    <span className="font-body text-[11px] text-[#666]">{winRate}%</span>
+                    <span className="font-body text-[11px] text-faint">{winRate}%</span>
                   </div>
                 </div>
               </div>
@@ -189,7 +189,7 @@ export function Leaderboard({
 
       {/* Show current user's rank if they're not in the visible list or for quick reference */}
       {currentUserRank >= 0 && ranked.length > 5 && (
-        <p className="font-body text-[11px] text-[#888] text-center mt-3">
+        <p className="font-body text-[11px] text-muted text-center mt-3">
           You are ranked <span className="text-brand-orange font-display">#{currentUserRank + 1}</span> of{" "}
           {ranked.length}
         </p>

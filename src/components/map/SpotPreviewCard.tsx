@@ -58,7 +58,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
 
       {/* Card */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-50 bg-[#1A1A1A] rounded-t-2xl p-4 pb-6 shadow-2xl
+        className="fixed bottom-0 left-0 right-0 z-50 bg-surface-alt rounded-t-2xl p-4 pb-6 shadow-2xl
                    transform transition-transform duration-250 ease-out translate-y-0"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
@@ -72,7 +72,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 text-[#888] hover:text-white transition-colors"
+          className="absolute top-4 right-4 text-muted hover:text-white transition-colors"
           aria-label="Close"
         >
           <X size={20} />
@@ -84,7 +84,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
               to be". We render a dimmed placeholder instead of a broken-image
               icon or an empty frame. */}
           {spot.photoUrls.length > 0 && (
-            <div className="w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-[#0A0A0A] border border-[#2A2A2A] flex items-center justify-center">
+            <div className="w-20 h-20 flex-shrink-0 rounded-lg overflow-hidden bg-background border border-border flex items-center justify-center">
               {hasPhoto ? (
                 <img
                   src={spot.photoUrls[0]}
@@ -96,7 +96,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
                 />
               ) : (
                 <div
-                  className="flex flex-col items-center justify-center text-[#555]"
+                  className="flex flex-col items-center justify-center text-subtle"
                   role="img"
                   aria-label={`Photo unavailable for ${spot.name}`}
                 >
@@ -131,11 +131,11 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
             {/* Ratings */}
             <div className="flex items-center gap-3 mt-1">
               <div className="flex items-center gap-1">
-                <span className="text-xs text-[#888]">Gnar</span>
+                <span className="text-xs text-muted">Gnar</span>
                 <GnarRating value={spot.gnarRating} size="sm" />
               </div>
               <div className="flex items-center gap-1">
-                <span className="text-xs text-[#888]">Bust</span>
+                <span className="text-xs text-muted">Bust</span>
                 <BustRisk value={spot.bustRisk} size="sm" />
               </div>
             </div>
@@ -149,7 +149,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
                   </span>
                 ))}
                 {hiddenCount > 0 && (
-                  <span className="px-2 py-0.5 text-xs rounded-full bg-[#333] text-[#888]">+{hiddenCount} more</span>
+                  <span className="px-2 py-0.5 text-xs rounded-full bg-[#333] text-muted">+{hiddenCount} more</span>
                 )}
               </div>
             )}
@@ -175,7 +175,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
           <button
             type="button"
             onClick={() => navigate(`/spots/${spot.id}`)}
-            className="py-2.5 rounded-xl bg-[#1A1A1A] border border-[#333] text-[#CCC]
+            className="py-2.5 rounded-xl bg-surface-alt border border-[#333] text-[#CCC]
                        font-semibold text-sm hover:bg-[#222] hover:border-[#444] transition-colors"
           >
             View Spot
@@ -185,7 +185,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
             target="_blank"
             rel="noopener noreferrer"
             aria-label={`Get directions to ${spot.name}`}
-            className="py-2.5 rounded-xl bg-[#1A1A1A] border border-[#333] text-[#CCC]
+            className="py-2.5 rounded-xl bg-surface-alt border border-[#333] text-[#CCC]
                        font-semibold text-sm hover:bg-[#222] hover:border-[#444] transition-colors
                        flex items-center justify-center gap-1.5"
           >

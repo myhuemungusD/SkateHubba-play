@@ -108,7 +108,7 @@ export function AuthScreen({
       <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in">
         <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-4" aria-hidden="true" />
         <h2 className="font-display text-fluid-3xl text-white mb-1">{isSignup ? "Create Account" : "Welcome Back"}</h2>
-        <p className="font-body text-sm text-[#888] mb-7">
+        <p className="font-body text-sm text-muted mb-7">
           {isSignup ? "Join the crew. It's free." : "Sign in to continue your games."}
         </p>
 
@@ -116,7 +116,7 @@ export function AuthScreen({
 
         <div className="flex items-center gap-3 my-5">
           <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-          <span className="font-body text-xs text-[#444]">or continue with email</span>
+          <span className="font-body text-xs text-subtle">or continue with email</span>
           <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
         </div>
 
@@ -230,7 +230,7 @@ export function AuthScreen({
         {!isSignup && !googleLoading && (
           <button
             type="button"
-            className="w-full font-body text-xs text-[#555] text-center mt-3 cursor-pointer hover:text-white transition-colors duration-300 bg-transparent border-none"
+            className="w-full font-body text-xs text-subtle text-center mt-3 cursor-pointer hover:text-white transition-colors duration-300 bg-transparent border-none"
             onClick={handleReset}
           >
             Forgot password?
@@ -239,7 +239,7 @@ export function AuthScreen({
 
         <button
           type="button"
-          className="w-full font-body text-sm text-[#999] text-center mt-5 cursor-pointer bg-transparent border-none transition-colors duration-300 hover:text-white"
+          className="w-full font-body text-sm text-dim text-center mt-5 cursor-pointer bg-transparent border-none transition-colors duration-300 hover:text-white"
           onClick={onToggle}
         >
           {isSignup ? "Already have an account? " : "Need an account? "}
