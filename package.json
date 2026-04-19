@@ -13,7 +13,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:rules": "npx firebase-tools emulators:exec --only firestore --project demo-skatehubba-rules 'vitest run --config rules-tests/vitest.config.ts'",
+    "test:rules": "npx firebase-tools emulators:exec --only firestore,storage --project demo-skatehubba-rules 'vitest run --config rules-tests/vitest.config.ts'",
     "test:e2e": "npx firebase-tools emulators:exec --only auth,firestore,storage --project demo-skatehubba 'npx playwright test'",
     "test:e2e:ui": "npx firebase-tools emulators:exec --only auth,firestore,storage --project demo-skatehubba 'npx playwright test --ui'",
     "emulators": "npx firebase-tools emulators:start --only auth,firestore,storage --project demo-skatehubba",
