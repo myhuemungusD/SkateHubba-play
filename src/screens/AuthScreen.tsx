@@ -131,21 +131,26 @@ export function AuthScreen({
         >
           <Field
             label="Email"
+            name="email"
             value={email}
             onChange={setEmail}
             placeholder="you@email.com"
             icon="@"
             type="email"
             autoComplete="email"
+            inputMode="email"
+            enterKeyHint="next"
           />
           <Field
             label="Password"
+            name="password"
             value={password}
             onChange={setPassword}
             placeholder="••••••••"
             icon="🔒"
             type="password"
             autoComplete={isSignup ? "new-password" : "current-password"}
+            enterKeyHint={isSignup ? "next" : "go"}
           />
           {isSignup &&
             password.length > 0 &&
@@ -182,12 +187,14 @@ export function AuthScreen({
           {isSignup && (
             <Field
               label="Confirm"
+              name="confirm-password"
               value={confirm}
               onChange={setConfirm}
               placeholder="••••••••"
               icon="🔒"
               type="password"
               autoComplete="new-password"
+              enterKeyHint="go"
             />
           )}
 
@@ -230,7 +237,7 @@ export function AuthScreen({
         {!isSignup && !googleLoading && (
           <button
             type="button"
-            className="w-full font-body text-xs text-subtle text-center mt-3 cursor-pointer hover:text-white transition-colors duration-300 bg-transparent border-none"
+            className="w-full touch-target font-body text-xs text-subtle text-center mt-1 cursor-pointer hover:text-white transition-colors duration-300 bg-transparent border-none rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             onClick={handleReset}
           >
             Forgot password?
@@ -239,7 +246,7 @@ export function AuthScreen({
 
         <button
           type="button"
-          className="w-full font-body text-sm text-dim text-center mt-5 cursor-pointer bg-transparent border-none transition-colors duration-300 hover:text-white"
+          className="w-full touch-target font-body text-sm text-dim text-center mt-3 cursor-pointer bg-transparent border-none transition-colors duration-300 hover:text-white rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           onClick={onToggle}
         >
           {isSignup ? "Already have an account? " : "Need an account? "}

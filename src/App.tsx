@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, lazy, Suspense } from "react";
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import { useState, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react";
+import { Routes, Route, Navigate, useParams, useNavigate } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
@@ -23,8 +23,16 @@ import { Landing } from "./screens/Landing";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ProfileSetup } from "./screens/ProfileSetup";
 import { Lobby } from "./screens/Lobby";
+// AgeGate stays eager — it's in the signup path and the first-paint bundle
+// already carries the auth flow, so a split here would just add a spinner
+// flash on an already-short critical route.
 import { AgeGate } from "./screens/AgeGate";
-// Lazy: non-critical / heavy secondary screens — code-split into separate chunks.
+// Lazy: non-critical / heavy secondary screens — code-split into separate
+// chunks so the first-paint bundle doesn't pay for Mapbox (MapPage +
+// SpotDetailPage pull ~400KB of tiles/SDK), the gameplay surfaces only an
+// authed user needs, the static legal pages, or the Settings screen. Suspense
+// falls back to the same full-screen Spinner we use during auth hydration so
+// the transition feels uniform.
 const ChallengeScreen = lazy(() => import("./screens/ChallengeScreen").then((m) => ({ default: m.ChallengeScreen })));
 const GamePlayScreen = lazy(() => import("./screens/GamePlayScreen").then((m) => ({ default: m.GamePlayScreen })));
 const GameOverScreen = lazy(() => import("./screens/GameOverScreen").then((m) => ({ default: m.GameOverScreen })));
@@ -37,6 +45,7 @@ const DataDeletion = lazy(() => import("./screens/DataDeletion").then((m) => ({ 
 const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
+const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -76,13 +85,24 @@ function AppScreens() {
   if (auth.loading) return <Spinner />;
 
   return (
-    <NotificationProvider uid={auth.user?.uid ?? null}>
+    <>
       <OfflineBanner />
       <GameNotificationWatcher />
       <AppRoutes />
       <ToastContainer />
-    </NotificationProvider>
+    </>
   );
+}
+
+/**
+ * Bridges auth state into NotificationProvider so GameProvider (which lives
+ * below notifications in the tree) can fire toasts — e.g. "Challenge sent to
+ * @X". Keeps the existing uid-scoped persistence in NotificationProvider
+ * intact; we just read auth once here and hand it down.
+ */
+function NotificationAuthBridge({ children }: { children: ReactNode }) {
+  const auth = useAuthContext();
+  return <NotificationProvider uid={auth.user?.uid ?? null}>{children}</NotificationProvider>;
 }
 
 /** Wrapper that extracts :uid from URL params and renders PlayerProfileScreen. */
@@ -127,6 +147,7 @@ function PlayerProfileRoute({
 function AppRoutes() {
   const auth = useAuthContext();
   const nav = useNavigationContext();
+  const navigate = useNavigate();
   const game = useGameContext();
   const blockedUids = useBlockedUsers(auth.user?.uid ?? "");
   const analyticsAllowed = useAnalyticsConsent();
@@ -283,6 +304,7 @@ function AppRoutes() {
                     onDeleteAccount={auth.handleDeleteAccount}
                     onDownloadData={auth.handleDownloadData}
                     onViewRecord={() => nav.setScreen("record")}
+                    onOpenSettings={() => navigate("/settings")}
                     hasMoreGames={game.hasMoreGames}
                     onLoadMore={game.loadMoreGames}
                     gamesLoading={game.gamesLoading}
@@ -438,6 +460,17 @@ function AppRoutes() {
               element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
             />
 
+            <Route
+              path="/settings"
+              element={
+                auth.activeProfile ? (
+                  <Settings profile={auth.activeProfile} onBack={() => nav.setScreen("lobby")} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+
             <Route path="/map" element={<MapPage />} />
             <Route path="/spots/:id" element={<SpotDetailPage />} />
 
@@ -471,9 +504,11 @@ function AppInner() {
   return (
     <AuthProvider>
       <NavigationProvider>
-        <GameProvider>
-          <AppScreens />
-        </GameProvider>
+        <NotificationAuthBridge>
+          <GameProvider>
+            <AppScreens />
+          </GameProvider>
+        </NotificationAuthBridge>
       </NavigationProvider>
     </AuthProvider>
   );

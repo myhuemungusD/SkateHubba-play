@@ -136,6 +136,7 @@ function StepUsername({
 
       <Field
         label="Username"
+        name="username"
         value={username}
         onChange={(v) => {
           if (!loading) setUsername(v.toLowerCase().replace(SANITIZE_RE, ""));
@@ -145,6 +146,8 @@ function StepUsername({
         icon="@"
         autoComplete="username"
         autoFocus
+        inputMode="text"
+        enterKeyHint="next"
         note={usernameNote(username, available)}
       />
 

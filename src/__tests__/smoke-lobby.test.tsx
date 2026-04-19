@@ -133,7 +133,9 @@ describe("Smoke: Lobby", () => {
 
   it("shows empty state when no games exist", async () => {
     await renderLobby([]);
-    expect(await screen.findByText(/No games yet/)).toBeInTheDocument();
+    // Empty-state anchor copy — sits alongside a "Challenge your first opponent"
+    // CTA when the viewer has verified their email (see Lobby.tsx empty block).
+    expect(await screen.findByText(/Ready to S\.K\.A\.T\.E\.\?/i)).toBeInTheDocument();
   });
 
   it("displays correct letter counts in lobby", async () => {

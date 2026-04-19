@@ -429,7 +429,7 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
               type="button"
               onClick={() => setShowReport(true)}
               disabled={reported}
-              className="font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="touch-target inline-flex items-center justify-center font-body text-xs text-subtle hover:text-brand-red transition-colors duration-300 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-red"
             >
               {reported ? "Reported" : "Report opponent"}
             </button>

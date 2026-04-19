@@ -14,6 +14,9 @@ export function Field({
   autoFocus,
   disabled,
   autoCapitalize = "none",
+  inputMode,
+  enterKeyHint,
+  name,
 }: {
   label?: string;
   value: string;
@@ -28,6 +31,12 @@ export function Field({
   autoFocus?: boolean;
   disabled?: boolean;
   autoCapitalize?: string;
+  /** iOS/Android virtual-keyboard hint (email, tel, numeric, search, …). */
+  inputMode?: "text" | "email" | "tel" | "url" | "search" | "numeric" | "decimal" | "none";
+  /** Return-key label on mobile keyboards. */
+  enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send";
+  /** Stable form field name — helps password managers & autofill. */
+  name?: string;
 }) {
   const id = useId();
   const noteId = note ? `${id}-note` : undefined;
@@ -50,6 +59,7 @@ export function Field({
         )}
         <input
           id={id}
+          name={name}
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -61,6 +71,8 @@ export function Field({
           autoCapitalize={autoCapitalize}
           autoCorrect="off"
           spellCheck={false}
+          inputMode={inputMode}
+          enterKeyHint={enterKeyHint}
           aria-describedby={errorId ?? noteId}
           aria-invalid={error ? true : undefined}
           className={`w-full bg-surface-alt/80 backdrop-blur-sm border rounded-2xl text-white text-base font-body outline-none
