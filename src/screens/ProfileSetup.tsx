@@ -1,10 +1,9 @@
-import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { useState, useEffect, useCallback, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AgeVerificationRequiredError,
   createProfile,
   getUserProfile,
-  isUsernameAvailable,
   USERNAME_MAX,
   USERNAME_MIN,
   USERNAME_RE,
@@ -12,6 +11,7 @@ import {
 } from "../services/users";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
+import { useUsernameAvailability } from "../hooks/useUsernameAvailability";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -24,7 +24,6 @@ const STANCES = [
   { value: "Goofy", foot: "Right foot forward" },
 ] as const;
 
-const DEBOUNCE_MS = 400;
 // Sanitisation regex is the inverse of USERNAME_RE — strips any char that
 // wouldn't pass validation. Kept local because only the UI pre-filters input.
 const SANITIZE_RE = /[^a-z0-9_]/g;
@@ -304,10 +303,16 @@ export function ProfileSetup({
   const [step, setStep] = useState<Step>(1);
   const [username, setUsername] = useState(() => sanitizeDisplayName(displayName));
   const [stance, setStance] = useState("Regular");
-  const [error, setError] = useState("");
+  const [localError, setLocalError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [available, setAvailable] = useState<boolean | null>(null);
-  const checkRef = useRef(0);
+  const { available, error: availabilityError, clearError: clearAvailabilityError } = useUsernameAvailability(username);
+  // Display whichever error is non-empty. Local validation/submit errors take
+  // precedence over the hook's transient availability error.
+  const error = localError || availabilityError;
+  const clearError = useCallback(() => {
+    setLocalError("");
+    clearAvailabilityError();
+  }, [clearAvailabilityError]);
   const [checkingExisting, setCheckingExisting] = useState(true);
 
   // If the user already has a profile (e.g. profile fetch timed out on sign-in),
@@ -334,78 +339,43 @@ export function ProfileSetup({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [uid]);
 
-  useEffect(() => {
-    setAvailable(null);
-    const normalized = username.trim();
-    if (normalized.length < USERNAME_MIN) return;
-
-    const id = ++checkRef.current;
-    const timeout = setTimeout(async () => {
-      try {
-        const ok = await isUsernameAvailable(normalized);
-        /* v8 ignore start -- debounce guard; race between setTimeout and ref counter untestable in unit tests */
-        if (checkRef.current === id) setAvailable(ok);
-        /* v8 ignore stop */
-      } catch {
-        // After Google sign-in the Firestore SDK may not have the auth token
-        // yet, causing a transient permission-denied. Retry once after a short
-        // delay before surfacing the error to the user.
-        /* v8 ignore start -- debounce guard; same race condition as above */
-        if (checkRef.current !== id) return;
-        try {
-          await new Promise((r) => setTimeout(r, 1500));
-          if (checkRef.current !== id) return;
-          const ok = await isUsernameAvailable(normalized);
-          if (checkRef.current === id) setAvailable(ok);
-        } catch {
-          if (checkRef.current === id) {
-            setAvailable(null);
-            setError("Could not check username — try again");
-          }
-        }
-        /* v8 ignore stop */
-      }
-    }, DEBOUNCE_MS);
-    return () => clearTimeout(timeout);
-  }, [username]);
-
   const goNext = useCallback(() => {
-    setError("");
+    clearError();
     if (step === 1) {
       const normalized = username.trim();
       if (normalized.length < USERNAME_MIN) {
-        setError(`Username must be ${USERNAME_MIN}+ characters`);
+        setLocalError(`Username must be ${USERNAME_MIN}+ characters`);
         return;
       }
       if (normalized.length > USERNAME_MAX) {
-        setError(`Username too long (max ${USERNAME_MAX})`);
+        setLocalError(`Username too long (max ${USERNAME_MAX})`);
         return;
       }
       /* v8 ignore start -- regex guard unreachable after length validation; defensive for malformed input */
       if (!USERNAME_RE.test(normalized)) {
-        setError("Only letters, numbers, and _ allowed");
+        setLocalError("Only letters, numbers, and _ allowed");
         return;
       }
       /* v8 ignore stop */
       if (available === false) {
-        setError("Username is taken");
+        setLocalError("Username is taken");
         return;
       }
       if (available === null) {
-        setError("Still checking username — wait a moment");
+        setLocalError("Still checking username — wait a moment");
         return;
       }
     }
     setStep((s) => Math.min(s + 1, 3) as Step);
-  }, [step, username, available]);
+  }, [step, username, available, clearError]);
 
   const goBack = () => {
-    setError("");
+    clearError();
     setStep((s) => Math.max(s - 1, 1) as Step);
   };
 
   const submit = async () => {
-    setError("");
+    clearError();
     setLoading(true);
     try {
       const normalized = username.trim();
@@ -421,7 +391,7 @@ export function ProfileSetup({
         navigate("/age-gate", { replace: true });
         return;
       }
-      setError(err instanceof Error ? err.message : "Could not create profile");
+      setLocalError(err instanceof Error ? err.message : "Could not create profile");
     } finally {
       setLoading(false);
     }
@@ -467,7 +437,7 @@ export function ProfileSetup({
               loading={loading}
               onNext={goNext}
               error={error}
-              onClearError={() => setError("")}
+              onClearError={clearError}
             />
           )}
           {step === 2 && <StepStance stance={stance} setStance={setStance} onNext={goNext} onBack={goBack} />}

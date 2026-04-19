@@ -1,7 +1,6 @@
-import { useState, useEffect, type KeyboardEvent } from "react";
-import { type UserProfile, getPlayerDirectory } from "../services/users";
-import { getBlockedUserIds } from "../services/blocking";
-import { logger } from "../services/logger";
+import { useState, type KeyboardEvent } from "react";
+import { type UserProfile } from "../services/users";
+import { usePlayerDirectory } from "../hooks/usePlayerDirectory";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
 import { InviteButton } from "../components/InviteButton";
@@ -75,26 +74,7 @@ export function Lobby({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [downloadingData, setDownloadingData] = useState(false);
   const [downloadError, setDownloadError] = useState("");
-  const [players, setPlayers] = useState<UserProfile[]>([]);
-  const [playersLoading, setPlayersLoading] = useState(true);
-  useEffect(() => {
-    let stale = false;
-    Promise.all([getPlayerDirectory(), getBlockedUserIds(profile.uid)])
-      .then(([all, blockedIds]) => {
-        if (!stale) setPlayers(all.filter((p) => p.uid !== profile.uid && !blockedIds.has(p.uid)));
-      })
-      .catch((err) => {
-        // Non-critical: show empty lobby rather than error screen
-        logger.warn("[Lobby] player directory load failed", err);
-        if (!stale) setPlayers([]);
-      })
-      .finally(() => {
-        if (!stale) setPlayersLoading(false);
-      });
-    return () => {
-      stale = true;
-    };
-  }, [profile.uid]);
+  const { players, loading: playersLoading } = usePlayerDirectory(profile.uid);
 
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
