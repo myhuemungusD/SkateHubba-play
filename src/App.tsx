@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react";
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import { Routes, Route, Navigate, useParams, useNavigate } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
@@ -36,6 +36,7 @@ const AgeGate = lazy(() => import("./screens/AgeGate").then((m) => ({ default: m
 const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
+const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -137,6 +138,7 @@ function PlayerProfileRoute({
 function AppRoutes() {
   const auth = useAuthContext();
   const nav = useNavigationContext();
+  const navigate = useNavigate();
   const game = useGameContext();
   const blockedUids = useBlockedUsers(auth.user?.uid ?? "");
   const analyticsAllowed = useAnalyticsConsent();
@@ -293,6 +295,7 @@ function AppRoutes() {
                     onDeleteAccount={auth.handleDeleteAccount}
                     onDownloadData={auth.handleDownloadData}
                     onViewRecord={() => nav.setScreen("record")}
+                    onOpenSettings={() => navigate("/settings")}
                     hasMoreGames={game.hasMoreGames}
                     onLoadMore={game.loadMoreGames}
                     gamesLoading={game.gamesLoading}
@@ -446,6 +449,17 @@ function AppRoutes() {
             <Route
               path="/data-deletion"
               element={<DataDeletion onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />}
+            />
+
+            <Route
+              path="/settings"
+              element={
+                auth.activeProfile ? (
+                  <Settings profile={auth.activeProfile} onBack={() => nav.setScreen("lobby")} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
             />
 
             <Route path="/map" element={<MapPage />} />
