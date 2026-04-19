@@ -639,6 +639,47 @@ describe("Lobby", () => {
     expect(onOpenGame).not.toHaveBeenCalled();
   });
 
+  // Native-button keyboard parity: Enter activates on keydown (immediate),
+  // Space arms on keydown and only activates on keyup — letting the user
+  // move focus off the card to cancel before releasing.
+  it("active game card fires Enter on keydown (native <button> parity)", () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame();
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+
+    const card = screen.getByRole("button", { name: /vs @rival/i });
+    card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    expect(onOpenGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("active game card fires Space on keyup, not on keydown alone", () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame();
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+
+    const card = screen.getByRole("button", { name: /vs @rival/i });
+    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    expect(onOpenGame).not.toHaveBeenCalled();
+
+    card.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true }));
+    expect(onOpenGame).toHaveBeenCalledTimes(1);
+  });
+
+  it("active game card cancels a primed Space when focus leaves before keyup", () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame();
+    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+
+    const card = screen.getByRole("button", { name: /vs @rival/i });
+    card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
+    // User tabs away or otherwise blurs the card — native buttons abort here.
+    // React delegates onBlur via the bubbling `focusout` event at the root.
+    card.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    card.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true }));
+
+    expect(onOpenGame).not.toHaveBeenCalled();
+  });
+
   it("Profile button on active game card opens profile without opening game", async () => {
     const onOpenGame = vi.fn();
     const onViewPlayer = vi.fn();
