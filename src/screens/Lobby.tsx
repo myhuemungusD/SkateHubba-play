@@ -1,4 +1,4 @@
-import { useState, useEffect, type KeyboardEvent } from "react";
+import { useState, useEffect, type FocusEvent, type KeyboardEvent } from "react";
 import { type UserProfile, getPlayerDirectory } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { logger } from "../services/logger";
@@ -144,20 +144,48 @@ export function Lobby({
     return "They're setting a trick";
   };
 
-  // Activate a card on Enter/Space. Game cards are div[role="button"] (not
-  // native <button>) so we can host the inner Profile <button> without the
-  // invalid-HTML nested-interactive tree; this helper approximates native
-  // button keyboard semantics. (A true native button fires Space on keyup
-  // so the user can move focus off to cancel — we activate on keydown for
-  // both keys, which is the common pragmatic shortcut.) e.repeat guards
-  // against auto-repeat when a key is held.
-  const activateOnKey = (handler: () => void) => (e: KeyboardEvent<HTMLElement>) => {
-    if (e.repeat) return;
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      handler();
-    }
-  };
+  // Activate a card on Enter/Space with full native <button> keyboard parity.
+  // Game cards are div[role="button"] (not native <button>) so we can host
+  // the inner Profile <button> without the invalid-HTML nested-interactive
+  // tree. We approximate native semantics precisely:
+  //   - Enter fires on keydown (matches native activation).
+  //   - Space is primed on keydown (preventing page scroll) and fires on
+  //     keyup, so the user can move focus off the card to cancel before
+  //     release — which native <button> supports and a naive keydown-only
+  //     handler breaks.
+  //   - The "primed" flag lives on the element itself via data-space-primed
+  //     so it survives parent re-renders (e.g. LobbyTimer ticks) between
+  //     keydown and keyup.
+  //   - Blur clears the primed flag, matching native cancel-on-focus-loss.
+  //   - e.repeat guards auto-repeat when a key is held.
+  const cardButtonProps = (
+    handler: () => void,
+  ): {
+    onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
+    onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
+    onBlur: (e: FocusEvent<HTMLElement>) => void;
+  } => ({
+    onKeyDown: (e) => {
+      if (e.repeat) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handler();
+      } else if (e.key === " ") {
+        e.preventDefault();
+        e.currentTarget.dataset.spacePrimed = "true";
+      }
+    },
+    onKeyUp: (e) => {
+      if (e.key === " " && e.currentTarget.dataset.spacePrimed === "true") {
+        delete e.currentTarget.dataset.spacePrimed;
+        e.preventDefault();
+        handler();
+      }
+    },
+    onBlur: (e) => {
+      delete e.currentTarget.dataset.spacePrimed;
+    },
+  });
 
   return (
     <div className="min-h-dvh bg-[#0A0A0A]/40 pb-24">
@@ -244,7 +272,7 @@ export function Lobby({
           type="button"
           onClick={user?.emailVerified ? onChallenge : undefined}
           disabled={!user?.emailVerified}
-          className={`w-full flex items-center justify-center gap-2.5 rounded-2xl py-4 mb-1 font-display tracking-wider text-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 shadow-[0_2px_12px_rgba(255,107,0,0.2),0_1px_2px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.28),0_2px_6px_rgba(0,0,0,0.12)] ring-1 ring-white/[0.08]" : "bg-brand-orange/20 text-white/40 cursor-not-allowed border border-brand-orange/10"}`}
+          className={`w-full flex items-center justify-center gap-2.5 rounded-2xl py-4 mb-1 font-display tracking-wider text-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 shadow-[0_2px_12px_rgba(255,107,0,0.2),0_1px_2px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.28),0_2px_6px_rgba(0,0,0,0.12)] ring-1 ring-white/[0.08]" : "bg-brand-orange/25 text-white/75 cursor-not-allowed border border-brand-orange/20"}`}
         >
           <svg
             width="17"
@@ -303,7 +331,7 @@ export function Lobby({
                     tabIndex={0}
                     key={g.id}
                     onClick={() => onOpenGame(g)}
-                    onKeyDown={activateOnKey(() => onOpenGame(g))}
+                    {...cardButtonProps(() => onOpenGame(g))}
                     className={`relative flex items-center justify-between p-4 rounded-2xl cursor-pointer select-none transition-all duration-300 ease-smooth overflow-hidden focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full
                     ${
                       isMyTurn(g)
@@ -441,7 +469,7 @@ export function Lobby({
               </span>
             </div>
             <div className="flex flex-col items-center py-8 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30 backdrop-blur-sm">
-              <SkateboardIcon size={24} className="mb-2 opacity-40 text-subtle" />
+              <SkateboardIcon size={24} className="mb-2 text-faint" />
               <p className="font-body text-xs text-faint">No active games right now</p>
               <p className="font-body text-[11px] text-subtle mt-0.5">Challenge someone to start a new round</p>
             </div>
@@ -467,8 +495,8 @@ export function Lobby({
                     tabIndex={0}
                     key={g.id}
                     onClick={() => onOpenGame(g)}
-                    onKeyDown={activateOnKey(() => onOpenGame(g))}
-                    className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer select-none transition-all duration-300 ease-smooth opacity-60 hover:opacity-85 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
+                    {...cardButtonProps(() => onOpenGame(g))}
+                    className="flex items-center justify-between p-4 rounded-2xl glass-card cursor-pointer select-none transition-all duration-300 ease-smooth opacity-75 hover:opacity-100 hover:-translate-y-0.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange text-left w-full"
                   >
                     <div>
                       <div className="flex items-center gap-2 mb-1">
@@ -522,7 +550,7 @@ export function Lobby({
               </span>
             </div>
             <div className="flex flex-col items-center py-8 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30 backdrop-blur-sm">
-              <TrophyIcon size={24} className="mb-2 opacity-40 text-subtle" />
+              <TrophyIcon size={24} className="mb-2 text-faint" />
               <p className="font-body text-xs text-faint">No finished games yet</p>
               <p className="font-body text-[11px] text-subtle mt-0.5">Complete a game to see your results here</p>
             </div>
