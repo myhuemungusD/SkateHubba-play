@@ -270,7 +270,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           <div className="relative flex-shrink-0 animate-float" aria-hidden="true">
             <div className="w-[220px] h-[400px] md:w-[260px] md:h-[480px] rounded-[2.5rem] border border-white/[0.08] bg-[#111] overflow-hidden relative shadow-glass">
               {/* Dynamic Island */}
-              <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-16 h-4 bg-[#0A0A0A] rounded-full z-10" />
+              <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-16 h-4 bg-background rounded-full z-10" />
               {/* Screen content */}
               <div className="absolute inset-3 top-8 rounded-2xl bg-[#0D0D0D] flex flex-col items-center justify-center gap-3 p-4">
                 <span className="font-display text-xs tracking-[0.25em] text-brand-orange/80">GAME ON</span>

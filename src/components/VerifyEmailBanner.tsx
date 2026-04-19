@@ -68,7 +68,7 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
     <div className="mx-5 mt-4 p-3.5 rounded-2xl bg-[rgba(255,107,0,0.06)] border border-brand-orange/40 flex items-center justify-between gap-3 shadow-[0_0_16px_rgba(255,107,0,0.06)] animate-fade-in">
       <div>
         <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
-        <span className="font-body text-xs text-[#888]">
+        <span className="font-body text-xs text-muted">
           {sendError ?? "Check your inbox for the verification link."}
         </span>
       </div>

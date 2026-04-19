@@ -129,19 +129,19 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
       {/* Sheet */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-50 bg-[#1A1A1A] rounded-t-2xl
+        className="fixed bottom-0 left-0 right-0 z-50 bg-surface-alt rounded-t-2xl
                    max-h-[85dvh] overflow-y-auto shadow-2xl"
         role="dialog"
         aria-label="Add a spot"
       >
         {/* Header */}
-        <div className="sticky top-0 bg-[#1A1A1A] px-4 pt-4 pb-2 flex items-center justify-between border-b border-[#333]">
+        <div className="sticky top-0 bg-surface-alt px-4 pt-4 pb-2 flex items-center justify-between border-b border-[#333]">
           <div className="flex items-center gap-2">
             {step > 1 && (
               <button
                 type="button"
                 onClick={() => setStep((step - 1) as Step)}
-                className="text-[#888] hover:text-white"
+                className="text-muted hover:text-white"
                 aria-label="Back"
               >
                 <ChevronLeft size={20} />
@@ -153,7 +153,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
               {step === 3 && "Photos"}
             </h2>
           </div>
-          <button type="button" onClick={onClose} className="text-[#888] hover:text-white" aria-label="Close">
+          <button type="button" onClick={onClose} className="text-muted hover:text-white" aria-label="Close">
             <X size={20} />
           </button>
         </div>
@@ -165,13 +165,13 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
               {/* Assumption: Static map preview showing pin location. Full drag-to-reposition
                   requires Mapbox Static Images API or a second map instance. Using coordinate
                   input for MVP. */}
-              <div className="bg-[#0A0A0A] rounded-xl p-4 mb-4 border border-[#333]">
-                <div className="text-center text-[#888] text-sm mb-3">
+              <div className="bg-background rounded-xl p-4 mb-4 border border-[#333]">
+                <div className="text-center text-muted text-sm mb-3">
                   Adjust coordinates or use your current location
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-[#888] mb-1">Latitude</label>
+                    <label className="block text-xs text-muted mb-1">Latitude</label>
                     <input
                       type="number"
                       step="0.0001"
@@ -179,11 +179,11 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       max={90}
                       value={pinLat}
                       onChange={(e) => setPinLat(parseFloat(e.target.value) || 0)}
-                      className="w-full bg-[#1A1A1A] border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
+                      className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-[#888] mb-1">Longitude</label>
+                    <label className="block text-xs text-muted mb-1">Longitude</label>
                     <input
                       type="number"
                       step="0.0001"
@@ -191,7 +191,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       max={180}
                       value={pinLng}
                       onChange={(e) => setPinLng(parseFloat(e.target.value) || 0)}
-                      className="w-full bg-[#1A1A1A] border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
+                      className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
                     />
                   </div>
                 </div>
@@ -225,7 +225,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
             <div className="space-y-4">
               {/* Name */}
               <div>
-                <label className="block text-xs text-[#888] mb-1">
+                <label className="block text-xs text-muted mb-1">
                   Name <span className="text-red-400">*</span>
                 </label>
                 <input
@@ -237,31 +237,31 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                     setNameError(e.target.value.trim().length === 0 ? "Name is required" : null);
                   }}
                   placeholder="e.g. Hollywood High 16"
-                  className="w-full bg-[#0A0A0A] border border-[#444] rounded-lg px-3 py-2 text-white text-sm
-                             placeholder:text-[#555] focus:outline-none focus:border-[#F97316]"
+                  className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-sm
+                             placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
                 />
                 {nameError && <p className="text-red-400 text-xs mt-1">{nameError}</p>}
-                <p className="text-[#555] text-xs mt-1">{name.length}/80</p>
+                <p className="text-subtle text-xs mt-1">{name.length}/80</p>
               </div>
 
               {/* Description */}
               <div>
-                <label className="block text-xs text-[#888] mb-1">Description</label>
+                <label className="block text-xs text-muted mb-1">Description</label>
                 <textarea
                   maxLength={500}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="What makes this spot special?"
                   rows={3}
-                  className="w-full bg-[#0A0A0A] border border-[#444] rounded-lg px-3 py-2 text-white text-sm
-                             placeholder:text-[#555] focus:outline-none focus:border-[#F97316] resize-none"
+                  className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-sm
+                             placeholder:text-subtle focus:outline-none focus:border-[#F97316] resize-none"
                 />
-                <p className="text-[#555] text-xs mt-1">{description.length}/500</p>
+                <p className="text-subtle text-xs mt-1">{description.length}/500</p>
               </div>
 
               {/* Obstacles */}
               <div>
-                <label className="block text-xs text-[#888] mb-2">Obstacles</label>
+                <label className="block text-xs text-muted mb-2">Obstacles</label>
                 <div className="flex flex-wrap gap-2">
                   {ALL_OBSTACLES.map((o) => (
                     <button
@@ -271,7 +271,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       className={`px-3 py-1 text-xs rounded-full border transition-colors ${
                         obstacles.includes(o)
                           ? "bg-[#F97316] border-[#F97316] text-white"
-                          : "bg-transparent border-[#444] text-[#888] hover:border-[#666]"
+                          : "bg-transparent border-[#444] text-muted hover:border-[#666]"
                       }`}
                     >
                       {o.replace("_", " ")}
@@ -282,7 +282,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
               {/* Gnar Rating */}
               <div>
-                <label className="block text-xs text-[#888] mb-1">
+                <label className="block text-xs text-muted mb-1">
                   Gnar Rating <span className="text-red-400">*</span>
                 </label>
                 <GnarRating value={gnarRating} readonly={false} onChange={setGnarRating} />
@@ -290,7 +290,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
               {/* Bust Risk */}
               <div>
-                <label className="block text-xs text-[#888] mb-1">
+                <label className="block text-xs text-muted mb-1">
                   Bust Risk <span className="text-red-400">*</span>
                 </label>
                 <BustRisk value={bustRisk} readonly={false} onChange={setBustRisk} />
@@ -311,7 +311,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
           {/* Step 3: Photos */}
           {step === 3 && (
             <div className="space-y-4">
-              <p className="text-sm text-[#888]">Add up to 5 photo URLs (optional)</p>
+              <p className="text-sm text-muted">Add up to 5 photo URLs (optional)</p>
 
               {/* Photo previews */}
               {photoUrls.length > 0 && (
@@ -341,8 +341,8 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                     value={photoInput}
                     onChange={(e) => setPhotoInput(e.target.value)}
                     placeholder="https://..."
-                    className="flex-1 bg-[#0A0A0A] border border-[#444] rounded-lg px-3 py-2 text-white text-sm
-                               placeholder:text-[#555] focus:outline-none focus:border-[#F97316]"
+                    className="flex-1 bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-sm
+                               placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
                   />
                   <button
                     type="button"

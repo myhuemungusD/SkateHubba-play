@@ -11,16 +11,8 @@ import {
 import { getStorage, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { captureMessage } from "./lib/sentry";
+import { env } from "./lib/env";
 import { logger } from "./services/logger";
-
-const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-};
 
 // NOTE: We intentionally do NOT override authDomain to skatehubba.com here.
 // Firebase email-verification and password-reset links point to
@@ -29,21 +21,30 @@ const firebaseConfig = {
 // hosted domain breaks every outbound email link because Vercel does not
 // serve the /__/auth/action endpoint.
 
-// True when all required Firebase env vars are present
-export const firebaseReady = Boolean(firebaseConfig.apiKey);
+// True when the Zod-validated env includes every required VITE_FIREBASE_* var.
+export const firebaseReady = env !== null;
 
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
 let storage: FirebaseStorage | null = null;
 
-if (firebaseReady) {
+if (env) {
+  const firebaseConfig = {
+    apiKey: env.VITE_FIREBASE_API_KEY,
+    authDomain: env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: env.VITE_FIREBASE_PROJECT_ID,
+    storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: env.VITE_FIREBASE_APP_ID,
+  };
+
   app = initializeApp(firebaseConfig);
 
   // Firestore — using named "skatehubba" database.
   // In emulator mode use memory cache to avoid IndexedDB/persistence issues
   // that can stall getDoc() in headless Chrome on CI.
-  const useEmulators = import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true";
+  const useEmulators = import.meta.env.DEV && env.VITE_USE_EMULATORS === true;
   db = initializeFirestore(
     app,
     useEmulators
@@ -71,9 +72,9 @@ if (firebaseReady) {
   }
   /* v8 ignore stop */
   /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
-  if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
+  if (env.VITE_RECAPTCHA_SITE_KEY) {
     initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(String(import.meta.env.VITE_RECAPTCHA_SITE_KEY)),
+      provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
       isTokenAutoRefreshEnabled: true,
     });
   } else if (!import.meta.env.DEV) {
@@ -84,7 +85,7 @@ if (firebaseReady) {
   /* v8 ignore stop */
 
   // Connect to emulators in development (if running)
-  if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true") {
+  if (useEmulators) {
     connectAuthEmulator(auth, "http://localhost:9099", {
       disableWarnings: true,
     });
@@ -121,9 +122,7 @@ function requireStorage(): FirebaseStorage {
 }
 
 /** True when running against local Firebase emulators */
-export const isEmulatorMode = Boolean(
-  import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === "true" && firebaseReady,
-);
+export const isEmulatorMode = Boolean(import.meta.env.DEV && env?.VITE_USE_EMULATORS === true && firebaseReady);
 
 export { db, auth, storage, requireDb, requireAuth, requireStorage };
 export default app;

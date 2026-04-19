@@ -1,7 +1,6 @@
-import { useCallback, useState, useEffect, type FocusEvent, type KeyboardEvent } from "react";
-import { type UserProfile, getPlayerDirectory } from "../services/users";
-import { getBlockedUserIds } from "../services/blocking";
-import { logger } from "../services/logger";
+import { useState, type FocusEvent, type KeyboardEvent } from "react";
+import { type UserProfile } from "../services/users";
+import { usePlayerDirectory } from "../hooks/usePlayerDirectory";
 import type { GameDoc } from "../services/games";
 import { LETTERS } from "../utils/helpers";
 import { usePullToRefresh } from "../hooks/usePullToRefresh";
@@ -79,52 +78,15 @@ export function Lobby({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [downloadingData, setDownloadingData] = useState(false);
   const [downloadError, setDownloadError] = useState("");
-  const [players, setPlayers] = useState<UserProfile[]>([]);
-  const [playersLoading, setPlayersLoading] = useState(true);
-
-  // Reload the player directory + blocked-list, filtering the former by the
-  // latter. Factored out so both the initial mount effect and the
-  // pull-to-refresh gesture can kick it off from the same code path. Returns
-  // a Promise so PTR can await it before releasing the indicator.
-  const loadPlayerDirectory = useCallback(async () => {
-    try {
-      const [all, blockedIds] = await Promise.all([getPlayerDirectory(), getBlockedUserIds(profile.uid)]);
-      setPlayers(all.filter((p) => p.uid !== profile.uid && !blockedIds.has(p.uid)));
-    } catch (err) {
-      // Non-critical: show empty lobby rather than error screen
-      logger.warn("lobby_directory_load_failed", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-      setPlayers([]);
-    } finally {
-      setPlayersLoading(false);
-    }
-  }, [profile.uid]);
-
-  useEffect(() => {
-    let stale = false;
-    Promise.all([getPlayerDirectory(), getBlockedUserIds(profile.uid)])
-      .then(([all, blockedIds]) => {
-        if (!stale) setPlayers(all.filter((p) => p.uid !== profile.uid && !blockedIds.has(p.uid)));
-      })
-      .catch((err) => {
-        // Non-critical: show empty lobby rather than error screen
-        logger.warn("[Lobby] player directory load failed", err);
-        if (!stale) setPlayers([]);
-      })
-      .finally(() => {
-        if (!stale) setPlayersLoading(false);
-      });
-    return () => {
-      stale = true;
-    };
-  }, [profile.uid]);
+  // The directory hook exposes `refresh` so pull-to-refresh (wired below) can
+  // trigger a re-fetch on gesture without duplicating the load logic here.
+  const { players, loading: playersLoading, refresh: refreshPlayers } = usePlayerDirectory(profile.uid);
 
   // Pull-to-refresh: real-time games subscription means game cards stay fresh
   // automatically, but the player directory is a one-shot fetch. PTR re-fetches
   // it so a user who's been scrolling a while can pull to see new skaters /
   // unblocked accounts without a full reload.
-  const ptr = usePullToRefresh(loadPlayerDirectory);
+  const ptr = usePullToRefresh(refreshPlayers);
 
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
@@ -216,7 +178,7 @@ export function Lobby({
   });
 
   return (
-    <div className="relative min-h-dvh bg-[#0A0A0A]/40 pb-24" {...ptr.containerProps}>
+    <div className="relative min-h-dvh bg-background/40 pb-24" {...ptr.containerProps}>
       <PullToRefreshIndicator offset={ptr.offset} state={ptr.state} triggerReached={ptr.triggerReached} />
       {/* Header */}
       <div className="px-5 pt-safe pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-2xl mx-auto">

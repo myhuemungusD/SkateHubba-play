@@ -17,22 +17,31 @@ import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
+// Eager: first-paint / onboarding path (Landing, AgeGate, AuthScreen, ProfileSetup)
+// plus Lobby since it's the primary destination for returning authed users.
 import { Landing } from "./screens/Landing";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ProfileSetup } from "./screens/ProfileSetup";
 import { Lobby } from "./screens/Lobby";
-import { ChallengeScreen } from "./screens/ChallengeScreen";
-import { GamePlayScreen } from "./screens/GamePlayScreen";
-import { GameOverScreen } from "./screens/GameOverScreen";
-import { PlayerProfileScreen } from "./screens/PlayerProfileScreen";
-// Non-critical routes are code-split so the first-paint bundle doesn't pay
-// for Mapbox (MapPage + SpotDetailPage pull ~400KB of tiles/SDK), static legal
-// pages, or signup-only flows. Suspense falls back to the same full-screen
-// Spinner we use during auth hydration so the transition feels uniform.
+// AgeGate stays eager — it's in the signup path and the first-paint bundle
+// already carries the auth flow, so a split here would just add a spinner
+// flash on an already-short critical route.
+import { AgeGate } from "./screens/AgeGate";
+// Lazy: non-critical / heavy secondary screens — code-split into separate
+// chunks so the first-paint bundle doesn't pay for Mapbox (MapPage +
+// SpotDetailPage pull ~400KB of tiles/SDK), the gameplay surfaces only an
+// authed user needs, the static legal pages, or the Settings screen. Suspense
+// falls back to the same full-screen Spinner we use during auth hydration so
+// the transition feels uniform.
+const ChallengeScreen = lazy(() => import("./screens/ChallengeScreen").then((m) => ({ default: m.ChallengeScreen })));
+const GamePlayScreen = lazy(() => import("./screens/GamePlayScreen").then((m) => ({ default: m.GamePlayScreen })));
+const GameOverScreen = lazy(() => import("./screens/GameOverScreen").then((m) => ({ default: m.GameOverScreen })));
+const PlayerProfileScreen = lazy(() =>
+  import("./screens/PlayerProfileScreen").then((m) => ({ default: m.PlayerProfileScreen })),
+);
 const PrivacyPolicy = lazy(() => import("./screens/PrivacyPolicy").then((m) => ({ default: m.PrivacyPolicy })));
 const TermsOfService = lazy(() => import("./screens/TermsOfService").then((m) => ({ default: m.TermsOfService })));
 const DataDeletion = lazy(() => import("./screens/DataDeletion").then((m) => ({ default: m.DataDeletion })));
-const AgeGate = lazy(() => import("./screens/AgeGate").then((m) => ({ default: m.AgeGate })));
 const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
@@ -40,10 +49,10 @@ const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default:
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
-    <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-[#0A0A0A]">
+    <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-background">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-4">SKATEHUBBA™</span>
       <h1 className="font-display text-3xl text-white mb-2">Something went wrong</h1>
-      <p className="font-body text-sm text-[#888] mb-6 text-center max-w-sm">
+      <p className="font-body text-sm text-muted mb-6 text-center max-w-sm">
         This screen crashed. Your game data is safe.
       </p>
       <button
@@ -62,7 +71,7 @@ function FirebaseMissing() {
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-2">SKATEHUBBA™</span>
       <h2 className="font-display text-3xl text-white mt-4">Setup Required</h2>
-      <p className="font-body text-base text-[#888] max-w-sm mt-4 leading-relaxed">
+      <p className="font-body text-base text-muted max-w-sm mt-4 leading-relaxed">
         Firebase environment variables are missing. Add <code className="text-brand-orange">VITE_FIREBASE_*</code>{" "}
         variables in your Vercel Dashboard under Project Settings → Environment Variables.
       </p>
