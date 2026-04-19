@@ -108,7 +108,7 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
             ? "border-brand-green text-brand-green"
             : saveStatus === "failed"
               ? "border-brand-red text-brand-red"
-              : "border-border text-[#888] hover:text-white hover:border-[#3A3A3A]"
+              : "border-border text-muted hover:text-white hover:border-border-hover"
         }`}
       >
         <svg
@@ -137,7 +137,7 @@ function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName
             ? "border-brand-green text-brand-green"
             : shareStatus === "failed"
               ? "border-brand-red text-brand-red"
-              : "border-border text-[#888] hover:text-white hover:border-[#3A3A3A]"
+              : "border-border text-muted hover:text-white hover:border-border-hover"
         }`}
       >
         <svg
@@ -208,7 +208,7 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
       : `@${opponentName}`;
 
   return (
-    <div className="min-h-dvh bg-[#0A0A0A]/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
+    <div className="min-h-dvh bg-background/80 flex flex-col items-center px-6 py-8 overflow-y-auto">
       <div className="text-center w-full max-w-sm animate-scale-in">
         <div className="flex justify-center gap-5 mb-4">
           {isJudge ? (

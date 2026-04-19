@@ -153,7 +153,7 @@ export function GameReplay({ turns }: GameReplayProps) {
               <button
                 type="button"
                 onClick={() => setClipIndex(clipIndex + 1)}
-                className="touch-target inline-flex items-center justify-center font-body text-xs text-[#888] hover:text-white transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                className="touch-target inline-flex items-center justify-center font-body text-xs text-muted hover:text-white transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 Skip →
               </button>
@@ -164,7 +164,7 @@ export function GameReplay({ turns }: GameReplayProps) {
                 setPlaying(false);
                 setFinished(false);
               }}
-              className="touch-target inline-flex items-center justify-center font-body text-xs text-[#888] hover:text-white transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="touch-target inline-flex items-center justify-center font-body text-xs text-muted hover:text-white transition-colors rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               Close
             </button>

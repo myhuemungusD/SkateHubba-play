@@ -28,7 +28,7 @@ export function PushPermissionBanner({ uid }: { uid: string }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-display text-sm text-white mb-1">Enable push notifications?</p>
-          <p className="font-body text-xs text-[#888]">
+          <p className="font-body text-xs text-muted">
             Get notified when it&apos;s your turn, when you receive a challenge, and when games end.
           </p>
         </div>
@@ -38,7 +38,7 @@ export function PushPermissionBanner({ uid }: { uid: string }) {
             localStorage.setItem(DISMISSED_KEY, "1");
             setVisible(false);
           }}
-          className="text-[#666] hover:text-white text-lg leading-none shrink-0"
+          className="text-faint hover:text-white text-lg leading-none shrink-0"
           aria-label="Dismiss"
         >
           &times;

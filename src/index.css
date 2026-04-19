@@ -9,6 +9,7 @@
   --color-brand-green: #00e676;
   --color-brand-red: #ff3d00;
 
+  --color-background: #0a0a0a;
   --color-surface: #141414;
   --color-surface-alt: #1a1a1a;
   --color-surface-glass: rgba(20, 20, 20, 0.6);
@@ -21,6 +22,7 @@
   --color-muted: #888;
   --color-faint: #666;
   --color-subtle: #555;
+  --color-bright: #bbb;
 
   /* ── Font families ───────────────────────────────── */
   --font-display: "Bebas Neue", sans-serif;

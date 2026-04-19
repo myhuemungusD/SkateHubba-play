@@ -36,7 +36,7 @@ export function LetterDisplay({
           <span
             key={i}
             className={`font-display text-xl transition-all duration-300 ease-smooth
-              ${i < count ? "text-brand-red scale-110 drop-shadow-[0_0_12px_rgba(255,61,0,0.5)]" : "text-[#2A2A2A]"}`}
+              ${i < count ? "text-brand-red scale-110 drop-shadow-[0_0_12px_rgba(255,61,0,0.5)]" : "text-border"}`}
           >
             {l}
           </span>

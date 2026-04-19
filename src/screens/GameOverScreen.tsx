@@ -122,7 +122,7 @@ export function GameOverScreen({
         >
           {isWinner ? "You Win" : isForfeit ? "Forfeit" : "S.K.A.T.E."}
         </h1>
-        <p className="font-body text-base text-[#888] mb-8">
+        <p className="font-body text-base text-muted mb-8">
           {isForfeit
             ? isWinner
               ? `@${opponentName} ran out of time.`
