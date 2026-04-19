@@ -88,10 +88,19 @@ if (env) {
         "error",
       );
     }
-  } else if (!import.meta.env.DEV) {
-    // Warn in production so the ops team is alerted App Check is inactive.
-    logger.warn("appcheck_disabled", { hint: "set VITE_RECAPTCHA_SITE_KEY to protect against API abuse" });
+  } else if (import.meta.env.PROD) {
+    // Hard fail in production — silently no-opting App Check leaves the app
+    // exposed to bots and abuse traffic with no signal that protection is off.
+    // Sentry capture preserves the historical telemetry signal for ops; the
+    // throw forces the deploy to surface the misconfiguration immediately.
+    logger.error("appcheck_disabled", { hint: "set VITE_RECAPTCHA_SITE_KEY to protect against API abuse" });
     captureMessage("App Check disabled in production — set VITE_RECAPTCHA_SITE_KEY", "error");
+    throw new Error(
+      "App Check is required in production — set VITE_RECAPTCHA_SITE_KEY (reCAPTCHA v3 site key from Firebase Console → App Check)",
+    );
+  } else {
+    // Dev/emulator without a key: warn but continue so local development isn't blocked.
+    logger.warn("appcheck_disabled", { hint: "set VITE_RECAPTCHA_SITE_KEY to protect against API abuse" });
   }
   /* v8 ignore stop */
 
