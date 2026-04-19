@@ -453,14 +453,19 @@ describe("Lobby", () => {
 
     renderWithProviders(<Lobby {...defaultProps} />);
 
-    expect(screen.getByText("Loading skaters...")).toBeInTheDocument();
+    // Loading state is a content-shaped skeleton announced via
+    // role="status" + aria-busy so assistive tech picks up the wait
+    // while sighted users see the placeholder rows.
+    const status = screen.getByRole("status", { name: /loading skaters/i });
+    expect(status).toBeInTheDocument();
+    expect(status).toHaveAttribute("aria-busy", "true");
 
     await act(async () => {
       resolve([]);
     });
 
     await waitFor(() => {
-      expect(screen.queryByText("Loading skaters...")).not.toBeInTheDocument();
+      expect(screen.queryByRole("status", { name: /loading skaters/i })).not.toBeInTheDocument();
     });
   });
 
@@ -472,7 +477,7 @@ describe("Lobby", () => {
     renderWithProviders(<Lobby {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.queryByText("Loading skaters...")).not.toBeInTheDocument();
+      expect(screen.queryByRole("status", { name: /loading skaters/i })).not.toBeInTheDocument();
     });
 
     expect(screen.queryByText("SKATERS")).not.toBeInTheDocument();
@@ -552,7 +557,7 @@ describe("Lobby", () => {
     renderWithProviders(<Lobby {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.queryByText("Loading skaters...")).not.toBeInTheDocument();
+      expect(screen.queryByRole("status", { name: /loading skaters/i })).not.toBeInTheDocument();
     });
 
     // No SKATERS section, no crash
