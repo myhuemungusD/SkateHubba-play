@@ -603,7 +603,31 @@ export function Lobby({
         )}
 
         {/* Player Directory */}
-        {playersLoading && <p className="font-body text-xs text-brand-orange text-center mb-6">Loading skaters...</p>}
+        {playersLoading && (
+          <div className="mb-6" role="status" aria-busy="true" aria-label="Loading skaters">
+            <div className="flex items-center gap-2 mb-3">
+              <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">SKATERS</h3>
+            </div>
+            <div className="space-y-2 animate-pulse">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-surface-alt/60 border border-border"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-surface-alt border border-border shrink-0" />
+                    <div className="space-y-2">
+                      <div className="h-4 w-28 rounded-md bg-surface-alt" />
+                      <div className="h-3 w-20 rounded-md bg-surface-alt/70" />
+                    </div>
+                  </div>
+                  <div className="h-9 w-20 rounded-lg bg-surface-alt" />
+                </div>
+              ))}
+            </div>
+            <span className="sr-only">Loading skaters…</span>
+          </div>
+        )}
         {!playersLoading && players.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
