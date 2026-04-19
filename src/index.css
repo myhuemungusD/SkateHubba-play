@@ -22,6 +22,7 @@
   --color-muted: #888;
   --color-faint: #666;
   --color-subtle: #555;
+  --color-bright: #bbb;
 
   /* ── Font families ───────────────────────────────── */
   --font-display: "Bebas Neue", sans-serif;

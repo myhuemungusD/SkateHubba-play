@@ -182,7 +182,7 @@ export function AgeGate({
                 onChange={(e) => setParentConsent(e.target.checked)}
                 className="mt-0.5 w-4 h-4 accent-brand-orange cursor-pointer shrink-0"
               />
-              <span className="font-body text-sm text-dim leading-relaxed group-hover:text-[#bbb] transition-colors">
+              <span className="font-body text-sm text-dim leading-relaxed group-hover:text-bright transition-colors">
                 My parent or legal guardian has reviewed the{" "}
                 <button type="button" onClick={() => onNav("privacy")} className="text-brand-orange hover:underline">
                   Privacy Policy

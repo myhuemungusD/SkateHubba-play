@@ -116,7 +116,7 @@ export function AuthScreen({
 
         <div className="flex items-center gap-3 my-5">
           <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
-          <span className="font-body text-xs text-[#444]">or continue with email</span>
+          <span className="font-body text-xs text-subtle">or continue with email</span>
           <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
         </div>
 
