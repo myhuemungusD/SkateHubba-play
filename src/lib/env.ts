@@ -26,7 +26,11 @@ const envSchema = z.object({
   // ── Optional: Firebase add-ons ──────────────────────────────────────
   VITE_FIREBASE_VAPID_KEY: z.string().optional(),
   VITE_FIREBASE_MEASUREMENT_ID: z.string().optional(),
-  VITE_RECAPTCHA_SITE_KEY: z.string().optional(),
+  // Treat empty string as absent — Vercel exposes unset env vars as "" not undefined.
+  VITE_RECAPTCHA_SITE_KEY: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.length > 0 ? v : undefined)),
 
   // ── Optional: third-party integrations ──────────────────────────────
   VITE_MAPBOX_TOKEN: z.string().optional(),

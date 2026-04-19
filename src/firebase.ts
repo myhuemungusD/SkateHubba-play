@@ -73,10 +73,21 @@ if (env) {
   /* v8 ignore stop */
   /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
   if (env.VITE_RECAPTCHA_SITE_KEY) {
-    initializeAppCheck(app, {
-      provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
-      isTokenAutoRefreshEnabled: true,
-    });
+    try {
+      initializeAppCheck(app, {
+        provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
+        isTokenAutoRefreshEnabled: true,
+      });
+    } catch (err) {
+      // An invalid site key or blocked reCAPTCHA loader throws synchronously here.
+      // Without this catch the whole Firebase init module would crash on load,
+      // taking the app down — log loudly and let the rest of Firebase continue.
+      logger.error("appcheck_init_failed", { message: err instanceof Error ? err.message : String(err) });
+      captureMessage(
+        `App Check init failed — Auth/Firestore requests may be rejected: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
+    }
   } else if (!import.meta.env.DEV) {
     // Warn in production so the ops team is alerted App Check is inactive.
     logger.warn("appcheck_disabled", { hint: "set VITE_RECAPTCHA_SITE_KEY to protect against API abuse" });
