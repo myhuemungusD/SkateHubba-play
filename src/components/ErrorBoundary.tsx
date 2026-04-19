@@ -55,7 +55,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 type="button"
                 aria-label="Reload the application"
                 onClick={() => window.location.reload()}
-                className="px-6 py-2 text-dim hover:text-white font-body text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                className="px-6 py-2 min-h-[44px] text-dim hover:text-white font-body text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 Reload app
               </button>
