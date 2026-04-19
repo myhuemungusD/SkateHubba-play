@@ -39,6 +39,26 @@ describe("AuthScreen", () => {
     });
   });
 
+  it("shows retry message for auth/internal-error", async () => {
+    // Firebase wraps Identity Toolkit failures (App Check rejections, reCAPTCHA
+    // outages, transient 500s) into this catch-all code — don't leak "Firebase:
+    // Error (auth/internal-error)." to the user.
+    mockSignIn.mockRejectedValueOnce({
+      code: "auth/internal-error",
+      message: "Firebase: Error (auth/internal-error).",
+    });
+    render(<AuthScreen {...defaultProps} />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Sign-in is temporarily unavailable/)).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/auth\/internal-error/)).not.toBeInTheDocument();
+  });
+
   it("shows error for account-exists-with-different-credential", async () => {
     mockSignUp.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
     render(<AuthScreen {...defaultProps} mode="signup" />);

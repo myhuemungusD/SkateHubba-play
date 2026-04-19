@@ -91,6 +91,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           "This domain isn't authorized for Google sign-in. " +
             "Add it in Firebase Console → Authentication → Settings → Authorized domains.",
         );
+      } else if (code === "auth/internal-error") {
+        // App Check rejection, reCAPTCHA failure, or transient Identity Toolkit 500.
+        logger.error("google_sign_in_internal_error", { code, origin: window.location.origin });
+        captureException(err, { extra: { context: "handleGoogleSignIn", code, origin: window.location.origin } });
+        setGoogleError("Sign-in is temporarily unavailable. Please try again in a moment.");
       } else {
         logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
         captureException(err, { extra: { context: "handleGoogleSignIn", code } });
