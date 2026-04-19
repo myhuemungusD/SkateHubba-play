@@ -5,6 +5,7 @@ import { Component, type ReactNode } from "react";
 import { useGameContext } from "../GameContext";
 import { AuthProvider } from "../AuthContext";
 import { NavigationProvider } from "../NavigationContext";
+import { NotificationProvider } from "../NotificationContext";
 
 vi.mock("../../hooks/useAuth", () => ({
   useAuth: () => ({ loading: false, user: null, profile: null, refreshProfile: vi.fn() }),
@@ -86,9 +87,11 @@ describe("useGameContext", () => {
       <MemoryRouter initialEntries={["/"]}>
         <AuthProvider>
           <NavigationProvider>
-            <GameProvider>
-              <TestComponent />
-            </GameProvider>
+            <NotificationProvider uid={null}>
+              <GameProvider>
+                <TestComponent />
+              </GameProvider>
+            </NotificationProvider>
           </NavigationProvider>
         </AuthProvider>
       </MemoryRouter>,

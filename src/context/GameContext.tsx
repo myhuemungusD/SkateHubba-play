@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useAuthContext } from "./AuthContext";
 import { useNavigationContext } from "./NavigationContext";
+import { useNotifications } from "./NotificationContext";
 import { updatePlayerStats, getUserProfile } from "../services/users";
 import { isUserBlocked } from "../services/blocking";
 import { createGame, forfeitExpiredTurn, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
@@ -39,6 +40,7 @@ const GAMES_PAGE_SIZE = 20;
 export function GameProvider({ children }: { children: ReactNode }) {
   const { user, activeProfile } = useAuthContext();
   const { screen, setScreen } = useNavigationContext();
+  const { notify } = useNotifications();
 
   const [games, setGames] = useState<GameDoc[]>([]);
   const [activeGame, setActiveGame] = useState<GameDoc | null>(null);
@@ -211,8 +213,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
       );
       setActiveGame(shell);
       setScreen("game");
+      // Success toast doubles as instruction: after setScreen() the user
+      // lands on /game to set a trick — the toast confirms the challenge
+      // took and nudges them toward the next step. Light haptic + chime
+      // come from the notification provider's mapping.
+      notify({
+        type: "success",
+        title: `Challenge sent to @${opponentUsername}`,
+        message: "Record your trick to lock it in.",
+        gameId,
+      });
     },
-    [user, activeProfile, setScreen],
+    [user, activeProfile, setScreen, notify],
   );
 
   // Memoize the provider value so consumers don't re-render on every

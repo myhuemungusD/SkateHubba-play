@@ -1,4 +1,20 @@
 import type { ReactNode } from "react";
+import { playHaptic, type HapticType } from "../../services/haptics";
+
+/**
+ * Map button variants to the haptic vocabulary. Primary/success/danger are
+ * the weight-class CTAs users consciously commit to (Challenge, Land It,
+ * Delete), so they get Medium impact. Secondary / ghost are navigational or
+ * cancel-ish — Light impact keeps the feedback proportional to intent.
+ * `toast` is the lightest pulse we have; `button_primary` is medium.
+ */
+const variantHaptic: Record<string, HapticType> = {
+  primary: "button_primary",
+  success: "button_primary",
+  danger: "button_primary",
+  secondary: "toast",
+  ghost: "toast",
+};
 
 export function Btn({
   children,
@@ -8,6 +24,9 @@ export function Btn({
   className = "",
   type = "button",
   autoFocus,
+  /** Opt out of the per-variant haptic tap — use on low-intent repeating
+   *  actions (nudge, carousel advance) where the buzz becomes noise. */
+  haptic = true,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -16,6 +35,7 @@ export function Btn({
   className?: string;
   type?: "button" | "submit";
   autoFocus?: boolean;
+  haptic?: boolean;
 }) {
   const base =
     "w-full rounded-2xl font-display tracking-wider text-center transition-all duration-300 ease-smooth disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
@@ -30,10 +50,15 @@ export function Btn({
     ghost:
       "bg-transparent border border-border text-muted py-3 text-lg hover:border-border-hover hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(0,0,0,0.15)]",
   };
+  const handleClick = () => {
+    if (haptic) playHaptic(variantHaptic[variant] ?? "toast");
+    onClick?.();
+  };
+
   return (
     <button
       type={type}
-      onClick={onClick}
+      onClick={handleClick}
       disabled={disabled}
       autoFocus={autoFocus}
       className={`${base} ${variants[variant ?? "primary"]} ${className}`}

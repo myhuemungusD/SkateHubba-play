@@ -518,9 +518,12 @@ export function Lobby({
           </div>
         )}
 
-        {/* Empty state — no games at all */}
+        {/* Empty state — no games at all. Leading with an explicit CTA here
+            (rather than just descriptive text pointing at the button above)
+            is a meaningful win for first-run users who may have scrolled past
+            the primary Challenge button without clocking it as the next step. */}
         {games.length === 0 && (
-          <div className="flex flex-col items-center py-14 border border-dashed border-white/[0.06] rounded-2xl mb-6 bg-surface/30 backdrop-blur-sm">
+          <div className="flex flex-col items-center py-12 px-6 border border-dashed border-white/[0.06] rounded-2xl mb-6 bg-surface/30 backdrop-blur-sm text-center">
             <svg
               className="text-brand-orange mb-4"
               width="38"
@@ -537,8 +540,21 @@ export function Lobby({
               <circle cx="17.5" cy="17.5" r="2.5" />
               <path d="M2 7h1.5l2.1 7.5h10.8l2.1-6H7.5" />
             </svg>
-            <p className="font-body text-sm text-dim">No games yet.</p>
-            <p className="font-body text-xs text-faint mt-1">Challenge someone to get started.</p>
+            <h2 className="font-display text-xl text-white tracking-wide">Ready to S.K.A.T.E.?</h2>
+            <p className="font-body text-xs text-faint mt-2 max-w-[16rem]">
+              Pick an opponent, record a trick, and call them out. First to spell S-K-A-T-E loses.
+            </p>
+            {user?.emailVerified ? (
+              <button
+                type="button"
+                onClick={onChallenge}
+                className="mt-5 min-h-[44px] inline-flex items-center gap-2 rounded-xl px-5 font-display text-sm tracking-wider bg-brand-orange/10 border border-brand-orange/30 text-brand-orange hover:bg-brand-orange/15 hover:border-brand-orange/50 transition-all duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                Challenge your first opponent →
+              </button>
+            ) : (
+              <p className="mt-4 font-body text-[11px] text-subtle">Verify your email to start a game</p>
+            )}
           </div>
         )}
 
