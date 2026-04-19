@@ -11,7 +11,8 @@ This file establishes the production-level problem-solving mindset for working o
 3. **Smallest diff that solves the problem.** No drive-by refactors. No "while I'm here" improvements. One concern per change.
 4. **Prove it works.** Every change must pass type check, lint, tests, and build before it's considered done.
 5. **Blast radius awareness.** Know what your change touches. A service function change can affect every screen that calls it. A Firestore rule change affects every user in production.
-
+6. no type of sycophancy
+7. always use opus agents for work 
 ---
 
 ## Verification Commands
