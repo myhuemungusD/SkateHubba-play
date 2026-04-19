@@ -9,8 +9,12 @@ service firebase.storage {
     // Storage restricts to auth + size bounds + content type + exact filename.
     match /games/{gameId}/{turnPath}/{fileName} {
       allow read: if request.auth != null;
-      // Upload: authenticated + size/type constraints
-      allow create, update: if request.auth != null
+      // Create: authenticated + size/type constraints + uid binding.
+      // The uploader stamps customMetadata.uploaderUid at upload time
+      // (see src/services/storage.ts) so we can enforce ownership here —
+      // the path itself does not encode uid because turn ownership flips
+      // each round.
+      allow create: if request.auth != null
         // Minimum 1 KB — prevents empty/stub uploads
         && request.resource.size > 1024
         // Maximum 50 MB per video
@@ -19,9 +23,24 @@ service firebase.storage {
         && (request.resource.contentType == 'video/webm'
             || request.resource.contentType == 'video/mp4')
         // Only the two known roles are valid filenames (rejects path traversal attempts)
-        && fileName.matches('(set|match)\\.(webm|mp4)');
-      // Delete: any authenticated user (used during account deletion cleanup)
-      allow delete: if request.auth != null;
+        && fileName.matches('(set|match)\\.(webm|mp4)')
+        // Bind the new object to its uploader so update/delete can verify ownership.
+        && request.resource.metadata.uploaderUid == request.auth.uid;
+      // Update: only the original uploader may overwrite, and the new
+      // metadata must keep the same uploaderUid (prevents rebinding to
+      // someone else mid-update).
+      allow update: if request.auth != null
+        && request.resource.size > 1024
+        && request.resource.size < 50 * 1024 * 1024
+        && (request.resource.contentType == 'video/webm'
+            || request.resource.contentType == 'video/mp4')
+        && fileName.matches('(set|match)\\.(webm|mp4)')
+        && resource.metadata.uploaderUid == request.auth.uid
+        && request.resource.metadata.uploaderUid == request.auth.uid;
+      // Delete: only the original uploader may remove their own video
+      // (used during account-deletion cleanup for that user's own clips).
+      allow delete: if request.auth != null
+        && resource.metadata.uploaderUid == request.auth.uid;
     }
 
     // Default: deny everything else
