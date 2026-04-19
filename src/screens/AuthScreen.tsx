@@ -247,7 +247,6 @@ export function AuthScreen({
         <button
           type="button"
           className="w-full touch-target font-body text-sm text-[#555] text-center mt-3 cursor-pointer bg-transparent border-none transition-colors duration-300 hover:text-[#777] rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          className="w-full font-body text-sm text-[#999] text-center mt-5 cursor-pointer bg-transparent border-none transition-colors duration-300 hover:text-white"
           onClick={onToggle}
         >
           {isSignup ? "Already have an account? " : "Need an account? "}
