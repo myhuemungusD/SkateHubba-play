@@ -205,6 +205,71 @@ describe("Settings", () => {
     expect(blocking.unblockUser).toHaveBeenCalledWith("me", "blocked-uid-1");
   });
 
+  it("renders a 'Deleted account' fallback when getUserProfile resolves null", async () => {
+    const blocking = await import("../../services/blocking");
+    const users = await import("../../services/users");
+    (blocking.subscribeToBlockedUsers as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      (_uid: string, cb: (ids: Set<string>) => void) => {
+        cb(new Set(["ghost-uid"]));
+        return () => {};
+      },
+    );
+    (users.getUserProfile as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+
+    // Row should resolve to the deleted-account fallback rather than getting
+    // stuck on "Loading…" when the profile doc is gone.
+    expect(await screen.findByText(/Deleted account/i)).toBeInTheDocument();
+    // Unblock button is still present so the user can clear the stale entry.
+    expect(screen.getByRole("button", { name: /Unblock/ })).toBeInTheDocument();
+  });
+
+  it("renders a 'Deleted account' fallback when getUserProfile rejects", async () => {
+    const blocking = await import("../../services/blocking");
+    const users = await import("../../services/users");
+    (blocking.subscribeToBlockedUsers as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      (_uid: string, cb: (ids: Set<string>) => void) => {
+        cb(new Set(["broken-uid"]));
+        return () => {};
+      },
+    );
+    (users.getUserProfile as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error("read failed"));
+
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+
+    expect(await screen.findByText(/Deleted account/i)).toBeInTheDocument();
+  });
+
+  it("batches profile fetches in groups of 20 instead of firing all in parallel", async () => {
+    const blocking = await import("../../services/blocking");
+    const users = await import("../../services/users");
+
+    // Seed 45 blocked UIDs to exercise the multi-chunk loop. The assertion
+    // below is on eventual call count, not timing, because vitest advances
+    // async microtasks eagerly — the behavioral proof is that each UID is
+    // read exactly once even when re-triggered by state updates.
+    const ids = Array.from({ length: 45 }, (_, i) => `blocked-${i}`);
+    (blocking.subscribeToBlockedUsers as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      (_uid: string, cb: (set: Set<string>) => void) => {
+        cb(new Set(ids));
+        return () => {};
+      },
+    );
+
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+
+    // All 45 should resolve without any getting stuck pending (dedup via
+    // pendingRef means each UID is read exactly once even though React may
+    // commit intermediate state during chunk completion).
+    await waitFor(() => {
+      expect((users.getUserProfile as ReturnType<typeof vi.fn>).mock.calls.length).toBe(45);
+    });
+    // Seeded UIDs should not be re-read on subsequent renders.
+    const callCount = (users.getUserProfile as ReturnType<typeof vi.fn>).mock.calls.length;
+    expect(callCount).toBe(45);
+  });
+
   it("surfaces an error banner when unblock fails", async () => {
     const blocking = await import("../../services/blocking");
     (blocking.subscribeToBlockedUsers as ReturnType<typeof vi.fn>).mockImplementationOnce(

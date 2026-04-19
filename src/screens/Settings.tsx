@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { UserProfile } from "../services/users";
 import { getUserProfile } from "../services/users";
 import { unblockUser } from "../services/blocking";
@@ -13,11 +13,17 @@ import { ChevronLeftIcon } from "../components/icons";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
 
+/** Permission values the Notifications API spec defines. Anything outside
+ *  this set (a future expansion, a non-standard browser, a misconfigured
+ *  polyfill) degrades to "unsupported" rather than flowing a bogus string
+ *  through the UI branches below. */
+const KNOWN_PUSH_STATES: ReadonlySet<string> = new Set<PushState>(["default", "granted", "denied"]);
+
 function readPushState(): PushState {
-  if (typeof window === "undefined") return "unsupported";
-  const api = (window as unknown as { Notification?: typeof Notification }).Notification;
-  if (!api || typeof api.permission !== "string") return "unsupported";
-  return api.permission as PushState;
+  if (typeof window === "undefined" || typeof Notification === "undefined") return "unsupported";
+  const perm: unknown = Notification.permission;
+  if (typeof perm !== "string" || !KNOWN_PUSH_STATES.has(perm)) return "unsupported";
+  return perm as PushState;
 }
 
 /* ── Preference row primitive ───────────────────────────── */
@@ -39,6 +45,11 @@ function PrefRow({ title, description, checked, onChange, disabled, trailing }: 
         <p className="font-body text-xs text-faint mt-1 leading-snug">{description}</p>
         {trailing && <div className="mt-2">{trailing}</div>}
       </div>
+      {/* Outer button is the 44pt tap target (iOS HIG / Material Design
+          minimum); the visually compact pill lives in an inner span so the
+          design stays tight while the accessible hit area extends past it.
+          Switch semantics (role, aria-checked, label) stay on the button so
+          assistive tech still identifies this as a toggle. */}
       <button
         type="button"
         role="switch"
@@ -46,18 +57,22 @@ function PrefRow({ title, description, checked, onChange, disabled, trailing }: 
         aria-label={title}
         onClick={() => onChange(!checked)}
         disabled={disabled}
-        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-all duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-40 disabled:cursor-not-allowed ${
-          checked
-            ? "bg-brand-orange/25 border-brand-orange/60 shadow-[0_0_8px_rgba(255,107,0,0.2)]"
-            : "bg-surface-alt border-border"
-        }`}
+        className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <span
-          className={`inline-block h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
-            checked ? "translate-x-6" : "translate-x-1"
-          }`}
           aria-hidden="true"
-        />
+          className={`relative inline-flex h-7 w-12 items-center rounded-full border transition-all duration-300 ${
+            checked
+              ? "bg-brand-orange/25 border-brand-orange/60 shadow-[0_0_8px_rgba(255,107,0,0.2)]"
+              : "bg-surface-alt border-border"
+          }`}
+        >
+          <span
+            className={`inline-block h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${
+              checked ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </span>
       </button>
     </div>
   );
@@ -90,41 +105,87 @@ function BlockedPlayersList({
   onUnblock: (uid: string) => Promise<void>;
 }) {
   // Hydrate blocked profiles so the list shows @usernames rather than raw uids.
-  // Keyed by the stable serialization of the current blocked set; when a user
-  // unblocks from this screen the snapshot updates (via useBlockedUsers) and
-  // we refetch only the new additions — existing entries stay cached.
-  const [profiles, setProfiles] = useState<Record<string, UserProfile>>({});
+  // Cache stores `UserProfile` for resolved users and `null` for UIDs the
+  // server confirmed no longer exist (deleted accounts) — that distinction
+  // is what lets the render path show "Deleted account" instead of a
+  // forever-"Loading…" row. Absent keys (`uid in profiles === false`) mean
+  // the fetch is still pending.
+  const [profiles, setProfiles] = useState<Record<string, UserProfile | null>>({});
+  // Latest-value mirror of `profiles` so the hydration effect doesn't list
+  // `profiles` in its dep array — the effect *writes* to `profiles`, so a
+  // straightforward dependency would loop. The mirror ref is updated during
+  // commit and read inside the effect body to skip already-hydrated UIDs.
+  const profilesRef = useRef(profiles);
+  profilesRef.current = profiles;
+  // In-flight UIDs. Dedupes overlapping fetches when blockedUids changes mid-
+  // hydration (e.g. an unblock happens while the initial batch is resolving).
+  const pendingRef = useRef<Set<string>>(new Set());
   const [unblockingUid, setUnblockingUid] = useState<string | null>(null);
   const [unblockError, setUnblockError] = useState<string | null>(null);
 
   useEffect(() => {
-    const missing = Array.from(blockedUids).filter((uid) => !profiles[uid]);
-    if (missing.length === 0) return;
-
     let cancelled = false;
-    Promise.all(missing.map((uid) => getUserProfile(uid).then((p) => [uid, p] as const))).then((results) => {
-      if (cancelled) return;
-      setProfiles((prev) => {
-        const next = { ...prev };
-        for (const [uid, p] of results) {
-          if (p) next[uid] = p;
-        }
-        return next;
-      });
-    });
+
+    // Chunk the directory reads so a user who's blocked hundreds of people
+    // doesn't fire hundreds of parallel Firestore reads on mount. Chunks of
+    // 20 resolve fast enough that the UI still hydrates progressively, but
+    // cheap enough that we won't hammer the quota or spike latency for
+    // everyone else sharing the pool.
+    const BATCH = 20;
+
+    async function hydrate() {
+      const current = profilesRef.current;
+      const missing = Array.from(blockedUids).filter((uid) => !(uid in current) && !pendingRef.current.has(uid));
+      for (let i = 0; i < missing.length && !cancelled; i += BATCH) {
+        const chunk = missing.slice(i, i + BATCH);
+        for (const uid of chunk) pendingRef.current.add(uid);
+        const results = await Promise.all(
+          chunk.map((uid) =>
+            getUserProfile(uid)
+              .then((p) => [uid, p] as const)
+              // Treat a read failure the same as "not found" so the row
+              // renders its deleted-account fallback instead of getting
+              // stuck pending forever. The actual network error is logged
+              // by getUserProfile itself.
+              .catch(() => [uid, null] as const),
+          ),
+        );
+        if (cancelled) return;
+        setProfiles((prev) => {
+          const next = { ...prev };
+          for (const [uid, p] of results) {
+            next[uid] = p;
+            pendingRef.current.delete(uid);
+          }
+          return next;
+        });
+      }
+    }
+
+    void hydrate();
     return () => {
       cancelled = true;
+      // Don't clear pendingRef on cleanup — a later re-run should still
+      // dedupe against any fetches whose state updates already committed.
     };
-  }, [blockedUids, profiles]);
+  }, [blockedUids]);
 
   // Drop cached profiles the user has since unblocked — keeps the cache from
-  // growing across the session.
+  // growing across the session. Prune pendingRef too so an unblock cancels
+  // the in-flight dedupe for that UID.
   useEffect(() => {
     setProfiles((prev) => {
-      const next: Record<string, UserProfile> = {};
-      for (const uid of blockedUids) if (prev[uid]) next[uid] = prev[uid];
-      return next;
+      let changed = false;
+      const next: Record<string, UserProfile | null> = {};
+      for (const [uid, p] of Object.entries(prev)) {
+        if (blockedUids.has(uid)) next[uid] = p;
+        else changed = true;
+      }
+      return changed ? next : prev;
     });
+    for (const uid of Array.from(pendingRef.current)) {
+      if (!blockedUids.has(uid)) pendingRef.current.delete(uid);
+    }
   }, [blockedUids]);
 
   const handleUnblock = useCallback(
@@ -164,14 +225,18 @@ function BlockedPlayersList({
         // Self-unblock guard should never trigger (UIDs are distinct by
         // definition); keep the check so a badly-seeded Set can't brick the row.
         if (uid === currentUserUid) return null;
-        const profile = profiles[uid];
+        // Three render states: key absent = still fetching; value null =
+        // server confirmed the account is gone (deleted, purged for policy
+        // violation, etc.); UserProfile = normal display.
+        const resolved = uid in profiles;
+        const profile = resolved ? profiles[uid] : undefined;
         const isUnblocking = unblockingUid === uid;
         return (
           <div key={uid} className="flex items-center justify-between p-4 rounded-2xl glass-card">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-8 h-8 rounded-full bg-surface-alt border border-border flex items-center justify-center shrink-0">
                 <span className="font-display text-[11px] text-brand-orange leading-none">
-                  {profile ? profile.username[0].toUpperCase() : "•"}
+                  {profile ? profile.username[0].toUpperCase() : resolved ? "?" : "•"}
                 </span>
               </div>
               <div className="min-w-0">
@@ -181,6 +246,8 @@ function BlockedPlayersList({
                     isVerifiedPro={profile.isVerifiedPro}
                     className="font-display text-base text-white block leading-none truncate"
                   />
+                ) : resolved ? (
+                  <span className="font-display text-sm text-subtle block leading-none">Deleted account</span>
                 ) : (
                   <span className="font-body text-sm text-subtle">Loading…</span>
                 )}
