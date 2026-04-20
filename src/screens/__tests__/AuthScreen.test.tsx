@@ -13,6 +13,48 @@ vi.mock("../../services/auth", () => ({
   resetPassword: (...args: unknown[]) => mockResetPassword(...args),
 }));
 
+const mockSignInAttempt = vi.fn();
+const mockSignInFailure = vi.fn();
+const mockSignInSuccess = vi.fn();
+const mockSignUpAttempt = vi.fn();
+const mockSignUpFailure = vi.fn();
+const mockSignUpSuccess = vi.fn();
+
+vi.mock("../../services/analytics", () => ({
+  analytics: {
+    signIn: (...args: unknown[]) => mockSignInSuccess(...args),
+    signInAttempt: (...args: unknown[]) => mockSignInAttempt(...args),
+    signInFailure: (...args: unknown[]) => mockSignInFailure(...args),
+    signUp: (...args: unknown[]) => mockSignUpSuccess(...args),
+    signUpAttempt: (...args: unknown[]) => mockSignUpAttempt(...args),
+    signUpFailure: (...args: unknown[]) => mockSignUpFailure(...args),
+  },
+}));
+
+const mockMetricSignIn = vi.fn();
+const mockMetricSignInAttempt = vi.fn();
+const mockMetricSignInFailure = vi.fn();
+const mockMetricSignUp = vi.fn();
+const mockMetricSignUpAttempt = vi.fn();
+const mockMetricSignUpFailure = vi.fn();
+
+vi.mock("../../services/logger", () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  metrics: {
+    signIn: (...args: unknown[]) => mockMetricSignIn(...args),
+    signInAttempt: (...args: unknown[]) => mockMetricSignInAttempt(...args),
+    signInFailure: (...args: unknown[]) => mockMetricSignInFailure(...args),
+    signUp: (...args: unknown[]) => mockMetricSignUp(...args),
+    signUpAttempt: (...args: unknown[]) => mockMetricSignUpAttempt(...args),
+    signUpFailure: (...args: unknown[]) => mockMetricSignUpFailure(...args),
+  },
+}));
+
+const mockCaptureException = vi.fn();
+vi.mock("../../lib/sentry", () => ({
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
+}));
+
 beforeEach(() => vi.clearAllMocks());
 
 const defaultProps = {
@@ -199,6 +241,102 @@ describe("AuthScreen", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Network error/)).toBeInTheDocument();
+    });
+  });
+
+  describe("auth telemetry (outage detection)", () => {
+    it("fires sign_in_attempt + sign_in success on successful email sign-in", async () => {
+      mockSignIn.mockResolvedValueOnce({ uid: "uid-success" });
+      render(<AuthScreen {...defaultProps} />);
+
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+      await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      await waitFor(() => expect(mockSignInSuccess).toHaveBeenCalledWith("email"));
+      expect(mockSignInAttempt).toHaveBeenCalledWith("email");
+      expect(mockMetricSignInAttempt).toHaveBeenCalledWith("email");
+      expect(mockMetricSignIn).toHaveBeenCalledWith("email", "uid-success");
+      expect(mockSignInFailure).not.toHaveBeenCalled();
+      expect(mockCaptureException).not.toHaveBeenCalled();
+    });
+
+    it("fires sign_up_attempt + sign_up success on successful email sign-up", async () => {
+      mockSignUp.mockResolvedValueOnce({
+        user: { uid: "uid-newaccount" },
+        verificationEmailSent: true,
+      });
+      render(<AuthScreen {...defaultProps} mode="signup" />);
+
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      const pws = screen.getAllByPlaceholderText(/•/);
+      await userEvent.type(pws[0], "password123");
+      await userEvent.type(pws[1], "password123");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+      await waitFor(() => expect(mockSignUpSuccess).toHaveBeenCalledWith("email"));
+      expect(mockSignUpAttempt).toHaveBeenCalledWith("email");
+      expect(mockMetricSignUpAttempt).toHaveBeenCalledWith("email");
+      expect(mockMetricSignUp).toHaveBeenCalledWith("email", "uid-newaccount");
+      expect(mockCaptureException).not.toHaveBeenCalled();
+    });
+
+    it("does NOT capture benign user-errors to Sentry (wrong password)", async () => {
+      mockSignIn.mockRejectedValueOnce({ code: "auth/wrong-password" });
+      render(<AuthScreen {...defaultProps} />);
+
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+      await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      await waitFor(() => expect(mockSignInFailure).toHaveBeenCalledWith("email", "auth/wrong-password"));
+      expect(mockCaptureException).not.toHaveBeenCalled();
+    });
+
+    it("captures auth/internal-error to Sentry with context", async () => {
+      const err = { code: "auth/internal-error", message: "Firebase: Error (auth/internal-error)." };
+      mockSignIn.mockRejectedValueOnce(err);
+      render(<AuthScreen {...defaultProps} />);
+
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+      await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      await waitFor(() => expect(mockSignInFailure).toHaveBeenCalledWith("email", "auth/internal-error"));
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        err,
+        expect.objectContaining({
+          extra: expect.objectContaining({
+            context: "AuthScreen.submit",
+            mode: "signin",
+            code: "auth/internal-error",
+          }),
+        }),
+      );
+    });
+
+    it("captures unknown codes to Sentry (escalate for investigation)", async () => {
+      const err = { code: "auth/some-brand-new-code" };
+      mockSignIn.mockRejectedValueOnce(err);
+      render(<AuthScreen {...defaultProps} />);
+
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+      await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      await waitFor(() => expect(mockCaptureException).toHaveBeenCalled());
+      expect(mockSignInFailure).toHaveBeenCalledWith("email", "auth/some-brand-new-code");
+    });
+
+    it("falls back to 'unknown' code when error has no code field", async () => {
+      mockSignIn.mockRejectedValueOnce(new Error("weird"));
+      render(<AuthScreen {...defaultProps} />);
+
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+      await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      await waitFor(() => expect(mockSignInFailure).toHaveBeenCalledWith("email", "unknown"));
     });
   });
 });

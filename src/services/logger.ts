@@ -90,5 +90,12 @@ export const metrics = {
 
   signIn: (method: string, uid: string) => logger.info("metric.sign_in", { method, uid }),
 
+  // Attempt/failure counters let Sentry breadcrumbs preserve full auth-flow
+  // context alongside the success metric — denominator for outage alerts.
+  signInAttempt: (method: string) => logger.info("metric.sign_in_attempt", { method }),
+  signInFailure: (method: string, code: string) => logger.info("metric.sign_in_failure", { method, code }),
+  signUpAttempt: (method: string) => logger.info("metric.sign_up_attempt", { method }),
+  signUpFailure: (method: string, code: string) => logger.info("metric.sign_up_failure", { method, code }),
+
   accountDeleted: (uid: string) => logger.info("metric.account_deleted", { uid }),
 };
