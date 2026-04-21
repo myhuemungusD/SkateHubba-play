@@ -16,6 +16,7 @@ import { BottomNav } from "./components/BottomNav";
 import { useBlockedUsers } from "./hooks/useBlockedUsers";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
+import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
 // Eager: first-paint / onboarding path (Landing, AgeGate, AuthScreen, ProfileSetup)
 // plus Lobby since it's the primary destination for returning authed users.
@@ -87,6 +88,7 @@ function AppScreens() {
   return (
     <>
       <OfflineBanner />
+      <DeleteAccountRetryBanner />
       <GameNotificationWatcher />
       <AppRoutes />
       <ToastContainer />
