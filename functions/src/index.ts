@@ -12,10 +12,18 @@ const DB_NAME = "skatehubba";
 
 /* ── Helpers ─────────────────────────────────────────────────── */
 
+/**
+ * Path to the owner-only private profile doc. FCM tokens moved from the
+ * publicly readable `users/{uid}` root in April 2026 so another signed-in
+ * client cannot enumerate device tokens. Admin SDK reads bypass security
+ * rules so these functions can still dispatch pushes.
+ */
+const PRIVATE_PROFILE_PATH = (uid: string) => `users/${uid}/private/profile`;
+
 /** Fetch FCM tokens for a user. Returns empty array if none found. */
 async function getFcmTokens(uid: string): Promise<string[]> {
   const db = getFirestore(DB_NAME);
-  const snap = await db.doc(`users/${uid}`).get();
+  const snap = await db.doc(PRIVATE_PROFILE_PATH(uid)).get();
   return snap.data()?.fcmTokens ?? [];
 }
 
@@ -47,7 +55,7 @@ async function sendPush(
 
   if (invalidTokens.length > 0) {
     const db = getFirestore(DB_NAME);
-    await db.doc(`users/${recipientUid}`).update({
+    await db.doc(PRIVATE_PROFILE_PATH(recipientUid)).update({
       fcmTokens: FieldValue.arrayRemove(...invalidTokens),
     });
   }

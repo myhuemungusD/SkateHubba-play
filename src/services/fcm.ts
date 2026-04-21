@@ -1,8 +1,16 @@
 import { getMessaging, getToken, onMessage, type MessagePayload } from "firebase/messaging";
-import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, setDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+
+/**
+ * Path to the owner-only subcollection doc that stores FCM push tokens.
+ * Kept out of the publicly readable `users/{uid}` root so another signed-in
+ * user cannot enumerate tokens for bulk-push abuse. See firestore.rules
+ * `match /users/{uid}/private/{docId}`.
+ */
+const PRIVATE_PROFILE_DOC = "profile";
 
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
 
@@ -71,10 +79,13 @@ export async function requestPushPermission(uid: string): Promise<string | null>
     const token = await getToken(messaging, { vapidKey: String(vapidKey), serviceWorkerRegistration });
     if (!token) return null;
 
-    // Store token on the user's profile
-    await updateDoc(doc(requireDb(), "users", uid), {
-      fcmTokens: arrayUnion(token),
-    });
+    // Store token on the owner-only private profile subcollection —
+    // never on the publicly readable users/{uid} root.
+    await setDoc(
+      doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC),
+      { fcmTokens: arrayUnion(token) },
+      { merge: true },
+    );
 
     return token;
   } catch (err) {
@@ -84,13 +95,15 @@ export async function requestPushPermission(uid: string): Promise<string | null>
 }
 
 /**
- * Remove a specific FCM token from the user's profile (call on sign-out).
+ * Remove a specific FCM token from the user's private profile (call on sign-out).
  */
 export async function removeFcmToken(uid: string, token: string): Promise<void> {
   try {
-    await updateDoc(doc(requireDb(), "users", uid), {
-      fcmTokens: arrayRemove(token),
-    });
+    await setDoc(
+      doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC),
+      { fcmTokens: arrayRemove(token) },
+      { merge: true },
+    );
   } catch (err) {
     logger.warn("fcm_token_removal_failed", { uid, error: parseFirebaseError(err) });
   }

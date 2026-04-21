@@ -20,7 +20,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { deleteDoc, doc, setDoc, setLogLevel } from "firebase/firestore";
+import { deleteDoc, doc, serverTimestamp, setDoc, setLogLevel, Timestamp } from "firebase/firestore";
 
 const PROJECT_ID = "demo-skatehubba-rules-notif-limits";
 
@@ -110,7 +110,75 @@ describe("notification_limits rules", () => {
           senderUid: SENDER_UID,
           gameId: GAME_ID,
           type: TYPE,
+          lastSentAt: serverTimestamp(),
+        }),
+      );
+    });
+  });
+
+  describe("lastSentAt tampering (red-team)", () => {
+    // Without the `lastSentAt == request.time` clamp on create, a sender
+    // could seed a new limit doc with a past timestamp — every subsequent
+    // parent /notifications cooldown check (`request.time > lastSentAt + 5s`)
+    // would then pass, letting the sender spam notifications indefinitely.
+    it("rejects create with lastSentAt in the past", async () => {
+      await assertFails(
+        setDoc(limitRef(asSender()), {
+          senderUid: SENDER_UID,
+          gameId: GAME_ID,
+          type: TYPE,
+          lastSentAt: Timestamp.fromMillis(0),
+        }),
+      );
+    });
+
+    it("rejects create with lastSentAt set to a fabricated future value", async () => {
+      await assertFails(
+        setDoc(limitRef(asSender()), {
+          senderUid: SENDER_UID,
+          gameId: GAME_ID,
+          type: TYPE,
+          lastSentAt: Timestamp.fromMillis(Date.now() + 60_000),
+        }),
+      );
+    });
+
+    it("rejects create with lastSentAt as a client Date (not serverTimestamp)", async () => {
+      // `new Date()` is a client-supplied value — even when it's close to
+      // the server's clock, rules evaluate `request.time` from the server
+      // and the two will not match exactly. Require serverTimestamp().
+      await assertFails(
+        setDoc(limitRef(asSender()), {
+          senderUid: SENDER_UID,
+          gameId: GAME_ID,
+          type: TYPE,
           lastSentAt: new Date(),
+        }),
+      );
+    });
+
+    it("rejects update that rewinds lastSentAt to the past", async () => {
+      // Seed an existing doc whose lastSentAt is > 5s ago so the update's
+      // "request.time > lastSentAt + 5s" gate would otherwise pass.
+      await seedLimit();
+      await assertFails(
+        setDoc(limitRef(asSender()), {
+          senderUid: SENDER_UID,
+          gameId: GAME_ID,
+          type: TYPE,
+          lastSentAt: Timestamp.fromMillis(0),
+        }),
+      );
+    });
+
+    it("accepts update with lastSentAt == serverTimestamp() once cooldown elapsed", async () => {
+      await seedLimit();
+      await assertSucceeds(
+        setDoc(limitRef(asSender()), {
+          senderUid: SENDER_UID,
+          gameId: GAME_ID,
+          type: TYPE,
+          lastSentAt: serverTimestamp(),
         }),
       );
     });

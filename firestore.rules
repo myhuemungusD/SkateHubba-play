@@ -51,6 +51,13 @@ service cloud.firestore {
     // at the security boundary; the TS constants exist so the UI can reject
     // invalid input before a round-trip. Update BOTH when changing limits.
     match /users/{uid} {
+      // The `users/{uid}` doc is publicly readable by any signed-in user
+      // (opponent lookup, leaderboard, etc.). Sensitive fields — push-
+      // notification tokens, date-of-birth, parental-consent flag — MUST
+      // live in the `users/{uid}/private/profile` subcollection below,
+      // which is owner-only. The field-list denials on create/update
+      // enforce this split server-side so a client can't regress the
+      // service layer back to storing PII on the public doc.
       allow read: if isSignedIn();
       allow create: if isOwner(uid)
         // One profile per UID — prevent a race condition from overwriting an existing profile
@@ -68,7 +75,12 @@ service cloud.firestore {
         // Pro fields are admin-only — clients cannot set them at creation
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
-        && !('verifiedAt' in request.resource.data);
+        && !('verifiedAt' in request.resource.data)
+        // PII fields are denied at root — they must be written to the
+        // owner-only `users/{uid}/private/profile` subcollection instead.
+        && !('fcmTokens' in request.resource.data)
+        && !('dob' in request.resource.data)
+        && !('parentalConsent' in request.resource.data);
       allow update: if isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
@@ -98,13 +110,34 @@ service cloud.firestore {
             || request.resource.data.losses == resource.data.losses + 1
           ))
         )
-        // fcmTokens (push-notification registration tokens) must be a list
-        // capped at 10 entries — prevents a compromised client from writing
-        // an unbounded blob into the user doc.
+        // PII fields are denied at root — they live in the owner-only
+        // `users/{uid}/private/profile` subcollection. Any update that
+        // tries to re-introduce them is rejected, so a compromised client
+        // cannot downgrade a migrated profile back to the publicly
+        // readable root.
+        && !('fcmTokens' in request.resource.data)
+        && !('dob' in request.resource.data)
+        && !('parentalConsent' in request.resource.data)
+        // Rate-limit timestamps (`lastGameCreatedAt`, `lastSpotCreatedAt`)
+        // are used elsewhere in these rules to throttle game/spot creation.
+        // Without a write-side clamp, a client could `updateDoc({
+        // lastGameCreatedAt: Timestamp.fromMillis(0) })` to reset the
+        // cooldown and spam. Allowed transitions:
+        //   - field absent in request (update doesn't touch it)
+        //   - set to the server's `request.time` (matches serverTimestamp())
+        //   - unchanged from the prior value (other fields updated)
+        // Any other value is rejected, including backward writes.
         && (
-          !('fcmTokens' in request.resource.data)
-          || (request.resource.data.fcmTokens is list
-              && request.resource.data.fcmTokens.size() <= 10)
+          !('lastGameCreatedAt' in request.resource.data)
+          || request.resource.data.lastGameCreatedAt == request.time
+          || ('lastGameCreatedAt' in resource.data
+              && request.resource.data.lastGameCreatedAt == resource.data.lastGameCreatedAt)
+        )
+        && (
+          !('lastSpotCreatedAt' in request.resource.data)
+          || request.resource.data.lastSpotCreatedAt == request.time
+          || ('lastSpotCreatedAt' in resource.data
+              && request.resource.data.lastSpotCreatedAt == resource.data.lastSpotCreatedAt)
         );
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
@@ -122,6 +155,56 @@ service cloud.firestore {
           && blockedUid != uid;
         allow update: if false;
         allow delete: if isOwner(uid);
+      }
+
+      // ── Private Profile (subcollection) ──
+      // Owner-only storage for PII that must NOT leak through the public
+      // `users/{uid}` read rule: FCM push tokens (usable to direct-push a
+      // specific device), date of birth (YYYY-MM-DD — COPPA/CCPA PII),
+      // and the derived parentalConsent flag (reveals minor status).
+      //
+      // Cloud Functions read this via Admin SDK (not subject to rules) to
+      // dispatch push notifications. Clients only ever read/write their
+      // OWN document — no other signed-in user can enumerate tokens or
+      // ages. Stored under a fixed document id ("profile") for a
+      // deterministic path.
+      match /private/{docId} {
+        allow read, delete: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && docId == 'profile'
+          && (
+            !('fcmTokens' in request.resource.data)
+            || (request.resource.data.fcmTokens is list
+                && request.resource.data.fcmTokens.size() <= 10)
+          )
+          && (
+            !('dob' in request.resource.data)
+            || (request.resource.data.dob is string
+                && request.resource.data.dob.matches('\\d{4}-\\d{2}-\\d{2}'))
+          )
+          && (
+            !('parentalConsent' in request.resource.data)
+            || request.resource.data.parentalConsent is bool
+          );
+        allow update: if isOwner(uid)
+          && docId == 'profile'
+          // dob + parentalConsent are immutable once set (COPPA audit trail).
+          && (
+            !('dob' in request.resource.data)
+            || !('dob' in resource.data)
+            || request.resource.data.dob == resource.data.dob
+          )
+          && (
+            !('parentalConsent' in request.resource.data)
+            || !('parentalConsent' in resource.data)
+            || request.resource.data.parentalConsent == resource.data.parentalConsent
+          )
+          // fcmTokens cap — same bound as the old root field had.
+          && (
+            !('fcmTokens' in request.resource.data)
+            || (request.resource.data.fcmTokens is list
+                && request.resource.data.fcmTokens.size() <= 10)
+          );
       }
     }
 
@@ -833,11 +916,20 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.senderUid
         && limitId == (request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)
-        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite'];
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite']
+        // `lastSentAt` must be the server's `request.time` (i.e. a
+        // serverTimestamp() from the client). Without this, a sender could
+        // create the limit doc with `lastSentAt: Timestamp.fromMillis(0)`,
+        // making every subsequent parent `/notifications` cooldown check
+        // (`request.time > lastSentAt + 5s`) pass and bypassing the throttle.
+        && request.resource.data.lastSentAt == request.time;
 
       allow update: if isSignedIn()
         && request.auth.uid == resource.data.senderUid
-        && request.time > resource.data.lastSentAt + duration.value(5, 's');
+        && request.time > resource.data.lastSentAt + duration.value(5, 's')
+        // New `lastSentAt` must advance to the server's current time — not a
+        // past value the client could use to re-enable spamming.
+        && request.resource.data.lastSentAt == request.time;
 
       // Rate-limit docs are server-managed cooldown state with no user-facing
       // lifecycle. Clients must never delete them — a successful delete would
@@ -895,11 +987,18 @@ service cloud.firestore {
 
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.senderUid
-        && limitId == (request.auth.uid + '_' + request.resource.data.gameId);
+        && limitId == (request.auth.uid + '_' + request.resource.data.gameId)
+        // `lastNudgedAt` must be `request.time` (serverTimestamp from the
+        // client). Without this, a sender could seed the doc with a past
+        // timestamp and the parent /nudges rule's 1-hour cooldown check
+        // would always pass.
+        && request.resource.data.lastNudgedAt == request.time;
 
       allow update: if isSignedIn()
         && request.auth.uid == resource.data.senderUid
-        && request.time > resource.data.lastNudgedAt + duration.value(1, 'h');
+        && request.time > resource.data.lastNudgedAt + duration.value(1, 'h')
+        // New `lastNudgedAt` must advance to server time, not an older value.
+        && request.resource.data.lastNudgedAt == request.time;
 
       allow delete: if false;
     }

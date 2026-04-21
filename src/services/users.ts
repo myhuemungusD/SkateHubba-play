@@ -20,6 +20,13 @@ import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips } from "./clips";
 
+/**
+ * Publicly readable profile at `users/{uid}`. Any signed-in user can read
+ * this doc (opponent lookup, leaderboard, player directory). PII —
+ * date-of-birth, parental-consent flag, FCM push tokens — must NOT live
+ * here; it goes in {@link UserPrivateProfile} at the owner-only
+ * `users/{uid}/private/profile` subcollection.
+ */
 export interface UserProfile {
   uid: string;
   username: string;
@@ -27,10 +34,6 @@ export interface UserProfile {
   /** serverTimestamp() on write; Firestore Timestamp on read. */
   createdAt: FieldValue | null;
   emailVerified: boolean;
-  /** Date of birth in YYYY-MM-DD format (collected at age gate for COPPA/CCPA compliance). */
-  dob?: string;
-  /** Whether parental consent was given (for users 13-17 at signup). */
-  parentalConsent?: boolean;
   /** Denormalized leaderboard stats — updated atomically when games complete. */
   wins?: number;
   losses?: number;
@@ -43,6 +46,24 @@ export interface UserProfile {
   /** Timestamp when pro status was granted (serverTimestamp on write, Firestore Timestamp on read). */
   verifiedAt?: FieldValue | null;
 }
+
+/**
+ * PII stored at the owner-only `users/{uid}/private/profile` subcollection
+ * doc. Enforced server-side via {@link firestore.rules}: only the signed-in
+ * owner can read, create, or update this doc. Cloud Functions read it via
+ * Admin SDK (not subject to rules) to dispatch push notifications.
+ */
+export interface UserPrivateProfile {
+  /** Date of birth in YYYY-MM-DD format (collected at age gate for COPPA/CCPA compliance). */
+  dob?: string;
+  /** Whether parental consent was given (for users 13-17 at signup). */
+  parentalConsent?: boolean;
+  /** FCM push-notification registration tokens for this user's devices. */
+  fcmTokens?: string[];
+}
+
+/** Fixed document id under `users/{uid}/private/`. Exposed for tests. */
+export const USER_PRIVATE_PROFILE_DOC_ID = "profile";
 
 /**
  * Get user profile by UID
@@ -132,10 +153,18 @@ export async function createProfile(
       stance,
       createdAt: serverTimestamp(),
       emailVerified,
+    };
+    tx.set(userRef, profileData);
+
+    // PII (dob + parentalConsent) lives on an owner-only subcollection doc
+    // so the publicly readable `users/{uid}` can never leak it. See
+    // firestore.rules match /users/{uid}/private/{docId}.
+    const privateRef = doc(db, "users", uid, "private", USER_PRIVATE_PROFILE_DOC_ID);
+    const privateData: UserPrivateProfile = {
       dob,
       ...(parentalConsent !== undefined ? { parentalConsent } : {}),
     };
-    tx.set(userRef, profileData);
+    tx.set(privateRef, privateData);
 
     return profileData;
   });
@@ -146,9 +175,9 @@ export async function createProfile(
 /**
  * Delete a user's Firestore data: game documents, profile, and username reservation.
  *
- * Called AFTER deleteAccount() from auth.ts. If this fails, the auth
- * account is already gone and Firestore data is orphaned — the caller
- * should log/alert so it can be cleaned up manually or via a Cloud Function.
+ * Must be called BEFORE deleteAccount() from auth.ts — once the Auth
+ * account is gone the ID token is revoked and every rules-gated delete
+ * below would fail with permission-denied, silently orphaning data.
  *
  * Active games are preserved so the opponent isn't affected mid-game.
  *
@@ -189,8 +218,13 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // clips, so this runs before the auth/profile teardown.
   await deleteUserClips(uid);
 
-  // Phase 4: Delete profile + username atomically (no reads needed, batch is cheaper)
+  // Phase 4: Delete private-profile subcollection doc, user profile, and
+  // username reservation atomically (no reads needed, batch is cheaper).
+  // The private-profile doc must come FIRST — leaving it behind would
+  // orphan PII (fcmTokens, dob, parentalConsent) that the public user doc
+  // would normally reference.
   const batch = writeBatch(db);
+  batch.delete(doc(db, "users", uid, "private", USER_PRIVATE_PROFILE_DOC_ID));
   batch.delete(doc(db, "users", uid));
   batch.delete(doc(db, "usernames", username.toLowerCase().trim()));
   await batch.commit();

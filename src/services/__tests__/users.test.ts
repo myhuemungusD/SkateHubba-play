@@ -133,11 +133,14 @@ describe("users service", () => {
   describe("createProfile", () => {
     const VALID_DOB = "2000-01-15";
 
-    it("runs a transaction that reserves the username and creates the profile", async () => {
+    it("runs a transaction that reserves the username and creates the public + private profile docs", async () => {
+      const writes: Array<{ ref: string; data: Record<string, unknown> }> = [];
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
           get: vi.fn().mockResolvedValue({ exists: () => false }),
-          set: vi.fn(),
+          set: vi.fn((ref: string, data: Record<string, unknown>) => {
+            writes.push({ ref, data });
+          }),
         };
         return fn(tx);
       });
@@ -147,51 +150,61 @@ describe("users service", () => {
         uid: "u1",
         username: "sk8r",
         stance: "regular",
-        dob: VALID_DOB,
       });
-      // email should not be stored in the profile (PII reduction)
+      // The public profile doc MUST NOT contain PII — it is world-readable by signed-in users.
+      expect(result).not.toHaveProperty("dob");
+      expect(result).not.toHaveProperty("parentalConsent");
       expect(result).not.toHaveProperty("email");
+
+      // Three tx.set calls: username reservation, public user doc, private subcollection doc.
+      expect(writes).toHaveLength(3);
+      const publicWrite = writes.find((w) => w.ref === "users/u1");
+      const privateWrite = writes.find((w) => w.ref === "users/u1/private/profile");
+      expect(publicWrite?.data).not.toHaveProperty("dob");
+      expect(publicWrite?.data).not.toHaveProperty("parentalConsent");
+      expect(privateWrite?.data).toMatchObject({ dob: VALID_DOB });
     });
 
-    it("includes dob and parentalConsent when provided", async () => {
-      let capturedProfile: Record<string, unknown> | undefined;
+    it("writes dob and parentalConsent to the owner-only private subcollection when provided", async () => {
+      const writes: Array<{ ref: string; data: Record<string, unknown> }> = [];
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
           get: vi.fn().mockResolvedValue({ exists: () => false }),
-          set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
-            // Capture the profile data (second set call)
-            if (data.uid) capturedProfile = data;
+          set: vi.fn((ref: string, data: Record<string, unknown>) => {
+            writes.push({ ref, data });
           }),
         };
         return fn(tx);
       });
 
       const result = await createProfile("u1", "sk8r", "regular", true, "2005-06-15", true);
-      expect(result).toMatchObject({
-        uid: "u1",
-        username: "sk8r",
-        stance: "regular",
-        dob: "2005-06-15",
-        parentalConsent: true,
-      });
-      expect(capturedProfile).toMatchObject({ dob: "2005-06-15", parentalConsent: true });
+      expect(result).toMatchObject({ uid: "u1", username: "sk8r", stance: "regular" });
+      expect(result).not.toHaveProperty("dob");
+      expect(result).not.toHaveProperty("parentalConsent");
+
+      const privateWrite = writes.find((w) => w.ref === "users/u1/private/profile");
+      expect(privateWrite?.data).toMatchObject({ dob: "2005-06-15", parentalConsent: true });
+      const publicWrite = writes.find((w) => w.ref === "users/u1");
+      expect(publicWrite?.data).not.toHaveProperty("dob");
+      expect(publicWrite?.data).not.toHaveProperty("parentalConsent");
     });
 
-    it("omits parentalConsent (but keeps dob) when parentalConsent not provided", async () => {
-      let capturedProfile: Record<string, unknown> | undefined;
+    it("omits parentalConsent from the private doc (but keeps dob) when not provided", async () => {
+      const writes: Array<{ ref: string; data: Record<string, unknown> }> = [];
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
           get: vi.fn().mockResolvedValue({ exists: () => false }),
-          set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
-            if (data.uid) capturedProfile = data;
+          set: vi.fn((ref: string, data: Record<string, unknown>) => {
+            writes.push({ ref, data });
           }),
         };
         return fn(tx);
       });
 
       await createProfile("u1", "sk8r", "regular", false, VALID_DOB);
-      expect(capturedProfile).toHaveProperty("dob", VALID_DOB);
-      expect(capturedProfile).not.toHaveProperty("parentalConsent");
+      const privateWrite = writes.find((w) => w.ref === "users/u1/private/profile");
+      expect(privateWrite?.data).toHaveProperty("dob", VALID_DOB);
+      expect(privateWrite?.data).not.toHaveProperty("parentalConsent");
     });
 
     it("throws AgeVerificationRequiredError when dob is missing (COPPA)", async () => {
@@ -259,10 +272,15 @@ describe("users service", () => {
       // Clips cascade invoked before the profile/username batch so the
       // owner-delete rule still has a valid auth context to match playerUid.
       expect(mockDeleteUserClips).toHaveBeenCalledWith("u1");
-      // Profile + username deleted via batch
+      // Private-profile subcollection doc + public profile + username deleted via batch.
       const batch = mockWriteBatch();
-      expect(batch.delete).toHaveBeenCalledTimes(2);
+      expect(batch.delete).toHaveBeenCalledTimes(3);
       expect(batch.commit).toHaveBeenCalled();
+      // Private-profile path must be among the deletes so PII doesn't linger.
+      const deletedRefs = batch.delete.mock.calls.map((call: unknown[]) => call[0]);
+      expect(deletedRefs).toContain("users/u1/private/profile");
+      expect(deletedRefs).toContain("users/u1");
+      expect(deletedRefs).toContain("usernames/sk8r");
     });
 
     it("skips active games during deletion", async () => {

@@ -77,6 +77,12 @@ export interface UserDataExport {
     username: string;
   };
   profile: ExportedDoc | null;
+  /**
+   * Owner-only PII stored at `users/{uid}/private/profile`
+   * (dob, parentalConsent, fcmTokens). Null when the doc hasn't been
+   * created yet — e.g. users from before the April 2026 split.
+   */
+  privateProfile: ExportedDoc | null;
   usernameReservation: ExportedDoc | null;
   games: ExportedDoc[];
   clips: ExportedDoc[];
@@ -145,6 +151,7 @@ export async function exportUserData(uid: string, username: string): Promise<Use
 
   const [
     profile,
+    privateProfile,
     usernameReservation,
     gamesAsP1,
     gamesAsP2,
@@ -159,6 +166,7 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     reports,
   ] = await Promise.all([
     readDoc(`users/${uid}`, () => getDoc(doc(db, "users", uid))),
+    readDoc(`users/${uid}/private/profile`, () => getDoc(doc(db, "users", uid, "private", "profile"))),
     normalizedUsername
       ? readDoc(`usernames/${normalizedUsername}`, () => getDoc(doc(db, "usernames", normalizedUsername)))
       : Promise.resolve(null),
@@ -248,6 +256,7 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     capped,
     subject: { uid, username: normalizedUsername },
     profile,
+    privateProfile,
     usernameReservation,
     games,
     clips,

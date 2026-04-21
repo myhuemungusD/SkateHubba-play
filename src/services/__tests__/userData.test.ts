@@ -79,6 +79,7 @@ function emptyBundle(overrides?: Partial<UserDataExport>): UserDataExport {
     capped: false,
     subject: { uid: "u1", username: "sk8r" },
     profile: null,
+    privateProfile: null,
     usernameReservation: null,
     games: [],
     clips: [],
@@ -120,10 +121,12 @@ describe("userData service", () => {
 
     it("bundles all surfaces into one export", async () => {
       const profileData = { uid: "u1", username: "sk8r", wins: 5 };
+      const privateProfileData = { dob: "2000-01-01", fcmTokens: ["tok-1"] };
       const usernameData = { uid: "u1", reservedAt: new mockTimestampClass(1_700_000_000, 0) };
 
       mockGetDoc
         .mockResolvedValueOnce(buildSingleDoc(true, profileData, "u1")) // profile
+        .mockResolvedValueOnce(buildSingleDoc(true, privateProfileData, "profile")) // private profile subcollection
         .mockResolvedValueOnce(buildSingleDoc(true, usernameData, "sk8r")); // username reservation
 
       mockGetDocs
@@ -145,6 +148,10 @@ describe("userData service", () => {
       expect(bundle.capped).toBe(false);
       expect(bundle.subject).toEqual({ uid: "u1", username: "sk8r" });
       expect(bundle.profile?.data).toEqual(profileData);
+      // PII lives on the subcollection, not on the public user doc — the
+      // export must still collect it so GDPR Article 20 requests aren't
+      // missing fields that the app stored about the user.
+      expect(bundle.privateProfile?.data).toEqual(privateProfileData);
       expect(bundle.usernameReservation?.id).toBe("sk8r");
       expect(bundle.games).toHaveLength(2);
       expect(bundle.games[0].id).toBe("g1");
@@ -159,7 +166,10 @@ describe("userData service", () => {
     });
 
     it("deduplicates games that appear in both player1 and player2 queries", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
+      mockGetDoc
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // privateProfile subcollection
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // username reservation
 
       const sharedGame = buildDoc("g1", "games/g1", { status: "complete" });
       mockGetDocs
@@ -180,7 +190,10 @@ describe("userData service", () => {
     });
 
     it("returns null profile when doc doesn't exist", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
+      mockGetDoc
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // privateProfile subcollection
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // username reservation
       mockGetDocs.mockResolvedValue({ docs: [] });
 
       const bundle = await exportUserData("u1", "sk8r");
@@ -189,21 +202,24 @@ describe("userData service", () => {
     });
 
     it("skips username reservation when username is blank", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null));
+      mockGetDoc
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // privateProfile
       mockGetDocs.mockResolvedValue({ docs: [] });
 
       const bundle = await exportUserData("u1", "   ");
       expect(bundle.usernameReservation).toBeNull();
-      // Only one getDoc call — the profile. No username lookup.
-      expect(mockGetDoc).toHaveBeenCalledTimes(1);
+      // Two getDoc calls — profile and its private subcollection doc. No username lookup.
+      expect(mockGetDoc).toHaveBeenCalledTimes(2);
     });
 
     it("normalises Firestore Timestamps to ISO strings", async () => {
       const ts = new mockTimestampClass(1_700_000_000, 0);
       const profileData = { uid: "u1", createdAt: ts };
       mockGetDoc
-        .mockResolvedValueOnce(buildSingleDoc(true, profileData, "u1"))
-        .mockResolvedValueOnce(buildSingleDoc(false, null));
+        .mockResolvedValueOnce(buildSingleDoc(true, profileData, "u1")) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // privateProfile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // username reservation
       mockGetDocs.mockResolvedValue({ docs: [] });
 
       const bundle = await exportUserData("u1", "sk8r");
@@ -214,8 +230,9 @@ describe("userData service", () => {
       // Firestore's data() shouldn't ever return a primitive, but the
       // fallback keeps ExportedDoc.data well-typed if it does.
       mockGetDoc
-        .mockResolvedValueOnce(buildSingleDoc(true, "not-an-object", "u1"))
-        .mockResolvedValueOnce(buildSingleDoc(false, null));
+        .mockResolvedValueOnce(buildSingleDoc(true, "not-an-object", "u1")) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // privateProfile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // username reservation
       mockGetDocs.mockResolvedValue({ docs: [] });
 
       const bundle = await exportUserData("u1", "sk8r");
@@ -226,8 +243,9 @@ describe("userData service", () => {
       const ts = new mockTimestampClass(1_700_000_000, 0);
       const profileData = { uid: "u1", history: [{ when: ts, what: "login" }] };
       mockGetDoc
-        .mockResolvedValueOnce(buildSingleDoc(true, profileData, "u1"))
-        .mockResolvedValueOnce(buildSingleDoc(false, null));
+        .mockResolvedValueOnce(buildSingleDoc(true, profileData, "u1")) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // privateProfile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // username reservation
       mockGetDocs.mockResolvedValue({ docs: [] });
 
       const bundle = await exportUserData("u1", "sk8r");
@@ -236,7 +254,10 @@ describe("userData service", () => {
     });
 
     it("deduplicates nudges that appear in both sent and received queries", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
+      mockGetDoc
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // privateProfile subcollection
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // username reservation
 
       const sharedNudge = buildDoc("n1", "nudges/n1", { senderUid: "u1", recipientUid: "u1" });
       mockGetDocs
@@ -257,7 +278,10 @@ describe("userData service", () => {
     });
 
     it("sets capped=true when any surface hits the query limit", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
+      mockGetDoc
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // privateProfile subcollection
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // username reservation
 
       // Generate exactly 500 game docs (the EXPORT_QUERY_LIMIT) to hit the cap
       const manyGames = Array.from({ length: 500 }, (_, i) => buildDoc(`g${i}`, `games/g${i}`, { player1Uid: "u1" }));
@@ -271,7 +295,10 @@ describe("userData service", () => {
     });
 
     it("returns empty list when a collection read fails", async () => {
-      mockGetDoc.mockResolvedValueOnce(buildSingleDoc(false, null)).mockResolvedValueOnce(buildSingleDoc(false, null));
+      mockGetDoc
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // profile
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // privateProfile subcollection
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // username reservation
 
       mockGetDocs
         .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "permission-denied" })) // games p1
@@ -287,8 +314,9 @@ describe("userData service", () => {
 
     it("returns null when profile read fails", async () => {
       mockGetDoc
-        .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "permission-denied" }))
-        .mockResolvedValueOnce(buildSingleDoc(false, null));
+        .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "permission-denied" })) // profile read fails
+        .mockResolvedValueOnce(buildSingleDoc(false, null)) // privateProfile missing
+        .mockResolvedValueOnce(buildSingleDoc(false, null)); // username reservation
       mockGetDocs.mockResolvedValue({ docs: [] });
 
       const bundle = await exportUserData("u1", "sk8r");

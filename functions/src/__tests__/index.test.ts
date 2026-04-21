@@ -503,8 +503,10 @@ describe("sendPush (via onNudgeCreated)", () => {
       params: { nudgeId: "nudge-1" },
     });
 
-    // Should update user doc to remove invalid tokens
-    expect(mockDoc).toHaveBeenCalledWith("users/user-2");
+    // Should update the owner-only private-profile subcollection doc
+    // (NOT the publicly readable users/{uid} root). fcmTokens moved off
+    // the public doc in April 2026 to close the token-enumeration leak.
+    expect(mockDoc).toHaveBeenCalledWith("users/user-2/private/profile");
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         fcmTokens: expect.objectContaining({ _op: "arrayRemove", tokens: ["invalid-1", "invalid-2"] }),
