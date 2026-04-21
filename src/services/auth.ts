@@ -194,6 +194,18 @@ function makeGoogleProvider(): GoogleAuthProvider {
 }
 
 /**
+ * Error codes that should trigger a redirect fallback. User-abort codes
+ * (`auth/popup-closed-by-user`, `auth/cancelled-popup-request`) are
+ * deliberately excluded — redirecting on those loops the user back to
+ * Google's OAuth page after they explicitly cancelled.
+ */
+const POPUP_FALLBACK_CODES = new Set<string>([
+  "auth/popup-blocked",
+  "auth/operation-not-supported-in-this-environment",
+  "auth/web-storage-unsupported",
+]);
+
+/**
  * Sign in with Google.
  * Uses popup on desktop; falls back to redirect when popups are blocked (mobile/Safari).
  * Returns the signed-in User, or null if a redirect was initiated (onAuthStateChanged
@@ -209,12 +221,7 @@ export async function signInWithGoogle(): Promise<User | null> {
     return cred.user;
   } catch (err: unknown) {
     const code = getErrorCode(err);
-    // Only fall back to redirect when the browser actually blocked the popup.
-    // popup-closed-by-user and cancelled-popup-request are intentional user
-    // aborts — force-redirecting on those traps people in a loop where
-    // tapping "cancel" in the popup still sends them to Google's OAuth page.
-    // The caller surfaces these codes as a silent dismissal.
-    if (code === "auth/popup-blocked") {
+    if (POPUP_FALLBACK_CODES.has(code)) {
       logger.info("google_sign_in_popup_fallback_redirect", { code });
       await signInWithRedirect(a, provider);
       return null;

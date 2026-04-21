@@ -82,6 +82,7 @@ vi.mock("../services/storage", () => ({
 vi.mock("../services/fcm", () => ({
   requestPushPermission: vi.fn().mockResolvedValue(null),
   removeFcmToken: vi.fn().mockResolvedValue(undefined),
+  removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
   onForegroundMessage: vi.fn(() => vi.fn()),
 }));
 vi.mock("../firebase", () => ({
