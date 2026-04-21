@@ -28,13 +28,11 @@ const P2 = { email: "p2@test.com", password: "password123", username: "p2skater"
 
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
 
-async function passAgeGate(page: Page) {
-  // Wait for age gate to render
+async function fillAgeFields(page: Page) {
   await expect(page.getByLabel("Birth month")).toBeVisible({ timeout: 5_000 });
   await page.getByLabel("Birth month").fill("01");
   await page.getByLabel("Birth day").fill("15");
   await page.getByLabel("Birth year").fill("2000");
-  await page.getByRole("button", { name: "Continue" }).click();
 }
 
 async function signUpAndSetupProfile(page: Page, email: string, pw: string, username: string) {
@@ -45,22 +43,22 @@ async function signUpAndSetupProfile(page: Page, email: string, pw: string, user
     await fetch("http://localhost:8080/", { mode: "no-cors" }).catch(() => {});
   });
   await page.getByRole("button", { name: "Use email", exact: true }).click();
-  await passAgeGate(page);
   // Wait for auth form to render
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   const pwFields = page.getByPlaceholder("••••••••");
   await pwFields.nth(0).fill(pw);
   await pwFields.nth(1).fill(pw);
+  // DOB is collected inline on the same card (COPPA).
+  await fillAgeFields(page);
   await page.getByRole("button", { name: "Create Account" }).click();
   // Wait for navigation away from auth screen
   await page.waitForURL(/\/(profile|lobby)/, { timeout: 15_000 });
 
+  // Single-card profile setup: username + stance + submit in one step.
   await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
   await page.getByPlaceholder("sk8legend").fill(username);
   await expect(page.getByText(`@${username} is available ✓`)).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: "Next" }).click();
-  await page.getByRole("button", { name: "Next" }).click();
   await page.getByRole("button", { name: "Lock It In" }).click();
   await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 10_000 });
 }

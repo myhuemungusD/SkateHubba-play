@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
 import { EMAIL_RE, pwStrength, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
+import { MIN_AGE, isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -10,6 +11,67 @@ import { analytics } from "../services/analytics";
 import { captureException } from "../lib/sentry";
 import { isBenignAuthCode } from "../utils/authCodes";
 
+/** Three-input date-of-birth row. Kept local because only AuthScreen uses it. */
+function DobRow({
+  month,
+  day,
+  year,
+  onChange,
+  disabled,
+}: {
+  month: string;
+  day: string;
+  year: string;
+  onChange: (field: "month" | "day" | "year", value: string) => void;
+  disabled?: boolean;
+}) {
+  const inputClass =
+    "w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-2xl text-white text-base font-body outline-none focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1),0_0_16px_rgba(255,107,0,0.06)] transition-all duration-300 px-4 py-3.5 text-center disabled:opacity-40 disabled:cursor-not-allowed";
+  return (
+    <div className="flex gap-3 mb-2">
+      <div className="flex-1">
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="MM"
+          maxLength={2}
+          value={month}
+          disabled={disabled}
+          onChange={(e) => onChange("month", e.target.value.replace(/\D/g, ""))}
+          className={inputClass}
+          aria-label="Birth month"
+        />
+      </div>
+      <div className="flex-1">
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="DD"
+          maxLength={2}
+          value={day}
+          disabled={disabled}
+          onChange={(e) => onChange("day", e.target.value.replace(/\D/g, ""))}
+          className={inputClass}
+          aria-label="Birth day"
+        />
+      </div>
+      <div className="flex-[1.5]">
+        <input
+          type="text"
+          inputMode="numeric"
+          placeholder="YYYY"
+          maxLength={4}
+          value={year}
+          disabled={disabled}
+          onChange={(e) => onChange("year", e.target.value.replace(/\D/g, ""))}
+          className={inputClass}
+          aria-label="Birth year"
+        />
+      </div>
+    </div>
+  );
+}
+
 export function AuthScreen({
   mode,
   onDone,
@@ -18,6 +80,9 @@ export function AuthScreen({
   googleLoading,
   googleError,
   onGoogleErrorDismiss,
+  showAgeFields = false,
+  onAgeVerified,
+  onNavLegal,
 }: {
   mode: "signup" | "signin";
   onDone: () => void;
@@ -26,16 +91,35 @@ export function AuthScreen({
   googleLoading: boolean;
   googleError: string;
   onGoogleErrorDismiss: () => void;
+  /** Render DOB + parental-consent inputs inline in signup mode (COPPA/CCPA). */
+  showAgeFields?: boolean;
+  /** Called with the verified DOB string + consent flag BEFORE signUp runs. */
+  onAgeVerified?: (dob: string, parentalConsent: boolean) => void;
+  /** Navigate to the privacy/terms screen from inline consent links. */
+  onNavLegal?: (screen: "privacy" | "terms") => void;
 }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [month, setMonth] = useState("");
+  const [day, setDay] = useState("");
+  const [year, setYear] = useState("");
+  const [parentConsent, setParentConsent] = useState(false);
+  const [ageBlocked, setAgeBlocked] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [verifyWarning, setVerifyWarning] = useState(false);
   const isSignup = mode === "signup";
+  const showDob = isSignup && showAgeFields;
   const anyLoading = loading || googleLoading;
+  const isMinor = showDob && isMinorDob(month, day, year);
+
+  const updateDob = (field: "month" | "day" | "year", value: string) => {
+    if (field === "month") setMonth(value);
+    else if (field === "day") setDay(value);
+    else setYear(value);
+  };
 
   const submit = async () => {
     setError("");
@@ -52,6 +136,28 @@ export function AuthScreen({
       return;
     }
 
+    let verifiedDob: string | undefined;
+    let verifiedConsent = false;
+    if (showDob) {
+      const result = parseDob(month, day, year);
+      if (result.kind === "invalid") {
+        setError(result.message);
+        return;
+      }
+      if (result.kind === "blocked") {
+        logger.info("age_gate_blocked", { age: result.age });
+        setAgeBlocked(true);
+        return;
+      }
+      if (result.needsParentalConsent && !parentConsent) {
+        setError("Parental or guardian consent is required for users under 18");
+        return;
+      }
+      verifiedDob = result.dobString;
+      verifiedConsent = result.needsParentalConsent;
+      logger.info("age_gate_passed_inline", { age: result.age, parentalConsent: verifiedConsent });
+    }
+
     setLoading(true);
     const trimmedEmail = email.trim();
     logger.info("auth_screen_submit", { mode: isSignup ? "signup" : "signin", email: trimmedEmail });
@@ -64,6 +170,9 @@ export function AuthScreen({
     }
     try {
       if (isSignup) {
+        // Emit verified age data BEFORE the network call so ProfileSetup (which
+        // mounts once auth state fires) can read it synchronously from context.
+        if (verifiedDob) onAgeVerified?.(verifiedDob, verifiedConsent);
         const result: SignUpResult = await signUp(trimmedEmail, password);
         if (!result.verificationEmailSent) {
           setVerifyWarning(true);
@@ -132,13 +241,42 @@ export function AuthScreen({
 
   const displayError = error || googleError;
 
+  if (ageBlocked) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in text-center">
+          <img
+            src="/logonew.webp"
+            alt=""
+            draggable={false}
+            className="h-7 w-auto select-none mb-5"
+            aria-hidden="true"
+          />
+          <h2 className="font-display text-3xl text-white mb-3">Sorry!</h2>
+          <p className="font-body text-sm text-muted mb-6 leading-relaxed">
+            You must be at least {MIN_AGE} years old to use SkateHubba. This is required by the Children&apos;s Online
+            Privacy Protection Act (COPPA).
+          </p>
+          <p className="font-body text-xs text-faint mb-6">
+            We do not collect or store any personal information from users under {MIN_AGE}. No account has been created.
+          </p>
+          <Btn onClick={() => setAgeBlocked(false)}>Go Back</Btn>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in">
         <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-4" aria-hidden="true" />
         <h2 className="font-display text-fluid-3xl text-white mb-1">{isSignup ? "Create Account" : "Welcome Back"}</h2>
         <p className="font-body text-sm text-muted mb-7">
-          {isSignup ? "Join the crew. It's free." : "Sign in to continue your games."}
+          {isSignup
+            ? showDob
+              ? "Join the crew. It's free. We collect your DOB to comply with COPPA & CCPA."
+              : "Join the crew. It's free."
+            : "Sign in to continue your games."}
         </p>
 
         <GoogleButton onClick={onGoogle} loading={googleLoading} />
@@ -223,8 +361,48 @@ export function AuthScreen({
               icon="🔒"
               type="password"
               autoComplete="new-password"
-              enterKeyHint="go"
+              enterKeyHint={showDob ? "next" : "go"}
             />
+          )}
+
+          {showDob && (
+            <>
+              <label className="block font-display text-sm tracking-[0.12em] text-dim mb-2">Date of Birth</label>
+              <DobRow month={month} day={day} year={year} onChange={updateDob} disabled={anyLoading} />
+              <p className="font-body text-xs text-subtle mb-5">
+                Your date of birth is used only for age verification and is never shared.
+              </p>
+              {isMinor && (
+                <label className="flex items-start gap-3 mb-5 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={parentConsent}
+                    onChange={(e) => setParentConsent(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 accent-brand-orange cursor-pointer shrink-0"
+                    aria-label="Parental consent"
+                  />
+                  <span className="font-body text-sm text-dim leading-relaxed group-hover:text-bright transition-colors">
+                    My parent or legal guardian has reviewed the{" "}
+                    <button
+                      type="button"
+                      onClick={() => onNavLegal?.("privacy")}
+                      className="text-brand-orange hover:underline"
+                    >
+                      Privacy Policy
+                    </button>{" "}
+                    and{" "}
+                    <button
+                      type="button"
+                      onClick={() => onNavLegal?.("terms")}
+                      className="text-brand-orange hover:underline"
+                    >
+                      Terms of Service
+                    </button>{" "}
+                    and consents to my use of SkateHubba.
+                  </span>
+                </label>
+              )}
+            </>
           )}
 
           <ErrorBanner
