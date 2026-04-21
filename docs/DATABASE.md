@@ -58,8 +58,11 @@ writable only by the owning user per `firestore.rules`.
 | `emailVerified`   | `boolean` | Mirrors Auth state at profile creation time                                    |
 | `dob`             | `string`  | YYYY-MM-DD, collected at age gate (COPPA/CCPA)                                 |
 | `parentalConsent` | `boolean` | Optional; present when the age-gate collected consent for 13-17 year olds      |
-| `email`           | `string`  | Optional; only populated when a caller writes it (not written today)           |
 | `fcmTokens`       | `array`   | Firebase Cloud Messaging tokens for this user's devices (≤10 entries enforced) |
+
+> Note: email is **not** stored here. Firebase Auth is the canonical
+> store for a user's email address. Duplicating it on Firestore would
+> create a second source of truth.
 
 **Constraints (enforced by Firestore rules):**
 
@@ -74,6 +77,31 @@ out of cross-user reach while keeping the public fields (`username`,
 `wins`, `losses`, `isVerifiedPro`) readable for opponent lookup.
 
 **Access:** Only the owning user can read, write, or delete.
+
+**Migration transition (April 2026):** Legacy `users/{uid}` documents
+created before the public/private split still carry `email`,
+`emailVerified`, `dob`, `parentalConsent`, and `fcmTokens` inline at
+the top level. The Firestore rules currently run in a **transitional
+mode** (see `firestore.rules` update block for `users/{uid}`): those
+field names are allowed on the public doc at update-time IFF the value
+is unchanged from the stored value, which lets legitimate partial
+writes (`wins++`, stance changes, etc.) continue to work against
+legacy docs before the backfill lands. Creates remain strict — no new
+doc may introduce these fields.
+
+**Deploy runbook:**
+
+1. Ship this PR (rules + code + transitional guards) to production.
+2. Operators run `scripts/migrate-users-private.mjs` (Admin SDK) to
+   move the five sensitive fields from every legacy public user doc
+   into its `users/{uid}/private/profile` companion and remove them
+   from the public doc. The script is idempotent and resumable so it
+   can be rerun safely.
+3. After the backfill is verified (no public user doc still carries
+   any of the five sensitive field names), land a follow-up PR that
+   tightens the `users/{uid}` update rule back to the strict
+   `!('X' in request.resource.data)` form, closing the residual
+   transitional-tolerance window.
 
 ---
 
@@ -281,13 +309,13 @@ Metadata stored per file:
 
 ## Data Lifecycle
 
-| Entity        | Deletion policy                                                    |
-| ------------- | ------------------------------------------------------------------ |
-| User accounts | Deleted on user request via account deletion flow                  |
+| Entity               | Deletion policy                                                           |
+| -------------------- | ------------------------------------------------------------------------- |
+| User accounts        | Deleted on user request via account deletion flow                         |
 | Private profile docs | Deleted atomically with the public user doc in the account-deletion batch |
-| Usernames     | Deleted atomically with user profile during account deletion       |
-| Games         | Deleted during account deletion (all games where user is a player) |
-| Videos        | Orphaned on game deletion; no automated cleanup implemented        |
+| Usernames            | Deleted atomically with user profile during account deletion              |
+| Games                | Deleted during account deletion (all games where user is a player)        |
+| Videos               | Orphaned on game deletion; no automated cleanup implemented               |
 
 ---
 

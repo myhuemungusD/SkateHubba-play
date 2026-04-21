@@ -59,10 +59,17 @@ export interface UserProfile {
  * `fcmTokens` lives here (not on the public doc) so a signed-in
  * attacker cannot scrape other users' push-registration tokens and
  * target them with impersonated push notifications.
+ *
+ * Note: email is intentionally NOT mirrored here. Firebase Auth is the
+ * canonical store for email — every consumer that needs it already
+ * reads `auth.currentUser.email`. Duplicating it on Firestore would
+ * create a second source of truth and invite drift (e.g. an owner
+ * who changed their email in Auth but not Firestore). If a future
+ * owner-facing feature legitimately needs an email snapshot at signup
+ * time, add the field here and write it from `createProfile` at that
+ * time — not speculatively.
  */
 export interface UserPrivateProfile {
-  /** Auth email. Optional — not all providers populate it. */
-  email?: string | null;
   /** Auth emailVerified flag mirrored at profile creation time. */
   emailVerified: boolean;
   /** Date of birth in YYYY-MM-DD format (collected at age gate for COPPA/CCPA compliance). */
@@ -99,9 +106,7 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
  * whose private fields haven't been backfilled).
  */
 export async function getUserPrivateProfile(uid: string): Promise<UserPrivateProfile | null> {
-  const snap = await withRetry(() =>
-    getDoc(doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID)),
-  );
+  const snap = await withRetry(() => getDoc(doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID)));
   return snap.exists() ? (snap.data() as UserPrivateProfile) : null;
 }
 
