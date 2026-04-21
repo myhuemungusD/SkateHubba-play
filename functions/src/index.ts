@@ -19,12 +19,30 @@ const DB_NAME = "skatehubba";
  * rules so these functions can still dispatch pushes.
  */
 const PRIVATE_PROFILE_PATH = (uid: string) => `users/${uid}/private/profile`;
+const LEGACY_USER_PATH = (uid: string) => `users/${uid}`;
 
-/** Fetch FCM tokens for a user. Returns empty array if none found. */
+/**
+ * Fetch FCM tokens for a user. Returns empty array if none found.
+ *
+ * Transitional: reads the new owner-only subcollection first, and on an
+ * empty result falls back to the legacy `users/{uid}.fcmTokens` root
+ * field. Without the fallback, existing users would silently receive
+ * zero pushes between deploy and their next client-side token refresh
+ * (which re-registers to the new path). Remove the legacy branch once
+ * `fcm_tokens_legacy_path_hit` telemetry is consistently zero.
+ */
 async function getFcmTokens(uid: string): Promise<string[]> {
   const db = getFirestore(DB_NAME);
   const snap = await db.doc(PRIVATE_PROFILE_PATH(uid)).get();
-  return snap.data()?.fcmTokens ?? [];
+  const tokens = snap.data()?.fcmTokens ?? [];
+  if (tokens.length > 0) return tokens;
+
+  const legacySnap = await db.doc(LEGACY_USER_PATH(uid)).get();
+  const legacy = legacySnap.data()?.fcmTokens ?? [];
+  if (legacy.length > 0) {
+    logger.info("fcm_tokens_legacy_path_hit", { uid, count: legacy.length });
+  }
+  return legacy;
 }
 
 /** Send a push notification and clean up stale tokens. Returns success count. */
@@ -55,9 +73,25 @@ async function sendPush(
 
   if (invalidTokens.length > 0) {
     const db = getFirestore(DB_NAME);
-    await db.doc(PRIVATE_PROFILE_PATH(recipientUid)).update({
-      fcmTokens: FieldValue.arrayRemove(...invalidTokens),
-    });
+    // Scrub from the private-profile doc (new home). set + merge so the
+    // write creates the doc if it doesn't exist yet — `update` would
+    // throw NOT_FOUND for users who never registered on the new path.
+    await db
+      .doc(PRIVATE_PROFILE_PATH(recipientUid))
+      .set({ fcmTokens: FieldValue.arrayRemove(...invalidTokens) }, { merge: true });
+    // Mirror the scrub on the legacy root field so tokens that lived
+    // there before the migration are cleared too. Best-effort — logs
+    // but does not fail the push if the legacy doc is missing.
+    try {
+      await db.doc(LEGACY_USER_PATH(recipientUid)).update({
+        fcmTokens: FieldValue.arrayRemove(...invalidTokens),
+      });
+    } catch (err) {
+      logger.info("fcm_legacy_cleanup_skipped", {
+        uid: recipientUid,
+        reason: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   return response.successCount;

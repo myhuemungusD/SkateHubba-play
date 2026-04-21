@@ -3,14 +3,7 @@ import { doc, setDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
-
-/**
- * Path to the owner-only subcollection doc that stores FCM push tokens.
- * Kept out of the publicly readable `users/{uid}` root so another signed-in
- * user cannot enumerate tokens for bulk-push abuse. See firestore.rules
- * `match /users/{uid}/private/{docId}`.
- */
-const PRIVATE_PROFILE_DOC = "profile";
+import { USER_PRIVATE_PROFILE_DOC_ID } from "./users";
 
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
 
@@ -82,7 +75,7 @@ export async function requestPushPermission(uid: string): Promise<string | null>
     // Store token on the owner-only private profile subcollection —
     // never on the publicly readable users/{uid} root.
     await setDoc(
-      doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC),
+      doc(requireDb(), "users", uid, "private", USER_PRIVATE_PROFILE_DOC_ID),
       { fcmTokens: arrayUnion(token) },
       { merge: true },
     );
@@ -100,7 +93,7 @@ export async function requestPushPermission(uid: string): Promise<string | null>
 export async function removeFcmToken(uid: string, token: string): Promise<void> {
   try {
     await setDoc(
-      doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC),
+      doc(requireDb(), "users", uid, "private", USER_PRIVATE_PROFILE_DOC_ID),
       { fcmTokens: arrayRemove(token) },
       { merge: true },
     );

@@ -4,11 +4,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockGet = vi.fn();
 const mockUpdate = vi.fn();
+const mockSet = vi.fn();
 const mockAdd = vi.fn();
 const mockCollectionGet = vi.fn();
 const mockDoc = vi.fn(() => ({
   get: mockGet,
   update: mockUpdate,
+  set: mockSet,
 }));
 const mockQueryChain = {
   where: vi.fn(() => mockQueryChain),
@@ -477,10 +479,14 @@ describe("onBillingAlert", () => {
 });
 
 describe("sendPush (via onNudgeCreated)", () => {
-  it("cleans up invalid tokens", async () => {
+  it("cleans up invalid tokens on both the new private-profile doc and the legacy root", async () => {
+    // getFcmTokens: private-profile doc returns the active tokens,
+    // so the legacy fallback read does NOT fire for this case.
     mockGet.mockResolvedValueOnce({
       data: () => ({ fcmTokens: ["valid", "invalid-1", "invalid-2"] }),
     });
+    mockSet.mockResolvedValueOnce(undefined);
+    mockUpdate.mockResolvedValueOnce(undefined);
     mockSendEachForMulticast.mockResolvedValueOnce({
       successCount: 1,
       responses: [
@@ -503,10 +509,16 @@ describe("sendPush (via onNudgeCreated)", () => {
       params: { nudgeId: "nudge-1" },
     });
 
-    // Should update the owner-only private-profile subcollection doc
-    // (NOT the publicly readable users/{uid} root). fcmTokens moved off
-    // the public doc in April 2026 to close the token-enumeration leak.
+    // Private-profile scrub: set+merge so the doc auto-creates if missing.
     expect(mockDoc).toHaveBeenCalledWith("users/user-2/private/profile");
+    expect(mockSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fcmTokens: expect.objectContaining({ _op: "arrayRemove", tokens: ["invalid-1", "invalid-2"] }),
+      }),
+      { merge: true },
+    );
+    // Legacy root scrub: mirror the removal so pre-migration tokens clear too.
+    expect(mockDoc).toHaveBeenCalledWith("users/user-2");
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         fcmTokens: expect.objectContaining({ _op: "arrayRemove", tokens: ["invalid-1", "invalid-2"] }),
@@ -514,10 +526,68 @@ describe("sendPush (via onNudgeCreated)", () => {
     );
   });
 
-  it("skips push when no tokens available", async () => {
+  it("swallows NOT_FOUND on the legacy-root scrub (users who only ever had the new path)", async () => {
     mockGet.mockResolvedValueOnce({
-      data: () => ({ fcmTokens: [] }),
+      data: () => ({ fcmTokens: ["valid", "invalid-1"] }),
     });
+    mockSet.mockResolvedValueOnce(undefined);
+    // Legacy path never existed — update throws NOT_FOUND. sendPush must
+    // not crash the whole handler; the private-profile scrub above
+    // already succeeded.
+    mockUpdate.mockRejectedValueOnce(Object.assign(new Error("NOT_FOUND"), { code: 5 }));
+    mockSendEachForMulticast.mockResolvedValueOnce({
+      successCount: 1,
+      responses: [{ success: true }, { error: { code: "messaging/invalid-registration-token" } }],
+    });
+
+    await expect(
+      onNudgeCreated({
+        data: {
+          data: () => ({ recipientUid: "user-2", senderUsername: "mike", gameId: "game-1" }),
+          id: "nudge-1",
+          ref: { update: vi.fn() },
+        },
+        params: { nudgeId: "nudge-1" },
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(mockSet).toHaveBeenCalled();
+    expect(mockUpdate).toHaveBeenCalled();
+  });
+
+  it("falls back to the legacy users/{uid}.fcmTokens path for users who haven't re-registered", async () => {
+    // New subcollection doc is empty/missing (pre-migration user), then
+    // the fallback returns tokens from the legacy root field.
+    mockGet
+      .mockResolvedValueOnce({ data: () => undefined })
+      .mockResolvedValueOnce({ data: () => ({ fcmTokens: ["legacy-token"] }) });
+    mockSendEachForMulticast.mockResolvedValueOnce({
+      successCount: 1,
+      responses: [{ success: true }],
+    });
+
+    await onNudgeCreated({
+      data: {
+        data: () => ({ recipientUid: "user-3", senderUsername: "mike", gameId: "game-1" }),
+        id: "nudge-2",
+        ref: { update: vi.fn() },
+      },
+      params: { nudgeId: "nudge-2" },
+    });
+
+    // Two reads: private-profile (empty) then legacy root (hit).
+    expect(mockDoc).toHaveBeenCalledWith("users/user-3/private/profile");
+    expect(mockDoc).toHaveBeenCalledWith("users/user-3");
+    // Push was dispatched with the legacy tokens — critical: the
+    // migration must not silently drop notifications for users who
+    // haven't re-registered yet.
+    expect(mockSendEachForMulticast).toHaveBeenCalledWith(expect.objectContaining({ tokens: ["legacy-token"] }));
+  });
+
+  it("skips push when no tokens available anywhere", async () => {
+    mockGet
+      .mockResolvedValueOnce({ data: () => ({ fcmTokens: [] }) }) // private
+      .mockResolvedValueOnce({ data: () => ({ fcmTokens: [] }) }); // legacy
 
     await onNudgeCreated({
       data: {
