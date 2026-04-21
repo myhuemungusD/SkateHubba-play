@@ -61,6 +61,13 @@ vi.mock("../services/users", () => ({
   getLeaderboard: vi.fn().mockResolvedValue([]),
   getUserProfile: vi.fn().mockResolvedValue(null),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
+  // ProfileSetup imports these constants and the AgeVerificationRequiredError
+  // class. Add minimal stand-ins so a signed-in-but-profile-null user being
+  // routed to /profile during recovery-banner tests doesn't crash the mount.
+  USERNAME_MIN: 3,
+  USERNAME_MAX: 20,
+  USERNAME_RE: /^[a-z0-9_]+$/,
+  AgeVerificationRequiredError: class AgeVerificationRequiredError extends Error {},
 }));
 vi.mock("../services/userData", () => ({
   exportUserData: vi.fn().mockResolvedValue({
@@ -137,7 +144,10 @@ vi.mock("../services/blocking", () => ({
   subscribeToBlockedUsers: vi.fn(() => vi.fn()),
 }));
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  sessionStorage.clear();
+});
 
 const profile = testProfile;
 
@@ -194,10 +204,16 @@ describe("Smoke: Account & Sign Out", () => {
     expect(mockDeleteAccount).not.toHaveBeenCalled();
   });
 
-  it("successful delete calls deleteAccount then deleteUserData and navigates to landing", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
-    // After deleteAccount resolves, make useAuth return no user (simulating Firebase sign-out)
+  it("successful delete calls deleteUserData before deleteAccount and navigates to landing", async () => {
+    // Record invocation order: Firestore cleanup must come first so the auth
+    // token is still valid when the security-rule-gated deletes run.
+    const callOrder: string[] = [];
+    mockDeleteUserData.mockImplementationOnce(async () => {
+      callOrder.push("deleteUserData");
+    });
     mockDeleteAccount.mockImplementationOnce(async () => {
+      callOrder.push("deleteAccount");
+      // Simulate Firebase sign-out after auth account deletion
       mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     });
 
@@ -218,14 +234,34 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(mockDeleteAccount).toHaveBeenCalled();
       expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
+      expect(mockDeleteAccount).toHaveBeenCalled();
       // After deletion, app navigates to landing
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
+    expect(callOrder).toEqual(["deleteUserData", "deleteAccount"]);
   });
 
-  it("shows error when deleteAccount fails and does not call deleteUserData", async () => {
+  it("does NOT delete auth account when deleteUserData throws", async () => {
+    mockDeleteUserData.mockRejectedValueOnce(new Error("Firestore rule denied"));
+    await renderLobby([]);
+
+    await userEvent.click(await screen.findByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Firestore rule denied")).toBeInTheDocument();
+    });
+    // Auth account must remain intact so the user can retry — this is the
+    // whole point of the ordering fix. A failed Firestore pass that proceeds
+    // to auth delete is exactly the GDPR-orphaning bug we're preventing.
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
+    // Modal stays open so user can retry
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  it("shows error when deleteAccount fails after deleteUserData succeeds", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
     mockDeleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
     await renderLobby([]);
 
@@ -235,12 +271,14 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText("Auth deletion failed")).toBeInTheDocument();
     });
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    // Firestore cleanup ran first — that's expected under the new ordering.
+    expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
     // Modal stays open so user can retry
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
 
   it("shows friendly message when deleteAccount requires recent login", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
     const err = new Error("auth/requires-recent-login");
     (err as unknown as { code: string }).code = "auth/requires-recent-login";
     mockDeleteAccount.mockRejectedValueOnce(err);
@@ -252,8 +290,182 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
     });
+    // Firestore was already wiped; the instruction tells the user to re-auth
+    // and retry, which is safe because deleteUserData is idempotent.
+    expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
     // Modal stays open
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  it("captures pending uid to sessionStorage on requires-recent-login", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
+    const err = new Error("auth/requires-recent-login");
+    (err as unknown as { code: string }).code = "auth/requires-recent-login";
+    mockDeleteAccount.mockRejectedValueOnce(err);
+    await renderLobby([]);
+
+    await userEvent.click(await screen.findByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBe("u1");
+    });
+  });
+
+  it("banner surfaces after sign-back-in with null profile and finishes deletion", async () => {
+    // Reproduces the full recovery-gap scenario end-to-end through the
+    // real UI surface:
+    //   1. First delete attempt wipes Firestore but bounces on auth reauth.
+    //      Pending uid is captured in sessionStorage.
+    //   2. User signs out (activeProfile clears) and signs back in with the
+    //      SAME uid but no profile doc (Firestore wipe removed it).
+    //   3. DeleteAccountRetryBanner matches sessionStorage to the user and
+    //      exposes a "Finish" affordance; tapping it runs auth-delete only
+    //      (deleteUserData is NOT called again) and the flag is cleared.
+    sessionStorage.setItem("skate.pendingDeleteUid", "u1");
+    mockDeleteAccount.mockResolvedValueOnce(undefined);
+    // Same uid as testProfile.uid ("u1") but profile: null — the "Firestore
+    // wiped, auth alive" state.
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const finishBtn = await screen.findByRole("button", { name: /finish deleting your account/i });
+    await userEvent.click(finishBtn);
+
+    await waitFor(() => {
+      expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+    });
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBeNull();
+  });
+
+  it("banner surfaces error message when retry fails", async () => {
+    sessionStorage.setItem("skate.pendingDeleteUid", "u1");
+    const stillRecentErr = new Error("For security, please sign out and sign back in, then tap Finish deletion again.");
+    mockDeleteAccount.mockRejectedValueOnce(stillRecentErr);
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+
+    const finishBtn = await screen.findByRole("button", { name: /finish deleting your account/i });
+    await userEvent.click(finishBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Finish deletion again/i)).toBeInTheDocument();
+    });
+    // Retry path preserves the flag so the user can try again.
+    expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBe("u1");
+  });
+
+  it("banner is hidden when no pending delete is captured", async () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+
+    // Give the app a tick to settle on whichever screen it routes to.
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /finish deleting your account/i })).not.toBeInTheDocument();
+    });
+  });
+
+  it("banner is hidden when pending uid does not match signed-in user", async () => {
+    // Defensive: stale pending flag from a different account must not
+    // surface the banner to the current user.
+    sessionStorage.setItem("skate.pendingDeleteUid", "SOMEONE_ELSE");
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /finish deleting your account/i })).not.toBeInTheDocument();
+    });
+    // And the effect clears the stale flag.
+    await waitFor(() => {
+      expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBeNull();
+    });
+  });
+
+  it("re-entry after auth/requires-recent-login is safe: deleteUserData no-op, auth retried", async () => {
+    // First attempt: Firestore succeeds (wipes data), auth rejects with
+    // requires-recent-login. User re-authenticates and triggers delete again.
+    // Second attempt: deleteUserData is called again against already-empty
+    // data (idempotent no-op) and deleteAccount now succeeds.
+    mockDeleteUserData.mockResolvedValue(undefined);
+    const recentErr = new Error("auth/requires-recent-login");
+    (recentErr as unknown as { code: string }).code = "auth/requires-recent-login";
+    mockDeleteAccount.mockRejectedValueOnce(recentErr).mockImplementationOnce(async () => {
+      mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    });
+
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    // First attempt surfaces the re-auth guidance
+    await waitFor(() => {
+      expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
+    });
+    expect(mockDeleteUserData).toHaveBeenCalledTimes(1);
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+
+    // Second attempt (simulating user re-auth + retry) succeeds end-to-end.
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
+    });
+    // deleteUserData must be called a second time (safe because idempotent)
+    expect(mockDeleteUserData).toHaveBeenCalledTimes(2);
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(2);
   });
 
   it("shows generic error message for unknown firebase auth error", async () => {
