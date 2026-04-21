@@ -339,4 +339,146 @@ describe("AuthScreen", () => {
       await waitFor(() => expect(mockSignInFailure).toHaveBeenCalledWith("email", "unknown"));
     });
   });
+
+  describe("inline DOB (COPPA)", () => {
+    const signupProps = {
+      ...defaultProps,
+      mode: "signup" as const,
+      showAgeFields: true,
+    };
+
+    async function fillSignupForm(email = "new@test.com", pw = "password123") {
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), email);
+      const pws = screen.getAllByPlaceholderText(/•/);
+      await userEvent.type(pws[0], pw);
+      await userEvent.type(pws[1], pw);
+    }
+
+    it("renders DOB inputs only when showAgeFields is true", () => {
+      render(<AuthScreen {...signupProps} />);
+      expect(screen.getByLabelText("Birth month")).toBeInTheDocument();
+      expect(screen.getByLabelText("Birth day")).toBeInTheDocument();
+      expect(screen.getByLabelText("Birth year")).toBeInTheDocument();
+    });
+
+    it("does not render DOB inputs when showAgeFields is false", () => {
+      render(<AuthScreen {...defaultProps} mode="signup" />);
+      expect(screen.queryByLabelText("Birth month")).not.toBeInTheDocument();
+    });
+
+    it("does not render DOB inputs in signin mode even if showAgeFields=true", () => {
+      render(<AuthScreen {...defaultProps} showAgeFields={true} />);
+      expect(screen.queryByLabelText("Birth month")).not.toBeInTheDocument();
+    });
+
+    it("blocks under-13 signups with the inline COPPA card", async () => {
+      const onAgeVerified = vi.fn();
+      render(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
+      await fillSignupForm();
+      await userEvent.type(screen.getByLabelText("Birth month"), "01");
+      await userEvent.type(screen.getByLabelText("Birth day"), "01");
+      await userEvent.type(screen.getByLabelText("Birth year"), "2020");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+      expect(screen.getByText("Sorry!")).toBeInTheDocument();
+      expect(mockSignUp).not.toHaveBeenCalled();
+      expect(onAgeVerified).not.toHaveBeenCalled();
+    });
+
+    it("Go Back from the blocked card restores the signup form with cleared DOB", async () => {
+      render(<AuthScreen {...signupProps} />);
+      await fillSignupForm();
+      await userEvent.type(screen.getByLabelText("Birth month"), "01");
+      await userEvent.type(screen.getByLabelText("Birth day"), "01");
+      await userEvent.type(screen.getByLabelText("Birth year"), "2020");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+      expect(screen.getByText("Sorry!")).toBeInTheDocument();
+      await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
+      expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+      // Failing DOB is cleared so a new attempt doesn't re-block on the same inputs.
+      expect((screen.getByLabelText("Birth month") as HTMLInputElement).value).toBe("");
+      expect((screen.getByLabelText("Birth day") as HTMLInputElement).value).toBe("");
+      expect((screen.getByLabelText("Birth year") as HTMLInputElement).value).toBe("");
+    });
+
+    it("requires parental consent for 13-17 year olds before submitting", async () => {
+      render(<AuthScreen {...signupProps} />);
+      await fillSignupForm();
+      await userEvent.type(screen.getByLabelText("Birth month"), "01");
+      await userEvent.type(screen.getByLabelText("Birth day"), "01");
+      await userEvent.type(screen.getByLabelText("Birth year"), "2011");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+      expect(screen.getByText(/Parental or guardian consent is required/)).toBeInTheDocument();
+      expect(mockSignUp).not.toHaveBeenCalled();
+    });
+
+    it("emits onAgeVerified with the DOB + consent flag before signUp", async () => {
+      mockSignUp.mockResolvedValueOnce({ user: { uid: "u1" }, verificationEmailSent: true });
+      const onAgeVerified = vi.fn();
+      render(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
+      await fillSignupForm();
+      await userEvent.type(screen.getByLabelText("Birth month"), "01");
+      await userEvent.type(screen.getByLabelText("Birth day"), "15");
+      await userEvent.type(screen.getByLabelText("Birth year"), "2000");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+      await waitFor(() => expect(mockSignUp).toHaveBeenCalled());
+      expect(onAgeVerified).toHaveBeenCalledWith("2000-01-15", false);
+      // onAgeVerified fires before signUp so context can stash the DOB for ProfileSetup.
+      expect(onAgeVerified.mock.invocationCallOrder[0]).toBeLessThan(mockSignUp.mock.invocationCallOrder[0]);
+    });
+
+    it("passes parentalConsent=true to onAgeVerified when a minor confirms consent", async () => {
+      mockSignUp.mockResolvedValueOnce({ user: { uid: "u1" }, verificationEmailSent: true });
+      const onAgeVerified = vi.fn();
+      render(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
+      await fillSignupForm();
+      await userEvent.type(screen.getByLabelText("Birth month"), "01");
+      await userEvent.type(screen.getByLabelText("Birth day"), "01");
+      await userEvent.type(screen.getByLabelText("Birth year"), "2011");
+      await userEvent.click(screen.getByLabelText("Parental consent"));
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+      await waitFor(() => expect(mockSignUp).toHaveBeenCalled());
+      expect(onAgeVerified).toHaveBeenCalledWith("2011-01-01", true);
+    });
+
+    it("surfaces an invalid-date error without calling signUp", async () => {
+      render(<AuthScreen {...signupProps} />);
+      await fillSignupForm();
+      await userEvent.type(screen.getByLabelText("Birth month"), "02");
+      await userEvent.type(screen.getByLabelText("Birth day"), "30");
+      await userEvent.type(screen.getByLabelText("Birth year"), "2000");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+      expect(screen.getByText("Please enter a valid date")).toBeInTheDocument();
+      expect(mockSignUp).not.toHaveBeenCalled();
+    });
+
+    it("surfaces an empty-date error without calling signUp", async () => {
+      render(<AuthScreen {...signupProps} />);
+      await fillSignupForm();
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+      expect(screen.getByText(/Please enter your full date of birth/)).toBeInTheDocument();
+      expect(mockSignUp).not.toHaveBeenCalled();
+    });
+
+    it("routes clicks on the minor consent legal links via onNavLegal", async () => {
+      const onNavLegal = vi.fn();
+      render(<AuthScreen {...signupProps} onNavLegal={onNavLegal} />);
+      await fillSignupForm();
+      await userEvent.type(screen.getByLabelText("Birth month"), "01");
+      await userEvent.type(screen.getByLabelText("Birth day"), "01");
+      await userEvent.type(screen.getByLabelText("Birth year"), "2011");
+
+      await userEvent.click(screen.getByRole("button", { name: "Privacy Policy" }));
+      await userEvent.click(screen.getByRole("button", { name: "Terms of Service" }));
+
+      expect(onNavLegal).toHaveBeenNthCalledWith(1, "privacy");
+      expect(onNavLegal).toHaveBeenNthCalledWith(2, "terms");
+    });
+  });
 });

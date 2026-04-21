@@ -45,7 +45,7 @@ async function relaxCspForEmulators(page: Page): Promise<void> {
   // /map navigation (and any other top-level page request) and strip the
   // CSP meta tag from the body before it reaches the document.
   await page.route(
-    /http:\/\/localhost:5173\/(map|spots|challenge|lobby|profile|game|gameover|player|auth|age-gate|privacy|terms|data-deletion|404|$)/,
+    /http:\/\/localhost:5173\/(map|spots|challenge|lobby|profile|game|gameover|player|auth|privacy|terms|data-deletion|404|$)/,
     async (route) => {
       const response = await route.fetch();
       const contentType = response.headers()["content-type"] ?? "";

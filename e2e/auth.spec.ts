@@ -3,19 +3,21 @@ import { clearAll, verifyEmail } from "./helpers/emulator";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
-async function passAgeGate(page: import("@playwright/test").Page) {
-  // Wait for age gate to render
+/**
+ * Fill the inline DOB fields on the AuthScreen signup card with a valid adult
+ * DOB. There is no standalone age-gate screen — DOB is collected on the same
+ * card as email + password.
+ */
+async function fillAgeFields(page: import("@playwright/test").Page) {
   await expect(page.getByLabel("Birth month")).toBeVisible({ timeout: 5_000 });
   await page.getByLabel("Birth month").fill("01");
   await page.getByLabel("Birth day").fill("15");
   await page.getByLabel("Birth year").fill("2000");
-  await page.getByRole("button", { name: "Continue" }).click();
 }
 
 async function signUpViaUI(page: import("@playwright/test").Page, email: string, password: string) {
   await page.goto("/");
   await page.getByRole("button", { name: "Use email", exact: true }).click();
-  await passAgeGate(page);
   // Wait for auth form to render
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
@@ -23,22 +25,20 @@ async function signUpViaUI(page: import("@playwright/test").Page, email: string,
   const pwFields = page.getByPlaceholder("••••••••");
   await pwFields.nth(0).fill(password);
   await pwFields.nth(1).fill(password);
+  // DOB + parental-consent are inline on the same card (COPPA).
+  await fillAgeFields(page);
   await page.getByRole("button", { name: "Create Account" }).click();
   // Wait for navigation away from auth screen (profile setup or lobby)
   await page.waitForURL(/\/(profile|lobby)/, { timeout: 15_000 });
 }
 
 async function completeProfileSetup(page: import("@playwright/test").Page, username: string) {
-  // Wait for the profile setup screen
+  // Single-card profile setup — username + stance + submit in one step.
   await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
   await page.getByPlaceholder("sk8legend").fill(username);
   // Wait for availability check to resolve (debounced 400 ms)
   await expect(page.getByText(`@${username} is available ✓`)).toBeVisible({ timeout: 5_000 });
-  // Step 1 → Step 2 (stance)
-  await page.getByRole("button", { name: "Next" }).click();
-  // Step 2 → Step 3 (review) — "Regular" stance is pre-selected
-  await page.getByRole("button", { name: "Next" }).click();
-  // Step 3 — submit
+  // "Regular" stance is pre-selected; a single click submits the whole card.
   await page.getByRole("button", { name: "Lock It In" }).click();
 }
 
@@ -68,12 +68,12 @@ test("emulator connectivity: sign up via SDK works", async ({ page }) => {
 
   // Do a full sign-up flow through the UI
   await page.getByRole("button", { name: "Use email", exact: true }).click();
-  await passAgeGate(page);
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill("warmup@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
   await pwFields.nth(0).fill("password123");
   await pwFields.nth(1).fill("password123");
+  await fillAgeFields(page);
   await page.getByRole("button", { name: "Create Account" }).click();
 
   // Wait for navigation — this confirms the full SDK → emulator → onAuthStateChanged flow works
@@ -93,7 +93,6 @@ test("sign up → profile setup → lobby", async ({ page }) => {
 test("sign up form rejects mismatched passwords", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Use email", exact: true }).click();
-  await passAgeGate(page);
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -107,7 +106,6 @@ test("sign up form rejects mismatched passwords", async ({ page }) => {
 test("sign up form rejects short passwords", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Use email", exact: true }).click();
-  await passAgeGate(page);
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");

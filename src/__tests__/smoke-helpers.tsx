@@ -70,21 +70,18 @@ export async function renderApp(opts?: { waitForLazy?: boolean }): Promise<Rende
   return result;
 }
 
-/** Fill the age gate with a valid adult DOB and advance to auth. */
+/**
+ * Fill the inline DOB fields on the AuthScreen signup form with a valid adult
+ * DOB. The app no longer has a standalone age-gate screen — DOB is collected
+ * alongside email + password on the same auth card.
+ */
 export async function passAgeGate() {
-  await waitFor(() => {
-    expect(screen.getByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
-  });
-  const monthInput = screen.getByLabelText("Birth month");
-  const dayInput = screen.getByLabelText("Birth day");
-  const yearInput = screen.getByLabelText("Birth year");
-  await userEvent.type(monthInput, "01");
-  await userEvent.type(dayInput, "15");
-  await userEvent.type(yearInput, "2000");
-  await userEvent.click(screen.getByText("Continue"));
   await waitFor(() => {
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
   });
+  await userEvent.type(screen.getByLabelText("Birth month"), "01");
+  await userEvent.type(screen.getByLabelText("Birth day"), "15");
+  await userEvent.type(screen.getByLabelText("Birth year"), "2000");
 }
 
 /* ── Mock-dependent helper factories ──────────── */

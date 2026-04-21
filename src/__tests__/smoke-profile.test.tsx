@@ -155,7 +155,7 @@ describe("Smoke: Profile Setup", () => {
     const usernameInput = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "ab");
 
-    const submitBtn = screen.getByText("Next");
+    const submitBtn = screen.getByText("Lock It In");
     expect(submitBtn).toBeDisabled();
     // Also shows the minimum character hint
     expect(screen.getByText(/Min 3 characters/)).toBeInTheDocument();
@@ -197,7 +197,7 @@ describe("Smoke: Profile Setup", () => {
     });
   });
 
-  it("profile setup allows toggling stance", async () => {
+  it("profile setup allows toggling stance on the single-card form", async () => {
     mockIsUsernameAvailable.mockResolvedValue(true);
     mockUseAuth.mockReturnValue({
       loading: false,
@@ -207,18 +207,13 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    // First advance to step 2 (stance is on step 2)
-    const usernameInput = await screen.findByPlaceholderText("sk8legend");
-    await userEvent.type(usernameInput, "testuser");
-    await waitFor(() => expect(screen.getByText(/@testuser is available/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText("Next"));
+    await screen.findByPlaceholderText("sk8legend");
 
-    // Default is Regular
-    const regularBtn = screen.getByText("Regular");
-    const goofyBtn = screen.getByText("Goofy");
-
-    expect(regularBtn).toBeInTheDocument();
-    expect(goofyBtn).toBeInTheDocument();
+    // Stance buttons render alongside username — no wizard steps to navigate.
+    const regularBtn = screen.getByRole("radio", { name: /Regular/ });
+    const goofyBtn = screen.getByRole("radio", { name: /Goofy/ });
+    expect(regularBtn).toHaveAttribute("aria-checked", "true");
+    expect(goofyBtn).toHaveAttribute("aria-checked", "false");
 
     // Click Goofy
     await userEvent.click(goofyBtn);
@@ -227,7 +222,7 @@ describe("Smoke: Profile Setup", () => {
     expect(screen.getByRole("radio", { name: /Goofy/ })).toHaveAttribute("aria-checked", "true");
   });
 
-  it("profile setup creates profile and transitions to lobby", async () => {
+  it("profile setup creates profile and transitions to lobby with inline DOB", async () => {
     const refreshProfile = vi.fn();
     const newProfile = { uid: "u1", username: "newsk8r", stance: "Regular", emailVerified: false, createdAt: null };
     mockCreateProfile.mockResolvedValueOnce(newProfile);
@@ -241,21 +236,17 @@ describe("Smoke: Profile Setup", () => {
     });
     await renderApp();
 
-    // Step 1: Username
+    // Username
     const usernameInput = await screen.findByPlaceholderText("sk8legend");
     await userEvent.type(usernameInput, "newsk8r");
+    await waitFor(() => expect(screen.getByText(/@newsk8r is available/)).toBeInTheDocument());
 
-    await waitFor(() => {
-      expect(screen.getByText(/@newsk8r is available/)).toBeInTheDocument();
-    });
+    // Google-signup path: DOB is collected inline on the same card.
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "15");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2000");
 
-    // Advance to Step 2
-    await userEvent.click(screen.getByText("Next"));
-
-    // Step 2: Stance (keep Regular default) → Advance to Step 3
-    await userEvent.click(screen.getByText("Next"));
-
-    // Mock the auth to return profile after creation
+    // Auth state flips to reflect the new profile once createProfile resolves.
     mockUseAuth.mockReturnValue({
       loading: false,
       user: authedUser,
@@ -264,11 +255,10 @@ describe("Smoke: Profile Setup", () => {
     });
     withGames([]);
 
-    // Step 3: Review → Lock It In
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false, undefined, false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false, "2000-01-15", false);
     });
   });
 
@@ -310,9 +300,10 @@ describe("Smoke: Profile Setup", () => {
 
     await waitFor(() => expect(screen.getByText(/available/i)).toBeInTheDocument());
 
-    // Advance through steps to reach Lock It In
-    await userEvent.click(screen.getByText("Next"));
-    await userEvent.click(screen.getByText("Next"));
+    // Inline DOB satisfies the service's COPPA gate.
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "15");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2000");
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
