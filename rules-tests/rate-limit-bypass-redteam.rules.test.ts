@@ -132,12 +132,14 @@ describe("users.lastGameCreatedAt — red-team against stale-timestamp cooldown 
 
   it("legitimate: a user update that doesn't touch lastGameCreatedAt still works", async () => {
     // Regression guard: the new constraint is gated on the field being
-    // written, so an unrelated profile update (e.g. fcmTokens) must still
-    // pass even when lastGameCreatedAt already exists on the stored doc.
+    // written, so an unrelated profile update (wins++) must still pass
+    // even when lastGameCreatedAt already exists on the stored doc.
+    // (fcmTokens was used here pre-split; post-split it lives on the
+    // private subcollection and is forbidden at the top level.)
     await seedUser({ lastGameCreatedAt: new Date(Date.now() - 60_000) });
     await assertSucceeds(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        fcmTokens: ["token-a"],
+        wins: 1,
       }),
     );
   });
