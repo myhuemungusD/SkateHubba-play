@@ -141,6 +141,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // rules on users/{uid}/private/profile deny the write. Without this
     // scrub the next account signed in on this device would inherit
     // push notifications meant for the previous user.
+    //
+    // The try/catch is defense-in-depth: removeCurrentFcmToken currently
+    // delegates to removeFcmToken which swallows write failures internally,
+    // so this catch is unreachable today. Kept so a future refactor that
+    // propagates errors can't accidentally strand the user on a "still
+    // signed in" screen when the scrub fails.
     if (activeProfile) {
       try {
         await removeCurrentFcmToken(activeProfile.uid);

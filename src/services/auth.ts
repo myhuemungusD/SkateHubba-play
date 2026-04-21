@@ -194,12 +194,6 @@ function makeGoogleProvider(): GoogleAuthProvider {
 }
 
 /**
- * Sign in with Google.
- * Uses popup on desktop; falls back to redirect when popups are blocked (mobile/Safari).
- * Returns the signed-in User, or null if a redirect was initiated (onAuthStateChanged
- * will fire automatically once the user returns from Google's OAuth page).
- */
-/**
  * Firebase Auth error codes that signal "this environment cannot complete
  * a popup sign-in, retry with a redirect flow" rather than a user abort.
  *
@@ -225,6 +219,12 @@ const POPUP_FALLBACK_CODES = new Set<string>([
   "auth/web-storage-unsupported",
 ]);
 
+/**
+ * Sign in with Google.
+ * Uses popup on desktop; falls back to redirect when popups are blocked (mobile/Safari).
+ * Returns the signed-in User, or null if a redirect was initiated (onAuthStateChanged
+ * will fire automatically once the user returns from Google's OAuth page).
+ */
 export async function signInWithGoogle(): Promise<User | null> {
   const a = requireAuth();
   const provider = makeGoogleProvider();
