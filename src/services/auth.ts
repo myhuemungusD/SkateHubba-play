@@ -199,6 +199,32 @@ function makeGoogleProvider(): GoogleAuthProvider {
  * Returns the signed-in User, or null if a redirect was initiated (onAuthStateChanged
  * will fire automatically once the user returns from Google's OAuth page).
  */
+/**
+ * Firebase Auth error codes that signal "this environment cannot complete
+ * a popup sign-in, retry with a redirect flow" rather than a user abort.
+ *
+ * - `auth/popup-blocked`: browser's built-in popup blocker killed it.
+ * - `auth/operation-not-supported-in-this-environment`: the SDK knows the
+ *   current context (embedded WebView, file:// protocol, unsupported
+ *   scheme) can't host a popup at all. This is the error iOS in-app
+ *   browsers and some Android WebViews throw — the original narrow check
+ *   stranded those users with no sign-in path.
+ * - `auth/web-storage-unsupported`: Safari private mode / third-party
+ *   storage blocked. Redirect uses sessionStorage on the top frame and
+ *   typically recovers.
+ *
+ * `auth/popup-closed-by-user` and `auth/cancelled-popup-request` are
+ * deliberately NOT in this set — they represent intentional user aborts,
+ * and force-redirecting on those traps people in a loop where tapping
+ * "cancel" in the popup still sends them to Google's OAuth page. The
+ * caller surfaces those codes as a silent dismissal.
+ */
+const POPUP_FALLBACK_CODES = new Set<string>([
+  "auth/popup-blocked",
+  "auth/operation-not-supported-in-this-environment",
+  "auth/web-storage-unsupported",
+]);
+
 export async function signInWithGoogle(): Promise<User | null> {
   const a = requireAuth();
   const provider = makeGoogleProvider();
@@ -209,12 +235,7 @@ export async function signInWithGoogle(): Promise<User | null> {
     return cred.user;
   } catch (err: unknown) {
     const code = getErrorCode(err);
-    // Only fall back to redirect when the browser actually blocked the popup.
-    // popup-closed-by-user and cancelled-popup-request are intentional user
-    // aborts — force-redirecting on those traps people in a loop where
-    // tapping "cancel" in the popup still sends them to Google's OAuth page.
-    // The caller surfaces these codes as a silent dismissal.
-    if (code === "auth/popup-blocked") {
+    if (POPUP_FALLBACK_CODES.has(code)) {
       logger.info("google_sign_in_popup_fallback_redirect", { code });
       await signInWithRedirect(a, provider);
       return null;

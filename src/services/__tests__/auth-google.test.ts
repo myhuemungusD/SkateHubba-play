@@ -57,6 +57,27 @@ describe("signInWithGoogle", () => {
     expect(mockSignInWithRedirect).toHaveBeenCalledTimes(1);
   });
 
+  it("falls back to redirect when the environment can't host a popup", async () => {
+    // iOS in-app browsers, file:// loads, and some Android WebViews throw
+    // this code. The previous narrow "popup-blocked only" check stranded
+    // those users with no sign-in path at all.
+    mockSignInWithPopup.mockRejectedValueOnce({ code: "auth/operation-not-supported-in-this-environment" });
+    mockSignInWithRedirect.mockResolvedValueOnce(undefined);
+
+    const result = await signInWithGoogle();
+    expect(result).toBeNull();
+    expect(mockSignInWithRedirect).toHaveBeenCalledTimes(1);
+  });
+
+  it("falls back to redirect on auth/web-storage-unsupported (Safari private mode)", async () => {
+    mockSignInWithPopup.mockRejectedValueOnce({ code: "auth/web-storage-unsupported" });
+    mockSignInWithRedirect.mockResolvedValueOnce(undefined);
+
+    const result = await signInWithGoogle();
+    expect(result).toBeNull();
+    expect(mockSignInWithRedirect).toHaveBeenCalledTimes(1);
+  });
+
   it("rethrows errors that are not popup-blocked", async () => {
     mockSignInWithPopup.mockRejectedValueOnce({
       code: "auth/account-exists-with-different-credential",
