@@ -281,7 +281,7 @@ describe("ProfileSetup", () => {
     expect(screen.getByLabelText("Birth year")).toBeInTheDocument();
   });
 
-  it("blocks users under 13 from creating a profile when collecting DOB inline", async () => {
+  it("blocks users under 13 with the branded COPPA card when collecting DOB inline", async () => {
     render(<ProfileSetup {...defaultProps} dob={null} />);
     await typeAvailableUsername();
     await userEvent.type(screen.getByLabelText("Birth month"), "01");
@@ -289,8 +289,29 @@ describe("ProfileSetup", () => {
     await userEvent.type(screen.getByLabelText("Birth year"), "2020");
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
+    // Branded "Sorry!" card mirrors the email-signup block UX.
+    expect(screen.getByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
     expect(screen.getByText(/at least 13 years old/)).toBeInTheDocument();
     expect(mockCreateProfile).not.toHaveBeenCalled();
+  });
+
+  it("clears the failing DOB when the user taps Go Back on the blocked card", async () => {
+    render(<ProfileSetup {...defaultProps} dob={null} />);
+    await typeAvailableUsername();
+    await userEvent.type(screen.getByLabelText("Birth month"), "01");
+    await userEvent.type(screen.getByLabelText("Birth day"), "01");
+    await userEvent.type(screen.getByLabelText("Birth year"), "2020");
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+
+    expect(screen.getByRole("heading", { name: "Sorry!" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
+
+    // Form returns with DOB inputs empty — username + stance persist.
+    expect(screen.getByText("Pick your handle")).toBeInTheDocument();
+    expect((screen.getByLabelText("Birth month") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Birth day") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Birth year") as HTMLInputElement).value).toBe("");
+    expect((screen.getByPlaceholderText("sk8legend") as HTMLInputElement).value).toBe("newuser");
   });
 
   it("requires parental consent before submitting for users 13-17", async () => {

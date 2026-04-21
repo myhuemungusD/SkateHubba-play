@@ -15,6 +15,8 @@ import { isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { DobRow } from "../components/ui/DobRow";
+import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
 import { SkateboardIcon } from "../components/icons";
 
 const STANCES = [
@@ -25,9 +27,6 @@ const STANCES = [
 // Sanitisation regex is the inverse of USERNAME_RE — strips any char that
 // wouldn't pass validation. Kept local because only the UI pre-filters input.
 const SANITIZE_RE = /[^a-z0-9_]/g;
-
-const DOB_INPUT_CLASS =
-  "w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-2xl text-white text-base font-body outline-none focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1),0_0_16px_rgba(255,107,0,0.06)] transition-all duration-300 px-4 py-3.5 text-center disabled:opacity-40 disabled:cursor-not-allowed";
 
 function sanitizeDisplayName(name: string | null | undefined): string {
   return (name ?? "").toLowerCase().replace(SANITIZE_RE, "").slice(0, USERNAME_MAX);
@@ -72,7 +71,14 @@ export function ProfileSetup({
   const [day, setDay] = useState("");
   const [year, setYear] = useState("");
   const [parentConsent, setParentConsent] = useState(false);
+  const [ageBlocked, setAgeBlocked] = useState(false);
   const isMinor = needsDobCollection && isMinorDob(month, day, year);
+
+  const updateDob = (field: "month" | "day" | "year", value: string) => {
+    if (field === "month") setMonth(value);
+    else if (field === "day") setDay(value);
+    else setYear(value);
+  };
 
   const { available, error: availabilityError, clearError: clearAvailabilityError } = useUsernameAvailability(username);
   // Display whichever error is non-empty. Local validation/submit errors take
@@ -146,9 +152,7 @@ export function ProfileSetup({
       }
       if (result.kind === "blocked") {
         logger.info("age_gate_blocked", { age: result.age });
-        setLocalError(
-          "You must be at least 13 years old to use SkateHubba (COPPA). No account information will be saved.",
-        );
+        setAgeBlocked(true);
         return;
       }
       if (result.needsParentalConsent && !parentConsent) {
@@ -190,6 +194,23 @@ export function ProfileSetup({
           className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"
         />
       </div>
+    );
+  }
+
+  if (ageBlocked) {
+    return (
+      <CoppaBlockedCard
+        onBack={() => {
+          // Clear the failing DOB so the form doesn't re-block immediately on
+          // next submit. Preserve username + stance so the user doesn't lose
+          // their progress.
+          setMonth("");
+          setDay("");
+          setYear("");
+          setParentConsent(false);
+          setAgeBlocked(false);
+        }}
+      />
     );
   }
 
@@ -267,47 +288,7 @@ export function ProfileSetup({
           {needsDobCollection && (
             <>
               <label className="block font-display text-sm tracking-[0.12em] text-dim mb-2">Date of Birth</label>
-              <div className="flex gap-3 mb-2">
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="MM"
-                    maxLength={2}
-                    value={month}
-                    disabled={loading}
-                    onChange={(e) => setMonth(e.target.value.replace(/\D/g, ""))}
-                    className={DOB_INPUT_CLASS}
-                    aria-label="Birth month"
-                  />
-                </div>
-                <div className="flex-1">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="DD"
-                    maxLength={2}
-                    value={day}
-                    disabled={loading}
-                    onChange={(e) => setDay(e.target.value.replace(/\D/g, ""))}
-                    className={DOB_INPUT_CLASS}
-                    aria-label="Birth day"
-                  />
-                </div>
-                <div className="flex-[1.5]">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="YYYY"
-                    maxLength={4}
-                    value={year}
-                    disabled={loading}
-                    onChange={(e) => setYear(e.target.value.replace(/\D/g, ""))}
-                    className={DOB_INPUT_CLASS}
-                    aria-label="Birth year"
-                  />
-                </div>
-              </div>
+              <DobRow month={month} day={day} year={year} onChange={updateDob} disabled={loading} />
               <p className="font-body text-xs text-subtle mb-5">
                 Used only for age verification (COPPA &amp; CCPA) and is never shared.
               </p>

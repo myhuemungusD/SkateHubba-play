@@ -385,7 +385,7 @@ describe("AuthScreen", () => {
       expect(onAgeVerified).not.toHaveBeenCalled();
     });
 
-    it("Go Back from the blocked card restores the signup form", async () => {
+    it("Go Back from the blocked card restores the signup form with cleared DOB", async () => {
       render(<AuthScreen {...signupProps} />);
       await fillSignupForm();
       await userEvent.type(screen.getByLabelText("Birth month"), "01");
@@ -396,6 +396,10 @@ describe("AuthScreen", () => {
       expect(screen.getByText("Sorry!")).toBeInTheDocument();
       await userEvent.click(screen.getByRole("button", { name: "Go Back" }));
       expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+      // Failing DOB is cleared so a new attempt doesn't re-block on the same inputs.
+      expect((screen.getByLabelText("Birth month") as HTMLInputElement).value).toBe("");
+      expect((screen.getByLabelText("Birth day") as HTMLInputElement).value).toBe("");
+      expect((screen.getByLabelText("Birth year") as HTMLInputElement).value).toBe("");
     });
 
     it("requires parental consent for 13-17 year olds before submitting", async () => {

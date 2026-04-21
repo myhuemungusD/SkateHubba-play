@@ -1,76 +1,17 @@
 import { useState } from "react";
 import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
 import { EMAIL_RE, pwStrength, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
-import { MIN_AGE, isMinorDob, parseDob } from "../utils/age";
+import { isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
+import { DobRow } from "../components/ui/DobRow";
 import { GoogleButton } from "../components/GoogleButton";
+import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
 import { logger, metrics } from "../services/logger";
 import { analytics } from "../services/analytics";
 import { captureException } from "../lib/sentry";
 import { isBenignAuthCode } from "../utils/authCodes";
-
-/** Three-input date-of-birth row. Kept local because only AuthScreen uses it. */
-function DobRow({
-  month,
-  day,
-  year,
-  onChange,
-  disabled,
-}: {
-  month: string;
-  day: string;
-  year: string;
-  onChange: (field: "month" | "day" | "year", value: string) => void;
-  disabled?: boolean;
-}) {
-  const inputClass =
-    "w-full bg-surface-alt/80 backdrop-blur-sm border border-border rounded-2xl text-white text-base font-body outline-none focus:border-brand-orange focus:shadow-[0_0_0_3px_rgba(255,107,0,0.1),0_0_16px_rgba(255,107,0,0.06)] transition-all duration-300 px-4 py-3.5 text-center disabled:opacity-40 disabled:cursor-not-allowed";
-  return (
-    <div className="flex gap-3 mb-2">
-      <div className="flex-1">
-        <input
-          type="text"
-          inputMode="numeric"
-          placeholder="MM"
-          maxLength={2}
-          value={month}
-          disabled={disabled}
-          onChange={(e) => onChange("month", e.target.value.replace(/\D/g, ""))}
-          className={inputClass}
-          aria-label="Birth month"
-        />
-      </div>
-      <div className="flex-1">
-        <input
-          type="text"
-          inputMode="numeric"
-          placeholder="DD"
-          maxLength={2}
-          value={day}
-          disabled={disabled}
-          onChange={(e) => onChange("day", e.target.value.replace(/\D/g, ""))}
-          className={inputClass}
-          aria-label="Birth day"
-        />
-      </div>
-      <div className="flex-[1.5]">
-        <input
-          type="text"
-          inputMode="numeric"
-          placeholder="YYYY"
-          maxLength={4}
-          value={year}
-          disabled={disabled}
-          onChange={(e) => onChange("year", e.target.value.replace(/\D/g, ""))}
-          className={inputClass}
-          aria-label="Birth year"
-        />
-      </div>
-    </div>
-  );
-}
 
 export function AuthScreen({
   mode,
@@ -243,26 +184,17 @@ export function AuthScreen({
 
   if (ageBlocked) {
     return (
-      <div className="min-h-dvh flex flex-col items-center justify-center px-6">
-        <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in text-center">
-          <img
-            src="/logonew.webp"
-            alt=""
-            draggable={false}
-            className="h-7 w-auto select-none mb-5"
-            aria-hidden="true"
-          />
-          <h2 className="font-display text-3xl text-white mb-3">Sorry!</h2>
-          <p className="font-body text-sm text-muted mb-6 leading-relaxed">
-            You must be at least {MIN_AGE} years old to use SkateHubba. This is required by the Children&apos;s Online
-            Privacy Protection Act (COPPA).
-          </p>
-          <p className="font-body text-xs text-faint mb-6">
-            We do not collect or store any personal information from users under {MIN_AGE}. No account has been created.
-          </p>
-          <Btn onClick={() => setAgeBlocked(false)}>Go Back</Btn>
-        </div>
-      </div>
+      <CoppaBlockedCard
+        onBack={() => {
+          // Clear the failing DOB so the form doesn't re-block immediately on
+          // next submit (it held the values that triggered the block).
+          setMonth("");
+          setDay("");
+          setYear("");
+          setParentConsent(false);
+          setAgeBlocked(false);
+        }}
+      />
     );
   }
 
