@@ -41,9 +41,10 @@ jobs:
 
       - name: Reject new Cloud Functions code
         run: |
-          # Fail if any new Cloud Functions are introduced outside the existing
-          # functions/ directory placeholder.  AI agents previously added
-          # unauthorized Cloud Functions — this guard prevents a repeat.
+          # Reject any new Cloud Functions source under functions/src/. The
+          # functions/ package was removed (see CLAUDE.md "No Cloud Functions"
+          # guardrail); this guard prevents AI agents from silently
+          # reintroducing it.
           if git diff origin/main...HEAD --name-only | grep -qE '^functions/src/'; then
             echo "::error::New Cloud Functions source detected in functions/src/."
             echo "Cloud Functions require explicit maintainer approval."

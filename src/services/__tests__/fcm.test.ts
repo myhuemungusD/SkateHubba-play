@@ -14,13 +14,13 @@ vi.mock("firebase/messaging", () => ({
 
 /* ── mock firebase/firestore ─────────────────── */
 
-const mockUpdateDoc = vi.fn().mockResolvedValue(undefined);
+const mockSetDoc = vi.fn().mockResolvedValue(undefined);
 const mockDoc = vi.fn((_db: unknown, ...segments: string[]) => segments.join("/"));
 const mockArrayUnion = vi.fn((v: string) => ({ _op: "arrayUnion", value: v }));
 const mockArrayRemove = vi.fn((v: string) => ({ _op: "arrayRemove", value: v }));
 
 vi.mock("firebase/firestore", () => ({
-  updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
+  setDoc: (...args: unknown[]) => mockSetDoc(...args),
   doc: (...args: unknown[]) => mockDoc(...args),
   arrayUnion: (v: string) => mockArrayUnion(v),
   arrayRemove: (v: string) => mockArrayRemove(v),
@@ -84,7 +84,7 @@ describe("requestPushPermission", () => {
     spy.mockRestore();
   });
 
-  it("returns token and stores in Firestore on success", async () => {
+  it("returns token and stores in the private profile doc on success", async () => {
     mockRequestPermission.mockResolvedValue("granted");
     mockGetToken.mockResolvedValue("fcm-token-123");
 
@@ -95,9 +95,14 @@ describe("requestPushPermission", () => {
       vapidKey: "test-vapid-key",
       serviceWorkerRegistration: expect.any(Object),
     });
-    expect(mockUpdateDoc).toHaveBeenCalledWith("users/u1", {
-      fcmTokens: { _op: "arrayUnion", value: "fcm-token-123" },
-    });
+    // fcmTokens live on the owner-only private subcollection doc
+    // (users/{uid}/private/profile) rather than the public user doc
+    // — prevents cross-user scraping of push-registration tokens.
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayUnion", value: "fcm-token-123" } },
+      { merge: true },
+    );
   });
 
   it("returns null when getToken returns empty", async () => {
@@ -130,15 +135,17 @@ describe("requestPushPermission", () => {
 });
 
 describe("removeFcmToken", () => {
-  it("removes token from Firestore", async () => {
+  it("removes token from the private profile doc", async () => {
     await removeFcmToken("u1", "token-abc");
-    expect(mockUpdateDoc).toHaveBeenCalledWith("users/u1", {
-      fcmTokens: { _op: "arrayRemove", value: "token-abc" },
-    });
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayRemove", value: "token-abc" } },
+      { merge: true },
+    );
   });
 
   it("does not throw on error", async () => {
-    mockUpdateDoc.mockRejectedValueOnce(new Error("fail"));
+    mockSetDoc.mockRejectedValueOnce(new Error("fail"));
     await expect(removeFcmToken("u1", "tok")).resolves.toBeUndefined();
   });
 });
