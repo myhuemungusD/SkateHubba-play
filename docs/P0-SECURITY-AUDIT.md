@@ -25,9 +25,10 @@
 
 The `notifications` collection is written to by client code (`src/services/notifications.ts`) but
 has **zero Firestore rules** defined. Under Firestore's default-deny policy, these writes silently
-fail in production (caught by the try/catch in `writeNotification`). However, since Cloud Functions
-(`onGameUpdated`, `onGameCreated`) also send push notifications via FCM, in-app notifications are
-effectively disabled and users rely entirely on FCM.
+fail in production (caught by the try/catch in `writeNotification`). (Historically, the removed
+Cloud Functions `onGameUpdated` and `onGameCreated` also sent push via FCM as a fallback; those
+are gone with the `functions/` package — in-app Firestore notifications plus client-side watchers
+are now the only channels.)
 
 **Risk:** If someone adds a wildcard match rule in the future, this collection would be wide-open.
 The missing rules should be added now for defense-in-depth.
@@ -199,17 +200,22 @@ opponent also doesn't open the app, the game stays in limbo indefinitely. More c
 - The opponent must actively open the app to trigger the forfeit
 - If neither player returns, the game remains "active" with an expired deadline forever
 
-**Server-side fix applied:** Added a scheduled Cloud Function `checkExpiredTurns` that runs every
-15 minutes, queries for active games with expired `turnDeadline`, and auto-forfeits them. This
-ensures forfeits happen regardless of client activity.
+**Historical server-side fix:** A scheduled Cloud Function `checkExpiredTurns` previously ran
+every 15 minutes, queried for active games with expired `turnDeadline`, and auto-forfeited them.
+That function was removed with the rest of the `functions/` package. Only the client-side
+`forfeitExpiredTurn` (`src/services/games.ts`) remains — it fires when any client opens the
+game, so a game where neither player returns can linger in "active" state with an expired
+deadline until one of them loads the app. This regression is pending product sign-off;
+re-introducing a server-side sweeper requires an external scheduler since Cloud Functions are
+disallowed by the no-backend guardrail.
 
 ---
 
 ## Summary of Changes Made
 
-| #   | Severity     | Issue                                                   | Fix                                                            |
-| --- | ------------ | ------------------------------------------------------- | -------------------------------------------------------------- |
-| 1   | **CRITICAL** | `notifications` collection has no Firestore rules       | Added rules for read/create/update/delete                      |
-| 2   | **P0**       | Turn timer is client-only — no server enforcement       | Added `checkExpiredTurns` scheduled Cloud Function             |
-| 3   | **MEDIUM**   | Storage allows any auth user to upload to any game path | Documented as accepted limitation (Firestore is the real gate) |
-| 4   | **ACTION**   | Auth domain whitelist needs manual console verification | Documented steps above                                         |
+| #   | Severity     | Issue                                                   | Fix                                                                                                                      |
+| --- | ------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 1   | **CRITICAL** | `notifications` collection has no Firestore rules       | Added rules for read/create/update/delete                                                                                |
+| 2   | **P0**       | Turn timer is client-only — no server enforcement       | Client-side `forfeitExpiredTurn` transaction (server-side `checkExpiredTurns` was removed with the `functions/` package) |
+| 3   | **MEDIUM**   | Storage allows any auth user to upload to any game path | Documented as accepted limitation (Firestore is the real gate)                                                           |
+| 4   | **ACTION**   | Auth domain whitelist needs manual console verification | Documented steps above                                                                                                   |

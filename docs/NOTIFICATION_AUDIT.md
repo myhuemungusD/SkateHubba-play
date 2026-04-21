@@ -10,10 +10,10 @@
 The notification system has three delivery channels:
 
 1. **Firestore real-time** — Client writes to `/notifications`, recipient's `onSnapshot` listener surfaces in-app toasts
-2. **FCM push** — Cloud Functions (`onGameUpdated`, `onGameCreated`, `onNudgeCreated`) send push notifications via FCM for background/closed-tab delivery
+2. **FCM push** — Historically served by Cloud Functions (`onGameUpdated`, `onGameCreated`, `onNudgeCreated`); those were removed with the `functions/` package. FCM tokens are still collected client-side (`src/services/fcm.ts`), but no sender exists in this repo — background push is effectively disabled until an external sender is wired up.
 3. **Client-side game watchers** — `GameNotificationWatcher` detects game state changes from the existing games `onSnapshot` and fires local toasts
 
-Deduplication logic in `GameNotificationWatcher` suppresses FCM foreground messages for types already covered by Firestore watchers.
+Deduplication logic in `GameNotificationWatcher` suppresses FCM foreground messages for types already covered by Firestore watchers (retained for when push is re-enabled).
 
 ---
 
@@ -124,9 +124,9 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 **Files:**
 
 - `src/services/fcm.ts:75` (tokens added via `arrayUnion`)
-- `functions/src/index.ts:38-53` (stale tokens cleaned reactively on send failure)
+- (historical) Cloud Function `onNudgeCreated` previously cleaned tokens reactively on send failure — removed along with the rest of the `functions/` package; no replacement cleaner currently runs.
 
-**Problem:** FCM tokens are only cleaned up when a push send fails with `invalid-registration-token` or `registration-token-not-registered`. Token rotation (e.g., user clears browser data, reinstalls) creates orphaned tokens that remain until the next failed send.
+**Problem:** FCM tokens accumulate indefinitely. With the Cloud Functions removed, no server-side cleanup runs on send failure either — push is effectively disabled until a replacement backend exists.
 
 **Impact:** A power user accumulates stale tokens → `sendEachForMulticast` makes unnecessary FCM API calls → increased latency and cost on every notification send.
 
@@ -171,7 +171,7 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 **Problem:** When a game is created with a judge, `writeNotification` sends a `judge_invite` type notification. The `subscribeToNotifications` listener in `GameNotificationWatcher` does receive this (it listens to all unread notifications), but there's no specific detection logic or chime mapping for `judge_invite` in the watcher.
 
-**Impact:** The notification arrives and displays correctly via the generic `subscribeToNotifications` path with a "general" chime. This is functional but inconsistent — all other notification types have dedicated chime mappings in `fcmChimeMap`. The Cloud Functions also don't send an FCM push for judge invites (only `onGameCreated` pushes to player2, not the judge).
+**Impact:** The notification arrives and displays correctly via the generic `subscribeToNotifications` path with a "general" chime. This is functional but inconsistent — all other notification types have dedicated chime mappings in `fcmChimeMap`. (Historically, the removed Cloud Functions also didn't send an FCM push for judge invites — only `onGameCreated` pushed to player2, not the judge. With FCM senders gone entirely, this is moot until push is re-enabled.)
 
 **Recommended fix:**
 
@@ -182,28 +182,28 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 ## Test Coverage Assessment
 
-| Area                                    | Test File                                       | Coverage                                                                                  | Verdict  |
-| --------------------------------------- | ----------------------------------------------- | ----------------------------------------------------------------------------------------- | -------- |
-| `notifications.ts` service              | `notifications.test.ts` (614 lines)             | Write, rate-limit, read, delete, subscriptions, error paths                               | **Good** |
-| `fcm.ts` service                        | `fcm.test.ts` (174 lines)                       | Permission flow, token storage/removal, SW caching, error paths                           | **Good** |
-| `nudge.ts` service                      | `nudge.test.ts` (93 lines)                      | Send, cooldown, localStorage                                                              | **Good** |
-| `NotificationContext`                   | `NotificationContext.test.tsx`                  | Provider state, toasts, persistence, auto-dismiss                                         | **Good** |
-| `GameNotificationWatcher`               | `GameNotificationWatcher.test.tsx` (696 lines)  | Event detection, dedup, seeding, nudge/notification listeners                             | **Good** |
-| `NotificationBell`                      | `NotificationBell.test.tsx`                     | UI interactions, dropdown, dismiss                                                        | **Good** |
-| `Toast`                                 | `Toast.test.tsx`                                | Swipe-to-dismiss, auto-dismiss                                                            | **Good** |
-| `PushPermissionBanner`                  | `PushPermissionBanner.test.tsx`                 | Permission flow, dismiss, error states                                                    | **Good** |
-| `ToastContainer`                        | `ToastContainer.test.tsx`                       | Container rendering                                                                       | **Good** |
-| Firestore rules (`notification_limits`) | `notification-limits.rules.test.ts` (119 lines) | Delete denial, create validation                                                          | **Good** |
-| Firestore rules (`notifications`)       | _None_                                          | No rules-level integration tests                                                          | **Gap**  |
-| Firestore rules (`nudge_limits`)        | _None_                                          | No rules-level integration tests                                                          | **Gap**  |
-| Firestore rules (`nudges`)              | _None_                                          | No rules-level integration tests                                                          | **Gap**  |
-| Cloud Functions                         | _None in repo_                                  | No unit tests for `onNudgeCreated`, `onGameCreated`, `onGameUpdated`, `checkExpiredTurns` | **Gap**  |
+| Area                                    | Test File                                       | Coverage                                                                                                                                                | Verdict  |
+| --------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `notifications.ts` service              | `notifications.test.ts` (614 lines)             | Write, rate-limit, read, delete, subscriptions, error paths                                                                                             | **Good** |
+| `fcm.ts` service                        | `fcm.test.ts` (174 lines)                       | Permission flow, token storage/removal, SW caching, error paths                                                                                         | **Good** |
+| `nudge.ts` service                      | `nudge.test.ts` (93 lines)                      | Send, cooldown, localStorage                                                                                                                            | **Good** |
+| `NotificationContext`                   | `NotificationContext.test.tsx`                  | Provider state, toasts, persistence, auto-dismiss                                                                                                       | **Good** |
+| `GameNotificationWatcher`               | `GameNotificationWatcher.test.tsx` (696 lines)  | Event detection, dedup, seeding, nudge/notification listeners                                                                                           | **Good** |
+| `NotificationBell`                      | `NotificationBell.test.tsx`                     | UI interactions, dropdown, dismiss                                                                                                                      | **Good** |
+| `Toast`                                 | `Toast.test.tsx`                                | Swipe-to-dismiss, auto-dismiss                                                                                                                          | **Good** |
+| `PushPermissionBanner`                  | `PushPermissionBanner.test.tsx`                 | Permission flow, dismiss, error states                                                                                                                  | **Good** |
+| `ToastContainer`                        | `ToastContainer.test.tsx`                       | Container rendering                                                                                                                                     | **Good** |
+| Firestore rules (`notification_limits`) | `notification-limits.rules.test.ts` (119 lines) | Delete denial, create validation                                                                                                                        | **Good** |
+| Firestore rules (`notifications`)       | _None_                                          | No rules-level integration tests                                                                                                                        | **Gap**  |
+| Firestore rules (`nudge_limits`)        | _None_                                          | No rules-level integration tests                                                                                                                        | **Gap**  |
+| Firestore rules (`nudges`)              | _None_                                          | No rules-level integration tests                                                                                                                        | **Gap**  |
+| Cloud Functions                         | _None in repo_                                  | Historical `onNudgeCreated`, `onGameCreated`, `onGameUpdated`, `checkExpiredTurns` were removed with the `functions/` package — no current code to test | **N/A**  |
 
 ### Notable test gaps:
 
 1. **No Firestore rules tests for `/notifications`** — the most complex notification rule (participant validation, rate limiting, field immutability on update) has no emulator-backed test
 2. **No Firestore rules tests for `/nudges`** — game-participant validation and active-game check are untested at the rules level
-3. **No Cloud Function tests** — the `functions/` directory has no test infrastructure. Push notification logic, stats updates, and token cleanup are untested
+3. **No Cloud Functions at all** — the `functions/` package was removed from this repo. Push notifications (FCM), scheduled forfeit enforcement, and billing alerts previously implemented there are no longer deployed. Client-side `forfeitExpiredTurn` and `updatePlayerStats` continue to run on game completion.
 
 ---
 
