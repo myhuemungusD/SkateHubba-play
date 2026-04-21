@@ -232,10 +232,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Still not recent enough — tell the user to sign out and sign
           // back in again. The pending flag stays set so the next retry
           // finds it.
-          throw new Error(
-            "For security, please sign out and sign back in, then tap Finish deletion again.",
-            { cause: err },
-          );
+          throw new Error("For security, please sign out and sign back in, then tap Finish deletion again.", {
+            cause: err,
+          });
         }
         throw err;
       }

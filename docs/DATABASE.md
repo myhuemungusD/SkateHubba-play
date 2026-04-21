@@ -12,26 +12,96 @@
 
 ## Collections
 
-### `users/{uid}`
+### `users/{uid}` (public profile)
 
-Player profiles. The document ID is the Firebase Auth UID.
+Player profiles. The document ID is the Firebase Auth UID. Holds **only**
+fields that are safe to expose cross-user. Sensitive fields (email,
+emailVerified, dob, parentalConsent, fcmTokens) live in the owner-only
+subcollection `users/{uid}/private/*` below.
 
-| Field                  | Type        | Description                                                           |
-| ---------------------- | ----------- | --------------------------------------------------------------------- |
-| `uid`                  | `string`    | Matches document ID and Auth UID                                      |
-| `username`             | `string`    | Normalized lowercase, 3–20 chars, `[a-z0-9_]+`                        |
-| `stance`               | `string`    | `"Regular"` or `"Goofy"`                                              |
-| `createdAt`            | `Timestamp` | Server timestamp at profile creation                                  |
-| `emailVerified`        | `boolean`   | Mirrors Auth state at profile creation time                           |
-| `lastGameCreatedAt`    | `Timestamp` | Server timestamp of last game creation (rate limiting)                |
-| `email` _(deprecated)_ | `string`    | No longer written to new profiles; use Firebase Auth for email lookup |
+| Field               | Type        | Description                                              |
+| ------------------- | ----------- | -------------------------------------------------------- |
+| `uid`               | `string`    | Matches document ID and Auth UID                         |
+| `username`          | `string`    | Normalized lowercase, 3–20 chars, `[a-z0-9_]+`           |
+| `stance`            | `string`    | `"Regular"` or `"Goofy"`                                 |
+| `createdAt`         | `Timestamp` | Server timestamp at profile creation                     |
+| `wins`              | `number`    | Denormalized leaderboard win count                       |
+| `losses`            | `number`    | Denormalized leaderboard loss count                      |
+| `lastStatsGameId`   | `string`    | ID of the last game that updated stats (idempotency key) |
+| `lastGameCreatedAt` | `Timestamp` | Server timestamp of last game creation (rate limiting)   |
+| `isVerifiedPro`     | `boolean`   | Admin-only — clients cannot set or modify                |
+| `verifiedBy`        | `string`    | Admin-only — grantor of verified-pro status              |
+| `verifiedAt`        | `Timestamp` | Admin-only — when verified-pro was granted               |
 
 **Constraints (enforced by Firestore rules):**
 
 - `uid` and `username` are immutable after creation
 - `username` format is validated on create
+- Sensitive fields (`email`, `emailVerified`, `dob`, `parentalConsent`,
+  `fcmTokens`) are **forbidden** at the top level on both create and
+  update. The rules reject any write that tries to re-introduce them
+  — they must go through `users/{uid}/private/profile` instead.
+- `isVerifiedPro`/`verifiedBy`/`verifiedAt` are immutable from the client
 
 **Access:** Any signed-in user can read any profile (needed for opponent lookup). Only the owner can write, and only once.
+
+---
+
+### `users/{uid}/private/profile` (private profile)
+
+Owner-only companion doc for `users/{uid}`. Holds every field that
+would leak PII or account state if exposed cross-user. Readable and
+writable only by the owning user per `firestore.rules`.
+
+| Field             | Type      | Description                                                                    |
+| ----------------- | --------- | ------------------------------------------------------------------------------ |
+| `emailVerified`   | `boolean` | Mirrors Auth state at profile creation time                                    |
+| `dob`             | `string`  | YYYY-MM-DD, collected at age gate (COPPA/CCPA)                                 |
+| `parentalConsent` | `boolean` | Optional; present when the age-gate collected consent for 13-17 year olds      |
+| `fcmTokens`       | `array`   | Firebase Cloud Messaging tokens for this user's devices (≤10 entries enforced) |
+
+> Note: email is **not** stored here. Firebase Auth is the canonical
+> store for a user's email address. Duplicating it on Firestore would
+> create a second source of truth.
+
+**Constraints (enforced by Firestore rules):**
+
+- Owner-only read/write/delete (`isOwner(uid)`)
+- `fcmTokens` must be a list of ≤10 entries — prevents a compromised
+  client from stuffing an unbounded blob into the push-token list
+
+**Why the split:** Firestore rules cannot filter fields on reads —
+read access is per-document. Splitting the profile is the enforcement
+mechanism that keeps `fcmTokens`, `email`, `dob`, and `emailVerified`
+out of cross-user reach while keeping the public fields (`username`,
+`wins`, `losses`, `isVerifiedPro`) readable for opponent lookup.
+
+**Access:** Only the owning user can read, write, or delete.
+
+**Migration transition (April 2026):** Legacy `users/{uid}` documents
+created before the public/private split still carry `email`,
+`emailVerified`, `dob`, `parentalConsent`, and `fcmTokens` inline at
+the top level. The Firestore rules currently run in a **transitional
+mode** (see `firestore.rules` update block for `users/{uid}`): those
+field names are allowed on the public doc at update-time IFF the value
+is unchanged from the stored value, which lets legitimate partial
+writes (`wins++`, stance changes, etc.) continue to work against
+legacy docs before the backfill lands. Creates remain strict — no new
+doc may introduce these fields.
+
+**Deploy runbook:**
+
+1. Ship this PR (rules + code + transitional guards) to production.
+2. Operators run `scripts/migrate-users-private.mjs` (Admin SDK) to
+   move the five sensitive fields from every legacy public user doc
+   into its `users/{uid}/private/profile` companion and remove them
+   from the public doc. The script is idempotent and resumable so it
+   can be rerun safely.
+3. After the backfill is verified (no public user doc still carries
+   any of the five sensitive field names), land a follow-up PR that
+   tightens the `users/{uid}` update rule back to the strict
+   `!('X' in request.resource.data)` form, closing the residual
+   transitional-tolerance window.
 
 ---
 
@@ -193,6 +263,10 @@ Server-only collection written by the `onBillingAlert` Cloud Function. Stores bi
 users/{uid}.username ──────────────────── usernames/{username}.uid
                                               (reverse lookup index)
 
+users/{uid} ─────────────────────────────  users/{uid}/private/profile
+                                              (sensitive fields;
+                                               owner-only readable)
+
 games/{gameId}.player1Uid ─────────────── users/{uid}
 games/{gameId}.player2Uid ─────────────── users/{uid}
 
@@ -235,12 +309,13 @@ Metadata stored per file:
 
 ## Data Lifecycle
 
-| Entity        | Deletion policy                                                    |
-| ------------- | ------------------------------------------------------------------ |
-| User accounts | Deleted on user request via account deletion flow                  |
-| Usernames     | Deleted atomically with user profile during account deletion       |
-| Games         | Deleted during account deletion (all games where user is a player) |
-| Videos        | Orphaned on game deletion; no automated cleanup implemented        |
+| Entity               | Deletion policy                                                           |
+| -------------------- | ------------------------------------------------------------------------- |
+| User accounts        | Deleted on user request via account deletion flow                         |
+| Private profile docs | Deleted atomically with the public user doc in the account-deletion batch |
+| Usernames            | Deleted atomically with user profile during account deletion              |
+| Games                | Deleted during account deletion (all games where user is a player)        |
+| Videos               | Orphaned on game deletion; no automated cleanup implemented               |
 
 ---
 
