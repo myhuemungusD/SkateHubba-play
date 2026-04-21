@@ -21,7 +21,6 @@ const SPOT_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 
 export type Screen =
   | "landing"
-  | "agegate"
   | "auth"
   | "profile"
   | "lobby"
@@ -39,7 +38,6 @@ export type Screen =
 /** Map screen names to URL paths. */
 const SCREEN_TO_PATH: Record<Screen, string> = {
   landing: "/",
-  agegate: "/age-gate",
   auth: "/auth",
   profile: "/profile",
   lobby: "/lobby",
@@ -73,7 +71,6 @@ export function screenToPath(screen: Screen): string {
 /** Screens that don't require authentication. */
 const PUBLIC_SCREENS: ReadonlySet<Screen> = new Set([
   "landing",
-  "agegate",
   "auth",
   "map",
   "privacy",

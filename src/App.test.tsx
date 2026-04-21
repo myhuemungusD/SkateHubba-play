@@ -118,7 +118,7 @@ describe("App", () => {
     });
   });
 
-  it("navigates to age gate screen when 'Use email' is clicked", async () => {
+  it("navigates directly to the signup card when 'Use email' is clicked", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: null,
@@ -129,8 +129,12 @@ describe("App", () => {
 
     await userEvent.click(screen.getByText("Use email"));
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
     });
+    // DOB inputs are inline on the signup card — no separate age-gate screen.
+    expect(screen.getByLabelText("Birth month")).toBeInTheDocument();
+    expect(screen.getByLabelText("Birth day")).toBeInTheDocument();
+    expect(screen.getByLabelText("Birth year")).toBeInTheDocument();
   });
 
   it("navigates to sign in screen when 'Account' is clicked", async () => {

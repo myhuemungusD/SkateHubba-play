@@ -127,7 +127,7 @@ const { withGames, renderLobby } = createMockHelpers({
 });
 
 describe("Smoke: Auth", () => {
-  it("landing page renders and navigates to age gate then sign-up", async () => {
+  it("landing page renders and navigates straight to the inline signup card", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
@@ -136,11 +136,9 @@ describe("Smoke: Auth", () => {
     expect(screen.getByText("Account")).toBeInTheDocument();
 
     await userEvent.click(await screen.findByText("Use email"));
-    expect(await screen.findByRole("heading", { name: "Verify Your Age" })).toBeInTheDocument();
-
-    // Pass through age gate (waitFor inside passAgeGate handles lazy load)
-    await passAgeGate();
-    expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+    // DOB inputs render inline on the same card — no age-gate detour.
+    expect(screen.getByLabelText("Birth month")).toBeInTheDocument();
   });
 
   it("landing page navigates to sign-in", async () => {
@@ -324,21 +322,22 @@ describe("Smoke: Auth", () => {
     });
   });
 
-  it("toggles from sign-up to sign-in and back", async () => {
+  it("toggles from sign-up to sign-in and back without leaving the auth card", async () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
-    await passAgeGate();
-    expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Create Account" })).toBeInTheDocument();
 
-    // Toggle to sign-in
+    // Toggle to sign-in — DOB fields disappear because there's no age gate on signin.
     await userEvent.click(screen.getByText("Already have an account?"));
     expect(screen.getByText("Welcome Back")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Birth month")).not.toBeInTheDocument();
 
-    // Toggle back to sign-up — age gate already passed, goes directly to signup
+    // Toggle back to sign-up — DOB fields return inline.
     await userEvent.click(screen.getByText("Need an account?"));
     expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Birth month")).toBeInTheDocument();
   });
 
   it("shows error for invalid credentials on sign in", async () => {

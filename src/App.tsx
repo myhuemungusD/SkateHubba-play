@@ -18,16 +18,15 @@ import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
-// Eager: first-paint / onboarding path (Landing, AgeGate, AuthScreen, ProfileSetup)
+// Eager: first-paint / onboarding path (Landing, AuthScreen, ProfileSetup)
 // plus Lobby since it's the primary destination for returning authed users.
+// DOB + parental consent are collected inline on AuthScreen (COPPA/CCPA), and
+// ProfileSetup collects them post-Google as a fallback — no standalone age
+// gate screen in the critical onboarding path.
 import { Landing } from "./screens/Landing";
 import { AuthScreen } from "./screens/AuthScreen";
 import { ProfileSetup } from "./screens/ProfileSetup";
 import { Lobby } from "./screens/Lobby";
-// AgeGate stays eager — it's in the signup path and the first-paint bundle
-// already carries the auth flow, so a split here would just add a spinner
-// flash on an already-short critical route.
-import { AgeGate } from "./screens/AgeGate";
 // Lazy: non-critical / heavy secondary screens — code-split into separate
 // chunks so the first-paint bundle doesn't pay for Mapbox (MapPage +
 // SpotDetailPage pull ~400KB of tiles/SDK), the gameplay surfaces only an
@@ -206,30 +205,11 @@ function AppRoutes() {
               element={
                 <Landing
                   onGo={(m) => {
-                    if (m === "signup") {
-                      nav.setAuthMode("signup");
-                      nav.setScreen("agegate");
-                    } else {
-                      nav.setAuthMode(m);
-                      nav.setScreen("auth");
-                    }
+                    nav.setAuthMode(m);
+                    nav.setScreen("auth");
                   }}
                   onGoogle={auth.handleGoogleSignIn}
                   googleLoading={auth.googleLoading}
-                  onNav={nav.setScreen}
-                />
-              }
-            />
-
-            <Route
-              path="/age-gate"
-              element={
-                <AgeGate
-                  onVerified={(dob, parentalConsent) => {
-                    nav.setAgeGateResult(dob, parentalConsent);
-                    nav.setScreen("auth");
-                  }}
-                  onBack={() => nav.setScreen("landing")}
                   onNav={nav.setScreen}
                 />
               }
@@ -246,20 +226,15 @@ function AppRoutes() {
                   }}
                   onToggle={() => {
                     auth.setGoogleError("");
-                    if (nav.authMode === "signin") {
-                      // Switching to signup — require age gate if not already completed
-                      nav.setAuthMode("signup");
-                      if (!nav.ageGateDob) {
-                        nav.setScreen("agegate");
-                      }
-                      return;
-                    }
-                    nav.setAuthMode("signin");
+                    nav.setAuthMode(nav.authMode === "signin" ? "signup" : "signin");
                   }}
                   onGoogle={auth.handleGoogleSignIn}
                   googleLoading={auth.googleLoading}
                   googleError={auth.googleError}
                   onGoogleErrorDismiss={() => auth.setGoogleError("")}
+                  showAgeFields={nav.authMode === "signup"}
+                  onAgeVerified={nav.setAgeGateResult}
+                  onNavLegal={nav.setScreen}
                 />
               }
             />
@@ -274,6 +249,7 @@ function AppRoutes() {
                     displayName={auth.user.displayName}
                     dob={nav.ageGateDob}
                     parentalConsent={nav.ageGateParentalConsent}
+                    onNavLegal={nav.setScreen}
                     onDone={async (p) => {
                       auth.setActiveProfile(p);
                       nav.setScreen("lobby");
