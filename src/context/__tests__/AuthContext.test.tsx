@@ -3,21 +3,15 @@ import { act, render, waitFor } from "@testing-library/react";
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
 
-const {
-  mockUseAuth,
-  mockDeleteAccount,
-  mockDeleteUserData,
-  mockLoggerError,
-  mockLoggerInfo,
-  mockCaptureException,
-} = vi.hoisted(() => ({
-  mockUseAuth: vi.fn(() => ({ loading: false, user: null, profile: null, refreshProfile: vi.fn() })),
-  mockDeleteAccount: vi.fn(),
-  mockDeleteUserData: vi.fn(),
-  mockLoggerError: vi.fn(),
-  mockLoggerInfo: vi.fn(),
-  mockCaptureException: vi.fn(),
-}));
+const { mockUseAuth, mockDeleteAccount, mockDeleteUserData, mockLoggerError, mockLoggerInfo, mockCaptureException } =
+  vi.hoisted(() => ({
+    mockUseAuth: vi.fn(() => ({ loading: false, user: null, profile: null, refreshProfile: vi.fn() })),
+    mockDeleteAccount: vi.fn(),
+    mockDeleteUserData: vi.fn(),
+    mockLoggerError: vi.fn(),
+    mockLoggerInfo: vi.fn(),
+    mockCaptureException: vi.fn(),
+  }));
 
 vi.mock("../../hooks/useAuth", () => ({
   useAuth: () => mockUseAuth(),
