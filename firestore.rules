@@ -256,9 +256,16 @@ service cloud.firestore {
         && request.resource.data.currentSetter == request.auth.uid
         // turnDeadline must be a future timestamp (prevents instant-forfeit attack:
         // without this, a malicious client could set turnDeadline in the past,
-        // currentTurn to the opponent, and immediately forfeit them)
+        // currentTurn to the opponent, and immediately forfeit them).
+        // Upper bound prevents the inverse attack: without a cap, a client
+        // could set turnDeadline to Timestamp.fromMillis(Number.MAX_SAFE_INTEGER)
+        // and permanently block the opponent's forfeit path (forfeit needs
+        // request.time > resource.data.turnDeadline). 48h is 2× the production
+        // TURN_DURATION_MS (24h) — tight enough to prevent abuse, loose enough
+        // to tolerate clock skew and retry windows.
         && request.resource.data.turnDeadline is timestamp
         && request.resource.data.turnDeadline > request.time
+        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
         // Trick/video fields must start empty
         && request.resource.data.currentTrickName == null
         && request.resource.data.currentTrickVideoUrl == null
@@ -305,7 +312,13 @@ service cloud.firestore {
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.auth.uid == resource.data.currentTurn
-        // Rate limit: at most one turn action per 2 seconds (prevents write flooding)
+        // Rate limit: at most one turn action per 2 seconds (prevents write flooding).
+        // The cooldown below compares against the STORED updatedAt; without
+        // also pinning the NEW updatedAt to request.time, a client could write
+        // a stale value (e.g. epoch 0) and permanently satisfy the check.
+        // Mirrors the same hardening on notification_limits / nudge_limits.
+        && 'updatedAt' in request.resource.data
+        && request.resource.data.updatedAt == request.time
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
@@ -341,8 +354,12 @@ service cloud.firestore {
           request.resource.data.currentTurn == resource.data.player1Uid ||
           request.resource.data.currentTurn == resource.data.player2Uid
         )
-        // turnDeadline must be a timestamp
+        // turnDeadline must be a timestamp bounded to a sane future window.
+        // See the create rule above for the rationale on the 48h upper bound
+        // (blocks opponent-lockout via Timestamp.fromMillis(MAX_SAFE_INTEGER)).
         && request.resource.data.turnDeadline is timestamp
+        && request.resource.data.turnDeadline > request.time
+        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
         // Scores must not change during setting-phase updates.
         // Letters are only awarded via the match resolution rule below.
         && request.resource.data.p1Letters == resource.data.p1Letters
@@ -378,7 +395,11 @@ service cloud.firestore {
         && resource.data.status == 'active'
         && resource.data.phase == 'matching'
         && request.auth.uid == resource.data.currentTurn
-        // Rate limit
+        // Rate limit. New updatedAt must equal request.time — prevents the
+        // stored-value spoof where a client writes epoch 0 to keep the 2s
+        // cooldown permanently satisfied. Same pattern as notification_limits.
+        && 'updatedAt' in request.resource.data
+        && request.resource.data.updatedAt == request.time
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
@@ -406,8 +427,11 @@ service cloud.firestore {
           || ('judgeStatus' in resource.data && 'judgeStatus' in request.resource.data
               && request.resource.data.judgeStatus == resource.data.judgeStatus)
         )
-        // turnDeadline must be a timestamp
+        // turnDeadline must be a timestamp bounded to a sane future window
+        // (see create rule for rationale on the 48h cap).
         && request.resource.data.turnDeadline is timestamp
+        && request.resource.data.turnDeadline > request.time
+        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
         // Letters: at most one player gains exactly one letter (missed) or none change (landed)
         && (
           // No letter change (landed path, both honor + judge)
@@ -472,7 +496,10 @@ service cloud.firestore {
         && resource.data.phase == 'disputable'
         && request.auth.uid == resource.data.currentTurn
         && judgeActive(resource.data)
-        // Rate limit
+        // Rate limit. Pinning updatedAt to request.time closes the
+        // stale-value bypass (see setting-phase rule above for rationale).
+        && 'updatedAt' in request.resource.data
+        && request.resource.data.updatedAt == request.time
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
@@ -497,8 +524,11 @@ service cloud.firestore {
           request.resource.data.currentTurn == resource.data.player1Uid ||
           request.resource.data.currentTurn == resource.data.player2Uid
         )
-        // turnDeadline must be a timestamp
+        // turnDeadline must be a timestamp bounded to a sane future window
+        // (see create rule for rationale on the 48h cap).
         && request.resource.data.turnDeadline is timestamp
+        && request.resource.data.turnDeadline > request.time
+        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
         // Letters: accept (no change) or dispute (one player +1)
         && (
           (request.resource.data.p1Letters == resource.data.p1Letters
@@ -527,6 +557,10 @@ service cloud.firestore {
         && resource.data.phase == 'setReview'
         && request.auth.uid == resource.data.currentTurn
         && judgeActive(resource.data)
+        // Rate limit. New updatedAt must equal request.time so the 2s
+        // cooldown can't be defeated by writing a stale value on each turn.
+        && 'updatedAt' in request.resource.data
+        && request.resource.data.updatedAt == request.time
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
@@ -545,7 +579,11 @@ service cloud.firestore {
         && request.resource.data.judgeStatus == resource.data.judgeStatus
         && request.resource.data.status == 'active'
         && request.resource.data.winner == null
+        // turnDeadline must be a timestamp bounded to a sane future window
+        // (see create rule for rationale on the 48h cap).
         && request.resource.data.turnDeadline is timestamp
+        && request.resource.data.turnDeadline > request.time
+        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
         && request.resource.data.p1Letters == resource.data.p1Letters
         && request.resource.data.p2Letters == resource.data.p2Letters
         && request.resource.data.currentSetter == resource.data.currentSetter
@@ -656,7 +694,13 @@ service cloud.firestore {
         && request.resource.data.status == 'active'
         && request.resource.data.phase == 'setting'
         && request.resource.data.winner == null
-        && request.resource.data.turnDeadline is timestamp;
+        // turnDeadline must be a fresh, bounded future timestamp. This path
+        // fires only after the OLD deadline expired, but the NEW deadline
+        // written here is what governs the next turn — so it needs the same
+        // 48h cap every other write path enforces.
+        && request.resource.data.turnDeadline is timestamp
+        && request.resource.data.turnDeadline > request.time
+        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h');
 
       // ── Expired setReview auto-clear ──
       // When the judge doesn't rule on a "Call BS" within 24h, the set
@@ -684,7 +728,11 @@ service cloud.firestore {
         && request.resource.data.winner == null
         && request.resource.data.currentSetter == resource.data.currentSetter
         && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
-        && request.resource.data.turnDeadline is timestamp;
+        // turnDeadline must be a fresh, bounded future timestamp. Same
+        // rationale as the expired-dispute auto-accept above.
+        && request.resource.data.turnDeadline is timestamp
+        && request.resource.data.turnDeadline > request.time
+        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h');
 
       // Players may delete their own non-active games (account deletion flow)
       allow delete: if isSignedIn() && isPlayer(resource.data)
