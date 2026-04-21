@@ -194,10 +194,16 @@ describe("Smoke: Account & Sign Out", () => {
     expect(mockDeleteAccount).not.toHaveBeenCalled();
   });
 
-  it("successful delete calls deleteAccount then deleteUserData and navigates to landing", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
-    // After deleteAccount resolves, make useAuth return no user (simulating Firebase sign-out)
+  it("successful delete calls deleteUserData before deleteAccount and navigates to landing", async () => {
+    // Record invocation order: Firestore cleanup must come first so the auth
+    // token is still valid when the security-rule-gated deletes run.
+    const callOrder: string[] = [];
+    mockDeleteUserData.mockImplementationOnce(async () => {
+      callOrder.push("deleteUserData");
+    });
     mockDeleteAccount.mockImplementationOnce(async () => {
+      callOrder.push("deleteAccount");
+      // Simulate Firebase sign-out after auth account deletion
       mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     });
 
@@ -218,14 +224,34 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(mockDeleteAccount).toHaveBeenCalled();
       expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
+      expect(mockDeleteAccount).toHaveBeenCalled();
       // After deletion, app navigates to landing
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
+    expect(callOrder).toEqual(["deleteUserData", "deleteAccount"]);
   });
 
-  it("shows error when deleteAccount fails and does not call deleteUserData", async () => {
+  it("does NOT delete auth account when deleteUserData throws", async () => {
+    mockDeleteUserData.mockRejectedValueOnce(new Error("Firestore rule denied"));
+    await renderLobby([]);
+
+    await userEvent.click(await screen.findByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Firestore rule denied")).toBeInTheDocument();
+    });
+    // Auth account must remain intact so the user can retry — this is the
+    // whole point of the ordering fix. A failed Firestore pass that proceeds
+    // to auth delete is exactly the GDPR-orphaning bug we're preventing.
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
+    // Modal stays open so user can retry
+    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  it("shows error when deleteAccount fails after deleteUserData succeeds", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
     mockDeleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
     await renderLobby([]);
 
@@ -235,12 +261,14 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText("Auth deletion failed")).toBeInTheDocument();
     });
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    // Firestore cleanup ran first — that's expected under the new ordering.
+    expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
     // Modal stays open so user can retry
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
 
   it("shows friendly message when deleteAccount requires recent login", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
     const err = new Error("auth/requires-recent-login");
     (err as unknown as { code: string }).code = "auth/requires-recent-login";
     mockDeleteAccount.mockRejectedValueOnce(err);
@@ -252,8 +280,57 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
     });
+    // Firestore was already wiped; the instruction tells the user to re-auth
+    // and retry, which is safe because deleteUserData is idempotent.
+    expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
     // Modal stays open
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+  });
+
+  it("re-entry after auth/requires-recent-login is safe: deleteUserData no-op, auth retried", async () => {
+    // First attempt: Firestore succeeds (wipes data), auth rejects with
+    // requires-recent-login. User re-authenticates and triggers delete again.
+    // Second attempt: deleteUserData is called again against already-empty
+    // data (idempotent no-op) and deleteAccount now succeeds.
+    mockDeleteUserData.mockResolvedValue(undefined);
+    const recentErr = new Error("auth/requires-recent-login");
+    (recentErr as unknown as { code: string }).code = "auth/requires-recent-login";
+    mockDeleteAccount.mockRejectedValueOnce(recentErr).mockImplementationOnce(async () => {
+      mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    });
+
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    render(
+      <MemoryRouter>
+        <App />
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(await screen.findByText("Delete Account"));
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    // First attempt surfaces the re-auth guidance
+    await waitFor(() => {
+      expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
+    });
+    expect(mockDeleteUserData).toHaveBeenCalledTimes(1);
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+
+    // Second attempt (simulating user re-auth + retry) succeeds end-to-end.
+    await userEvent.click(screen.getByText("Delete Forever"));
+
+    await waitFor(() => {
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
+    });
+    // deleteUserData must be called a second time (safe because idempotent)
+    expect(mockDeleteUserData).toHaveBeenCalledTimes(2);
+    expect(mockDeleteAccount).toHaveBeenCalledTimes(2);
   });
 
   it("shows generic error message for unknown firebase auth error", async () => {
