@@ -218,11 +218,11 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // clips, so this runs before the auth/profile teardown.
   await deleteUserClips(uid);
 
-  // Phase 4: Delete private-profile subcollection doc, user profile, and
-  // username reservation atomically (no reads needed, batch is cheaper).
-  // The private-profile doc must come FIRST — leaving it behind would
-  // orphan PII (fcmTokens, dob, parentalConsent) that the public user doc
-  // would normally reference.
+  // Phase 4: Delete the private-profile subcollection doc alongside the
+  // public user doc and username reservation. A writeBatch commits
+  // atomically, so either all three are removed together or none are —
+  // PII (fcmTokens, dob, parentalConsent) cannot be left stranded after
+  // the public profile is gone.
   const batch = writeBatch(db);
   batch.delete(doc(db, "users", uid, "private", USER_PRIVATE_PROFILE_DOC_ID));
   batch.delete(doc(db, "users", uid));

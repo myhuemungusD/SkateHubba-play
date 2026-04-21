@@ -13,6 +13,7 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { USER_PRIVATE_PROFILE_DOC_ID } from "./users";
 
 /**
  * Schema version for the GDPR Article 20 data export bundle. Increment when
@@ -166,7 +167,9 @@ export async function exportUserData(uid: string, username: string): Promise<Use
     reports,
   ] = await Promise.all([
     readDoc(`users/${uid}`, () => getDoc(doc(db, "users", uid))),
-    readDoc(`users/${uid}/private/profile`, () => getDoc(doc(db, "users", uid, "private", "profile"))),
+    readDoc(`users/${uid}/private/${USER_PRIVATE_PROFILE_DOC_ID}`, () =>
+      getDoc(doc(db, "users", uid, "private", USER_PRIVATE_PROFILE_DOC_ID)),
+    ),
     normalizedUsername
       ? readDoc(`usernames/${normalizedUsername}`, () => getDoc(doc(db, "usernames", normalizedUsername)))
       : Promise.resolve(null),
