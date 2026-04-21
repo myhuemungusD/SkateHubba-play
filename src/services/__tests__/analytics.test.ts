@@ -130,6 +130,34 @@ describe("analytics service", () => {
       expect(vaSpy).toHaveBeenCalledWith("event", { name: "sign_in", method: "google" });
     });
 
+    it("signInAttempt sends sign_in_attempt event", () => {
+      analytics.signInAttempt("email");
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "sign_in_attempt", method: "email" });
+    });
+
+    it("signInFailure sends sign_in_failure event with code", () => {
+      analytics.signInFailure("email", "auth/internal-error");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "sign_in_failure",
+        method: "email",
+        code: "auth/internal-error",
+      });
+    });
+
+    it("signUpAttempt sends sign_up_attempt event", () => {
+      analytics.signUpAttempt("email");
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "sign_up_attempt", method: "email" });
+    });
+
+    it("signUpFailure sends sign_up_failure event with code", () => {
+      analytics.signUpFailure("email", "auth/weak-password");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "sign_up_failure",
+        method: "email",
+        code: "auth/weak-password",
+      });
+    });
+
     it("challengeFromSpot sends challenge_from_spot event", () => {
       analytics.challengeFromSpot("11111111-2222-3333-4444-555555555555");
       expect(vaSpy).toHaveBeenCalledWith("event", {

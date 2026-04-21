@@ -5,7 +5,10 @@ import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { GoogleButton } from "../components/GoogleButton";
-import { logger } from "../services/logger";
+import { logger, metrics } from "../services/logger";
+import { analytics } from "../services/analytics";
+import { captureException } from "../lib/sentry";
+import { isBenignAuthCode } from "../utils/authCodes";
 
 export function AuthScreen({
   mode,
@@ -52,14 +55,25 @@ export function AuthScreen({
     setLoading(true);
     const trimmedEmail = email.trim();
     logger.info("auth_screen_submit", { mode: isSignup ? "signup" : "signin", email: trimmedEmail });
+    if (isSignup) {
+      analytics.signUpAttempt("email");
+      metrics.signUpAttempt("email");
+    } else {
+      analytics.signInAttempt("email");
+      metrics.signInAttempt("email");
+    }
     try {
       if (isSignup) {
         const result: SignUpResult = await signUp(trimmedEmail, password);
         if (!result.verificationEmailSent) {
           setVerifyWarning(true);
         }
+        analytics.signUp("email");
+        metrics.signUp("email", result.user.uid);
       } else {
-        await signIn(trimmedEmail, password);
+        const user = await signIn(trimmedEmail, password);
+        analytics.signIn("email");
+        metrics.signIn("email", user.uid);
       }
       logger.info("auth_screen_submit_success", { mode: isSignup ? "signup" : "signin" });
       onDone();
@@ -70,6 +84,18 @@ export function AuthScreen({
         code,
         message: parseFirebaseError(err),
       });
+      if (isSignup) analytics.signUpFailure("email", code || "unknown");
+      else analytics.signInFailure("email", code || "unknown");
+      if (isSignup) metrics.signUpFailure("email", code || "unknown");
+      else metrics.signInFailure("email", code || "unknown");
+      // Only surface non-benign codes to Sentry as exceptions — benign codes
+      // (wrong password, email taken, popup closed) would drown real outage
+      // signals in user-error noise.
+      if (!isBenignAuthCode(code)) {
+        captureException(err, {
+          extra: { context: "AuthScreen.submit", mode: isSignup ? "signup" : "signin", code },
+        });
+      }
       if (code === "auth/email-already-in-use") setError("Email already in use. Try signing in, or use Google below.");
       else if (code === "auth/account-exists-with-different-credential")
         setError("This email is linked to Google. Tap 'Continue with Google' below.");

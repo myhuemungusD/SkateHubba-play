@@ -55,6 +55,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.warn("google_redirect_resolve_error", {
           message: parseFirebaseError(err),
         });
+        const code = getErrorCode(err);
+        analytics.signInFailure("google", code || "redirect_error");
+        metrics.signInFailure("google", code || "redirect_error");
         captureException(err, { extra: { context: "resolveGoogleRedirect" } });
         setGoogleError("Google sign-in failed. Please try again.");
       });
@@ -64,6 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setGoogleError("");
     setGoogleLoading(true);
     logger.info("google_sign_in_started");
+    analytics.signInAttempt("google");
+    metrics.signInAttempt("google");
     try {
       const googleUser = await signInWithGoogle();
       if (googleUser) {
@@ -75,6 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: unknown) {
       const code = getErrorCode(err);
+      analytics.signInFailure("google", code || "unknown");
+      metrics.signInFailure("google", code || "unknown");
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
         logger.info("google_sign_in_dismissed", { code });
       } else if (code === "auth/account-exists-with-different-credential") {
