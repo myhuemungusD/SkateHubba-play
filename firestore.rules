@@ -43,8 +43,13 @@ service cloud.firestore {
     }
 
     // ── Users ──
-    // Users can read any profile (for opponent lookup)
-    // Users can only write their own profile (created once)
+    // The `users/{uid}` document holds ONLY fields that are safe to expose
+    // cross-user (username, stance, wins/losses, isVerifiedPro, …). Any
+    // sensitive field — email, emailVerified, dob, parentalConsent, and
+    // the `fcmTokens` push-registration list — lives in the private
+    // subcollection `users/{uid}/private/*` and is readable only by the
+    // owning user. Firestore rules cannot filter fields on reads, so the
+    // split at the document boundary is the enforcement mechanism.
     //
     // Username constraints MUST match `USERNAME_MIN`, `USERNAME_MAX`, and
     // `USERNAME_RE` in src/services/users.ts. Rules are the source of truth
@@ -68,7 +73,16 @@ service cloud.firestore {
         // Pro fields are admin-only — clients cannot set them at creation
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
-        && !('verifiedAt' in request.resource.data);
+        && !('verifiedAt' in request.resource.data)
+        // Sensitive fields MUST live in users/{uid}/private/* instead of
+        // the public profile doc. Blocking them here closes the cross-user
+        // read leak: any signed-in user can still read users/{uid} (needed
+        // for opponent lookup), but can no longer see email / dob / fcmTokens.
+        && !('email' in request.resource.data)
+        && !('emailVerified' in request.resource.data)
+        && !('dob' in request.resource.data)
+        && !('parentalConsent' in request.resource.data)
+        && !('fcmTokens' in request.resource.data);
       allow update: if isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
@@ -77,6 +91,14 @@ service cloud.firestore {
         && (!('isVerifiedPro' in request.resource.data) || request.resource.data.isVerifiedPro == resource.data.isVerifiedPro)
         && (!('verifiedBy' in request.resource.data) || request.resource.data.verifiedBy == resource.data.verifiedBy)
         && (!('verifiedAt' in request.resource.data) || request.resource.data.verifiedAt == resource.data.verifiedAt)
+        // Sensitive fields remain forbidden on the public doc. Even an
+        // owner update (e.g. a buggy client write) cannot re-introduce
+        // them at the top level — they must go through users/{uid}/private/*.
+        && !('email' in request.resource.data)
+        && !('emailVerified' in request.resource.data)
+        && !('dob' in request.resource.data)
+        && !('parentalConsent' in request.resource.data)
+        && !('fcmTokens' in request.resource.data)
         // Wins/losses can only increment by 0 or 1 per write.
         // When the field doesn't exist yet, only 0 or 1 is allowed
         // (the old rule's !('wins' in resource.data) branch accepted any value).
@@ -97,17 +119,38 @@ service cloud.firestore {
             request.resource.data.losses == resource.data.losses
             || request.resource.data.losses == resource.data.losses + 1
           ))
-        )
-        // fcmTokens (push-notification registration tokens) must be a list
-        // capped at 10 entries — prevents a compromised client from writing
-        // an unbounded blob into the user doc.
-        && (
-          !('fcmTokens' in request.resource.data)
-          || (request.resource.data.fcmTokens is list
-              && request.resource.data.fcmTokens.size() <= 10)
         );
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
+
+      // ── Private profile (subcollection) ──
+      // Owner-only read/write surface for sensitive fields that must
+      // never leak cross-user: email, emailVerified, dob, parentalConsent,
+      // and the fcmTokens push-registration list. The canonical doc is
+      // `users/{uid}/private/profile`; {docId} is open in the matcher so
+      // a future split (e.g. `users/{uid}/private/fcm`) doesn't require
+      // a rules change, but every doc stays owner-only.
+      //
+      // The fcmTokens cap (≤10 entries, must be a list) moves with the
+      // field — prevents a compromised client from stuffing an unbounded
+      // blob into the push-token list, the same attack the previous
+      // guard on the public user doc closed.
+      match /private/{docId} {
+        allow read: if isOwner(uid);
+        allow create: if isOwner(uid)
+          && (
+            !('fcmTokens' in request.resource.data)
+            || (request.resource.data.fcmTokens is list
+                && request.resource.data.fcmTokens.size() <= 10)
+          );
+        allow update: if isOwner(uid)
+          && (
+            !('fcmTokens' in request.resource.data)
+            || (request.resource.data.fcmTokens is list
+                && request.resource.data.fcmTokens.size() <= 10)
+          );
+        allow delete: if isOwner(uid);
+      }
 
       // ── Blocked Users (subcollection) ──
       // Each user maintains their own block list.  Only the owner can

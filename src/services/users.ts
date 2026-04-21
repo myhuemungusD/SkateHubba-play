@@ -20,17 +20,24 @@ import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips } from "./clips";
 
+/**
+ * Public profile doc at `users/{uid}`. Every signed-in user can read
+ * this (needed for opponent lookup, leaderboards, the player
+ * directory). It MUST NOT contain sensitive fields — those live in
+ * {@link UserPrivateProfile} at `users/{uid}/private/profile` and are
+ * owner-only readable.
+ *
+ * Guardrail: adding a field here exposes it cross-user. If the field
+ * is PII or account-state (email, dob, push tokens, verification
+ * flags, …) put it on UserPrivateProfile instead. `firestore.rules`
+ * blocks those field names from appearing at the top level.
+ */
 export interface UserProfile {
   uid: string;
   username: string;
   stance: string;
   /** serverTimestamp() on write; Firestore Timestamp on read. */
   createdAt: FieldValue | null;
-  emailVerified: boolean;
-  /** Date of birth in YYYY-MM-DD format (collected at age gate for COPPA/CCPA compliance). */
-  dob?: string;
-  /** Whether parental consent was given (for users 13-17 at signup). */
-  parentalConsent?: boolean;
   /** Denormalized leaderboard stats — updated atomically when games complete. */
   wins?: number;
   losses?: number;
@@ -45,11 +52,57 @@ export interface UserProfile {
 }
 
 /**
- * Get user profile by UID
+ * Private profile doc at `users/{uid}/private/profile`. Readable and
+ * writable only by the owning user per `firestore.rules`. Holds every
+ * field that would leak PII / account state if exposed cross-user.
+ *
+ * `fcmTokens` lives here (not on the public doc) so a signed-in
+ * attacker cannot scrape other users' push-registration tokens and
+ * target them with impersonated push notifications.
+ */
+export interface UserPrivateProfile {
+  /** Auth email. Optional — not all providers populate it. */
+  email?: string | null;
+  /** Auth emailVerified flag mirrored at profile creation time. */
+  emailVerified: boolean;
+  /** Date of birth in YYYY-MM-DD format (collected at age gate for COPPA/CCPA compliance). */
+  dob?: string;
+  /** Whether parental consent was given (for users 13-17 at signup). */
+  parentalConsent?: boolean;
+  /**
+   * Firebase Cloud Messaging registration tokens for this user's
+   * devices. Written by `requestPushPermission` / `removeFcmToken`.
+   * Owner-only readable. Rules cap this list at ≤10 entries.
+   */
+  fcmTokens?: string[];
+}
+
+/** Document id of the canonical private profile doc. */
+export const PRIVATE_PROFILE_DOC_ID = "profile" as const;
+
+/**
+ * Get user profile by UID. Returns the PUBLIC profile doc — readable
+ * by any signed-in user for opponent lookup. Use {@link
+ * getUserPrivateProfile} to read the owner-only private doc.
  */
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   const snap = await withRetry(() => getDoc(doc(requireDb(), "users", uid)));
   return snap.exists() ? (snap.data() as UserProfile) : null;
+}
+
+/**
+ * Get the owner-only private profile doc at
+ * `users/{uid}/private/profile`. Must be called while authenticated
+ * as `uid` — any other caller is denied by Firestore rules.
+ *
+ * Returns null when the doc doesn't exist (e.g. pre-migration users
+ * whose private fields haven't been backfilled).
+ */
+export async function getUserPrivateProfile(uid: string): Promise<UserPrivateProfile | null> {
+  const snap = await withRetry(() =>
+    getDoc(doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID)),
+  );
+  return snap.exists() ? (snap.data() as UserPrivateProfile) : null;
 }
 
 /** Username constraints — shared between validation, creation, and UI. */
@@ -125,17 +178,30 @@ export async function createProfile(
 
     tx.set(usernameRef, { uid, reservedAt: serverTimestamp() });
 
+    // Public profile — readable by every signed-in user. Must not
+    // contain PII (email/dob) or account state (emailVerified,
+    // fcmTokens); those fields live on the owner-only private doc
+    // below. `firestore.rules` rejects any write that tries to put
+    // them at the top level.
     const userRef = doc(db, "users", uid);
     const profileData: UserProfile = {
       uid,
       username: normalized,
       stance,
       createdAt: serverTimestamp(),
+    };
+    tx.set(userRef, profileData);
+
+    // Private profile — owner-only. Holds emailVerified + dob +
+    // optional parentalConsent today; future sensitive fields
+    // (email, fcmTokens) get written here via dedicated updates.
+    const privateRef = doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID);
+    const privateData: UserPrivateProfile = {
       emailVerified,
       dob,
       ...(parentalConsent !== undefined ? { parentalConsent } : {}),
     };
-    tx.set(userRef, profileData);
+    tx.set(privateRef, privateData);
 
     return profileData;
   });
@@ -155,7 +221,9 @@ export async function createProfile(
  * Phase 1: Delete video files from Storage for non-active games.
  * Phase 2: Delete non-active game documents.
  * Phase 3: Delete clips authored by this user (App Store / GDPR cascade).
- * Phase 4: Atomically delete profile + username reservation.
+ * Phase 4: Atomically delete profile + username reservation + private
+ *         profile doc (where sensitive fields live since the
+ *         public-doc privacy split).
  */
 export async function deleteUserData(uid: string, username: string): Promise<void> {
   const db = requireDb();
@@ -189,8 +257,13 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // clips, so this runs before the auth/profile teardown.
   await deleteUserClips(uid);
 
-  // Phase 4: Delete profile + username atomically (no reads needed, batch is cheaper)
+  // Phase 4: Delete profile + username + private profile doc atomically
+  // (no reads needed, batch is cheaper). The private doc must be
+  // deleted BEFORE the parent users/{uid} doc goes, so the owner's
+  // auth context still resolves isOwner(uid) cleanly against the
+  // private-subcollection rule.
   const batch = writeBatch(db);
+  batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
   batch.delete(doc(db, "users", uid));
   batch.delete(doc(db, "usernames", username.toLowerCase().trim()));
   await batch.commit();
