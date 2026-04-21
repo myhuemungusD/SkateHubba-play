@@ -1,8 +1,9 @@
 import { getMessaging, getToken, onMessage, type MessagePayload } from "firebase/messaging";
-import { doc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, setDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { PRIVATE_PROFILE_DOC_ID } from "./users";
 
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
 
@@ -71,10 +72,19 @@ export async function requestPushPermission(uid: string): Promise<string | null>
     const token = await getToken(messaging, { vapidKey: String(vapidKey), serviceWorkerRegistration });
     if (!token) return null;
 
-    // Store token on the user's profile
-    await updateDoc(doc(requireDb(), "users", uid), {
-      fcmTokens: arrayUnion(token),
-    });
+    // Store token on the user's PRIVATE profile doc. Push-registration
+    // tokens must never leak cross-user (they could be used to target
+    // the device with impersonated push traffic), so they live at
+    // users/{uid}/private/profile which is owner-only readable.
+    //
+    // setDoc with merge:true also creates the private doc for
+    // pre-existing accounts that signed up before the public/private
+    // split — legacy clients won't have a private doc yet.
+    await setDoc(
+      doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+      { fcmTokens: arrayUnion(token) },
+      { merge: true },
+    );
 
     return token;
   } catch (err) {
@@ -84,13 +94,17 @@ export async function requestPushPermission(uid: string): Promise<string | null>
 }
 
 /**
- * Remove a specific FCM token from the user's profile (call on sign-out).
+ * Remove a specific FCM token from the user's private profile doc
+ * (call on sign-out). Best-effort — swallow errors so sign-out is
+ * never blocked by a transient Firestore failure.
  */
 export async function removeFcmToken(uid: string, token: string): Promise<void> {
   try {
-    await updateDoc(doc(requireDb(), "users", uid), {
-      fcmTokens: arrayRemove(token),
-    });
+    await setDoc(
+      doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+      { fcmTokens: arrayRemove(token) },
+      { merge: true },
+    );
   } catch (err) {
     logger.warn("fcm_token_removal_failed", { uid, error: parseFirebaseError(err) });
   }

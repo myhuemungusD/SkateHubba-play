@@ -70,6 +70,7 @@ vi.mock("../clips", () => ({
 
 import {
   getUserProfile,
+  getUserPrivateProfile,
   isUsernameAvailable,
   createProfile,
   getUidByUsername,
@@ -95,6 +96,23 @@ describe("users service", () => {
     it("returns null when document doesn't exist", async () => {
       mockGetDoc.mockResolvedValueOnce({ exists: () => false });
       const result = await getUserProfile("u1");
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("getUserPrivateProfile", () => {
+    it("returns private profile data when document exists", async () => {
+      const priv = { emailVerified: true, dob: "2000-01-15", fcmTokens: ["t1"] };
+      mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => priv });
+      const result = await getUserPrivateProfile("u1");
+      expect(result).toEqual(priv);
+      // Targets the owner-only subcollection path, not the public user doc.
+      expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "users", "u1", "private", "profile");
+    });
+
+    it("returns null when private document doesn't exist", async () => {
+      mockGetDoc.mockResolvedValueOnce({ exists: () => false });
+      const result = await getUserPrivateProfile("u1");
       expect(result).toBeNull();
     });
   });
@@ -133,65 +151,97 @@ describe("users service", () => {
   describe("createProfile", () => {
     const VALID_DOB = "2000-01-15";
 
-    it("runs a transaction that reserves the username and creates the profile", async () => {
+    // Helper: run the create-profile transaction and capture the two
+    // tx.set payloads we care about — the public users/{uid} doc
+    // (identified by the presence of `uid`) and the private
+    // users/{uid}/private/profile doc (identified by the presence of
+    // `emailVerified`, which only lives on the private payload).
+    function stubTransaction(): {
+      capturedPublic: Record<string, unknown> | undefined;
+      capturedPrivate: Record<string, unknown> | undefined;
+    } {
+      const captured: {
+        capturedPublic: Record<string, unknown> | undefined;
+        capturedPrivate: Record<string, unknown> | undefined;
+      } = { capturedPublic: undefined, capturedPrivate: undefined };
+
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
           get: vi.fn().mockResolvedValue({ exists: () => false }),
-          set: vi.fn(),
+          set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
+            if (data.uid && data.username) captured.capturedPublic = data;
+            else if ("emailVerified" in data) captured.capturedPrivate = data;
+          }),
         };
         return fn(tx);
       });
+
+      return captured;
+    }
+
+    it("runs a transaction that reserves the username and creates public + private docs", async () => {
+      stubTransaction();
 
       const result = await createProfile("u1", "SK8R", "regular", false, VALID_DOB);
       expect(result).toMatchObject({
         uid: "u1",
         username: "sk8r",
         stance: "regular",
-        dob: VALID_DOB,
       });
-      // email should not be stored in the profile (PII reduction)
+      // Sensitive fields must NOT be on the public profile — they live on the
+      // private doc per the public/private split that closed the cross-user
+      // read leak (firestore.rules users/{uid} blocks these field names).
       expect(result).not.toHaveProperty("email");
+      expect(result).not.toHaveProperty("emailVerified");
+      expect(result).not.toHaveProperty("dob");
+      expect(result).not.toHaveProperty("parentalConsent");
+      expect(result).not.toHaveProperty("fcmTokens");
     });
 
-    it("includes dob and parentalConsent when provided", async () => {
-      let capturedProfile: Record<string, unknown> | undefined;
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
-        const tx = {
-          get: vi.fn().mockResolvedValue({ exists: () => false }),
-          set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
-            // Capture the profile data (second set call)
-            if (data.uid) capturedProfile = data;
-          }),
-        };
-        return fn(tx);
+    it("writes public doc without sensitive fields and private doc with emailVerified + dob", async () => {
+      const captured = stubTransaction();
+
+      await createProfile("u1", "sk8r", "regular", true, VALID_DOB);
+
+      expect(captured.capturedPublic).toMatchObject({
+        uid: "u1",
+        username: "sk8r",
+        stance: "regular",
       });
+      // Public doc never carries sensitive fields.
+      expect(captured.capturedPublic).not.toHaveProperty("emailVerified");
+      expect(captured.capturedPublic).not.toHaveProperty("dob");
+      expect(captured.capturedPublic).not.toHaveProperty("parentalConsent");
+      expect(captured.capturedPublic).not.toHaveProperty("fcmTokens");
+      expect(captured.capturedPublic).not.toHaveProperty("email");
+
+      // Private doc carries emailVerified + dob.
+      expect(captured.capturedPrivate).toMatchObject({ emailVerified: true, dob: VALID_DOB });
+    });
+
+    it("includes parentalConsent on the private doc when provided", async () => {
+      const captured = stubTransaction();
 
       const result = await createProfile("u1", "sk8r", "regular", true, "2005-06-15", true);
       expect(result).toMatchObject({
         uid: "u1",
         username: "sk8r",
         stance: "regular",
+      });
+      expect(captured.capturedPrivate).toMatchObject({
+        emailVerified: true,
         dob: "2005-06-15",
         parentalConsent: true,
       });
-      expect(capturedProfile).toMatchObject({ dob: "2005-06-15", parentalConsent: true });
     });
 
-    it("omits parentalConsent (but keeps dob) when parentalConsent not provided", async () => {
-      let capturedProfile: Record<string, unknown> | undefined;
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
-        const tx = {
-          get: vi.fn().mockResolvedValue({ exists: () => false }),
-          set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
-            if (data.uid) capturedProfile = data;
-          }),
-        };
-        return fn(tx);
-      });
+    it("omits parentalConsent (but keeps dob) on the private doc when not provided", async () => {
+      const captured = stubTransaction();
 
       await createProfile("u1", "sk8r", "regular", false, VALID_DOB);
-      expect(capturedProfile).toHaveProperty("dob", VALID_DOB);
-      expect(capturedProfile).not.toHaveProperty("parentalConsent");
+      expect(captured.capturedPrivate).toHaveProperty("dob", VALID_DOB);
+      expect(captured.capturedPrivate).toHaveProperty("emailVerified", false);
+      expect(captured.capturedPrivate).not.toHaveProperty("parentalConsent");
     });
 
     it("throws AgeVerificationRequiredError when dob is missing (COPPA)", async () => {
@@ -259,9 +309,13 @@ describe("users service", () => {
       // Clips cascade invoked before the profile/username batch so the
       // owner-delete rule still has a valid auth context to match playerUid.
       expect(mockDeleteUserClips).toHaveBeenCalledWith("u1");
-      // Profile + username deleted via batch
+      // Profile + private profile doc + username deleted via batch.
+      // Three deletes since the public/private split: the private
+      // users/{uid}/private/profile doc holds the sensitive fields
+      // (emailVerified, dob, fcmTokens, parentalConsent) and must be
+      // scrubbed as part of the account-deletion cascade.
       const batch = mockWriteBatch();
-      expect(batch.delete).toHaveBeenCalledTimes(2);
+      expect(batch.delete).toHaveBeenCalledTimes(3);
       expect(batch.commit).toHaveBeenCalled();
     });
 
