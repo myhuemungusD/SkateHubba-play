@@ -10,6 +10,7 @@ import {
 } from "../services/users";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
+import { captureException } from "../lib/sentry";
 import { useUsernameAvailability } from "../hooks/useUsernameAvailability";
 import { isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
@@ -32,8 +33,13 @@ function sanitizeDisplayName(name: string | null | undefined): string {
   return (name ?? "").toLowerCase().replace(SANITIZE_RE, "").slice(0, USERNAME_MAX);
 }
 
-function usernameNote(name: string, available: boolean | null): string {
+function usernameNote(name: string, available: boolean | null, availabilityError: string): string {
   if (name.length < USERNAME_MIN) return `Min ${USERNAME_MIN} characters, letters/numbers/underscore`;
+  // When the availability probe has errored out (permission race, hung
+  // request, App Check stall) we fall back to the canonical uniqueness
+  // check inside createProfile's transaction — so stop showing "Checking..."
+  // forever and let the user submit.
+  if (availabilityError) return "Couldn't verify — we'll double-check when you submit";
   if (available === null) return "Checking...";
   const handle = `@${name}`;
   return available ? `${handle} is available ✓` : `${handle} is taken ✗`;
@@ -64,6 +70,14 @@ export function ProfileSetup({
   const [localError, setLocalError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingExisting, setCheckingExisting] = useState(true);
+  // When the existing-profile lookup throws (not "profile doesn't exist",
+  // but a real fetch failure), we MUST NOT fall through to the create-profile
+  // form — doing so wrongly invites returning users to re-register, which
+  // then trips "Username is already taken" inside createProfile's transaction
+  // because their own existing reservation blocks them. Instead we surface a
+  // retry affordance so the user can re-attempt the lookup.
+  const [fetchFailed, setFetchFailed] = useState(false);
+  const [fetchAttempt, setFetchAttempt] = useState(0);
   // Inline DOB inputs — only shown when the upstream flow didn't provide a
   // DOB (Google signup skips AuthScreen, so we collect it here instead).
   const needsDobCollection = !dob;
@@ -90,9 +104,13 @@ export function ProfileSetup({
   }, [clearAvailabilityError]);
 
   // If the user already has a profile (e.g. profile fetch timed out on sign-in),
-  // skip setup entirely and resolve with the existing profile.
+  // skip setup entirely and resolve with the existing profile. On a fetch
+  // failure (vs. a confirmed "no profile" null result) we surface a retry
+  // screen rather than the create-profile form — see fetchFailed above.
   useEffect(() => {
     let cancelled = false;
+    setCheckingExisting(true);
+    setFetchFailed(false);
     getUserProfile(uid)
       .then((existing) => {
         if (cancelled) return;
@@ -103,18 +121,33 @@ export function ProfileSetup({
           setCheckingExisting(false);
         }
       })
-      .catch(() => {
-        if (!cancelled) setCheckingExisting(false);
+      .catch((err) => {
+        if (cancelled) return;
+        logger.warn("profile_setup_existing_lookup_failed", {
+          uid,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        captureException(err, { extra: { context: "ProfileSetup.getUserProfile" } });
+        setFetchFailed(true);
+        setCheckingExisting(false);
       });
     return () => {
       cancelled = true;
     };
-    // Only run on mount — uid and onDone are stable for the lifetime of this screen
+    // Re-runs when fetchAttempt bumps (user tapped retry). uid/onDone are stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid]);
+  }, [uid, fetchAttempt]);
 
+  // When the availability probe errored out we let the user submit anyway —
+  // createProfile's runTransaction is the authoritative uniqueness check and
+  // throws "Username is already taken" on conflict, which surfaces as a
+  // normal inline error. Blocking submit would otherwise trap users whose
+  // probe hit a transient network / auth-token / App Check hiccup.
   const canSubmit =
-    !loading && username.length >= USERNAME_MIN && username.length <= USERNAME_MAX && available === true;
+    !loading &&
+    username.length >= USERNAME_MIN &&
+    username.length <= USERNAME_MAX &&
+    (available === true || availabilityError !== "");
 
   const submit = async () => {
     clearError();
@@ -137,7 +170,10 @@ export function ProfileSetup({
       setLocalError("Username is taken");
       return;
     }
-    if (available === null) {
+    // Only block submit for "still checking" when the probe is genuinely in
+    // flight. If it already errored, fall through to createProfile — the
+    // transaction inside is the real uniqueness gate.
+    if (available === null && !availabilityError) {
       setLocalError("Still checking username — wait a moment");
       return;
     }
@@ -197,6 +233,21 @@ export function ProfileSetup({
     );
   }
 
+  if (fetchFailed) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center px-6">
+        <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in text-center">
+          <h2 className="font-display text-3xl text-white mb-2">Couldn&apos;t load your profile</h2>
+          <p className="font-body text-sm text-muted mb-6">
+            Your account is signed in but we couldn&apos;t reach your profile. This is usually a transient network
+            hiccup — tap retry to try again.
+          </p>
+          <Btn onClick={() => setFetchAttempt((n) => n + 1)}>Retry</Btn>
+        </div>
+      </div>
+    );
+  }
+
   if (ageBlocked) {
     return (
       <CoppaBlockedCard
@@ -244,7 +295,7 @@ export function ProfileSetup({
             autoFocus
             inputMode="text"
             enterKeyHint="next"
-            note={usernameNote(username, available)}
+            note={usernameNote(username, available, availabilityError)}
           />
 
           {username.length >= USERNAME_MIN && available !== null && (

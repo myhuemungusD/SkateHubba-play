@@ -56,6 +56,19 @@ describe("useUsernameAvailability", () => {
     expect(result.current.available).toBeNull();
   });
 
+  it("surfaces an error when the probe hangs indefinitely (timeout safety net)", async () => {
+    // Simulate a Firestore getDoc that never resolves — the hook must not
+    // hang forever, otherwise ProfileSetup traps the user on "Checking...".
+    // The internal probe timeout is 6s and the retry delay is 1.5s, so both
+    // attempts should fail inside ~15s; we give waitFor a 20s budget.
+    mockIsUsernameAvailable.mockImplementation(() => new Promise(() => {}));
+
+    const { result } = renderHook(() => useUsernameAvailability("newuser"));
+
+    await waitFor(() => expect(result.current.error).toBe("Could not check username — try again"), { timeout: 20_000 });
+    expect(result.current.available).toBeNull();
+  }, 25_000);
+
   it("clearError resets the error message", async () => {
     mockIsUsernameAvailable.mockRejectedValue(new Error("down"));
 

@@ -148,6 +148,38 @@ describe("ProfileSetup", () => {
     );
   });
 
+  it("lets the user submit when the availability probe errors (transaction is the real gate)", async () => {
+    // Probe fails both attempts → useUsernameAvailability settles with
+    // { available: null, error: "Could not check username — try again" }.
+    // Previously canSubmit hard-required available === true so the user was
+    // trapped — now we fall through to createProfile and let its transaction
+    // be the canonical uniqueness check.
+    mockIsUsernameAvailable.mockRejectedValue(new Error("Network"));
+    const onDone = vi.fn();
+    const createdProfile = { uid: "u1", username: "testname", stance: "Regular" };
+    mockCreateProfile.mockResolvedValueOnce(createdProfile);
+
+    render(<ProfileSetup {...defaultProps} onDone={onDone} />);
+    await waitForForm();
+    await userEvent.type(screen.getByPlaceholderText("sk8legend"), "testname");
+
+    // Wait for the probe + retry to both fail — at that point the note stops
+    // saying "Checking..." and the button becomes submittable.
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Couldn't verify/)).toBeInTheDocument();
+      },
+      { timeout: 5000 },
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
+
+    await waitFor(() => {
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "testname", "Regular", false, "2000-01-15", false);
+      expect(onDone).toHaveBeenCalledWith(createdProfile);
+    });
+  });
+
   it("uses displayName as the initial username value (sanitized)", async () => {
     render(<ProfileSetup {...defaultProps} displayName="Sk8 Master" />);
     await waitForForm();
@@ -253,12 +285,33 @@ describe("ProfileSetup", () => {
     expect(mockGetUserProfile).toHaveBeenCalledWith("u1");
   });
 
-  it("shows the form when the existing-profile check rejects", async () => {
+  it("shows a retry screen (not the form) when the existing-profile lookup fails", async () => {
+    // Returning users whose profile fetch errors transiently must NOT see the
+    // create-profile form — that would invite them to re-register over their
+    // own profile, which then fails at createProfile's transaction with a
+    // confusing "Username is already taken" error.
     mockGetUserProfile.mockRejectedValue(new Error("Network error"));
 
     render(<ProfileSetup {...defaultProps} />);
 
-    await waitFor(() => expect(screen.getByText("Pick your handle")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/Couldn't load your profile/)).toBeInTheDocument());
+    expect(screen.queryByText("Pick your handle")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("retries the existing-profile lookup when the user taps Retry", async () => {
+    const onDone = vi.fn();
+    const existingProfile = { uid: "u1", username: "returninguser", stance: "Goofy" };
+    mockGetUserProfile.mockRejectedValueOnce(new Error("Network error")).mockResolvedValueOnce(existingProfile);
+
+    render(<ProfileSetup {...defaultProps} onDone={onDone} />);
+
+    await waitFor(() => expect(screen.getByText(/Couldn't load your profile/)).toBeInTheDocument());
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(existingProfile));
+    expect(mockGetUserProfile).toHaveBeenCalledTimes(2);
   });
 
   it("surfaces an inline message when the service rejects for missing DOB", async () => {
