@@ -102,9 +102,11 @@ vi.mock("../services/games", () => ({
 vi.mock("../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
 }));
+const mockRemoveCurrentFcmToken = vi.fn().mockResolvedValue(undefined);
 vi.mock("../services/fcm", () => ({
   requestPushPermission: vi.fn().mockResolvedValue(null),
   removeFcmToken: vi.fn().mockResolvedValue(undefined),
+  removeCurrentFcmToken: (...args: unknown[]) => mockRemoveCurrentFcmToken(...args),
   onForegroundMessage: vi.fn(() => vi.fn()),
 }));
 vi.mock("../firebase", () => ({
@@ -178,6 +180,53 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Sign Out"));
 
     expect(mockSignOut).toHaveBeenCalled();
+  });
+
+  it("sign out scrubs the FCM token BEFORE revoking the auth session", async () => {
+    mockRemoveCurrentFcmToken.mockClear();
+    mockSignOut.mockResolvedValueOnce(undefined);
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    await renderApp();
+
+    await userEvent.click(await screen.findByText("Sign Out"));
+
+    expect(mockRemoveCurrentFcmToken).toHaveBeenCalledWith("u1");
+    expect(mockSignOut).toHaveBeenCalled();
+    // The FCM scrub must fire before fbSignOut — once the ID token is
+    // gone, the owner-only rule on the private-profile subcollection
+    // denies the write and the token lingers.
+    expect(mockRemoveCurrentFcmToken.mock.invocationCallOrder[0]).toBeLessThan(mockSignOut.mock.invocationCallOrder[0]);
+  });
+
+  it("sign out proceeds even when the FCM scrub write fails", async () => {
+    mockRemoveCurrentFcmToken.mockRejectedValueOnce(new Error("network fail"));
+    mockSignOut.mockResolvedValueOnce(undefined);
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: authedUser,
+      profile,
+      refreshProfile: vi.fn(),
+    });
+    withGames([]);
+    await renderApp();
+
+    // Post-signout useAuth snaps to null so the UI flips to landing
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+
+    await userEvent.click(await screen.findByText("Sign Out"));
+
+    // fbSignOut still runs — a failed scrub can't strand the user on a
+    // "still signed in" screen.
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalled();
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
+    });
   });
 
   it("shows delete account modal when Delete Account is clicked", async () => {
