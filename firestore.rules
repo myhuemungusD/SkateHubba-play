@@ -243,7 +243,13 @@ service cloud.firestore {
         && isPlayer(resource.data)
         && resource.data.status == 'active'
         && request.auth.uid == resource.data.currentTurn
-        // Rate limit: at most one turn action per 2 seconds (prevents write flooding)
+        // Rate limit: at most one turn action per 2 seconds (prevents write flooding).
+        // The cooldown below compares against the STORED updatedAt; without
+        // also pinning the NEW updatedAt to request.time, a client could write
+        // a stale value (e.g. epoch 0) and permanently satisfy the check.
+        // Mirrors the same hardening on notification_limits / nudge_limits.
+        && 'updatedAt' in request.resource.data
+        && request.resource.data.updatedAt == request.time
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
@@ -320,7 +326,11 @@ service cloud.firestore {
         && resource.data.status == 'active'
         && resource.data.phase == 'matching'
         && request.auth.uid == resource.data.currentTurn
-        // Rate limit
+        // Rate limit. New updatedAt must equal request.time — prevents the
+        // stored-value spoof where a client writes epoch 0 to keep the 2s
+        // cooldown permanently satisfied. Same pattern as notification_limits.
+        && 'updatedAt' in request.resource.data
+        && request.resource.data.updatedAt == request.time
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
@@ -417,7 +427,10 @@ service cloud.firestore {
         && resource.data.phase == 'disputable'
         && request.auth.uid == resource.data.currentTurn
         && judgeActive(resource.data)
-        // Rate limit
+        // Rate limit. Pinning updatedAt to request.time closes the
+        // stale-value bypass (see setting-phase rule above for rationale).
+        && 'updatedAt' in request.resource.data
+        && request.resource.data.updatedAt == request.time
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
@@ -475,6 +488,10 @@ service cloud.firestore {
         && resource.data.phase == 'setReview'
         && request.auth.uid == resource.data.currentTurn
         && judgeActive(resource.data)
+        // Rate limit. New updatedAt must equal request.time so the 2s
+        // cooldown can't be defeated by writing a stale value on each turn.
+        && 'updatedAt' in request.resource.data
+        && request.resource.data.updatedAt == request.time
         && (
           !('updatedAt' in resource.data)
           || resource.data.updatedAt == null
