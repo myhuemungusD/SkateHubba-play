@@ -196,7 +196,6 @@ skatehubba-play/
 │   └── types/                 # Shared TypeScript types
 ├── e2e/                       # Playwright E2E tests (auth, game, map)
 ├── rules-tests/               # Firestore rules unit tests (clips, spots, notifications)
-├── functions/                 # (unused — kept for future serverless use; gated by CI)
 ├── docs/                      # Documentation suite
 │   └── screenshots/           # README images + brand assets
 ├── firestore.rules            # Firestore security rules (turn order, scores, rate limits)

@@ -124,9 +124,9 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 **Files:**
 
 - `src/services/fcm.ts:75` (tokens added via `arrayUnion`)
-- `functions/src/index.ts:38-53` (stale tokens cleaned reactively on send failure)
+- (historical) Cloud Function `onNudgeCreated` previously cleaned tokens reactively on send failure — removed along with the rest of the `functions/` package; no replacement cleaner currently runs.
 
-**Problem:** FCM tokens are only cleaned up when a push send fails with `invalid-registration-token` or `registration-token-not-registered`. Token rotation (e.g., user clears browser data, reinstalls) creates orphaned tokens that remain until the next failed send.
+**Problem:** FCM tokens accumulate indefinitely. With the Cloud Functions removed, no server-side cleanup runs on send failure either — push is effectively disabled until a replacement backend exists.
 
 **Impact:** A power user accumulates stale tokens → `sendEachForMulticast` makes unnecessary FCM API calls → increased latency and cost on every notification send.
 
@@ -203,7 +203,7 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 1. **No Firestore rules tests for `/notifications`** — the most complex notification rule (participant validation, rate limiting, field immutability on update) has no emulator-backed test
 2. **No Firestore rules tests for `/nudges`** — game-participant validation and active-game check are untested at the rules level
-3. **No Cloud Function tests** — the `functions/` directory has no test infrastructure. Push notification logic, stats updates, and token cleanup are untested
+3. **No Cloud Functions at all** — the `functions/` package was removed from this repo. Push notifications (FCM), scheduled forfeit enforcement, and billing alerts previously implemented there are no longer deployed. Client-side `forfeitExpiredTurn` and `updatePlayerStats` continue to run on game completion.
 
 ---
 

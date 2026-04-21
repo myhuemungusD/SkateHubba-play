@@ -3,8 +3,10 @@
 # Firebase / Google Cloud Billing Budget Alert Setup
 #
 # Creates a Pub/Sub topic and a Cloud Billing budget with alert thresholds
-# that publish to that topic. The companion Cloud Function (onBillingAlert)
-# listens on the topic and writes alerts to Firestore.
+# that publish to that topic. NOTE: the repo no longer ships a Cloud
+# Function to consume this topic (the `functions/` package was removed).
+# Alerts published here will remain unread until a subscriber is wired up
+# (e.g., email-only notifications, or a replacement consumer).
 #
 # Prerequisites:
 #   1. gcloud CLI installed and authenticated: gcloud auth login
@@ -105,6 +107,8 @@ echo "   • 100% of \$${MONTHLY_BUDGET} (\$${MONTHLY_BUDGET})       — actual 
 echo "   • 150% of \$${MONTHLY_BUDGET} (\$$(echo "${MONTHLY_BUDGET} * 1.5" | bc))  — forecasted spend"
 echo ""
 echo "── Next steps:"
-echo "   1. Deploy the Cloud Function:  firebase deploy --only functions"
-echo "   2. Alerts will be logged and saved to Firestore 'billingAlerts' collection"
-echo "   3. (Optional) Set up Firestore-triggered email/Slack alerts from that collection"
+echo "   1. This repo no longer ships a Cloud Function consumer for the topic."
+echo "      Attach a subscriber (email-only channel, external consumer, etc.)"
+echo "      before relying on these alerts."
+echo "   2. (Optional) Re-introduce a Pub/Sub-triggered alert handler — note"
+echo "      the PR gate rejects new code under any 'functions/src/' path."

@@ -177,13 +177,9 @@ In-app notification documents written by the client when a game action occurs (e
 
 ### `billingAlerts/{alertId}`
 
-Server-only collection written by the `onBillingAlert` Cloud Function. Stores billing threshold alerts for operational monitoring. No client access.
+Reserved for server-written billing-alert records. No client access. This project currently has no Cloud Functions deployed, so nothing is writing to this collection — the rules continue to lock it down against any future use.
 
-| Field      | Type       | Description                                                           |
-| ---------- | ---------- | --------------------------------------------------------------------- |
-| _(varies)_ | _(varies)_ | Written by Cloud Function; schema defined in `functions/src/index.ts` |
-
-**Access:** Fully blocked for clients (`allow read, write: if false`). Only the Admin SDK (Cloud Functions) can read or write.
+**Access:** Fully blocked for clients (`allow read, write: if false`).
 
 ---
 
