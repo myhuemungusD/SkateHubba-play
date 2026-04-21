@@ -774,7 +774,9 @@ service cloud.firestore {
     }
 
     // ── Billing alerts (server-only) ──
-    // Written by the onBillingAlert Cloud Function; no client access.
+    // Historically written by the onBillingAlert Cloud Function (removed).
+    // No client access; retained so any future external consumer writing
+    // here (via Admin SDK) stays locked down to clients.
     match /billingAlerts/{alertId} {
       allow read, write: if false;
     }
