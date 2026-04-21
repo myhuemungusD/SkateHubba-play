@@ -3,6 +3,35 @@ import { isUsernameAvailable, USERNAME_MIN } from "../services/users";
 
 const DEBOUNCE_MS = 400;
 const RETRY_DELAY_MS = 1500;
+// Firestore normally answers a single-doc read in well under a second. Capping
+// each probe at 6s means a genuinely hung request (App Check stall, offline
+// cache miss that never completes) surfaces as a transient error instead of
+// leaving the hook pending forever — which used to trap users on the profile
+// setup screen with a permanently-disabled "Lock It In" button.
+const PROBE_TIMEOUT_MS = 6000;
+
+class ProbeTimeoutError extends Error {
+  constructor() {
+    super("username availability probe timed out");
+    this.name = "ProbeTimeoutError";
+  }
+}
+
+function probeWithTimeout(username: string): Promise<boolean> {
+  return new Promise<boolean>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new ProbeTimeoutError()), PROBE_TIMEOUT_MS);
+    isUsernameAvailable(username).then(
+      (ok) => {
+        clearTimeout(timer);
+        resolve(ok);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
 
 export interface UsernameAvailabilityState {
   /** `true` available, `false` taken, `null` unknown (too short, checking, or errored). */
@@ -42,7 +71,7 @@ export function useUsernameAvailability(username: string): UsernameAvailabilityS
     const id = ++checkRef.current;
     const timeout = setTimeout(async () => {
       try {
-        const ok = await isUsernameAvailable(normalized);
+        const ok = await probeWithTimeout(normalized);
         /* v8 ignore start -- debounce guard; race between setTimeout and ref counter untestable in unit tests */
         if (checkRef.current === id) setResult({ for: username, available: ok, error: "" });
         /* v8 ignore stop */
@@ -55,7 +84,7 @@ export function useUsernameAvailability(username: string): UsernameAvailabilityS
         try {
           await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
           if (checkRef.current !== id) return;
-          const ok = await isUsernameAvailable(normalized);
+          const ok = await probeWithTimeout(normalized);
           if (checkRef.current === id) setResult({ for: username, available: ok, error: "" });
         } catch {
           if (checkRef.current === id) {

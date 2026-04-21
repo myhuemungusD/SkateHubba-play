@@ -56,16 +56,28 @@ export function useAuth(): AuthState {
         // ProfileSetup (causes a visible flicker for returning Google users).
         setLoading(true);
         try {
-          /* v8 ignore start -- safety timeout; can't trigger in unit tests without 10s delay */
+          // Cap the lookup at 20s so a hung Firestore request (App Check stall,
+          // offline cache never catching up) can't wedge the spinner forever.
+          // getUserProfile has its own withRetry budget (~3–5s) so the cap only
+          // ever fires in pathological cases. The previous 10s cap was aggressive
+          // enough to cut off cold-start round-trips on slow connections —
+          // returning users were then falsely routed to /profile and asked to
+          // re-register because their profile appeared missing.
+          /* v8 ignore start -- safety timeout; can't trigger in unit tests without 20s delay */
           const p = await Promise.race([
             getUserProfile(u.uid),
-            new Promise<null>((r) => setTimeout(() => r(null), 10_000)),
+            new Promise<null>((r) => setTimeout(() => r(null), 20_000)),
           ]);
           /* v8 ignore stop */
           logger.debug("use_auth_profile_loaded", { uid: u.uid, hasProfile: !!p, username: p?.username ?? null });
           setProfile(p);
         } catch (err) {
-          // Profile may not exist yet (new user) or Firestore not ready
+          // Profile may not exist yet (new user) or Firestore not ready.
+          // We still null out here so the routing effect sends the user to
+          // /profile, where ProfileSetup re-attempts the lookup and, on
+          // repeated failure, shows a retry affordance instead of the
+          // create-profile form. This guards returning users from being
+          // led to re-register over the top of their existing profile.
           logger.warn("use_auth_profile_fetch_error", {
             uid: u.uid,
             error: parseFirebaseError(err),
