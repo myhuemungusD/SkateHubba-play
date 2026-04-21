@@ -196,11 +196,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logger.info("user_sign_out");
     // Scrub FCM token BEFORE fbSignOut — the owner-only rules on
     // users/{uid}/private/profile deny writes once the auth token is gone.
-    if (activeProfile) {
+    // Gate on `user` (Firebase Auth source of truth), not activeProfile,
+    // so the scrub still runs if the profile doc was deleted mid-session.
+    if (user) {
       try {
-        await removeCurrentFcmToken(activeProfile.uid);
+        await removeCurrentFcmToken(user.uid);
       } catch (err) {
-        logger.warn("sign_out_fcm_scrub_failed", { uid: activeProfile.uid, message: parseFirebaseError(err) });
+        logger.warn("sign_out_fcm_scrub_failed", { uid: user.uid, message: parseFirebaseError(err) });
       }
     }
     try {
@@ -209,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.error("sign_out_error", { message: parseFirebaseError(err) });
     }
     setActiveProfile(null);
-  }, [activeProfile]);
+  }, [user]);
 
   const handleDeleteAccount = useCallback(async () => {
     // Recovery path: after the Firestore wipe + auth/requires-recent-login
