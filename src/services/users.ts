@@ -4,7 +4,6 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
-  updateDoc,
   increment,
   query,
   where,
@@ -257,9 +256,12 @@ export async function getUidByUsername(username: string): Promise<string | null>
  * Uses lastStatsGameId as an idempotency key to prevent double-counting
  * when subscriptions fire multiple times for the same game.
  *
- * Uses FieldValue.increment() instead of a read-then-write transaction
- * to avoid contention when the client and Cloud Function (or multiple
- * games) update the same user doc concurrently.
+ * The read-then-write is wrapped in a Firestore transaction so the
+ * idempotency check and the increment commit as one unit. Without the
+ * transaction, two tabs (or the client + the Cloud Function fallback in
+ * functions/src/index.ts `onGameUpdated`) can both read
+ * `lastStatsGameId !== gameId`, then both fire `increment(1)` and the
+ * win/loss counter gets bumped twice for the same game.
  *
  * Each player's client calls this for their OWN profile only.
  */
@@ -267,15 +269,17 @@ export async function updatePlayerStats(uid: string, gameId: string, won: boolea
   const db = requireDb();
   const userRef = doc(db, "users", uid);
 
-  const snap = await getDoc(userRef);
-  if (!snap.exists()) return; // profile deleted
-
-  // Idempotency: skip if this game already counted
-  if (snap.data().lastStatsGameId === gameId) return;
-
-  await updateDoc(userRef, {
-    [won ? "wins" : "losses"]: increment(1),
-    lastStatsGameId: gameId,
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(userRef);
+    if (!snap.exists()) return; // profile deleted
+    // Idempotency: skip if this game already counted. Re-checked inside
+    // the tx so a parallel writer loses the contention race cleanly —
+    // the loser reads the winner's updated lastStatsGameId and bails.
+    if (snap.data().lastStatsGameId === gameId) return;
+    tx.update(userRef, {
+      [won ? "wins" : "losses"]: increment(1),
+      lastStatsGameId: gameId,
+    });
   });
 }
 

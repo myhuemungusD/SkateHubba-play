@@ -5,6 +5,19 @@ import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { USER_PRIVATE_PROFILE_DOC_ID } from "./users";
 
+/**
+ * The FCM token issued for this tab/device during the current session.
+ * Captured by {@link requestPushPermission} so {@link removeCurrentFcmToken}
+ * can scrub only THIS device's token on sign-out (not every device the user
+ * has ever signed in from). Cleared after a successful remove.
+ */
+let activeFcmToken: string | null = null;
+
+/** @internal Reset the cached active token (for tests only). */
+export function _resetActiveFcmToken(): void {
+  activeFcmToken = null;
+}
+
 let messagingInstance: ReturnType<typeof getMessaging> | null = null;
 
 function getMessagingInstance() {
@@ -80,6 +93,8 @@ export async function requestPushPermission(uid: string): Promise<string | null>
       { merge: true },
     );
 
+    // Cache so sign-out can scrub exactly this device's token.
+    activeFcmToken = token;
     return token;
   } catch (err) {
     logger.warn("fcm_token_failed", { error: parseFirebaseError(err) });
@@ -88,7 +103,9 @@ export async function requestPushPermission(uid: string): Promise<string | null>
 }
 
 /**
- * Remove a specific FCM token from the user's private profile (call on sign-out).
+ * Remove a specific FCM token from the user's private profile.
+ * Prefer {@link removeCurrentFcmToken} which uses the token cached from
+ * the last successful {@link requestPushPermission} call.
  */
 export async function removeFcmToken(uid: string, token: string): Promise<void> {
   try {
@@ -97,9 +114,29 @@ export async function removeFcmToken(uid: string, token: string): Promise<void> 
       { fcmTokens: arrayRemove(token) },
       { merge: true },
     );
+    if (activeFcmToken === token) {
+      activeFcmToken = null;
+    }
   } catch (err) {
     logger.warn("fcm_token_removal_failed", { uid, error: parseFirebaseError(err) });
   }
+}
+
+/**
+ * Remove this device's FCM token from the user's private profile before
+ * sign-out. No-ops when no token was registered in this session. Must be
+ * called BEFORE the Firebase Auth sign-out — once the ID token is gone,
+ * the owner-only rules on `users/{uid}/private/profile` deny the write.
+ *
+ * Without this, the next user who signs in on the same device inherits
+ * the previous user's push notifications until the browser revokes the
+ * registration — a real privacy leak (game challenges and turn pings
+ * routed to the wrong account).
+ */
+export async function removeCurrentFcmToken(uid: string): Promise<void> {
+  const token = activeFcmToken;
+  if (!token) return;
+  await removeFcmToken(uid, token);
 }
 
 /**
