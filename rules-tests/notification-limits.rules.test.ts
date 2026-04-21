@@ -20,7 +20,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { deleteDoc, doc, setDoc, setLogLevel } from "firebase/firestore";
+import { deleteDoc, doc, serverTimestamp, setDoc, setLogLevel, updateDoc } from "firebase/firestore";
 
 const PROJECT_ID = "demo-skatehubba-rules-notif-limits";
 
@@ -110,7 +110,99 @@ describe("notification_limits rules", () => {
           senderUid: SENDER_UID,
           gameId: GAME_ID,
           type: TYPE,
+          lastSentAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("rejects a create with a stale lastSentAt (rate-limit bypass)", async () => {
+      // Red-team: if the create rule accepted arbitrary lastSentAt values, a
+      // client could seed ancient timestamps so the 5-second update cooldown
+      // is instantly satisfied on every subsequent write. The rule now
+      // requires lastSentAt == request.time (i.e. serverTimestamp()).
+      await assertFails(
+        setDoc(limitRef(asSender()), {
+          senderUid: SENDER_UID,
+          gameId: GAME_ID,
+          type: TYPE,
+          // Epoch 0 — a classic stale-timestamp attack.
+          lastSentAt: new Date(0),
+        }),
+      );
+    });
+
+    it("rejects a create with a client-wall-clock lastSentAt (must be serverTimestamp)", async () => {
+      // Even a "current-looking" client wall-clock value must be rejected —
+      // the only trusted anchor is request.time. Clients with skewed clocks
+      // (or a hostile client) would otherwise shave seconds off the cooldown.
+      await assertFails(
+        setDoc(limitRef(asSender()), {
+          senderUid: SENDER_UID,
+          gameId: GAME_ID,
+          type: TYPE,
           lastSentAt: new Date(),
+        }),
+      );
+    });
+  });
+
+  describe("update", () => {
+    it("rejects an update that writes a stale lastSentAt (cooldown bypass)", async () => {
+      // Seed an old lastSentAt so the 5s cooldown is satisfied, then attempt
+      // to write back a stale lastSentAt. The prior rule accepted any new
+      // value, which let a client keep the cooldown permanently cleared.
+      await seedLimit({ lastSentAt: new Date(Date.now() - 60_000) });
+      await assertFails(
+        updateDoc(limitRef(asSender()), {
+          lastSentAt: new Date(0),
+        }),
+      );
+    });
+
+    it("rejects an update that writes a client-wall-clock lastSentAt", async () => {
+      await seedLimit({ lastSentAt: new Date(Date.now() - 60_000) });
+      await assertFails(
+        updateDoc(limitRef(asSender()), {
+          lastSentAt: new Date(),
+        }),
+      );
+    });
+
+    it("rejects an update that mutates senderUid", async () => {
+      await seedLimit({ lastSentAt: new Date(Date.now() - 60_000) });
+      await assertFails(
+        updateDoc(limitRef(asSender()), {
+          senderUid: OTHER_UID,
+          lastSentAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("rejects an update that mutates gameId", async () => {
+      await seedLimit({ lastSentAt: new Date(Date.now() - 60_000) });
+      await assertFails(
+        updateDoc(limitRef(asSender()), {
+          gameId: "other-game",
+          lastSentAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("rejects an update that mutates type", async () => {
+      await seedLimit({ lastSentAt: new Date(Date.now() - 60_000) });
+      await assertFails(
+        updateDoc(limitRef(asSender()), {
+          type: "new_challenge",
+          lastSentAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("accepts a well-formed update from the sender after the 5s cooldown", async () => {
+      await seedLimit({ lastSentAt: new Date(Date.now() - 60_000) });
+      await assertSucceeds(
+        updateDoc(limitRef(asSender()), {
+          lastSentAt: serverTimestamp(),
         }),
       );
     });
