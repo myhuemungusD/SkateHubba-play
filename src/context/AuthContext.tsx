@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
+import { removeCurrentFcmToken } from "../services/fcm";
 import { deleteUserData } from "../services/users";
 import type { UserProfile } from "../services/users";
 import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
@@ -135,13 +136,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSignOut = useCallback(async () => {
     logger.info("user_sign_out");
+    // Scrub this device's FCM token from the signed-in user's private
+    // profile BEFORE revoking the auth token — otherwise the owner-only
+    // rules on users/{uid}/private/profile deny the write. Without this
+    // scrub the next account signed in on this device would inherit
+    // push notifications meant for the previous user.
+    if (activeProfile) {
+      try {
+        await removeCurrentFcmToken(activeProfile.uid);
+      } catch (err) {
+        logger.warn("sign_out_fcm_scrub_failed", { uid: activeProfile.uid, message: parseFirebaseError(err) });
+      }
+    }
     try {
       await fbSignOut();
     } catch (err) {
       logger.error("sign_out_error", { message: parseFirebaseError(err) });
     }
     setActiveProfile(null);
-  }, []);
+  }, [activeProfile]);
 
   const handleDeleteAccount = useCallback(async () => {
     /* v8 ignore start -- null guard unreachable in tests; delete button hidden when profile is null */
