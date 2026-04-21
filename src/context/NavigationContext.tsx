@@ -108,6 +108,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   const setScreen = useCallback(
     (s: Screen) => {
+      // "player" is only a valid *current* screen (identified by the dynamic
+      // /player/:uid URL). It has no static destination — callers must use
+      // navigateToPlayer(uid) so the uid segment is present. Fail loud here
+      // instead of silently 404'ing on /player (the bare path isn't routed).
+      if (s === "player") {
+        throw new Error("setScreen('player') is not supported — use navigateToPlayer(uid) instead");
+      }
       const path = screenToPath(s);
       navigate(path);
     },
@@ -158,13 +165,16 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         }
       }
       logger.debug("auth_router_no_user", { target: "landing" });
-      setScreen("landing");
+      // Use replace so Back doesn't loop the user back to the gated screen
+      // they just tried to reach (e.g. /lobby → /landing → Back → /lobby →
+      // bounce again). Auth-router bounces aren't navigation history.
+      navigate(SCREEN_TO_PATH.landing, { replace: true });
       setAuthMode("signup");
       return;
     }
     if (!activeProfile) {
       logger.debug("auth_router_no_profile", { uid: user.uid, target: "profile" });
-      setScreen("profile");
+      navigate(SCREEN_TO_PATH.profile, { replace: true });
       return;
     }
     const next =
@@ -193,9 +203,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       }
     }
     if (next !== currentScreen) {
-      setScreen(next);
+      // Auth-router transitions (landing/auth/profile → lobby, etc.) are
+      // not user navigation — use replace so Back skips the transient
+      // screen and lands the user on the previous page instead of
+      // re-triggering the bounce.
+      navigate(SCREEN_TO_PATH[next], { replace: true });
     }
-  }, [loading, user, activeProfile, setScreen, location.pathname, location.search, navigate]);
+  }, [loading, user, activeProfile, location.pathname, location.search, navigate]);
 
   // Navigate to auth screen when a Google error occurs (e.g. redirect failure)
   const prevGoogleErrorRef = useRef(googleError);

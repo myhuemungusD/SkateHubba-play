@@ -404,65 +404,87 @@ describe("users service", () => {
   });
 
   describe("updatePlayerStats", () => {
-    it("increments wins when player won", async () => {
-      mockGetDoc.mockResolvedValueOnce({
+    /**
+     * Drive a mock Firestore transaction: invoke the user callback with a tx
+     * that reads the current user snapshot and captures the write payload.
+     * Returns the captured update spy so tests can assert on it.
+     */
+    function runStubTx(snapshot: { exists: () => boolean; data: () => unknown }) {
+      const txUpdate = vi.fn();
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
+        const tx = {
+          get: vi.fn().mockResolvedValue(snapshot),
+          update: txUpdate,
+        };
+        return fn(tx);
+      });
+      return txUpdate;
+    }
+
+    it("increments wins inside a transaction when the player won", async () => {
+      const txUpdate = runStubTx({
         exists: () => true,
         data: () => ({ uid: "u1", username: "sk8r", wins: 3, losses: 1, lastStatsGameId: "old-game" }),
       });
 
       await updatePlayerStats("u1", "game-123", true);
 
-      expect(mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), {
+      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+      expect(txUpdate).toHaveBeenCalledWith(expect.anything(), {
         wins: { _op: "increment", operand: 1 },
         lastStatsGameId: "game-123",
       });
+      // Must NOT escape the transaction — the previous non-atomic
+      // read-then-write path double-counted when two tabs raced.
+      expect(mockUpdateDoc).not.toHaveBeenCalled();
     });
 
-    it("increments losses when player lost", async () => {
-      mockGetDoc.mockResolvedValueOnce({
+    it("increments losses inside a transaction when the player lost", async () => {
+      const txUpdate = runStubTx({
         exists: () => true,
         data: () => ({ uid: "u1", username: "sk8r", wins: 2, losses: 5, lastStatsGameId: "old-game" }),
       });
 
       await updatePlayerStats("u1", "game-456", false);
 
-      expect(mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), {
+      expect(txUpdate).toHaveBeenCalledWith(expect.anything(), {
         losses: { _op: "increment", operand: 1 },
         lastStatsGameId: "game-456",
       });
     });
 
-    it("uses increment(1) regardless of whether field exists", async () => {
-      mockGetDoc.mockResolvedValueOnce({
+    it("uses increment(1) regardless of whether wins field exists", async () => {
+      const txUpdate = runStubTx({
         exists: () => true,
         data: () => ({ uid: "u1", username: "sk8r" }),
       });
 
       await updatePlayerStats("u1", "game-789", true);
 
-      expect(mockUpdateDoc).toHaveBeenCalledWith(expect.anything(), {
+      expect(txUpdate).toHaveBeenCalledWith(expect.anything(), {
         wins: { _op: "increment", operand: 1 },
         lastStatsGameId: "game-789",
       });
     });
 
-    it("skips update when lastStatsGameId matches (idempotency)", async () => {
-      mockGetDoc.mockResolvedValueOnce({
+    it("skips the update when lastStatsGameId matches (idempotency re-checked inside tx)", async () => {
+      const txUpdate = runStubTx({
         exists: () => true,
         data: () => ({ uid: "u1", wins: 3, losses: 1, lastStatsGameId: "game-123" }),
       });
 
       await updatePlayerStats("u1", "game-123", true);
 
-      expect(mockUpdateDoc).not.toHaveBeenCalled();
+      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+      expect(txUpdate).not.toHaveBeenCalled();
     });
 
-    it("skips update when profile does not exist", async () => {
-      mockGetDoc.mockResolvedValueOnce({ exists: () => false });
+    it("skips the update when the profile does not exist", async () => {
+      const txUpdate = runStubTx({ exists: () => false, data: () => ({}) });
 
       await updatePlayerStats("u1", "game-123", true);
 
-      expect(mockUpdateDoc).not.toHaveBeenCalled();
+      expect(txUpdate).not.toHaveBeenCalled();
     });
   });
 

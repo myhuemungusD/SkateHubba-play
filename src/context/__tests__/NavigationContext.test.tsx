@@ -80,4 +80,33 @@ describe("useNavigationContext", () => {
 
     expect(getByTestId("screen").textContent).toBe("landing");
   });
+
+  it("setScreen('player') throws — callers must go through navigateToPlayer(uid)", () => {
+    // 'player' is a current-screen marker for the /player/:uid dynamic
+    // route. There's no static /player path in the router, so dispatching
+    // to it used to silently 404 via the catch-all. Force the bug to be
+    // loud. Throwing inside render() lets the ErrorCatcher boundary
+    // capture the message so we can assert on it.
+    function TestComponent() {
+      const ctx = useNavigationContext();
+      ctx.setScreen("player" as "landing");
+      return null;
+    }
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { getByTestId } = render(
+      <MemoryRouter initialEntries={["/lobby"]}>
+        <AuthProvider>
+          <NavigationProvider>
+            <ErrorCatcher>
+              <TestComponent />
+            </ErrorCatcher>
+          </NavigationProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    expect(getByTestId("error").textContent).toMatch(/navigateToPlayer/);
+    spy.mockRestore();
+  });
 });
