@@ -70,6 +70,7 @@ vi.mock("../clips", () => ({
 
 import {
   getUserProfile,
+  getUserProfileOnAuth,
   getUserPrivateProfile,
   isUsernameAvailable,
   createProfile,
@@ -98,6 +99,58 @@ describe("users service", () => {
       const result = await getUserProfile("u1");
       expect(result).toBeNull();
     });
+  });
+
+  describe("getUserProfileOnAuth", () => {
+    function mockUser(uid = "u1") {
+      return { uid, getIdToken: vi.fn().mockResolvedValue("fresh-token") };
+    }
+
+    it("returns the profile on the happy path", async () => {
+      const profile = { uid: "u1", username: "sk8r" };
+      const user = mockUser();
+      mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => profile });
+      const result = await getUserProfileOnAuth(user);
+      expect(result).toEqual(profile);
+      expect(user.getIdToken).toHaveBeenCalledTimes(1);
+    });
+
+    it("retries once on permission-denied (auth-token propagation race)", async () => {
+      const profile = { uid: "u1", username: "sk8r" };
+      const user = mockUser();
+      // First call rejects with permission-denied (Firestore hasn't absorbed
+      // the Auth token yet). Second call returns the profile.
+      const permErr = Object.assign(new Error("permission-denied"), { code: "permission-denied" });
+      mockGetDoc.mockRejectedValueOnce(permErr).mockResolvedValueOnce({ exists: () => true, data: () => profile });
+      const result = await getUserProfileOnAuth(user);
+      expect(result).toEqual(profile);
+      expect(mockGetDoc).toHaveBeenCalledTimes(2);
+    }, 10_000);
+
+    it("rethrows non-authz errors without a second attempt", async () => {
+      const user = mockUser();
+      const fatal = Object.assign(new Error("invalid-argument"), { code: "invalid-argument" });
+      mockGetDoc.mockRejectedValueOnce(fatal);
+      await expect(getUserProfileOnAuth(user)).rejects.toBe(fatal);
+      expect(mockGetDoc).toHaveBeenCalledTimes(1);
+    });
+
+    it("swallows a getIdToken failure and still attempts the read", async () => {
+      const user = { uid: "u1", getIdToken: vi.fn().mockRejectedValue(new Error("token_fetch_failed")) };
+      const profile = { uid: "u1", username: "sk8r" };
+      mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => profile });
+      const result = await getUserProfileOnAuth(user);
+      expect(result).toEqual(profile);
+    });
+
+    it("rethrows errors that expose no Firestore code at all (no retry)", async () => {
+      // Bare Error (no `code` property) — once withRetry gives up, our
+      // permission-denied branch mustn't match, so the caller sees the
+      // original boom instead of a silent retry loop.
+      const user = mockUser();
+      mockGetDoc.mockRejectedValue(new Error("generic boom"));
+      await expect(getUserProfileOnAuth(user)).rejects.toThrow("generic boom");
+    }, 10_000);
   });
 
   describe("getUserPrivateProfile", () => {

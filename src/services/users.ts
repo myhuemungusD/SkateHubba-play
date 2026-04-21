@@ -98,6 +98,46 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
 }
 
 /**
+ * Auth-bootstrap variant of {@link getUserProfile}. Firebase Auth fires
+ * onAuthStateChanged before the Firestore SDK has always finished
+ * propagating the ID token to its auth-state listener, so the very first
+ * getDoc on sign-in can return permission-denied even though the user is
+ * legitimately signed in. withRetry treats permission-denied as permanent
+ * (rightly — normal app code shouldn't retry authz failures), so the
+ * initial read throws and returning users get routed through
+ * ProfileSetup as if they had no profile.
+ *
+ * This wrapper:
+ *   1. Forces a fresh ID token round-trip so the Firestore SDK is
+ *      guaranteed to have an up-to-date auth header on the next read.
+ *   2. Retries permission-denied once after a short delay to cover the
+ *      token-propagation window.
+ *
+ * Every other caller should keep using {@link getUserProfile}.
+ */
+export async function getUserProfileOnAuth(user: {
+  uid: string;
+  getIdToken: (force?: boolean) => Promise<string>;
+}): Promise<UserProfile | null> {
+  try {
+    await user.getIdToken();
+  } catch {
+    // A failed token fetch is best-effort — we still attempt the read
+    // because the cached token may be usable. If it really is broken the
+    // catch below handles it.
+  }
+  try {
+    return await getUserProfile(user.uid);
+  } catch (err) {
+    const code = (err as { code?: string })?.code ?? "";
+    if (code !== "permission-denied" && code !== "unauthenticated") throw err;
+    // Wait for the Firestore SDK to absorb the Auth token, then retry.
+    await new Promise((r) => setTimeout(r, 1500));
+    return await getUserProfile(user.uid);
+  }
+}
+
+/**
  * Get the owner-only private profile doc at
  * `users/{uid}/private/profile`. Must be called while authenticated
  * as `uid` — any other caller is denied by Firestore rules.

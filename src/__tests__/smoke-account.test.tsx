@@ -60,6 +60,7 @@ vi.mock("../services/users", () => ({
   getPlayerDirectory: vi.fn().mockResolvedValue([]),
   getLeaderboard: vi.fn().mockResolvedValue([]),
   getUserProfile: vi.fn().mockResolvedValue(null),
+  getUserProfileOnAuth: vi.fn().mockResolvedValue(null),
   updatePlayerStats: vi.fn().mockResolvedValue(undefined),
   // ProfileSetup imports these constants and the AgeVerificationRequiredError
   // class. Add minimal stand-ins so a signed-in-but-profile-null user being

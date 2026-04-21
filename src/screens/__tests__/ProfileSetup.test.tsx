@@ -22,7 +22,11 @@ const { AgeVerificationRequiredError: MockAgeVerificationRequiredError } = vi.ho
 
 vi.mock("../../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
-  getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
+  // Both lookups share the same spy: the auth-bootstrap path (live user)
+  // and the plain fallback (tests / edge cases). The tests don't care
+  // which flavour fires — they just assert on the result.
+  getUserProfile: (uid: string) => mockGetUserProfile(uid),
+  getUserProfileOnAuth: (user: { uid: string }) => mockGetUserProfile(user.uid),
   isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
   AgeVerificationRequiredError: MockAgeVerificationRequiredError,
   // ProfileSetup imports these shared validation constants — mirror the
@@ -30,6 +34,12 @@ vi.mock("../../services/users", () => ({
   USERNAME_MIN: 3,
   USERNAME_MAX: 20,
   USERNAME_RE: /^[a-z0-9_]+$/,
+}));
+
+// ProfileSetup reads `auth?.currentUser` to hand the live User object to
+// getUserProfileOnAuth when the uid matches. Stub it as the signed-in u1.
+vi.mock("../../firebase", () => ({
+  auth: { currentUser: { uid: "u1", getIdToken: async () => "tok" } },
 }));
 
 beforeEach(() => {
@@ -312,6 +322,21 @@ describe("ProfileSetup", () => {
 
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(existingProfile));
     expect(mockGetUserProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers a Sign out escape hatch on the retry screen when onSignOut is wired", async () => {
+    // If the profile lookup keeps failing the user must be able to get back
+    // to the landing page — otherwise they're trapped with a dead Retry
+    // button. App.tsx wires onSignOut to the auth handler.
+    mockGetUserProfile.mockRejectedValue(new Error("Network error"));
+    const onSignOut = vi.fn();
+
+    render(<ProfileSetup {...defaultProps} onSignOut={onSignOut} />);
+
+    await waitFor(() => expect(screen.getByText(/Couldn't load your profile/)).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(onSignOut).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces an inline message when the service rejects for missing DOB", async () => {
