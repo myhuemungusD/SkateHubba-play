@@ -10,6 +10,38 @@ import { logger, metrics } from "../services/logger";
 import { captureException, setUser as setSentryUser } from "../lib/sentry";
 import { identify as posthogIdentify, resetIdentity as posthogReset } from "../lib/posthog";
 
+// sessionStorage key that survives the sign-out/sign-in round-trip required
+// after auth/requires-recent-login. We only need the uid — the Firestore wipe
+// already ran, so the retry path just needs to know WHICH auth uid still has
+// a live Firebase Auth record waiting to be deleted.
+const PENDING_DELETE_KEY = "skate.pendingDeleteUid";
+
+function readPendingDeleteUid(): string | null {
+  try {
+    return sessionStorage.getItem(PENDING_DELETE_KEY);
+  } catch {
+    // Private-mode Safari / disabled storage — recovery path unavailable but
+    // not catastrophic (user can contact support or retry from a fresh tab).
+    return null;
+  }
+}
+
+function writePendingDeleteUid(uid: string): void {
+  try {
+    sessionStorage.setItem(PENDING_DELETE_KEY, uid);
+  } catch {
+    /* see readPendingDeleteUid — best-effort only */
+  }
+}
+
+function clearPendingDeleteUid(): void {
+  try {
+    sessionStorage.removeItem(PENDING_DELETE_KEY);
+  } catch {
+    /* see readPendingDeleteUid — best-effort only */
+  }
+}
+
 export interface AuthContextValue {
   loading: boolean;
   user: ReturnType<typeof useAuth>["user"];
@@ -24,6 +56,14 @@ export interface AuthContextValue {
   handleSignOut: () => Promise<void>;
   handleDeleteAccount: () => Promise<void>;
   handleDownloadData: () => Promise<void>;
+  /**
+   * Uid whose Firestore data has already been wiped but whose Firebase Auth
+   * record is still alive — set when the first deleteAccount() call bounced
+   * with auth/requires-recent-login. The banner component surfaces a
+   * one-shot "Finish deletion" affordance when this matches the current
+   * signed-in user; handleDeleteAccount consumes it on retry.
+   */
+  pendingDeleteUid: string | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -40,6 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [activeProfile, setActiveProfile] = useState<UserProfile | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
+  // Mirror of PENDING_DELETE_KEY in React state so the banner component can
+  // re-render on capture / clear without polling storage.
+  const [pendingDeleteUid, setPendingDeleteUid] = useState<string | null>(() => readPendingDeleteUid());
 
   // Resolve any pending Google redirect on mount
   useEffect(() => {
@@ -133,6 +176,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, activeProfile?.username]);
 
+  // Invalidate pendingDeleteUid when a different auth user arrives (someone
+  // else signs in on the same tab) — the banner must not prompt them to
+  // finish deleting a stranger's account.
+  useEffect(() => {
+    if (!user || !pendingDeleteUid) return;
+    if (user.uid !== pendingDeleteUid) {
+      logger.info("delete_account_pending_retry_cleared", {
+        uid: pendingDeleteUid,
+        reason: "different_user_signed_in",
+      });
+      clearPendingDeleteUid();
+      setPendingDeleteUid(null);
+    }
+  }, [user, pendingDeleteUid]);
+
   const handleSignOut = useCallback(async () => {
     logger.info("user_sign_out");
     try {
@@ -144,9 +202,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const handleDeleteAccount = useCallback(async () => {
-    /* v8 ignore start -- null guard unreachable in tests; delete button hidden when profile is null */
-    if (!activeProfile) return;
-    /* v8 ignore stop */
+    // Recovery path: after the Firestore wipe + auth/requires-recent-login
+    // bounce the user signed out and back in, so their profile doc is gone
+    // and activeProfile is null — but the auth account is still alive with
+    // a matching pendingDeleteUid stored from the first attempt. Resume the
+    // auth-delete-only branch instead of bailing out.
+    if (!activeProfile) {
+      const pending = readPendingDeleteUid();
+      if (!pending || !user || pending !== user.uid) {
+        // Either no pending capture, or the signed-in user isn't the one
+        // mid-deletion — nothing we can safely do here.
+        return;
+      }
+      logger.info("delete_account_pending_retry_resumed", { uid: pending });
+      try {
+        await deleteAccount();
+      } catch (err) {
+        const code = getErrorCode(err);
+        logger.error("delete_account_auth_failed", { uid: pending, code, resume: true });
+        captureException(err, {
+          extra: {
+            context: "deleteAccount retry after Firestore wipe — data deleted, auth alive",
+            uid: pending,
+            code,
+            resume: true,
+          },
+        });
+        if (code === "auth/requires-recent-login") {
+          // Still not recent enough — tell the user to sign out and sign
+          // back in again. The pending flag stays set so the next retry
+          // finds it.
+          throw new Error(
+            "For security, please sign out and sign back in, then tap Finish deletion again.",
+            { cause: err },
+          );
+        }
+        throw err;
+      }
+      logger.info("delete_account_auth_done", { uid: pending, resume: true });
+      metrics.accountDeleted(pending);
+      clearPendingDeleteUid();
+      setPendingDeleteUid(null);
+      logger.info("delete_account_pending_retry_cleared", { uid: pending, reason: "resume_success" });
+      return;
+    }
     // Snapshot identity once: the flow spans multiple async boundaries and
     // setActiveProfile(null) runs on success. Reading the profile object
     // after each await invites stale-closure / mid-flow state drift.
@@ -178,6 +277,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw firestoreErr;
     }
     logger.info("delete_account_firestore_done", { uid });
+    // Capture the pending uid NOW, before the auth-delete attempt, so a
+    // crash / browser kill between Firestore wipe and auth delete is
+    // still recoverable on next load. It's cleared on full success below.
+    writePendingDeleteUid(uid);
+    setPendingDeleteUid(uid);
+    logger.info("delete_account_pending_retry_captured", { uid });
     try {
       await deleteAccount();
     } catch (err) {
@@ -197,11 +302,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       });
       if (code === "auth/requires-recent-login") {
-        // The user needs to sign out, sign back in, and re-trigger the flow:
-        // deleteUserData will be a no-op on the already-empty data and the
-        // auth delete will then succeed.
+        // The user needs to sign out, sign back in, and re-trigger the flow.
+        // The pending-delete capture above lets the retry skip deleteUserData
+        // (data is already gone) and lets the banner surface even after
+        // activeProfile goes null on sign-back-in.
         throw new Error(
-          "For security, please sign out and sign back in, then tap Delete Account again to finish removing your account.",
+          "For security, please sign out and sign back in, then tap Finish deletion to finish removing your account.",
           { cause: err },
         );
       }
@@ -209,8 +315,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     logger.info("delete_account_auth_done", { uid });
     metrics.accountDeleted(uid);
+    clearPendingDeleteUid();
+    setPendingDeleteUid(null);
+    logger.info("delete_account_pending_retry_cleared", { uid, reason: "first_attempt_success" });
     setActiveProfile(null);
-  }, [activeProfile]);
+  }, [activeProfile, user]);
 
   /**
    * GDPR Article 20 / CCPA data-portability export. Collects the user's data
@@ -266,6 +375,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     handleSignOut,
     handleDeleteAccount,
     handleDownloadData,
+    pendingDeleteUid,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

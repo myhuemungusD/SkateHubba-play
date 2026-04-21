@@ -3,15 +3,21 @@ import { act, render, waitFor } from "@testing-library/react";
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
 
-const { mockUseAuth, mockDeleteAccount, mockDeleteUserData, mockLoggerError, mockCaptureException } = vi.hoisted(
-  () => ({
-    mockUseAuth: vi.fn(() => ({ loading: false, user: null, profile: null, refreshProfile: vi.fn() })),
-    mockDeleteAccount: vi.fn(),
-    mockDeleteUserData: vi.fn(),
-    mockLoggerError: vi.fn(),
-    mockCaptureException: vi.fn(),
-  }),
-);
+const {
+  mockUseAuth,
+  mockDeleteAccount,
+  mockDeleteUserData,
+  mockLoggerError,
+  mockLoggerInfo,
+  mockCaptureException,
+} = vi.hoisted(() => ({
+  mockUseAuth: vi.fn(() => ({ loading: false, user: null, profile: null, refreshProfile: vi.fn() })),
+  mockDeleteAccount: vi.fn(),
+  mockDeleteUserData: vi.fn(),
+  mockLoggerError: vi.fn(),
+  mockLoggerInfo: vi.fn(),
+  mockCaptureException: vi.fn(),
+}));
 
 vi.mock("../../hooks/useAuth", () => ({
   useAuth: () => mockUseAuth(),
@@ -34,7 +40,12 @@ vi.mock("../../services/analytics", () => ({
   analytics: { signIn: vi.fn() },
 }));
 vi.mock("../../services/logger", () => ({
-  logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: (...args: unknown[]) => mockLoggerError(...args) },
+  logger: {
+    info: (...args: unknown[]) => mockLoggerInfo(...args),
+    debug: vi.fn(),
+    warn: vi.fn(),
+    error: (...args: unknown[]) => mockLoggerError(...args),
+  },
   metrics: { signIn: vi.fn(), accountDeleted: vi.fn() },
 }));
 vi.mock("../../lib/sentry", () => ({
@@ -152,6 +163,7 @@ describe("handleDeleteAccount", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
   });
 
@@ -285,5 +297,222 @@ describe("handleDeleteAccount", () => {
       "delete_account_firestore_failed",
       expect.objectContaining({ code: "permission-denied", uid: "u1", username: "sk8r" }),
     );
+  });
+
+  /**
+   * Recovery-gap tests — close the stuck state where a re-auth bounce wiped
+   * Firestore but the sign-out/sign-in round-trip left activeProfile null
+   * (no profile doc to re-fetch). sessionStorage["skate.pendingDeleteUid"]
+   * is the bridge that lets the retry skip deleteUserData and finish the
+   * auth delete.
+   */
+  describe("pending-delete recovery", () => {
+    const STORAGE_KEY = "skate.pendingDeleteUid";
+
+    it("captures uid to sessionStorage when deleteAccount bounces with requires-recent-login", async () => {
+      mockDeleteUserData.mockResolvedValueOnce(undefined);
+      const recentErr = new Error("requires-recent-login");
+      (recentErr as unknown as { code: string }).code = "auth/requires-recent-login";
+      mockDeleteAccount.mockRejectedValueOnce(recentErr);
+
+      const { triggerDelete } = renderWithTrigger(profile);
+      const thrown = await triggerDelete();
+
+      expect(thrown?.message).toMatch(/Finish deletion/);
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        "delete_account_pending_retry_captured",
+        expect.objectContaining({ uid: "u1" }),
+      );
+    });
+
+    it("clears sessionStorage on fully successful first-attempt delete", async () => {
+      mockDeleteUserData.mockResolvedValueOnce(undefined);
+      mockDeleteAccount.mockResolvedValueOnce(undefined);
+
+      const { triggerDelete } = renderWithTrigger(profile);
+      const thrown = await triggerDelete();
+
+      expect(thrown).toBeNull();
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        "delete_account_pending_retry_cleared",
+        expect.objectContaining({ uid: "u1", reason: "first_attempt_success" }),
+      );
+    });
+
+    it("retry with null activeProfile + matching pending uid runs auth delete only", async () => {
+      // Simulate the post-bounce / post-sign-in state: sessionStorage still
+      // holds the pending uid, useAuth reports the SAME user but no profile,
+      // and no activeProfile has been seeded in the harness.
+      sessionStorage.setItem(STORAGE_KEY, "u1");
+      mockUseAuth.mockReturnValue({
+        loading: false,
+        user: { uid: "u1" } as { uid: string },
+        profile: null,
+        refreshProfile: vi.fn(),
+      });
+      mockDeleteAccount.mockResolvedValueOnce(undefined);
+
+      // Harness that does NOT call setActiveProfile — mirrors the
+      // "sign-back-in with deleted profile doc" state.
+      let trigger: (() => Promise<Error | null>) | null = null;
+      function Harness() {
+        const ctx = useAuthContext();
+        useEffect(() => {
+          trigger = async () => {
+            try {
+              await ctx.handleDeleteAccount();
+              return null;
+            } catch (err) {
+              return err as Error;
+            }
+          };
+        }, [ctx]);
+        return null;
+      }
+      render(
+        <AuthProvider>
+          <Harness />
+        </AuthProvider>,
+      );
+      let thrown: Error | null = null;
+      await act(async () => {
+        thrown = trigger ? await trigger() : null;
+      });
+
+      expect(thrown).toBeNull();
+      expect(mockDeleteUserData).not.toHaveBeenCalled();
+      expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        "delete_account_pending_retry_resumed",
+        expect.objectContaining({ uid: "u1" }),
+      );
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        "delete_account_pending_retry_cleared",
+        expect.objectContaining({ uid: "u1", reason: "resume_success" }),
+      );
+    });
+
+    it("retry early-returns when pending uid does not match current user", async () => {
+      // Defensive: pending flag belongs to a different account (stale
+      // session, user signed in with different credentials). Must NOT call
+      // deleteAccount on the wrong account.
+      sessionStorage.setItem(STORAGE_KEY, "u1");
+      mockUseAuth.mockReturnValue({
+        loading: false,
+        user: { uid: "DIFFERENT" } as { uid: string },
+        profile: null,
+        refreshProfile: vi.fn(),
+      });
+
+      let trigger: (() => Promise<Error | null>) | null = null;
+      function Harness() {
+        const ctx = useAuthContext();
+        useEffect(() => {
+          trigger = async () => {
+            try {
+              await ctx.handleDeleteAccount();
+              return null;
+            } catch (err) {
+              return err as Error;
+            }
+          };
+        }, [ctx]);
+        return null;
+      }
+      render(
+        <AuthProvider>
+          <Harness />
+        </AuthProvider>,
+      );
+      await act(async () => {
+        await (trigger ? trigger() : Promise.resolve(null));
+      });
+
+      expect(mockDeleteAccount).not.toHaveBeenCalled();
+      expect(mockDeleteUserData).not.toHaveBeenCalled();
+    });
+
+    it("clears sessionStorage when a different user signs in", async () => {
+      sessionStorage.setItem(STORAGE_KEY, "u1");
+      // Mount with user "u1" first (would keep the flag), then swap to
+      // a different uid and confirm the effect clears it.
+      mockUseAuth.mockReturnValue({
+        loading: false,
+        user: { uid: "u1" } as { uid: string },
+        profile: null,
+        refreshProfile: vi.fn(),
+      });
+
+      function Harness() {
+        useAuthContext();
+        return null;
+      }
+      const { rerender } = render(
+        <AuthProvider>
+          <Harness />
+        </AuthProvider>,
+      );
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
+
+      // Swap the mock before re-render so the effect sees the new uid.
+      await act(async () => {
+        mockUseAuth.mockReturnValue({
+          loading: false,
+          user: { uid: "OTHER" } as { uid: string },
+          profile: null,
+          refreshProfile: vi.fn(),
+        });
+        rerender(
+          <AuthProvider>
+            <Harness />
+          </AuthProvider>,
+        );
+      });
+
+      await waitFor(() => {
+        expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+      });
+      expect(mockLoggerInfo).toHaveBeenCalledWith(
+        "delete_account_pending_retry_cleared",
+        expect.objectContaining({ uid: "u1", reason: "different_user_signed_in" }),
+      );
+    });
+
+    it("preserves sessionStorage across sign-out (retry path depends on it)", async () => {
+      // The entire point of sessionStorage vs React state is surviving the
+      // sign-out/sign-in round-trip the re-auth flow demands. handleSignOut
+      // must NOT clear the pending flag.
+      sessionStorage.setItem(STORAGE_KEY, "u1");
+      mockUseAuth.mockReturnValue({
+        loading: false,
+        user: { uid: "u1" } as { uid: string },
+        profile: null,
+        refreshProfile: vi.fn(),
+      });
+
+      let trigger: (() => Promise<void>) | null = null;
+      function Harness() {
+        const ctx = useAuthContext();
+        useEffect(() => {
+          trigger = async () => {
+            await ctx.handleSignOut();
+          };
+        }, [ctx]);
+        return null;
+      }
+      render(
+        <AuthProvider>
+          <Harness />
+        </AuthProvider>,
+      );
+      await act(async () => {
+        await (trigger ? trigger() : Promise.resolve());
+      });
+
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
+    });
   });
 });
