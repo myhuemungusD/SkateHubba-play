@@ -98,7 +98,17 @@ service cloud.firestore {
         && !('emailVerified' in request.resource.data)
         && !('dob' in request.resource.data)
         && !('parentalConsent' in request.resource.data)
-        && !('fcmTokens' in request.resource.data);
+        && !('fcmTokens' in request.resource.data)
+        // Rate-limit cooldown anchors are server-managed: the only legitimate
+        // writer is the best-effort `setDoc(…, { merge: true })` that fires
+        // AFTER a successful game / spot create (see
+        // src/services/games.ts and src/services/spots.ts). Seeding them at
+        // profile-create time is pure attack surface — a stale value would
+        // instantly satisfy the 30s cooldown the first time the user creates
+        // a game or spot. Require the fields to be absent on create; the
+        // update rule then pins any future write to serverTimestamp().
+        && !('lastGameCreatedAt' in request.resource.data)
+        && !('lastSpotCreatedAt' in request.resource.data);
       allow update: if isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
@@ -150,10 +160,14 @@ service cloud.firestore {
         // anchor (see /games create rule). Without this guard, a client
         // could write a stale Timestamp (e.g. epoch 0) to instantly satisfy
         // the `request.time > lastGameCreatedAt + 30s` check and spam games.
-        // Either the field is unchanged relative to the stored doc, or the
-        // new value equals request.time (i.e. the client wrote
-        // serverTimestamp()). `request.resource.data` reflects the merged
-        // post-write state, so unchanged writes pass the first branch.
+        // `request.resource.data` reflects the merged post-write state, so
+        // a partial update that doesn't touch the field still carries the
+        // stored value through — the three accepted branches are:
+        //   (A) neither stored nor post-write have it (no cooldown state yet)
+        //   (B) both have it and the value is unchanged (untouched update)
+        //   (C) the new value equals request.time (client wrote
+        //       serverTimestamp()), which is what the game-create flow does
+        //       after addDoc().
         && (
           (!('lastGameCreatedAt' in request.resource.data)
             && !('lastGameCreatedAt' in resource.data))
@@ -161,6 +175,20 @@ service cloud.firestore {
               && 'lastGameCreatedAt' in request.resource.data
               && request.resource.data.lastGameCreatedAt == resource.data.lastGameCreatedAt)
           || request.resource.data.lastGameCreatedAt == request.time
+        )
+        // lastSpotCreatedAt is the sibling 30s cooldown anchor for spot
+        // creation (see /spots create rule). Exact same attack surface and
+        // exact same three-branch guard — kept in lockstep with
+        // lastGameCreatedAt above. The spot-create flow writes this via
+        // `setDoc(…, { lastSpotCreatedAt: serverTimestamp() }, { merge: true })`
+        // in src/services/spots.ts after addDoc().
+        && (
+          (!('lastSpotCreatedAt' in request.resource.data)
+            && !('lastSpotCreatedAt' in resource.data))
+          || ('lastSpotCreatedAt' in resource.data
+              && 'lastSpotCreatedAt' in request.resource.data
+              && request.resource.data.lastSpotCreatedAt == resource.data.lastSpotCreatedAt)
+          || request.resource.data.lastSpotCreatedAt == request.time
         );
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);

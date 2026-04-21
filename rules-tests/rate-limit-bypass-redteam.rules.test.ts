@@ -1,11 +1,19 @@
 /**
- * Rate-limit bypass red-team — proves the April 2026 hardening for two
- * client-writable cooldown anchors:
+ * Rate-limit bypass red-team — proves the April 2026 hardening for the
+ * client-writable cooldown anchors that live outside notification_limits:
  *
  *   1. users/{uid}.lastGameCreatedAt  (30s game-creation cooldown)
- *   2. nudge_limits.lastNudgedAt      (1h nudge cooldown, create + update)
+ *   2. users/{uid}.lastSpotCreatedAt  (30s spot-creation cooldown)
+ *   3. nudge_limits.lastNudgedAt      (1h nudge cooldown, create + update)
  *
- * The third anchor (notification_limits.lastSentAt) has its own dedicated
+ * Both users/* anchors are exercised on BOTH create and update paths — the
+ * original PR #256 fix only guarded the update path, leaving a create-time
+ * seeding bypass ("set lastGameCreatedAt = epoch 0 in the initial profile")
+ * wide open. Rules now also require each anchor to be absent on profile
+ * create, so the only writer is the best-effort serverTimestamp() update
+ * that fires after a successful game / spot creation.
+ *
+ * The fourth anchor (notification_limits.lastSentAt) has its own dedicated
  * test file — see notification-limits.rules.test.ts.
  *
  * Before the fix, each of these fields could be written with a stale value
@@ -71,6 +79,20 @@ function makeUserUpdate(overrides: Record<string, unknown> = {}): Record<string,
     username: "alice",
     wins: 0,
     losses: 0,
+    ...overrides,
+  };
+}
+
+function makeUserCreate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  // Mirrors the shape written by src/services/users.ts#createProfile — the
+  // canonical create-time payload. Extra fields are layered on by callers
+  // to exercise specific rule branches.
+  return {
+    uid: OWNER_UID,
+    username: "alice",
+    stance: "regular",
+    dob: "2000-01-01",
+    emailVerified: true,
     ...overrides,
   };
 }
@@ -141,6 +163,114 @@ describe("users.lastGameCreatedAt — red-team against stale-timestamp cooldown 
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
         wins: 1,
       }),
+    );
+  });
+});
+
+describe("users create — red-team against cooldown-anchor seeding at profile creation", () => {
+  // A brand-new profile must not carry any cooldown-anchor fields. The
+  // update guard alone is insufficient because a hostile client can simply
+  // include the field in the very first setDoc() that creates the profile,
+  // satisfying the downstream /games and /spots rate-limit checks on the
+  // very first create.
+  it("attack: cannot create a profile that pre-seeds lastGameCreatedAt=epoch 0", async () => {
+    await assertFails(
+      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), makeUserCreate({ lastGameCreatedAt: new Date(0) })),
+    );
+  });
+
+  it("attack: cannot create a profile that pre-seeds lastGameCreatedAt via serverTimestamp()", async () => {
+    // Even a "honest-looking" value is rejected at create — the anchor is
+    // strictly server-managed, and every legitimate write path is the
+    // post-create update from games.ts / spots.ts.
+    await assertFails(
+      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), makeUserCreate({ lastGameCreatedAt: serverTimestamp() })),
+    );
+  });
+
+  it("attack: cannot create a profile that pre-seeds lastSpotCreatedAt=epoch 0", async () => {
+    await assertFails(
+      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), makeUserCreate({ lastSpotCreatedAt: new Date(0) })),
+    );
+  });
+
+  it("attack: cannot create a profile that pre-seeds lastSpotCreatedAt via serverTimestamp()", async () => {
+    await assertFails(
+      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), makeUserCreate({ lastSpotCreatedAt: serverTimestamp() })),
+    );
+  });
+
+  it("legitimate: can create a profile without any cooldown-anchor fields", async () => {
+    // Sanity regression: the canonical createProfile() payload must still
+    // land. If this starts failing, the create rule has over-constrained.
+    await assertSucceeds(setDoc(doc(asOwner().firestore(), "users", OWNER_UID), makeUserCreate()));
+  });
+});
+
+describe("users.lastSpotCreatedAt — red-team against stale-timestamp cooldown reset", () => {
+  // Structural mirror of the lastGameCreatedAt block above. The spot-create
+  // flow in src/services/spots.ts is byte-for-byte identical in shape:
+  //   setDoc(users/{uid}, { lastSpotCreatedAt: serverTimestamp() }, { merge: true })
+  // so the rule must enforce identical invariants.
+  beforeEach(async () => {
+    await seedUser();
+  });
+
+  it("attack: owner CANNOT set lastSpotCreatedAt to epoch 0 (spot-creation spam)", async () => {
+    await assertFails(
+      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), makeUserUpdate({ lastSpotCreatedAt: new Date(0) })),
+    );
+  });
+
+  it("attack: owner CANNOT set lastSpotCreatedAt via client wall clock (must be serverTimestamp)", async () => {
+    await assertFails(
+      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), makeUserUpdate({ lastSpotCreatedAt: new Date() })),
+    );
+  });
+
+  it("attack: owner CANNOT back-date an existing lastSpotCreatedAt via updateDoc", async () => {
+    await seedUser({ lastSpotCreatedAt: new Date() });
+    await assertFails(
+      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
+        lastSpotCreatedAt: new Date(0),
+      }),
+    );
+  });
+
+  it("legitimate: owner CAN set lastSpotCreatedAt via serverTimestamp()", async () => {
+    // Mirrors the exact write in src/services/spots.ts after addDoc().
+    await assertSucceeds(
+      setDoc(doc(asOwner().firestore(), "users", OWNER_UID), { lastSpotCreatedAt: serverTimestamp() }, { merge: true }),
+    );
+  });
+
+  it("legitimate: a user update that doesn't touch lastSpotCreatedAt still works", async () => {
+    await seedUser({ lastSpotCreatedAt: new Date(Date.now() - 60_000) });
+    await assertSucceeds(
+      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
+        fcmTokens: ["token-a"],
+      }),
+    );
+  });
+
+  it("legitimate: an update may touch both cooldown anchors in a single write", async () => {
+    // Defence-in-depth regression: the two guards are independent AND'd
+    // branches, so a write that refreshes both must still pass. This
+    // mirrors e.g. an account-recovery flow that catches up on both
+    // cooldowns in one setDoc call.
+    await seedUser({
+      lastGameCreatedAt: new Date(Date.now() - 60_000),
+      lastSpotCreatedAt: new Date(Date.now() - 60_000),
+    });
+    await assertSucceeds(
+      setDoc(
+        doc(asOwner().firestore(), "users", OWNER_UID),
+        {
+          lastGameCreatedAt: serverTimestamp(),
+          lastSpotCreatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      ),
     );
   });
 });
