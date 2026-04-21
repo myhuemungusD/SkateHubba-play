@@ -4,27 +4,27 @@ You are the chief engineer for **SkateHubba S.K.A.T.E.** — a real-time multipl
 
 ## Architecture Overview
 
-SkateHubba is a **zero-backend single-page application (SPA)**. There is no custom server, no REST API, and no serverless functions (aside from a small set of Firestore/PubSub/schedule triggers under `functions/`). The React client talks directly to Firebase services, with **Firestore security rules** as the sole authorization and validation layer.
+SkateHubba is a **zero-backend single-page application (SPA)**. There is no custom server, no REST API, and no serverless functions. The React client talks directly to Firebase services, with **Firestore security rules** as the sole authorization and validation layer.
 
 ## Technology Stack
 
-| Layer | Technology | Notes |
-|---|---|---|
-| **Framework** | React 19 + TypeScript 5.6 | SPA only — no SSR. Client-side routing via `react-router-dom` v7 |
-| **Build** | Vite 8 | Manual chunks for Firebase and React |
-| **Styling** | Tailwind CSS 4 | Utility-first; custom brand tokens (Orange #FF6B00, Green #00E676) |
-| **Database** | Cloud Firestore | Named database `"skatehubba"` (not default); offline persistence enabled |
-| **Auth** | Firebase Authentication | Email/password + Google OAuth (popup with redirect fallback) |
-| **Storage** | Firebase Storage | WebM (web) and MP4 (native/Capacitor); 1 KB – 50 MB limit |
-| **Maps** | Mapbox GL JS | Used by the skate-spots map feature (read-only tiles, no backend) |
-| **Native shell** | Capacitor (iOS + Android) | Wraps the PWA into native iOS/Android app-store builds |
-| **Hosting** | Vercel | Auto-deploys from GitHub `main`; SPA rewrite to `index.html` |
-| **Testing** | Vitest 4 + Testing Library + Playwright | Unit/integration + E2E with Firebase emulators |
-| **Linting** | ESLint 9 + Prettier 3.8 | Husky + lint-staged pre-commit hooks |
-| **Monitoring** | Sentry (errors) + Vercel Analytics | Optional via env vars |
-| **CI/CD** | GitHub Actions | Lint → type check → test w/ coverage → build → Lighthouse CI |
-| **Cloud Functions** | Firebase Functions (TypeScript) | Minimal — Firestore / PubSub / scheduled triggers only. New code in `functions/src/` is rejected by the PR gate without explicit maintainer approval |
-| **Node** | 22+ | Enforced via `engines` and `.nvmrc` |
+| Layer               | Technology                              | Notes                                                                                                                                                                    |
+| ------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Framework**       | React 19 + TypeScript 5.6               | SPA only — no SSR. Client-side routing via `react-router-dom` v7                                                                                                         |
+| **Build**           | Vite 8                                  | Manual chunks for Firebase and React                                                                                                                                     |
+| **Styling**         | Tailwind CSS 4                          | Utility-first; custom brand tokens (Orange #FF6B00, Green #00E676)                                                                                                       |
+| **Database**        | Cloud Firestore                         | Named database `"skatehubba"` (not default); offline persistence enabled                                                                                                 |
+| **Auth**            | Firebase Authentication                 | Email/password + Google OAuth (popup with redirect fallback)                                                                                                             |
+| **Storage**         | Firebase Storage                        | WebM (web) and MP4 (native/Capacitor); 1 KB – 50 MB limit                                                                                                                |
+| **Maps**            | Mapbox GL JS                            | Used by the skate-spots map feature (read-only tiles, no backend)                                                                                                        |
+| **Native shell**    | Capacitor (iOS + Android)               | Wraps the PWA into native iOS/Android app-store builds                                                                                                                   |
+| **Hosting**         | Vercel                                  | Auto-deploys from GitHub `main`; SPA rewrite to `index.html`                                                                                                             |
+| **Testing**         | Vitest 4 + Testing Library + Playwright | Unit/integration + E2E with Firebase emulators                                                                                                                           |
+| **Linting**         | ESLint 9 + Prettier 3.8                 | Husky + lint-staged pre-commit hooks                                                                                                                                     |
+| **Monitoring**      | Sentry (errors) + Vercel Analytics      | Optional via env vars                                                                                                                                                    |
+| **CI/CD**           | GitHub Actions                          | Lint → type check → test w/ coverage → build → Lighthouse CI                                                                                                             |
+| **Cloud Functions** | None                                    | The `functions/` package has been removed. New code under any `functions/src/` path is rejected by the PR gate and requires explicit maintainer approval to re-introduce |
+| **Node**            | 22+                                     | Enforced via `engines` and `.nvmrc`                                                                                                                                      |
 
 ## Key Architectural Decisions
 
@@ -54,7 +54,6 @@ skatehubba-play/
 │   ├── utils/               # Pure helpers (no Firebase, no React)
 │   ├── __mocks__/           # Centralized Firebase SDK mocks for vitest
 │   └── __tests__/           # Integration & smoke tests
-├── functions/               # Firebase Cloud Functions (TypeScript) — triggers only
 ├── e2e/                     # Playwright E2E tests
 ├── rules-tests/             # Firestore rules unit tests (@firebase/rules-unit-testing)
 ├── android/                 # Capacitor Android project
@@ -85,6 +84,7 @@ skatehubba-play/
 ## Security Model
 
 Firestore rules are the authority. They enforce:
+
 - Authentication gates on all reads/writes
 - Game state machine transitions (turn order, valid actions)
 - Score inflation prevention (increments by 0 or 1 only)
