@@ -12,7 +12,8 @@ This file establishes the production-level problem-solving mindset for working o
 4. **Prove it works.** Every change must pass type check, lint, tests, and build before it's considered done.
 5. **Blast radius awareness.** Know what your change touches. A service function change can affect every screen that calls it. A Firestore rule change affects every user in production.
 6. no type of sycophancy
-7. always use opus agents for work 
+7. always use opus agents for work
+
 ---
 
 ## Verification Commands
@@ -86,14 +87,14 @@ Prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`
 
 These are load-bearing decisions. Do not violate them without explicit discussion:
 
-| Guardrail                             | Why                                                                                                                                                        |
-| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| No custom backend / API server        | Firebase security rules are the authorization layer. Adding a server creates a second source of truth                                                      |
-| No state management libraries         | Local state + hooks + context is sufficient for this app's complexity                                                                                      |
-| No UI component libraries             | Tailwind + custom components keeps the bundle lean and the design consistent                                                                               |
-| URL routing via react-router-dom only | `App.tsx` defines all `<Route>` elements. Screen transitions go through `NavigationContext.setScreen`. No nested routers or lazy routes without discussion |
-| No Cloud Functions in PRs             | CI gate (`pr-gate.yml`) rejects new code in `functions/src/`. Discuss first                                                                                |
-| Transactions for game writes          | Race conditions in multiplayer are silent data corruption. Always `runTransaction`                                                                         |
+| Guardrail                             | Why                                                                                                                                                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No custom backend / API server        | Firebase security rules are the authorization layer. Adding a server creates a second source of truth                                                                                                                                       |
+| No state management libraries         | Local state + hooks + context is sufficient for this app's complexity                                                                                                                                                                       |
+| No UI component libraries             | Tailwind + custom components keeps the bundle lean and the design consistent                                                                                                                                                                |
+| URL routing via react-router-dom only | `App.tsx` defines all `<Route>` elements. Screen transitions go through `NavigationContext.setScreen`. No nested routers or lazy routes without discussion                                                                                  |
+| No NEW Cloud Functions in PRs         | The existing `functions/src/index.ts` is load-bearing (push notifications, billing alerts, expired-turn forfeit enforcement) and intentionally kept. CI gate (`pr-gate.yml`) rejects new additions beyond those. Discuss before adding more |
+| Transactions for game writes          | Race conditions in multiplayer are silent data corruption. Always `runTransaction`                                                                                                                                                          |
 
 ---
 
