@@ -147,7 +147,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     /* v8 ignore start -- null guard unreachable in tests; delete button hidden when profile is null */
     if (!activeProfile) return;
     /* v8 ignore stop */
-    logger.info("delete_account_start", { uid: activeProfile.uid, username: activeProfile.username });
+    // Snapshot identity once: the flow spans multiple async boundaries and
+    // setActiveProfile(null) runs on success. Reading the profile object
+    // after each await invites stale-closure / mid-flow state drift.
+    const { uid, username } = activeProfile;
+    logger.info("delete_account_start", { uid, username });
     // GDPR: Firestore data MUST be deleted first. Once the Firebase Auth
     // account is gone the auth token is revoked, so any subsequent Firestore
     // writes fail security rules silently and the user's docs (profile,
@@ -156,33 +160,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // per-doc clip/video failures are swallowed — so it is safe to retry
     // after an auth/requires-recent-login bounce.
     try {
-      await deleteUserData(activeProfile.uid, activeProfile.username);
+      await deleteUserData(uid, username);
     } catch (firestoreErr) {
       logger.error("delete_account_firestore_failed", {
-        uid: activeProfile.uid,
-        username: activeProfile.username,
+        uid,
+        username,
+        code: getErrorCode(firestoreErr),
         error: firestoreErr instanceof Error ? firestoreErr.message : String(firestoreErr),
       });
       captureException(firestoreErr, {
         extra: {
           context: "deleteUserData before auth deletion — account preserved for retry",
-          uid: activeProfile.uid,
-          username: activeProfile.username,
+          uid,
+          username,
         },
       });
       throw firestoreErr;
     }
-    logger.info("delete_account_firestore_done", { uid: activeProfile.uid });
+    logger.info("delete_account_firestore_done", { uid });
     try {
       await deleteAccount();
     } catch (err) {
       const code = getErrorCode(err);
-      logger.error("delete_account_auth_failed", { uid: activeProfile.uid, code });
+      logger.error("delete_account_auth_failed", { uid, code });
+      // Firestore was wiped but auth is still alive — the "reverse orphan"
+      // state. Alert Sentry on every variant so operators can detect users
+      // stranded mid-deletion, including the expected requires-recent-login
+      // bounce (harmless on its own, but a spike signals the reauth UX is
+      // failing to funnel users back through the retry).
+      captureException(err, {
+        extra: {
+          context: "deleteAccount after Firestore wipe — data deleted, auth alive",
+          uid,
+          username,
+          code,
+        },
+      });
       if (code === "auth/requires-recent-login") {
-        // Firestore is already wiped at this point. The user needs to
-        // sign out, sign back in, and re-trigger the flow: deleteUserData
-        // will be a no-op on the already-empty data and the auth delete
-        // will then succeed.
+        // The user needs to sign out, sign back in, and re-trigger the flow:
+        // deleteUserData will be a no-op on the already-empty data and the
+        // auth delete will then succeed.
         throw new Error(
           "For security, please sign out and sign back in, then tap Delete Account again to finish removing your account.",
           { cause: err },
@@ -190,8 +207,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       throw err;
     }
-    logger.info("delete_account_auth_done", { uid: activeProfile.uid });
-    metrics.accountDeleted(activeProfile.uid);
+    logger.info("delete_account_auth_done", { uid });
+    metrics.accountDeleted(uid);
     setActiveProfile(null);
   }, [activeProfile]);
 
