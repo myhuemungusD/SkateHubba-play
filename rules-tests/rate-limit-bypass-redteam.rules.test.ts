@@ -85,14 +85,17 @@ function makeUserUpdate(overrides: Record<string, unknown> = {}): Record<string,
 
 function makeUserCreate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   // Mirrors the shape written by src/services/users.ts#createProfile — the
-  // canonical create-time payload. Extra fields are layered on by callers
-  // to exercise specific rule branches.
+  // canonical create-time payload. Sensitive fields (emailVerified, dob,
+  // parentalConsent, fcmTokens) live on users/{uid}/private/profile after
+  // the April 2026 split and are forbidden at the top level; keeping this
+  // helper aligned with the real write path ensures the "attack" assertions
+  // below fail for the intended reason (the cooldown-anchor guard) rather
+  // than coincidentally hitting the sensitive-field block.
   return {
     uid: OWNER_UID,
     username: "alice",
     stance: "regular",
-    dob: "2000-01-01",
-    emailVerified: true,
+    createdAt: serverTimestamp(),
     ...overrides,
   };
 }
@@ -245,10 +248,16 @@ describe("users.lastSpotCreatedAt — red-team against stale-timestamp cooldown 
   });
 
   it("legitimate: a user update that doesn't touch lastSpotCreatedAt still works", async () => {
+    // Regression guard mirroring the lastGameCreatedAt variant above: the
+    // new constraint is gated on the field being written, so an unrelated
+    // profile update (wins++) must still pass even when lastSpotCreatedAt
+    // already exists on the stored doc. (fcmTokens would be rejected by
+    // the transitional users-doc-split guard — it lives on the private
+    // subcollection post-split, not the public doc.)
     await seedUser({ lastSpotCreatedAt: new Date(Date.now() - 60_000) });
     await assertSucceeds(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        fcmTokens: ["token-a"],
+        wins: 1,
       }),
     );
   });
