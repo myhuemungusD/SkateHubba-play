@@ -194,7 +194,7 @@ describe("Smoke: Account & Sign Out", () => {
     expect(mockDeleteAccount).not.toHaveBeenCalled();
   });
 
-  it("successful delete calls deleteAccount then deleteUserData and navigates to landing", async () => {
+  it("successful delete calls deleteUserData then deleteAccount and navigates to landing", async () => {
     mockDeleteUserData.mockResolvedValueOnce(undefined);
     // After deleteAccount resolves, make useAuth return no user (simulating Firebase sign-out)
     mockDeleteAccount.mockImplementationOnce(async () => {
@@ -218,29 +218,36 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(mockDeleteAccount).toHaveBeenCalled();
       expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
+      expect(mockDeleteAccount).toHaveBeenCalled();
+      // Data delete happens first — the auth-revoke must come after so the
+      // rules-gated Firestore deletes still have a valid ID token.
+      expect(mockDeleteUserData.mock.invocationCallOrder[0]).toBeLessThan(
+        mockDeleteAccount.mock.invocationCallOrder[0],
+      );
       // After deletion, app navigates to landing
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
   });
 
-  it("shows error when deleteAccount fails and does not call deleteUserData", async () => {
-    mockDeleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
+  it("shows error when deleteUserData fails and does NOT call deleteAccount", async () => {
+    mockDeleteUserData.mockRejectedValueOnce(new Error("Firestore deletion failed"));
     await renderLobby([]);
 
     await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(screen.getByText("Auth deletion failed")).toBeInTheDocument();
+      expect(screen.getByText("Firestore deletion failed")).toBeInTheDocument();
     });
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    // Auth account must remain intact so the user can retry data deletion.
+    expect(mockDeleteAccount).not.toHaveBeenCalled();
     // Modal stays open so user can retry
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
 
-  it("shows friendly message when deleteAccount requires recent login", async () => {
+  it("shows friendly message when deleteAccount requires recent login after data is already deleted", async () => {
+    mockDeleteUserData.mockResolvedValueOnce(undefined);
     const err = new Error("auth/requires-recent-login");
     (err as unknown as { code: string }).code = "auth/requires-recent-login";
     mockDeleteAccount.mockRejectedValueOnce(err);
@@ -250,8 +257,10 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
+      expect(screen.getByText(/Sign out and back in, then retry/)).toBeInTheDocument();
     });
+    // Data was deleted first — confirm this ordering even on the auth failure path
+    expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
     // Modal stays open
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });

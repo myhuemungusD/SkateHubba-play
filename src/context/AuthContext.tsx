@@ -147,36 +147,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     /* v8 ignore start -- null guard unreachable in tests; delete button hidden when profile is null */
     if (!activeProfile) return;
     /* v8 ignore stop */
-    logger.info("delete_account_start", { uid: activeProfile.uid, username: activeProfile.username });
+    const uid = activeProfile.uid;
+    const username = activeProfile.username;
+    logger.info("delete_account_start", { uid, username });
+    // Delete Firestore data BEFORE the Firebase Auth account. The auth delete
+    // revokes the user's ID token, which would make every subsequent
+    // rules-gated Firestore delete fail with permission-denied and silently
+    // orphan the user's data. If the data delete fails here, the auth
+    // account is still intact so the user can retry.
+    try {
+      await deleteUserData(uid, username);
+      logger.info("delete_account_firestore_done", { uid });
+    } catch (firestoreErr) {
+      logger.error("delete_account_firestore_failed", {
+        uid,
+        username,
+        error: firestoreErr instanceof Error ? firestoreErr.message : String(firestoreErr),
+      });
+      captureException(firestoreErr, {
+        extra: { context: "deleteUserData before auth deletion", uid, username },
+      });
+      throw firestoreErr;
+    }
     try {
       await deleteAccount();
     } catch (err) {
       const code = getErrorCode(err);
-      logger.error("delete_account_auth_failed", { uid: activeProfile.uid, code });
+      logger.error("delete_account_auth_failed_after_data", { uid, code });
+      // Data is already gone. If auth-delete needs a recent login the user
+      // must re-authenticate to finish; surface a recoverable error rather
+      // than leaving the auth account permanently orphaned.
       if (code === "auth/requires-recent-login") {
-        throw new Error("For security, please sign out and sign back in before deleting your account.", { cause: err });
+        throw new Error("Your data was deleted. Sign out and back in, then retry to finish removing your account.", {
+          cause: err,
+        });
       }
+      captureException(err, {
+        extra: { context: "deleteAccount after data deletion — auth orphaned", uid },
+      });
       throw err;
     }
-    logger.info("delete_account_auth_done", { uid: activeProfile.uid });
-    try {
-      await deleteUserData(activeProfile.uid, activeProfile.username);
-      logger.info("delete_account_firestore_done", { uid: activeProfile.uid });
-    } catch (firestoreErr) {
-      logger.error("delete_account_firestore_orphaned", {
-        uid: activeProfile.uid,
-        username: activeProfile.username,
-        error: firestoreErr instanceof Error ? firestoreErr.message : String(firestoreErr),
-      });
-      captureException(firestoreErr, {
-        extra: {
-          context: "deleteUserData after auth deletion — data orphaned",
-          uid: activeProfile.uid,
-          username: activeProfile.username,
-        },
-      });
-    }
-    metrics.accountDeleted(activeProfile.uid);
+    logger.info("delete_account_auth_done", { uid });
+    metrics.accountDeleted(uid);
     setActiveProfile(null);
   }, [activeProfile]);
 

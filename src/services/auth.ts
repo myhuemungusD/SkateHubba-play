@@ -227,7 +227,9 @@ export async function signInWithGoogle(): Promise<User | null> {
 /**
  * Permanently delete the currently signed-in Firebase Auth account.
  *
- * IMPORTANT: Call deleteUserData() from users.ts first to clean up Firestore.
+ * IMPORTANT: `deleteUserData()` from users.ts MUST be called first. Auth
+ * delete revokes the ID token, which would make every rules-gated Firestore
+ * delete that follows fail with permission-denied and orphan user data.
  * Firebase requires recent authentication; if this throws auth/requires-recent-login
  * the caller should sign the user out and ask them to re-authenticate.
  */
