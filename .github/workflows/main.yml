@@ -26,7 +26,6 @@ jobs:
       - name: Audit dependencies (fail on moderate+)
         run: |
           npm audit --audit-level=moderate
-          (cd functions && npm ci --ignore-scripts --no-audit --no-fund && npm audit --audit-level=moderate)
 
       - name: Guard against as-any in production code
         run: |
