@@ -21,14 +21,14 @@ SkateHubba is a **zero-backend single-page application (SPA)**. There is no cust
 | **Hosting**         | Vercel                                  | Auto-deploys from GitHub `main`; SPA rewrite to `index.html`                                                                                                             |
 | **Testing**         | Vitest 4 + Testing Library + Playwright | Unit/integration + E2E with Firebase emulators                                                                                                                           |
 | **Linting**         | ESLint 9 + Prettier 3.8                 | Husky + lint-staged pre-commit hooks                                                                                                                                     |
-| **Monitoring**      | Sentry (errors) + Vercel Analytics      | Optional via env vars                                                                                                                                                    |
+| **Monitoring**      | Sentry (errors) + Vercel Analytics + Vercel Speed Insights + PostHog (product analytics) | All optional via env vars; PostHog identifies users on auth and resets on sign-out                                                                      |
 | **CI/CD**           | GitHub Actions                          | Lint → type check → test w/ coverage → build → Lighthouse CI                                                                                                             |
 | **Cloud Functions** | None                                    | The `functions/` package has been removed. New code under any `functions/src/` path is rejected by the PR gate and requires explicit maintainer approval to re-introduce |
 | **Node**            | 22+                                     | Enforced via `engines` and `.nvmrc`                                                                                                                                      |
 
 ## Key Architectural Decisions
 
-- **URL routing via `react-router-dom` only.** `App.tsx` defines every `<Route>`; screen transitions go through `NavigationContext.setScreen`. No nested routers or lazy routes without discussion. Typical flow: `/` → `/age-gate` → `/auth` → `/lobby` → `/challenge` → `/play` → `/game-over`, with `/map`, `/spots/:id`, `/clips`, and `/profile/:uid` branching off the lobby.
+- **URL routing via `react-router-dom` only.** `App.tsx` defines every `<Route>`; screen transitions go through `NavigationContext.setScreen`. Non-critical screens (ChallengeScreen, GamePlayScreen, GameOverScreen, PlayerProfileScreen, MapPage, SpotDetailPage, Settings, legal pages, NotFound) are `lazy()`-imported and wrapped in `<Suspense>`; Landing/AuthScreen/ProfileSetup/Lobby are eager for first-paint. Typical flow: `/` → `/auth` → (`/profile` for post-Google fallback) → `/lobby` → `/challenge` → `/game` → `/gameover`, with `/map`, `/spots/:id`, `/player/:uid`, `/record`, and `/settings` branching off the lobby. Legal pages live at `/privacy`, `/terms`, `/data-deletion`; `/feed` redirects to `/lobby`; unknown paths fall through to `/404`. DOB + parental consent are collected inline on AuthScreen (COPPA/CCPA) — there is no standalone `/age-gate` route.
 - **No custom backend.** Business logic lives in Firestore security rules. Client-side validation is for UX only.
 - **No state-management or UI-component libraries.** React local state + hooks + context is sufficient; Tailwind utilities + custom components keep the bundle lean.
 - **Transactions for all game writes.** `runTransaction` ensures atomic read-then-write for game state transitions.
@@ -43,12 +43,14 @@ skatehubba-play/
 ├── src/
 │   ├── App.tsx              # Route table + auth guard + screen state machine
 │   ├── firebase.ts          # Conditional Firebase init + emulator support
-│   ├── services/            # All Firebase SDK calls (auth, users, games, spots, clips, storage)
+│   ├── services/            # All Firebase SDK calls — auth, users, userData, games, spots, clips,
+│   │                        # storage, nativeVideo, notifications, fcm, nudge, blocking, reports,
+│   │                        # analytics, haptics, sounds, logger
 │   ├── hooks/               # useAuth wraps onAuthStateChanged + profile fetch
 │   ├── components/          # UI components (Tailwind classes only)
 │   ├── screens/             # Full-page screen components
 │   ├── context/             # React context providers (Auth, Navigation, Game, Notification)
-│   ├── lib/                 # Utilities (Sentry, notification metadata, mapbox)
+│   ├── lib/                 # Utilities (Sentry, PostHog, consent, env validation, notification metadata, mapbox)
 │   ├── constants/           # Shared string/number constants
 │   ├── types/               # Cross-cutting TypeScript types (e.g. Spot)
 │   ├── utils/               # Pure helpers (no Firebase, no React)
