@@ -48,22 +48,27 @@ describe("safeParseEnv", () => {
     expect(safeParseEnv({ ...validEnv, VITE_USE_EMULATORS: "yes" })).toBeNull();
   });
 
-  it("treats VITE_APPCHECK_ENABLED=false as the disable kill-switch", () => {
-    const result = safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "false" });
+  it("defaults VITE_APPCHECK_ENABLED to false (opt-in)", () => {
+    // Opt-in default: App Check stays OFF unless the operator explicitly
+    // turns it on. Protects against the permission-denied lockout when
+    // Firebase Console enforcement is flipped without the reCAPTCHA
+    // allowlist being updated (Apr 22 incident).
+    const result = safeParseEnv(validEnv);
     expect(result?.VITE_APPCHECK_ENABLED).toBe(false);
   });
 
-  it("defaults VITE_APPCHECK_ENABLED to true when the var is absent", () => {
-    // Operator only flips this to false as a kill-switch. Any other value
-    // (missing, "true", anything else) must keep App Check enabled so the
-    // default security posture is protected.
-    const result = safeParseEnv(validEnv);
+  it("enables App Check when VITE_APPCHECK_ENABLED=true", () => {
+    const result = safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "true" });
     expect(result?.VITE_APPCHECK_ENABLED).toBe(true);
   });
 
-  it("treats any value other than 'false' as enabled", () => {
-    const result = safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "true" });
-    expect(result?.VITE_APPCHECK_ENABLED).toBe(true);
+  it("treats any value other than 'true' as disabled", () => {
+    // Explicit "false", typos, empty strings — all stay disabled so a
+    // copy-paste error in the Vercel env vars UI can't silently re-enable
+    // App Check in a broken state.
+    expect(safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "false" })?.VITE_APPCHECK_ENABLED).toBe(false);
+    expect(safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "yes" })?.VITE_APPCHECK_ENABLED).toBe(false);
+    expect(safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "" })?.VITE_APPCHECK_ENABLED).toBe(false);
   });
 
   it("accepts every optional var when provided with a valid string", () => {
