@@ -65,12 +65,15 @@ if (env) {
   // Firebase Console → App Check). In development the debug token is enabled
   // automatically so Firestore still works without a real reCAPTCHA key.
   //
-  // OPERATOR KILL-SWITCH: VITE_APPCHECK_ENABLED=false in Vercel → App Check
-  // init is skipped. Use when App Check enforcement is ON in Firebase Console
-  // but reCAPTCHA is failing to mint tokens (missing domain allowlist,
-  // incognito-hostile browser, etc.) and every Firestore read is coming back
-  // permission-denied. Redeploy takes ~30 s, no code change required. Flip
-  // it back to true once the reCAPTCHA config is fixed.
+  // ⚠️ OPT-IN DEFAULT ⚠️
+  // App Check is OFF by default. Set VITE_APPCHECK_ENABLED=true in Vercel to
+  // turn it on. This default exists because a Firebase Console enforcement
+  // toggle without a matching reCAPTCHA domain allowlist silently rejects
+  // every Firestore read with permission-denied and locks every signed-in
+  // user out of the app (this happened in the Apr 22 incident — see
+  // docs/PERMISSION_DENIED_RUNBOOK.md). Once the Firebase App Check metrics
+  // show a verified-request rate > 95 % for the skatehubba.com + www
+  // domains, flip the env var to re-enable.
   /* v8 ignore start */
   if (import.meta.env.DEV) {
     // Expose debug token so the App Check debug provider works locally.
@@ -79,13 +82,12 @@ if (env) {
   }
   /* v8 ignore stop */
   /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
-  const appCheckEnabled = env.VITE_APPCHECK_ENABLED !== false;
-  if (!appCheckEnabled) {
-    // Operator explicitly disabled App Check. Loud log so this shows up in
-    // Sentry breadcrumbs and dev consoles — if it's on in prod for more than
-    // a few hours, that's a regression on the security posture.
-    logger.warn("appcheck_disabled_by_env", { hint: "VITE_APPCHECK_ENABLED=false is a temporary kill-switch" });
-    captureMessage("App Check disabled by VITE_APPCHECK_ENABLED=false — temporary kill-switch is active", "warning");
+  if (!env.VITE_APPCHECK_ENABLED) {
+    // Default path — App Check is not enabled by default. Log once so
+    // operators know the opt-in flag is required to turn it back on.
+    logger.info("appcheck_skipped_opt_in_required", {
+      hint: "set VITE_APPCHECK_ENABLED=true + VITE_RECAPTCHA_SITE_KEY to enable",
+    });
   } else if (env.VITE_RECAPTCHA_SITE_KEY) {
     try {
       initializeAppCheck(app, {
@@ -102,19 +104,14 @@ if (env) {
         "error",
       );
     }
-  } else if (import.meta.env.PROD) {
-    // Hard fail in production — silently no-opting App Check leaves the app
-    // exposed to bots and abuse traffic with no signal that protection is off.
-    // Sentry capture preserves the historical telemetry signal for ops; the
-    // throw forces the deploy to surface the misconfiguration immediately.
-    logger.error("appcheck_disabled", { hint: "set VITE_RECAPTCHA_SITE_KEY to protect against API abuse" });
-    captureMessage("App Check disabled in production — set VITE_RECAPTCHA_SITE_KEY", "error");
-    throw new Error(
-      "App Check is required in production — set VITE_RECAPTCHA_SITE_KEY (reCAPTCHA v3 site key from Firebase Console → App Check), or set VITE_APPCHECK_ENABLED=false as a temporary kill-switch",
-    );
   } else {
-    // Dev/emulator without a key: warn but continue so local development isn't blocked.
-    logger.warn("appcheck_disabled", { hint: "set VITE_RECAPTCHA_SITE_KEY to protect against API abuse" });
+    // Operator set VITE_APPCHECK_ENABLED=true but forgot the site key — log
+    // loudly in every environment so the misconfiguration surfaces before
+    // the first Firestore call silently fails.
+    logger.error("appcheck_enabled_but_no_site_key", {
+      hint: "VITE_APPCHECK_ENABLED=true requires VITE_RECAPTCHA_SITE_KEY",
+    });
+    captureMessage("App Check opt-in is set but VITE_RECAPTCHA_SITE_KEY is missing — init skipped", "error");
   }
   /* v8 ignore stop */
 
