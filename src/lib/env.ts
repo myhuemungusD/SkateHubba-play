@@ -31,6 +31,15 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v && v.length > 0 ? v : undefined)),
+  // Operator kill-switch for App Check. Set to "false" in Vercel to skip
+  // initializeAppCheck() entirely without a code change — use when
+  // reCAPTCHA / App Check enforcement is misconfigured and blocking every
+  // Firestore read with permission-denied. Default (undefined / any other
+  // value) keeps App Check enabled.
+  VITE_APPCHECK_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v !== "false"),
 
   // ── Optional: third-party integrations ──────────────────────────────
   VITE_MAPBOX_TOKEN: z.string().optional(),
