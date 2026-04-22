@@ -156,4 +156,19 @@ describe("firebase module", () => {
     const mod = await import("../firebase");
     expect(mod.requireStorage()).toBeDefined();
   });
+
+  it("exposes the named Firestore DB and an App Check init probe", async () => {
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+
+    const mod = await import("../firebase");
+    expect(mod.FIRESTORE_DB_NAME).toBe("skatehubba");
+    // initializeFirestore must be called with the named DB constant so the
+    // value reported to Sentry on permission-denied always matches the value
+    // the SDK actually queries.
+    expect(mockInitializeFirestore).toHaveBeenCalledWith(expect.anything(), expect.anything(), "skatehubba");
+    // App Check init is gated on VITE_APPCHECK_ENABLED which is unset in the
+    // Vitest env, so the probe must report false on this happy-path init.
+    expect(mod.isAppCheckInitialized()).toBe(false);
+  });
 });
