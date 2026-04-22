@@ -119,11 +119,12 @@ export function ProfileSetup({
     setCheckingExisting(true);
     setFetchFailed(false);
     // Use the auth-bootstrap variant so a fresh permission-denied caused
-    // by the auth-token propagation race gets retried once before we
-    // surface the error banner. When the live currentUser matches this
-    // screen's uid we can hand the User to getUserProfileOnAuth for the
-    // retry protection; otherwise (tests, edge cases) fall back to the
-    // plain getUserProfile which still covers the happy path.
+    // by the auth-token propagation race is retried with a token force-refresh
+    // across a ~10.5s budget before we surface the error banner. When the
+    // live currentUser matches this screen's uid we can hand the User to
+    // getUserProfileOnAuth for the retry protection; otherwise (tests, edge
+    // cases) fall back to the plain getUserProfile which still covers the
+    // happy path.
     const currentUser = firebaseAuth?.currentUser;
     const lookup = currentUser && currentUser.uid === uid ? getUserProfileOnAuth(currentUser) : getUserProfile(uid);
     lookup

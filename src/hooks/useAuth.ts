@@ -64,12 +64,14 @@ export function useAuth(): AuthState {
           // returning users were then falsely routed to /profile and asked to
           // re-register because their profile appeared missing.
           /* v8 ignore start -- safety timeout; can't trigger in unit tests without 20s delay */
-          // getUserProfileOnAuth wraps the plain getUserProfile call with a
-          // one-shot permission-denied retry to cover the auth-token
-          // propagation race — onAuthStateChanged can fire a few hundred
-          // milliseconds before Firestore has absorbed the fresh ID token,
-          // at which point the first read throws and we'd wrongly treat
-          // the user as profile-less.
+          // getUserProfileOnAuth wraps getUserProfile with a token force-refresh
+          // and a permission-denied retry budget (~10.5s cumulative) to cover
+          // the auth-token propagation race: onAuthStateChanged can fire a few
+          // hundred milliseconds before Firestore has absorbed the fresh ID
+          // token, at which point the first read throws permission-denied and
+          // we'd wrongly treat the user as profile-less. The 20s outer cap
+          // below still applies — if the retry budget + network time exceed
+          // it, ProfileSetup's own retry UI picks up where we left off.
           const p = await Promise.race([
             getUserProfileOnAuth(u),
             new Promise<null>((r) => setTimeout(() => r(null), 20_000)),
