@@ -1,4 +1,4 @@
-import { addDoc, collection, serverTimestamp, query, where, getDocs } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -64,28 +64,5 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
       error: parseFirebaseError(err),
     });
     throw new Error("Failed to submit report. Please try again.");
-  }
-}
-
-/**
- * Check whether the current user has already reported a specific game.
- * Used client-side to disable the report button after submission.
- */
-export async function hasReportedGame(reporterUid: string, gameId: string): Promise<boolean> {
-  try {
-    const q = query(
-      collection(requireDb(), "reports"),
-      where("reporterUid", "==", reporterUid),
-      where("gameId", "==", gameId),
-    );
-    const snap = await getDocs(q);
-    return !snap.empty;
-  } catch (err) {
-    logger.warn("report_check_failed", {
-      reporterUid,
-      gameId,
-      error: parseFirebaseError(err),
-    });
-    return false;
   }
 }

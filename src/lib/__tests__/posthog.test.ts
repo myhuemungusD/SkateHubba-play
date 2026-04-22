@@ -23,16 +23,14 @@ describe("posthog wrapper", () => {
   });
 
   it("no-ops every helper before initPosthog resolves", async () => {
-    const { captureEvent, identify, resetIdentity, registerProperty } = await import("../posthog");
+    const { captureEvent, identify, resetIdentity } = await import("../posthog");
     // None of these may touch the real SDK until initPosthog loaded it.
     captureEvent("boot_event", { x: 1 });
     identify("u1", { username: "alice" });
     resetIdentity();
-    registerProperty("app_version", "1.0.0");
     expect(posthogInstance.capture).not.toHaveBeenCalled();
     expect(posthogInstance.identify).not.toHaveBeenCalled();
     expect(posthogInstance.reset).not.toHaveBeenCalled();
-    expect(posthogInstance.register).not.toHaveBeenCalled();
   });
 
   it("initPosthog dynamically loads the SDK and forwards the API key", async () => {
@@ -90,12 +88,5 @@ describe("posthog wrapper", () => {
     await initPosthog({ apiKey: "phc_test" });
     resetIdentity();
     expect(posthogInstance.reset).toHaveBeenCalledTimes(1);
-  });
-
-  it("registerProperty forwards to SDK.register as a single-key object", async () => {
-    const { initPosthog, registerProperty } = await import("../posthog");
-    await initPosthog({ apiKey: "phc_test" });
-    registerProperty("cohort", "beta");
-    expect(posthogInstance.register).toHaveBeenCalledWith({ cohort: "beta" });
   });
 });

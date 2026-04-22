@@ -2,22 +2,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockAddDoc = vi.fn().mockResolvedValue({ id: "report1" });
 const mockCollection = vi.fn((...args: unknown[]) => args[1]);
-const mockGetDocs = vi.fn().mockResolvedValue({ empty: true });
-const mockQuery = vi.fn((...args: unknown[]) => args);
-const mockWhere = vi.fn((...args: unknown[]) => args);
 
 vi.mock("firebase/firestore", () => ({
   addDoc: (...args: unknown[]) => mockAddDoc(...args),
   collection: (...args: unknown[]) => mockCollection(...args),
-  getDocs: (...args: unknown[]) => mockGetDocs(...args),
-  query: (...args: unknown[]) => mockQuery(...args),
-  where: (...args: unknown[]) => mockWhere(...args),
   serverTimestamp: () => "SERVER_TS",
 }));
 
 vi.mock("../../firebase");
 
-import { submitReport, hasReportedGame } from "../reports";
+import { submitReport } from "../reports";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -92,27 +86,5 @@ describe("submitReport", () => {
     await submitReport({ ...validParams, clipId: "" });
     const docData = mockAddDoc.mock.calls[0][1];
     expect(docData).not.toHaveProperty("clipId");
-  });
-});
-
-describe("hasReportedGame", () => {
-  it("returns false when no existing report", async () => {
-    mockGetDocs.mockResolvedValueOnce({ empty: true });
-    const result = await hasReportedGame("user1", "game1");
-    expect(result).toBe(false);
-    expect(mockQuery).toHaveBeenCalledTimes(1);
-    expect(mockWhere).toHaveBeenCalledTimes(2);
-  });
-
-  it("returns true when a report already exists", async () => {
-    mockGetDocs.mockResolvedValueOnce({ empty: false });
-    const result = await hasReportedGame("user1", "game1");
-    expect(result).toBe(true);
-  });
-
-  it("returns false on Firestore error", async () => {
-    mockGetDocs.mockRejectedValueOnce(new Error("Network error"));
-    const result = await hasReportedGame("user1", "game1");
-    expect(result).toBe(false);
   });
 });
