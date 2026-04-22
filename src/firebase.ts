@@ -64,6 +64,13 @@ if (env) {
   // Requires VITE_RECAPTCHA_SITE_KEY to be set (reCAPTCHA v3 site key from
   // Firebase Console → App Check). In development the debug token is enabled
   // automatically so Firestore still works without a real reCAPTCHA key.
+  //
+  // OPERATOR KILL-SWITCH: VITE_APPCHECK_ENABLED=false in Vercel → App Check
+  // init is skipped. Use when App Check enforcement is ON in Firebase Console
+  // but reCAPTCHA is failing to mint tokens (missing domain allowlist,
+  // incognito-hostile browser, etc.) and every Firestore read is coming back
+  // permission-denied. Redeploy takes ~30 s, no code change required. Flip
+  // it back to true once the reCAPTCHA config is fixed.
   /* v8 ignore start */
   if (import.meta.env.DEV) {
     // Expose debug token so the App Check debug provider works locally.
@@ -72,7 +79,14 @@ if (env) {
   }
   /* v8 ignore stop */
   /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
-  if (env.VITE_RECAPTCHA_SITE_KEY) {
+  const appCheckEnabled = env.VITE_APPCHECK_ENABLED !== false;
+  if (!appCheckEnabled) {
+    // Operator explicitly disabled App Check. Loud log so this shows up in
+    // Sentry breadcrumbs and dev consoles — if it's on in prod for more than
+    // a few hours, that's a regression on the security posture.
+    logger.warn("appcheck_disabled_by_env", { hint: "VITE_APPCHECK_ENABLED=false is a temporary kill-switch" });
+    captureMessage("App Check disabled by VITE_APPCHECK_ENABLED=false — temporary kill-switch is active", "warning");
+  } else if (env.VITE_RECAPTCHA_SITE_KEY) {
     try {
       initializeAppCheck(app, {
         provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
@@ -96,7 +110,7 @@ if (env) {
     logger.error("appcheck_disabled", { hint: "set VITE_RECAPTCHA_SITE_KEY to protect against API abuse" });
     captureMessage("App Check disabled in production — set VITE_RECAPTCHA_SITE_KEY", "error");
     throw new Error(
-      "App Check is required in production — set VITE_RECAPTCHA_SITE_KEY (reCAPTCHA v3 site key from Firebase Console → App Check)",
+      "App Check is required in production — set VITE_RECAPTCHA_SITE_KEY (reCAPTCHA v3 site key from Firebase Console → App Check), or set VITE_APPCHECK_ENABLED=false as a temporary kill-switch",
     );
   } else {
     // Dev/emulator without a key: warn but continue so local development isn't blocked.

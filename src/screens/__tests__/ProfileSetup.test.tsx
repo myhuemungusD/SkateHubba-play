@@ -314,6 +314,24 @@ describe("ProfileSetup", () => {
 
     await waitFor(() => expect(screen.getByText(/Couldn't load your profile/)).toBeInTheDocument());
     expect(screen.getByText(/permission-denied/)).toBeInTheDocument();
+    // Also surfaces the uid so operators can correlate with Firebase console.
+    expect(screen.getByText(/u1/)).toBeInTheDocument();
+  });
+
+  it("flags permission-denied as an App Check / reCAPTCHA backend issue", async () => {
+    // The generic "transient network hiccup" copy is wrong for
+    // permission-denied — that's always a backend rule / App Check / DB
+    // rejection the user can't retry their way out of. The special-cased
+    // copy tells them what to actually do (try non-Incognito, contact
+    // support) instead of hammering Retry for ten minutes.
+    const err = Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
+    mockGetUserProfile.mockRejectedValue(err);
+
+    render(<ProfileSetup {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText(/App Check \/ reCAPTCHA configuration issue/i)).toBeInTheDocument());
+    // Generic network copy is suppressed in the permission-denied branch.
+    expect(screen.queryByText(/transient network hiccup/i)).not.toBeInTheDocument();
   });
 
   it("retries the existing-profile lookup when the user taps Retry", async () => {
