@@ -33,7 +33,7 @@ vi.mock("@capacitor/camera", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
-import { isNativePlatform, recordNativeVideo, checkNativeCameraPermissions } from "../nativeVideo";
+import { isNativePlatform, recordNativeVideo } from "../nativeVideo";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -96,48 +96,6 @@ describe("nativeVideo service", () => {
       mockGetPhoto.mockRejectedValue(new Error("User cancelled"));
 
       await expect(recordNativeVideo()).rejects.toThrow("User cancelled");
-    });
-  });
-
-  describe("checkNativeCameraPermissions", () => {
-    it("returns true on web without checking permissions", async () => {
-      mockIsNativePlatform.mockReturnValue(false);
-
-      const granted = await checkNativeCameraPermissions();
-
-      expect(granted).toBe(true);
-      expect(mockCheckPermissions).not.toHaveBeenCalled();
-    });
-
-    it("returns true when camera permission is already granted", async () => {
-      mockIsNativePlatform.mockReturnValue(true);
-      mockCheckPermissions.mockResolvedValue({ camera: "granted" });
-
-      const granted = await checkNativeCameraPermissions();
-
-      expect(granted).toBe(true);
-      expect(mockRequestPermissions).not.toHaveBeenCalled();
-    });
-
-    it("requests permission and returns true when granted", async () => {
-      mockIsNativePlatform.mockReturnValue(true);
-      mockCheckPermissions.mockResolvedValue({ camera: "denied" });
-      mockRequestPermissions.mockResolvedValue({ camera: "granted" });
-
-      const granted = await checkNativeCameraPermissions();
-
-      expect(granted).toBe(true);
-      expect(mockRequestPermissions).toHaveBeenCalledWith({ permissions: ["camera"] });
-    });
-
-    it("requests permission and returns false when denied", async () => {
-      mockIsNativePlatform.mockReturnValue(true);
-      mockCheckPermissions.mockResolvedValue({ camera: "denied" });
-      mockRequestPermissions.mockResolvedValue({ camera: "denied" });
-
-      const granted = await checkNativeCameraPermissions();
-
-      expect(granted).toBe(false);
     });
   });
 });

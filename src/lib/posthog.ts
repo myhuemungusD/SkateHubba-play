@@ -75,8 +75,3 @@ export function identify(distinctId: string, properties?: Record<string, unknown
 export function resetIdentity(): void {
   sdk?.reset();
 }
-
-/** Register a property on every subsequent event (e.g. app version). */
-export function registerProperty(key: string, value: unknown): void {
-  sdk?.register({ [key]: value });
-}

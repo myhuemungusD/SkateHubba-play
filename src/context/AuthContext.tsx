@@ -46,7 +46,6 @@ function clearPendingDeleteUid(): void {
 export interface AuthContextValue {
   loading: boolean;
   user: ReturnType<typeof useAuth>["user"];
-  profile: UserProfile | null;
   activeProfile: UserProfile | null;
   setActiveProfile: (p: UserProfile | null) => void;
   refreshProfile: () => Promise<void>;
@@ -375,7 +374,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value: AuthContextValue = {
     loading,
     user,
-    profile,
     activeProfile,
     setActiveProfile,
     refreshProfile,

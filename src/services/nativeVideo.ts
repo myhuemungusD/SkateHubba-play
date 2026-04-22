@@ -55,19 +55,3 @@ export async function recordNativeVideo(): Promise<NativeVideoResult> {
 
   return { blob, mimeType };
 }
-
-/**
- * Check (and request if needed) camera + microphone permissions on native.
- *
- * Returns true if permissions are granted, false otherwise.
- * On the web this always returns true (permissions are handled by getUserMedia).
- */
-export async function checkNativeCameraPermissions(): Promise<boolean> {
-  if (!isNativePlatform()) return true;
-
-  const status = await Camera.checkPermissions();
-  if (status.camera === "granted") return true;
-
-  const requested = await Camera.requestPermissions({ permissions: ["camera"] });
-  return requested.camera === "granted";
-}

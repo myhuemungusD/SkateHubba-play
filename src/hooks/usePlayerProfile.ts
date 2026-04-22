@@ -4,7 +4,7 @@ import { fetchPlayerCompletedGames, type GameDoc } from "../services/games";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
 
-export interface PlayerProfileState {
+interface PlayerProfileState {
   profile: UserProfile | null;
   games: GameDoc[];
   loading: boolean;

@@ -88,25 +88,11 @@ export const PRIVATE_PROFILE_DOC_ID = "profile" as const;
 
 /**
  * Get user profile by UID. Returns the PUBLIC profile doc — readable
- * by any signed-in user for opponent lookup. Use {@link
- * getUserPrivateProfile} to read the owner-only private doc.
+ * by any signed-in user for opponent lookup.
  */
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   const snap = await withRetry(() => getDoc(doc(requireDb(), "users", uid)));
   return snap.exists() ? (snap.data() as UserProfile) : null;
-}
-
-/**
- * Get the owner-only private profile doc at
- * `users/{uid}/private/profile`. Must be called while authenticated
- * as `uid` — any other caller is denied by Firestore rules.
- *
- * Returns null when the doc doesn't exist (e.g. pre-migration users
- * whose private fields haven't been backfilled).
- */
-export async function getUserPrivateProfile(uid: string): Promise<UserPrivateProfile | null> {
-  const snap = await withRetry(() => getDoc(doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID)));
-  return snap.exists() ? (snap.data() as UserPrivateProfile) : null;
 }
 
 /** Username constraints — shared between validation, creation, and UI. */

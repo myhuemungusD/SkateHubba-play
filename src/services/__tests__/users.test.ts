@@ -70,7 +70,6 @@ vi.mock("../clips", () => ({
 
 import {
   getUserProfile,
-  getUserPrivateProfile,
   isUsernameAvailable,
   createProfile,
   getUidByUsername,
@@ -96,23 +95,6 @@ describe("users service", () => {
     it("returns null when document doesn't exist", async () => {
       mockGetDoc.mockResolvedValueOnce({ exists: () => false });
       const result = await getUserProfile("u1");
-      expect(result).toBeNull();
-    });
-  });
-
-  describe("getUserPrivateProfile", () => {
-    it("returns private profile data when document exists", async () => {
-      const priv = { emailVerified: true, dob: "2000-01-15", fcmTokens: ["t1"] };
-      mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => priv });
-      const result = await getUserPrivateProfile("u1");
-      expect(result).toEqual(priv);
-      // Targets the owner-only subcollection path, not the public user doc.
-      expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "users", "u1", "private", "profile");
-    });
-
-    it("returns null when private document doesn't exist", async () => {
-      mockGetDoc.mockResolvedValueOnce({ exists: () => false });
-      const result = await getUserPrivateProfile("u1");
       expect(result).toBeNull();
     });
   });
