@@ -25,6 +25,9 @@ vi.mock("../../services/auth", () => ({
 vi.mock("../../services/users", () => ({
   deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
 }));
+vi.mock("../../services/fcm", () => ({
+  removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("../../services/userData", () => ({
   exportUserData: vi.fn(),
   serializeUserData: vi.fn(() => "{}"),

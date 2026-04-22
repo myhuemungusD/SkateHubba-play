@@ -30,7 +30,14 @@ vi.mock("../../firebase");
 
 /* ── tests ───────────────────────────────────── */
 
-import { requestPushPermission, removeFcmToken, onForegroundMessage, _resetSwRegistration } from "../fcm";
+import {
+  requestPushPermission,
+  removeFcmToken,
+  removeCurrentFcmToken,
+  onForegroundMessage,
+  _resetSwRegistration,
+  _resetActiveFcmToken,
+} from "../fcm";
 
 // jsdom doesn't provide Notification — stub it globally for these tests
 const mockRequestPermission = vi.fn<[], Promise<NotificationPermission>>();
@@ -39,6 +46,7 @@ const originalNotification = globalThis.Notification;
 beforeEach(() => {
   vi.clearAllMocks();
   _resetSwRegistration();
+  _resetActiveFcmToken();
   vi.stubEnv("VITE_FIREBASE_VAPID_KEY", "test-vapid-key");
 
   // Provide a minimal Notification stub
@@ -147,6 +155,44 @@ describe("removeFcmToken", () => {
   it("does not throw on error", async () => {
     mockSetDoc.mockRejectedValueOnce(new Error("fail"));
     await expect(removeFcmToken("u1", "tok")).resolves.toBeUndefined();
+  });
+});
+
+describe("removeCurrentFcmToken", () => {
+  it("is a no-op when no token has been registered this session", async () => {
+    await removeCurrentFcmToken("u1");
+    expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+
+  it("removes the token captured by requestPushPermission and clears the cache", async () => {
+    // 1. Register a token so the cache is populated.
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockResolvedValue("device-token-xyz");
+    await requestPushPermission("u1");
+    // arrayUnion write from requestPushPermission
+    expect(mockSetDoc).toHaveBeenCalledTimes(1);
+
+    // 2. Sign-out scrub removes exactly that token on the subcollection.
+    await removeCurrentFcmToken("u1");
+    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+    expect(mockSetDoc).toHaveBeenLastCalledWith(
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayRemove", value: "device-token-xyz" } },
+      { merge: true },
+    );
+
+    // 3. Second call is a no-op — cache was cleared by the successful remove.
+    await removeCurrentFcmToken("u1");
+    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not throw when the remove write fails", async () => {
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockResolvedValue("device-token-xyz");
+    await requestPushPermission("u1");
+
+    mockSetDoc.mockRejectedValueOnce(new Error("network fail"));
+    await expect(removeCurrentFcmToken("u1")).resolves.toBeUndefined();
   });
 });
 
