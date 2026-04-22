@@ -11,20 +11,26 @@ Firestore rule is literally `allow read: if isSignedIn();` (see `firestore.rules
 they're getting `permission-denied` anyway, one of the four causes below is the
 culprit.
 
-## 0. Immediate mitigation (≤ 1 minute)
+## 0. Current default — App Check is OFF
 
-If it's actively breaking signups and you need a working app RIGHT NOW:
+As of the Apr 22 incident, App Check is **opt-in**: `src/firebase.ts` only calls
+`initializeAppCheck()` when `VITE_APPCHECK_ENABLED=true` is set in the Vercel
+environment. Default builds skip App Check entirely — users can sign in without
+the client ever minting an App Check token.
 
-1. Vercel Dashboard → the `play` project → **Settings → Environment Variables**.
-2. Add `VITE_APPCHECK_ENABLED` = `false` to the **Production** scope.
-3. Save → **Redeploy** (Deployments → latest → ⋮ → Redeploy).
-4. Wait ~30 s. Test sign-in.
+**If sign-in is still broken despite App Check being off client-side**, Firebase
+Console's server-side enforcement is likely rejecting requests that arrive
+without an App Check header. Firebase Console → App Check → APIs → Cloud
+Firestore → flip **Enforcement** to **Unenforced**. (Re-enforce only after
+turning client-side App Check back on AND verifying the reCAPTCHA allowlist.)
 
-This is the **operator kill-switch** — it tells `src/firebase.ts` to skip
-`initializeAppCheck()` entirely. Sign-in will work immediately IF App Check is the
-blocker. Leave this on only as long as needed; it weakens abuse protection.
+**To turn App Check back on** once reCAPTCHA + enforcement are verified healthy:
 
-Flip it back to `true` (or delete the var) once the root cause below is fixed.
+1. Vercel Dashboard → `play` project → **Settings → Environment Variables**.
+2. Set `VITE_APPCHECK_ENABLED=true` (plus a valid `VITE_RECAPTCHA_SITE_KEY`) in the
+   **Production** scope.
+3. Redeploy. Watch the App Check "verified requests" metric — it should climb to
+   > 95 % before Firestore enforcement is flipped back on.
 
 ## 1. App Check enforcement vs. reCAPTCHA health
 
