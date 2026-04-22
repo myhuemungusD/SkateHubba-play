@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run typecheck && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test": "vitest run",
@@ -27,7 +27,7 @@
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
-    "verify": "tsc -b && npm run lint && npm run test:coverage && npm run build",
+    "verify": "npm run typecheck && npm run lint && npm run test:coverage && npm run build",
     "prepare": "husky"
   },
   "dependencies": {
