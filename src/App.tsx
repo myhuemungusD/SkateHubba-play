@@ -250,6 +250,7 @@ function AppRoutes() {
                     dob={nav.ageGateDob}
                     parentalConsent={nav.ageGateParentalConsent}
                     onNavLegal={nav.setScreen}
+                    onSignOut={auth.handleSignOut}
                     onDone={async (p) => {
                       auth.setActiveProfile(p);
                       nav.setScreen("lobby");

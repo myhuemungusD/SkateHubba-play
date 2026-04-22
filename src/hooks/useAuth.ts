@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { User } from "firebase/auth";
 import { onAuthChange, reloadUser } from "../services/auth";
-import { getUserProfile, type UserProfile } from "../services/users";
+import { getUserProfile, getUserProfileOnAuth, type UserProfile } from "../services/users";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { setUser as setSentryUser } from "../lib/sentry";
@@ -64,8 +64,14 @@ export function useAuth(): AuthState {
           // returning users were then falsely routed to /profile and asked to
           // re-register because their profile appeared missing.
           /* v8 ignore start -- safety timeout; can't trigger in unit tests without 20s delay */
+          // getUserProfileOnAuth wraps the plain getUserProfile call with a
+          // one-shot permission-denied retry to cover the auth-token
+          // propagation race — onAuthStateChanged can fire a few hundred
+          // milliseconds before Firestore has absorbed the fresh ID token,
+          // at which point the first read throws and we'd wrongly treat
+          // the user as profile-less.
           const p = await Promise.race([
-            getUserProfile(u.uid),
+            getUserProfileOnAuth(u.uid),
             new Promise<null>((r) => setTimeout(() => r(null), 20_000)),
           ]);
           /* v8 ignore stop */

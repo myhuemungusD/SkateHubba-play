@@ -18,6 +18,9 @@ vi.mock("../../services/auth", () => ({
 const mockGetUserProfile = vi.fn();
 vi.mock("../../services/users", () => ({
   getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
+  // The auth-bootstrap variant shares the same spy so existing tests that
+  // drive the initial sign-in path keep working without extra setup.
+  getUserProfileOnAuth: (uid: string) => mockGetUserProfile(uid),
 }));
 
 import { useAuth } from "../useAuth";

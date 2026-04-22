@@ -59,6 +59,11 @@ vi.mock("../services/users", () => {
     getPlayerDirectory: vi.fn().mockResolvedValue([]),
     getLeaderboard: vi.fn().mockResolvedValue([]),
     getUserProfile: vi.fn().mockResolvedValue(null),
+    // Auth-bootstrap variant used by ProfileSetup to cover the Firestore
+    // auth-token propagation race. Same no-existing-profile default so
+    // new-user flows still render the form; takes a uid like the real
+    // service since January 2026's services-layer cleanup.
+    getUserProfileOnAuth: vi.fn().mockResolvedValue(null),
     updatePlayerStats: vi.fn().mockResolvedValue(undefined),
     // Shared validation constants imported by ProfileSetup.
     USERNAME_MIN: 3,

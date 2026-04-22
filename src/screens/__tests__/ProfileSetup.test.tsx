@@ -22,7 +22,11 @@ const { AgeVerificationRequiredError: MockAgeVerificationRequiredError } = vi.ho
 
 vi.mock("../../services/users", () => ({
   createProfile: (...args: unknown[]) => mockCreateProfile(...args),
-  getUserProfile: (...args: unknown[]) => mockGetUserProfile(...args),
+  // ProfileSetup now calls getUserProfileOnAuth(uid) directly — the
+  // services layer resolves currentUser from the auth singleton itself,
+  // so screens don't reach into firebase.ts. The mock just routes to
+  // the shared spy.
+  getUserProfileOnAuth: (uid: string) => mockGetUserProfile(uid),
   isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
   AgeVerificationRequiredError: MockAgeVerificationRequiredError,
   // ProfileSetup imports these shared validation constants — mirror the
@@ -299,6 +303,19 @@ describe("ProfileSetup", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
+  it("surfaces the Firestore error code on the retry screen for diagnostics", async () => {
+    // Without surfacing the error, a user stuck on Retry has no clue
+    // whether it's App Check, a network failure, or a token race. The
+    // code tells us what to look at.
+    const err = Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
+    mockGetUserProfile.mockRejectedValue(err);
+
+    render(<ProfileSetup {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText(/Couldn't load your profile/)).toBeInTheDocument());
+    expect(screen.getByText(/permission-denied/)).toBeInTheDocument();
+  });
+
   it("retries the existing-profile lookup when the user taps Retry", async () => {
     const onDone = vi.fn();
     const existingProfile = { uid: "u1", username: "returninguser", stance: "Goofy" };
@@ -312,6 +329,21 @@ describe("ProfileSetup", () => {
 
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(existingProfile));
     expect(mockGetUserProfile).toHaveBeenCalledTimes(2);
+  });
+
+  it("offers a Sign out escape hatch on the retry screen when onSignOut is wired", async () => {
+    // If the profile lookup keeps failing the user must be able to get back
+    // to the landing page — otherwise they're trapped with a dead Retry
+    // button. App.tsx wires onSignOut to the auth handler.
+    mockGetUserProfile.mockRejectedValue(new Error("Network error"));
+    const onSignOut = vi.fn();
+
+    render(<ProfileSetup {...defaultProps} onSignOut={onSignOut} />);
+
+    await waitFor(() => expect(screen.getByText(/Couldn't load your profile/)).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(onSignOut).toHaveBeenCalledTimes(1);
   });
 
   it("surfaces an inline message when the service rejects for missing DOB", async () => {

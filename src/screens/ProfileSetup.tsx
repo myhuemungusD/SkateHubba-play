@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import {
   AgeVerificationRequiredError,
   createProfile,
-  getUserProfile,
+  getUserProfileOnAuth,
   USERNAME_MAX,
   USERNAME_MIN,
   USERNAME_RE,
@@ -50,6 +50,7 @@ export function ProfileSetup({
   emailVerified = false,
   displayName,
   onDone,
+  onSignOut,
   dob,
   parentalConsent,
   onNavLegal,
@@ -58,6 +59,9 @@ export function ProfileSetup({
   emailVerified?: boolean;
   displayName?: string | null;
   onDone: (p: UserProfile) => void;
+  /** Escape hatch for the retry screen — lets the user sign out when the
+   *  profile lookup keeps failing so they aren't trapped on this screen. */
+  onSignOut?: () => void;
   /** DOB collected earlier in the flow (email signup path). When null the form
    *  renders inline DOB inputs so Google-signup users can complete COPPA. */
   dob?: string | null;
@@ -77,6 +81,7 @@ export function ProfileSetup({
   // because their own existing reservation blocks them. Instead we surface a
   // retry affordance so the user can re-attempt the lookup.
   const [fetchFailed, setFetchFailed] = useState(false);
+  const [fetchErrorDetail, setFetchErrorDetail] = useState("");
   const [fetchAttempt, setFetchAttempt] = useState(0);
   // Inline DOB inputs — only shown when the upstream flow didn't provide a
   // DOB (Google signup skips AuthScreen, so we collect it here instead).
@@ -111,7 +116,12 @@ export function ProfileSetup({
     let cancelled = false;
     setCheckingExisting(true);
     setFetchFailed(false);
-    getUserProfile(uid)
+    // Use the auth-bootstrap variant so a fresh permission-denied caused
+    // by the auth-token propagation race gets retried once before we
+    // surface the error banner. The service layer resolves the live
+    // currentUser from the auth singleton itself — screens don't need
+    // to import firebase.ts directly.
+    getUserProfileOnAuth(uid)
       .then((existing) => {
         if (cancelled) return;
         if (existing) {
@@ -123,11 +133,14 @@ export function ProfileSetup({
       })
       .catch((err) => {
         if (cancelled) return;
-        logger.warn("profile_setup_existing_lookup_failed", {
-          uid,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        captureException(err, { extra: { context: "ProfileSetup.getUserProfile" } });
+        const code = (err as { code?: string })?.code ?? "";
+        const message = err instanceof Error ? err.message : String(err);
+        logger.warn("profile_setup_existing_lookup_failed", { uid, code, error: message });
+        captureException(err, { extra: { context: "ProfileSetup.getUserProfile", code } });
+        // Surface the Firestore error code (or fallback message) in the
+        // retry screen so operators can distinguish App Check failures
+        // from token races from plain network drops at a glance.
+        setFetchErrorDetail(code || message);
         setFetchFailed(true);
         setCheckingExisting(false);
       });
@@ -240,9 +253,19 @@ export function ProfileSetup({
           <h2 className="font-display text-3xl text-white mb-2">Couldn&apos;t load your profile</h2>
           <p className="font-body text-sm text-muted mb-6">
             Your account is signed in but we couldn&apos;t reach your profile. This is usually a transient network
-            hiccup — tap retry to try again.
+            hiccup — tap retry to try again. If it keeps happening, sign out and back in.
           </p>
+          {fetchErrorDetail && (
+            <p className="font-body text-xs text-faint mb-5 break-all">
+              Error: <span className="text-subtle">{fetchErrorDetail}</span>
+            </p>
+          )}
           <Btn onClick={() => setFetchAttempt((n) => n + 1)}>Retry</Btn>
+          {onSignOut && (
+            <Btn variant="ghost" onClick={onSignOut} className="mt-3">
+              Sign out
+            </Btn>
+          )}
         </div>
       </div>
     );

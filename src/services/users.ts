@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   type FieldValue,
 } from "firebase/firestore";
-import { requireDb } from "../firebase";
+import { requireAuth, requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips } from "./clips";
@@ -93,6 +93,73 @@ export const PRIVATE_PROFILE_DOC_ID = "profile" as const;
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   const snap = await withRetry(() => getDoc(doc(requireDb(), "users", uid)));
   return snap.exists() ? (snap.data() as UserProfile) : null;
+}
+
+/**
+ * Auth-bootstrap variant of {@link getUserProfile}. Firebase Auth fires
+ * onAuthStateChanged before the Firestore SDK has always finished
+ * propagating the ID token to its auth-state listener, so the very first
+ * getDoc on sign-in can return permission-denied even though the user is
+ * legitimately signed in. withRetry treats permission-denied as permanent
+ * (rightly — normal app code shouldn't retry authz failures), so the
+ * initial read throws and returning users get routed through
+ * ProfileSetup as if they had no profile.
+ *
+ * This wrapper force-refreshes the ID token and retries permission-denied
+ * across a longer window (~10 s cumulative) with exponential backoff.
+ * Each retry force-refreshes the token again so the Firestore SDK
+ * eventually observes an up-to-date auth header. The currentUser is
+ * resolved from the auth singleton here (not a caller prop) so screens
+ * never need to reach into `src/firebase.ts` directly — the services
+ * layer owns that boundary.
+ *
+ * When no matching signed-in user is available (uid mismatch, emulator
+ * edge cases) we fall back to a plain getUserProfile call — still
+ * correct, just without the retry protection.
+ *
+ * Every other caller should keep using {@link getUserProfile}.
+ */
+const AUTH_RETRY_DELAYS_MS = [1500, 3000, 6000] as const;
+
+export async function getUserProfileOnAuth(uid: string): Promise<UserProfile | null> {
+  const currentUser = requireAuth().currentUser;
+  if (!currentUser || currentUser.uid !== uid) {
+    // No live auth context for this uid — the retry logic has nothing
+    // useful to do. Fall back to the plain read.
+    return await getUserProfile(uid);
+  }
+
+  const tryFetch = async (forceRefreshToken: boolean): Promise<UserProfile | null> => {
+    try {
+      await currentUser.getIdToken(forceRefreshToken);
+    } catch {
+      // A failed token fetch is best-effort — we still attempt the read
+      // because the cached token may be usable.
+    }
+    return await getUserProfile(uid);
+  };
+
+  try {
+    return await tryFetch(false);
+  } catch (firstErr) {
+    const firstCode = (firstErr as { code?: string })?.code ?? "";
+    if (firstCode !== "permission-denied" && firstCode !== "unauthenticated") throw firstErr;
+    // Permission-denied on the first call is almost always the auth-token
+    // propagation race. Back off, force-refresh the ID token, and try a
+    // few more times before surfacing the error.
+    let lastErr: unknown = firstErr;
+    for (const delay of AUTH_RETRY_DELAYS_MS) {
+      await new Promise((r) => setTimeout(r, delay));
+      try {
+        return await tryFetch(true);
+      } catch (retryErr) {
+        lastErr = retryErr;
+        const retryCode = (retryErr as { code?: string })?.code ?? "";
+        if (retryCode !== "permission-denied" && retryCode !== "unauthenticated") throw retryErr;
+      }
+    }
+    throw lastErr;
+  }
 }
 
 /** Username constraints — shared between validation, creation, and UI. */
