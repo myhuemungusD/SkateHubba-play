@@ -21,14 +21,19 @@ SkateHubba is a **zero-backend single-page application (SPA)**. There is no cust
 | **Hosting**         | Vercel                                  | Auto-deploys from GitHub `main`; SPA rewrite to `index.html`                                                                                                             |
 | **Testing**         | Vitest 4 + Testing Library + Playwright | Unit/integration + E2E with Firebase emulators                                                                                                                           |
 | **Linting**         | ESLint 9 + Prettier 3.8                 | Husky + lint-staged pre-commit hooks                                                                                                                                     |
-| **Monitoring**      | Sentry (errors) + Vercel Analytics + Vercel Speed Insights + PostHog (product analytics) | All optional via env vars; PostHog identifies users on auth and resets on sign-out                                                                      |
+| **Monitoring**      | Sentry + Vercel Analytics + Speed Insights + PostHog | Errors (Sentry), web vitals (Vercel Speed Insights), product analytics (PostHog). All optional via env vars; PostHog identifies on auth and resets on sign-out           |
 | **CI/CD**           | GitHub Actions                          | Lint → type check → test w/ coverage → build → Lighthouse CI                                                                                                             |
 | **Cloud Functions** | None                                    | The `functions/` package has been removed. New code under any `functions/src/` path is rejected by the PR gate and requires explicit maintainer approval to re-introduce |
 | **Node**            | 22+                                     | Enforced via `engines` and `.nvmrc`                                                                                                                                      |
 
 ## Key Architectural Decisions
 
-- **URL routing via `react-router-dom` only.** `App.tsx` defines every `<Route>`; screen transitions go through `NavigationContext.setScreen`. Non-critical screens (ChallengeScreen, GamePlayScreen, GameOverScreen, PlayerProfileScreen, MapPage, SpotDetailPage, Settings, legal pages, NotFound) are `lazy()`-imported and wrapped in `<Suspense>`; Landing/AuthScreen/ProfileSetup/Lobby are eager for first-paint. Typical flow: `/` → `/auth` → (`/profile` for post-Google fallback) → `/lobby` → `/challenge` → `/game` → `/gameover`, with `/map`, `/spots/:id`, `/player/:uid`, `/record`, and `/settings` branching off the lobby. Legal pages live at `/privacy`, `/terms`, `/data-deletion`; `/feed` redirects to `/lobby`; unknown paths fall through to `/404`. DOB + parental consent are collected inline on AuthScreen (COPPA/CCPA) — there is no standalone `/age-gate` route.
+- **URL routing via `react-router-dom` only.** `App.tsx` defines every `<Route>`; screen transitions go through `NavigationContext.setScreen`. No nested routers.
+  - _Bundle split._ `Landing`, `AuthScreen`, `ProfileSetup`, `Lobby` are eager for first-paint. `ChallengeScreen`, `GamePlayScreen`, `GameOverScreen`, `PlayerProfileScreen`, `MapPage`, `SpotDetailPage`, `Settings`, the legal pages, and `NotFound` are `lazy()`-imported under a single `<Suspense>` boundary (fallback: full-screen `Spinner`).
+  - _Primary flow._ `/` → `/auth` → (`/profile` for post-Google fallback) → `/lobby` → `/challenge` → `/game` → `/gameover`.
+  - _Lobby branches._ `/map`, `/spots/:id`, `/player/:uid`, `/record`, `/settings`.
+  - _Legal + fallbacks._ `/privacy`, `/terms`, `/data-deletion`; `/feed` redirects to `/lobby`; unknown paths redirect to `/404`.
+  - _No standalone age gate._ DOB + parental consent are collected inline on `AuthScreen` (with `ProfileSetup` as the post-Google fallback) for COPPA/CCPA — there is no `/age-gate` route.
 - **No custom backend.** Business logic lives in Firestore security rules. Client-side validation is for UX only.
 - **No state-management or UI-component libraries.** React local state + hooks + context is sufficient; Tailwind utilities + custom components keep the bundle lean.
 - **Transactions for all game writes.** `runTransaction` ensures atomic read-then-write for game state transitions.
