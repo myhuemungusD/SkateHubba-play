@@ -35,7 +35,3 @@ export function addBreadcrumb(crumb: AddBreadcrumbArg): void {
 export function setUser(user: SentryUser): void {
   sdk?.setUser(user);
 }
-
-export function setTag(key: string, value: string): void {
-  sdk?.setTag(key, value);
-}

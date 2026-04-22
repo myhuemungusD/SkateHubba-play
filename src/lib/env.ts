@@ -57,19 +57,6 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 /**
- * Strict validator — throws a formatted Error listing every failed field.
- * Exported for tests and consumers that want hard-fail semantics.
- */
-export function parseEnv(raw: unknown): Env {
-  const result = envSchema.safeParse(raw);
-  if (!result.success) {
-    const issues = result.error.issues.map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`).join("\n");
-    throw new Error(`Invalid environment configuration:\n${issues}`);
-  }
-  return result.data;
-}
-
-/**
  * Soft validator — returns `null` on failure instead of throwing.
  *
  * Used by `firebase.ts` so the app can still render its "Setup Required"
