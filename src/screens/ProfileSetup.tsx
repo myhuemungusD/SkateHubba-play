@@ -2,14 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import {
   AgeVerificationRequiredError,
   createProfile,
-  getUserProfile,
   getUserProfileOnAuth,
   USERNAME_MAX,
   USERNAME_MIN,
   USERNAME_RE,
   type UserProfile,
 } from "../services/users";
-import { auth as firebaseAuth } from "../firebase";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException } from "../lib/sentry";
@@ -120,13 +118,10 @@ export function ProfileSetup({
     setFetchFailed(false);
     // Use the auth-bootstrap variant so a fresh permission-denied caused
     // by the auth-token propagation race gets retried once before we
-    // surface the error banner. When the live currentUser matches this
-    // screen's uid we can hand the User to getUserProfileOnAuth for the
-    // retry protection; otherwise (tests, edge cases) fall back to the
-    // plain getUserProfile which still covers the happy path.
-    const currentUser = firebaseAuth?.currentUser;
-    const lookup = currentUser && currentUser.uid === uid ? getUserProfileOnAuth(currentUser) : getUserProfile(uid);
-    lookup
+    // surface the error banner. The service layer resolves the live
+    // currentUser from the auth singleton itself — screens don't need
+    // to import firebase.ts directly.
+    getUserProfileOnAuth(uid)
       .then((existing) => {
         if (cancelled) return;
         if (existing) {

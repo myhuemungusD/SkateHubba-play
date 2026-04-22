@@ -14,7 +14,7 @@ import {
   serverTimestamp,
   type FieldValue,
 } from "firebase/firestore";
-import { requireDb } from "../firebase";
+import { requireAuth, requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips } from "./clips";
@@ -109,24 +109,35 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
  * This wrapper force-refreshes the ID token and retries permission-denied
  * across a longer window (~10 s cumulative) with exponential backoff.
  * Each retry force-refreshes the token again so the Firestore SDK
- * eventually observes an up-to-date auth header.
+ * eventually observes an up-to-date auth header. The currentUser is
+ * resolved from the auth singleton here (not a caller prop) so screens
+ * never need to reach into `src/firebase.ts` directly — the services
+ * layer owns that boundary.
+ *
+ * When no matching signed-in user is available (uid mismatch, emulator
+ * edge cases) we fall back to a plain getUserProfile call — still
+ * correct, just without the retry protection.
  *
  * Every other caller should keep using {@link getUserProfile}.
  */
 const AUTH_RETRY_DELAYS_MS = [1500, 3000, 6000] as const;
 
-export async function getUserProfileOnAuth(user: {
-  uid: string;
-  getIdToken: (force?: boolean) => Promise<string>;
-}): Promise<UserProfile | null> {
+export async function getUserProfileOnAuth(uid: string): Promise<UserProfile | null> {
+  const currentUser = requireAuth().currentUser;
+  if (!currentUser || currentUser.uid !== uid) {
+    // No live auth context for this uid — the retry logic has nothing
+    // useful to do. Fall back to the plain read.
+    return await getUserProfile(uid);
+  }
+
   const tryFetch = async (forceRefreshToken: boolean): Promise<UserProfile | null> => {
     try {
-      await user.getIdToken(forceRefreshToken);
+      await currentUser.getIdToken(forceRefreshToken);
     } catch {
       // A failed token fetch is best-effort — we still attempt the read
       // because the cached token may be usable.
     }
-    return await getUserProfile(user.uid);
+    return await getUserProfile(uid);
   };
 
   try {

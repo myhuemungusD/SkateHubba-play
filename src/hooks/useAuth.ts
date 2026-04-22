@@ -71,7 +71,7 @@ export function useAuth(): AuthState {
           // at which point the first read throws and we'd wrongly treat
           // the user as profile-less.
           const p = await Promise.race([
-            getUserProfileOnAuth(u),
+            getUserProfileOnAuth(u.uid),
             new Promise<null>((r) => setTimeout(() => r(null), 20_000)),
           ]);
           /* v8 ignore stop */
