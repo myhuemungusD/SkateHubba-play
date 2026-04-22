@@ -82,6 +82,7 @@ export function ProfileSetup({
   // retry affordance so the user can re-attempt the lookup.
   const [fetchFailed, setFetchFailed] = useState(false);
   const [fetchErrorDetail, setFetchErrorDetail] = useState("");
+  const [fetchErrorCode, setFetchErrorCode] = useState("");
   const [fetchAttempt, setFetchAttempt] = useState(0);
   // Inline DOB inputs — only shown when the upstream flow didn't provide a
   // DOB (Google signup skips AuthScreen, so we collect it here instead).
@@ -140,6 +141,7 @@ export function ProfileSetup({
         // Surface the Firestore error code (or fallback message) in the
         // retry screen so operators can distinguish App Check failures
         // from token races from plain network drops at a glance.
+        setFetchErrorCode(code);
         setFetchErrorDetail(code || message);
         setFetchFailed(true);
         setCheckingExisting(false);
@@ -247,7 +249,7 @@ export function ProfileSetup({
   }
 
   if (fetchFailed) {
-    const isPermissionDenied = fetchErrorDetail.includes("permission-denied");
+    const isPermissionDenied = fetchErrorCode === "permission-denied";
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in text-center">

@@ -31,15 +31,10 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v && v.length > 0 ? v : undefined)),
-  // Operator opt-in for App Check. Set to "true" in Vercel to turn on
-  // initializeAppCheck() — reCAPTCHA v3 + Firebase App Check integration.
-  // DEFAULTS TO OFF because an App Check enforcement misconfiguration
-  // (Firebase Console setting flipped without the reCAPTCHA domain allowlist
-  // being updated) will silently reject every Firestore read with
-  // permission-denied and lock every signed-in user out of the app. Leaving
-  // it off by default keeps the product usable; re-enable once the
-  // Firebase Console + reCAPTCHA admin config is verified per
-  // docs/PERMISSION_DENIED_RUNBOOK.md.
+  // Opt-in flag for App Check — defaults to OFF. Accepts literal "true" only
+  // so a typo in the Vercel env UI ("True", "1") can't silently re-enable a
+  // broken config. See docs/PERMISSION_DENIED_RUNBOOK.md for the re-enable
+  // checklist.
   VITE_APPCHECK_ENABLED: z
     .string()
     .optional()

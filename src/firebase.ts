@@ -60,35 +60,19 @@ if (env) {
   auth = getAuth(app);
   storage = getStorage(app);
 
-  // Firebase App Check — blocks non-app traffic (bots, scrapers, abuse).
-  // Requires VITE_RECAPTCHA_SITE_KEY to be set (reCAPTCHA v3 site key from
-  // Firebase Console → App Check). In development the debug token is enabled
-  // automatically so Firestore still works without a real reCAPTCHA key.
-  //
-  // ⚠️ OPT-IN DEFAULT ⚠️
-  // App Check is OFF by default. Set VITE_APPCHECK_ENABLED=true in Vercel to
-  // turn it on. This default exists because a Firebase Console enforcement
-  // toggle without a matching reCAPTCHA domain allowlist silently rejects
-  // every Firestore read with permission-denied and locks every signed-in
-  // user out of the app (this happened in the Apr 22 incident — see
-  // docs/PERMISSION_DENIED_RUNBOOK.md). Once the Firebase App Check metrics
-  // show a verified-request rate > 95 % for the skatehubba.com + www
-  // domains, flip the env var to re-enable.
-  /* v8 ignore start */
-  if (import.meta.env.DEV) {
-    // Expose debug token so the App Check debug provider works locally.
-    // Firebase App Check reads this off the global scope at init time.
-    (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
-  }
-  /* v8 ignore stop */
+  // Firebase App Check — OPT-IN (default OFF). Set VITE_APPCHECK_ENABLED=true
+  // plus a reCAPTCHA v3 site key to enable. See docs/PERMISSION_DENIED_RUNBOOK.md
+  // for the re-enable checklist (the Apr 22 incident was a console-enforcement
+  // flip without the reCAPTCHA allowlist, which locks every user out).
   /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
-  if (!env.VITE_APPCHECK_ENABLED) {
-    // Default path — App Check is not enabled by default. Log once so
-    // operators know the opt-in flag is required to turn it back on.
-    logger.info("appcheck_skipped_opt_in_required", {
-      hint: "set VITE_APPCHECK_ENABLED=true + VITE_RECAPTCHA_SITE_KEY to enable",
-    });
-  } else if (env.VITE_RECAPTCHA_SITE_KEY) {
+  if (env.VITE_APPCHECK_ENABLED && env.VITE_RECAPTCHA_SITE_KEY) {
+    // Surface the debug-provider token so App Check works against the local
+    // emulator — Firebase reads it off globalThis at init time. Only set when
+    // App Check actually initializes, so the global namespace stays untouched
+    // on the default (disabled) path.
+    if (import.meta.env.DEV) {
+      (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
     try {
       initializeAppCheck(app, {
         provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
@@ -98,19 +82,13 @@ if (env) {
       // An invalid site key or blocked reCAPTCHA loader throws synchronously here.
       // Without this catch the whole Firebase init module would crash on load,
       // taking the app down — log loudly and let the rest of Firebase continue.
-      logger.error("appcheck_init_failed", { message: err instanceof Error ? err.message : String(err) });
-      captureMessage(
-        `App Check init failed — Auth/Firestore requests may be rejected: ${err instanceof Error ? err.message : String(err)}`,
-        "error",
-      );
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("appcheck_init_failed", { message });
+      captureMessage(`App Check init failed — Auth/Firestore requests may be rejected: ${message}`, "error");
     }
-  } else {
-    // Operator set VITE_APPCHECK_ENABLED=true but forgot the site key — log
-    // loudly in every environment so the misconfiguration surfaces before
-    // the first Firestore call silently fails.
-    logger.error("appcheck_enabled_but_no_site_key", {
-      hint: "VITE_APPCHECK_ENABLED=true requires VITE_RECAPTCHA_SITE_KEY",
-    });
+  } else if (env.VITE_APPCHECK_ENABLED) {
+    // Operator flipped the opt-in flag but forgot the site key — log loudly
+    // so the misconfiguration surfaces before the first Firestore call fails.
     captureMessage("App Check opt-in is set but VITE_RECAPTCHA_SITE_KEY is missing — init skipped", "error");
   }
   /* v8 ignore stop */

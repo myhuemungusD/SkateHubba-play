@@ -26,7 +26,7 @@ turning client-side App Check back on AND verifying the reCAPTCHA allowlist.)
 
 **To turn App Check back on** once reCAPTCHA + enforcement are verified healthy:
 
-1. Vercel Dashboard → `play` project → **Settings → Environment Variables**.
+1. Vercel Dashboard → the SkateHubba project → **Settings → Environment Variables**.
 2. Set `VITE_APPCHECK_ENABLED=true` (plus a valid `VITE_RECAPTCHA_SITE_KEY`) in the
    **Production** scope.
 3. Redeploy. Watch the App Check "verified requests" metric — it should climb to

@@ -313,9 +313,9 @@ describe("ProfileSetup", () => {
     render(<ProfileSetup {...defaultProps} />);
 
     await waitFor(() => expect(screen.getByText(/Couldn't load your profile/)).toBeInTheDocument());
-    expect(screen.getByText(/permission-denied/)).toBeInTheDocument();
+    expect(screen.getByText("permission-denied")).toBeInTheDocument();
     // Also surfaces the uid so operators can correlate with Firebase console.
-    expect(screen.getByText(/u1/)).toBeInTheDocument();
+    expect(screen.getByText("u1")).toBeInTheDocument();
   });
 
   it("flags permission-denied as an App Check / reCAPTCHA backend issue", async () => {
