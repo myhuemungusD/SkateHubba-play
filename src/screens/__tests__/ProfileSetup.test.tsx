@@ -309,6 +309,19 @@ describe("ProfileSetup", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
+  it("surfaces the Firestore error code on the retry screen for diagnostics", async () => {
+    // Without surfacing the error, a user stuck on Retry has no clue
+    // whether it's App Check, a network failure, or a token race. The
+    // code tells us what to look at.
+    const err = Object.assign(new Error("Missing or insufficient permissions."), { code: "permission-denied" });
+    mockGetUserProfile.mockRejectedValue(err);
+
+    render(<ProfileSetup {...defaultProps} />);
+
+    await waitFor(() => expect(screen.getByText(/Couldn't load your profile/)).toBeInTheDocument());
+    expect(screen.getByText(/permission-denied/)).toBeInTheDocument();
+  });
+
   it("retries the existing-profile lookup when the user taps Retry", async () => {
     const onDone = vi.fn();
     const existingProfile = { uid: "u1", username: "returninguser", stance: "Goofy" };

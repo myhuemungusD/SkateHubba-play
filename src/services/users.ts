@@ -107,33 +107,49 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
  * initial read throws and returning users get routed through
  * ProfileSetup as if they had no profile.
  *
- * This wrapper:
- *   1. Forces a fresh ID token round-trip so the Firestore SDK is
- *      guaranteed to have an up-to-date auth header on the next read.
- *   2. Retries permission-denied once after a short delay to cover the
- *      token-propagation window.
+ * This wrapper force-refreshes the ID token and retries permission-denied
+ * across a longer window (~10 s cumulative) with exponential backoff.
+ * Each retry force-refreshes the token again so the Firestore SDK
+ * eventually observes an up-to-date auth header.
  *
  * Every other caller should keep using {@link getUserProfile}.
  */
+const AUTH_RETRY_DELAYS_MS = [1500, 3000, 6000] as const;
+
 export async function getUserProfileOnAuth(user: {
   uid: string;
   getIdToken: (force?: boolean) => Promise<string>;
 }): Promise<UserProfile | null> {
-  try {
-    await user.getIdToken();
-  } catch {
-    // A failed token fetch is best-effort — we still attempt the read
-    // because the cached token may be usable. If it really is broken the
-    // catch below handles it.
-  }
-  try {
+  const tryFetch = async (forceRefreshToken: boolean): Promise<UserProfile | null> => {
+    try {
+      await user.getIdToken(forceRefreshToken);
+    } catch {
+      // A failed token fetch is best-effort — we still attempt the read
+      // because the cached token may be usable.
+    }
     return await getUserProfile(user.uid);
-  } catch (err) {
-    const code = (err as { code?: string })?.code ?? "";
-    if (code !== "permission-denied" && code !== "unauthenticated") throw err;
-    // Wait for the Firestore SDK to absorb the Auth token, then retry.
-    await new Promise((r) => setTimeout(r, 1500));
-    return await getUserProfile(user.uid);
+  };
+
+  try {
+    return await tryFetch(false);
+  } catch (firstErr) {
+    const firstCode = (firstErr as { code?: string })?.code ?? "";
+    if (firstCode !== "permission-denied" && firstCode !== "unauthenticated") throw firstErr;
+    // Permission-denied on the first call is almost always the auth-token
+    // propagation race. Back off, force-refresh the ID token, and try a
+    // few more times before surfacing the error.
+    let lastErr: unknown = firstErr;
+    for (const delay of AUTH_RETRY_DELAYS_MS) {
+      await new Promise((r) => setTimeout(r, delay));
+      try {
+        return await tryFetch(true);
+      } catch (retryErr) {
+        lastErr = retryErr;
+        const retryCode = (retryErr as { code?: string })?.code ?? "";
+        if (retryCode !== "permission-denied" && retryCode !== "unauthenticated") throw retryErr;
+      }
+    }
+    throw lastErr;
   }
 }
 

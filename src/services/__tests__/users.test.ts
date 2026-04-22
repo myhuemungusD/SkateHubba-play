@@ -115,17 +115,34 @@ describe("users service", () => {
       expect(user.getIdToken).toHaveBeenCalledTimes(1);
     });
 
-    it("retries once on permission-denied (auth-token propagation race)", async () => {
+    it("retries permission-denied and succeeds before the retry budget runs out", async () => {
       const profile = { uid: "u1", username: "sk8r" };
       const user = mockUser();
       // First call rejects with permission-denied (Firestore hasn't absorbed
-      // the Auth token yet). Second call returns the profile.
+      // the Auth token yet). Second call force-refreshes the token and
+      // returns the profile.
       const permErr = Object.assign(new Error("permission-denied"), { code: "permission-denied" });
       mockGetDoc.mockRejectedValueOnce(permErr).mockResolvedValueOnce({ exists: () => true, data: () => profile });
       const result = await getUserProfileOnAuth(user);
       expect(result).toEqual(profile);
       expect(mockGetDoc).toHaveBeenCalledTimes(2);
+      // Second call should have force-refreshed the token (first call is
+      // the cheap cached-token warmup).
+      expect(user.getIdToken).toHaveBeenNthCalledWith(2, true);
     }, 10_000);
+
+    it("keeps retrying permission-denied across the full retry budget before giving up", async () => {
+      const user = mockUser();
+      const permErr = Object.assign(new Error("permission-denied"), { code: "permission-denied" });
+      // 1 initial + 3 retries = 4 total attempts.
+      mockGetDoc
+        .mockRejectedValueOnce(permErr)
+        .mockRejectedValueOnce(permErr)
+        .mockRejectedValueOnce(permErr)
+        .mockRejectedValueOnce(permErr);
+      await expect(getUserProfileOnAuth(user)).rejects.toBe(permErr);
+      expect(mockGetDoc).toHaveBeenCalledTimes(4);
+    }, 20_000);
 
     it("rethrows non-authz errors without a second attempt", async () => {
       const user = mockUser();
@@ -151,6 +168,32 @@ describe("users service", () => {
       mockGetDoc.mockRejectedValue(new Error("generic boom"));
       await expect(getUserProfileOnAuth(user)).rejects.toThrow("generic boom");
     }, 10_000);
+
+    it("bails out early when a retry surfaces a different non-authz error", async () => {
+      const user = mockUser();
+      const permErr = Object.assign(new Error("permission-denied"), { code: "permission-denied" });
+      const fatal = Object.assign(new Error("failed-precondition"), { code: "failed-precondition" });
+      mockGetDoc.mockRejectedValueOnce(permErr).mockRejectedValueOnce(fatal);
+      await expect(getUserProfileOnAuth(user)).rejects.toBe(fatal);
+      expect(mockGetDoc).toHaveBeenCalledTimes(2);
+    }, 10_000);
+
+    it("bails out on a retry whose error exposes no code at all", async () => {
+      // Coalesce branch: an uncoded retry error takes the same !== 'permission-denied'
+      // path and should be rethrown rather than silently retried. withRetry
+      // (inside getUserProfile) treats bare errors as transient, so all three
+      // of its attempts need to reject with the same bare error before our
+      // outer catch can see it.
+      const user = mockUser();
+      const permErr = Object.assign(new Error("permission-denied"), { code: "permission-denied" });
+      const bare = new Error("unknown retry failure");
+      mockGetDoc
+        .mockRejectedValueOnce(permErr)
+        .mockRejectedValueOnce(bare)
+        .mockRejectedValueOnce(bare)
+        .mockRejectedValueOnce(bare);
+      await expect(getUserProfileOnAuth(user)).rejects.toThrow("unknown retry failure");
+    }, 15_000);
   });
 
   describe("getUserPrivateProfile", () => {

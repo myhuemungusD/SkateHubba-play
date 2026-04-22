@@ -83,6 +83,7 @@ export function ProfileSetup({
   // because their own existing reservation blocks them. Instead we surface a
   // retry affordance so the user can re-attempt the lookup.
   const [fetchFailed, setFetchFailed] = useState(false);
+  const [fetchErrorDetail, setFetchErrorDetail] = useState("");
   const [fetchAttempt, setFetchAttempt] = useState(0);
   // Inline DOB inputs — only shown when the upstream flow didn't provide a
   // DOB (Google signup skips AuthScreen, so we collect it here instead).
@@ -137,11 +138,14 @@ export function ProfileSetup({
       })
       .catch((err) => {
         if (cancelled) return;
-        logger.warn("profile_setup_existing_lookup_failed", {
-          uid,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        captureException(err, { extra: { context: "ProfileSetup.getUserProfile" } });
+        const code = (err as { code?: string })?.code ?? "";
+        const message = err instanceof Error ? err.message : String(err);
+        logger.warn("profile_setup_existing_lookup_failed", { uid, code, error: message });
+        captureException(err, { extra: { context: "ProfileSetup.getUserProfile", code } });
+        // Surface the Firestore error code (or fallback message) in the
+        // retry screen so operators can distinguish App Check failures
+        // from token races from plain network drops at a glance.
+        setFetchErrorDetail(code || message);
         setFetchFailed(true);
         setCheckingExisting(false);
       });
@@ -256,6 +260,11 @@ export function ProfileSetup({
             Your account is signed in but we couldn&apos;t reach your profile. This is usually a transient network
             hiccup — tap retry to try again. If it keeps happening, sign out and back in.
           </p>
+          {fetchErrorDetail && (
+            <p className="font-body text-xs text-faint mb-5 break-all">
+              Error: <span className="text-subtle">{fetchErrorDetail}</span>
+            </p>
+          )}
           <Btn onClick={() => setFetchAttempt((n) => n + 1)}>Retry</Btn>
           {onSignOut && (
             <Btn variant="ghost" onClick={onSignOut} className="mt-3">
