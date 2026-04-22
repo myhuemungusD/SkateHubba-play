@@ -48,6 +48,24 @@ describe("safeParseEnv", () => {
     expect(safeParseEnv({ ...validEnv, VITE_USE_EMULATORS: "yes" })).toBeNull();
   });
 
+  it("treats VITE_APPCHECK_ENABLED=false as the disable kill-switch", () => {
+    const result = safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "false" });
+    expect(result?.VITE_APPCHECK_ENABLED).toBe(false);
+  });
+
+  it("defaults VITE_APPCHECK_ENABLED to true when the var is absent", () => {
+    // Operator only flips this to false as a kill-switch. Any other value
+    // (missing, "true", anything else) must keep App Check enabled so the
+    // default security posture is protected.
+    const result = safeParseEnv(validEnv);
+    expect(result?.VITE_APPCHECK_ENABLED).toBe(true);
+  });
+
+  it("treats any value other than 'false' as enabled", () => {
+    const result = safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "true" });
+    expect(result?.VITE_APPCHECK_ENABLED).toBe(true);
+  });
+
   it("accepts every optional var when provided with a valid string", () => {
     const result = safeParseEnv({
       ...validEnv,

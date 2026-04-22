@@ -247,17 +247,28 @@ export function ProfileSetup({
   }
 
   if (fetchFailed) {
+    const isPermissionDenied = fetchErrorDetail.includes("permission-denied");
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center px-6">
         <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in text-center">
           <h2 className="font-display text-3xl text-white mb-2">Couldn&apos;t load your profile</h2>
           <p className="font-body text-sm text-muted mb-6">
-            Your account is signed in but we couldn&apos;t reach your profile. This is usually a transient network
-            hiccup — tap retry to try again. If it keeps happening, sign out and back in.
+            Your account is signed in but Firestore is rejecting the request.{" "}
+            {isPermissionDenied ? (
+              <>
+                This is almost always an App Check / reCAPTCHA configuration issue on the backend — not something you
+                can fix from this screen. Try a regular (non-Incognito) window, or wait a few minutes and retry. If it
+                keeps happening, sign out and contact support.
+              </>
+            ) : (
+              <>This is usually a transient network hiccup — tap retry to try again.</>
+            )}
           </p>
           {fetchErrorDetail && (
             <p className="font-body text-xs text-faint mb-5 break-all">
-              Error: <span className="text-subtle">{fetchErrorDetail}</span>
+              <span className="text-dim">Error:</span> <span className="text-subtle">{fetchErrorDetail}</span>
+              <br />
+              <span className="text-dim">UID:</span> <span className="text-subtle">{uid}</span>
             </p>
           )}
           <Btn onClick={() => setFetchAttempt((n) => n + 1)}>Retry</Btn>
