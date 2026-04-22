@@ -68,7 +68,7 @@ export interface UserProfile {
  * time, add the field here and write it from `createProfile` at that
  * time — not speculatively.
  */
-export interface UserPrivateProfile {
+interface UserPrivateProfile {
   /** Auth emailVerified flag mirrored at profile creation time. */
   emailVerified: boolean;
   /** Date of birth in YYYY-MM-DD format (collected at age gate for COPPA/CCPA compliance). */
