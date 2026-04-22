@@ -79,8 +79,7 @@ if (env) {
   }
   /* v8 ignore stop */
   /* v8 ignore start -- App Check branches depend on runtime env vars not available in tests */
-  const appCheckEnabled = env.VITE_APPCHECK_ENABLED !== false;
-  if (!appCheckEnabled) {
+  if (env.VITE_APPCHECK_ENABLED === false) {
     // Operator explicitly disabled App Check. Loud log so this shows up in
     // Sentry breadcrumbs and dev consoles — if it's on in prod for more than
     // a few hours, that's a regression on the security posture.
