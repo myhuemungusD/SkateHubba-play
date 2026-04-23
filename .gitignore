@@ -31,6 +31,9 @@ ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
 ios/App/build/
 ios/App/DerivedData/
 ios/build/
-# TODO: decide whether to commit Podfile.lock. Some teams commit it for
-# reproducible CI builds; leaving it ignored for now to avoid merge churn.
+# Podfile.lock is intentionally ignored for now: the Xcode project landed
+# in this branch without a committed lockfile, and flipping to tracked
+# mid-stream would churn against every parallel iOS branch that already
+# regenerated its own lock. Revisit once the Capacitor/Firebase pod set
+# stabilises — then commit it the same way we commit package-lock.json.
 ios/App/Podfile.lock

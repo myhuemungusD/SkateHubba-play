@@ -91,7 +91,9 @@ export async function recordNativeVideo(): Promise<NativeVideoResult> {
 
     // Hard-cap duration client-side. The plugin does not expose a native
     // max-duration option, and a runaway recording could blow past the
-    // 50 MB Storage rule ceiling.
+    // 50 MB Storage rule ceiling. Clearing `autoStopTimer` inside the
+    // callback signals the `finally` block that the timer already fired —
+    // so we skip an unnecessary `clearTimeout` on the happy path.
     const autoStop = new Promise<void>((resolve) => {
       autoStopTimer = setTimeout(() => {
         autoStopTimer = null;

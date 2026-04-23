@@ -66,23 +66,20 @@ async function loadMain(): Promise<void> {
 
 /**
  * The hide() call is scheduled via requestAnimationFrame and then awaits a
- * dynamic import() + the hide() promise. We need to flush one frame, yield
- * to the dynamic-import microtasks, and wait until the mock is observed —
- * a fixed count of microtask flushes is racy under different timer
- * implementations.
+ * dynamic import() + the hide() promise. Flush one frame, then let
+ * `vi.waitFor` poll until the mock is observed — idiomatic in Vitest and
+ * avoids the fixed-count microtask loop that was previously racy under
+ * different timer implementations.
  */
 async function waitForHideSettled(): Promise<void> {
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => resolve());
   });
-  // Poll macrotask-boundaries so the dynamic import resolves. 50 iterations
-  // with a 0ms timeout is ample for an already-registered vi.mock lookup.
-  for (let i = 0; i < 50; i += 1) {
-    await new Promise<void>((resolve) => {
-      setTimeout(resolve, 0);
-    });
-    if (mockHide.mock.calls.length > 0) return;
-  }
+  await vi.waitFor(() => {
+    if (mockHide.mock.calls.length === 0) {
+      throw new Error("SplashScreen.hide not yet called");
+    }
+  });
 }
 
 describe("main entry — splash screen hide", () => {

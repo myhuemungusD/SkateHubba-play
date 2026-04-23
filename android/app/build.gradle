@@ -23,10 +23,20 @@ if (project.hasProperty('versionCode')) {
 } else if (System.getenv('ANDROID_VERSION_CODE')) {
     resolvedVersionCode = System.getenv('ANDROID_VERSION_CODE').toInteger()
 } else {
+    // Parse "x.y.z" → x*10000 + y*100 + z. Each segment is coerced to an
+    // int with a non-numeric suffix stripped ("3-beta" → "3"). If a segment
+    // is missing or, after stripping, contains no digits at all ("beta" or
+    // an empty patch), fall back to 0 instead of throwing — package.json
+    // values are trusted input, but the parser shouldn't become a release
+    // footgun the moment someone ships "1.2-rc" locally.
+    def parseSegment = { String raw ->
+        def cleaned = raw == null ? '' : raw.replaceAll('[^0-9].*$', '')
+        return cleaned.isEmpty() ? 0 : cleaned.toInteger()
+    }
     def parts = resolvedVersionName.toString().split('\\.')
-    def major = parts.length > 0 ? parts[0].toInteger() : 0
-    def minor = parts.length > 1 ? parts[1].toInteger() : 0
-    def patch = parts.length > 2 ? parts[2].replaceAll('[^0-9].*$', '').toInteger() : 0
+    def major = parts.length > 0 ? parseSegment(parts[0]) : 0
+    def minor = parts.length > 1 ? parseSegment(parts[1]) : 0
+    def patch = parts.length > 2 ? parseSegment(parts[2]) : 0
     resolvedVersionCode = major * 10000 + minor * 100 + patch
 }
 // ---------------------------------------------------------------------------

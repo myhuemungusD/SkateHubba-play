@@ -104,7 +104,7 @@ if (env) {
     // In emulator builds we request the debug provider so the attestation
     // step doesn't reject a development device. In every other build
     // (including local dev pointed at prod Firebase) the plugin auto-selects
-    // DeviceCheck (iOS) / Play Integrity (Android) — passing debug=true
+    // DeviceCheck (iOS) / Play Integrity (Android) — passing debugToken=true
     // against production would force a debug token that isn't registered
     // in the Firebase Console and silently reject every request.
     const useDebug = useEmulators;
@@ -114,8 +114,12 @@ if (env) {
       captureMessage(`Native App Check init failed — Auth/Firestore requests may be rejected: ${message}`, "error");
     };
     try {
+      // `debugToken` replaces the deprecated `debug` option in
+      // @capacitor-firebase/app-check ≥7.1.0 — boolean semantics are
+      // identical; the rename sheds an @deprecated warning and future-proofs
+      // against the next major bump.
       FirebaseAppCheck.initialize({
-        debug: useDebug,
+        debugToken: useDebug,
         siteKey: env.VITE_RECAPTCHA_SITE_KEY,
       }).catch(onNativeInitError);
     } catch (err) {
