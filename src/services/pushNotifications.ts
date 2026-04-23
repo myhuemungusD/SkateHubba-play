@@ -118,7 +118,7 @@ export async function registerPushToken(uid: string): Promise<void> {
     tokenListener = await PushNotifications.addListener("registration", (token: Token) => {
       void persistToken(uid, token.value);
     });
-    errorListener = await PushNotifications.addListener("registrationError", (err) => {
+    errorListener = await PushNotifications.addListener("registrationError", (err: { error: string }) => {
       logger.warn("push_registration_error", { uid, error: err.error });
     });
     await PushNotifications.register();
