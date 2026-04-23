@@ -77,9 +77,12 @@ if (env) {
   // show a verified-request rate > 95 % for the skatehubba.com + www
   // domains, flip the env var to re-enable.
   /* v8 ignore start */
-  if (import.meta.env.DEV) {
+  if (useEmulators) {
     // Expose debug token so the App Check debug provider works locally.
     // Firebase App Check reads this off the global scope at init time.
+    // Gated on useEmulators (not import.meta.env.DEV) so a dev build that
+    // points at production Firebase never flips its real reCAPTCHA provider
+    // into debug mode — that silently fails every App Check token exchange.
     (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   }
   /* v8 ignore stop */
@@ -98,23 +101,30 @@ if (env) {
     // uses the platform-native attestation SDKs (DeviceCheck on iOS,
     // Play Integrity on Android) through the plugin bridge.
     //
-    // In emulator / dev builds we request the debug provider so the
-    // attestation step doesn't reject a development device. In release
-    // builds the plugin auto-selects DeviceCheck (iOS) / Play Integrity
-    // (Android) — no provider option is needed on the JS side.
-    const useDebug = useEmulators || import.meta.env.DEV;
-    FirebaseAppCheck.initialize({
-      debug: useDebug,
-      siteKey: env.VITE_RECAPTCHA_SITE_KEY,
-    }).catch((err: unknown) => {
-      logger.error("appcheck_native_init_failed", {
-        message: err instanceof Error ? err.message : String(err),
-      });
-      captureMessage(
-        `Native App Check init failed — Auth/Firestore requests may be rejected: ${err instanceof Error ? err.message : String(err)}`,
-        "error",
-      );
-    });
+    // In emulator builds we request the debug provider so the attestation
+    // step doesn't reject a development device. In every other build
+    // (including local dev pointed at prod Firebase) the plugin auto-selects
+    // DeviceCheck (iOS) / Play Integrity (Android) — passing debug=true
+    // against production would force a debug token that isn't registered
+    // in the Firebase Console and silently reject every request.
+    const useDebug = useEmulators;
+    const onNativeInitError = (err: unknown): void => {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("appcheck_native_init_failed", { message });
+      captureMessage(`Native App Check init failed — Auth/Firestore requests may be rejected: ${message}`, "error");
+    };
+    try {
+      FirebaseAppCheck.initialize({
+        debug: useDebug,
+        siteKey: env.VITE_RECAPTCHA_SITE_KEY,
+      }).catch(onNativeInitError);
+    } catch (err) {
+      // Symmetric with the web branch below: the Capacitor plugin bridge
+      // can throw synchronously if the native side isn't registered or the
+      // args shape is wrong. Without this the whole Firebase init module
+      // would crash on import, taking the app down.
+      onNativeInitError(err);
+    }
   } else if (env.VITE_RECAPTCHA_SITE_KEY) {
     try {
       initializeAppCheck(app, {
