@@ -14,11 +14,11 @@ This means:
 
 ## Technology Choices
 
-### React 18 + TypeScript + Vite
+### React 19 + TypeScript + Vite 8
 
-- SPA only — no SSR, no React Router, no URL-based routing.
-- Screen state is managed with a single `useState` in `App.tsx`. This was a deliberate choice: the app has a small, linear screen flow (landing → auth → lobby → game) that doesn't benefit from URL routing. Deep-linking to a specific game is not a product requirement.
-- Vite is configured with two manual chunks (`firebase` and `react`) to split the largest dependencies and improve parse time on first load.
+- SPA only — no SSR. Routing is handled by `react-router-dom` v7. All `<Route>` declarations live in `App.tsx`; navigation goes through `NavigationContext.setScreen` (or `useNavigate` for parameterised routes like `/player/:uid` and `/spots/:id`).
+- Non-critical screens — gameplay, profile, map, settings, legal pages, NotFound — are imported via `lazy()` and rendered inside a single top-level `<Suspense>`. Landing, AuthScreen, ProfileSetup, and Lobby are eager so first paint never has to wait on a chunk fetch.
+- Code splitting is driven by those `lazy()` imports plus Vite's automatic vendor chunking; no manual `manualChunks` config is required.
 - `import.meta.env.VERCEL` is injected via `vite.config.ts` so the app can detect a missing Firebase config in a Vercel context and show a helpful error message.
 
 ### Firebase Auth
@@ -35,8 +35,8 @@ This means:
 
 ### Firebase Storage
 
-- Used exclusively for trick videos in WebM format.
-- Storage rules enforce authentication, file size (1 KB – 50 MB), content type (`video/webm`), and an exact filename allowlist (`set.webm`, `match.webm`). Storage rules cannot cross-reference Firestore, so game membership is not verified at the storage layer — see [SECURITY.md](../SECURITY.md) for implications.
+- Used exclusively for trick videos. Web (MediaRecorder) emits WebM; native (Capacitor) emits MP4.
+- Storage rules enforce authentication, file size (1 KB – 50 MB), content type (`video/webm` or `video/mp4`), and an exact filename allowlist (`set.webm`, `set.mp4`, `match.webm`, `match.mp4`). The uploader's UID is bound into `customMetadata.uploaderUid` at upload time so update/delete can verify ownership. Storage rules cannot cross-reference Firestore, so game membership is not verified at the storage layer — see [SECURITY.md](../SECURITY.md) for implications.
 
 ### Vercel
 
@@ -49,29 +49,28 @@ This means:
 
 ## Application State Machine
 
-`App.tsx` manages all screen state with a single `screen` string. There is no routing library. Every screen is a conditional render block.
+`App.tsx` manages screen state through `react-router-dom` `<Route>` declarations plus `NavigationContext`. Each route renders a screen; auth/profile state gates which routes are reachable.
 
-### Screen transitions
+### Route map
 
 ```
-loading
-  ├── → landing         (no authenticated user)
-  ├── → profileSetup    (user authenticated but no Firestore profile)
-  └── → lobby           (user authenticated + profile exists)
-
-landing
-  ├── → signUp
-  └── → signIn
-
-signUp / signIn
-  └── → lobby           (on successful auth + profile load)
-
-lobby
-  ├── → challenge
-  └── → gameplay        (on game card click)
-
-gameplay
-  └── → lobby           (back button, or game-over → back)
+/               Landing
+/auth           AuthScreen           (sign-up / sign-in / Google OAuth, inline DOB age gate)
+/profile        ProfileSetup         (post-Google fallback for username + stance)
+/lobby          Lobby                (primary signed-in destination)
+/challenge      ChallengeScreen
+/game           GamePlayScreen       (active game)
+/gameover       GameOverScreen       (complete or forfeit)
+/record         PlayerProfileScreen  (own profile shortcut)
+/player/:uid    PlayerProfileScreen  (any user)
+/map            MapPage              (skate spots — Mapbox)
+/spots/:id      SpotDetailPage
+/settings       Settings
+/privacy        PrivacyPolicy
+/terms          TermsOfService
+/data-deletion  DataDeletion
+/feed           → redirects to /lobby (clips feed is now embedded in Lobby)
+/404, *         NotFound
 ```
 
 ### Auth guard pattern
@@ -79,10 +78,9 @@ gameplay
 `App.tsx` evaluates conditions in this order before rendering any screen:
 
 1. `!firebaseReady` → renders a "Firebase not configured" error screen with environment-specific instructions.
-2. `loading` (from `useAuth`) → renders a loading spinner.
-3. `user === null` → renders the landing screen.
-4. `user !== null && profile === null` → renders profile setup.
-5. `user !== null && profile !== null` → renders the main app (lobby, challenge, gameplay).
+2. `loading` (from `useAuthContext`) → renders a loading spinner.
+3. Route-level guards: each protected route checks `auth.activeProfile` (and `auth.user.emailVerified` where required). Failures `<Navigate>` to `/` or `/lobby` as appropriate.
+4. The catch-all `*` route redirects unknown paths to `/404`.
 
 ---
 
@@ -100,13 +98,23 @@ Service helper functions (`requireDb()`, `requireAuth()`, `requireStorage()`) th
 
 All Firebase SDK calls live in `src/services/`. Components and hooks import from services — never from the Firebase SDK directly. This keeps Firebase logic testable (services are easily mocked) and keeps `App.tsx` readable.
 
-| File                      | Responsibility                                                               |
-| ------------------------- | ---------------------------------------------------------------------------- |
-| `src/services/auth.ts`    | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
-| `src/services/users.ts`   | User profile CRUD, atomic username reservation                               |
-| `src/services/games.ts`   | Game creation, turn actions, real-time subscriptions                         |
-| `src/services/storage.ts` | Video upload to Firebase Storage                                             |
-| `src/hooks/useAuth.ts`    | React hook that wraps `onAuthChange` + profile fetch                         |
+| File                          | Responsibility                                                               |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| `src/services/auth.ts`        | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
+| `src/services/users.ts`       | User profile CRUD, atomic username reservation, verified-pro lookup          |
+| `src/services/userData.ts`    | Account-deletion cascade + GDPR data export                                  |
+| `src/services/games.ts`       | Game creation, turn actions (transactions), real-time subscriptions          |
+| `src/services/clips.ts`       | Landed-trick clips feed + upvotes                                            |
+| `src/services/spots.ts`       | Geo-tagged skate spot CRUD + comments                                        |
+| `src/services/storage.ts`     | Video upload (WebM web / MP4 native) with retry + progress                   |
+| `src/services/notifications.ts` | In-app notification writes + subscriptions                                 |
+| `src/services/fcm.ts`         | FCM token registration + service-worker wiring                               |
+| `src/services/nudge.ts`       | Push-notification "your turn" nudges                                         |
+| `src/services/blocking.ts`    | Block / unblock users                                                        |
+| `src/services/reports.ts`     | UGC content + player reports                                                 |
+| `src/services/analytics.ts`   | Vercel Analytics + PostHog event wrapper                                     |
+| `src/services/logger.ts`      | Structured log + metrics emitter                                             |
+| `src/hooks/useAuth.ts`        | React hook that wraps `onAuthStateChanged` + profile fetch                   |
 
 ### Why all write operations use transactions
 
