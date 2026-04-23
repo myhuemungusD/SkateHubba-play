@@ -21,6 +21,8 @@ Deduplication logic in `GameNotificationWatcher` suppresses FCM foreground messa
 
 ### BUG-1 (High): Client delete operations always fail — Firestore rules deny all deletes
 
+**Status:** Resolved. `firestore.rules:984-986` now allows `delete` when `resource.data.recipientUid == request.auth.uid`. The original finding is preserved below for history.
+
 **Files:**
 
 - `src/services/notifications.ts:133-135` (`deleteNotification`)
@@ -50,6 +52,8 @@ Deduplication logic in `GameNotificationWatcher` suppresses FCM foreground messa
 
 ### BUG-2 (High): `dismissNotification` passes local ID to Firestore delete — ID mismatch
 
+**Status:** Resolved. `AppNotification` now carries an optional `firestoreId` populated by `subscribeToNotifications` (`src/services/notifications.ts:236`), and `dismissNotification` resolves the local id to that value before calling `deleteNotification` (`src/context/NotificationContext.tsx:215-228`). `markRead`/`markAllRead` follow the same pattern. Locally-generated notifications without a Firestore counterpart (e.g. `GameNotificationWatcher` toasts) are simply dropped from local state with no server delete attempted.
+
 **Files:**
 
 - `src/context/NotificationContext.tsx:117` (ID generation: `n_${Date.now()}_${++idCounter}`)
@@ -66,6 +70,8 @@ Even if BUG-1 were fixed (deletes allowed), the delete would be a no-op — it t
 ---
 
 ### SEC-1 (Medium): Rate-limit collection read rules are overly permissive
+
+**Status:** Resolved. Both `notification_limits` (`firestore.rules:993-994`) and `nudge_limits` (`firestore.rules:1073-1074`) now require `resource.data.senderUid == request.auth.uid` on read.
 
 **Files:**
 
@@ -86,6 +92,8 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 ### SEC-2 (Low): Nudge client-side cooldown key lacks user scoping
 
+**Status:** Resolved. `src/services/nudge.ts:21` now uses ``const key = `nudge_${senderUid}_${gameId}`;``.
+
 **File:** `src/services/nudge.ts:21`
 
 **Problem:** The localStorage key is `nudge_${gameId}` with no user qualifier. If two users share a browser profile (e.g., shared device, testing), they share cooldown state.
@@ -97,6 +105,8 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 ---
 
 ### PERF-1 (Medium): No TTL or garbage collection for notification documents
+
+**Status:** Partially resolved. The composite index for `recipientUid + read + createdAt` is now declared in `firestore.indexes.json:20-28`, and recipients can delete their own notifications (see BUG-1), so `dismissNotification` / `clearAll` now provide a manual cleanup path. A scheduled GC or Firestore TTL policy is still **not** in place — silent accumulation persists for users who never dismiss.
 
 **Files:**
 
@@ -136,6 +146,8 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 ### ROBUST-1 (Medium): `subscribeToNotifications` marks notifications read immediately on arrival
 
+**Status:** Resolved. `subscribeToNotifications` (`src/services/notifications.ts:220-253`) no longer calls `markNotificationRead` on arrival — it only forwards the notification (with `firestoreId`) to the caller. Read-marking is driven by user action via `markRead` / `markAllRead` in `NotificationContext`.
+
 **File:** `src/services/notifications.ts:241`
 
 **Problem:** `markNotificationRead(change.doc.id)` fires the instant a notification doc arrives in the snapshot, before the user has seen or interacted with the toast.
@@ -163,6 +175,8 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 ---
 
 ### ROBUST-3 (Low): `judge_invite` notification has no watcher-side handling
+
+**Status:** Resolved (chime mapping). `fcmChimeMap` now includes `judge_invite: "general"` (`src/components/GameNotificationWatcher.tsx:19`), and `judge_invite` is in `FIRESTORE_HANDLED_TYPES` to avoid double-toasting if FCM is ever re-enabled. The dedicated FCM push path is moot until an external sender exists.
 
 **Files:**
 
@@ -194,15 +208,15 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 | `PushPermissionBanner`                  | `PushPermissionBanner.test.tsx`                 | Permission flow, dismiss, error states                                                                                                                  | **Good** |
 | `ToastContainer`                        | `ToastContainer.test.tsx`                       | Container rendering                                                                                                                                     | **Good** |
 | Firestore rules (`notification_limits`) | `notification-limits.rules.test.ts` (119 lines) | Delete denial, create validation                                                                                                                        | **Good** |
-| Firestore rules (`notifications`)       | _None_                                          | No rules-level integration tests                                                                                                                        | **Gap**  |
+| Firestore rules (`notifications`)       | `notifications-redteam.rules.test.ts`           | Recipient delete, sender immutability, cross-user reads — covered                                                                                       | **Good** |
 | Firestore rules (`nudge_limits`)        | _None_                                          | No rules-level integration tests                                                                                                                        | **Gap**  |
 | Firestore rules (`nudges`)              | _None_                                          | No rules-level integration tests                                                                                                                        | **Gap**  |
 | Cloud Functions                         | _None in repo_                                  | Historical `onNudgeCreated`, `onGameCreated`, `onGameUpdated`, `checkExpiredTurns` were removed with the `functions/` package — no current code to test | **N/A**  |
 
 ### Notable test gaps:
 
-1. **No Firestore rules tests for `/notifications`** — the most complex notification rule (participant validation, rate limiting, field immutability on update) has no emulator-backed test
-2. **No Firestore rules tests for `/nudges`** — game-participant validation and active-game check are untested at the rules level
+1. ~~**No Firestore rules tests for `/notifications`**~~ — covered by `rules-tests/notifications-redteam.rules.test.ts` and `notification-limits.rules.test.ts` (added after this audit).
+2. **No Firestore rules tests for `/nudges` or `/nudge_limits`** — game-participant validation, active-game check, and cooldown enforcement are still untested at the rules level.
 3. **No Cloud Functions at all** — the `functions/` package was removed from this repo. Push notifications (FCM), scheduled forfeit enforcement, and billing alerts previously implemented there are no longer deployed. Client-side `forfeitExpiredTurn` and `updatePlayerStats` continue to run on game completion.
 
 ---
@@ -224,16 +238,16 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 ## Summary
 
-| #        | Severity   | Finding                                                                    | Type        |
-| -------- | ---------- | -------------------------------------------------------------------------- | ----------- |
-| BUG-1    | **High**   | Client delete operations always fail (rules deny, docs accumulate forever) | Bug         |
-| BUG-2    | **High**   | `dismissNotification` passes local ID, not Firestore doc ID                | Bug         |
-| SEC-1    | **Medium** | Rate-limit collection reads open to all authenticated users                | Security    |
-| SEC-2    | **Low**    | Nudge localStorage key not scoped to user                                  | Security    |
-| PERF-1   | **Medium** | No TTL or GC for notification documents + missing composite index          | Performance |
-| PERF-2   | **Low**    | FCM token array grows without proactive cleanup                            | Performance |
-| ROBUST-1 | **Medium** | Notifications marked read before user sees them                            | Robustness  |
-| ROBUST-2 | **Low**    | Service worker Firebase SDK version manually synced                        | Robustness  |
-| ROBUST-3 | **Low**    | `judge_invite` has no dedicated chime or FCM push path                     | Robustness  |
-| TEST-1   | **Medium** | No Firestore rules tests for `/notifications`, `/nudges`, `/nudge_limits`  | Coverage    |
-| TEST-2   | **Medium** | No Cloud Function unit tests                                               | Coverage    |
+| #        | Severity   | Finding                                                                    | Type        | Status                                              |
+| -------- | ---------- | -------------------------------------------------------------------------- | ----------- | --------------------------------------------------- |
+| BUG-1    | **High**   | Client delete operations always fail (rules deny, docs accumulate forever) | Bug         | Resolved (recipient delete allowed)                 |
+| BUG-2    | **High**   | `dismissNotification` passes local ID, not Firestore doc ID                | Bug         | Resolved (`firestoreId` plumbed through)            |
+| SEC-1    | **Medium** | Rate-limit collection reads open to all authenticated users                | Security    | Resolved (reads scoped to `senderUid`)              |
+| SEC-2    | **Low**    | Nudge localStorage key not scoped to user                                  | Security    | Resolved                                            |
+| PERF-1   | **Medium** | No TTL or GC for notification documents + missing composite index          | Performance | Partially resolved (index added; no scheduled GC)   |
+| PERF-2   | **Low**    | FCM token array grows without proactive cleanup                            | Performance | Open (no Cloud Functions to run cleanup)            |
+| ROBUST-1 | **Medium** | Notifications marked read before user sees them                            | Robustness  | Resolved (read-marking is user-driven)              |
+| ROBUST-2 | **Low**    | Service worker Firebase SDK version manually synced                        | Robustness  | Open                                                |
+| ROBUST-3 | **Low**    | `judge_invite` has no dedicated chime or FCM push path                     | Robustness  | Resolved (chime mapping); FCM push moot until sender re-added |
+| TEST-1   | **Medium** | No Firestore rules tests for `/notifications`, `/nudges`, `/nudge_limits`  | Coverage    | Partially resolved (`/notifications` covered)       |
+| TEST-2   | **Medium** | No Cloud Function unit tests                                               | Coverage    | N/A (no `functions/` package in repo)               |
