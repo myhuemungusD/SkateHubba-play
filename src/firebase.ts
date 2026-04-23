@@ -10,7 +10,7 @@ import {
 } from "firebase/firestore";
 import { getStorage, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
-import { captureMessage } from "./lib/sentry";
+import { addBreadcrumb, captureMessage } from "./lib/sentry";
 import { env } from "./lib/env";
 import { logger } from "./services/logger";
 
@@ -29,6 +29,20 @@ let db: Firestore | null = null;
 let auth: Auth | null = null;
 let storage: FirebaseStorage | null = null;
 
+/**
+ * Which Firestore local cache strategy we ended up using.
+ *
+ * IndexedDB-backed `persistentLocalCache` is the preferred path, but it
+ * throws synchronously in environments where IndexedDB is unavailable —
+ * Safari Private Browsing, some Capacitor in-app WebViews, and very old
+ * Android WebViews. When that happens we fall back to `memoryLocalCache`
+ * so the module import never crashes the entire app before React mounts.
+ *
+ * UI can read this flag to decide whether to surface an "offline data
+ * unavailable" warning. The flag is set once during module init.
+ */
+export let firestoreCacheMode: "persistent" | "memory" = "persistent";
+
 if (env) {
   const firebaseConfig = {
     apiKey: env.VITE_FIREBASE_API_KEY,
@@ -45,17 +59,45 @@ if (env) {
   // In emulator mode use memory cache to avoid IndexedDB/persistence issues
   // that can stall getDoc() in headless Chrome on CI.
   const useEmulators = import.meta.env.DEV && env.VITE_USE_EMULATORS === true;
-  db = initializeFirestore(
-    app,
-    useEmulators
-      ? { localCache: memoryLocalCache(), experimentalForceLongPolling: true }
-      : {
+  if (useEmulators) {
+    firestoreCacheMode = "memory";
+    db = initializeFirestore(
+      app,
+      { localCache: memoryLocalCache(), experimentalForceLongPolling: true },
+      "skatehubba",
+    );
+  } else {
+    // Try the preferred IndexedDB-backed persistent cache first. It throws
+    // synchronously in Safari Private Browsing, some Capacitor WebViews and
+    // ancient Android WebViews where IndexedDB is unavailable. Catching that
+    // here prevents the whole app from crashing on module load (H-F13) and
+    // lets us fall back to an in-memory cache.
+    try {
+      db = initializeFirestore(
+        app,
+        {
           localCache: persistentLocalCache({
             tabManager: persistentMultipleTabManager(),
           }),
         },
-    "skatehubba",
-  );
+        "skatehubba",
+      );
+      firestoreCacheMode = "persistent";
+    } catch (err) {
+      // Never silently swallow — always breadcrumb + log so ops can see
+      // the fallback was triggered in the field.
+      logger.warn("firestore_persistent_cache_failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      addBreadcrumb({
+        category: "lifecycle",
+        message: "firestore_persistent_cache_failed",
+        data: { error: String(err) },
+      });
+      db = initializeFirestore(app, { localCache: memoryLocalCache() }, "skatehubba");
+      firestoreCacheMode = "memory";
+    }
+  }
 
   auth = getAuth(app);
   storage = getStorage(app);
