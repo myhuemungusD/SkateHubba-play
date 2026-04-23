@@ -8,6 +8,8 @@ on:
       - 'android/**'
       - 'package.json'
       - 'capacitor.config.ts'
+    tags:
+      - 'v*'
 jobs:
   build:
     name: Build Signed AAB
@@ -40,14 +42,37 @@ jobs:
       - name: Decode keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/skatehubba-upload.keystore
+      - name: Resolve Android version
+        id: version
+        run: |
+          # versionCode: monotonically increasing workflow run number. Play Store
+          # requires each uploaded artifact to have a unique, increasing code.
+          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          # versionName: if this build was triggered by a v*.*.* tag, strip the
+          # leading 'v' and use that. Otherwise leave empty so build.gradle
+          # falls back to package.json.version.
+          REF="${{ github.ref }}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            NAME="${REF#refs/tags/v}"
+            echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build signed AAB
         working-directory: android
         run: |
-          ./gradlew bundleRelease \
-            -Pandroid.injected.signing.store.file=${{ github.workspace }}/android/app/skatehubba-upload.keystore \
-            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }} \
-            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }} \
+          GRADLE_ARGS=(
+            bundleRelease
+            -PversionCode=${{ steps.version.outputs.code }}
+            -Pandroid.injected.signing.store.file=${{ github.workspace }}/android/app/skatehubba-upload.keystore
+            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }}
+            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
             -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+          )
+          if [ -n "${{ steps.version.outputs.name }}" ]; then
+            GRADLE_ARGS+=(-PversionName=${{ steps.version.outputs.name }})
+          fi
+          ./gradlew "${GRADLE_ARGS[@]}"
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
