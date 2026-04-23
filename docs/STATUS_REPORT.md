@@ -41,14 +41,14 @@ Status legend:
 | Player profile + game history  | **Done** | `src/screens/PlayerProfileScreen.tsx`                                     |
 | Privacy Policy / ToS / Data    | **Done** | `src/screens/PrivacyPolicy.tsx`, `TermsOfService.tsx`, `DataDeletion.tsx` |
 | Account deletion               | **Done** | `src/services/auth.ts`, `src/components/DeleteAccountModal.tsx`           |
-| Age gate (COPPA, 13+)          | **Done** | `src/screens/AgeGate.tsx`                                                 |
+| Age gate (COPPA, 13+)          | **Done** | Inline DOB + parental-consent on `src/screens/AuthScreen.tsx`; carried to ProfileSetup via `NavigationContext.setAgeGateResult` |
 | Consent banner                 | **Done** | `src/components/ConsentBanner.tsx`                                        |
 | Offline read support           | **Done** | `src/firebase.ts` (persistent cache), `src/components/OfflineBanner.tsx`  |
 | PWA install                    | **Done** | `index.html`, `public/manifest`                                           |
 | Capacitor iOS/Android shells   | **Done** | `capacitor.config.ts`, `android/`, `ios/` (per `cap:open:*` scripts)      |
 | Sentry error tracking          | **Done** | `src/lib/sentry`, `src/main.tsx`                                          |
 | Vercel Analytics + Speed       | **Done** | `src/App.tsx` (`Analytics`, `SpeedInsights`)                              |
-| Firestore security rules       | **Done** | `firestore.rules` (51 KB, validated turn order + scores + rate limits)    |
+| Firestore security rules       | **Done** | `firestore.rules` (~66 KB, validates turn order + scores + rate limits + judge paths) |
 | Storage security rules         | **Done** | `storage.rules`                                                           |
 
 **Phase 1 verdict:** 100% complete, in production at [skatehubba.com](https://skatehubba.com).
@@ -60,11 +60,11 @@ Status legend:
 | Feature                          | Status   | Evidence                                                                                                |
 | -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
 | Invite flow (SMS / link / share) | **Done** | `src/components/InviteButton.tsx` + `invite_sent` analytics                                             |
-| Rematch from Game Over           | **Done** | `src/screens/GameOverScreen.tsx`, `App.tsx:351-365`                                                     |
+| Rematch from Game Over           | **Done** | `src/screens/GameOverScreen.tsx`; rematch handler wired on the `/gameover` route in `src/App.tsx`       |
 | Push notification registration   | **Done** | `src/services/fcm.ts`, `src/components/PushPermissionBanner.tsx`                                        |
 | In-app notification bell         | **Done** | `src/components/NotificationBell.tsx`, `src/services/notifications.ts`                                  |
 | Game notification watcher        | **Done** | `src/components/GameNotificationWatcher.tsx`                                                            |
-| Deep-link from push → game       | **Done** | `App.tsx:154-155` (wires `skatehubba:open-game` listener inside the `useEffect` spanning lines 147-157) |
+| Deep-link from push → game       | **Done** | `src/App.tsx` — `useEffect` registers the `skatehubba:open-game` window listener and routes to the matching active game |
 | Clip sharing (social platforms)  | **Done** | `src/components/ClipsFeed.tsx`, `src/services/clips.ts` + `clip_shared`                                 |
 | Clip save (local download)       | **Done** | `clip_saved` analytic, `ClipsFeed.tsx`                                                                  |
 | Game share (post-game)           | **Done** | `game_shared` analytic                                                                                  |
@@ -81,7 +81,7 @@ Status legend:
 | Search / challenge by username | **Done**        | `src/screens/ChallengeScreen.tsx` (uses `getUidByUsername`)                                                                                                                                                                                                                        |
 | Leaderboard                    | **Done**        | `src/components/Leaderboard.tsx` + tests                                                                                                                                                                                                                                           |
 | Cross-game clips feed          | **Done**        | `src/components/ClipsFeed.tsx` (incl. autoplaying top-slot rotation), `src/services/clips.ts`                                                                                                                                                                                      |
-| Clip upvote primitives         | **Done**        | `upvoteClip()`, `clipVotes` collection, `firestore.rules:956-974` (match block for `/clipVotes/{voteId}`), `AlreadyUpvotedError`, UI in `ClipsFeed`                                                                                                                                |
+| Clip upvote primitives         | **Done**        | `upvoteClip()`, `clipVotes` collection, `/clipVotes/{voteId}` match block in `firestore.rules`, `AlreadyUpvotedError`, UI in `ClipsFeed`                                                                                                                                |
 | Vote-driven clip ranking       | **In Progress** | ⚠️ The clips feed is currently ordered by `createdAt desc` with a `__name__` tiebreaker — see `fetchClipsFeed()` in `src/services/clips.ts`. Upvote counts are surfaced in the UI (via `fetchClipUpvoteState`) but don't drive ordering anywhere yet — that's the active work item |
 | Block / report users           | **Done**        | `src/services/blocking.ts`, `src/services/reports.ts`, `ReportModal`                                                                                                                                                                                                               |
 | Spectator mode (watch live)    | **Deferred**    | Pushed back per product call (2026-04-15) — revisit after vote-driven ranking ships                                                                                                                                                                                                |
@@ -160,7 +160,7 @@ Status legend:
 | Daily Firestore managed exports       | **Ops Pending** | Ops   |
 | Storage lifecycle rule for old videos | **Ops Pending** | Ops   |
 | GitHub branch protection rules        | **Ops Pending** | Ops   |
-| "Download My Data" (GDPR Art. 20)     | **Planned**     | Dev   |
+| "Download My Data" (GDPR Art. 20)     | **Done**        | Dev   |
 
 ### P2 — Quality
 

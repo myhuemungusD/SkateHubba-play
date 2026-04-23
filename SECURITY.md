@@ -54,8 +54,9 @@ Firebase Storage rules (`storage.rules`) enforce:
 
 - Only authenticated users can upload or download videos.
 - Video size: minimum 1 KB (prevents stub uploads), maximum 50 MB.
-- Content type: must be `video/webm`.
-- Filename: only `set.webm` or `match.webm` are accepted — this prevents path traversal via crafted filenames.
+- Content type: must be `video/webm` (web) or `video/mp4` (native/Capacitor).
+- Filename: only `set.webm`, `set.mp4`, `match.webm`, or `match.mp4` are accepted — this prevents path traversal via crafted filenames.
+- The uploader's UID is bound into `customMetadata.uploaderUid` at upload time. Update and delete writes require `resource.metadata.uploaderUid == request.auth.uid`, so signed-in users cannot overwrite or delete each other's videos.
 
 ### XSS Prevention
 
@@ -101,9 +102,9 @@ Full configuration details: [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROT
 
 These are low-priority improvements identified during the auth security audit (March 2026). None are vulnerabilities — they are defense-in-depth opportunities:
 
-- **Make App Check mandatory in production** — currently env-var gated; if `VITE_RECAPTCHA_SITE_KEY` is missing, the app runs without bot protection silently
-- **Add nonce to Google OAuth provider** — Firebase's state parameter already prevents CSRF, but a nonce would add an extra replay-protection layer
-- **Restrict game deletion to non-active games** — currently either player can delete any game at any time; consider limiting to completed/forfeited games
+- **Make App Check mandatory in production** — currently double-gated by `VITE_APPCHECK_ENABLED` and `VITE_RECAPTCHA_SITE_KEY`. The opt-in default exists because a Firebase Console enforcement toggle without a matching reCAPTCHA allowlist locks every signed-in user out (see `docs/PERMISSION_DENIED_RUNBOOK.md`). Re-enabling is gated on App Check verified-request rate > 95 % for the production domains.
+- **Add nonce to Google OAuth provider** — Firebase's state parameter already prevents CSRF, but a nonce would add an extra replay-protection layer.
+- Game deletion is now restricted to non-active games (`firestore.rules`: `resource.data.status != "active"`).
 
 ---
 
