@@ -102,13 +102,11 @@ describe("storage red-team — overwrite another user's video", () => {
   // NOTE — Firebase Storage emulator quirk: when a signed-in client calls
   // put() at a path that already contains an object, the Storage emulator
   // (cloud-storage-rules-runtime v1.1.3) evaluates the CREATE rule rather
-  // than the UPDATE rule. That means an attacker who passes their own uid
-  // in customMetadata can satisfy the create-rule uploaderUid binding and
-  // overwrite the pre-existing object in the emulator — even though the
-  // update rule would have blocked them. See the finding reported with
-  // this test suite. We pin the currently-observed emulator behaviour
-  // while still exercising the update rule via updateMetadata below, which
-  // does route to the update-rule code path.
+  // than the UPDATE rule. That is fine for us: with `allow update` removed
+  // from storage.rules entirely, any route through the emulator still has
+  // to satisfy CREATE, and CREATE enforces uploaderUid == auth.uid — so an
+  // attacker cannot pass with the victim's uid either. updateMetadata()
+  // still routes to the UPDATE rule, which is now implicitly denied.
   it("attack: user B CANNOT overwrite user A's file while preserving A's uid in metadata", async () => {
     // When the attacker leaves A's uid in place, the create-rule
     // uploaderUid binding fails (UID_A != request.auth.uid), so the
@@ -123,10 +121,10 @@ describe("storage red-team — overwrite another user's video", () => {
     );
   });
 
-  it("attack: user B CANNOT change metadata on user A's file (update-rule guard)", async () => {
-    // updateMetadata() is routed to the storage UPDATE rule. The rule
-    // requires resource.metadata.uploaderUid == request.auth.uid — so B
-    // can't mutate A's object at all.
+  it("attack: user B CANNOT change metadata on user A's file (update is denied globally)", async () => {
+    // updateMetadata() routes to the storage UPDATE rule. With the update
+    // branch removed entirely, the rule defaults to deny — B (and even A)
+    // cannot mutate an existing object's metadata.
     await seedFileOwnedBy(UID_A);
     const ref = asUserB().storage().ref(videoPath());
     await assertFails(ref.updateMetadata({ customMetadata: { uploaderUid: UID_B } }));
@@ -213,14 +211,27 @@ describe("storage red-team — legitimate upload (companion)", () => {
     await assertSucceeds(asUserA().storage().ref(videoPath()).delete());
   });
 
-  it("user A CAN overwrite their own file (update path)", async () => {
+  it("user A CAN replace their own file by deleting then creating fresh", async () => {
+    // Update is denied globally, so the retry path is delete-then-create.
+    // The fresh create re-binds uploaderUid from scratch, which is exactly
+    // what we want for the clips-audit-trail invariant.
     await seedFileOwnedBy(UID_A);
-    const ref = asUserA().storage().ref(videoPath());
+    const aRef = asUserA().storage().ref(videoPath());
+    await assertSucceeds(aRef.delete());
     await assertSucceeds(
-      ref.put(videoPayload(), {
+      aRef.put(videoPayload(), {
         contentType: "video/webm",
         customMetadata: { uploaderUid: UID_A },
       }),
     );
+  });
+
+  it("user A CANNOT call updateMetadata on their own file (update is denied globally)", async () => {
+    // Even the original uploader cannot mutate the object's metadata in
+    // place. This is the core invariant that protects the clips audit
+    // trail — once written, the object is immutable until deleted.
+    await seedFileOwnedBy(UID_A);
+    const ref = asUserA().storage().ref(videoPath());
+    await assertFails(ref.updateMetadata({ customMetadata: { uploaderUid: UID_A } }));
   });
 });
