@@ -299,7 +299,18 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByText(/Landed/));
 
     await waitFor(() => {
-      expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "set", expect.any(Blob), expect.any(Function));
+      // Call signature: (gameId, turnNumber, role, blob, onProgress, maxRetries, signal)
+      // maxRetries is left as `undefined` (screen doesn't override the default);
+      // signal is an AbortSignal so a future cancel-button can plug in.
+      expect(mockUploadVideo).toHaveBeenCalledWith(
+        "game1",
+        1,
+        "set",
+        expect.any(Blob),
+        expect.any(Function),
+        undefined,
+        expect.any(AbortSignal),
+      );
     });
   });
 
@@ -332,7 +343,16 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByText(/✓ Landed/));
 
     await waitFor(() => {
-      expect(mockUploadVideo).toHaveBeenCalledWith("game1", 1, "match", expect.any(Blob), expect.any(Function));
+      // See setter-upload test for the 7-argument signature rationale.
+      expect(mockUploadVideo).toHaveBeenCalledWith(
+        "game1",
+        1,
+        "match",
+        expect.any(Blob),
+        expect.any(Function),
+        undefined,
+        expect.any(AbortSignal),
+      );
       expect(mockSubmitMatchAttempt).toHaveBeenCalledWith(
         "game1",
         "https://firebasestorage.googleapis.com/v0/b/test/o/video.webm",

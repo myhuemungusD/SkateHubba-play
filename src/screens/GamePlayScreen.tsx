@@ -177,6 +177,10 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
   const showRecorder = !isSetter || recorderRevealedRef.current;
 
   const submittedRef = useRef(false);
+  // AbortController for in-flight uploads. Held in a ref so future UI work
+  // (e.g., a cancel button) can call `uploadAbortRef.current?.abort()` without
+  // re-plumbing. `uploadVideo` honours the signal via `task.cancel()`.
+  const uploadAbortRef = useRef<AbortController | null>(null);
   const submitSetterTrick = useCallback(
     async (blob: Blob | null) => {
       /* v8 ignore start -- double-submit guard; ref always false on first call in tests */
@@ -191,7 +195,16 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         let videoUrl: string | null = null;
         if (blob) {
           setUploadProgress({ bytesTransferred: 0, totalBytes: blob.size, percent: 0 });
-          videoUrl = await uploadVideo(game.id, game.turnNumber, "set", blob, setUploadProgress);
+          uploadAbortRef.current = new AbortController();
+          videoUrl = await uploadVideo(
+            game.id,
+            game.turnNumber,
+            "set",
+            blob,
+            setUploadProgress,
+            undefined,
+            uploadAbortRef.current.signal,
+          );
         }
         setUploadProgress(null);
         await setTrick(game.id, trickNameRef.current.trim(), videoUrl);
@@ -201,6 +214,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         setUploadProgress(null);
         submittedRef.current = false;
       } finally {
+        uploadAbortRef.current = null;
         setSubmitting(false);
       }
     },
@@ -245,7 +259,16 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         let videoUrl: string | null = null;
         if (videoBlob) {
           setUploadProgress({ bytesTransferred: 0, totalBytes: videoBlob.size, percent: 0 });
-          videoUrl = await uploadVideo(game.id, game.turnNumber, "match", videoBlob, setUploadProgress);
+          uploadAbortRef.current = new AbortController();
+          videoUrl = await uploadVideo(
+            game.id,
+            game.turnNumber,
+            "match",
+            videoBlob,
+            setUploadProgress,
+            undefined,
+            uploadAbortRef.current.signal,
+          );
         }
         setUploadProgress(null);
         await submitMatchAttempt(game.id, videoUrl, landed);
@@ -255,6 +278,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         setUploadProgress(null);
         matchSubmittedRef.current = false;
       } finally {
+        uploadAbortRef.current = null;
         setSubmitting(false);
       }
     },
