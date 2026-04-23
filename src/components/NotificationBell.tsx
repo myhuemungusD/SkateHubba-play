@@ -177,6 +177,11 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
                 };
                 // Row is div[role="button"] (not <button>) so the Delete <button>
                 // can safely live inside without invalid nested interactives.
+                // Keyboard semantics mirror native <button>: Enter activates on
+                // keydown, Space arms on keydown and fires on keyup so the user
+                // can press-and-cancel by moving focus away. e.repeat guards key
+                // hold; blur clears the primed flag (matches native cancel-on-
+                // focus-loss). Same pattern as src/screens/Lobby.tsx cardButtonProps.
                 return (
                   <div
                     role="button"
@@ -185,11 +190,24 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
                     key={n.id}
                     onClick={activate}
                     onKeyDown={(e) => {
-                      if (!clickable) return;
-                      if (e.key === "Enter" || e.key === " ") {
+                      if (!clickable || e.repeat) return;
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        activate();
+                      } else if (e.key === " ") {
+                        e.preventDefault();
+                        e.currentTarget.dataset.spacePrimed = "true";
+                      }
+                    }}
+                    onKeyUp={(e) => {
+                      if (e.key === " " && e.currentTarget.dataset.spacePrimed === "true") {
+                        delete e.currentTarget.dataset.spacePrimed;
                         e.preventDefault();
                         activate();
                       }
+                    }}
+                    onBlur={(e) => {
+                      delete e.currentTarget.dataset.spacePrimed;
                     }}
                     className={`group w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-orange ${n.read ? "opacity-60" : ""} ${clickable ? "hover:bg-[rgba(255,107,0,0.04)] cursor-pointer" : ""}`}
                   >

@@ -376,4 +376,110 @@ describe("NotificationBell", () => {
     expect(markRead).not.toHaveBeenCalled();
     expect(onOpenGame).not.toHaveBeenCalled();
   });
+
+  it("Space activates on keyup (not keydown), matching native button semantics", async () => {
+    const game = { id: "g1" };
+    const onOpenGame = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Native",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g1",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell games={[game as any]} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    const row = screen.getByText("Native").closest('[role="button"]') as HTMLElement;
+    row.focus();
+
+    await act(async () => {
+      row.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
+    });
+    expect(onOpenGame).not.toHaveBeenCalled();
+
+    await act(async () => {
+      row.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true, cancelable: true }));
+    });
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
+  it("Space cancels if focus leaves before keyup (press-and-cancel)", async () => {
+    const game = { id: "g1" };
+    const onOpenGame = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Cancel",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g1",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell games={[game as any]} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    const row = screen.getByText("Cancel").closest('[role="button"]') as HTMLElement;
+    row.focus();
+
+    await act(async () => {
+      row.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
+      row.blur();
+      row.dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true, cancelable: true }));
+    });
+
+    expect(onOpenGame).not.toHaveBeenCalled();
+  });
+
+  it("ignores auto-repeat keydowns when a key is held", async () => {
+    const game = { id: "g1" };
+    const onOpenGame = vi.fn();
+    const markRead = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      markRead,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Repeat",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g1",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell games={[game as any]} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    const row = screen.getByText("Repeat").closest('[role="button"]') as HTMLElement;
+    row.focus();
+
+    await act(async () => {
+      row.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", repeat: true, bubbles: true, cancelable: true }));
+      row.dispatchEvent(new KeyboardEvent("keydown", { key: " ", repeat: true, bubbles: true, cancelable: true }));
+    });
+
+    expect(onOpenGame).not.toHaveBeenCalled();
+    expect(markRead).not.toHaveBeenCalled();
+  });
 });
