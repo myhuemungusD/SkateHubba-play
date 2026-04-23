@@ -169,19 +169,29 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
               notifications.map((n) => {
                 const game = n.gameId && games ? games.find((g) => g.id === n.gameId) : undefined;
                 const clickable = !!(game && onOpenGame);
+                const activate = () => {
+                  if (!clickable) return;
+                  if (!n.read) markRead(n.id);
+                  onOpenGame(game);
+                  setOpen(false);
+                };
+                // Row is div[role="button"] (not <button>) so the Delete <button>
+                // can safely live inside without invalid nested interactives.
                 return (
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={clickable ? 0 : -1}
+                    aria-disabled={!clickable}
                     key={n.id}
-                    disabled={!clickable}
-                    onClick={() => {
-                      if (!n.read) markRead(n.id);
-                      if (clickable) {
-                        onOpenGame(game);
-                        setOpen(false);
+                    onClick={activate}
+                    onKeyDown={(e) => {
+                      if (!clickable) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        activate();
                       }
                     }}
-                    className={`group w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 transition-colors ${n.read ? "opacity-60" : ""} ${clickable ? "hover:bg-[rgba(255,107,0,0.04)] cursor-pointer" : ""}`}
+                    className={`group w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-orange ${n.read ? "opacity-60" : ""} ${clickable ? "hover:bg-[rgba(255,107,0,0.04)] cursor-pointer" : ""}`}
                   >
                     <span className={`shrink-0 text-sm mt-0.5 ${notificationAccentText[n.type]}`}>
                       {notificationIcon[n.type]}
@@ -221,7 +231,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
                         <line x1="6" y1="6" x2="18" y2="18" />
                       </svg>
                     </button>
-                  </button>
+                  </div>
                 );
               })
             )}
