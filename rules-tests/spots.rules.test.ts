@@ -97,11 +97,14 @@ beforeEach(async () => {
  * ──────────────────────────────────────────── */
 
 describe("spots — read", () => {
-  it("an anonymous user CAN read an active spot (public-by-design)", async () => {
+  it("an anonymous user CANNOT read a spot (auth now required)", async () => {
+    // H-R4 hardening (April 2026): `isSignedIn()` is now required to close
+    // the anonymous-scraping attack against user-location data. Previously
+    // active spots were publicly readable.
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "spots", SPOT_ID), makeValidSpot());
     });
-    await assertSucceeds(getDoc(doc(asAnonymous().firestore(), "spots", SPOT_ID)));
+    await assertFails(getDoc(doc(asAnonymous().firestore(), "spots", SPOT_ID)));
   });
 
   it("a signed-in user can read an active spot", async () => {
