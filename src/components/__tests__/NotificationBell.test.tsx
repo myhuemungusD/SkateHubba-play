@@ -277,7 +277,7 @@ describe("NotificationBell", () => {
     expect(deleteBtn?.getAttribute("aria-label")).toBe("Delete notification");
   });
 
-  it("activates row via Enter and Space keys", async () => {
+  it("activates row via Enter key", async () => {
     const game = { id: "g1" };
     const onOpenGame = vi.fn();
     const markRead = vi.fn();
@@ -308,6 +308,37 @@ describe("NotificationBell", () => {
     expect(onOpenGame).toHaveBeenCalledWith(game);
   });
 
+  it("activates row via Space key", async () => {
+    const game = { id: "g1" };
+    const onOpenGame = vi.fn();
+    const markRead = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      markRead,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Spc",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g1",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell games={[game as any]} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    const row = screen.getByText("Spc").closest('[role="button"]') as HTMLElement;
+    row.focus();
+    await userEvent.keyboard("[Space]");
+    expect(markRead).toHaveBeenCalledWith("n1");
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
   it("non-clickable row has tabIndex -1 and aria-disabled true", async () => {
     mockNotifications.mockReturnValue({
       ...baseCtx,
@@ -323,5 +354,26 @@ describe("NotificationBell", () => {
     const row = screen.getByText("NoGame").closest('[role="button"]');
     expect(row?.getAttribute("tabindex")).toBe("-1");
     expect(row?.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("clicking a non-clickable row is a no-op (no markRead, no onOpenGame)", async () => {
+    const markRead = vi.fn();
+    const onOpenGame = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      markRead,
+      notifications: [
+        { id: "n1", type: "game_event", title: "NoClick", message: "msg", timestamp: Date.now(), read: false },
+      ],
+      unreadCount: 1,
+    });
+
+    // No games array passed → clickable === false even though markRead is wired
+    render(<NotificationBell onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+    await userEvent.click(screen.getByText("NoClick"));
+
+    expect(markRead).not.toHaveBeenCalled();
+    expect(onOpenGame).not.toHaveBeenCalled();
   });
 });
