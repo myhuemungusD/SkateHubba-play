@@ -245,7 +245,83 @@ describe("NotificationBell", () => {
 
     render(<NotificationBell />);
     await userEvent.click(screen.getByLabelText("Notifications"));
-    const item = screen.getByText("Read").closest("button");
+    const item = screen.getByText("Read").closest('[role="button"]');
     expect(item?.className).toContain("opacity-60");
+  });
+
+  it("row is div[role='button'] (not a native <button>) so the delete button can nest safely", async () => {
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Row",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g1",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell games={[{ id: "g1" } as any]} onOpenGame={vi.fn()} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    const row = screen.getByText("Row").closest('[role="button"]');
+    expect(row).not.toBeNull();
+    expect(row?.tagName).toBe("DIV");
+    // Delete button lives inside; the only inner <button> in the row
+    const deleteBtn = row?.querySelector("button");
+    expect(deleteBtn?.getAttribute("aria-label")).toBe("Delete notification");
+  });
+
+  it("activates row via Enter and Space keys", async () => {
+    const game = { id: "g1" };
+    const onOpenGame = vi.fn();
+    const markRead = vi.fn();
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      markRead,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Keyb",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g1",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell games={[game as any]} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    const row = screen.getByText("Keyb").closest('[role="button"]') as HTMLElement;
+    row.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(markRead).toHaveBeenCalledWith("n1");
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
+  it("non-clickable row has tabIndex -1 and aria-disabled true", async () => {
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        { id: "n1", type: "game_event", title: "NoGame", message: "msg", timestamp: Date.now(), read: false },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    const row = screen.getByText("NoGame").closest('[role="button"]');
+    expect(row?.getAttribute("tabindex")).toBe("-1");
+    expect(row?.getAttribute("aria-disabled")).toBe("true");
   });
 });
