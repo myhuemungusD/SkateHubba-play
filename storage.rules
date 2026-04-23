@@ -24,19 +24,20 @@ service firebase.storage {
             || request.resource.contentType == 'video/mp4')
         // Only the two known roles are valid filenames (rejects path traversal attempts)
         && fileName.matches('(set|match)\\.(webm|mp4)')
-        // Bind the new object to its uploader so update/delete can verify ownership.
+        // Bind the new object to its uploader so delete can verify ownership.
         && request.resource.metadata.uploaderUid == request.auth.uid;
-      // Update: only the original uploader may overwrite, and the new
-      // metadata must keep the same uploaderUid (prevents rebinding to
-      // someone else mid-update).
-      allow update: if request.auth != null
-        && request.resource.size > 1024
-        && request.resource.size < 50 * 1024 * 1024
-        && (request.resource.contentType == 'video/webm'
-            || request.resource.contentType == 'video/mp4')
-        && fileName.matches('(set|match)\\.(webm|mp4)')
-        && resource.metadata.uploaderUid == request.auth.uid
-        && request.resource.metadata.uploaderUid == request.auth.uid;
+      // NOTE: `update` is intentionally NOT granted. Game-video objects are
+      // append-only from the rules' perspective: once committed they must
+      // not be mutated, because Firestore `clips/*` docs (immutable via
+      // `allow update: if false`) reference these URLs as the content-
+      // moderation audit trail. Allowing update would let the uploader
+      // silently swap the bytes behind an already-moderated clip.
+      // If the client needs retry-on-failure semantics, it must `delete`
+      // the old object and `create` a fresh one — the `create` rule re-
+      // binds uploaderUid, size, MIME, and filename pattern from scratch.
+      // (Firebase SDK `uploadBytesResumable` only commits on full success,
+      // so a failed first attempt leaves no object to collide with — no
+      // client-side delete is needed for the normal retry path.)
       // Delete: only the original uploader may remove their own video
       // (used during account-deletion cleanup for that user's own clips).
       allow delete: if request.auth != null
