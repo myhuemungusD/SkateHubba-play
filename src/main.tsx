@@ -1,7 +1,8 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { initSentry, captureException } from "./lib/sentry";
+import { Capacitor } from "@capacitor/core";
+import { initSentry, captureException, addBreadcrumb } from "./lib/sentry";
 import { initPosthog } from "./lib/posthog";
 import App from "./App";
 import "./index.css";
@@ -91,3 +92,25 @@ createRoot(rootEl).render(
     </BrowserRouter>
   </StrictMode>,
 );
+
+// Capacitor's SplashScreen plugin is configured with `launchAutoHide: false`
+// (see capacitor.config.ts), so the native splash stays visible until we
+// explicitly hide it. Dismiss it after the first React paint — via
+// requestAnimationFrame — so users never see a white flash between splash
+// and the mounted app. Dynamic import keeps the splash-screen plugin out
+// of the web bundle; the import is only evaluated on native platforms.
+if (Capacitor.isNativePlatform()) {
+  requestAnimationFrame(async () => {
+    try {
+      const { SplashScreen } = await import("@capacitor/splash-screen");
+      await SplashScreen.hide({ fadeOutDuration: 300 });
+      addBreadcrumb({ category: "lifecycle", message: "splash_hidden" });
+    } catch (err) {
+      addBreadcrumb({
+        category: "lifecycle",
+        message: "splash_hide_failed",
+        data: { error: String(err) },
+      });
+    }
+  });
+}
