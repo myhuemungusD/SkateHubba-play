@@ -7,12 +7,15 @@ import {
   onAuthStateChanged,
   deleteUser,
   GoogleAuthProvider,
+  signInWithCredential,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   type User,
   type ActionCodeSettings,
 } from "firebase/auth";
+import { Capacitor } from "@capacitor/core";
+import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { auth, requireAuth, isEmulatorMode } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
@@ -207,12 +210,46 @@ const POPUP_FALLBACK_CODES = new Set<string>([
 
 /**
  * Sign in with Google.
- * Uses popup on desktop; falls back to redirect when popups are blocked (mobile/Safari).
- * Returns the signed-in User, or null if a redirect was initiated (onAuthStateChanged
- * will fire automatically once the user returns from Google's OAuth page).
+ *
+ * On iOS/Android (Capacitor native shell) this delegates to
+ * `@capacitor-firebase/authentication`, which uses the platform-native Google
+ * Sign-In SDK. `signInWithPopup` is a web-only API — calling it inside a
+ * Capacitor WebView fails with `auth/operation-not-supported-in-this-environment`
+ * and leaves the user with no sign-in path at all. Native returns an OAuth id
+ * token which we hand to `signInWithCredential` to populate the same Firebase
+ * Auth state a popup flow would produce.
+ *
+ * On the web, this keeps the popup-first / redirect-fallback behaviour
+ * untouched: popup on desktop, redirect fallback when popups are blocked
+ * (mobile Safari, in-app browsers, storage-partitioned contexts).
+ *
+ * Returns the signed-in User, or null if a redirect was initiated (web only —
+ * `onAuthStateChanged` will fire automatically once the user returns from
+ * Google's OAuth page).
  */
 export async function signInWithGoogle(): Promise<User | null> {
   const a = requireAuth();
+
+  // ── Native path (iOS / Android) ─────────────────────────────────────
+  if (Capacitor.isNativePlatform()) {
+    logger.info("google_sign_in_native_attempt");
+    try {
+      const { credential } = await FirebaseAuthentication.signInWithGoogle();
+      if (!credential?.idToken) {
+        throw new Error("Google sign-in returned no idToken");
+      }
+      const googleCred = GoogleAuthProvider.credential(credential.idToken, credential.accessToken);
+      const result = await signInWithCredential(a, googleCred);
+      logger.info("google_sign_in_native_success", { uid: result.user.uid, email: result.user.email });
+      return result.user;
+    } catch (err: unknown) {
+      const code = getErrorCode(err);
+      logger.error("google_sign_in_native_error", { code, message: parseFirebaseError(err) });
+      throw err;
+    }
+  }
+
+  // ── Web path (popup first, redirect fallback) ──────────────────────
   const provider = makeGoogleProvider();
   logger.info("google_sign_in_popup_attempt");
   try {

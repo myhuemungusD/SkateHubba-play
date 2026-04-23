@@ -10,6 +10,8 @@ import {
 } from "firebase/firestore";
 import { getStorage, connectStorageEmulator, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
+import { Capacitor } from "@capacitor/core";
+import { FirebaseAppCheck } from "@capacitor-firebase/app-check";
 import { captureMessage } from "./lib/sentry";
 import { env } from "./lib/env";
 import { logger } from "./services/logger";
@@ -87,6 +89,31 @@ if (env) {
     // operators know the opt-in flag is required to turn it back on.
     logger.info("appcheck_skipped_opt_in_required", {
       hint: "set VITE_APPCHECK_ENABLED=true + VITE_RECAPTCHA_SITE_KEY to enable",
+    });
+  } else if (Capacitor.isNativePlatform()) {
+    // ── Native path (iOS / Android via Capacitor) ────────────────────
+    // The Firebase JS SDK only ships ReCaptchaV3Provider /
+    // ReCaptchaEnterpriseProvider / CustomProvider — none of which work
+    // inside a Capacitor WebView. Delegating to @capacitor-firebase/app-check
+    // uses the platform-native attestation SDKs (DeviceCheck on iOS,
+    // Play Integrity on Android) through the plugin bridge.
+    //
+    // In emulator / dev builds we request the debug provider so the
+    // attestation step doesn't reject a development device. In release
+    // builds the plugin auto-selects DeviceCheck (iOS) / Play Integrity
+    // (Android) — no provider option is needed on the JS side.
+    const useDebug = useEmulators || import.meta.env.DEV;
+    FirebaseAppCheck.initialize({
+      debug: useDebug,
+      siteKey: env.VITE_RECAPTCHA_SITE_KEY,
+    }).catch((err: unknown) => {
+      logger.error("appcheck_native_init_failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      captureMessage(
+        `Native App Check init failed — Auth/Firestore requests may be rejected: ${err instanceof Error ? err.message : String(err)}`,
+        "error",
+      );
     });
   } else if (env.VITE_RECAPTCHA_SITE_KEY) {
     try {
