@@ -12,6 +12,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  type Transaction,
   type Unsubscribe,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
@@ -109,6 +110,42 @@ export async function writeNotification(params: WriteNotificationParams): Promis
       error: parseFirebaseError(err),
     });
   }
+}
+
+/**
+ * Stage a notification write inside an existing Firestore transaction.
+ *
+ * Use this from game mutations that already run under `runTransaction` so the
+ * notification is written atomically with the game update — if the client
+ * tab dies between commit and "best-effort" write, the opponent would otherwise
+ * never get toasted. Inside a transaction there is no "between": either both
+ * the game update and the notification commit, or neither does.
+ *
+ * Notes:
+ *  • No client-side rate limit (in-tx writes happen inside game actions that
+ *    already have their own cooldowns via `checkTurnActionRate`).
+ *  • `notification_limits` is written AFTER the transaction commits (via
+ *    `recordNotificationLimit`) — writing to two docs inside a transaction
+ *    would require gets-before-writes we don't want to pay for here, and the
+ *    Firestore rule fallback (`!exists(limit) || time > limit+5s`) tolerates
+ *    a missing limit doc.
+ */
+export function writeNotificationInTx(tx: Transaction, params: WriteNotificationParams): void {
+  // Client-generated deterministic ID. Safe inside a transaction — if the
+  // transaction is retried by the SDK the same ID is reused, keeping the
+  // notification create idempotent with the game update.
+  const db = requireDb();
+  const notificationRef = doc(collection(db, "notifications"));
+  tx.set(notificationRef, {
+    senderUid: params.senderUid,
+    recipientUid: params.recipientUid,
+    type: params.type,
+    title: params.title,
+    body: params.body,
+    gameId: params.gameId,
+    read: false,
+    createdAt: serverTimestamp(),
+  });
 }
 
 // ── Notification read/delete ──────────────────────────────
