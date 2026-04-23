@@ -8,9 +8,18 @@ const mockInitializeFirestore = vi.fn(() => ({ name: "test-db" }));
 const mockConnectAuthEmulator = vi.fn();
 const mockConnectFirestoreEmulator = vi.fn();
 const mockConnectStorageEmulator = vi.fn();
-const mockMemoryLocalCache = vi.fn(() => ({}));
-const mockPersistentLocalCache = vi.fn(() => ({}));
+const mockMemoryLocalCache = vi.fn(() => ({ __cache: "memory" }));
+const mockPersistentLocalCache = vi.fn(() => ({ __cache: "persistent" }));
 const mockPersistentMultipleTabManager = vi.fn(() => ({}));
+const mockAddBreadcrumb = vi.fn();
+
+vi.mock("../lib/sentry", () => ({
+  addBreadcrumb: (...args: unknown[]) => mockAddBreadcrumb(...args),
+  captureMessage: vi.fn(),
+  captureException: vi.fn(),
+  initSentry: vi.fn(),
+  setUser: vi.fn(),
+}));
 
 vi.mock("firebase/app", () => ({
   initializeApp: (...args: unknown[]) => mockInitializeApp(...args),
@@ -155,5 +164,68 @@ describe("firebase module", () => {
 
     const mod = await import("../firebase");
     expect(mod.requireStorage()).toBeDefined();
+  });
+
+  it("uses persistent cache and reports firestoreCacheMode='persistent' by default", async () => {
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+
+    const mod = await import("../firebase");
+    expect(mod.firestoreCacheMode).toBe("persistent");
+    expect(mockPersistentLocalCache).toHaveBeenCalledTimes(1);
+    expect(mockMemoryLocalCache).not.toHaveBeenCalled();
+    expect(mockInitializeFirestore).toHaveBeenCalledTimes(1);
+    // No "lifecycle" breadcrumb for cache fallback on the happy path.
+    // (logger.info forwards info-level breadcrumbs with category="app"; we
+    // only care that no lifecycle/cache-failure crumb was emitted.)
+    const lifecycleCrumbs = mockAddBreadcrumb.mock.calls.filter(
+      ([arg]) => (arg as { category?: string } | undefined)?.category === "lifecycle",
+    );
+    expect(lifecycleCrumbs).toHaveLength(0);
+  });
+
+  it("falls back to memory cache when persistent cache init throws (Safari private / broken WebView)", async () => {
+    stubFirebaseEnv();
+    vi.stubEnv("VITE_USE_EMULATORS", "false");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Simulate IndexedDB unavailable — first initializeFirestore call throws
+    // synchronously (as persistentLocalCache does in Safari private mode).
+    // Fallback call with memoryLocalCache must succeed.
+    mockInitializeFirestore
+      .mockImplementationOnce(() => {
+        throw new Error("IndexedDB is not available");
+      })
+      .mockImplementationOnce(() => ({ name: "test-db-memory" }));
+
+    const mod = await import("../firebase");
+
+    // Fallback applied
+    expect(mod.firestoreCacheMode).toBe("memory");
+    expect(mod.db).not.toBeNull();
+
+    // Both variants attempted
+    expect(mockInitializeFirestore).toHaveBeenCalledTimes(2);
+    expect(mockPersistentLocalCache).toHaveBeenCalledTimes(1);
+    expect(mockMemoryLocalCache).toHaveBeenCalledTimes(1);
+
+    // Breadcrumb recorded — failure must never be silently swallowed.
+    // Filter by category="lifecycle" + specific message so we're robust to
+    // unrelated info-level breadcrumbs emitted by logger.info elsewhere.
+    const lifecycleCrumbs = mockAddBreadcrumb.mock.calls.filter(
+      ([arg]) =>
+        (arg as { category?: string; message?: string } | undefined)?.category === "lifecycle" &&
+        (arg as { message?: string } | undefined)?.message === "firestore_persistent_cache_failed",
+    );
+    expect(lifecycleCrumbs).toHaveLength(1);
+    expect(lifecycleCrumbs[0][0]).toEqual(
+      expect.objectContaining({
+        category: "lifecycle",
+        message: "firestore_persistent_cache_failed",
+        data: expect.objectContaining({
+          error: expect.stringContaining("IndexedDB is not available"),
+        }),
+      }),
+    );
   });
 });
