@@ -28,6 +28,15 @@ vi.mock("../../services/users", () => ({
 vi.mock("../../services/fcm", () => ({
   removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
 }));
+// Native push service is fully gated via isPushSupported(); the AuthContext
+// tests run in jsdom where Capacitor.isNativePlatform() is false, so the
+// real helpers would short-circuit. Mock anyway to stay insulated from
+// accidental side effects (the plugin import graph pulls @capacitor/core).
+vi.mock("../../services/pushNotifications", () => ({
+  isPushSupported: vi.fn().mockReturnValue(false),
+  registerPushToken: vi.fn().mockResolvedValue(undefined),
+  unregisterPushToken: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("../../services/userData", () => ({
   exportUserData: vi.fn(),
   serializeUserData: vi.fn(() => "{}"),

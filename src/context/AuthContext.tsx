@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, type React
 import { useAuth } from "../hooks/useAuth";
 import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
 import { removeCurrentFcmToken } from "../services/fcm";
+import { isPushSupported, registerPushToken, unregisterPushToken } from "../services/pushNotifications";
 import type { UserProfile } from "../services/users";
 import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
@@ -175,6 +176,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, activeProfile?.username]);
 
+  // Register for native push notifications after sign-in. Gated on
+  // isPushSupported() so web users never hit the Capacitor plugin (which
+  // throws "unimplemented" in the browser). Best-effort — errors inside
+  // registerPushToken are already swallowed and logged; this effect must
+  // never block the login flow.
+  useEffect(() => {
+    if (!user) return;
+    if (!isPushSupported()) return;
+    const uid = user.uid;
+    void registerPushToken(uid).catch((err: unknown) => {
+      logger.warn("push_register_unhandled", { uid, message: parseFirebaseError(err) });
+    });
+  }, [user]);
+
   // Invalidate pendingDeleteUid when a different auth user arrives (someone
   // else signs in on the same tab) — the banner must not prompt them to
   // finish deleting a stranger's account.
@@ -192,7 +207,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleSignOut = useCallback(async () => {
     logger.info("user_sign_out");
-    // Scrub FCM token BEFORE fbSignOut — the owner-only rules on
+    // Scrub FCM/push tokens BEFORE fbSignOut — the owner-only rules on
     // users/{uid}/private/profile deny writes once the auth token is gone.
     // Gate on `user` (Firebase Auth source of truth), not activeProfile,
     // so the scrub still runs if the profile doc was deleted mid-session.
@@ -201,6 +216,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await removeCurrentFcmToken(user.uid);
       } catch (err) {
         logger.warn("sign_out_fcm_scrub_failed", { uid: user.uid, message: parseFirebaseError(err) });
+      }
+      try {
+        await unregisterPushToken(user.uid);
+      } catch (err) {
+        logger.warn("sign_out_push_scrub_failed", { uid: user.uid, message: parseFirebaseError(err) });
       }
     }
     try {
@@ -243,6 +263,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     writePendingDeleteUid(uid);
     setPendingDeleteUid(uid);
     logger.info("delete_account_pending_retry_captured", { uid });
+    // Unregister native push BEFORE Auth deletion — the owner-only rule on
+    // users/{uid}/private/profile denies the arrayRemove write once the
+    // auth token is revoked, and deleteUserData's Phase 4 batch torches
+    // the whole private doc anyway. Fire-and-forget: errors here must
+    // never block deletion, and we don't want an extra await boundary
+    // altering the observable ordering of the deleteAccount call.
+    void unregisterPushToken(uid).catch((err: unknown) => {
+      logger.warn("delete_account_push_scrub_failed", { uid, message: parseFirebaseError(err) });
+    });
     try {
       // deleteAccount runs Auth deletion FIRST, then Firestore wipe with
       // retry. Any throw here means Auth deletion failed and NO Firestore
