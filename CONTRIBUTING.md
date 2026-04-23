@@ -61,14 +61,15 @@ See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for full local setup including Fi
 
 ## Code Style
 
-We don't use a linter or formatter config in this repo, but follow these conventions:
+ESLint (`eslint.config.js`) and Prettier (`.prettierrc`) are configured and enforced via Husky + lint-staged on commit. Conventions:
 
 - **TypeScript strict mode** is enabled (`"strict": true` in `tsconfig.app.json`). All new code must type-check cleanly. Run `npx tsc -b` before submitting.
-- **No `any`** — use proper types or generics.
+- **No `any`** — use proper types or generics. The CI `guard-as-any-casts` job rejects `as any` outside of test files.
+- **No `TODO` / `FIXME` / `HACK`** in `src/` — the `guard-todo-fixme-hack` PR-gate job rejects these. Resolve or open an issue instead.
 - **Tailwind classes** for all styling. Don't add inline styles or CSS modules.
 - **Service layer pattern** — UI talks to `src/services/*`, not to Firebase directly. New Firebase operations belong in the relevant service file.
-- **No unused imports or variables** — TypeScript strict mode will catch these.
-- Keep functions small and focused. The existing `App.tsx` is intentionally large (it's the state machine); new screen logic should follow existing patterns rather than introducing new abstractions.
+- **No unused imports or variables** — TypeScript strict mode + ESLint catch these.
+- Keep functions small and focused. The existing `App.tsx` owns the route table and provider tree; new screen logic should follow existing patterns rather than introducing new abstractions.
 
 ---
 
@@ -118,12 +119,11 @@ See [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md) for the full 
 
 Before opening a PR, confirm:
 
-- [ ] `npx tsc -b` passes with no errors
-- [ ] `npm test` passes with no failures
-- [ ] `npm run build` completes successfully
-- [ ] New features have tests (unit or smoke E2E)
+- [ ] `npm run verify` passes (`tsc -b && lint && test:coverage && build`)
+- [ ] New features have tests (unit + smoke + rules tests where applicable)
+- [ ] 100% coverage thresholds on `src/services/**` and `src/hooks/**` still hold
 - [ ] No console.log statements left in code (use `console.warn` for expected error paths only)
-- [ ] Firebase security rules updated if new collections or fields are added
+- [ ] Firebase security rules updated if new collections or fields are added; `npm run test:rules` covers them
 - [ ] `.env.example` updated if new environment variables are introduced
 - [ ] PR description explains what changed and why
 
@@ -133,8 +133,11 @@ Before opening a PR, confirm:
 
 We use Vitest with jsdom. Firebase is mocked via `src/__mocks__/firebase.ts`.
 
-- **Unit tests** go in `src/services/__tests__/` (one file per service)
-- **E2E smoke tests** go in `src/__tests__/smoke-e2e.test.tsx`
+- **Unit tests** go in `src/services/__tests__/` and `src/hooks/__tests__/` (one file per service/hook, 100% coverage required)
+- **Component tests** go in `src/components/__tests__/`
+- **Smoke tests** are split by screen area in `src/__tests__/smoke-*.test.tsx`
+- **Firestore rules tests** live in `rules-tests/*.rules.test.ts` and run via `npm run test:rules`
+- **E2E (Playwright)** lives in `e2e/` and runs via `npm run test:e2e` against the Firebase emulator suite
 
 See [docs/TESTING.md](docs/TESTING.md) for patterns and examples.
 

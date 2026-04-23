@@ -33,6 +33,7 @@
 **Location:** `firestore.rules` game create rule (previously lines 86–103)
 
 **Description:** The game create rule validated `status`, `p1Letters`, `p2Letters`, `turnNumber`, and `winner`, but did **not** validate:
+
 - `currentTurn` — could be set to the opponent
 - `turnDeadline` — could be a past timestamp
 - `phase` — could be any string
@@ -41,17 +42,19 @@
 - `setterConfirm`, `matcherConfirm` — could be pre-set
 
 **Attack scenario:**
+
 1. Malicious client creates a game with `currentTurn: opponentUid`, `turnDeadline: Timestamp.fromMillis(0)`.
 2. Firestore accepts the write (all previously-checked fields are valid).
 3. Malicious client immediately sends a forfeit update.
 4. Forfeit rule passes: `request.time > resource.data.turnDeadline` (0 is in the past), `winner == opponentUid(game, currentTurn)` (opponent of the opponent = self).
 5. **Result: Instant win without the opponent ever seeing the game.**
 
-This completely bypasses the F1 fix from the prior audit — that fix added deadline validation to the *forfeit* rule but not the *create* rule.
+This completely bypasses the F1 fix from the prior audit — that fix added deadline validation to the _forfeit_ rule but not the _create_ rule.
 
 **Impact:** Any authenticated user can instantly defeat any other user, inflating their win record and deflating the victim's loss record.
 
 **Fix applied:**
+
 ```
 && request.resource.data.currentTurn == request.auth.uid
 && request.resource.data.phase == 'setting'
@@ -74,17 +77,20 @@ This completely bypasses the F1 fix from the prior audit — that fix added dead
 **Description — create rule:** The user create rule validated `uid`, `username`, and regex format, but did not constrain `wins` or `losses`. A malicious client could create their profile with `wins: 999999` and immediately appear at the top of the leaderboard.
 
 **Description — update rule:** The wins/losses increment validation had a logical gap:
+
 ```
 !('wins' in request.resource.data)
 || !('wins' in resource.data)       // ← if wins doesn't exist yet, ANY value passes
 || request.resource.data.wins == resource.data.wins
 || request.resource.data.wins == resource.data.wins + 1
 ```
+
 When `wins` did not yet exist on the document (common — it's added on first game completion), the second branch (`!('wins' in resource.data)`) evaluated to `true`, making the entire condition pass regardless of the new value. A user could set `wins: 999999` on their first update.
 
 **Impact:** Complete leaderboard manipulation. Any user can give themselves arbitrary win/loss stats.
 
 **Fix applied:**
+
 - **Create rule:** Added `&& (!('wins' in request.resource.data) || request.resource.data.wins == 0)` (same for losses).
 - **Update rule:** Replaced the flat OR with explicit branches:
   - Field absent in update → OK
@@ -98,12 +104,14 @@ When `wins` did not yet exist on the document (common — it's added on first ga
 **Location:** `firestore.rules` normal game update rule (previously lines 122–148)
 
 **Description:** The normal update rule (for `setTrick`, `failSetTrick`, `submitMatchAttempt`) allowed:
+
 1. **Letter increments** — the current-turn player could give either player a letter without going through the set/match/confirm flow.
 2. **Game completion** — the current-turn player could end the game with `status: 'complete'` and declare a winner, bypassing the confirmation rule entirely.
 3. **Arbitrary phase changes** — no validation on `phase` field, allowing phase skipping (e.g., jump from `setting` to `confirming`).
 4. **turnHistory rewrite** — no constraint on `turnHistory`, allowing the current-turn player to inject or remove historical records.
 
 **Attack scenario:**
+
 1. It's Player 1's turn, game is active, Player 2 has 4 letters.
 2. P1 sends: `{ p2Letters: 5, status: 'complete', winner: player1Uid }`.
 3. Normal update rule accepts: score incremented by 1 ✓, winner derived correctly ✓.
@@ -112,6 +120,7 @@ When `wins` did not yet exist on the document (common — it's added on first ga
 **Impact:** Current-turn player can unilaterally award letters or end the game.
 
 **Fix applied:**
+
 - Scores must not change in normal updates (`p1Letters == resource.data.p1Letters && p2Letters == resource.data.p2Letters`).
 - Status must remain `active`, winner must remain `null`.
 - Phase must follow valid transitions: `setting→matching`, `setting→setting`, `matching→confirming`.
@@ -130,6 +139,7 @@ Letters and game completion are now only possible through the **confirmation rul
 **Impact:** A player could falsify the game's turn history (displayed in the clips replay feature), changing trick names, video URLs, or who-got-a-letter records.
 
 **Fix applied:** Added validation that `turnHistory` grows by exactly one element per confirmation:
+
 ```
 && (
   (!('turnHistory' in resource.data)
@@ -140,7 +150,7 @@ Letters and game completion are now only possible through the **confirmation rul
 )
 ```
 
-**Limitation:** This validates array *length* but not *content* of the appended record. A malicious setter could append a record with a falsified `trickName` or `landed` value. Full content validation would require per-field checks on the last array element, which Firestore rules do not support efficiently. The setter already has unilateral power to decide `landed` (by design — honor system), so the practical impact is limited to cosmetic history fields.
+**Limitation:** This validates array _length_ but not _content_ of the appended record. A malicious setter could append a record with a falsified `trickName` or `landed` value. Full content validation would require per-field checks on the last array element, which Firestore rules do not support efficiently. The setter already has unilateral power to decide `landed` (by design — honor system), so the practical impact is limited to cosmetic history fields.
 
 ---
 
@@ -182,60 +192,60 @@ Letters and game completion are now only possible through the **confirmation rul
 
 These aspects of the rules were verified as correct during the line-by-line review:
 
-| Rule | Aspect | Verified |
-|------|--------|----------|
-| Helper: `isSignedIn()` | Checks `request.auth != null` | OK |
-| Helper: `isOwner(uid)` | Checks auth UID matches document UID | OK |
-| Helper: `isPlayer(game)` | Checks auth UID is player1 or player2 | OK |
-| Helper: `opponentUid()` | Correctly derives opponent via ternary | OK |
-| Users: read | Any authenticated user (intentional for lookups) | OK |
-| Users: create | `!exists()` prevents overwrite race | OK |
-| Users: create | UID, username type/size/regex validated | OK |
-| Users: update | Username and UID immutable | OK |
-| Users: delete | Owner only | OK |
-| Usernames: create | UID matches auth, size/regex validated | OK |
-| Usernames: update | Blocked (`false`) | OK |
-| Usernames: delete | Owner only | OK |
-| Games: read | Both players only | OK |
-| Games: create | Email verification required | OK |
-| Games: create | Self-challenge prevention (`player2Uid != auth.uid`) | OK |
-| Games: create | 30-second rate limit via `lastGameCreatedAt` | OK |
-| Games: normal update | Only current-turn player can write | OK |
-| Games: normal update | Player UIDs/usernames immutable | OK |
-| Games: normal update | `currentTurn` must be one of the two players | OK |
-| Games: confirmation | Only setter can confirm | OK |
-| Games: confirmation | `setterConfirm` transitions from null to bool | OK |
-| Games: confirmation | Videos and trick name locked during confirmation | OK |
-| Games: confirmation | Score monotonicity (+1 max per player) | OK |
-| Games: confirmation | Winner correctly derived from letter counts | OK |
-| Games: confirmation | Resolution-continue validates turnNumber +1, setter/turn | OK |
-| Games: forfeit | Deadline must have expired (`request.time > turnDeadline`) | OK |
-| Games: forfeit | Scores, player IDs, usernames, turnHistory locked | OK |
-| Games: forfeit | Winner is opponent of the timed-out player | OK |
-| Games: delete | Both players (for account deletion) | OK |
-| Nudges: create | Sender is auth.uid, recipient != sender | OK |
-| Nudges: create | Email verification required | OK |
-| Nudges: create | `delivered == false` | OK |
-| Nudges: update | Blocked (admin only) | OK |
-| Nudges: read | Sender or recipient only | OK |
-| Nudges: delete | Blocked | OK |
-| Nudge limits: create | Sender matches, document ID format enforced | OK |
-| Nudge limits: update | 1-hour cooldown enforced | OK |
-| Nudge limits: delete | Blocked | OK |
+| Rule                     | Aspect                                                     | Verified |
+| ------------------------ | ---------------------------------------------------------- | -------- |
+| Helper: `isSignedIn()`   | Checks `request.auth != null`                              | OK       |
+| Helper: `isOwner(uid)`   | Checks auth UID matches document UID                       | OK       |
+| Helper: `isPlayer(game)` | Checks auth UID is player1 or player2                      | OK       |
+| Helper: `opponentUid()`  | Correctly derives opponent via ternary                     | OK       |
+| Users: read              | Any authenticated user (intentional for lookups)           | OK       |
+| Users: create            | `!exists()` prevents overwrite race                        | OK       |
+| Users: create            | UID, username type/size/regex validated                    | OK       |
+| Users: update            | Username and UID immutable                                 | OK       |
+| Users: delete            | Owner only                                                 | OK       |
+| Usernames: create        | UID matches auth, size/regex validated                     | OK       |
+| Usernames: update        | Blocked (`false`)                                          | OK       |
+| Usernames: delete        | Owner only                                                 | OK       |
+| Games: read              | Both players only                                          | OK       |
+| Games: create            | Email verification required                                | OK       |
+| Games: create            | Self-challenge prevention (`player2Uid != auth.uid`)       | OK       |
+| Games: create            | 30-second rate limit via `lastGameCreatedAt`               | OK       |
+| Games: normal update     | Only current-turn player can write                         | OK       |
+| Games: normal update     | Player UIDs/usernames immutable                            | OK       |
+| Games: normal update     | `currentTurn` must be one of the two players               | OK       |
+| Games: confirmation      | Only setter can confirm                                    | OK       |
+| Games: confirmation      | `setterConfirm` transitions from null to bool              | OK       |
+| Games: confirmation      | Videos and trick name locked during confirmation           | OK       |
+| Games: confirmation      | Score monotonicity (+1 max per player)                     | OK       |
+| Games: confirmation      | Winner correctly derived from letter counts                | OK       |
+| Games: confirmation      | Resolution-continue validates turnNumber +1, setter/turn   | OK       |
+| Games: forfeit           | Deadline must have expired (`request.time > turnDeadline`) | OK       |
+| Games: forfeit           | Scores, player IDs, usernames, turnHistory locked          | OK       |
+| Games: forfeit           | Winner is opponent of the timed-out player                 | OK       |
+| Games: delete            | Both players (for account deletion)                        | OK       |
+| Nudges: create           | Sender is auth.uid, recipient != sender                    | OK       |
+| Nudges: create           | Email verification required                                | OK       |
+| Nudges: create           | `delivered == false`                                       | OK       |
+| Nudges: update           | Blocked (admin only)                                       | OK       |
+| Nudges: read             | Sender or recipient only                                   | OK       |
+| Nudges: delete           | Blocked                                                    | OK       |
+| Nudge limits: create     | Sender matches, document ID format enforced                | OK       |
+| Nudge limits: update     | 1-hour cooldown enforced                                   | OK       |
+| Nudge limits: delete     | Blocked                                                    | OK       |
 
 ---
 
 ## Summary Table
 
-| #   | Severity   | Finding                                              | Status        |
-| --- | ---------- | ---------------------------------------------------- | ------------- |
-| F9  | **CRITICAL** | Game create allows instant-forfeit attack            | **Fixed**     |
-| F10 | **HIGH**   | Stats injection (leaderboard inflation)              | **Fixed**     |
-| F11 | **HIGH**   | Normal update bypasses confirmation flow             | **Fixed**     |
-| F12 | **MEDIUM** | Confirmation rule doesn't lock turnHistory           | **Fixed**     |
-| F13 | LOW        | Nudge create doesn't verify game membership          | Accepted risk |
-| F14 | LOW        | nudge_limits readable by any user                    | Accepted risk |
-| F15 | INFO       | No field whitelist on documents                      | Noted         |
+| #   | Severity     | Finding                                     | Status        |
+| --- | ------------ | ------------------------------------------- | ------------- |
+| F9  | **CRITICAL** | Game create allows instant-forfeit attack   | **Fixed**     |
+| F10 | **HIGH**     | Stats injection (leaderboard inflation)     | **Fixed**     |
+| F11 | **HIGH**     | Normal update bypasses confirmation flow    | **Fixed**     |
+| F12 | **MEDIUM**   | Confirmation rule doesn't lock turnHistory  | **Fixed**     |
+| F13 | LOW          | Nudge create doesn't verify game membership | Accepted risk |
+| F14 | LOW          | nudge_limits readable by any user           | Accepted risk |
+| F15 | INFO         | No field whitelist on documents             | Noted         |
 
 ---
 
