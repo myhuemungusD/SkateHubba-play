@@ -221,7 +221,7 @@ Run `npx tsc -b` locally to see the errors. Fix type errors before pushing.
 
 ### Build fails on `npm test`
 
-Run `npm test` locally. All 45+ tests must pass before CI will approve the build.
+Run `npm test` locally — the suite must pass and `npm run test:coverage` must clear the 100% threshold on `src/services/**` and `src/hooks/**` before CI will approve the build.
 
 ### Firestore `permission-denied` error in production
 

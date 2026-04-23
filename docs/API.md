@@ -28,25 +28,36 @@ interface GameDoc {
   player2Uid: string; // Opponent's UID
   player1Username: string; // Denormalized for display
   player2Username: string; // Denormalized for display
+  player1IsVerifiedPro?: boolean; // Denormalized verified-pro status
+  player2IsVerifiedPro?: boolean;
   p1Letters: number; // 0–5; 5 = spelled S.K.A.T.E. = loss
   p2Letters: number; // 0–5
   status: GameStatus; // "active" | "complete" | "forfeit"
-  currentTurn: string; // UID of the player who must act next
-  phase: GamePhase; // "setting" | "matching"
+  currentTurn: string; // UID of the player (or judge) who must act next
+  phase: GamePhase; // "setting" | "matching" | "setReview" | "disputable"
   currentSetter: string; // UID of the current trick setter
   currentTrickName: string | null; // null during setting phase, set after setTrick()
   currentTrickVideoUrl: string | null; // Storage download URL, or null
   matchVideoUrl: string | null; // Matcher's video URL, or null
-  turnDeadline: Timestamp; // 24h from last phase transition
+  turnDeadline: Timestamp; // 24h from last phase transition (rules cap at ≤48h)
   turnNumber: number; // Increments each time a full trick round completes
   winner: string | null; // UID of winner when status !== "active", else null
+  turnHistory?: TurnRecord[]; // Append-only history (drives the clips feed)
+  spotId?: string | null; // Optional skate spot id, immutable after create
+  judgeId?: string | null; // Optional referee UID; null on honor-system games
+  judgeUsername?: string | null;
+  judgeStatus?: JudgeStatus; // null | "pending" | "accepted" | "declined"
+  judgeReviewFor?: string | null; // UID under judge review (setReview/disputable)
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
 }
 
 type GameStatus = "active" | "complete" | "forfeit";
-type GamePhase = "setting" | "matching";
+type GamePhase = "setting" | "matching" | "setReview" | "disputable";
+type JudgeStatus = "pending" | "accepted" | "declined" | null;
 ```
+
+> **Naming note:** The user-facing copy says "referee" everywhere but the schema keeps the `judge*` field names to avoid a Firestore migration for in-flight games.
 
 ---
 
@@ -223,26 +234,27 @@ Submits the setter's trick. Sanitizes the trick name (trim + slice to 100 chars)
 
 ---
 
-### `submitMatchResult(gameId, landed, matchVideoUrl)`
+### `submitMatchAttempt(gameId, matchVideoUrl, landed)`
 
 ```ts
-submitMatchResult(
+submitMatchAttempt(
   gameId: string,
+  matchVideoUrl: string | null,
   landed: boolean,
-  matchVideoUrl: string | null
 ): Promise<{ gameOver: boolean; winner: string | null }>
 ```
 
-Runs a transaction to record the match result. Letter assignment and next-turn logic:
+Runs a transaction to record the match attempt. Letter assignment and next-phase logic depend on whether the game has an accepted judge (`judgeId != null && judgeStatus == "accepted"`):
 
-| `landed` | Letter assigned          | Next setter                         |
-| -------- | ------------------------ | ----------------------------------- |
-| `true`   | None                     | Matcher becomes setter (roles swap) |
-| `false`  | Matcher earns one letter | Same setter keeps setting           |
+| `landed` | Judge active? | Letter assigned          | Next state                                              |
+| -------- | ------------- | ------------------------ | ------------------------------------------------------- |
+| `true`   | no            | None                     | Roles swap immediately, `phase: "setting"`              |
+| `true`   | yes           | None                     | `phase: "disputable"`, `currentTurn` flips to the judge |
+| `false`  | either        | Matcher earns one letter | Same setter keeps setting, `phase: "setting"`           |
 
 If either player reaches 5 letters, the transaction sets `status: "complete"` and `winner` to the opponent of the 5-letter player. Returns `{ gameOver: true, winner }`.
 
-**Throws:** `"Game not found"`, `"Not in matching phase"`
+**Throws:** `"Please wait before submitting another action"` (client-side rate limit), `"Game not found"`, `"Game is already over"`, `"Not in matching phase"`
 
 ---
 
@@ -286,20 +298,22 @@ Single-document `onSnapshot` listener. Calls `onUpdate(null)` if the document do
 
 ## `src/services/storage.ts`
 
-### `uploadVideo(gameId, turnNumber, role, blob)`
+### `uploadVideo(gameId, turnNumber, role, blob, onProgress?, maxRetries?)`
 
 ```ts
 uploadVideo(
   gameId: string,
   turnNumber: number,
   role: "set" | "match",
-  blob: Blob
+  blob: Blob,
+  onProgress?: (progress: UploadProgress) => void,
+  maxRetries?: number, // defaults to 2
 ): Promise<string>
 ```
 
-Uploads a video blob to Firebase Storage at `games/{gameId}/turn-{turnNumber}/{role}.webm`. Content-Type is set to `video/webm` (required by storage rules). Returns the Firebase Storage download URL.
+Uploads a video blob to Firebase Storage at `games/{gameId}/turn-{turnNumber}/{role}.{webm|mp4}`. The extension is derived from the blob's MIME type — `video/mp4` for native (Capacitor) recordings and `video/webm` for web (MediaRecorder). Content-Type is set to match. Pre-validates 1 KB ≤ size ≤ 50 MB before any network call. Uses `uploadBytesResumable` for progress tracking and retries with exponential backoff (1 s, 2 s) on transient failures. Returns the Firebase Storage download URL.
 
-Custom metadata stored per upload: `gameId`, `turn` (string), `role`, `uploadedAt` (ISO 8601 string).
+Custom metadata stored per upload: `uploaderUid` (required by storage rules for ownership enforcement), `gameId`, `turn` (string), `role`, `uploadedAt` (ISO 8601), `retainUntil` (90-day lifecycle hint).
 
 ---
 

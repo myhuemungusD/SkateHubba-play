@@ -49,7 +49,7 @@
     "zod": "^4.3.6"
   },
   "overrides": {
-    "@xmldom/xmldom": "^0.9.0",
+    "@xmldom/xmldom": "^0.9.10",
     "http-proxy-agent": "^7.0.2",
     "uuid": "^14.0.0"
   },
