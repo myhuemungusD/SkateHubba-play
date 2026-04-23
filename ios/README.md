@@ -90,6 +90,36 @@ fastlane match credentials to be configured via CI secrets. See
 manages. Hand-authored keys (all the `NS*UsageDescription` entries,
 `ITSAppUsesNonExemptEncryption`) are preserved across syncs.
 
+## Native Sentry SDK (iOS)
+
+`@sentry/capacitor` (installed via `npm install`) ships a CocoaPods
+podspec (`Sentry-Capacitor.podspec`) that is picked up automatically
+the first time `npx cap sync ios` runs after the npm install. That
+sync regenerates `ios/App/Podfile`, and the subsequent `pod install`
+(run implicitly by `cap sync`, or manually via
+`cd ios/App && pod install`) pulls in the Sentry Cocoa SDK as a
+transitive dependency. No manual Xcode steps are required to link
+the framework — the plugin does it for you.
+
+Verify after the first sync:
+
+1. `ios/App/Podfile.lock` contains entries for `Sentry-Capacitor` and
+   the upstream `Sentry` cocoa pod.
+2. In Xcode, *App → Frameworks, Libraries, and Embedded Content*
+   lists the `Sentry.framework` entry — if it is missing after a
+   fresh checkout, run `cd ios/App && pod install --repo-update`.
+3. At runtime on a physical device, a deliberate
+   `Sentry.nativeCrash()` call (exported by `@sentry/capacitor`)
+   must surface in the Sentry dashboard as an `ios` platform event
+   with a symbolicated Swift stack trace. Swift / Obj-C crashes
+   bubble up through the same channel.
+
+Note: the JS-layer init lives in `src/lib/sentry.ts`. The DSN,
+release tag (`VITE_APP_VERSION`), and `beforeSend` PII scrubber
+defined in `src/main.tsx` are shared across web and native — the
+native SDK inherits them via the sibling-SDK init pattern
+(`SentryCapacitor.init(opts, SentryReact.init)`).
+
 ## Version numbers
 
 `CFBundleShortVersionString` in `Info.plist` is the marketing version and
