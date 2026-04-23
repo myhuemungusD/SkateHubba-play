@@ -395,12 +395,48 @@ service cloud.firestore {
         // Game stays active, no winner (completion only via match resolution or forfeit)
         && request.resource.data.status == 'active'
         && request.resource.data.winner == null
-        // Valid phase transitions only (prevents skipping phases)
+        // matchVideoUrl is only written by the matching-phase rule — setting
+        // phase updates must not touch it. Without this pin, a setter whose
+        // currentTurn == uid could stash a match video and then forge a
+        // subsequent matching→setting forfeit/resolution against it.
+        && request.resource.data.matchVideoUrl == resource.data.matchVideoUrl
+        // Valid phase transitions only (prevents skipping phases). Each
+        // branch pins the exact fields that MUST change and the ones that
+        // MUST NOT — without these pins, the setter could rewrite
+        // currentSetter / turnNumber / trick fields to forge a state where
+        // the opponent's turnDeadline has already expired, and then invoke
+        // the forfeit branch below to win unilaterally.
         && (
           // setting → matching (setter sets a trick)
-          (resource.data.phase == 'setting' && request.resource.data.phase == 'matching')
+          //   • currentSetter stays put (role doesn't change until the match resolves)
+          //   • turn swaps to the matcher (opponent of the setter)
+          //   • turnNumber is unchanged (phase change within the same turn)
+          //   • currentTrickName / currentTrickVideoUrl are populated with the set trick
+          (resource.data.phase == 'setting'
+           && request.resource.data.phase == 'matching'
+           && request.resource.data.currentSetter == resource.data.currentSetter
+           && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
+           && request.resource.data.turnNumber == resource.data.turnNumber
+           && request.resource.data.currentTrickName is string
+           && request.resource.data.currentTrickName.size() > 0
+           && request.resource.data.currentTrickName.size() <= 64
+           && request.resource.data.currentTrickVideoUrl is string
+           && request.resource.data.currentTrickVideoUrl.matches('^https?://.+'))
           // setting → setting (setter failed to land, turn passes to opponent)
-          || (resource.data.phase == 'setting' && request.resource.data.phase == 'setting')
+          //   • currentSetter MUST flip to the other player (the whole point of
+          //     failSetTrick is the role passes) — this is the invariant the
+          //     exploit targets: without it, the setter could keep the role and
+          //     merely reassign currentTurn to the opponent
+          //   • currentTurn follows currentSetter (new setter sets first)
+          //   • turnNumber strictly increments (fresh turn)
+          //   • trick fields reset to null (no trick set yet this turn)
+          || (resource.data.phase == 'setting'
+              && request.resource.data.phase == 'setting'
+              && request.resource.data.currentSetter == opponentUid(resource.data, resource.data.currentSetter)
+              && request.resource.data.currentTurn == request.resource.data.currentSetter
+              && request.resource.data.turnNumber == resource.data.turnNumber + 1
+              && request.resource.data.currentTrickName == null
+              && request.resource.data.currentTrickVideoUrl == null)
         )
         // turnHistory must not change during setting-phase updates
         && (
