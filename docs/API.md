@@ -234,27 +234,27 @@ Submits the setter's trick. Sanitizes the trick name (trim + slice to 100 chars)
 
 ---
 
-### `submitMatchAttempt(gameId, landed, matchVideoUrl)`
+### `submitMatchAttempt(gameId, matchVideoUrl, landed)`
 
 ```ts
 submitMatchAttempt(
   gameId: string,
+  matchVideoUrl: string | null,
   landed: boolean,
-  matchVideoUrl: string | null
 ): Promise<{ gameOver: boolean; winner: string | null }>
 ```
 
-Runs a transaction to record the match attempt. Letter assignment and next-phase logic depend on whether the game has an accepted judge:
+Runs a transaction to record the match attempt. Letter assignment and next-phase logic depend on whether the game has an accepted judge (`judgeId != null && judgeStatus == "accepted"`):
 
-| `landed` | Judge active? | Letter assigned          | Next state                                   |
-| -------- | ------------- | ------------------------ | -------------------------------------------- |
-| `true`   | no            | None                     | Roles swap immediately, `phase: "setting"`   |
-| `true`   | yes           | None                     | `phase: "disputable"`, judge reviews the call |
-| `false`  | either        | Matcher earns one letter | Same setter keeps setting                    |
+| `landed` | Judge active? | Letter assigned          | Next state                                                |
+| -------- | ------------- | ------------------------ | --------------------------------------------------------- |
+| `true`   | no            | None                     | Roles swap immediately, `phase: "setting"`                |
+| `true`   | yes           | None                     | `phase: "disputable"`, `currentTurn` flips to the judge   |
+| `false`  | either        | Matcher earns one letter | Same setter keeps setting, `phase: "setting"`             |
 
 If either player reaches 5 letters, the transaction sets `status: "complete"` and `winner` to the opponent of the 5-letter player. Returns `{ gameOver: true, winner }`.
 
-**Throws:** `"Game not found"`, `"Not in matching phase"`, rate-limit errors
+**Throws:** `"Please wait before submitting another action"` (client-side rate limit), `"Game not found"`, `"Game is already over"`, `"Not in matching phase"`
 
 ---
 
