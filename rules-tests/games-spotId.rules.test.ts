@@ -177,6 +177,10 @@ describe("games rules — spotId invariants", () => {
         updateDoc(gameRef(asP1(), "g1"), {
           phase: "matching",
           currentTrickName: "kickflip",
+          // setting→matching requires a real trick video URL (April 2026
+          // hardening against the setter-turn-handoff exploit — see
+          // games-setter-turnhandoff-redteam.rules.test.ts).
+          currentTrickVideoUrl: "https://example.com/set.webm",
           currentTurn: P2_UID,
           turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
           updatedAt: serverTimestamp(),
