@@ -37,9 +37,12 @@
 
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { resolve, relative, join, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { resolve, relative, join, sep, dirname } from "node:path";
 
-const REPO_ROOT = resolve(new URL("..", import.meta.url).pathname);
+// Derive REPO_ROOT via fileURLToPath so the resolved path is correct on
+// Windows too (URL.pathname would yield "/C:/..." which resolve() mangles).
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const BASELINE_PATH = resolve(REPO_ROOT, "scripts/test-duplication-baseline.json");
 
 const DEFAULTS = {
@@ -292,6 +295,12 @@ function main() {
   for (const [h, occs] of dupes) {
     if (!baseline.has(h)) newDupes.set(h, occs);
   }
+  // Baseline drift: hashes in the baseline that no longer appear in the scan.
+  // Not a failure — just visibility so the baseline doesn't rot silently.
+  let staleBaseline = 0;
+  if (opts.useBaseline && baseline.size > 0) {
+    for (const h of baseline) if (!dupes.has(h)) staleBaseline += 1;
+  }
 
   if (newDupes.size === 0) {
     if (!opts.json) {
@@ -299,6 +308,12 @@ function main() {
         `Test duplication gate: clean. Scanned ${files.length} files, ` +
           `${dupes.size} baseline duplicate block(s), 0 new.`,
       );
+      if (staleBaseline > 0) {
+        console.log(
+          `Note: ${staleBaseline} baseline entr${staleBaseline === 1 ? "y is" : "ies are"} no longer seen — ` +
+            `consider running \`node scripts/check-test-duplication.mjs --update-baseline\` to prune.`,
+        );
+      }
     } else {
       console.log("[]");
     }
@@ -306,6 +321,11 @@ function main() {
   }
 
   renderReport(newDupes, opts);
+  if (!opts.json && staleBaseline > 0) {
+    console.log(
+      `Note: ${staleBaseline} baseline entr${staleBaseline === 1 ? "y is" : "ies are"} no longer seen (refresh with --update-baseline).`,
+    );
+  }
   console.error(
     `\nFail: ${newDupes.size} new duplicate block(s) detected in test files. ` +
       `Extract a helper, parametrize the case, or (if intentional) rerun with ` +

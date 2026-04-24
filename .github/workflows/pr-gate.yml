@@ -96,13 +96,15 @@ jobs:
 
   check-file-length:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Report files over length budget (non-blocking)
+        # Soft budget: surface the report in logs but never fail the PR gate.
+        # Use --strict locally to enforce; CI stays informational.
+        continue-on-error: true
         run: node scripts/check-file-length.mjs
 
   validate-firebase-rules:

@@ -131,6 +131,26 @@ describe("check-test-duplication.mjs", () => {
     expect(after.stdout).toMatch(/baseline duplicate/);
   });
 
+  it("warns when baseline entries are no longer seen (drift)", () => {
+    const driftShared = [
+      "    const drift1 = makeDriftInput();",
+      "    const drift2 = transformDrift(drift1);",
+      "    const drift3 = await commitDrift(drift2);",
+      "    expect(drift3.committed).toBe(true);",
+      "    expect(drift3.payload).toEqual(drift2);",
+      "    expect(drift3.version).toBeGreaterThan(0);",
+    ].join("\n");
+    writeFileSync(join(fixture, "src/drift-a.test.ts"), `it("a", async () => {\n${driftShared}\n});\n`);
+    writeFileSync(join(fixture, "src/drift-b.test.ts"), `it("b", async () => {\n${driftShared}\n});\n`);
+    // Seed the baseline with the current duplication.
+    expect(runScript(fixture, ["--update-baseline"]).status).toBe(0);
+    // Delete one of the duplicates — the baseline is now stale.
+    rmSync(join(fixture, "src/drift-b.test.ts"));
+    const res = runScript(fixture);
+    expect(res.status).toBe(0);
+    expect(res.stdout).toMatch(/no longer seen/);
+  });
+
   it("emits JSON when --json flag is passed", () => {
     const shared = [
       "    const x1 = 'foo-bar-baz';",

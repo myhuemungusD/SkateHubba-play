@@ -25,9 +25,12 @@
  */
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
-import { resolve, relative, join, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { resolve, relative, join, sep, dirname } from "node:path";
 
-const REPO_ROOT = resolve(new URL("..", import.meta.url).pathname);
+// Derive REPO_ROOT via fileURLToPath so the resolved path is correct on
+// Windows too (URL.pathname would yield "/C:/..." which resolve() mangles).
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const BUDGETS = [
   { label: "services", root: "src/services", budget: 400 },
