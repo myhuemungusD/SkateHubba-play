@@ -1,129 +1,47 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { authedUser, verifiedUser, testProfile, activeGame, renderApp, createMockHelpers } from "./smoke-helpers";
+import { activeGame, createMockHelpers } from "./smoke-helpers";
 import type { GameDoc } from "../services/games";
 
 /* ── Hoisted mocks ──────────────────────────── */
-
-const mockUseAuth = vi.fn();
-
-const mockSignUp = vi.fn();
-const mockSignIn = vi.fn();
-const mockSignOut = vi.fn();
-const mockResetPassword = vi.fn();
-
-const mockCreateProfile = vi.fn();
-const mockIsUsernameAvailable = vi.fn();
-const mockGetUidByUsername = vi.fn();
-const mockDeleteUserData = vi.fn();
-
-const mockCreateGame = vi.fn();
-const mockSetTrick = vi.fn();
-const mockFailSetTrick = vi.fn();
-const mockSubmitMatchAttempt = vi.fn();
-const mockForfeitExpiredTurn = vi.fn();
-const mockSubscribeToMyGames = vi.fn(() => vi.fn());
-const mockSubscribeToGame = vi.fn(() => vi.fn());
-
-const mockUploadVideo = vi.fn();
-
-vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
-const mockDeleteAccount = vi.fn();
-const mockResendVerification = vi.fn();
-const mockSignInWithGoogle = vi.fn();
-const mockResolveGoogleRedirect = vi.fn().mockResolvedValue(null);
-vi.mock("../services/auth", () => ({
-  signUp: (...args: unknown[]) => mockSignUp(...args),
-  signIn: (...args: unknown[]) => mockSignIn(...args),
-  signOut: (...args: unknown[]) => mockSignOut(...args),
-  resetPassword: (...args: unknown[]) => mockResetPassword(...args),
-  resendVerification: (...args: unknown[]) => mockResendVerification(...args),
-  signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
-  resolveGoogleRedirect: (...args: unknown[]) => mockResolveGoogleRedirect(...args),
-  deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
-}));
-vi.mock("../services/users", () => ({
-  createProfile: (...args: unknown[]) => mockCreateProfile(...args),
-  isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
-  getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
-  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
-  getPlayerDirectory: vi.fn().mockResolvedValue([]),
-  getLeaderboard: vi.fn().mockResolvedValue([]),
-  getUserProfile: vi.fn().mockResolvedValue(null),
-  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock("../services/games", () => ({
-  createGame: (...args: unknown[]) => mockCreateGame(...args),
-  setTrick: (...args: unknown[]) => mockSetTrick(...args),
-  failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
-  submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
-  resolveDispute: vi.fn().mockResolvedValue(undefined),
-  callBSOnSetTrick: vi.fn().mockResolvedValue(undefined),
-  judgeRuleSetTrick: vi.fn().mockResolvedValue(undefined),
-  acceptJudgeInvite: vi.fn().mockResolvedValue(undefined),
-  declineJudgeInvite: vi.fn().mockResolvedValue(undefined),
-  isJudgeActive: (game: { judgeId?: string | null; judgeStatus?: string | null }) =>
-    !!game.judgeId && game.judgeStatus === "accepted",
-  forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
-  subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
-  subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
-  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
-}));
-vi.mock("../services/storage", () => ({
-  uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
-}));
-vi.mock("../services/fcm", () => ({
-  requestPushPermission: vi.fn().mockResolvedValue(null),
-  removeFcmToken: vi.fn().mockResolvedValue(undefined),
-  removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
-  onForegroundMessage: vi.fn(() => vi.fn()),
-}));
-vi.mock("../firebase", () => ({
-  firebaseReady: true,
-  auth: { currentUser: null },
-  db: {},
-  storage: {},
-  default: {},
-}));
-vi.mock("../services/analytics", () => ({
-  trackEvent: vi.fn(),
-  analytics: {
-    gameCreated: vi.fn(),
-    trickSet: vi.fn(),
-    matchSubmitted: vi.fn(),
-    gameCompleted: vi.fn(),
-    videoUploaded: vi.fn(),
-    signUp: vi.fn(),
-    signIn: vi.fn(),
-    signInAttempt: vi.fn(),
-    signInFailure: vi.fn(),
-    signUpAttempt: vi.fn(),
-    signUpFailure: vi.fn(),
+// Harness factories are loaded via dynamic import inside vi.hoisted so the
+// ref objects exist before vi.mock() factories run.
+const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
+  async () => {
+    const m = await import("./harness/mockServices");
+    return {
+      auth: m.createUseAuthMocks(),
+      authSvc: m.createAuthServiceMocks(),
+      users: m.createUsersServiceMocks(),
+      games: m.createGamesServiceMocks(),
+      storage: m.createStorageServiceMocks(),
+      fcm: m.createFcmServiceMocks(),
+      firebase: m.createFirebaseMocks(),
+      analytics: m.createAnalyticsMocks(),
+      blocking: m.createBlockingServiceMocks(),
+      sentry: m.createSentryMocks(),
+    };
   },
-}));
-vi.mock("@sentry/react", () => ({
-  init: vi.fn(),
-  captureException: vi.fn(),
-  captureMessage: vi.fn(),
-  addBreadcrumb: vi.fn(),
-}));
-vi.mock("../services/blocking", () => ({
-  blockUser: vi.fn().mockResolvedValue(undefined),
-  unblockUser: vi.fn().mockResolvedValue(undefined),
-  isUserBlocked: vi.fn().mockResolvedValue(false),
-  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
-  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
-}));
+);
+
+vi.mock("../hooks/useAuth", () => auth.module);
+vi.mock("../services/auth", () => authSvc.module);
+vi.mock("../services/users", () => users.module);
+vi.mock("../services/games", () => games.module);
+vi.mock("../services/storage", () => storage.module);
+vi.mock("../services/fcm", () => fcm.module);
+vi.mock("../firebase", () => firebase.module);
+vi.mock("../services/analytics", () => analytics.module);
+vi.mock("@sentry/react", () => sentry.module);
+vi.mock("../services/blocking", () => blocking.module);
 
 beforeEach(() => vi.clearAllMocks());
 
-const profile = testProfile;
-
-const { withGames, withGameSub, renderLobby, renderVerifiedLobby } = createMockHelpers({
-  mockUseAuth,
-  mockSubscribeToMyGames,
-  mockSubscribeToGame,
+const { withGameSub, renderLobby, renderVerifiedLobby } = createMockHelpers({
+  mockUseAuth: auth.refs.useAuth,
+  mockSubscribeToMyGames: games.refs.subscribeToMyGames,
+  mockSubscribeToGame: games.refs.subscribeToGame,
 });
 
 describe("Smoke: Game Over", () => {
@@ -168,7 +86,7 @@ describe("Smoke: Game Over", () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
     await renderVerifiedLobby([game]);
     withGameSub(game);
-    mockCreateGame.mockResolvedValueOnce("game2");
+    games.refs.createGame.mockResolvedValueOnce("game2");
 
     await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
@@ -182,7 +100,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
+      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
         challengerIsVerifiedPro: undefined,
         opponentIsVerifiedPro: undefined,
         spotId: null,
@@ -252,7 +170,7 @@ describe("Smoke: Game Over", () => {
 
     // First subscription returns active game, then sends a completed update
     let gameUpdateCb: (g: ReturnType<typeof activeGame>) => void;
-    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: ReturnType<typeof activeGame>) => void) => {
+    games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: ReturnType<typeof activeGame>) => void) => {
       gameUpdateCb = cb;
       cb(game); // initial active state
       return vi.fn();
@@ -283,7 +201,7 @@ describe("Smoke: Game Over", () => {
   it("game over rematch button shows Starting... while loading", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
     // Make createGame hang to show loading state
-    mockCreateGame.mockImplementation(() => new Promise(() => {}));
+    games.refs.createGame.mockImplementation(() => new Promise(() => {}));
     await renderVerifiedLobby([game]);
     withGameSub(game);
 
@@ -314,7 +232,7 @@ describe("Smoke: Game Over", () => {
   it("game over rematch completes full flow", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
     const newGame = activeGame({ id: "game2" });
-    mockCreateGame.mockResolvedValueOnce("game2");
+    games.refs.createGame.mockResolvedValueOnce("game2");
     await renderVerifiedLobby([game]);
     withGameSub(game);
 
@@ -325,7 +243,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
+      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
         challengerIsVerifiedPro: undefined,
         opponentIsVerifiedPro: undefined,
         spotId: null,
@@ -344,8 +262,8 @@ describe("Smoke: Game Over", () => {
       player1Username: "rival",
       player2Username: "sk8r",
     });
-    mockCreateGame.mockResolvedValueOnce("rematch1");
-    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
+    games.refs.createGame.mockResolvedValueOnce("rematch1");
+    games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
       cb(game);
       return vi.fn();
     });
@@ -357,7 +275,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
     await waitFor(() => {
       // Should call createGame with the opponent's uid and username
-      expect(mockCreateGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
+      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
         challengerIsVerifiedPro: undefined,
         opponentIsVerifiedPro: undefined,
         spotId: null,
@@ -377,7 +295,7 @@ describe("Smoke: Game Over", () => {
     await renderLobby([game]);
 
     let gameUpdateCb: (g: ReturnType<typeof activeGame>) => void;
-    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: ReturnType<typeof activeGame>) => void) => {
+    games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: ReturnType<typeof activeGame>) => void) => {
       gameUpdateCb = cb;
       cb(game);
       return vi.fn();

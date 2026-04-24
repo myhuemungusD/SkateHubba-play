@@ -1,145 +1,52 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { authedUser, testProfile, renderApp, createMockHelpers } from "./smoke-helpers";
+import { authedUser, renderApp, createMockHelpers } from "./smoke-helpers";
 
 /* ── Hoisted mocks ──────────────────────────── */
-
-const mockUseAuth = vi.fn();
-
-const mockSignUp = vi.fn();
-const mockSignIn = vi.fn();
-const mockSignOut = vi.fn();
-const mockResetPassword = vi.fn();
-
-const mockCreateProfile = vi.fn();
-const mockIsUsernameAvailable = vi.fn();
-const mockGetUidByUsername = vi.fn();
-const mockDeleteUserData = vi.fn();
-
-const mockCreateGame = vi.fn();
-const mockSetTrick = vi.fn();
-const mockFailSetTrick = vi.fn();
-const mockSubmitMatchAttempt = vi.fn();
-const mockForfeitExpiredTurn = vi.fn();
-const mockSubscribeToMyGames = vi.fn(() => vi.fn());
-const mockSubscribeToGame = vi.fn(() => vi.fn());
-
-const mockUploadVideo = vi.fn();
-
-vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
-const mockDeleteAccount = vi.fn();
-const mockResendVerification = vi.fn();
-const mockSignInWithGoogle = vi.fn();
-const mockResolveGoogleRedirect = vi.fn().mockResolvedValue(null);
-vi.mock("../services/auth", () => ({
-  signUp: (...args: unknown[]) => mockSignUp(...args),
-  signIn: (...args: unknown[]) => mockSignIn(...args),
-  signOut: (...args: unknown[]) => mockSignOut(...args),
-  resetPassword: (...args: unknown[]) => mockResetPassword(...args),
-  resendVerification: (...args: unknown[]) => mockResendVerification(...args),
-  signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
-  resolveGoogleRedirect: (...args: unknown[]) => mockResolveGoogleRedirect(...args),
-  deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
-}));
-vi.mock("../services/users", () => {
-  // Defined inside the factory so vitest's hoisting doesn't hit a TDZ.
-  class AgeVerificationRequiredError extends Error {
-    constructor() {
-      super("Age verification required");
-      this.name = "AgeVerificationRequiredError";
-    }
-  }
-  return {
-    createProfile: (...args: unknown[]) => mockCreateProfile(...args),
-    AgeVerificationRequiredError,
-    isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
-    getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
-    deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
-    getPlayerDirectory: vi.fn().mockResolvedValue([]),
-    getLeaderboard: vi.fn().mockResolvedValue([]),
-    getUserProfile: vi.fn().mockResolvedValue(null),
-    // Auth-bootstrap variant used by ProfileSetup to cover the Firestore
-    // auth-token propagation race. Same no-existing-profile default so
-    // new-user flows still render the form; takes a uid like the real
-    // service since January 2026's services-layer cleanup.
-    getUserProfileOnAuth: vi.fn().mockResolvedValue(null),
-    updatePlayerStats: vi.fn().mockResolvedValue(undefined),
-    // Shared validation constants imported by ProfileSetup.
-    USERNAME_MIN: 3,
-    USERNAME_MAX: 20,
-    USERNAME_RE: /^[a-z0-9_]+$/,
-  };
-});
-vi.mock("../services/games", () => ({
-  createGame: (...args: unknown[]) => mockCreateGame(...args),
-  setTrick: (...args: unknown[]) => mockSetTrick(...args),
-  failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
-  submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
-  forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
-  subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
-  subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
-  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
-}));
-vi.mock("../services/storage", () => ({
-  uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
-}));
-vi.mock("../services/fcm", () => ({
-  requestPushPermission: vi.fn().mockResolvedValue(null),
-  removeFcmToken: vi.fn().mockResolvedValue(undefined),
-  removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
-  onForegroundMessage: vi.fn(() => vi.fn()),
-}));
-vi.mock("../firebase", () => ({
-  firebaseReady: true,
-  auth: { currentUser: null },
-  db: {},
-  storage: {},
-  default: {},
-}));
-vi.mock("../services/analytics", () => ({
-  trackEvent: vi.fn(),
-  analytics: {
-    gameCreated: vi.fn(),
-    trickSet: vi.fn(),
-    matchSubmitted: vi.fn(),
-    gameCompleted: vi.fn(),
-    videoUploaded: vi.fn(),
-    signUp: vi.fn(),
-    signIn: vi.fn(),
-    signInAttempt: vi.fn(),
-    signInFailure: vi.fn(),
-    signUpAttempt: vi.fn(),
-    signUpFailure: vi.fn(),
+// Harness factories are loaded via dynamic import inside vi.hoisted so the
+// ref objects exist before vi.mock() factories run. Top-level `await` is
+// supported in vitest's ESM test modules.
+const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
+  async () => {
+    const m = await import("./harness/mockServices");
+    return {
+      auth: m.createUseAuthMocks(),
+      authSvc: m.createAuthServiceMocks(),
+      users: m.createUsersServiceMocks(),
+      games: m.createGamesServiceMocks(),
+      storage: m.createStorageServiceMocks(),
+      fcm: m.createFcmServiceMocks(),
+      firebase: m.createFirebaseMocks(),
+      analytics: m.createAnalyticsMocks(),
+      blocking: m.createBlockingServiceMocks(),
+      sentry: m.createSentryMocks(),
+    };
   },
-}));
-vi.mock("@sentry/react", () => ({
-  init: vi.fn(),
-  captureException: vi.fn(),
-  captureMessage: vi.fn(),
-  addBreadcrumb: vi.fn(),
-}));
-vi.mock("../services/blocking", () => ({
-  blockUser: vi.fn().mockResolvedValue(undefined),
-  unblockUser: vi.fn().mockResolvedValue(undefined),
-  isUserBlocked: vi.fn().mockResolvedValue(false),
-  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
-  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
-}));
+);
+
+vi.mock("../hooks/useAuth", () => auth.module);
+vi.mock("../services/auth", () => authSvc.module);
+vi.mock("../services/users", () => users.module);
+vi.mock("../services/games", () => games.module);
+vi.mock("../services/storage", () => storage.module);
+vi.mock("../services/fcm", () => fcm.module);
+vi.mock("../firebase", () => firebase.module);
+vi.mock("../services/analytics", () => analytics.module);
+vi.mock("@sentry/react", () => sentry.module);
+vi.mock("../services/blocking", () => blocking.module);
 
 beforeEach(() => vi.clearAllMocks());
 
-const profile = testProfile;
-
 const { withGames } = createMockHelpers({
-  mockUseAuth,
-  mockSubscribeToMyGames,
-  mockSubscribeToGame,
+  mockUseAuth: auth.refs.useAuth,
+  mockSubscribeToMyGames: games.refs.subscribeToMyGames,
+  mockSubscribeToGame: games.refs.subscribeToGame,
 });
 
 describe("Smoke: Profile Setup", () => {
   it("shows profile setup when user exists but has no profile", async () => {
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile: null,
@@ -150,7 +57,7 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup disables submit with short username", async () => {
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile: null,
@@ -168,8 +75,8 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup shows username available indicator", async () => {
-    mockIsUsernameAvailable.mockResolvedValueOnce(true);
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockResolvedValueOnce(true);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile: null,
@@ -186,8 +93,8 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup shows username taken indicator", async () => {
-    mockIsUsernameAvailable.mockResolvedValueOnce(false);
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockResolvedValueOnce(false);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile: null,
@@ -204,8 +111,8 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup allows toggling stance on the single-card form", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockResolvedValue(true);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile: null,
@@ -231,10 +138,10 @@ describe("Smoke: Profile Setup", () => {
   it("profile setup creates profile and transitions to lobby with inline DOB", async () => {
     const refreshProfile = vi.fn();
     const newProfile = { uid: "u1", username: "newsk8r", stance: "Regular", emailVerified: false, createdAt: null };
-    mockCreateProfile.mockResolvedValueOnce(newProfile);
-    mockIsUsernameAvailable.mockResolvedValue(true);
+    users.refs.createProfile.mockResolvedValueOnce(newProfile);
+    users.refs.isUsernameAvailable.mockResolvedValue(true);
 
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile: null,
@@ -253,7 +160,7 @@ describe("Smoke: Profile Setup", () => {
     await userEvent.type(screen.getByLabelText("Birth year"), "2000");
 
     // Auth state flips to reflect the new profile once createProfile resolves.
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile: newProfile,
@@ -264,13 +171,13 @@ describe("Smoke: Profile Setup", () => {
     await userEvent.click(screen.getByText("Lock It In"));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false, "2000-01-15", false);
+      expect(users.refs.createProfile).toHaveBeenCalledWith("u1", "newsk8r", "Regular", false, "2000-01-15", false);
     });
   });
 
   it("shows error when username availability check fails", async () => {
-    mockIsUsernameAvailable.mockRejectedValue(new Error("Firestore unavailable"));
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockRejectedValue(new Error("Firestore unavailable"));
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile: null,
@@ -291,9 +198,9 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("shows error when profile creation fails", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockCreateProfile.mockRejectedValueOnce(new Error("Firestore write failed"));
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockResolvedValue(true);
+    users.refs.createProfile.mockRejectedValueOnce(new Error("Firestore write failed"));
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: true },
       profile: null,
@@ -318,8 +225,8 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup rejects username > 20 characters", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockResolvedValue(true);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile: null,
@@ -341,8 +248,8 @@ describe("Smoke: Profile Setup", () => {
 
   it("profile setup shows error when submitting while username check is pending", async () => {
     // Make availability check never resolve (stays null)
-    mockIsUsernameAvailable.mockImplementation(() => new Promise(() => {}));
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockImplementation(() => new Promise(() => {}));
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile: null,
@@ -368,8 +275,8 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup shows error when submitting taken username", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(false);
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockResolvedValue(false);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile: null,
@@ -394,7 +301,7 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup rejects username shorter than 3 characters on form submit", async () => {
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile: null,
@@ -417,8 +324,8 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup error banner can be dismissed", async () => {
-    mockIsUsernameAvailable.mockResolvedValue(false);
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockResolvedValue(false);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile: null,
@@ -445,7 +352,7 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup uses displayName as suggested username", async () => {
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false, displayName: "Cool Skater123" },
       profile: null,
@@ -459,8 +366,8 @@ describe("Smoke: Profile Setup", () => {
 
   it("profile setup rejects username with invalid characters on form submit", async () => {
     // The input already strips invalid chars, but the validation still checks
-    mockIsUsernameAvailable.mockResolvedValue(true);
-    mockUseAuth.mockReturnValue({
+    users.refs.isUsernameAvailable.mockResolvedValue(true);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile: null,
@@ -476,7 +383,7 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup handles user with null email", async () => {
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: null, emailVerified: false, displayName: null },
       profile: null,
