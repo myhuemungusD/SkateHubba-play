@@ -102,9 +102,10 @@ jobs:
         with:
           node-version: 22
       - name: Report files over length budget (non-blocking)
-        # Soft budget: surface the report in logs but never fail the PR gate.
-        # Use --strict locally to enforce; CI stays informational.
-        continue-on-error: true
+        # Soft budget: the script exits 0 by default — overages are logged, not
+        # enforced. Use `npm run check:file-length -- --strict` locally to
+        # enforce. We intentionally do NOT set continue-on-error here so that
+        # real script errors (missing Node, bad flags, IO) still surface.
         run: node scripts/check-file-length.mjs
 
   validate-firebase-rules:

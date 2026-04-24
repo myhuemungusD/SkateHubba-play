@@ -151,6 +151,37 @@ describe("check-test-duplication.mjs", () => {
     expect(res.stdout).toMatch(/no longer seen/);
   });
 
+  it("fails with a clear message when the baseline file is malformed", () => {
+    writeFileSync(
+      join(fixture, "src/ok.test.ts"),
+      [
+        'describe("ok", () => {',
+        '  it("runs", () => {',
+        "    const x = 1;",
+        "    expect(x).toBe(1);",
+        "  });",
+        "});",
+      ].join("\n"),
+    );
+    // Seed a baseline that is valid JSON but structurally wrong.
+    writeFileSync(join(fixture, "scripts/test-duplication-baseline.json"), JSON.stringify({ nope: "not an array" }));
+    const res = runScript(fixture);
+    expect(res.status).toBe(2);
+    expect(res.stderr).toMatch(/malformed/);
+    expect(res.stderr).toMatch(/--update-baseline/);
+  });
+
+  it("fails when baseline hashes array contains non-strings", () => {
+    writeFileSync(join(fixture, "src/ok.test.ts"), "export const x = 1;\n");
+    writeFileSync(
+      join(fixture, "scripts/test-duplication-baseline.json"),
+      JSON.stringify({ hashes: ["valid-hash", 42] }),
+    );
+    const res = runScript(fixture);
+    expect(res.status).toBe(2);
+    expect(res.stderr).toMatch(/array of strings/);
+  });
+
   it("emits JSON when --json flag is passed", () => {
     const shared = [
       "    const x1 = 'foo-bar-baz';",

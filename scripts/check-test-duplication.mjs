@@ -216,12 +216,28 @@ function findDuplicates(files, minLines, threshold) {
 
 function loadBaseline() {
   if (!existsSync(BASELINE_PATH)) return { hashes: [] };
+  let parsed;
   try {
-    return JSON.parse(readFileSync(BASELINE_PATH, "utf-8"));
+    parsed = JSON.parse(readFileSync(BASELINE_PATH, "utf-8"));
   } catch (err) {
     console.error(`Baseline file invalid JSON (${BASELINE_PATH}): ${err.message}`);
     process.exit(2);
   }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.hashes)) {
+    console.error(
+      `Baseline file malformed (${BASELINE_PATH}): expected an object with a "hashes" array. ` +
+        `Rerun with --update-baseline to regenerate.`,
+    );
+    process.exit(2);
+  }
+  if (!parsed.hashes.every((h) => typeof h === "string")) {
+    console.error(
+      `Baseline file malformed (${BASELINE_PATH}): "hashes" must be an array of strings. ` +
+        `Rerun with --update-baseline to regenerate.`,
+    );
+    process.exit(2);
+  }
+  return parsed;
 }
 
 function writeBaseline(dupes, opts) {
