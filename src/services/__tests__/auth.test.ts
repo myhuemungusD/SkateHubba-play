@@ -339,9 +339,7 @@ describe("auth service", () => {
     it("retries deleteUserData on transient failure, succeeds without Sentry", async () => {
       const mockUser = { uid: "u1" };
       (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
-      mockDeleteUserData
-        .mockRejectedValueOnce(new Error("transient 503"))
-        .mockResolvedValueOnce(undefined);
+      mockDeleteUserData.mockRejectedValueOnce(new Error("transient 503")).mockResolvedValueOnce(undefined);
 
       await expect(deleteAccount("u1", "sk8r")).resolves.toBeUndefined();
 

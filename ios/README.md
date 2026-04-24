@@ -53,10 +53,10 @@ npx cap open ios
 
 ### First-time signing
 
-In Xcode, under *Signing & Capabilities* for the `App` target:
+In Xcode, under _Signing & Capabilities_ for the `App` target:
 
 1. Select the SkateHubba Apple Developer team.
-2. Leave *Automatically manage signing* enabled for local dev builds; CI
+2. Leave _Automatically manage signing_ enabled for local dev builds; CI
    uses fastlane match (see `fastlane/Fastfile`) for release builds.
 3. Confirm the bundle ID reads `com.skatehubba.app` — matches
    `capacitor.config.ts` and the `CFBundleIdentifier` entry in `Info.plist`.
@@ -86,7 +86,7 @@ fastlane match credentials to be configured via CI secrets. See
 - After `npm run build` — to refresh `ios/App/App/public/` with the latest
   web bundle before an Xcode build.
 
-`cap sync` is *additive* for Info.plist: it only touches keys Capacitor
+`cap sync` is _additive_ for Info.plist: it only touches keys Capacitor
 manages. Hand-authored keys (all the `NS*UsageDescription` entries,
 `ITSAppUsesNonExemptEncryption`) are preserved across syncs.
 
@@ -105,7 +105,7 @@ Verify after the first sync:
 
 1. `ios/App/Podfile.lock` contains entries for `Sentry-Capacitor` and
    the upstream `Sentry` cocoa pod.
-2. In Xcode, *App → Frameworks, Libraries, and Embedded Content*
+2. In Xcode, _App → Frameworks, Libraries, and Embedded Content_
    lists the `Sentry.framework` entry — if it is missing after a
    fresh checkout, run `cd ios/App && pod install --repo-update`.
 3. At runtime on a physical device, a deliberate
