@@ -1,6 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-/* ── mock @capacitor/core ──────────────────── */
+/* ── mock @capacitor/core ──────────────────────────────────── */
 
 const { mockIsNativePlatform } = vi.hoisted(() => ({
   mockIsNativePlatform: vi.fn(() => false),
@@ -10,37 +10,75 @@ vi.mock("@capacitor/core", () => ({
   Capacitor: { isNativePlatform: mockIsNativePlatform },
 }));
 
-/* ── mock @capacitor/camera ────────────────── */
+/* ── mock @capacitor-community/video-recorder ──────────────── */
 
-const { mockGetPhoto, mockCheckPermissions, mockRequestPermissions } = vi.hoisted(() => ({
-  mockGetPhoto: vi.fn(),
-  mockCheckPermissions: vi.fn(),
-  mockRequestPermissions: vi.fn(),
+const { mockInitialize, mockDestroy, mockStartRecording, mockStopRecording } = vi.hoisted(() => ({
+  mockInitialize: vi.fn<() => Promise<void>>(),
+  mockDestroy: vi.fn<() => Promise<void>>(),
+  mockStartRecording: vi.fn<() => Promise<void>>(),
+  mockStopRecording: vi.fn<() => Promise<{ videoUrl: string }>>(),
 }));
 
-vi.mock("@capacitor/camera", () => ({
-  Camera: {
-    getPhoto: mockGetPhoto,
-    checkPermissions: mockCheckPermissions,
-    requestPermissions: mockRequestPermissions,
+vi.mock("@capacitor-community/video-recorder", () => ({
+  VideoRecorder: {
+    initialize: mockInitialize,
+    destroy: mockDestroy,
+    startRecording: mockStartRecording,
+    stopRecording: mockStopRecording,
   },
-  CameraResultType: { Uri: "uri" },
-  CameraSource: { Camera: "CAMERA" },
+  VideoRecorderCamera: { FRONT: 0, BACK: 1 },
+  VideoRecorderQuality: {
+    MAX_480P: 0,
+    MAX_720P: 1,
+    MAX_1080P: 2,
+    MAX_2160P: 3,
+    HIGHEST: 4,
+    LOWEST: 5,
+    QVGA: 6,
+  },
 }));
 
-/* ── mock global fetch ─────────────────────── */
+/* ── mock global fetch ─────────────────────────────────────── */
 
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+/* ── mock sentry breadcrumb ─────────────────────────────── */
+
+const { mockAddBreadcrumb } = vi.hoisted(() => ({
+  mockAddBreadcrumb: vi.fn(),
+}));
+
+vi.mock("../../lib/sentry", () => ({
+  addBreadcrumb: mockAddBreadcrumb,
+}));
+
 import { isNativePlatform, recordNativeVideo } from "../nativeVideo";
+import { MAX_VIDEO_DURATION_MS } from "../../constants/video";
 
 beforeEach(() => {
   vi.clearAllMocks();
   mockIsNativePlatform.mockReturnValue(false);
+  mockInitialize.mockResolvedValue(undefined);
+  mockDestroy.mockResolvedValue(undefined);
+  mockStartRecording.mockResolvedValue(undefined);
+  vi.useFakeTimers();
 });
 
-/* ── Tests ──────────────────────────────────── */
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/**
+ * Helper: advance fake timers past the MAX_VIDEO_DURATION_MS auto-stop
+ * inside the service, letting the recording promise chain resolve.
+ */
+async function flushAutoStop(): Promise<void> {
+  // Advance past the duration cap and let queued microtasks drain.
+  await vi.advanceTimersByTimeAsync(MAX_VIDEO_DURATION_MS + 1);
+}
+
+/* ── Tests ─────────────────────────────────────────────────── */
 
 describe("nativeVideo service", () => {
   describe("isNativePlatform", () => {
@@ -55,47 +93,226 @@ describe("nativeVideo service", () => {
     });
   });
 
-  describe("recordNativeVideo", () => {
-    it("captures video and returns blob with detected mime type", async () => {
+  describe("recordNativeVideo — happy path", () => {
+    it("initializes, records, fetches the URI and returns a video blob", async () => {
       const fakeBlob = new Blob(["video-data"], { type: "video/mp4" });
-      mockGetPhoto.mockResolvedValue({ webPath: "file:///tmp/video.mp4" });
-      mockFetch.mockResolvedValue({ blob: () => Promise.resolve(fakeBlob) });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/video.mp4" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
 
-      const result = await recordNativeVideo();
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      const result = await pending;
 
-      expect(mockGetPhoto).toHaveBeenCalledWith(
+      expect(mockInitialize).toHaveBeenCalledTimes(1);
+      expect(mockInitialize).toHaveBeenCalledWith(
         expect.objectContaining({
-          quality: 80,
-          allowEditing: false,
-          resultType: "uri",
-          source: "CAMERA",
+          camera: 1, // BACK
+          quality: 1, // MAX_720P
+          autoShow: true,
         }),
       );
+      expect(mockStartRecording).toHaveBeenCalledTimes(1);
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith("file:///tmp/video.mp4");
       expect(result.blob).toBe(fakeBlob);
       expect(result.mimeType).toBe("video/mp4");
+      expect(result.mimeType.startsWith("video/")).toBe(true);
+      // Temp-file handle disposal: destroy() must always run on success.
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
     });
 
-    it("falls back to video/mp4 when blob.type is empty", async () => {
+    it("falls back to video/mp4 when the fetched blob has no type", async () => {
       const fakeBlob = new Blob(["video-data"], { type: "" });
-      mockGetPhoto.mockResolvedValue({ webPath: "file:///tmp/clip.mov" });
-      mockFetch.mockResolvedValue({ blob: () => Promise.resolve(fakeBlob) });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/clip.mov" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
 
-      const result = await recordNativeVideo();
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      const result = await pending;
 
       expect(result.mimeType).toBe("video/mp4");
+      expect(result.mimeType.startsWith("video/")).toBe(true);
+      // Blob is re-wrapped so its .type matches the declared mimeType.
+      expect(result.blob.type).toBe("video/mp4");
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
     });
 
-    it("throws when webPath is missing", async () => {
-      mockGetPhoto.mockResolvedValue({ webPath: undefined });
+    it("coerces unsupported video mime types (e.g. quicktime) to video/mp4", async () => {
+      // iOS can report `video/quicktime` for .mp4-containerised clips.
+      // Firebase Storage rules only accept video/mp4 or video/webm on the
+      // native path, so the service must coerce to video/mp4.
+      const fakeBlob = new Blob(["video-data"], { type: "video/quicktime" });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/clip.mov" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
 
-      await expect(recordNativeVideo()).rejects.toThrow("Native camera returned no file path");
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      const result = await pending;
+
+      expect(result.mimeType).toBe("video/mp4");
+      expect(result.mimeType.startsWith("video/")).toBe(true);
+      expect(result.blob.type).toBe("video/mp4");
     });
 
-    it("propagates errors from Camera.getPhoto", async () => {
-      mockGetPhoto.mockRejectedValue(new Error("User cancelled"));
+    it("preserves video/webm when reported (cross-platform path through storage.ts)", async () => {
+      const fakeBlob = new Blob(["video-data"], { type: "video/webm" });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/clip.webm" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
 
-      await expect(recordNativeVideo()).rejects.toThrow("User cancelled");
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      const result = await pending;
+
+      expect(result.mimeType).toBe("video/webm");
+      expect(result.blob).toBe(fakeBlob);
+    });
+  });
+
+  describe("recordNativeVideo — error paths", () => {
+    it("throws and still releases the camera when the plugin returns no URI", async () => {
+      mockStopRecording.mockResolvedValue({ videoUrl: "" });
+
+      // Attach a catch handler BEFORE advancing timers so Node/Vitest does
+      // not report an unhandled rejection during microtask flushing.
+      const pending = recordNativeVideo();
+      const caught = pending.catch((e: unknown) => e);
+      await flushAutoStop();
+      const err = await caught;
+
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toBe("Native camera returned no file path");
+      // destroy() runs in the finally block — guaranteed on error.
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
+      // fetch is never called if there's no URI to fetch.
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("propagates permission denial from initialize() without calling recording APIs", async () => {
+      mockInitialize.mockRejectedValue(new Error("CAMERA_DENIED"));
+
+      await expect(recordNativeVideo()).rejects.toThrow("CAMERA_DENIED");
+
+      expect(mockStartRecording).not.toHaveBeenCalled();
+      expect(mockStopRecording).not.toHaveBeenCalled();
+      // initialize() threw before we marked the plugin as initialized, so
+      // destroy() must NOT run — there is nothing to tear down.
+      expect(mockDestroy).not.toHaveBeenCalled();
+    });
+
+    it("propagates user-cancel thrown from stopRecording() and still tears down", async () => {
+      mockStopRecording.mockRejectedValue(new Error("User cancelled recording"));
+
+      const pending = recordNativeVideo();
+      const caught = pending.catch((e: unknown) => e);
+      await flushAutoStop();
+      const err = await caught;
+
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toBe("User cancelled recording");
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
+    });
+
+    it("propagates fetch errors when the temp file cannot be read", async () => {
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/video.mp4" });
+      mockFetch.mockRejectedValue(new Error("Network request failed"));
+
+      const pending = recordNativeVideo();
+      const caught = pending.catch((e: unknown) => e);
+      await flushAutoStop();
+      const err = await caught;
+
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toBe("Network request failed");
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
+    });
+
+    it("swallows destroy() errors so they don't mask the real failure", async () => {
+      mockStopRecording.mockRejectedValue(new Error("record failed"));
+      mockDestroy.mockRejectedValue(new Error("teardown also failed"));
+
+      const pending = recordNativeVideo();
+      const caught = pending.catch((e: unknown) => e);
+      await flushAutoStop();
+      const err = await caught;
+
+      // The original record-failure surfaces, not the teardown error.
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toBe("record failed");
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("recordNativeVideo — duration cap", () => {
+    it("stops recording after MAX_VIDEO_DURATION_MS", async () => {
+      const fakeBlob = new Blob(["data"], { type: "video/mp4" });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
+
+      const pending = recordNativeVideo();
+
+      // One tick shy of the cap — stopRecording must NOT have fired yet.
+      await vi.advanceTimersByTimeAsync(MAX_VIDEO_DURATION_MS - 1);
+      expect(mockStopRecording).not.toHaveBeenCalled();
+
+      // Cross the threshold — the auto-stop resolves and stopRecording runs.
+      await vi.advanceTimersByTimeAsync(2);
+      await pending;
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("recordNativeVideo — AbortSignal early-stop", () => {
+    it("rejects immediately with AbortError when signal is already aborted", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(recordNativeVideo(controller.signal)).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      // Never entered the plugin lifecycle — no initialize, no destroy.
+      expect(mockInitialize).not.toHaveBeenCalled();
+      expect(mockDestroy).not.toHaveBeenCalled();
+    });
+
+    it("stops recording early when signal fires during the duration wait", async () => {
+      const fakeBlob = new Blob(["data"], { type: "video/mp4" });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
+
+      const controller = new AbortController();
+      const pending = recordNativeVideo(controller.signal);
+
+      // Flush the initial microtasks so `initialize` + `startRecording` resolve
+      // and the service arrives at the duration-wait Promise.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockStopRecording).not.toHaveBeenCalled();
+
+      // Fire the abort well before the 10s duration cap — recording should
+      // stop early as soon as the abort event handler runs.
+      controller.abort();
+      await pending;
+
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("recordNativeVideo — destroy() breadcrumb", () => {
+    it("breadcrumbs when destroy() throws on the happy-path teardown", async () => {
+      const fakeBlob = new Blob(["data"], { type: "video/mp4" });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
+      mockDestroy.mockRejectedValue(new Error("teardown failed"));
+
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      await pending;
+
+      expect(mockAddBreadcrumb).toHaveBeenCalledWith({
+        category: "lifecycle",
+        message: "video_recorder_destroy_failed",
+        data: { error: "teardown failed" },
+      });
     });
   });
 });

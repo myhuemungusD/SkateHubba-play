@@ -254,15 +254,13 @@ describe("Smoke: Account & Sign Out", () => {
     expect(mockDeleteAccount).not.toHaveBeenCalled();
   });
 
-  it("successful delete calls deleteUserData before deleteAccount and navigates to landing", async () => {
-    // Record invocation order: Firestore cleanup must come first so the auth
-    // token is still valid when the security-rule-gated deletes run.
-    const callOrder: string[] = [];
-    mockDeleteUserData.mockImplementationOnce(async () => {
-      callOrder.push("deleteUserData");
-    });
+  it("successful delete calls deleteAccount with uid+username and navigates to landing", async () => {
+    // Reverse-order invariant: deleteAccount (which internally runs Auth
+    // deletion FIRST, then Firestore wipe) is the single call site from
+    // AuthContext. If Auth deletion fails we never touch Firestore — the
+    // profile is preserved for retry. deleteUserData is NOT called directly
+    // from AuthContext anymore; it's called from inside deleteAccount.
     mockDeleteAccount.mockImplementationOnce(async () => {
-      callOrder.push("deleteAccount");
       // Simulate Firebase sign-out after auth account deletion
       mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     });
@@ -284,34 +282,16 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
-      expect(mockDeleteAccount).toHaveBeenCalled();
+      expect(mockDeleteAccount).toHaveBeenCalledWith("u1", "sk8r");
       // After deletion, app navigates to landing
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
-    expect(callOrder).toEqual(["deleteUserData", "deleteAccount"]);
+    // Firestore wipe is now internal to deleteAccount — AuthContext must
+    // not call it directly (that's the old orphaning path).
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
   });
 
-  it("does NOT delete auth account when deleteUserData throws", async () => {
-    mockDeleteUserData.mockRejectedValueOnce(new Error("Firestore rule denied"));
-    await renderLobby([]);
-
-    await userEvent.click(await screen.findByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Firestore rule denied")).toBeInTheDocument();
-    });
-    // Auth account must remain intact so the user can retry — this is the
-    // whole point of the ordering fix. A failed Firestore pass that proceeds
-    // to auth delete is exactly the GDPR-orphaning bug we're preventing.
-    expect(mockDeleteAccount).not.toHaveBeenCalled();
-    // Modal stays open so user can retry
-    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
-  });
-
-  it("shows error when deleteAccount fails after deleteUserData succeeds", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
+  it("shows error when deleteAccount fails (profile preserved for retry)", async () => {
     mockDeleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
     await renderLobby([]);
 
@@ -321,14 +301,15 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText("Auth deletion failed")).toBeInTheDocument();
     });
-    // Firestore cleanup ran first — that's expected under the new ordering.
-    expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
+    // Under reverse order, a deleteAccount throw means Auth deletion failed
+    // BEFORE the Firestore wipe — so the caller never touches user data and
+    // the profile stays intact for retry.
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
     // Modal stays open so user can retry
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
 
   it("shows friendly message when deleteAccount requires recent login", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
     const err = new Error("auth/requires-recent-login");
     (err as unknown as { code: string }).code = "auth/requires-recent-login";
     mockDeleteAccount.mockRejectedValueOnce(err);
@@ -340,15 +321,14 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
     });
-    // Firestore was already wiped; the instruction tells the user to re-auth
-    // and retry, which is safe because deleteUserData is idempotent.
-    expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
+    // No Firestore touch on requires-recent-login — reverse order means the
+    // user's profile is still intact for the retry after re-auth.
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
     // Modal stays open
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
 
   it("captures pending uid to sessionStorage on requires-recent-login", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
     const err = new Error("auth/requires-recent-login");
     (err as unknown as { code: string }).code = "auth/requires-recent-login";
     mockDeleteAccount.mockRejectedValueOnce(err);
@@ -362,24 +342,23 @@ describe("Smoke: Account & Sign Out", () => {
     });
   });
 
-  it("banner surfaces after sign-back-in with null profile and finishes deletion", async () => {
+  it("banner surfaces after sign-back-in and finishes deletion", async () => {
     // Reproduces the full recovery-gap scenario end-to-end through the
-    // real UI surface:
-    //   1. First delete attempt wipes Firestore but bounces on auth reauth.
-    //      Pending uid is captured in sessionStorage.
-    //   2. User signs out (activeProfile clears) and signs back in with the
-    //      SAME uid but no profile doc (Firestore wipe removed it).
+    // real UI surface under the reverse-order flow:
+    //   1. First delete attempt bounces on auth/requires-recent-login.
+    //      No Firestore data was touched — profile still intact. Pending
+    //      uid is captured in sessionStorage.
+    //   2. User signs out and signs back in with the SAME uid; their
+    //      profile reloads (it was never deleted).
     //   3. DeleteAccountRetryBanner matches sessionStorage to the user and
-    //      exposes a "Finish" affordance; tapping it runs auth-delete only
-    //      (deleteUserData is NOT called again) and the flag is cleared.
+    //      exposes a "Finish" affordance; tapping it re-runs the full
+    //      reverse-order deleteAccount and the flag is cleared.
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
     mockDeleteAccount.mockResolvedValueOnce(undefined);
-    // Same uid as testProfile.uid ("u1") but profile: null — the "Firestore
-    // wiped, auth alive" state.
     mockUseAuth.mockReturnValue({
       loading: false,
       user: authedUser,
-      profile: null,
+      profile,
       refreshProfile: vi.fn(),
     });
     withGames([]);
@@ -393,20 +372,21 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(finishBtn);
 
     await waitFor(() => {
-      expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+      expect(mockDeleteAccount).toHaveBeenCalledWith("u1", "sk8r");
     });
+    // AuthContext no longer calls deleteUserData directly — it's inside deleteAccount.
     expect(mockDeleteUserData).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBeNull();
   });
 
   it("banner surfaces error message when retry fails", async () => {
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
-    const stillRecentErr = new Error("For security, please sign out and sign back in, then tap Finish deletion again.");
+    const stillRecentErr = Object.assign(new Error("re-auth needed"), { code: "auth/requires-recent-login" });
     mockDeleteAccount.mockRejectedValueOnce(stillRecentErr);
     mockUseAuth.mockReturnValue({
       loading: false,
       user: authedUser,
-      profile: null,
+      profile,
       refreshProfile: vi.fn(),
     });
     withGames([]);
@@ -420,7 +400,7 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(finishBtn);
 
     await waitFor(() => {
-      expect(screen.getByText(/Finish deletion again/i)).toBeInTheDocument();
+      expect(screen.getByText(/Finish deletion/i)).toBeInTheDocument();
     });
     // Retry path preserves the flag so the user can try again.
     expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBe("u1");
@@ -472,14 +452,15 @@ describe("Smoke: Account & Sign Out", () => {
     });
   });
 
-  it("re-entry after auth/requires-recent-login is safe: deleteUserData no-op, auth retried", async () => {
-    // First attempt: Firestore succeeds (wipes data), auth rejects with
-    // requires-recent-login. User re-authenticates and triggers delete again.
-    // Second attempt: deleteUserData is called again against already-empty
-    // data (idempotent no-op) and deleteAccount now succeeds.
-    mockDeleteUserData.mockResolvedValue(undefined);
-    const recentErr = new Error("auth/requires-recent-login");
-    (recentErr as unknown as { code: string }).code = "auth/requires-recent-login";
+  it("re-entry after auth/requires-recent-login is safe: no data touched first attempt, second attempt succeeds", async () => {
+    // Reverse-order flow. First attempt: deleteAccount throws
+    // auth/requires-recent-login BEFORE any Firestore write (profile
+    // preserved). User re-auths and re-triggers; second attempt succeeds.
+    // deleteUserData is never called from AuthContext — it lives inside
+    // deleteAccount now.
+    const recentErr = Object.assign(new Error("auth/requires-recent-login"), {
+      code: "auth/requires-recent-login",
+    });
     mockDeleteAccount.mockRejectedValueOnce(recentErr).mockImplementationOnce(async () => {
       mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     });
@@ -500,12 +481,11 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
 
-    // First attempt surfaces the re-auth guidance
     await waitFor(() => {
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
     });
-    expect(mockDeleteUserData).toHaveBeenCalledTimes(1);
     expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
 
     // Second attempt (simulating user re-auth + retry) succeeds end-to-end.
     await userEvent.click(screen.getByText("Delete Forever"));
@@ -513,9 +493,10 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
-    // deleteUserData must be called a second time (safe because idempotent)
-    expect(mockDeleteUserData).toHaveBeenCalledTimes(2);
     expect(mockDeleteAccount).toHaveBeenCalledTimes(2);
+    // deleteUserData is never called directly by AuthContext under the
+    // reverse-order flow; it's called from inside deleteAccount.
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
   });
 
   it("shows generic error message for unknown firebase auth error", async () => {

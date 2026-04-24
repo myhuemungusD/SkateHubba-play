@@ -1,4 +1,4 @@
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { doc, collection, serverTimestamp, writeBatch } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -32,8 +32,12 @@ interface SubmitReportParams {
 /**
  * Submit a content/player report to the `reports` collection.
  *
- * Rate-limited: one report per game per reporter. The client checks for an
- * existing report before writing; Firestore rules enforce this server-side.
+ * Rate-limited server-side: one report per (reporter, reported) pair per
+ * 1 hour. Enforced via a companion write to
+ * `reports_limits/{reporterUid}_{reportedUid}` in the SAME batch — the
+ * Firestore rule uses `getAfter()` to verify the limit doc's `lastSentAt`
+ * is pinned to `request.time`, and `get()` to verify the previous report
+ * was more than 1 hour ago. No client-query bypass possible.
  */
 export async function submitReport(params: SubmitReportParams): Promise<string> {
   const { reporterUid, reportedUid, reportedUsername, gameId, reason, description, clipId } = params;
@@ -42,6 +46,10 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
   if (reporterUid === reportedUid) throw new Error("You cannot report yourself.");
 
   try {
+    const db = requireDb();
+    const reportRef = doc(collection(db, "reports"));
+    const limitRef = doc(db, "reports_limits", `${reporterUid}_${reportedUid}`);
+
     const payload: Record<string, unknown> = {
       reporterUid,
       reportedUid,
@@ -55,8 +63,23 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
     if (typeof clipId === "string" && clipId.length > 0) {
       payload.clipId = clipId.slice(0, 128);
     }
-    const docRef = await addDoc(collection(requireDb(), "reports"), payload);
-    return docRef.id;
+
+    // Atomic batch: report + companion cooldown anchor. The rule requires
+    // both writes land in the same commit (getAfter() on the limit doc).
+    // `set` (without merge) handles both the first-ever report and a
+    // subsequent one past the 1h cooldown — the reports_limits update rule
+    // gates the cooldown refresh, and the create rule gates the first
+    // insertion; Firestore auto-dispatches based on existence.
+    const batch = writeBatch(db);
+    batch.set(reportRef, payload);
+    batch.set(limitRef, {
+      reporterUid,
+      reportedUid,
+      lastSentAt: serverTimestamp(),
+    });
+    await batch.commit();
+
+    return reportRef.id;
   } catch (err) {
     logger.warn("report_submit_failed", {
       reporterUid,

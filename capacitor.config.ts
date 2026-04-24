@@ -3,10 +3,18 @@ import type { CapacitorConfig } from "@capacitor/cli";
 /**
  * SkateHubba — Capacitor runtime configuration.
  *
- * iOS usage-description strings (NSCameraUsageDescription,
- * NSMicrophoneUsageDescription, NSPhotoLibraryUsageDescription,
- * NSLocationWhenInUseUsageDescription, …) are NOT configured here. They live
- * in `ios/App/App/Info.plist`; Capacitor's plugin config does not expose them.
+ * iOS usage-description strings are NOT configured here. They live in
+ * `ios/App/App/Info.plist`; Capacitor's plugin config does not expose them.
+ * Required keys for the plugins this app uses:
+ *   - NSCameraUsageDescription              (camera preview + video recording)
+ *   - NSMicrophoneUsageDescription          (audio track for recorded clips)
+ *   - NSPhotoLibraryUsageDescription        (@capacitor/camera fallback flows)
+ *   - NSPhotoLibraryAddUsageDescription     (save-to-camera-roll, if ever used)
+ *   - NSLocationWhenInUseUsageDescription   (spot geolocation)
+ *
+ * The `@capacitor-community/video-recorder` plugin (AVFoundation-backed) uses
+ * NSCameraUsageDescription + NSMicrophoneUsageDescription only — no new plist
+ * keys beyond the set above.
  *
  * Splash screen assets: generate with `@capacitor/assets` from a 2732×2732
  * master at `resources/splash.png` (dark background) and a 1024×1024 icon at
