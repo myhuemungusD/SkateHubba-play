@@ -12,7 +12,7 @@ import { getStorage, connectStorageEmulator, type FirebaseStorage } from "fireba
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { Capacitor } from "@capacitor/core";
 import { FirebaseAppCheck } from "@capacitor-firebase/app-check";
-import { captureMessage } from "./lib/sentry";
+import { addBreadcrumb, captureMessage } from "./lib/sentry";
 import { env } from "./lib/env";
 import { logger } from "./services/logger";
 
@@ -26,10 +26,37 @@ import { logger } from "./services/logger";
 // True when the Zod-validated env includes every required VITE_FIREBASE_* var.
 export const firebaseReady = env !== null;
 
+// Named Firestore database the app talks to. Single source of truth — used
+// both by initializeFirestore() below and by diagnostics (e.g. the
+// permission-denied breadcrumb in useAuth) so the value reported to Sentry
+// always matches the value the SDK actually queried.
+export const FIRESTORE_DB_NAME = "skatehubba";
+
+// Flipped to true only after a successful initializeAppCheck() call. Stays
+// false on every other path: opt-in skipped, missing site key, init threw.
+// Diagnostics read this to disambiguate permission-denied between an App
+// Check enforcement mismatch and a genuine rules failure.
+let appCheckInitialized = false;
+export const isAppCheckInitialized = (): boolean => appCheckInitialized;
+
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
 let storage: FirebaseStorage | null = null;
+
+/**
+ * Which Firestore local cache strategy we ended up using.
+ *
+ * IndexedDB-backed `persistentLocalCache` is the preferred path, but it
+ * throws synchronously in environments where IndexedDB is unavailable —
+ * Safari Private Browsing, some Capacitor in-app WebViews, and very old
+ * Android WebViews. When that happens we fall back to `memoryLocalCache`
+ * so the module import never crashes the entire app before React mounts.
+ *
+ * UI can read this flag to decide whether to surface an "offline data
+ * unavailable" warning. The flag is set once during module init.
+ */
+export let firestoreCacheMode: "persistent" | "memory" = "persistent";
 
 if (env) {
   const firebaseConfig = {
@@ -47,17 +74,41 @@ if (env) {
   // In emulator mode use memory cache to avoid IndexedDB/persistence issues
   // that can stall getDoc() in headless Chrome on CI.
   const useEmulators = import.meta.env.DEV && env.VITE_USE_EMULATORS === true;
-  db = initializeFirestore(
-    app,
-    useEmulators
-      ? { localCache: memoryLocalCache(), experimentalForceLongPolling: true }
-      : {
+  if (useEmulators) {
+    firestoreCacheMode = "memory";
+    db = initializeFirestore(app, { localCache: memoryLocalCache(), experimentalForceLongPolling: true }, "skatehubba");
+  } else {
+    // Try the preferred IndexedDB-backed persistent cache first. It throws
+    // synchronously in Safari Private Browsing, some Capacitor WebViews and
+    // ancient Android WebViews where IndexedDB is unavailable. Catching that
+    // here prevents the whole app from crashing on module load (H-F13) and
+    // lets us fall back to an in-memory cache.
+    try {
+      db = initializeFirestore(
+        app,
+        {
           localCache: persistentLocalCache({
             tabManager: persistentMultipleTabManager(),
           }),
         },
-    "skatehubba",
-  );
+        FIRESTORE_DB_NAME,
+      );
+      firestoreCacheMode = "persistent";
+    } catch (err) {
+      // Never silently swallow — always breadcrumb + log so ops can see
+      // the fallback was triggered in the field.
+      logger.warn("firestore_persistent_cache_failed", {
+        message: err instanceof Error ? err.message : String(err),
+      });
+      addBreadcrumb({
+        category: "lifecycle",
+        message: "firestore_persistent_cache_failed",
+        data: { error: String(err) },
+      });
+      db = initializeFirestore(app, { localCache: memoryLocalCache() }, FIRESTORE_DB_NAME);
+      firestoreCacheMode = "memory";
+    }
+  }
 
   auth = getAuth(app);
   storage = getStorage(app);
@@ -101,29 +152,54 @@ if (env) {
     // uses the platform-native attestation SDKs (DeviceCheck on iOS,
     // Play Integrity on Android) through the plugin bridge.
     //
-    // In emulator builds we request the debug provider so the attestation
-    // step doesn't reject a development device. In every other build
-    // (including local dev pointed at prod Firebase) the plugin auto-selects
-    // DeviceCheck (iOS) / Play Integrity (Android) — passing debug=true
-    // against production would force a debug token that isn't registered
-    // in the Firebase Console and silently reject every request.
-    const useDebug = useEmulators;
-    const onNativeInitError = (err: unknown): void => {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error("appcheck_native_init_failed", { message });
-      captureMessage(`Native App Check init failed — Auth/Firestore requests may be rejected: ${message}`, "error");
-    };
+    // In emulator / dev builds we request the debug provider so the
+    // attestation step doesn't reject a development device. In release
+    // builds the plugin auto-selects DeviceCheck (iOS) / Play Integrity
+    // (Android) — no provider option is needed on the JS side.
+    //
+    // Symmetric try/catch matches the web branch below — an attestation
+    // rejection silently breaks every Firestore/Auth request with
+    // permission-denied, so we surface it loudly (logger.error + Sentry
+    // captureMessage + lifecycle breadcrumb) and let ops route it to a
+    // user-facing retry banner via `isAppCheckInitialized()`. The init
+    // call returns a promise; we .catch instead of await to avoid
+    // blocking app startup on attestation — but the handler is the same
+    // surface a synchronous throw would reach.
+    const useDebug = useEmulators || import.meta.env.DEV;
     try {
       FirebaseAppCheck.initialize({
         debug: useDebug,
         siteKey: env.VITE_RECAPTCHA_SITE_KEY,
-      }).catch(onNativeInitError);
+      })
+        .then(() => {
+          appCheckInitialized = true;
+          addBreadcrumb({
+            category: "lifecycle",
+            message: "appcheck_native_initialized",
+            data: { debug: useDebug },
+          });
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error("appcheck_native_init_failed", { message });
+          addBreadcrumb({
+            category: "lifecycle",
+            message: "appcheck_native_init_failed",
+            data: { error: message },
+          });
+          captureMessage(`Native App Check init failed — Auth/Firestore requests may be rejected: ${message}`, "error");
+        });
     } catch (err) {
-      // Symmetric with the web branch below: the Capacitor plugin bridge
-      // can throw synchronously if the native side isn't registered or the
-      // args shape is wrong. Without this the whole Firebase init module
-      // would crash on import, taking the app down.
-      onNativeInitError(err);
+      // Plugin bridge threw synchronously (plugin not registered, wrong
+      // Capacitor version, etc). Same loud-fail surface as the async path.
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("appcheck_native_init_threw", { message });
+      addBreadcrumb({
+        category: "lifecycle",
+        message: "appcheck_native_init_threw",
+        data: { error: message },
+      });
+      captureMessage(`Native App Check init threw synchronously — plugin may not be linked: ${message}`, "error");
     }
   } else if (env.VITE_RECAPTCHA_SITE_KEY) {
     try {
@@ -131,6 +207,7 @@ if (env) {
         provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
         isTokenAutoRefreshEnabled: true,
       });
+      appCheckInitialized = true;
     } catch (err) {
       // An invalid site key or blocked reCAPTCHA loader throws synchronously here.
       // Without this catch the whole Firebase init module would crash on load,

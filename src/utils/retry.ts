@@ -2,8 +2,15 @@
  * Returns true for errors that are worth retrying (transient network/server
  * failures). Returns false for permanent errors that retrying won't fix, such
  * as permission denied (403), not found (404), or invalid argument errors.
+ *
+ * Also returns false for user-initiated cancellation (AbortError,
+ * `storage/canceled`) — callers treat these as explicit stops, not failures
+ * to retry against.
  */
-function isRetryable(err: unknown): boolean {
+export function isRetryable(err: unknown): boolean {
+  // User-initiated aborts are never retryable — DOMException("AbortError")
+  // is produced by `uploadVideo` when a caller signals cancellation.
+  if (err instanceof Error && err.name === "AbortError") return false;
   if (!(err instanceof Error)) return true; // unknown shape — optimistically retry
 
   // Firebase / gRPC error codes that are permanent (don't retry)
@@ -17,10 +24,19 @@ function isRetryable(err: unknown): boolean {
     "failed-precondition",
     "out-of-range",
     "unimplemented",
-    // HTTP equivalents sometimes surfaced by Firebase SDK
+    // Firebase Storage error codes — these are permanent failures that
+    // no amount of retry will recover from. `storage/canceled` is the
+    // SDK's signal for a task.cancel() invocation (i.e., our own abort
+    // path) and must not trigger another attempt. `storage/retry-limit-
+    // exceeded` means the SDK already exhausted its own internal retry
+    // budget, so our wrapper retrying again just wastes user bandwidth.
     "storage/unauthorized",
+    "storage/unauthenticated",
     "storage/object-not-found",
     "storage/invalid-argument",
+    "storage/quota-exceeded",
+    "storage/retry-limit-exceeded",
+    "storage/canceled",
   ]);
   if (permanentCodes.has(code)) return false;
 

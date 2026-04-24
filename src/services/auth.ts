@@ -19,6 +19,8 @@ import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { auth, requireAuth, isEmulatorMode } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
+import { withRetry } from "../utils/retry";
+import { deleteUserData } from "./users";
 import { logger } from "./logger";
 
 export type AuthUser = User;
@@ -269,18 +271,76 @@ export async function signInWithGoogle(): Promise<User | null> {
 }
 
 /**
- * Permanently delete the currently signed-in Firebase Auth account.
+ * Permanently delete the currently signed-in Firebase Auth account AND its
+ * Firestore data, in that order.
  *
- * IMPORTANT: Call deleteUserData() from users.ts first to clean up Firestore.
- * Firebase requires recent authentication; if this throws auth/requires-recent-login
- * the caller should sign the user out and ask them to re-authenticate.
+ * Order matters: deleting the Auth record FIRST means that if
+ * auth/requires-recent-login fires, no Firestore data has been touched yet —
+ * the caller can ask the user to re-authenticate and retry cleanly, with the
+ * profile still intact. Wiping Firestore first would leave a "reverse orphan"
+ * (data gone, Auth alive) and force the user to re-create their username on
+ * next sign-in.
+ *
+ * Contract:
+ *  1. `deleteUser(user)` runs first. Any failure (including
+ *     auth/requires-recent-login, network, etc.) is rethrown to the caller;
+ *     no Firestore writes have happened at that point.
+ *  2. `deleteUserData(uid, username)` runs only after Auth is gone. It is
+ *     wrapped in `withRetry` because the Auth token is already revoked — a
+ *     transient network blip is the only recoverable failure. If it still
+ *     fails after retries, the Firestore data is orphaned (known cleanup
+ *     state, not a login blocker) and we log + captureException with
+ *     severity=error so operators can trigger manual cleanup. We do NOT
+ *     throw back to the caller — from the user's perspective, the account
+ *     is gone.
  */
-export async function deleteAccount(): Promise<void> {
+export async function deleteAccount(uid: string, username: string): Promise<void> {
   const user = requireAuth().currentUser;
   if (!user) throw new Error("Not signed in");
-  logger.info("delete_account_attempt", { uid: user.uid });
+  if (user.uid !== uid) {
+    // Defensive: the caller snapshots uid/username before the flow starts,
+    // so a mismatch here means identity drift mid-delete — refuse rather
+    // than delete the wrong account.
+    throw new Error("Auth uid does not match requested delete uid");
+  }
+  logger.info("delete_account_attempt", { uid });
+
+  // Step 1: Delete Firebase Auth FIRST. If this throws
+  // auth/requires-recent-login, the caller sends the user through re-auth
+  // and retries — no Firestore data has been touched, so the profile is
+  // still intact on retry.
   await deleteUser(user);
-  logger.info("delete_account_success", { uid: user.uid });
+  logger.info("delete_account_auth_done", { uid });
+
+  // Step 2: Wipe Firestore data. The Auth token is already revoked, so
+  // any remaining writes must happen via the still-cached credentials of
+  // the just-deleted user. Transient network failures are the only
+  // recoverable class of errors — retry aggressively, then accept the
+  // orphan state and surface it to Sentry for manual cleanup.
+  try {
+    await withRetry(() => deleteUserData(uid, username));
+    logger.info("delete_account_firestore_done", { uid });
+  } catch (err) {
+    logger.error("delete_account_firestore_orphaned", {
+      uid,
+      username,
+      code: getErrorCode(err),
+      error: parseFirebaseError(err),
+    });
+    captureException(err, {
+      level: "error",
+      extra: {
+        context:
+          "deleteUserData failed after Firebase Auth deletion — Firestore data orphaned, manual cleanup required",
+        uid,
+        username,
+      },
+    });
+    // Deliberately do NOT rethrow: the Auth account is already gone, so
+    // from the user's perspective the deletion succeeded. Operators will
+    // clean up via the Sentry alert.
+  }
+  logger.info("delete_account_success", { uid });
 }
 
 /**

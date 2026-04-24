@@ -50,3 +50,34 @@ native call returns `DEVELOPER_ERROR` (status code 10).
   initialise at all (same flag gates the web reCAPTCHA v3 flow). Keep it off
   in any environment where App Check has not been fully provisioned — an
   unconfigured enforcement toggle silently rejects every Firestore read.
+
+## Native Sentry SDK (Android)
+
+`@sentry/capacitor` (installed via `npm install`) ships an Android
+Gradle module that Capacitor discovers automatically on the first
+`npx cap sync android` run after the npm install. The sync updates
+`android/app/capacitor.build.gradle` with a
+`implementation project(':capacitor-sentry-capacitor')` entry and
+appends the module to `android/capacitor.settings.gradle`, so the
+next Gradle build (CLI or Android Studio) pulls in the Sentry Android
+SDK as a transitive dependency. No manual Gradle edits are required.
+
+Verify after the first sync:
+
+1. `android/capacitor.settings.gradle` lists
+   `include ':capacitor-sentry-capacitor'`.
+2. `android/app/capacitor.build.gradle` lists the matching
+   `implementation project(':capacitor-sentry-capacitor')` line.
+3. `./gradlew :app:dependencies | grep sentry` surfaces the upstream
+   `io.sentry:sentry-android` artifact (pulled transitively from the
+   Capacitor plugin).
+4. At runtime on a device, a deliberate `Sentry.nativeCrash()` call
+   (exported by `@sentry/capacitor`) must surface in the Sentry
+   dashboard as an `android` platform event with a symbolicated
+   Kotlin / Java stack trace.
+
+Note: the JS-layer init lives in `src/lib/sentry.ts`. The DSN,
+release tag (`VITE_APP_VERSION`), and `beforeSend` PII scrubber
+defined in `src/main.tsx` are shared across web and native — the
+native SDK inherits them via the sibling-SDK init pattern
+(`SentryCapacitor.init(opts, SentryReact.init)`).

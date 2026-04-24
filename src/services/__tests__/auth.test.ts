@@ -12,6 +12,8 @@ const mockSendVerify = vi.fn().mockResolvedValue(undefined);
 const mockOnAuthStateChanged = vi.fn();
 const mockDeleteUser = vi.fn().mockResolvedValue(undefined);
 const mockGetRedirectResult = vi.fn();
+const mockDeleteUserData = vi.fn().mockResolvedValue(undefined);
+const mockCaptureException = vi.fn();
 
 vi.mock("firebase/auth", () => ({
   createUserWithEmailAndPassword: (...args: unknown[]) => mockCreateUser(...args),
@@ -26,6 +28,27 @@ vi.mock("firebase/auth", () => ({
   signInWithPopup: vi.fn(),
   signInWithRedirect: vi.fn(),
 }));
+
+vi.mock("../users", () => ({
+  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
+}));
+
+vi.mock("../../lib/sentry", () => ({
+  captureException: (...args: unknown[]) => mockCaptureException(...args),
+  captureMessage: vi.fn(),
+  addBreadcrumb: vi.fn(),
+  setUser: vi.fn(),
+  initSentry: vi.fn(),
+}));
+
+// Collapse retry delays so the orphan-cleanup retry test doesn't sleep.
+vi.mock("../../utils/retry", async () => {
+  const actual = await vi.importActual<typeof import("../../utils/retry")>("../../utils/retry");
+  return {
+    ...actual,
+    withRetry: <T>(fn: () => Promise<T>) => actual.withRetry(fn, 3, 0),
+  };
+});
 
 vi.mock("../../firebase");
 
@@ -228,16 +251,100 @@ describe("auth service", () => {
   });
 
   describe("deleteAccount", () => {
-    it("deletes the current user when signed in", async () => {
-      const mockUser = { uid: "u1" };
-      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
-      await deleteAccount();
-      expect(mockDeleteUser).toHaveBeenCalledWith(mockUser);
-    });
-
     it("throws when no user is signed in", async () => {
       (auth as unknown as { currentUser: unknown }).currentUser = null;
-      await expect(deleteAccount()).rejects.toThrow("Not signed in");
+      await expect(deleteAccount("u1", "sk8r")).rejects.toThrow("Not signed in");
+      expect(mockDeleteUser).not.toHaveBeenCalled();
+      expect(mockDeleteUserData).not.toHaveBeenCalled();
+    });
+
+    it("refuses to run when the signed-in uid does not match the requested uid", async () => {
+      const mockUser = { uid: "u1" };
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
+      await expect(deleteAccount("different", "sk8r")).rejects.toThrow(/uid does not match/);
+      expect(mockDeleteUser).not.toHaveBeenCalled();
+      expect(mockDeleteUserData).not.toHaveBeenCalled();
+    });
+
+    it("deletes Firebase Auth FIRST, then wipes Firestore data (reverse order)", async () => {
+      const mockUser = { uid: "u1" };
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
+      const order: string[] = [];
+      mockDeleteUser.mockImplementationOnce(async () => {
+        order.push("auth");
+      });
+      mockDeleteUserData.mockImplementationOnce(async () => {
+        order.push("firestore");
+      });
+
+      await deleteAccount("u1", "sk8r");
+
+      expect(order).toEqual(["auth", "firestore"]);
+      expect(mockDeleteUser).toHaveBeenCalledWith(mockUser);
+      expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
+    });
+
+    it("rethrows auth/requires-recent-login WITHOUT touching Firestore", async () => {
+      const mockUser = { uid: "u1" };
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
+      const recentErr = Object.assign(new Error("needs reauth"), {
+        code: "auth/requires-recent-login",
+      });
+      mockDeleteUser.mockRejectedValueOnce(recentErr);
+
+      await expect(deleteAccount("u1", "sk8r")).rejects.toBe(recentErr);
+
+      // Critical invariant: Firestore must not be touched on auth-delete failure
+      // — otherwise the next login sees a stripped profile.
+      expect(mockDeleteUserData).not.toHaveBeenCalled();
+      expect(mockCaptureException).not.toHaveBeenCalled();
+    });
+
+    it("rethrows generic deleteUser errors WITHOUT touching Firestore", async () => {
+      const mockUser = { uid: "u1" };
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
+      const authErr = new Error("network down");
+      mockDeleteUser.mockRejectedValueOnce(authErr);
+
+      await expect(deleteAccount("u1", "sk8r")).rejects.toBe(authErr);
+      expect(mockDeleteUserData).not.toHaveBeenCalled();
+      expect(mockCaptureException).not.toHaveBeenCalled();
+    });
+
+    it("returns success when deleteUserData throws after Auth is deleted (orphan is logged, not thrown)", async () => {
+      const mockUser = { uid: "u1" };
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
+      const firestoreErr = new Error("network timeout");
+      mockDeleteUserData.mockRejectedValue(firestoreErr); // fails every retry
+
+      // Does NOT throw — from the user's perspective, the account is gone.
+      await expect(deleteAccount("u1", "sk8r")).resolves.toBeUndefined();
+
+      expect(mockDeleteUser).toHaveBeenCalledWith(mockUser);
+      // withRetry attempts up to 3 times on transient errors.
+      expect(mockDeleteUserData).toHaveBeenCalledTimes(3);
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        firestoreErr,
+        expect.objectContaining({
+          level: "error",
+          extra: expect.objectContaining({
+            context: expect.stringContaining("orphaned"),
+            uid: "u1",
+            username: "sk8r",
+          }),
+        }),
+      );
+    });
+
+    it("retries deleteUserData on transient failure, succeeds without Sentry", async () => {
+      const mockUser = { uid: "u1" };
+      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
+      mockDeleteUserData.mockRejectedValueOnce(new Error("transient 503")).mockResolvedValueOnce(undefined);
+
+      await expect(deleteAccount("u1", "sk8r")).resolves.toBeUndefined();
+
+      expect(mockDeleteUserData).toHaveBeenCalledTimes(2);
+      expect(mockCaptureException).not.toHaveBeenCalled();
     });
   });
 

@@ -53,10 +53,10 @@ npx cap open ios
 
 ### First-time signing
 
-In Xcode, under *Signing & Capabilities* for the `App` target:
+In Xcode, under _Signing & Capabilities_ for the `App` target:
 
 1. Select the SkateHubba Apple Developer team.
-2. Leave *Automatically manage signing* enabled for local dev builds; CI
+2. Leave _Automatically manage signing_ enabled for local dev builds; CI
    uses fastlane match (see `fastlane/Fastfile`) for release builds.
 3. Confirm the bundle ID reads `com.skatehubba.app` — matches
    `capacitor.config.ts` and the `CFBundleIdentifier` entry in `Info.plist`.
@@ -86,9 +86,39 @@ fastlane match credentials to be configured via CI secrets. See
 - After `npm run build` — to refresh `ios/App/App/public/` with the latest
   web bundle before an Xcode build.
 
-`cap sync` is *additive* for Info.plist: it only touches keys Capacitor
+`cap sync` is _additive_ for Info.plist: it only touches keys Capacitor
 manages. Hand-authored keys (all the `NS*UsageDescription` entries,
 `ITSAppUsesNonExemptEncryption`) are preserved across syncs.
+
+## Native Sentry SDK (iOS)
+
+`@sentry/capacitor` (installed via `npm install`) ships a CocoaPods
+podspec (`Sentry-Capacitor.podspec`) that is picked up automatically
+the first time `npx cap sync ios` runs after the npm install. That
+sync regenerates `ios/App/Podfile`, and the subsequent `pod install`
+(run implicitly by `cap sync`, or manually via
+`cd ios/App && pod install`) pulls in the Sentry Cocoa SDK as a
+transitive dependency. No manual Xcode steps are required to link
+the framework — the plugin does it for you.
+
+Verify after the first sync:
+
+1. `ios/App/Podfile.lock` contains entries for `Sentry-Capacitor` and
+   the upstream `Sentry` cocoa pod.
+2. In Xcode, _App → Frameworks, Libraries, and Embedded Content_
+   lists the `Sentry.framework` entry — if it is missing after a
+   fresh checkout, run `cd ios/App && pod install --repo-update`.
+3. At runtime on a physical device, a deliberate
+   `Sentry.nativeCrash()` call (exported by `@sentry/capacitor`)
+   must surface in the Sentry dashboard as an `ios` platform event
+   with a symbolicated Swift stack trace. Swift / Obj-C crashes
+   bubble up through the same channel.
+
+Note: the JS-layer init lives in `src/lib/sentry.ts`. The DSN,
+release tag (`VITE_APP_VERSION`), and `beforeSend` PII scrubber
+defined in `src/main.tsx` are shared across web and native — the
+native SDK inherits them via the sibling-SDK init pattern
+(`SentryCapacitor.init(opts, SentryReact.init)`).
 
 ## Version numbers
 

@@ -28,6 +28,15 @@ vi.mock("../../services/users", () => ({
 vi.mock("../../services/fcm", () => ({
   removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
 }));
+// Native push service is fully gated via isPushSupported(); the AuthContext
+// tests run in jsdom where Capacitor.isNativePlatform() is false, so the
+// real helpers would short-circuit. Mock anyway to stay insulated from
+// accidental side effects (the plugin import graph pulls @capacitor/core).
+vi.mock("../../services/pushNotifications", () => ({
+  isPushSupported: vi.fn().mockReturnValue(false),
+  registerPushToken: vi.fn().mockResolvedValue(undefined),
+  unregisterPushToken: vi.fn().mockResolvedValue(undefined),
+}));
 vi.mock("../../services/userData", () => ({
   exportUserData: vi.fn(),
   serializeUserData: vi.fn(() => "{}"),
@@ -164,29 +173,9 @@ describe("handleDeleteAccount", () => {
     mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
   });
 
-  it("captures Sentry when deleteUserData throws and does NOT call deleteAccount", async () => {
-    const firestoreErr = new Error("permission-denied");
-    mockDeleteUserData.mockRejectedValueOnce(firestoreErr);
-
-    const { triggerDelete } = renderWithTrigger(profile);
-    const thrown = await triggerDelete();
-
-    expect(thrown).toBe(firestoreErr);
-    expect(mockDeleteAccount).not.toHaveBeenCalled();
-    expect(mockCaptureException).toHaveBeenCalledWith(
-      firestoreErr,
-      expect.objectContaining({
-        extra: expect.objectContaining({
-          context: expect.stringContaining("deleteUserData before auth deletion"),
-          uid: "u1",
-          username: "sk8r",
-        }),
-      }),
-    );
-  });
-
-  it("captures Sentry when deleteAccount fails after Firestore wipe (generic error)", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
+  it("captures Sentry when deleteAccount fails (generic auth error) and does NOT wipe Firestore", async () => {
+    // With the reverse order, Auth deletion runs first. A generic failure
+    // means no Firestore data was touched — the profile is still intact.
     const authErr = new Error("network");
     mockDeleteAccount.mockRejectedValueOnce(authErr);
 
@@ -194,11 +183,12 @@ describe("handleDeleteAccount", () => {
     const thrown = await triggerDelete();
 
     expect(thrown).toBe(authErr);
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
     expect(mockCaptureException).toHaveBeenCalledWith(
       authErr,
       expect.objectContaining({
         extra: expect.objectContaining({
-          context: expect.stringContaining("deleteAccount after Firestore wipe"),
+          context: expect.stringContaining("Auth deletion bounced"),
           uid: "u1",
           username: "sk8r",
         }),
@@ -207,7 +197,6 @@ describe("handleDeleteAccount", () => {
   });
 
   it("captures Sentry and rethrows friendly message on auth/requires-recent-login", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
     const authErr = new Error("auth/requires-recent-login");
     (authErr as unknown as { code: string }).code = "auth/requires-recent-login";
     mockDeleteAccount.mockRejectedValueOnce(authErr);
@@ -224,10 +213,11 @@ describe("handleDeleteAccount", () => {
         extra: expect.objectContaining({ code: "auth/requires-recent-login", uid: "u1" }),
       }),
     );
+    // Reverse-order invariant: no Firestore wipe happened, profile preserved.
+    expect(mockDeleteUserData).not.toHaveBeenCalled();
   });
 
   it("does NOT capture Sentry on fully successful delete", async () => {
-    mockDeleteUserData.mockResolvedValueOnce(undefined);
     mockDeleteAccount.mockResolvedValueOnce(undefined);
 
     const { triggerDelete } = renderWithTrigger(profile);
@@ -238,25 +228,21 @@ describe("handleDeleteAccount", () => {
   });
 
   it("uses snapshot of uid/username even if activeProfile mutates mid-flow", async () => {
-    // Simulates mid-flight state drift: deleteUserData resolves, then
-    // useAuth reports a different profile before deleteAccount runs. The
-    // snapshot means deleteAccount still operates on the original identity
-    // and telemetry/Sentry contexts stay coherent.
-    let resolveFirestore: () => void = () => {};
-    mockDeleteUserData.mockImplementationOnce(
+    // Simulates mid-flight state drift: deleteAccount is in flight, then
+    // useAuth reports a different profile before it resolves. The snapshot
+    // means Sentry telemetry still reflects the original identity.
+    let rejectAuth: (err: Error) => void = () => {};
+    const authErr = new Error("boom");
+    mockDeleteAccount.mockImplementationOnce(
       () =>
-        new Promise<void>((resolve) => {
-          resolveFirestore = resolve;
+        new Promise<void>((_resolve, reject) => {
+          rejectAuth = reject;
         }),
     );
-    const authErr = new Error("boom");
-    mockDeleteAccount.mockRejectedValueOnce(authErr);
 
     const { triggerDelete } = renderWithTrigger(profile);
     const pending = triggerDelete();
 
-    // While deleteUserData is in flight, simulate the AuthContext receiving
-    // a different profile (e.g. from a delayed useAuth update).
     await act(async () => {
       mockUseAuth.mockReturnValue({
         loading: false,
@@ -264,14 +250,13 @@ describe("handleDeleteAccount", () => {
         profile: { uid: "OTHER", username: "other" } as Profile,
         refreshProfile: vi.fn(),
       });
-      resolveFirestore();
+      rejectAuth(authErr);
     });
 
     await pending;
 
-    // The Firestore call used the *original* uid/username, not the mutated one.
-    expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
-    // Sentry context for the failed auth delete reflects the snapshot identity.
+    // deleteAccount was called with the *original* uid/username, not the mutated one.
+    expect(mockDeleteAccount).toHaveBeenCalledWith("u1", "sk8r");
     expect(mockCaptureException).toHaveBeenCalledWith(
       authErr,
       expect.objectContaining({
@@ -280,10 +265,10 @@ describe("handleDeleteAccount", () => {
     );
   });
 
-  it("tags Firestore-failure log with firebase error code when present", async () => {
-    const firestoreErr = new Error("denied");
-    (firestoreErr as unknown as { code: string }).code = "permission-denied";
-    mockDeleteUserData.mockRejectedValueOnce(firestoreErr);
+  it("tags auth-failure log with firebase error code when present", async () => {
+    const authErr = new Error("denied");
+    (authErr as unknown as { code: string }).code = "permission-denied";
+    mockDeleteAccount.mockRejectedValueOnce(authErr);
 
     const { triggerDelete } = renderWithTrigger(profile);
     await waitFor(async () => {
@@ -291,8 +276,8 @@ describe("handleDeleteAccount", () => {
     });
 
     expect(mockLoggerError).toHaveBeenCalledWith(
-      "delete_account_firestore_failed",
-      expect.objectContaining({ code: "permission-denied", uid: "u1", username: "sk8r" }),
+      "delete_account_auth_failed",
+      expect.objectContaining({ code: "permission-denied", uid: "u1" }),
     );
   });
 
@@ -307,7 +292,6 @@ describe("handleDeleteAccount", () => {
     const STORAGE_KEY = "skate.pendingDeleteUid";
 
     it("captures uid to sessionStorage when deleteAccount bounces with requires-recent-login", async () => {
-      mockDeleteUserData.mockResolvedValueOnce(undefined);
       const recentErr = new Error("requires-recent-login");
       (recentErr as unknown as { code: string }).code = "auth/requires-recent-login";
       mockDeleteAccount.mockRejectedValueOnce(recentErr);
@@ -324,7 +308,6 @@ describe("handleDeleteAccount", () => {
     });
 
     it("clears sessionStorage on fully successful first-attempt delete", async () => {
-      mockDeleteUserData.mockResolvedValueOnce(undefined);
       mockDeleteAccount.mockResolvedValueOnce(undefined);
 
       const { triggerDelete } = renderWithTrigger(profile);
@@ -338,10 +321,13 @@ describe("handleDeleteAccount", () => {
       );
     });
 
-    it("retry with null activeProfile + matching pending uid runs auth delete only", async () => {
-      // Simulate the post-bounce / post-sign-in state: sessionStorage still
-      // holds the pending uid, useAuth reports the SAME user but no profile,
-      // and no activeProfile has been seeded in the harness.
+    it("resume with null activeProfile + matching pending uid bails safely (no username to wipe)", async () => {
+      // Post-bounce / post-sign-in state: sessionStorage still holds the
+      // pending uid, useAuth reports the SAME user but no profile. With the
+      // reverse order (Auth-first), no Firestore wipe has happened so the
+      // username reservation is still there. We need the username to delete
+      // it — without a profile reload we can't safely proceed. Bail with a
+      // warn; the user will re-trigger once their profile loads.
       sessionStorage.setItem(STORAGE_KEY, "u1");
       mockUseAuth.mockReturnValue({
         loading: false,
@@ -349,10 +335,7 @@ describe("handleDeleteAccount", () => {
         profile: null,
         refreshProfile: vi.fn(),
       });
-      mockDeleteAccount.mockResolvedValueOnce(undefined);
 
-      // Harness that does NOT call setActiveProfile — mirrors the
-      // "sign-back-in with deleted profile doc" state.
       let trigger: (() => Promise<Error | null>) | null = null;
       function Harness() {
         const ctx = useAuthContext();
@@ -379,17 +362,10 @@ describe("handleDeleteAccount", () => {
       });
 
       expect(thrown).toBeNull();
+      expect(mockDeleteAccount).not.toHaveBeenCalled();
       expect(mockDeleteUserData).not.toHaveBeenCalled();
-      expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
-      expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
-      expect(mockLoggerInfo).toHaveBeenCalledWith(
-        "delete_account_pending_retry_resumed",
-        expect.objectContaining({ uid: "u1" }),
-      );
-      expect(mockLoggerInfo).toHaveBeenCalledWith(
-        "delete_account_pending_retry_cleared",
-        expect.objectContaining({ uid: "u1", reason: "resume_success" }),
-      );
+      // Flag remains until the profile reloads and a fresh attempt runs.
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
     });
 
     it("retry early-returns when pending uid does not match current user", async () => {

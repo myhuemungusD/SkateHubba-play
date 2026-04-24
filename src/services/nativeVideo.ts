@@ -25,6 +25,7 @@ import {
   type VideoRecorderPreviewFrame,
 } from "@capacitor-community/video-recorder";
 import { MAX_VIDEO_DURATION_MS } from "../constants/video";
+import { addBreadcrumb } from "../lib/sentry";
 
 /** True when the app is running inside a Capacitor native shell. */
 export function isNativePlatform(): boolean {
@@ -63,8 +64,9 @@ const PREVIEW_FRAME: VideoRecorderPreviewFrame = {
  * Flow:
  *   1. `initialize(...)` spins up the capture device and preview layer.
  *   2. `startRecording()` begins writing to a temp file on device.
- *   3. After `MAX_VIDEO_DURATION_MS` the recording auto-stops (the plugin
- *      has no native hard cap, so we enforce it here).
+ *   3. Recording stops on whichever fires first:
+ *        • the caller signals `signal.abort()` (user tapped "Stop"), or
+ *        • `MAX_VIDEO_DURATION_MS` elapses (hard duration cap).
  *   4. `stopRecording()` returns the temp-file URI, which we `fetch()`
  *      into a Blob for the uploader.
  *   5. `destroy()` releases the capture device in a `finally` block so
@@ -73,10 +75,19 @@ const PREVIEW_FRAME: VideoRecorderPreviewFrame = {
  * Resolves with `{ blob, mimeType }` where `mimeType.startsWith("video/")`
  * is always true. Rejects on permission denial, user cancel, or when the
  * plugin fails to return a file URI.
+ *
+ * @param signal optional AbortSignal — fires `.abort()` to stop recording
+ *               early (e.g. a UI "Stop" button). If already aborted the
+ *               function rejects before initializing the camera.
  */
-export async function recordNativeVideo(): Promise<NativeVideoResult> {
+export async function recordNativeVideo(signal?: AbortSignal): Promise<NativeVideoResult> {
+  if (signal?.aborted) {
+    throw new DOMException("Recording cancelled", "AbortError");
+  }
+
   let initialized = false;
   let autoStopTimer: ReturnType<typeof setTimeout> | null = null;
+  let onAbort: (() => void) | null = null;
 
   try {
     await VideoRecorder.initialize({
@@ -89,13 +100,17 @@ export async function recordNativeVideo(): Promise<NativeVideoResult> {
 
     await VideoRecorder.startRecording();
 
-    // Hard-cap duration client-side. The plugin does not expose a native
+    // Stop recording on whichever fires first: an external abort (UI stop
+    // button) or the hard duration cap. The plugin exposes no native
     // max-duration option, and a runaway recording could blow past the
-    // 50 MB Storage rule ceiling.
-    const autoStop = new Promise<void>((resolve) => {
+    // 50 MB Storage rule ceiling, so we enforce both here.
+    await new Promise<void>((resolve) => {
       autoStopTimer = setTimeout(resolve, MAX_VIDEO_DURATION_MS);
+      if (signal) {
+        onAbort = () => resolve();
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
     });
-    await autoStop;
 
     const { videoUrl } = await VideoRecorder.stopRecording();
     if (!videoUrl) {
@@ -127,14 +142,27 @@ export async function recordNativeVideo(): Promise<NativeVideoResult> {
     if (autoStopTimer !== null) {
       clearTimeout(autoStopTimer);
     }
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+    }
     if (initialized) {
       // Release the native camera + preview layer. Swallow errors here —
       // a failure to tear down shouldn't mask the real error (if any)
-      // that's already propagating out of the try block.
+      // that's already propagating out of the try block. Breadcrumb so
+      // operators can see if destroy() is silently failing in the field.
       try {
         await VideoRecorder.destroy();
-      } catch {
-        // best-effort cleanup
+      } catch (destroyErr) {
+        // Non-Error teardown rejections are effectively unreachable — the
+        // plugin rejects with real Error objects. The `String(…)` fallback
+        // is a defensive safety net and not worth chasing in tests.
+        /* v8 ignore next */
+        const message = destroyErr instanceof Error ? destroyErr.message : String(destroyErr);
+        addBreadcrumb({
+          category: "lifecycle",
+          message: "video_recorder_destroy_failed",
+          data: { error: message },
+        });
       }
     }
   }

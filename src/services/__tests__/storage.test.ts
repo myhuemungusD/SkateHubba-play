@@ -30,6 +30,17 @@ vi.mock("firebase/storage", () => ({
   listAll: mockListAll,
 }));
 
+// Capacitor platform detection — flipped per-test via `mockIsNativePlatform`
+// to exercise the strict MIME fallback on native vs. web.
+const { mockIsNativePlatform } = vi.hoisted(() => ({
+  mockIsNativePlatform: vi.fn().mockReturnValue(false),
+}));
+vi.mock("@capacitor/core", () => ({
+  Capacitor: {
+    isNativePlatform: () => mockIsNativePlatform(),
+  },
+}));
+
 vi.mock("../../firebase", () => ({
   // Storage upload now binds the file to the caller's UID via customMetadata
   // so storage.rules can enforce uploaderUid == request.auth.uid. Tests must
@@ -58,6 +69,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: mock task that completes immediately
   mockUploadBytesResumable.mockImplementation(() => createMockTask("https://cdn.example.com/video.webm"));
+  // Default to web platform; individual tests flip to native.
+  mockIsNativePlatform.mockReturnValue(false);
 });
 
 /* ── Tests ──────────────────────────────────── */
@@ -239,6 +252,166 @@ describe("storage service", () => {
         expect.objectContaining({ contentType: "video/mp4" }),
       );
       expect(url).toBe("https://cdn.example.com/video.webm");
+    });
+
+    /* ── Abort / cancellation ─────────────────── */
+
+    it("rejects immediately with AbortError when signal is already aborted", async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const blob = validBlob();
+
+      await expect(uploadVideo("game1", 1, "set", blob, undefined, 2, controller.signal)).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      // Critically, we must NOT have started the resumable upload.
+      expect(mockUploadBytesResumable).not.toHaveBeenCalled();
+    });
+
+    it("cancels the in-flight task and rejects with AbortError when signal fires mid-upload", async () => {
+      const cancelSpy = vi.fn();
+      // Capture the error callback so the test can simulate the SDK surfacing
+      // `storage/canceled` after `task.cancel()` (though our abort handler
+      // rejects with AbortError directly, not via the SDK's error channel).
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        cancel: cancelSpy,
+        // Never call progress/complete/error — simulate a stalled upload.
+        on: vi.fn(),
+      }));
+
+      const controller = new AbortController();
+      const blob = validBlob();
+      const promise = uploadVideo("game1", 1, "set", blob, undefined, 0, controller.signal);
+
+      // Abort after the task has been created.
+      controller.abort();
+
+      await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+      expect(cancelSpy).toHaveBeenCalledTimes(1);
+    });
+
+    /* ── Strict MIME classification ───────────── */
+
+    it("defaults empty-type blob to mp4 + video/mp4 on native", async () => {
+      mockIsNativePlatform.mockReturnValue(true);
+      // Empty MIME — Capacitor file:// blobs on some Android devices behave
+      // this way. Previously this fell through to `.webm` and storage rules
+      // rejected the upload.
+      const blob = new Blob(["x"], { type: "" });
+      Object.defineProperty(blob, "size", { value: 2048 });
+
+      await uploadVideo("game1", 1, "set", blob);
+
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.mp4");
+      const [, uploadedBlob, options] = mockUploadBytesResumable.mock.calls[0];
+      expect(options.contentType).toBe("video/mp4");
+      // Blob was rewrapped with the coerced content-type so the SDK's
+      // Content-Type header matches storage.rules.
+      expect((uploadedBlob as Blob).type).toBe("video/mp4");
+    });
+
+    it("defaults empty-type blob to webm + video/webm on web", async () => {
+      mockIsNativePlatform.mockReturnValue(false);
+      const blob = new Blob(["x"], { type: "" });
+      Object.defineProperty(blob, "size", { value: 2048 });
+
+      await uploadVideo("game1", 1, "set", blob);
+
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.webm");
+      const [, uploadedBlob, options] = mockUploadBytesResumable.mock.calls[0];
+      expect(options.contentType).toBe("video/webm");
+      expect((uploadedBlob as Blob).type).toBe("video/webm");
+    });
+
+    it("coerces video/quicktime to video/mp4 and uses .mp4 extension", async () => {
+      // iOS AVFoundation occasionally tags mp4-containerised clips as
+      // `video/quicktime`. storage.rules rejects anything that isn't
+      // exactly `video/mp4` or `video/webm`, so we must rewrap.
+      const blob = validBlob("video/quicktime");
+
+      await uploadVideo("game1", 1, "match", blob);
+
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/match.mp4");
+      const [, uploadedBlob, options] = mockUploadBytesResumable.mock.calls[0];
+      expect(options.contentType).toBe("video/mp4");
+      expect((uploadedBlob as Blob).type).toBe("video/mp4");
+    });
+
+    /* ── Retry classification ─────────────────── */
+
+    it("does NOT retry permanent storage/unauthorized errors", async () => {
+      let callCount = 0;
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn((_event: string, _progress: unknown, onError: (err: Error) => void) => {
+          callCount++;
+          const err = new Error("User is not authorized to perform the desired action.");
+          (err as unknown as { code: string }).code = "storage/unauthorized";
+          onError(err);
+        }),
+      }));
+
+      const blob = validBlob();
+      await expect(uploadVideo("game1", 1, "set", blob, undefined, 3)).rejects.toThrow("not authorized");
+      // Only one attempt — permanent error must break the loop.
+      expect(callCount).toBe(1);
+    });
+
+    it("does NOT retry storage/quota-exceeded", async () => {
+      let callCount = 0;
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn((_event: string, _progress: unknown, onError: (err: Error) => void) => {
+          callCount++;
+          const err = new Error("Quota exceeded.");
+          (err as unknown as { code: string }).code = "storage/quota-exceeded";
+          onError(err);
+        }),
+      }));
+
+      const blob = validBlob();
+      await expect(uploadVideo("game1", 1, "set", blob, undefined, 3)).rejects.toThrow("Quota");
+      expect(callCount).toBe(1);
+    });
+
+    it("does NOT retry storage/object-not-found", async () => {
+      let callCount = 0;
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn((_event: string, _progress: unknown, onError: (err: Error) => void) => {
+          callCount++;
+          const err = new Error("Object not found.");
+          (err as unknown as { code: string }).code = "storage/object-not-found";
+          onError(err);
+        }),
+      }));
+
+      const blob = validBlob();
+      await expect(uploadVideo("game1", 1, "set", blob, undefined, 3)).rejects.toThrow("not found");
+      expect(callCount).toBe(1);
+    });
+
+    it("retries transient storage/unknown errors with backoff", async () => {
+      let callCount = 0;
+      mockUploadBytesResumable.mockImplementation(() => ({
+        snapshot: { ref: "mock-ref" },
+        on: vi.fn((_event: string, _progress: unknown, onError: (err: Error) => void, complete: () => void) => {
+          callCount++;
+          if (callCount < 2) {
+            const err = new Error("An unknown error occurred.");
+            (err as unknown as { code: string }).code = "storage/unknown";
+            onError(err);
+          } else {
+            complete();
+          }
+        }),
+      }));
+
+      const blob = validBlob();
+      const url = await uploadVideo("game1", 1, "set", blob, undefined, 2);
+      expect(url).toBe("https://cdn.example.com/video.webm");
+      expect(callCount).toBe(2);
     });
   });
 
