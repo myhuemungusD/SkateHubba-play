@@ -301,6 +301,46 @@ export async function fetchClipsFeed(cursor: ClipsFeedCursor | null = null, page
   return { clips, cursor: nextCursor };
 }
 
+/**
+ * Fetch a random sample of recent active landed-trick clips for the lobby
+ * spotlight.
+ *
+ * Client-side shuffle of the most-recent N clips. Gives the lobby feed variety
+ * without an expensive cross-collection random query, and still favors fresh
+ * content because the pool is recent-first.
+ */
+export async function fetchRandomLandedClips(sampleSize = 12, poolSize = 60): Promise<ClipDoc[]> {
+  const boundedSample = Math.max(1, Math.min(50, sampleSize));
+  const boundedPool = Math.max(boundedSample, Math.min(200, poolSize));
+
+  const q = query(
+    clipsRef(),
+    where("moderationStatus", "==", "active"),
+    orderBy("createdAt", "desc"),
+    orderBy(documentId(), "desc"),
+    limitFn(boundedPool),
+  );
+
+  const snap = await withRetry(() => getDocs(q));
+
+  const clips: ClipDoc[] = [];
+  for (const d of snap.docs) {
+    try {
+      clips.push(toClipDoc(d));
+    } catch (err) {
+      logger.warn("clips_random_doc_malformed", { docId: d.id, error: parseFirebaseError(err) });
+    }
+  }
+
+  // Fisher-Yates shuffle.
+  for (let i = clips.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [clips[i], clips[j]] = [clips[j], clips[i]];
+  }
+
+  return clips.slice(0, Math.min(boundedSample, clips.length));
+}
+
 /* ────────────────────────────────────────────
  * Upvotes
  * ──────────────────────────────────────────── */
