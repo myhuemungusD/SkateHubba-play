@@ -1,129 +1,47 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { authedUser, verifiedUser, testProfile, activeGame, renderApp, createMockHelpers } from "./smoke-helpers";
+import { activeGame, createMockHelpers } from "./smoke-helpers";
 import type { GameDoc } from "../services/games";
 
 /* ── Hoisted mocks ──────────────────────────── */
-
-const mockUseAuth = vi.fn();
-
-const mockSignUp = vi.fn();
-const mockSignIn = vi.fn();
-const mockSignOut = vi.fn();
-const mockResetPassword = vi.fn();
-
-const mockCreateProfile = vi.fn();
-const mockIsUsernameAvailable = vi.fn();
-const mockGetUidByUsername = vi.fn();
-const mockDeleteUserData = vi.fn();
-
-const mockCreateGame = vi.fn();
-const mockSetTrick = vi.fn();
-const mockFailSetTrick = vi.fn();
-const mockSubmitMatchAttempt = vi.fn();
-const mockForfeitExpiredTurn = vi.fn();
-const mockSubscribeToMyGames = vi.fn(() => vi.fn());
-const mockSubscribeToGame = vi.fn(() => vi.fn());
-
-const mockUploadVideo = vi.fn();
-
-vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
-const mockDeleteAccount = vi.fn();
-const mockResendVerification = vi.fn();
-const mockSignInWithGoogle = vi.fn();
-const mockResolveGoogleRedirect = vi.fn().mockResolvedValue(null);
-vi.mock("../services/auth", () => ({
-  signUp: (...args: unknown[]) => mockSignUp(...args),
-  signIn: (...args: unknown[]) => mockSignIn(...args),
-  signOut: (...args: unknown[]) => mockSignOut(...args),
-  resetPassword: (...args: unknown[]) => mockResetPassword(...args),
-  resendVerification: (...args: unknown[]) => mockResendVerification(...args),
-  signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
-  resolveGoogleRedirect: (...args: unknown[]) => mockResolveGoogleRedirect(...args),
-  deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
-}));
-vi.mock("../services/users", () => ({
-  createProfile: (...args: unknown[]) => mockCreateProfile(...args),
-  isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
-  getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
-  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
-  getPlayerDirectory: vi.fn().mockResolvedValue([]),
-  getLeaderboard: vi.fn().mockResolvedValue([]),
-  getUserProfile: vi.fn().mockResolvedValue(null),
-  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock("../services/games", () => ({
-  createGame: (...args: unknown[]) => mockCreateGame(...args),
-  setTrick: (...args: unknown[]) => mockSetTrick(...args),
-  failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
-  submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
-  resolveDispute: vi.fn().mockResolvedValue(undefined),
-  callBSOnSetTrick: vi.fn().mockResolvedValue(undefined),
-  judgeRuleSetTrick: vi.fn().mockResolvedValue(undefined),
-  acceptJudgeInvite: vi.fn().mockResolvedValue(undefined),
-  declineJudgeInvite: vi.fn().mockResolvedValue(undefined),
-  isJudgeActive: (game: { judgeId?: string | null; judgeStatus?: string | null }) =>
-    !!game.judgeId && game.judgeStatus === "accepted",
-  forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
-  subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
-  subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
-  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
-}));
-vi.mock("../services/storage", () => ({
-  uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
-}));
-vi.mock("../services/fcm", () => ({
-  requestPushPermission: vi.fn().mockResolvedValue(null),
-  removeFcmToken: vi.fn().mockResolvedValue(undefined),
-  removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
-  onForegroundMessage: vi.fn(() => vi.fn()),
-}));
-vi.mock("../firebase", () => ({
-  firebaseReady: true,
-  auth: { currentUser: null },
-  db: {},
-  storage: {},
-  default: {},
-}));
-vi.mock("../services/analytics", () => ({
-  trackEvent: vi.fn(),
-  analytics: {
-    gameCreated: vi.fn(),
-    trickSet: vi.fn(),
-    matchSubmitted: vi.fn(),
-    gameCompleted: vi.fn(),
-    videoUploaded: vi.fn(),
-    signUp: vi.fn(),
-    signIn: vi.fn(),
-    signInAttempt: vi.fn(),
-    signInFailure: vi.fn(),
-    signUpAttempt: vi.fn(),
-    signUpFailure: vi.fn(),
+// Harness factories are loaded via dynamic import inside vi.hoisted so the
+// ref objects exist before vi.mock() factories run.
+const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
+  async () => {
+    const m = await import("./harness/mockServices");
+    return {
+      auth: m.createUseAuthMocks(),
+      authSvc: m.createAuthServiceMocks(),
+      users: m.createUsersServiceMocks(),
+      games: m.createGamesServiceMocks(),
+      storage: m.createStorageServiceMocks(),
+      fcm: m.createFcmServiceMocks(),
+      firebase: m.createFirebaseMocks(),
+      analytics: m.createAnalyticsMocks(),
+      blocking: m.createBlockingServiceMocks(),
+      sentry: m.createSentryMocks(),
+    };
   },
-}));
-vi.mock("@sentry/react", () => ({
-  init: vi.fn(),
-  captureException: vi.fn(),
-  captureMessage: vi.fn(),
-  addBreadcrumb: vi.fn(),
-}));
-vi.mock("../services/blocking", () => ({
-  blockUser: vi.fn().mockResolvedValue(undefined),
-  unblockUser: vi.fn().mockResolvedValue(undefined),
-  isUserBlocked: vi.fn().mockResolvedValue(false),
-  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
-  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
-}));
+);
+
+vi.mock("../hooks/useAuth", () => auth.module);
+vi.mock("../services/auth", () => authSvc.module);
+vi.mock("../services/users", () => users.module);
+vi.mock("../services/games", () => games.module);
+vi.mock("../services/storage", () => storage.module);
+vi.mock("../services/fcm", () => fcm.module);
+vi.mock("../firebase", () => firebase.module);
+vi.mock("../services/analytics", () => analytics.module);
+vi.mock("@sentry/react", () => sentry.module);
+vi.mock("../services/blocking", () => blocking.module);
 
 beforeEach(() => vi.clearAllMocks());
 
-const profile = testProfile;
-
-const { withGames, withGameSub, renderLobby, renderVerifiedLobby } = createMockHelpers({
-  mockUseAuth,
-  mockSubscribeToMyGames,
-  mockSubscribeToGame,
+const { withGames, withGameSub, renderLobby } = createMockHelpers({
+  mockUseAuth: auth.refs.useAuth,
+  mockSubscribeToMyGames: games.refs.subscribeToMyGames,
+  mockSubscribeToGame: games.refs.subscribeToGame,
 });
 
 describe("Smoke: Gameplay", () => {
@@ -165,7 +83,7 @@ describe("Smoke: Gameplay", () => {
 
   it("setter auto-submits trick after recording", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    mockSetTrick.mockResolvedValueOnce(undefined);
+    games.refs.setTrick.mockResolvedValueOnce(undefined);
     await renderLobby([game]);
     withGameSub(game);
 
@@ -212,7 +130,7 @@ describe("Smoke: Gameplay", () => {
   });
 
   it("checks for expired turn when opening a game", async () => {
-    mockForfeitExpiredTurn.mockResolvedValueOnce({ forfeited: false, winner: null });
+    games.refs.forfeitExpiredTurn.mockResolvedValueOnce({ forfeited: false, winner: null });
     const game = activeGame({
       phase: "setting",
       currentSetter: "u2",
@@ -226,7 +144,7 @@ describe("Smoke: Gameplay", () => {
     await userEvent.click(gameButton);
 
     await waitFor(() => {
-      expect(mockForfeitExpiredTurn).toHaveBeenCalledWith("game1");
+      expect(games.refs.forfeitExpiredTurn).toHaveBeenCalledWith("game1");
     });
   });
 
@@ -343,7 +261,7 @@ describe("Smoke: Gameplay", () => {
 
   it("setter's trick is submitted after recording and clicking Landed", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    mockSetTrick.mockResolvedValueOnce(undefined);
+    games.refs.setTrick.mockResolvedValueOnce(undefined);
     await renderLobby([game]);
     withGameSub(game);
 
@@ -378,7 +296,7 @@ describe("Smoke: Gameplay", () => {
 
     // setTrick should have been called with the custom trick name
     await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Kickflip", null);
+      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "Kickflip", null);
     });
 
     // Input locks after recording completes
@@ -387,7 +305,7 @@ describe("Smoke: Gameplay", () => {
 
   it("trick name input locks after recording and recorder stays mounted", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    mockSetTrick.mockResolvedValueOnce(undefined);
+    games.refs.setTrick.mockResolvedValueOnce(undefined);
     await renderLobby([game]);
     withGameSub(game);
 
@@ -418,14 +336,14 @@ describe("Smoke: Gameplay", () => {
     await userEvent.click(screen.getByText(/Landed/));
 
     await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Hardflip", null);
+      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "Hardflip", null);
     });
   });
 
   it("setter submits trick without upload after confirming landed (demo mode)", async () => {
     // Covers the submitSetterTrick code path when blob is null (demo mode recording)
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    mockSetTrick.mockResolvedValue(undefined);
+    games.refs.setTrick.mockResolvedValue(undefined);
     await renderLobby([game]);
     withGameSub(game);
 
@@ -452,8 +370,8 @@ describe("Smoke: Gameplay", () => {
 
     // Confirms submitSetterTrick ran without upload (blob=null in demo mode)
     await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "360 Flip", null);
-      expect(mockUploadVideo).not.toHaveBeenCalled();
+      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "360 Flip", null);
+      expect(storage.refs.uploadVideo).not.toHaveBeenCalled();
     });
   });
 
@@ -464,7 +382,7 @@ describe("Smoke: Gameplay", () => {
       currentSetter: "u2",
       currentTrickName: "Heelflip",
     });
-    mockSubmitMatchAttempt.mockResolvedValueOnce(undefined);
+    games.refs.submitMatchAttempt.mockResolvedValueOnce(undefined);
     await renderLobby([game]);
     withGameSub(game);
 
@@ -495,13 +413,13 @@ describe("Smoke: Gameplay", () => {
     await userEvent.click(screen.getByText(/✓ Landed/));
 
     await waitFor(() => {
-      expect(mockSubmitMatchAttempt).toHaveBeenCalledWith("game1", null, true);
+      expect(games.refs.submitMatchAttempt).toHaveBeenCalledWith("game1", null, true);
     });
   });
 
   it("setter submits trick after confirming landed (upload skipped in demo mode)", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    mockSetTrick.mockResolvedValueOnce(undefined);
+    games.refs.setTrick.mockResolvedValueOnce(undefined);
     await renderLobby([game]);
     withGameSub(game);
 
@@ -528,7 +446,7 @@ describe("Smoke: Gameplay", () => {
 
     // setTrick called (no upload since blob=null in demo mode)
     await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "Heelflip", null);
+      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "Heelflip", null);
     });
   });
 
@@ -539,7 +457,7 @@ describe("Smoke: Gameplay", () => {
       currentSetter: "u2",
       currentTrickName: "Kickflip",
     });
-    mockSubmitMatchAttempt.mockRejectedValueOnce(new Error("Submit failed"));
+    games.refs.submitMatchAttempt.mockRejectedValueOnce(new Error("Submit failed"));
     await renderLobby([game]);
     withGameSub(game);
 
@@ -565,7 +483,7 @@ describe("Smoke: Gameplay", () => {
 
   it("setter landed failure shows error and retry button", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    mockSetTrick.mockRejectedValueOnce(new Error("Network error"));
+    games.refs.setTrick.mockRejectedValueOnce(new Error("Network error"));
     await renderLobby([game]);
     withGameSub(game);
 
@@ -590,18 +508,18 @@ describe("Smoke: Gameplay", () => {
     });
 
     // Retry should attempt again
-    mockSetTrick.mockResolvedValueOnce(undefined);
+    games.refs.setTrick.mockResolvedValueOnce(undefined);
     await userEvent.click(screen.getByText("Retry"));
 
     await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledTimes(2);
+      expect(games.refs.setTrick).toHaveBeenCalledTimes(2);
     });
   });
 
   it("setter shows 'Sending to @opponent...' during submission", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     // Make setTrick hang to show submitting state
-    mockSetTrick.mockImplementation(() => new Promise(() => {}));
+    games.refs.setTrick.mockImplementation(() => new Promise(() => {}));
     await renderLobby([game]);
     withGameSub(game);
 
@@ -632,7 +550,7 @@ describe("Smoke: Gameplay", () => {
       currentSetter: "u2",
       currentTrickName: "Kickflip",
     });
-    mockSubmitMatchAttempt.mockRejectedValueOnce("string error");
+    games.refs.submitMatchAttempt.mockRejectedValueOnce("string error");
     await renderLobby([game]);
     withGameSub(game);
 
@@ -655,7 +573,7 @@ describe("Smoke: Gameplay", () => {
 
   it("setter landed shows fallback error for non-Error thrown", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    mockSetTrick.mockRejectedValueOnce("string error");
+    games.refs.setTrick.mockRejectedValueOnce("string error");
     await renderLobby([game]);
     withGameSub(game);
 
@@ -679,7 +597,7 @@ describe("Smoke: Gameplay", () => {
   });
 
   it("forfeit check runs only once per game", async () => {
-    mockForfeitExpiredTurn.mockResolvedValue({ forfeited: false, winner: null });
+    games.refs.forfeitExpiredTurn.mockResolvedValue({ forfeited: false, winner: null });
     const game = activeGame({
       currentTurn: "u2",
       currentSetter: "u2",
@@ -695,12 +613,12 @@ describe("Smoke: Gameplay", () => {
     // expired game, then GamePlayScreen's forfeit check fires once after
     // navigation. Neither should retry on subsequent re-renders.
     await waitFor(() => {
-      expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(2);
+      expect(games.refs.forfeitExpiredTurn).toHaveBeenCalledTimes(2);
     });
   });
 
   it("forfeit check error does not crash", async () => {
-    mockForfeitExpiredTurn.mockRejectedValueOnce(new Error("Forfeit error"));
+    games.refs.forfeitExpiredTurn.mockRejectedValueOnce(new Error("Forfeit error"));
     const game = activeGame({
       currentTurn: "u2",
       currentSetter: "u2",
@@ -720,7 +638,7 @@ describe("Smoke: Gameplay", () => {
 
   it("subscribeToGame callback with null does not crash", async () => {
     const game = activeGame();
-    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
+    games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
       cb(null); // exercise the !updated return branch
       return vi.fn();
     });
