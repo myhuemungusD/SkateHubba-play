@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderApp, passAgeGate, createMockHelpers } from "./smoke-helpers";
+import { renderApp, passAgeGate } from "./smoke-helpers";
 
 /* ── Hoisted mocks ──────────────────────────── */
 // Harness factories are loaded via dynamic import inside vi.hoisted so the
@@ -37,14 +37,6 @@ vi.mock("@sentry/react", () => sentry.module);
 vi.mock("../services/blocking", () => blocking.module);
 
 beforeEach(() => vi.clearAllMocks());
-
-// createMockHelpers is imported for parity with other smoke tests; no helpers
-// are used here but the factory run keeps the wiring consistent across files.
-createMockHelpers({
-  mockUseAuth: auth.refs.useAuth,
-  mockSubscribeToMyGames: games.refs.subscribeToMyGames,
-  mockSubscribeToGame: games.refs.subscribeToGame,
-});
 
 describe("Smoke: Google Auth", () => {
   it("Google sign-in popup-closed-by-user is silently ignored", async () => {
@@ -85,7 +77,7 @@ describe("Smoke: Google Auth", () => {
     });
   });
 
-  it("resolves Google redirect and tracks analytics on mount", async () => {
+  it("resolves Google redirect on mount when a redirect user is returned", async () => {
     const redirectUser = { uid: "google-user", email: "g@test.com" };
     authSvc.refs.resolveGoogleRedirect.mockResolvedValueOnce(redirectUser);
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });

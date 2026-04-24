@@ -14,8 +14,8 @@
  *   - `module`: the object literal vi.mock() substitutes for the real module
  *
  * The `module` shape is a superset of what every smoke-*.test.tsx file
- * mocks today — extra members are harmless (tree-shaken by vitest when the
- * SUT doesn't import them) and mean every smoke test can use the harness
+ * mocks today — extra members are harmless (unused members are simply
+ * ignored by the SUT) and mean every smoke test can use the harness
  * without losing any mock it relied on.
  */
 import { vi, type Mock } from "vitest";

@@ -224,28 +224,6 @@ describe("Smoke: Profile Setup", () => {
     });
   });
 
-  it("profile setup rejects username > 20 characters", async () => {
-    users.refs.isUsernameAvailable.mockResolvedValue(true);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: false },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
-    await renderApp();
-
-    // Since maxLength=20 on input, we can't type more than 20 chars via userEvent.
-    // But the validation at line 56-58 checks normalized.length > 20.
-    // This branch is guarded by the HTML maxLength attribute. We can still test
-    // the submit validation path with a 3+ char name that triggers the other
-    // validation branches.
-    const input = await screen.findByPlaceholderText("sk8legend");
-    await userEvent.type(input, "abc");
-
-    // Wait for availability check
-    await waitFor(() => expect(screen.getByText(/available|taken|Checking/i)).toBeInTheDocument());
-  });
-
   it("profile setup shows error when submitting while username check is pending", async () => {
     // Make availability check never resolve (stays null)
     users.refs.isUsernameAvailable.mockImplementation(() => new Promise(() => {}));
