@@ -30,11 +30,13 @@ vi.mock("../../services/blocking", () => ({
   // subscribeToBlockedUsers; return a no-op unsubscribe so the hook is happy.
   subscribeToBlockedUsers: vi.fn(() => () => {}),
 }));
-// ClipsFeed (embedded in Lobby) calls fetchClipsFeed + fetchClipUpvoteState
-// + upvoteClip. The feed has its own test file — here we just keep it from
-// hitting Firebase.
+// ClipsFeed (embedded in Lobby) calls fetchRandomLandedClips +
+// fetchClipUpvoteState + upvoteClip. The feed has its own test file — here
+// we just keep it from hitting Firebase. (fetchClipsFeed is kept on the
+// service for upcoming vote-ranking work but nothing in this harness calls
+// it, so it's intentionally omitted from the mock.)
 vi.mock("../../services/clips", () => ({
-  fetchClipsFeed: vi.fn().mockResolvedValue({ clips: [], cursor: null }),
+  fetchRandomLandedClips: vi.fn().mockResolvedValue([]),
   fetchClipUpvoteState: vi.fn().mockResolvedValue(new Map()),
   upvoteClip: vi.fn().mockResolvedValue(0),
   AlreadyUpvotedError: class extends Error {},
