@@ -177,6 +177,19 @@ describe("registerPushToken", () => {
     expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
+  it("swallows listener-remove rejections during register-failure cleanup", async () => {
+    // Exercises the `.catch(() => {})` guards on tokenListener?.remove() and
+    // errorListener?.remove() — a plugin that can't clean up its own
+    // listeners should still let `registerPushToken` resolve without
+    // throwing, so account-login is never blocked by a listener leak.
+    mockRequestPermissions.mockResolvedValue({ receive: "granted" });
+    mockRegister.mockRejectedValueOnce(new Error("register failed"));
+    mockListenerRemove.mockRejectedValue(new Error("remove failed"));
+
+    await expect(registerPushToken("u1")).resolves.toBeUndefined();
+    expect(mockListenerRemove).toHaveBeenCalledTimes(2);
+  });
+
   it("swallows permission-request errors without throwing", async () => {
     mockRequestPermissions.mockRejectedValue(new Error("plugin not available"));
     await expect(registerPushToken("u1")).resolves.toBeUndefined();

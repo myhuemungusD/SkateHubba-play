@@ -153,19 +153,57 @@ if (env) {
     // attestation step doesn't reject a development device. In release
     // builds the plugin auto-selects DeviceCheck (iOS) / Play Integrity
     // (Android) — no provider option is needed on the JS side.
+    //
+    // Symmetric try/catch matches the web branch below — an attestation
+    // rejection silently breaks every Firestore/Auth request with
+    // permission-denied, so we surface it loudly (logger.error + Sentry
+    // captureMessage + lifecycle breadcrumb) and let ops route it to a
+    // user-facing retry banner via `isAppCheckInitialized()`. The init
+    // call returns a promise; we .catch instead of await to avoid
+    // blocking app startup on attestation — but the handler is the same
+    // surface a synchronous throw would reach.
     const useDebug = useEmulators || import.meta.env.DEV;
-    FirebaseAppCheck.initialize({
-      debug: useDebug,
-      siteKey: env.VITE_RECAPTCHA_SITE_KEY,
-    }).catch((err: unknown) => {
-      logger.error("appcheck_native_init_failed", {
-        message: err instanceof Error ? err.message : String(err),
+    try {
+      FirebaseAppCheck.initialize({
+        debug: useDebug,
+        siteKey: env.VITE_RECAPTCHA_SITE_KEY,
+      })
+        .then(() => {
+          appCheckInitialized = true;
+          addBreadcrumb({
+            category: "lifecycle",
+            message: "appcheck_native_initialized",
+            data: { debug: useDebug },
+          });
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          logger.error("appcheck_native_init_failed", { message });
+          addBreadcrumb({
+            category: "lifecycle",
+            message: "appcheck_native_init_failed",
+            data: { error: message },
+          });
+          captureMessage(
+            `Native App Check init failed — Auth/Firestore requests may be rejected: ${message}`,
+            "error",
+          );
+        });
+    } catch (err) {
+      // Plugin bridge threw synchronously (plugin not registered, wrong
+      // Capacitor version, etc). Same loud-fail surface as the async path.
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error("appcheck_native_init_threw", { message });
+      addBreadcrumb({
+        category: "lifecycle",
+        message: "appcheck_native_init_threw",
+        data: { error: message },
       });
       captureMessage(
-        `Native App Check init failed — Auth/Firestore requests may be rejected: ${err instanceof Error ? err.message : String(err)}`,
+        `Native App Check init threw synchronously — plugin may not be linked: ${message}`,
         "error",
       );
-    });
+    }
   } else if (env.VITE_RECAPTCHA_SITE_KEY) {
     try {
       initializeAppCheck(app, {

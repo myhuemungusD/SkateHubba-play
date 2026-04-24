@@ -31,8 +31,16 @@ export interface UploadProgress {
 const MIN_UPLOAD_BYTES = 1024;
 /** Maximum upload size (50 MB) — must match storage.rules */
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-/** Base delay for exponential backoff on upload retries */
-const RETRY_BACKOFF_MS = 1000;
+/**
+ * Base delay for exponential backoff on upload retries.
+ *
+ * Kept at 250ms so two retries (attempts 0 and 1) with ×2 growth + up to ×2
+ * jitter cap at roughly 1.5s — fits comfortably inside vitest's 5s per-test
+ * timeout under full-suite load while still giving the Firebase SDK breathing
+ * room between attempts. Jitter is added in the retry loop to prevent a
+ * thundering-herd on outage recovery.
+ */
+const RETRY_BACKOFF_MS = 250;
 
 /** Shape of the upload contract returned by `classifyBlob`. */
 interface UploadShape {

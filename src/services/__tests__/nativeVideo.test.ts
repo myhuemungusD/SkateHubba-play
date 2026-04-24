@@ -43,6 +43,16 @@ vi.mock("@capacitor-community/video-recorder", () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
+/* ── mock sentry breadcrumb ─────────────────────────────── */
+
+const { mockAddBreadcrumb } = vi.hoisted(() => ({
+  mockAddBreadcrumb: vi.fn(),
+}));
+
+vi.mock("../../lib/sentry", () => ({
+  addBreadcrumb: mockAddBreadcrumb,
+}));
+
 import { isNativePlatform, recordNativeVideo } from "../nativeVideo";
 import { MAX_VIDEO_DURATION_MS } from "../../constants/video";
 
@@ -248,6 +258,61 @@ describe("nativeVideo service", () => {
       await vi.advanceTimersByTimeAsync(2);
       await pending;
       expect(mockStopRecording).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("recordNativeVideo — AbortSignal early-stop", () => {
+    it("rejects immediately with AbortError when signal is already aborted", async () => {
+      const controller = new AbortController();
+      controller.abort();
+
+      await expect(recordNativeVideo(controller.signal)).rejects.toMatchObject({
+        name: "AbortError",
+      });
+      // Never entered the plugin lifecycle — no initialize, no destroy.
+      expect(mockInitialize).not.toHaveBeenCalled();
+      expect(mockDestroy).not.toHaveBeenCalled();
+    });
+
+    it("stops recording early when signal fires during the duration wait", async () => {
+      const fakeBlob = new Blob(["data"], { type: "video/mp4" });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
+
+      const controller = new AbortController();
+      const pending = recordNativeVideo(controller.signal);
+
+      // Flush the initial microtasks so `initialize` + `startRecording` resolve
+      // and the service arrives at the duration-wait Promise.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockStopRecording).not.toHaveBeenCalled();
+
+      // Fire the abort well before the 10s duration cap — recording should
+      // stop early as soon as the abort event handler runs.
+      controller.abort();
+      await pending;
+
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("recordNativeVideo — destroy() breadcrumb", () => {
+    it("breadcrumbs when destroy() throws on the happy-path teardown", async () => {
+      const fakeBlob = new Blob(["data"], { type: "video/mp4" });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
+      mockDestroy.mockRejectedValue(new Error("teardown failed"));
+
+      const pending = recordNativeVideo();
+      await flushAutoStop();
+      await pending;
+
+      expect(mockAddBreadcrumb).toHaveBeenCalledWith({
+        category: "lifecycle",
+        message: "video_recorder_destroy_failed",
+        data: { error: "teardown failed" },
+      });
     });
   });
 });
