@@ -1,135 +1,54 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  authedUser,
-  verifiedUser,
-  testProfile,
-  activeGame,
-  renderApp,
-  flushLazy,
-  passAgeGate,
-  createMockHelpers,
-} from "./smoke-helpers";
+import { authedUser, verifiedUser, testProfile, renderApp, passAgeGate, createMockHelpers } from "./smoke-helpers";
 
 /* ── Hoisted mocks ──────────────────────────── */
-
-const mockUseAuth = vi.fn();
-
-const mockSignUp = vi.fn();
-const mockSignIn = vi.fn();
-const mockSignOut = vi.fn();
-const mockResetPassword = vi.fn();
-
-const mockCreateProfile = vi.fn();
-const mockIsUsernameAvailable = vi.fn();
-const mockGetUidByUsername = vi.fn();
-const mockDeleteUserData = vi.fn();
-
-const mockCreateGame = vi.fn();
-const mockSetTrick = vi.fn();
-const mockFailSetTrick = vi.fn();
-const mockSubmitMatchAttempt = vi.fn();
-const mockForfeitExpiredTurn = vi.fn();
-const mockSubscribeToMyGames = vi.fn(() => vi.fn());
-const mockSubscribeToGame = vi.fn(() => vi.fn());
-
-const mockUploadVideo = vi.fn();
-
-vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
-const mockDeleteAccount = vi.fn();
-const mockResendVerification = vi.fn();
-const mockSignInWithGoogle = vi.fn();
-const mockResolveGoogleRedirect = vi.fn().mockResolvedValue(null);
-vi.mock("../services/auth", () => ({
-  signUp: (...args: unknown[]) => mockSignUp(...args),
-  signIn: (...args: unknown[]) => mockSignIn(...args),
-  signOut: (...args: unknown[]) => mockSignOut(...args),
-  resetPassword: (...args: unknown[]) => mockResetPassword(...args),
-  resendVerification: (...args: unknown[]) => mockResendVerification(...args),
-  signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
-  resolveGoogleRedirect: (...args: unknown[]) => mockResolveGoogleRedirect(...args),
-  deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
-}));
-vi.mock("../services/users", () => ({
-  createProfile: (...args: unknown[]) => mockCreateProfile(...args),
-  isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
-  getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
-  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
-  getPlayerDirectory: vi.fn().mockResolvedValue([]),
-  getLeaderboard: vi.fn().mockResolvedValue([]),
-  getUserProfile: vi.fn().mockResolvedValue(null),
-  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
-}));
-vi.mock("../services/games", () => ({
-  createGame: (...args: unknown[]) => mockCreateGame(...args),
-  setTrick: (...args: unknown[]) => mockSetTrick(...args),
-  failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
-  submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
-  forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
-  subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
-  subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
-  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
-}));
-vi.mock("../services/storage", () => ({
-  uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
-}));
-vi.mock("../services/fcm", () => ({
-  requestPushPermission: vi.fn().mockResolvedValue(null),
-  removeFcmToken: vi.fn().mockResolvedValue(undefined),
-  removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
-  onForegroundMessage: vi.fn(() => vi.fn()),
-}));
-vi.mock("../firebase", () => ({
-  firebaseReady: true,
-  auth: { currentUser: null },
-  db: {},
-  storage: {},
-  default: {},
-}));
-vi.mock("../services/analytics", () => ({
-  trackEvent: vi.fn(),
-  analytics: {
-    gameCreated: vi.fn(),
-    trickSet: vi.fn(),
-    matchSubmitted: vi.fn(),
-    gameCompleted: vi.fn(),
-    videoUploaded: vi.fn(),
-    signUp: vi.fn(),
-    signIn: vi.fn(),
-    signInAttempt: vi.fn(),
-    signInFailure: vi.fn(),
-    signUpAttempt: vi.fn(),
-    signUpFailure: vi.fn(),
+// Harness factories are loaded via dynamic import inside vi.hoisted so the
+// ref objects exist before vi.mock() factories run. Top-level `await` is
+// supported in vitest's ESM test modules.
+const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
+  async () => {
+    const m = await import("./harness/mockServices");
+    return {
+      auth: m.createUseAuthMocks(),
+      authSvc: m.createAuthServiceMocks(),
+      users: m.createUsersServiceMocks(),
+      games: m.createGamesServiceMocks(),
+      storage: m.createStorageServiceMocks(),
+      fcm: m.createFcmServiceMocks(),
+      firebase: m.createFirebaseMocks(),
+      analytics: m.createAnalyticsMocks(),
+      blocking: m.createBlockingServiceMocks(),
+      sentry: m.createSentryMocks(),
+    };
   },
-}));
-vi.mock("@sentry/react", () => ({
-  init: vi.fn(),
-  captureException: vi.fn(),
-  captureMessage: vi.fn(),
-  addBreadcrumb: vi.fn(),
-}));
-vi.mock("../services/blocking", () => ({
-  blockUser: vi.fn().mockResolvedValue(undefined),
-  unblockUser: vi.fn().mockResolvedValue(undefined),
-  isUserBlocked: vi.fn().mockResolvedValue(false),
-  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
-  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
-}));
+);
+
+vi.mock("../hooks/useAuth", () => auth.module);
+vi.mock("../services/auth", () => authSvc.module);
+vi.mock("../services/users", () => users.module);
+vi.mock("../services/games", () => games.module);
+vi.mock("../services/storage", () => storage.module);
+vi.mock("../services/fcm", () => fcm.module);
+vi.mock("../firebase", () => firebase.module);
+vi.mock("../services/analytics", () => analytics.module);
+vi.mock("@sentry/react", () => sentry.module);
+vi.mock("../services/blocking", () => blocking.module);
 
 beforeEach(() => vi.clearAllMocks());
 
 const profile = testProfile;
 
 const { withGames, renderLobby } = createMockHelpers({
-  mockUseAuth,
-  mockSubscribeToMyGames,
-  mockSubscribeToGame,
+  mockUseAuth: auth.refs.useAuth,
+  mockSubscribeToMyGames: games.refs.subscribeToMyGames,
+  mockSubscribeToGame: games.refs.subscribeToGame,
 });
 
 describe("Smoke: Auth", () => {
   it("landing page renders and navigates straight to the inline signup card", async () => {
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     expect(await screen.findByText("QUIT SCROLLING.")).toBeInTheDocument();
@@ -143,7 +62,7 @@ describe("Smoke: Auth", () => {
   });
 
   it("landing page navigates to sign-in", async () => {
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -151,7 +70,7 @@ describe("Smoke: Auth", () => {
   });
 
   it("sign-up form validates matching passwords", async () => {
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
@@ -172,7 +91,7 @@ describe("Smoke: Auth", () => {
     const refreshProfile = vi.fn();
 
     // Start unauthenticated
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile });
     await renderApp();
 
     // Go to sign in
@@ -180,7 +99,7 @@ describe("Smoke: Auth", () => {
     expect(await screen.findByText("Welcome Back")).toBeInTheDocument();
 
     // Fill in credentials
-    mockSignIn.mockResolvedValueOnce(undefined);
+    authSvc.refs.signIn.mockResolvedValueOnce(undefined);
     const emailInput = screen.getByPlaceholderText("you@email.com");
     const passwordInput = screen.getAllByPlaceholderText(/•/)[0];
 
@@ -188,18 +107,18 @@ describe("Smoke: Auth", () => {
     await userEvent.type(passwordInput, "password123");
 
     // After sign in, auth state changes
-    mockUseAuth.mockReturnValue({ loading: false, user: authedUser, profile, refreshProfile });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: authedUser, profile, refreshProfile });
     withGames([]);
 
     await userEvent.click(screen.getByText("Sign In"));
 
     await waitFor(() => {
-      expect(mockSignIn).toHaveBeenCalledWith("sk8r@test.com", "password123");
+      expect(authSvc.refs.signIn).toHaveBeenCalledWith("sk8r@test.com", "password123");
     });
   });
 
   it("shows email verification banner when email not verified", async () => {
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser, // emailVerified: false
       profile,
@@ -213,7 +132,7 @@ describe("Smoke: Auth", () => {
   });
 
   it("hides email verification banner when email is verified", async () => {
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: verifiedUser,
       profile,
@@ -228,8 +147,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("resend verification button calls resendVerification", async () => {
-    mockResendVerification.mockResolvedValueOnce(undefined);
-    mockUseAuth.mockReturnValue({
+    authSvc.refs.resendVerification.mockResolvedValueOnce(undefined);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -241,15 +160,15 @@ describe("Smoke: Auth", () => {
     await userEvent.click(await screen.findByText("Resend"));
 
     await waitFor(() => {
-      expect(mockResendVerification).toHaveBeenCalled();
+      expect(authSvc.refs.resendVerification).toHaveBeenCalled();
       // After sending, button shows countdown (e.g. "60s") and is disabled
       expect(screen.getByRole("button", { name: /resend available in/i })).toBeDisabled();
     });
   });
 
   it("password reset sends email and shows confirmation", async () => {
-    mockResetPassword.mockResolvedValueOnce(undefined);
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.resetPassword.mockResolvedValueOnce(undefined);
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -260,13 +179,13 @@ describe("Smoke: Auth", () => {
     await userEvent.click(screen.getByText("Forgot password?"));
 
     await waitFor(() => {
-      expect(mockResetPassword).toHaveBeenCalledWith("sk8r@test.com");
+      expect(authSvc.refs.resetPassword).toHaveBeenCalledWith("sk8r@test.com");
       expect(screen.getByText(/Reset email sent/)).toBeInTheDocument();
     });
   });
 
   it("shows error for invalid email on sign up", async () => {
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
@@ -284,7 +203,7 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows error for short password on sign up", async () => {
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
@@ -302,8 +221,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows firebase auth error for duplicate email", async () => {
-    mockSignUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
@@ -324,7 +243,7 @@ describe("Smoke: Auth", () => {
   });
 
   it("toggles from sign-up to sign-in and back without leaving the auth card", async () => {
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
@@ -342,8 +261,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows error for invalid credentials on sign in", async () => {
-    mockSignIn.mockRejectedValueOnce({ code: "auth/invalid-credential" });
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signIn.mockRejectedValueOnce({ code: "auth/invalid-credential" });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -362,8 +281,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows error for user not found on sign in", async () => {
-    mockSignIn.mockRejectedValueOnce({ code: "auth/user-not-found" });
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signIn.mockRejectedValueOnce({ code: "auth/user-not-found" });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -382,7 +301,7 @@ describe("Smoke: Auth", () => {
   });
 
   it("sign-in form shows only one password field", async () => {
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -392,7 +311,7 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows spinner while auth is loading", async () => {
-    mockUseAuth.mockReturnValue({ loading: true, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: true, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp({ waitForLazy: false });
 
     // Spinner renders an accessible loading status with brand logo
@@ -406,13 +325,13 @@ describe("Smoke: Auth", () => {
     // by checking the firebaseReady guard path exists in App.
     // This is covered by the App.test.tsx spinner test confirming the guard.
     // Here we test that the normal flow works when firebase IS ready.
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
     expect(await screen.findByText("QUIT SCROLLING.")).toBeInTheDocument();
   });
 
   it("password reset requires email before sending", async () => {
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -424,8 +343,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("sign-up form calls signUp with email and password", async () => {
-    mockSignUp.mockResolvedValueOnce({ uid: "new-uid" });
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signUp.mockResolvedValueOnce({ uid: "new-uid" });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
@@ -441,12 +360,12 @@ describe("Smoke: Auth", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
     await waitFor(() => {
-      expect(mockSignUp).toHaveBeenCalledWith("new@test.com", "securepass");
+      expect(authSvc.refs.signUp).toHaveBeenCalledWith("new@test.com", "securepass");
     });
   });
 
   it("error banner can be dismissed", async () => {
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
@@ -468,8 +387,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows weak password error from Firebase", async () => {
-    mockSignUp.mockRejectedValueOnce({ code: "auth/weak-password" });
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signUp.mockRejectedValueOnce({ code: "auth/weak-password" });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
@@ -490,8 +409,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("password reset does not reveal whether email exists when it fails", async () => {
-    mockResetPassword.mockRejectedValueOnce(new Error("network error"));
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.resetPassword.mockRejectedValueOnce(new Error("network error"));
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -505,8 +424,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("resend verification handles errors gracefully", async () => {
-    mockResendVerification.mockRejectedValueOnce(new Error("send error"));
-    mockUseAuth.mockReturnValue({
+    authSvc.refs.resendVerification.mockRejectedValueOnce(new Error("send error"));
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile,
@@ -527,8 +446,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows Google linked message for account-exists-with-different-credential on email auth", async () => {
-    mockSignUp.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signUp.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Use email"));
@@ -547,8 +466,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows invalid credentials for wrong-password error", async () => {
-    mockSignIn.mockRejectedValueOnce({ code: "auth/wrong-password" });
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signIn.mockRejectedValueOnce({ code: "auth/wrong-password" });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -562,8 +481,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows generic error for non-Error thrown on sign-in", async () => {
-    mockSignIn.mockRejectedValueOnce("string error");
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signIn.mockRejectedValueOnce("string error");
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -577,8 +496,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("toggling auth mode clears google error", async () => {
-    mockSignInWithGoogle.mockRejectedValueOnce(new Error("OAuth error"));
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signInWithGoogle.mockRejectedValueOnce(new Error("OAuth error"));
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByRole("button", { name: /continue with google/i }));
