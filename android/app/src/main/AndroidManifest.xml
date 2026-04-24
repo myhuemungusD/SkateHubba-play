@@ -40,11 +40,25 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <!-- FCM / push notifications — runtime-prompted on Android 13+ (API 33+).
+         Required for @capacitor/push-notifications registration to surface a
+         prompt; older platforms auto-grant and this line is a harmless no-op. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Legacy storage permission for Android 12 and below -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
+
+    <!-- Video recording feature declarations (used by
+         @capacitor-community/video-recorder). `required="false"` keeps the
+         app installable on devices without these hardware features; the
+         service layer checks isNativePlatform() before invoking the
+         plugin. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>

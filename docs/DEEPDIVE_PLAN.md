@@ -9,13 +9,14 @@ Continuation of the "Launch deepdive agents for code and docs analysis" session 
 
 ## Findings by scope
 
-| Scope | Critical | High | Medium | Low | Total |
-|---|---|---|---|---|---|
-| Services & hooks | 0 | 3 | 11 | 20 | 34 |
-| UI & routing | 1 | 7 | 9 | 4 | 21 |
-| Docs | 1 | 10 | 13 | 11 | 35 |
+| Scope            | Critical | High | Medium | Low | Total |
+| ---------------- | -------- | ---- | ------ | --- | ----- |
+| Services & hooks | 0        | 3    | 11     | 20  | 34    |
+| UI & routing     | 1        | 7    | 9      | 4   | 21    |
+| Docs             | 1        | 10   | 13     | 11  | 35    |
 
 Previously-reported findings re-verified on current main:
+
 - Honor-system landed notification copy — **still present** (Batch 1).
 - Stale closure race in `subscribeToMyGames` — **fixed** on main; residual render-order flicker noted as medium (deferred).
 - Unpinned fields in firestore.rules transitions — **fixed**.
@@ -26,18 +27,21 @@ Previously-reported findings re-verified on current main:
 All batches are file-disjoint. They can ship independently (separate commits, separate PRs if desired).
 
 ### Batch 4 — NotificationBell a11y (CRITICAL)
+
 Outer `<button>` wraps an inner delete `<button>` — invalid HTML, WCAG 2.1 SC 4.1.2 fail.
 
 - `src/components/NotificationBell.tsx` — convert outer to `div[role="button"]` using the `cardButtonProps` pattern already proven in `src/screens/Lobby.tsx`.
 - `src/components/__tests__/NotificationBell.test.tsx` — new file; assert keyboard parity and non-nested semantics.
 
 ### Batch 1 — Honor-system landed notification copy (HIGH)
+
 `src/services/games.ts:702-711` sends a "Your Turn!" CTA push to the OLD setter every time the matcher lands honor-system. Recipient opens the app and sees "opponent is setting…" with no action. Hits every honor-system-landed turn.
 
 - `src/services/games.ts` — fix recipientUid, notification type, and body.
 - `src/services/__tests__/games.test.ts` — assert notification payload in honor-system-landed branch (previously uncovered).
 
 ### Batch 2 — Account-deletion cascade completeness (HIGH)
+
 `src/services/users.ts` `deleteUserData` leaks `blocked_users`, `clipVotes`, and received `notifications` after account deletion. `deleteUserNotifications` already exists in `notifications.ts` but is never wired in. GDPR / CCPA right-to-erasure violation.
 
 - `src/services/users.ts` — extend `deleteUserData` before the auth-delete step.
@@ -47,6 +51,7 @@ Outer `<button>` wraps an inner delete `<button>` — invalid HTML, WCAG 2.1 SC 
 - `src/services/__tests__/users.test.ts` — add cascade coverage.
 
 ### Batch 3 — Nudge rate-limit server-side enforcement (HIGH)
+
 `/nudges` create rule has **no** rate-limit dependency. Client-side cooldown in `sendNudge` is bypassable. Notification-spam vector via the yet-to-return FCM sender.
 
 - `firestore.rules` — `/nudges` create rule requires `exists()` of a fresh `/nudge_limits/{uid}_{gameId}` written in the SAME batch; match the shape of `/notifications` create.
@@ -54,12 +59,14 @@ Outer `<button>` wraps an inner delete `<button>` — invalid HTML, WCAG 2.1 SC 
 - `rules-tests/nudges-rate-limit.rules.test.ts` — new red-team test suite.
 
 ### Batch 5 — Settings router-based legal links (HIGH)
+
 `src/screens/Settings.tsx:455, 461, 467` use `<a href="/privacy">`, `<a href="/terms">`, `<a href="/data-deletion">` — each forces a full page reload, Sentry session reset, analytics session reset, lost scroll position.
 
 - `src/screens/Settings.tsx` — replace the three anchors with `<Link to="/…">`; also sweep `bg-[#0A0A0A]/80` → `bg-background/80` (low-sev brand token).
 - `src/screens/__tests__/Settings.test.tsx` — assert Link usage.
 
 ### Batch 6 — Map subtree migration off lucide-react + into brand tokens + router-based nav (HIGH cluster)
+
 The entire `src/components/map/**` subtree plus `SpotDetailPage` + `MapPage` were built to a different style contract: third-party UI kit (`lucide-react`), Tailwind default orange (`#F97316`) instead of brand orange (`#FF6B00`), imperative `useNavigate()` on user-clicks, `<style>` tag injection at runtime, inline `style` for `h-100dvh`, `document.createElement` marker mutations. Biggest and most invasive batch.
 
 - `src/components/icons.tsx` — add ~14 new glyphs (`Crosshair`, `MapPinOff`, `Plus`, `X`, `Search`, `SlidersHorizontal`, `BadgeCheck`, `Navigation`, `ImageOff`, `Flag`, `Flame`, `ShieldAlert`, `MapPin`, `Send`).
@@ -76,6 +83,7 @@ The entire `src/components/map/**` subtree plus `SpotDetailPage` + `MapPage` wer
 - Tests in `src/components/map/__tests__/**` — assert Link usage + brand token application.
 
 ### Batch 7a — Code-reference docs alignment (HIGH cluster)
+
 Four docs still reference the pre-judge-feature names `submitMatchResult` / `submitConfirmation` / `phase: "confirming"`. ARCHITECTURE.md still says "no React Router, no URL-based routing" and "React 18". STATUS_REPORT points at `src/screens/AgeGate.tsx` which doesn't exist.
 
 - `docs/API.md` — `submitMatchResult` → `submitMatchAttempt`, fix arg order and return shape.
@@ -88,6 +96,7 @@ Four docs still reference the pre-judge-feature names `submitMatchResult` / `sub
 - `docs/COMPREHENSIVE_GAP_ANALYSIS.md` — mark T1 (E2E) / T2 (rules tests) as Closed; mark TEST-2 as N/A (functions/ removed).
 
 ### Batch 7b — Onboarding + ops docs refresh (HIGH / MED)
+
 `docs/DEVELOPMENT.md` is the most stale doc. `CONTRIBUTING.md` says "we don't use a linter" despite ESLint + Prettier + Husky. `.env.example` is missing env vars that `src/lib/env.ts` parses. `CLAUDE.md` guardrail row for `functions/` still reads as "gate" rather than "removed".
 
 - `CLAUDE.md` — align `functions/` guardrail with the skill file ("package removed; re-introduction requires maintainer approval"); rewrite Golden Rules 6-7 with proper capitalization + rationale; soften "Don't modify `.github/workflows/`" to "maintainer sign-off required".

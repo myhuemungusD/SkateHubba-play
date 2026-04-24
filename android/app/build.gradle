@@ -1,5 +1,36 @@
 apply plugin: 'com.android.application'
 
+// ---- Version resolution ----------------------------------------------------
+// Single source of truth: package.json at the repo root. CI can override.
+//
+// versionName precedence:
+//   1. -PversionName=x.y.z  (Gradle project property, typically from CI)
+//   2. package.json "version" (local dev default)
+//
+// versionCode precedence:
+//   1. -PversionCode=NNN       (Gradle project property, e.g. CI run number)
+//   2. ANDROID_VERSION_CODE    (environment variable)
+//   3. Computed from versionName as major*10000 + minor*100 + patch
+//      (e.g. 1.2.3 -> 10203). Fallback only; CI should always pass an
+//      explicit monotonically-increasing -PversionCode for Play Store.
+def pkgJsonFile = file("../../package.json")
+def pkgJson = new groovy.json.JsonSlurper().parse(pkgJsonFile)
+def resolvedVersionName = project.hasProperty('versionName') ? project.versionName : pkgJson.version
+
+def resolvedVersionCode
+if (project.hasProperty('versionCode')) {
+    resolvedVersionCode = project.versionCode.toString().toInteger()
+} else if (System.getenv('ANDROID_VERSION_CODE')) {
+    resolvedVersionCode = System.getenv('ANDROID_VERSION_CODE').toInteger()
+} else {
+    def parts = resolvedVersionName.toString().split('\\.')
+    def major = parts.length > 0 ? parts[0].toInteger() : 0
+    def minor = parts.length > 1 ? parts[1].toInteger() : 0
+    def patch = parts.length > 2 ? parts[2].replaceAll('[^0-9].*$', '').toInteger() : 0
+    resolvedVersionCode = major * 10000 + minor * 100 + patch
+}
+// ---------------------------------------------------------------------------
+
 android {
     namespace = "com.skatehubba.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +38,8 @@ android {
         applicationId "com.skatehubba.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode resolvedVersionCode
+        versionName resolvedVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.

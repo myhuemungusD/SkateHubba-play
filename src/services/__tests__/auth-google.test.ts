@@ -1,21 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ── hoist mock functions so vi.mock factories can reference them ── */
-const { mockSignInWithPopup, mockSignInWithRedirect, mockGetRedirectResult } = vi.hoisted(() => ({
+const {
+  mockSignInWithPopup,
+  mockSignInWithRedirect,
+  mockGetRedirectResult,
+  mockSignInWithCredential,
+  mockIsNativePlatform,
+  mockNativeSignInWithGoogle,
+} = vi.hoisted(() => ({
   mockSignInWithPopup: vi.fn(),
   mockSignInWithRedirect: vi.fn(),
   mockGetRedirectResult: vi.fn(),
+  mockSignInWithCredential: vi.fn(),
+  mockIsNativePlatform: vi.fn(() => false),
+  mockNativeSignInWithGoogle: vi.fn(),
 }));
 
 vi.mock("firebase/auth", () => {
-  // GoogleAuthProvider must be a constructable class mock
+  // GoogleAuthProvider must be a constructable class mock that also exposes
+  // the static `credential()` helper used by the native branch.
   class MockGoogleAuthProvider {
     setCustomParameters = vi.fn();
+    static credential = vi.fn((idToken?: string, accessToken?: string) => ({
+      providerId: "google.com",
+      signInMethod: "google.com",
+      idToken,
+      accessToken,
+    }));
   }
   return {
     GoogleAuthProvider: MockGoogleAuthProvider,
     signInWithPopup: (...args: unknown[]) => mockSignInWithPopup(...args),
     signInWithRedirect: (...args: unknown[]) => mockSignInWithRedirect(...args),
+    signInWithCredential: (...args: unknown[]) => mockSignInWithCredential(...args),
     getRedirectResult: (...args: unknown[]) => mockGetRedirectResult(...args),
     // stub unused imports
     createUserWithEmailAndPassword: vi.fn(),
@@ -27,12 +45,24 @@ vi.mock("firebase/auth", () => {
   };
 });
 
+vi.mock("@capacitor/core", () => ({
+  Capacitor: { isNativePlatform: mockIsNativePlatform },
+}));
+
+vi.mock("@capacitor-firebase/authentication", () => ({
+  FirebaseAuthentication: {
+    signInWithGoogle: mockNativeSignInWithGoogle,
+  },
+}));
+
 vi.mock("../../firebase");
 
 import { signInWithGoogle, resolveGoogleRedirect } from "../auth";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default to web environment; individual tests opt into native as needed.
+  mockIsNativePlatform.mockReturnValue(false);
 });
 
 /* ── Tests ──────────────────────────────────── */
@@ -44,8 +74,12 @@ describe("signInWithGoogle", () => {
 
     const result = await signInWithGoogle();
     expect(result).toEqual(user);
+    // On the web the popup must be the first call — the native bridge
+    // should not be invoked.
     expect(mockSignInWithPopup).toHaveBeenCalledTimes(1);
     expect(mockSignInWithRedirect).not.toHaveBeenCalled();
+    expect(mockNativeSignInWithGoogle).not.toHaveBeenCalled();
+    expect(mockSignInWithCredential).not.toHaveBeenCalled();
   });
 
   it("falls back to redirect when popup is blocked and returns null", async () => {

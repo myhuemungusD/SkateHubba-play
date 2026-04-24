@@ -1,7 +1,6 @@
 import {
   collection,
   doc,
-  addDoc,
   setDoc,
   getDocs,
   runTransaction,
@@ -21,7 +20,7 @@ import { parseFirebaseError } from "../utils/helpers";
 import { analytics } from "./analytics";
 import { logger, metrics } from "./logger";
 import { captureException } from "../lib/sentry";
-import { writeNotification } from "./notifications";
+import { writeNotification, writeNotificationInTx } from "./notifications";
 import { writeLandedClipsInTransaction } from "./clips";
 
 /* ────────────────────────────────────────────
@@ -291,9 +290,13 @@ export async function createGame(
     ...(safeSpotId && { spotId: safeSpotId }),
   };
 
-  const docRef = await withRetry(() => addDoc(gamesRef(), gameData));
+  // Generate the game ID client-side so a retry after a perceived network
+  // failure re-sends the exact same write (idempotent at a fixed ID) instead
+  // of creating a second game. addDoc would be non-deterministic here.
+  const newGameId = doc(gamesRef()).id;
+  await withRetry(() => setDoc(doc(gamesRef(), newGameId), gameData));
   lastGameCreatedAt = Date.now();
-  metrics.gameCreated(docRef.id, challengerUid);
+  metrics.gameCreated(newGameId, challengerUid);
   // Update rate-limit timestamp on user profile (best effort — game is already created).
   setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true }).catch(
     (err) => {
@@ -303,14 +306,16 @@ export async function createGame(
       });
     },
   );
-  // Notify opponent about the new challenge (best-effort)
+  // Notify opponent about the new challenge (best-effort). createGame is not
+  // transactional, so this stays outside — the only perceivable race is a
+  // missed toast if the tab dies in the narrow window between the two writes.
   writeNotification({
     senderUid: challengerUid,
     recipientUid: opponentUid,
     type: "new_challenge",
     title: "New Challenge!",
     body: `@${challengerUsername} challenged you to S.K.A.T.E.`,
-    gameId: docRef.id,
+    gameId: newGameId,
   });
   // Notify the referee (if any) that they've been nominated (best-effort).
   // The notification `type` code stays "judge_invite" for schema stability —
@@ -323,10 +328,10 @@ export async function createGame(
       type: "judge_invite",
       title: "You've been asked to referee",
       body: `@${challengerUsername} vs @${opponentUsername} — accept to rule on disputes`,
-      gameId: docRef.id,
+      gameId: newGameId,
     });
   }
-  return docRef.id;
+  return newGameId;
 }
 
 /* ────────────────────────────────────────────
@@ -404,7 +409,7 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
 
   // Firestore transactions have built-in retry for transient conflicts;
   // withRetry is not needed here and would incorrectly retry app-logic errors.
-  const txResult = await runTransaction(requireDb(), async (tx) => {
+  await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -425,20 +430,19 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
       updatedAt: serverTimestamp(),
     });
 
-    return { setterUid: game.currentSetter, matcherUid, setterUsername };
+    // Notify matcher it's their turn — atomically with the game update.
+    writeNotificationInTx(tx, {
+      senderUid: game.currentSetter,
+      recipientUid: matcherUid,
+      type: "your_turn",
+      title: "Your Turn!",
+      body: `Match @${setterUsername}'s ${safeTrickName}`,
+      gameId,
+    });
   });
   recordTurnAction(gameId);
   metrics.trickSet(gameId, safeTrickName, videoUrl !== null);
   analytics.trickSet(gameId, safeTrickName);
-  // Notify matcher it's their turn (best-effort)
-  writeNotification({
-    senderUid: txResult.setterUid,
-    recipientUid: txResult.matcherUid,
-    type: "your_turn",
-    title: "Your Turn!",
-    body: `Match @${txResult.setterUsername}'s ${safeTrickName}`,
-    gameId,
-  });
 }
 
 /* ────────────────────────────────────────────
@@ -449,7 +453,7 @@ export async function failSetTrick(gameId: string): Promise<void> {
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
 
-  const txResult = await runTransaction(requireDb(), async (tx) => {
+  await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -472,18 +476,17 @@ export async function failSetTrick(gameId: string): Promise<void> {
       updatedAt: serverTimestamp(),
     });
 
-    return { prevSetterUid: game.currentSetter, nextSetterUid: nextSetter, prevSetterUsername };
+    // Notify next setter it's their turn — atomically with the game update.
+    writeNotificationInTx(tx, {
+      senderUid: game.currentSetter,
+      recipientUid: nextSetter,
+      type: "your_turn",
+      title: "Your Turn to Set!",
+      body: `@${prevSetterUsername} couldn't land their trick. Set a trick!`,
+      gameId,
+    });
   });
   recordTurnAction(gameId);
-  // Notify next setter it's their turn (best-effort)
-  writeNotification({
-    senderUid: txResult.prevSetterUid,
-    recipientUid: txResult.nextSetterUid,
-    type: "your_turn",
-    title: "Your Turn to Set!",
-    body: `@${txResult.prevSetterUsername} couldn't land their trick. Set a trick!`,
-    gameId,
-  });
 }
 
 /* ────────────────────────────────────────────
@@ -531,6 +534,16 @@ export async function submitMatchAttempt(
           judgeReviewFor: matcherUid,
           turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
           updatedAt: serverTimestamp(),
+        });
+
+        // Notify the judge — atomically with the game update.
+        writeNotificationInTx(tx, {
+          senderUid: matcherUid,
+          recipientUid: game.judgeId,
+          type: "your_turn",
+          title: "Ruling Needed",
+          body: `@${matcherUsernameVal} claims they landed @${setterUsername}'s trick. Rule landed or missed?`,
+          gameId,
         });
 
         return {
@@ -590,6 +603,16 @@ export async function submitMatchAttempt(
         matchVideoUrl,
         matcherLanded: true,
         spotId: game.spotId ?? null,
+      });
+
+      // Honor-system landed: previous setter is next matcher — let them know.
+      writeNotificationInTx(tx, {
+        senderUid: matcherUid,
+        recipientUid: game.currentSetter,
+        type: "your_turn",
+        title: "Trick Landed!",
+        body: `@${matcherUsernameVal} landed your trick. Your turn to match.`,
+        gameId,
       });
 
       return {
@@ -669,6 +692,28 @@ export async function submitMatchAttempt(
       spotId: game.spotId ?? null,
     });
 
+    // Notify the setter atomically. In the missed path, only the matcher
+    // gains a letter, so the setter always wins when the game ends here.
+    if (gameOver) {
+      writeNotificationInTx(tx, {
+        senderUid: matcherUid,
+        recipientUid: game.currentSetter,
+        type: "game_won",
+        title: "You Won!",
+        body: `vs @${matcherUsernameVal}`,
+        gameId,
+      });
+    } else {
+      writeNotificationInTx(tx, {
+        senderUid: matcherUid,
+        recipientUid: nextSetter,
+        type: "your_turn",
+        title: "Your Turn to Set!",
+        body: `Set a trick for @${matcherUsernameVal}`,
+        gameId,
+      });
+    }
+
     return {
       outcome: "missed" as const,
       gameOver,
@@ -685,59 +730,10 @@ export async function submitMatchAttempt(
   metrics.matchSubmitted(gameId, landed);
   analytics.matchSubmitted(gameId, landed);
 
-  // Disputable routed to the judge — notify the judge, not the setter.
-  if (result.outcome === "disputable" && result.judgeUid) {
-    writeNotification({
-      senderUid: result.matcherUid,
-      recipientUid: result.judgeUid,
-      type: "your_turn",
-      title: "Ruling Needed",
-      body: `@${result.matcherUsername} claims they landed @${result.setterUsername}'s trick. Rule landed or missed?`,
-      gameId,
-    });
-    return { gameOver: false, winner: null };
-  }
-
-  // Honor-system landed: matcher becomes next setter.
-  if (result.outcome === "landed_honor") {
-    writeNotification({
-      senderUid: result.matcherUid,
-      recipientUid: result.setterUid,
-      type: "your_turn",
-      title: "Trick Landed!",
-      body: `@${result.matcherUsername} landed your trick. Your turn to match.`,
-      gameId,
-    });
-    return { gameOver: false, winner: null };
-  }
-
-  // Missed path — game may be over here.
+  // Missed path — game may be over here. Notifications were staged in-tx.
   if (result.gameOver && result.winner) {
     metrics.gameCompleted(gameId, result.winner, result.turnNumber);
     analytics.gameCompleted(gameId, result.winner === result.matcherUid);
-  }
-
-  // Send notifications based on outcome (best-effort)
-  // In the missed path, only the matcher gains a letter, so the setter always
-  // wins when the game ends here.
-  if (result.gameOver) {
-    writeNotification({
-      senderUid: result.matcherUid,
-      recipientUid: result.setterUid,
-      type: "game_won",
-      title: "You Won!",
-      body: `vs @${result.matcherUsername}`,
-      gameId,
-    });
-  } else {
-    writeNotification({
-      senderUid: result.matcherUid,
-      recipientUid: result.nextSetter,
-      type: "your_turn",
-      title: "Your Turn to Set!",
-      body: `Set a trick for @${result.matcherUsername}`,
-      gameId,
-    });
   }
 
   return { gameOver: result.gameOver, winner: result.winner };
@@ -760,7 +756,7 @@ export async function callBSOnSetTrick(gameId: string): Promise<void> {
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
 
-  const result = await runTransaction(requireDb(), async (tx) => {
+  await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -783,23 +779,17 @@ export async function callBSOnSetTrick(gameId: string): Promise<void> {
       updatedAt: serverTimestamp(),
     });
 
-    return {
-      judgeUid: game.judgeId,
-      matcherUid,
-      setterUsername,
-      matcherUsername: matcherUsernameVal,
-    };
+    // Notify the judge atomically with the game update.
+    writeNotificationInTx(tx, {
+      senderUid: matcherUid,
+      recipientUid: game.judgeId,
+      type: "your_turn",
+      title: "Ruling Needed",
+      body: `@${matcherUsernameVal} called BS on @${setterUsername}'s set. Rule clean or sketchy?`,
+      gameId,
+    });
   });
   recordTurnAction(gameId);
-
-  writeNotification({
-    senderUid: result.matcherUid,
-    recipientUid: result.judgeUid,
-    type: "your_turn",
-    title: "Ruling Needed",
-    body: `@${result.matcherUsername} called BS on @${result.setterUsername}'s set. Rule clean or sketchy?`,
-    gameId,
-  });
 }
 
 /* ────────────────────────────────────────────
@@ -813,7 +803,7 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
 
-  const result = await runTransaction(requireDb(), async (tx) => {
+  await runTransaction(requireDb(), async (tx) => {
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -835,6 +825,16 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
         turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
         updatedAt: serverTimestamp(),
       });
+
+      // Matcher must now attempt the (judged-clean) trick.
+      writeNotificationInTx(tx, {
+        senderUid: game.currentSetter,
+        recipientUid: matcherUid,
+        type: "your_turn",
+        title: "Referee ruled: Clean",
+        body: `The set stands. Match @${setterUsername}'s trick.`,
+        gameId,
+      });
     } else {
       // Setter must re-set. Clear the trick fields and stay on the same setter.
       tx.update(gameRef, {
@@ -847,39 +847,19 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
         turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
         updatedAt: serverTimestamp(),
       });
-    }
 
-    return {
-      clean,
-      setterUid: game.currentSetter,
-      matcherUid,
-      setterUsername,
-      matcherUsername: matcherUsernameVal,
-    };
+      // Setter has to re-set.
+      writeNotificationInTx(tx, {
+        senderUid: matcherUid,
+        recipientUid: game.currentSetter,
+        type: "your_turn",
+        title: "Referee ruled: Sketchy",
+        body: `Set a new trick for @${matcherUsernameVal}.`,
+        gameId,
+      });
+    }
   });
   recordTurnAction(gameId);
-
-  if (result.clean) {
-    // Matcher must now attempt the (judged-clean) trick.
-    writeNotification({
-      senderUid: result.setterUid,
-      recipientUid: result.matcherUid,
-      type: "your_turn",
-      title: "Referee ruled: Clean",
-      body: `The set stands. Match @${result.setterUsername}'s trick.`,
-      gameId,
-    });
-  } else {
-    // Setter has to re-set.
-    writeNotification({
-      senderUid: result.matcherUid,
-      recipientUid: result.setterUid,
-      type: "your_turn",
-      title: "Referee ruled: Sketchy",
-      body: `Set a new trick for @${result.matcherUsername}.`,
-      gameId,
-    });
-  }
 }
 
 /* ────────────────────────────────────────────
@@ -978,16 +958,43 @@ export async function resolveDispute(
       spotId: game.spotId ?? null,
     });
 
+    // Notify the matcher atomically — sender is the judge, not a player.
+    // In dispute resolution, only the matcher can gain a letter, so the
+    // setter is always the winner when the game ends.
+    if (gameOver) {
+      writeNotificationInTx(tx, {
+        senderUid: game.judgeId,
+        recipientUid: matcherUid,
+        type: "game_lost",
+        title: "Game Over",
+        body: `vs @${setterUsername}`,
+        gameId,
+      });
+    } else if (landed) {
+      writeNotificationInTx(tx, {
+        senderUid: game.judgeId,
+        recipientUid: matcherUid,
+        type: "your_turn",
+        title: "Referee ruled: Landed",
+        body: `You landed! Set a trick for @${setterUsername}`,
+        gameId,
+      });
+    } else {
+      writeNotificationInTx(tx, {
+        senderUid: game.judgeId,
+        recipientUid: matcherUid,
+        type: "your_turn",
+        title: "Referee ruled: Missed",
+        body: `Set a trick for @${matcherUsernameVal}`,
+        gameId,
+      });
+    }
+
     return {
       gameOver,
       winner,
       landed,
-      judgeUid: game.judgeId,
-      setterUid: game.currentSetter,
       matcherUid,
-      setterUsername,
-      matcherUsername: matcherUsernameVal,
-      nextSetter,
       turnNumber: game.turnNumber,
     };
   });
@@ -996,38 +1003,6 @@ export async function resolveDispute(
   if (result.gameOver && result.winner) {
     metrics.gameCompleted(gameId, result.winner, result.turnNumber);
     analytics.gameCompleted(gameId, result.winner === result.matcherUid);
-  }
-
-  // Notifications (best-effort) — sender is the judge, not a player.
-  // In dispute resolution, only the matcher can gain a letter, so the setter
-  // is always the winner when the game ends.
-  if (result.gameOver) {
-    writeNotification({
-      senderUid: result.judgeUid,
-      recipientUid: result.matcherUid,
-      type: "game_lost",
-      title: "Game Over",
-      body: `vs @${result.setterUsername}`,
-      gameId,
-    });
-  } else if (result.landed) {
-    writeNotification({
-      senderUid: result.judgeUid,
-      recipientUid: result.matcherUid,
-      type: "your_turn",
-      title: "Referee ruled: Landed",
-      body: `You landed! Set a trick for @${result.setterUsername}`,
-      gameId,
-    });
-  } else {
-    writeNotification({
-      senderUid: result.judgeUid,
-      recipientUid: result.matcherUid,
-      type: "your_turn",
-      title: "Referee ruled: Missed",
-      body: `Set a trick for @${result.matcherUsername}`,
-      gameId,
-    });
   }
 
   return { gameOver: result.gameOver, winner: result.winner };
@@ -1226,16 +1201,36 @@ export function subscribeToMyGames(
 ): Unsubscribe {
   // Firestore doesn't support OR queries across different fields natively,
   // so we run three queries (player1, player2, judge) and merge.
-  let p1Games: GameDoc[] = [];
-  let p2Games: GameDoc[] = [];
-  let judgeGames: GameDoc[] = [];
+  type Slice = "p1" | "p2" | "judge";
 
-  const merge = () => {
-    const all = [...p1Games, ...p2Games, ...judgeGames];
-    // Deduplicate by id
-    const map = new Map(all.map((g) => [g.id, g]));
-    const sorted = Array.from(map.values()).sort((a, b) => {
-      // Active first, then by turn number desc
+  // Per-slice game maps keep each listener's contribution isolated — so an
+  // error on (e.g.) the judge listener can drop that slice without trashing
+  // the player-side data, and snapshots update one slice atomically rather
+  // than shuffling around three captured array closures.
+  const slices: Record<Slice, Map<string, GameDoc>> = {
+    p1: new Map(),
+    p2: new Map(),
+    judge: new Map(),
+  };
+
+  // First-load gate: we only emit to `onUpdate` once all three listeners have
+  // delivered at least once (or errored — see handleError). Without this,
+  // consumers would see a flicker of "just my p1 games" → "all games" while
+  // the other two snapshots are still in flight.
+  const seeded = new Set<Slice>();
+  let firstLoadComplete = false;
+
+  const rebuildAndEmit = () => {
+    // Merge all three slices into a single deduped map keyed by game id.
+    const merged = new Map<string, GameDoc>();
+    for (const slice of Object.values(slices)) {
+      for (const [id, game] of slice) {
+        merged.set(id, game);
+      }
+    }
+    const sorted = Array.from(merged.values()).sort((a, b) => {
+      // Active first, then by turn number desc (preserves the existing
+      // ordering contract so UI renders "what's on deck" above history).
       if (a.status === "active" && b.status !== "active") return -1;
       if (a.status !== "active" && b.status === "active") return 1;
       return b.turnNumber - a.turnNumber;
@@ -1243,41 +1238,47 @@ export function subscribeToMyGames(
     onUpdate(sorted);
   };
 
+  const markSeeded = (slice: Slice) => {
+    if (firstLoadComplete) return;
+    seeded.add(slice);
+    if (seeded.size === 3) {
+      firstLoadComplete = true;
+    }
+  };
+
+  const handleSnapshot = (slice: Slice, snap: { docs: Array<{ id: string; data: () => Record<string, unknown> }> }) => {
+    // Rebuild the slice atomically from the fresh snapshot (replaces stale
+    // entries and drops removed ones — no partial update window).
+    const next = new Map<string, GameDoc>();
+    for (const d of snap.docs) {
+      const game = toGameDoc(d);
+      next.set(game.id, game);
+    }
+    slices[slice] = next;
+    markSeeded(slice);
+    // Only emit once the first load is complete. After that every snapshot
+    // update is a legit diff and consumers should see it immediately.
+    if (firstLoadComplete) rebuildAndEmit();
+  };
+
+  const handleError = (slice: Slice) => (err: Error) => {
+    logger.warn("game_subscription_error", { uid, error: err.message });
+    captureException(err, { extra: { context: "subscribeToMyGames", uid } });
+    // Drop this slice's contribution so we don't leave stale data mixed in
+    // with healthy slices. Still counts toward "seeded" — an erroring query
+    // shouldn't block the first emit forever.
+    slices[slice] = new Map();
+    markSeeded(slice);
+    if (firstLoadComplete) rebuildAndEmit();
+  };
+
   const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(limitCount));
   const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(limitCount));
   const q3 = query(gamesRef(), where("judgeId", "==", uid), limit(limitCount));
 
-  const handleError = (err: Error) => {
-    logger.warn("game_subscription_error", { uid, error: err.message });
-    captureException(err, { extra: { context: "subscribeToMyGames", uid } });
-  };
-
-  const unsub1 = onSnapshot(
-    q1,
-    (snap) => {
-      p1Games = snap.docs.map((d) => toGameDoc(d));
-      merge();
-    },
-    handleError,
-  );
-
-  const unsub2 = onSnapshot(
-    q2,
-    (snap) => {
-      p2Games = snap.docs.map((d) => toGameDoc(d));
-      merge();
-    },
-    handleError,
-  );
-
-  const unsub3 = onSnapshot(
-    q3,
-    (snap) => {
-      judgeGames = snap.docs.map((d) => toGameDoc(d));
-      merge();
-    },
-    handleError,
-  );
+  const unsub1 = onSnapshot(q1, (snap) => handleSnapshot("p1", snap), handleError("p1"));
+  const unsub2 = onSnapshot(q2, (snap) => handleSnapshot("p2", snap), handleError("p2"));
+  const unsub3 = onSnapshot(q3, (snap) => handleSnapshot("judge", snap), handleError("judge"));
 
   return () => {
     unsub1();

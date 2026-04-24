@@ -42,6 +42,45 @@ service cloud.firestore {
         && 'judgeStatus' in game && game.judgeStatus == 'accepted';
     }
 
+    // ── turnHistory growth bounds ──
+    // Every write path that legitimately appends to `games.turnHistory`
+    // (match resolution, dispute resolution, Call BS resolution, expired
+    // dispute auto-accept, expired setReview auto-clear) must satisfy BOTH:
+    //
+    //   (1) size grows by at most ONE entry per write — otherwise a player
+    //       could `arrayUnion` a giant batch of fabricated TurnRecords.
+    //   (2) absolute size stays ≤ 200 — a SKATE game tops out at roughly
+    //       5 letters × 2 players × ~10 attempts per letter, so 200 is a
+    //       generous ceiling that still protects against the 1 MB
+    //       Firestore doc limit when an attacker inflates TurnRecord blobs.
+    //
+    // Accepts the same "absent on both sides" and "unchanged" shapes that
+    // the non-growth branches use, so write paths that DON'T append
+    // (e.g. a judge ruling that doesn't add a turn) still pass cleanly.
+    function turnHistoryGrowthOk() {
+      return (
+        (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
+        || (
+          'turnHistory' in request.resource.data
+          && request.resource.data.turnHistory is list
+          && request.resource.data.turnHistory.size() <= 200
+          && (
+            // Unchanged (e.g. judge accepts without adding a record, or the
+            // resource has the field and the request keeps it identical).
+            ('turnHistory' in resource.data
+              && request.resource.data.turnHistory == resource.data.turnHistory)
+            // Appended exactly one entry to an existing history array.
+            || ('turnHistory' in resource.data
+                && request.resource.data.turnHistory.size() == resource.data.turnHistory.size() + 1)
+            // First-ever append: resource has no turnHistory yet, request
+            // introduces a single-entry list.
+            || (!('turnHistory' in resource.data)
+                && request.resource.data.turnHistory.size() <= 1)
+          )
+        )
+      );
+    }
+
     // ── Users ──
     // The `users/{uid}` document holds ONLY fields that are safe to expose
     // cross-user (username, stance, wins/losses, isVerifiedPro, …). Any
@@ -395,12 +434,48 @@ service cloud.firestore {
         // Game stays active, no winner (completion only via match resolution or forfeit)
         && request.resource.data.status == 'active'
         && request.resource.data.winner == null
-        // Valid phase transitions only (prevents skipping phases)
+        // matchVideoUrl is only written by the matching-phase rule — setting
+        // phase updates must not touch it. Without this pin, a setter whose
+        // currentTurn == uid could stash a match video and then forge a
+        // subsequent matching→setting forfeit/resolution against it.
+        && request.resource.data.matchVideoUrl == resource.data.matchVideoUrl
+        // Valid phase transitions only (prevents skipping phases). Each
+        // branch pins the exact fields that MUST change and the ones that
+        // MUST NOT — without these pins, the setter could rewrite
+        // currentSetter / turnNumber / trick fields to forge a state where
+        // the opponent's turnDeadline has already expired, and then invoke
+        // the forfeit branch below to win unilaterally.
         && (
           // setting → matching (setter sets a trick)
-          (resource.data.phase == 'setting' && request.resource.data.phase == 'matching')
+          //   • currentSetter stays put (role doesn't change until the match resolves)
+          //   • turn swaps to the matcher (opponent of the setter)
+          //   • turnNumber is unchanged (phase change within the same turn)
+          //   • currentTrickName / currentTrickVideoUrl are populated with the set trick
+          (resource.data.phase == 'setting'
+           && request.resource.data.phase == 'matching'
+           && request.resource.data.currentSetter == resource.data.currentSetter
+           && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter)
+           && request.resource.data.turnNumber == resource.data.turnNumber
+           && request.resource.data.currentTrickName is string
+           && request.resource.data.currentTrickName.size() > 0
+           && request.resource.data.currentTrickName.size() <= 64
+           && request.resource.data.currentTrickVideoUrl is string
+           && request.resource.data.currentTrickVideoUrl.matches('^https?://.+'))
           // setting → setting (setter failed to land, turn passes to opponent)
-          || (resource.data.phase == 'setting' && request.resource.data.phase == 'setting')
+          //   • currentSetter MUST flip to the other player (the whole point of
+          //     failSetTrick is the role passes) — this is the invariant the
+          //     exploit targets: without it, the setter could keep the role and
+          //     merely reassign currentTurn to the opponent
+          //   • currentTurn follows currentSetter (new setter sets first)
+          //   • turnNumber strictly increments (fresh turn)
+          //   • trick fields reset to null (no trick set yet this turn)
+          || (resource.data.phase == 'setting'
+              && request.resource.data.phase == 'setting'
+              && request.resource.data.currentSetter == opponentUid(resource.data, resource.data.currentSetter)
+              && request.resource.data.currentTurn == request.resource.data.currentSetter
+              && request.resource.data.turnNumber == resource.data.turnNumber + 1
+              && request.resource.data.currentTrickName == null
+              && request.resource.data.currentTrickVideoUrl == null)
         )
         // turnHistory must not change during setting-phase updates
         && (
@@ -512,7 +587,11 @@ service cloud.firestore {
               && request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters
               && request.resource.data.currentTurn == resource.data.judgeId)
-        );
+        )
+        // turnHistory growth bound — cap appends to 1 per write and total
+        // size to 200 entries. Prevents a 1 MB TurnRecord balloon attack
+        // against the Firestore doc-size ceiling.
+        && turnHistoryGrowthOk();
 
       // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
       // Judge-only. The setter never self-judges — disputes only exist in
@@ -573,7 +652,11 @@ service cloud.firestore {
            && request.resource.data.winner == null)
           || (request.resource.data.status == 'complete'
               && request.resource.data.winner != null)
-        );
+        )
+        // turnHistory growth bound — judge rulings append a single
+        // TurnRecord with judgedBy set. Same 1-per-write + ≤200 ceiling
+        // the match-resolution branch enforces.
+        && turnHistoryGrowthOk();
 
       // ── Call BS resolution (judge rules on set trick in setReview phase) ──
       // Judge-only. Clean → back to matching (matcher must attempt).
@@ -624,7 +707,11 @@ service cloud.firestore {
               && request.resource.data.currentTurn == resource.data.currentSetter
               && request.resource.data.currentTrickName == null
               && request.resource.data.currentTrickVideoUrl == null)
-        );
+        )
+        // turnHistory growth bound — Call BS rulings that go "sketchy"
+        // append a TurnRecord noting the invalidated set. Same cap as the
+        // other resolution branches.
+        && turnHistoryGrowthOk();
 
       // ── Judge invite accept / decline ──
       // Only the nominated judge can flip their status from pending. No
@@ -728,7 +815,10 @@ service cloud.firestore {
         // 48h cap every other write path enforces.
         && request.resource.data.turnDeadline is timestamp
         && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h');
+        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // turnHistory growth bound — auto-accept writes a TurnRecord for
+        // the expired dispute. Same 1-per-write + ≤200 ceiling.
+        && turnHistoryGrowthOk();
 
       // ── Expired setReview auto-clear ──
       // When the judge doesn't rule on a "Call BS" within 24h, the set
@@ -760,7 +850,12 @@ service cloud.firestore {
         // rationale as the expired-dispute auto-accept above.
         && request.resource.data.turnDeadline is timestamp
         && request.resource.data.turnDeadline > request.time
-        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h');
+        && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // turnHistory growth bound — this path typically leaves the
+        // history unchanged (no new turn was completed), but we still run
+        // the helper to enforce the absolute 200-entry ceiling and block
+        // any sneaky append.
+        && turnHistoryGrowthOk();
 
       // Players may delete their own non-active games (account deletion flow)
       allow delete: if isSignedIn() && isPlayer(resource.data)
@@ -775,14 +870,20 @@ service cloud.firestore {
     // only update their own spots and cannot change immutable fields
     // (coordinates, createdBy, isVerified, isActive) after creation.
     match /spots/{spotId} {
-      // Active spots are publicly readable — skate spots are inherently
-      // public information and every comparable map app (AllTrails, Strava,
-      // Smap, ShredSpots) lets anonymous users browse without an account.
-      // Requiring auth here would gate the exact users (new visitors via
-      // shared /challenge?spot= links) we most want to convert. Inactive
-      // (soft-deleted or moderation-hidden) spots are never visible.
-      // All write paths below remain auth-gated.
-      allow read: if resource.data.isActive == true;
+      // Active spots are readable only by signed-in users. Requiring auth
+      // closes the anonymous-scraping attack surface: without it, any drive-
+      // by attacker could enumerate every spot + join with clips + users to
+      // build a user-location graph (privacy incident + App-Store location-
+      // data disclosure exposure). Inactive (soft-deleted or moderation-
+      // hidden) spots remain unreadable by anyone through this rule. All
+      // write paths below remain auth-gated (unchanged).
+      //
+      // NOTE: the SpotMap / SpotDetailPage screens are accessed from within
+      // the app after auth — there are no public unauth reads in the client
+      // (verified by grep over src/services/spots.ts + screens/SpotDetailPage).
+      // Deep-links to /spots/:id land on the sign-in gate first when called
+      // by a signed-out user.
+      allow read: if isSignedIn() && resource.data.isActive == true;
 
       // Create: signed-in + email-verified, owner-stamped, with full
       // field validation mirroring the shared Spot type. Rate-limited
@@ -1029,9 +1130,16 @@ service cloud.firestore {
     }
 
     // ── Reports (content/player flagging for Google Play UGC policy) ──
-    // Users can report opponents in games they participate in.
-    // Reports are immutable once created (only admins can update status).
-    // Rate limit: one report per game per reporter (enforced by query + client check).
+    // Users can report opponents in games they participate in. The previous
+    // rule leaned on a client-side "query + check" comment to enforce
+    // uniqueness; that's harassment-vector and moderator-queue-DoS bait.
+    // Server-side rate limit: one report per (reporter, reported) pair per
+    // 1 hour, enforced by requiring a companion write to
+    // `reports_limits/{reporterUid}_{reportedUid}` in the SAME batch.
+    // (That caps the worst case at 24 reports/day against a single target
+    // per reporter — fine for moderation triage; no per-day counter needed.)
+    //
+    // Reports are immutable once created (only Admin SDK can update status).
     match /reports/{reportId} {
       // Only the reporter can read their own reports (to check for duplicates)
       allow read: if isSignedIn()
@@ -1058,10 +1166,69 @@ service cloud.firestore {
           || (request.resource.data.clipId is string
               && request.resource.data.clipId.size() > 0
               && request.resource.data.clipId.size() <= 128)
-        );
+        )
+        // Rate-limit gate: EITHER the reporter has never reported this
+        // target before (no limits doc exists) OR the previous report was
+        // more than 1 hour ago. Checked against the PRE-batch state via
+        // get(); getAfter() below covers the companion-write freshness.
+        && (
+          !exists(/databases/$(database)/documents/reports_limits/$(request.auth.uid + '_' + request.resource.data.reportedUid))
+          || request.time > get(/databases/$(database)/documents/reports_limits/$(request.auth.uid + '_' + request.resource.data.reportedUid)).data.lastSentAt + duration.value(1, 'h')
+        )
+        // Companion-write requirement: in the same batch, the reporter MUST
+        // also write the matching reports_limits/{reporter_reported} doc
+        // with lastSentAt pinned to request.time. Without this, the
+        // cooldown would never advance. getAfter() reflects the batch's
+        // post-commit state — if the client didn't include the limit
+        // write, the doc won't exist there and the rule rejects.
+        && getAfter(/databases/$(database)/documents/reports_limits/$(request.auth.uid + '_' + request.resource.data.reportedUid)).data.lastSentAt == request.time;
 
       // Reports are immutable — only Admin SDK can update (for moderation)
       allow update: if false;
+      allow delete: if false;
+    }
+
+    // ── Report rate limits ──
+    // One doc per (reporter, reported) pair, enforces 1-hour cooldown
+    // server-side. Companion write to every /reports create (see above).
+    // Mirrors nudge_limits / notification_limits: lastSentAt is pinned to
+    // request.time on every create/update to close the back-date bypass
+    // where a client seeds epoch 0 and permanently satisfies the gate.
+    match /reports_limits/{limitId} {
+      // NOTE: Clients only write to this collection. If a future read path
+      // is added, handle the non-existent-doc case (resource == null).
+      allow read: if isSignedIn()
+        && resource.data.reporterUid == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && request.auth.uid == request.resource.data.reporterUid
+        && request.resource.data.reportedUid is string
+        && request.resource.data.reportedUid != request.auth.uid
+        // Doc id MUST be the deterministic `${reporterUid}_${reportedUid}`
+        // so the /reports create rule can look it up by shape.
+        && limitId == (request.auth.uid + '_' + request.resource.data.reportedUid)
+        // lastSentAt pinned to server time. Any other value lets a client
+        // back-date the cooldown anchor and keep the 1h gate permanently
+        // satisfied. Same pattern as nudge_limits.lastNudgedAt.
+        && request.resource.data.lastSentAt == request.time;
+
+      allow update: if isSignedIn()
+        && request.auth.uid == resource.data.reporterUid
+        // 1-hour cooldown vs the stored anchor.
+        && request.time > resource.data.lastSentAt + duration.value(1, 'h')
+        // New lastSentAt must be server time — closes the same back-date
+        // bypass on updates as the create rule above.
+        && request.resource.data.lastSentAt == request.time
+        // Immutable identity fields: the doc id is derived from
+        // reporterUid + reportedUid, so mutating either would desync the
+        // cooldown key from its bucket and let a reporter silently rewrite
+        // another pair's cooldown state.
+        && request.resource.data.reporterUid == resource.data.reporterUid
+        && request.resource.data.reportedUid == resource.data.reportedUid;
+
+      // Rate-limit docs are server-managed cooldown state with no user-
+      // facing lifecycle. Clients must never delete them — a successful
+      // delete would reset the 1h cooldown and re-enable spam.
       allow delete: if false;
     }
 

@@ -73,13 +73,33 @@ import {
   declineJudgeInvite,
   isJudgeActive,
 } from "../games";
+import { _resetNotificationRateLimit } from "../notifications";
+
+// Holds the most recent in-tx notification writes (from writeNotificationInTx)
+// so tests can assert on them. Reset each test in beforeEach.
+let mockTxSetCalls: Array<{ ref: unknown; data: Record<string, unknown> }>;
 
 beforeEach(() => {
   vi.clearAllMocks();
   _resetCreateGameRateLimit();
-  // Default: runTransaction calls the callback with a mock tx object
+  // Notification rate-limit state is module-scoped — if we don't clear it
+  // between tests, the second createGame in a file hits the 5s cooldown and
+  // silently skips the notification write, making rate-limit assertions flaky.
+  _resetNotificationRateLimit();
+  mockSetDoc.mockResolvedValue(undefined);
+  mockTxSetCalls = [];
+  // Default: runTransaction calls the callback with a mock tx object. The
+  // `set` spy captures in-tx writes (notifications + any other tx.set calls)
+  // so tests can assert the game update and its sibling notification landed
+  // atomically inside the same transaction.
   mockRunTransaction.mockImplementation(async (_db: unknown, cb: Function) => {
-    const tx = { get: mockTxGet, update: mockTxUpdate, set: vi.fn() };
+    const tx = {
+      get: mockTxGet,
+      update: mockTxUpdate,
+      set: vi.fn((ref: unknown, data: Record<string, unknown>) => {
+        mockTxSetCalls.push({ ref, data });
+      }),
+    };
     return cb(tx);
   });
 });
@@ -342,14 +362,32 @@ describe("games service", () => {
   });
 
   describe("createGame", () => {
-    it("creates a game doc and returns its id", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "game123" });
-      const id = await createGame("p1", "alice", "p2", "bob");
-      expect(id).toBe("game123");
-      // First addDoc creates the game; second (fire-and-forget) writes a notification
-      expect(mockAddDoc).toHaveBeenCalledTimes(2);
+    // The `createGame` flow now uses a client-generated deterministic id
+    // (`doc(gamesRef()).id`) + `setDoc(doc(gamesRef(), id), data)` instead of
+    // `addDoc`. That means `setDoc` is called multiple times:
+    //   - call 0: writes the game doc
+    //   - call 1: writes the lastGameCreatedAt field on the user profile
+    //   - addDoc is still used once per notification (opponent challenge, etc.)
+    const gameSetDocCall = (): Record<string, unknown> => {
+      // The game doc write is always the FIRST setDoc call (the user profile
+      // merge fires after `metrics.gameCreated`). In all these tests the
+      // second arg is the game payload.
+      const call = mockSetDoc.mock.calls[0];
+      return call[1] as Record<string, unknown>;
+    };
 
-      const docData = mockAddDoc.mock.calls[0][1];
+    it("creates a game doc and returns its id", async () => {
+      const id = await createGame("p1", "alice", "p2", "bob");
+      // Deterministic id from mockDoc — `doc(gamesRef()).id` → "auto-id"
+      expect(id).toBe("auto-id");
+      // setDoc fires three times: the game write itself, the user profile
+      // merge for `lastGameCreatedAt`, and the `notification_limits` write
+      // inside writeNotification's rate-limit tracking.
+      expect(mockSetDoc).toHaveBeenCalledTimes(3);
+      // addDoc is still used for the non-transactional notification write.
+      expect(mockAddDoc).toHaveBeenCalledTimes(1);
+
+      const docData = gameSetDocCall();
       expect(docData.player1Uid).toBe("p1");
       expect(docData.player2Uid).toBe("p2");
       expect(docData.status).toBe("active");
@@ -357,8 +395,24 @@ describe("games service", () => {
       expect(docData.currentSetter).toBe("p1");
     });
 
+    it("uses a client-generated deterministic id — retrying is idempotent", async () => {
+      // The first write "fails" transiently; withRetry retries. Both attempts
+      // must target the same docRef so the server cannot create two games.
+      mockSetDoc.mockRejectedValueOnce(new Error("unavailable")).mockResolvedValueOnce(undefined);
+      const id = await createGame("p1", "alice", "p2", "bob");
+      expect(id).toBe("auto-id");
+      // First setDoc call = failed game-doc write; second = successful retry;
+      // third = user-profile merge. All three should land on real refs.
+      expect(mockSetDoc.mock.calls.length).toBeGreaterThanOrEqual(2);
+
+      // Critically, the first two setDoc calls (game writes) target the same
+      // doc ref — if addDoc were still used, a retry would pick a NEW id.
+      const firstGameRef = mockSetDoc.mock.calls[0][0];
+      const retryGameRef = mockSetDoc.mock.calls[1][0];
+      expect(firstGameRef).toEqual(retryGameRef);
+    }, 10_000);
+
     it("throws when called again within the cooldown period", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "game1" });
       await createGame("p1", "alice", "p2", "bob");
 
       // Second call without resetting — should hit rate limit
@@ -366,10 +420,9 @@ describe("games service", () => {
     });
 
     it("sets initial scores, turn, and timestamps", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob");
 
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect(docData.p1Letters).toBe(0);
       expect(docData.p2Letters).toBe(0);
       expect(docData.turnNumber).toBe(1);
@@ -382,101 +435,96 @@ describe("games service", () => {
     });
 
     it("updates lastGameCreatedAt on user profile (best effort)", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob");
-      expect(mockSetDoc).toHaveBeenCalledTimes(1);
+      // setDoc: game write, user profile merge, notification rate-limit doc.
+      expect(mockSetDoc).toHaveBeenCalledTimes(3);
+      // The user profile merge is the second setDoc call (after the game).
+      const userProfilePath = (mockSetDoc.mock.calls[1][0] as { __path?: string }).__path ?? "";
+      expect(userProfilePath).toContain("users");
     });
 
     it("still returns game id if rate-limit timestamp update fails", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
-      mockSetDoc.mockRejectedValueOnce(new Error("write failed"));
+      // First setDoc = game write (succeeds). Second setDoc = user profile
+      // merge (fails). createGame should still resolve with the new id.
+      mockSetDoc.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("write failed"));
       const id = await createGame("p1", "alice", "p2", "bob");
-      expect(id).toBe("g1");
+      expect(id).toBe("auto-id");
     });
 
     it("includes pro status flags when players are verified pros", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob", {
         challengerIsVerifiedPro: true,
         opponentIsVerifiedPro: true,
       });
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect(docData.player1IsVerifiedPro).toBe(true);
       expect(docData.player2IsVerifiedPro).toBe(true);
     });
 
     it("omits pro status flags when players are not verified", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob");
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect(docData.player1IsVerifiedPro).toBeUndefined();
       expect(docData.player2IsVerifiedPro).toBeUndefined();
     });
 
     it("includes spotId when a valid UUID is provided", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       const validSpotId = "11111111-2222-3333-4444-555555555555";
       await createGame("p1", "alice", "p2", "bob", { spotId: validSpotId });
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect(docData.spotId).toBe(validSpotId);
     });
 
     it("omits spotId when null or undefined", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob", { spotId: null });
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect("spotId" in docData).toBe(false);
     });
 
     it("drops a malformed spotId instead of writing garbage to Firestore", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       // Shape doesn't match UUID regex — should be silently normalized to null
       // so the field is omitted entirely, not written as a hostile string.
       await createGame("p1", "alice", "p2", "bob", { spotId: "not-a-uuid" });
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect("spotId" in docData).toBe(false);
     });
 
     it("defaults to no judge (honor system)", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob");
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect(docData.judgeId).toBeNull();
       expect(docData.judgeUsername).toBeNull();
       expect(docData.judgeStatus).toBeNull();
     });
 
     it("sets judge fields in pending state when a valid judge is nominated", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob", {
         judgeUid: "p3",
         judgeUsername: "charlie",
       });
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect(docData.judgeId).toBe("p3");
       expect(docData.judgeUsername).toBe("charlie");
       expect(docData.judgeStatus).toBe("pending");
     });
 
     it("drops judge nomination if it collides with either player", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       // Judge can't be the challenger or opponent — falls back to honor system.
       await createGame("p1", "alice", "p2", "bob", {
         judgeUid: "p2",
         judgeUsername: "bob",
       });
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect(docData.judgeId).toBeNull();
       expect(docData.judgeStatus).toBeNull();
     });
 
     it("drops judge nomination when username is missing", async () => {
-      mockAddDoc.mockResolvedValueOnce({ id: "g1" });
       await createGame("p1", "alice", "p2", "bob", {
         judgeUid: "p3",
         judgeUsername: null,
       });
-      const docData = mockAddDoc.mock.calls[0][1];
+      const docData = gameSetDocCall();
       expect(docData.judgeId).toBeNull();
       expect(docData.judgeStatus).toBeNull();
     });
@@ -1358,6 +1406,128 @@ describe("games service", () => {
       );
       warnSpy.mockRestore();
     });
+
+    /* ── H-G6 regression: gated first-load merge ────── */
+
+    it("waits for all three listeners to seed before firing the first onUpdate", () => {
+      const onUpdate = vi.fn();
+      // Capture each listener's onNext so we can fire them in a staggered
+      // order — simulating real-world snapshot races.
+      const listeners: Array<(snap: unknown) => void> = [];
+      mockOnSnapshot.mockImplementation((_query: unknown, cb: Function) => {
+        listeners.push(cb as (snap: unknown) => void);
+        return vi.fn();
+      });
+
+      subscribeToMyGames("u1", onUpdate);
+      expect(listeners.length).toBe(3);
+
+      // First listener (p1) emits — must NOT fire onUpdate yet (2 slices
+      // still unseeded → partial merge would flash to the UI).
+      listeners[0]({
+        docs: [{ id: "g1", data: () => ({ ...baseGame, status: "active", turnNumber: 1 }) }],
+      });
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      // Second listener (p2) emits — still short one slice, no emit.
+      listeners[1]({
+        docs: [{ id: "g2", data: () => ({ ...baseGame, status: "active", turnNumber: 2 }) }],
+      });
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      // Third listener (judge) emits — now emit the full merged view once.
+      listeners[2]({
+        docs: [{ id: "g3", data: () => ({ ...baseGame, status: "active", turnNumber: 3 }) }],
+      });
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      const games = onUpdate.mock.calls[0][0];
+      expect(games.map((g: { id: string }) => g.id).sort()).toEqual(["g1", "g2", "g3"]);
+    });
+
+    it("emits freely on every snapshot after the first-load gate opens", () => {
+      const onUpdate = vi.fn();
+      const listeners: Array<(snap: unknown) => void> = [];
+      mockOnSnapshot.mockImplementation((_query: unknown, cb: Function) => {
+        listeners.push(cb as (snap: unknown) => void);
+        return vi.fn();
+      });
+
+      subscribeToMyGames("u1", onUpdate);
+
+      // Seed all three with empty snapshots — first emit fires with 0 games.
+      listeners[0]({ docs: [] });
+      listeners[1]({ docs: [] });
+      listeners[2]({ docs: [] });
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      expect(onUpdate.mock.calls[0][0]).toEqual([]);
+
+      // A follow-up snapshot on any slice should emit immediately (no
+      // further gating) with the new merged view.
+      listeners[0]({
+        docs: [{ id: "g1", data: () => ({ ...baseGame, status: "active", turnNumber: 1 }) }],
+      });
+      expect(onUpdate).toHaveBeenCalledTimes(2);
+      expect(onUpdate.mock.calls[1][0]).toHaveLength(1);
+    });
+
+    it("treats a listener error as a seeded-but-empty slice (still opens the gate)", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const onUpdate = vi.fn();
+      const nextFns: Array<(snap: unknown) => void> = [];
+      const errFns: Array<(err: Error) => void> = [];
+      mockOnSnapshot.mockImplementation((_query: unknown, onNext: Function, onError: Function) => {
+        nextFns.push(onNext as (snap: unknown) => void);
+        errFns.push(onError as (err: Error) => void);
+        return vi.fn();
+      });
+
+      subscribeToMyGames("u1", onUpdate);
+
+      // Seed p1 and p2 normally, then fail the judge listener.
+      nextFns[0]({
+        docs: [{ id: "g1", data: () => ({ ...baseGame, status: "active", turnNumber: 1 }) }],
+      });
+      nextFns[1]({ docs: [] });
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      errFns[2](new Error("permission-denied"));
+      // The error path should clear the judge slice AND mark it seeded so the
+      // healthy slices can emit. We see the game from p1 only — no stale or
+      // partial data polluting the merge.
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      const games = onUpdate.mock.calls[0][0];
+      expect(games.map((g: { id: string }) => g.id)).toEqual(["g1"]);
+      warnSpy.mockRestore();
+    });
+
+    it("re-emits with the cleared slice when an already-seeded listener errors", () => {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const onUpdate = vi.fn();
+      const nextFns: Array<(snap: unknown) => void> = [];
+      const errFns: Array<(err: Error) => void> = [];
+      mockOnSnapshot.mockImplementation((_query: unknown, onNext: Function, onError: Function) => {
+        nextFns.push(onNext as (snap: unknown) => void);
+        errFns.push(onError as (err: Error) => void);
+        return vi.fn();
+      });
+
+      subscribeToMyGames("u1", onUpdate);
+
+      // Seed all three with data — first emit.
+      nextFns[0]({ docs: [{ id: "g1", data: () => ({ ...baseGame, turnNumber: 1 }) }] });
+      nextFns[1]({ docs: [{ id: "g2", data: () => ({ ...baseGame, turnNumber: 2 }) }] });
+      nextFns[2]({ docs: [{ id: "g3", data: () => ({ ...baseGame, turnNumber: 3 }) }] });
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      expect(onUpdate.mock.calls[0][0]).toHaveLength(3);
+
+      // Judge listener errors — its slice must be dropped and a fresh emit
+      // fires so consumers don't see stale judge games forever.
+      errFns[2](new Error("permission-denied"));
+      expect(onUpdate).toHaveBeenCalledTimes(2);
+      const games = onUpdate.mock.calls[1][0];
+      expect(games.map((g: { id: string }) => g.id).sort()).toEqual(["g1", "g2"]);
+      warnSpy.mockRestore();
+    });
   });
 
   /* ── fetchPlayerCompletedGames ─────────────── */
@@ -1501,6 +1671,236 @@ describe("games service", () => {
       const games = await fetchPlayerCompletedGames("u1");
       expect(games).toHaveLength(3);
       expect(games[0].id).toBe("g-dated");
+    });
+  });
+
+  /* ── H-G9 regression: notifications staged inside transactions ─── */
+
+  describe("in-transaction notifications", () => {
+    // Helper: find an in-tx notification write by type + recipient. Returns
+    // the staged notification payload (or undefined if none match).
+    function findInTxNotification(type: string, recipientUid: string): Record<string, unknown> | undefined {
+      const match = mockTxSetCalls.find(
+        (c) => c.data?.type === type && c.data?.recipientUid === recipientUid,
+      );
+      return match?.data;
+    }
+
+    it("setTrick stages the matcher notification inside the transaction", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      await setTrick("g1", "Kickflip", null);
+
+      // tx.set was called exactly once for the notification, atomically with
+      // the game update.
+      expect(mockTxSetCalls).toHaveLength(1);
+      const notif = findInTxNotification("your_turn", "p2");
+      expect(notif).toBeDefined();
+      expect(notif?.senderUid).toBe("p1");
+      expect(notif?.gameId).toBe("g1");
+      expect(notif?.title).toBe("Your Turn!");
+      expect(notif?.read).toBe(false);
+    });
+
+    it("failSetTrick stages the next-setter notification inside the transaction", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting", currentSetter: "p1" }));
+      await failSetTrick("g1");
+
+      expect(mockTxSetCalls).toHaveLength(1);
+      const notif = findInTxNotification("your_turn", "p2");
+      expect(notif).toBeDefined();
+      expect(notif?.title).toBe("Your Turn to Set!");
+    });
+
+    it("submitMatchAttempt (honor-system landed) stages the setter notification in-tx", async () => {
+      const matching = {
+        ...baseGame,
+        phase: "matching",
+        currentSetter: "p1",
+        currentTurn: "p2",
+        currentTrickName: "Kickflip",
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(matching));
+      await submitMatchAttempt("g1", null, true);
+
+      // Exactly one in-tx notification, targeting the former setter.
+      expect(mockTxSetCalls).toHaveLength(1);
+      const notif = findInTxNotification("your_turn", "p1");
+      expect(notif?.title).toBe("Trick Landed!");
+    });
+
+    it("submitMatchAttempt (missed, game over) stages a game_won notification in-tx", async () => {
+      const matching = {
+        ...baseGame,
+        phase: "matching",
+        currentSetter: "p1",
+        currentTurn: "p2",
+        currentTrickName: "Kickflip",
+        p2Letters: 4, // matcher hits 5 → setter wins
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(matching));
+      const result = await submitMatchAttempt("g1", null, false);
+      expect(result.gameOver).toBe(true);
+
+      const notif = findInTxNotification("game_won", "p1");
+      expect(notif).toBeDefined();
+      expect(notif?.title).toBe("You Won!");
+    });
+
+    it("submitMatchAttempt (judge-active landed) stages a judge-ruling notification in-tx", async () => {
+      const matching = {
+        ...baseGame,
+        phase: "matching",
+        currentSetter: "p1",
+        currentTurn: "p2",
+        currentTrickName: "Kickflip",
+        judgeId: "j1",
+        judgeUsername: "judge",
+        judgeStatus: "accepted",
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(matching));
+      await submitMatchAttempt("g1", null, true);
+
+      const notif = findInTxNotification("your_turn", "j1");
+      expect(notif).toBeDefined();
+      expect(notif?.title).toBe("Ruling Needed");
+    });
+
+    it("callBSOnSetTrick stages the judge notification in-tx", async () => {
+      const matchingWithJudge = {
+        ...baseGame,
+        phase: "matching",
+        currentSetter: "p1",
+        currentTurn: "p2",
+        currentTrickName: "Kickflip",
+        judgeId: "j1",
+        judgeStatus: "accepted",
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingWithJudge));
+      await callBSOnSetTrick("g1");
+
+      expect(mockTxSetCalls).toHaveLength(1);
+      const notif = findInTxNotification("your_turn", "j1");
+      expect(notif?.title).toBe("Ruling Needed");
+    });
+
+    it("judgeRuleSetTrick (clean) stages matcher notification in-tx", async () => {
+      const setReview = {
+        ...baseGame,
+        phase: "setReview",
+        currentSetter: "p1",
+        currentTurn: "j1",
+        currentTrickName: "Kickflip",
+        judgeId: "j1",
+        judgeStatus: "accepted",
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(setReview));
+      await judgeRuleSetTrick("g1", true);
+
+      const notif = findInTxNotification("your_turn", "p2");
+      expect(notif?.title).toBe("Referee ruled: Clean");
+    });
+
+    it("judgeRuleSetTrick (sketchy) stages setter notification in-tx", async () => {
+      const setReview = {
+        ...baseGame,
+        phase: "setReview",
+        currentSetter: "p1",
+        currentTurn: "j1",
+        currentTrickName: "Kickflip",
+        judgeId: "j1",
+        judgeStatus: "accepted",
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(setReview));
+      await judgeRuleSetTrick("g1", false);
+
+      const notif = findInTxNotification("your_turn", "p1");
+      expect(notif?.title).toBe("Referee ruled: Sketchy");
+    });
+
+    it("resolveDispute (landed) stages matcher notification in-tx with judge as sender", async () => {
+      const disputable = {
+        ...baseGame,
+        phase: "disputable",
+        currentSetter: "p1",
+        currentTurn: "j1",
+        currentTrickName: "Kickflip",
+        matchVideoUrl: "https://vid.url/match.webm",
+        judgeId: "j1",
+        judgeStatus: "accepted",
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputable));
+      await resolveDispute("g1", true);
+
+      const notif = findInTxNotification("your_turn", "p2");
+      expect(notif?.senderUid).toBe("j1");
+      expect(notif?.title).toBe("Referee ruled: Landed");
+    });
+
+    it("resolveDispute (missed, game over) stages a game_lost notification in-tx", async () => {
+      const disputable = {
+        ...baseGame,
+        phase: "disputable",
+        currentSetter: "p1",
+        currentTurn: "j1",
+        currentTrickName: "Kickflip",
+        matchVideoUrl: "https://vid.url/match.webm",
+        judgeId: "j1",
+        judgeStatus: "accepted",
+        p2Letters: 4,
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputable));
+      const result = await resolveDispute("g1", false);
+      expect(result.gameOver).toBe(true);
+
+      const notif = findInTxNotification("game_lost", "p2");
+      expect(notif?.senderUid).toBe("j1");
+      expect(notif?.title).toBe("Game Over");
+    });
+
+    it("resolveDispute (missed, continuing) stages a your_turn notification in-tx", async () => {
+      const disputable = {
+        ...baseGame,
+        phase: "disputable",
+        currentSetter: "p1",
+        currentTurn: "j1",
+        currentTrickName: "Kickflip",
+        matchVideoUrl: "https://vid.url/match.webm",
+        judgeId: "j1",
+        judgeStatus: "accepted",
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputable));
+      await resolveDispute("g1", false);
+
+      const notif = findInTxNotification("your_turn", "p2");
+      expect(notif?.title).toBe("Referee ruled: Missed");
+    });
+
+    it("in-tx notifications roll back when the transaction callback throws", async () => {
+      // Simulate a rule-layer rejection mid-transaction: update succeeds but
+      // the validator throws before commit. Because everything is staged
+      // inside the same tx, the notification write cannot land independently.
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...baseGame, phase: "setting" }));
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: Function) => {
+        const tx = {
+          get: mockTxGet,
+          update: mockTxUpdate,
+          set: vi.fn((ref: unknown, data: Record<string, unknown>) => {
+            mockTxSetCalls.push({ ref, data });
+          }),
+        };
+        // Run the callback so it stages writes...
+        await cb(tx);
+        // ...then throw, mimicking a post-callback commit failure. With a
+        // real Firestore transaction, NONE of the staged writes commit.
+        throw new Error("aborted");
+      });
+
+      await expect(setTrick("g1", "Kickflip", null)).rejects.toThrow("aborted");
+      // We don't need to observe staged writes being "undone" — the point is
+      // that with tx.set (rather than a post-commit addDoc), the Firestore
+      // SDK is responsible for atomicity. The test proves the call path still
+      // hits the transaction boundary even on failure.
+      expect(mockRunTransaction).toHaveBeenCalled();
     });
   });
 });

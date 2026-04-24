@@ -19,6 +19,18 @@ src/**/*.mp4
 src/**/*.webm
 src/**/*.mov
 
-# Capacitor native platforms (generated — rebuild with `npm run cap:sync`)
-ios
-# android is tracked so we can customise AndroidManifest, Gradle, icons, etc.
+# Capacitor native platforms — both tracked so we can customise manifests,
+# entitlements, icons, signing configs, and Info.plist. Only build artefacts
+# and per-developer Xcode state are ignored below.
+
+# iOS (Capacitor/Xcode) — tracked project, ignore build + pod artefacts
+ios/App/Pods/
+ios/App/*.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/App/build/
+ios/App/DerivedData/
+ios/build/
+# TODO: decide whether to commit Podfile.lock. Some teams commit it for
+# reproducible CI builds; leaving it ignored for now to avoid merge churn.
+ios/App/Podfile.lock
