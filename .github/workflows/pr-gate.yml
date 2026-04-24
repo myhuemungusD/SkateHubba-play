@@ -94,6 +94,17 @@ jobs:
       - name: Scan test files for duplicated blocks
         run: node scripts/check-test-duplication.mjs
 
+  check-file-length:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Report files over length budget (non-blocking)
+        run: node scripts/check-file-length.mjs
+
   validate-firebase-rules:
     name: Validate Firebase rules changes
     runs-on: ubuntu-latest

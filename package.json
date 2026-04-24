@@ -28,6 +28,7 @@
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "check:test-dup": "node scripts/check-test-duplication.mjs",
+    "check:file-length": "node scripts/check-file-length.mjs",
     "verify": "tsc -b && npm run lint && npm run test:coverage && npm run build",
     "prepare": "husky"
   },
