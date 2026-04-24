@@ -93,10 +93,7 @@ export async function recordNativeVideo(): Promise<NativeVideoResult> {
     // max-duration option, and a runaway recording could blow past the
     // 50 MB Storage rule ceiling.
     const autoStop = new Promise<void>((resolve) => {
-      autoStopTimer = setTimeout(() => {
-        autoStopTimer = null;
-        resolve();
-      }, MAX_VIDEO_DURATION_MS);
+      autoStopTimer = setTimeout(resolve, MAX_VIDEO_DURATION_MS);
     });
     await autoStop;
 
