@@ -84,6 +84,29 @@ jobs:
             echo "No workflow changes detected."
           fi
 
+  check-test-duplication:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Scan test files for duplicated blocks
+        run: node scripts/check-test-duplication.mjs
+
+  check-file-length:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Report files over length budget (non-blocking)
+        # Soft budget: surface the report in logs but never fail the PR gate.
+        # Use --strict locally to enforce; CI stays informational.
+        continue-on-error: true
+        run: node scripts/check-file-length.mjs
+
   validate-firebase-rules:
     name: Validate Firebase rules changes
     runs-on: ubuntu-latest

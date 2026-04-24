@@ -12,7 +12,8 @@ This file establishes the production-level problem-solving mindset for working o
 4. **Prove it works.** Every change must pass type check, lint, tests, and build before it's considered done.
 5. **Blast radius awareness.** Know what your change touches. A service function change can affect every screen that calls it. A Firestore rule change affects every user in production.
 6. no type of sycophancy
-7. always use opus agents for work 
+7. always use opus agents for work
+
 ---
 
 ## Verification Commands
@@ -122,6 +123,18 @@ When something breaks, work through this in order:
 | `firestore.rules`         | The real backend. Enforces turn order, score increments, timer, rate limits                            |
 | `storage.rules`           | `set` or `match` filenames with `.webm` (web) or `.mp4` (native). Content-type must match extension    |
 | `vercel.json`             | CSP headers, HSTS, SPA rewrites, domain redirects. Touch carefully                                     |
+
+---
+
+## File length budgets
+
+Soft budgets (warnings, not hard errors) for production source files:
+
+- `src/services/**` — 400 LOC
+- `src/screens/**` — 350 LOC
+- `src/components/**` — 250 LOC
+
+LOC = non-empty, non-comment lines. Run `npm run check:file-length` locally; add `--strict` to fail on any overage. CI reports this non-blocking. Over-budget files are a signal to extract helpers, not an excuse for a drive-by refactor.
 
 ---
 
