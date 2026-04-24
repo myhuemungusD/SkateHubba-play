@@ -128,9 +128,12 @@ if (env) {
   // show a verified-request rate > 95 % for the skatehubba.com + www
   // domains, flip the env var to re-enable.
   /* v8 ignore start */
-  if (import.meta.env.DEV) {
+  if (useEmulators) {
     // Expose debug token so the App Check debug provider works locally.
     // Firebase App Check reads this off the global scope at init time.
+    // Gated on useEmulators (not import.meta.env.DEV) so a dev build that
+    // points at production Firebase never flips its real reCAPTCHA provider
+    // into debug mode — that silently fails every App Check token exchange.
     (self as unknown as Record<string, unknown>).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
   }
   /* v8 ignore stop */
