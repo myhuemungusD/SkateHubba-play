@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlreadyUpvotedError,
-  fetchClipsFeed,
   fetchClipUpvoteState,
+  fetchRandomLandedClips,
   upvoteClip,
   type ClipDoc,
-  type ClipsFeedCursor,
   type ClipUpvoteState,
 } from "../services/clips";
 import { logger } from "../services/logger";
@@ -17,11 +16,10 @@ import { FilmIcon, FlameIcon, ChevronRightIcon, FlagIcon } from "./icons";
 import { ProUsername } from "./ProUsername";
 import type { UserProfile } from "../services/users";
 
-const PAGE_SIZE = 12;
+const SAMPLE_SIZE = 12;
+const POOL_SIZE = 60;
 
-/** Firestore error codes that map to "service-side issue, not your network".
- *  Used to swap the misleading "check your connection" copy for something
- *  truer when the failure is permission-denied / index missing / unauthed. */
+/** Firestore error codes that map to "service-side issue, not your network". */
 const SERVICE_ERROR_CODES = new Set(["permission-denied", "failed-precondition", "unauthenticated"]);
 
 function errorCodeFor(err: unknown): string | undefined {
@@ -64,37 +62,30 @@ export interface ClipsFeedProps {
 }
 
 /**
- * Community clips feed, embedded inside the Lobby.
+ * Community clips spotlight, embedded inside the Lobby.
  *
- * Originally lived as its own /feed screen + bottom-nav tab; consolidated into
- * the lobby so the home surface contains everything a user can do (your games,
- * skaters directory, browse clips) without a tab switch.
+ * Shows one random landed-trick clip at a time. The video plays through once
+ * (no loop, no auto-advance); when it ends, the viewer picks REPLAY or
+ * NEXT TRICK. Upvote, challenge-user, and report controls stay visible on
+ * the action row below the video.
+ *
+ * Random pool is refetched (and reshuffled) transparently when the viewer
+ * exhausts it with NEXT TRICK.
  */
 export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedProps) {
-  const [clips, setClips] = useState<ClipDoc[]>([]);
-  const [cursor, setCursor] = useState<ClipsFeedCursor | null>(null);
+  const [pool, setPool] = useState<ClipDoc[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  // Separate from `error`/`errorCode` so a load-more failure doesn't replace
-  // the whole feed — existing clips stay visible and the error renders where
-  // the Load more button was.
-  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
-  const [loadMoreErrorCode, setLoadMoreErrorCode] = useState<string | null>(null);
-  const [endOfFeed, setEndOfFeed] = useState(false);
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
   const [reportedClipIds, setReportedClipIds] = useState<ReadonlySet<string>>(new Set());
-  // Per-clip upvote state, keyed by clip id. Defaults to {0,false} when
-  // an entry is missing (e.g. the batch fetch failed for that page).
   const [upvoteState, setUpvoteState] = useState<ReadonlyMap<string, ClipUpvoteState>>(new Map());
-  // Tracks an in-flight upvote tap so a user can't double-fire on the same
-  // clip before the optimistic update settles.
   const [upvotingIds, setUpvotingIds] = useState<ReadonlySet<string>>(new Set());
 
   const blockedUids = useBlockedUsers(profile.uid);
 
-  // Guard against setState-after-unmount during pagination races.
+  // Guard against setState-after-unmount during fetch races.
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
@@ -103,17 +94,16 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     };
   }, []);
 
-  // Mirror `upvotingIds` in a ref so `hydrateUpvotes` can see it without
-  // being re-memoized on every tap (which would retrigger hydration).
+  // Mirror `upvotingIds` in a ref so hydration can see it without being
+  // re-memoized on every tap (which would retrigger hydration).
   const upvotingIdsRef = useRef<ReadonlySet<string>>(upvotingIds);
   useEffect(() => {
     upvotingIdsRef.current = upvotingIds;
   }, [upvotingIds]);
 
-  // Hydrate upvote state for a freshly-loaded page of clips. Best-effort:
-  // failures here just leave entries missing (UI defaults to count=0,
-  // not-upvoted) — never block the feed render. Own clips are skipped
-  // because they can't be upvoted; no sense paying for those reads.
+  // Hydrate upvote state for a freshly-loaded pool. Best-effort: failures
+  // leave entries missing (UI defaults to count=0, not-upvoted). Own clips
+  // are skipped because self-upvote is disallowed.
   const hydrateUpvotes = useCallback(
     async (pageClips: readonly ClipDoc[]) => {
       const ids = pageClips.filter((c) => c.playerUid !== profile.uid).map((c) => c.id);
@@ -124,9 +114,8 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         setUpvoteState((prev) => {
           const next = new Map(prev);
           for (const [id, state] of map) {
-            // Race guard: if the user has already optimistically upvoted
-            // (or a vote is in-flight), the hydrated pre-vote snapshot
-            // would clobber their tap. Keep the user-initiated state.
+            // Race guard: don't clobber an optimistic upvote with the
+            // pre-vote hydrated snapshot.
             const existing = prev.get(id);
             if (existing?.alreadyUpvoted || upvotingIdsRef.current.has(id)) continue;
             next.set(id, state);
@@ -140,19 +129,18 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     [profile.uid],
   );
 
-  const loadFirstPage = useCallback(async () => {
+  const loadPool = useCallback(async () => {
     setLoading(true);
     setError(null);
     setErrorCode(null);
     try {
-      const page = await fetchClipsFeed(null, PAGE_SIZE);
+      const fresh = await fetchRandomLandedClips(SAMPLE_SIZE, POOL_SIZE);
       if (!mountedRef.current) return;
-      setClips(page.clips);
-      setCursor(page.cursor);
-      setEndOfFeed(page.clips.length < PAGE_SIZE);
-      // Hydration is fire-and-forget — feed renders immediately, upvote
-      // counts pop in once the batch resolves.
-      void hydrateUpvotes(page.clips);
+      setPool(fresh);
+      setCurrentIndex(0);
+      // Hydration is fire-and-forget — spotlight renders immediately,
+      // upvote counts pop in once the batch resolves.
+      void hydrateUpvotes(fresh);
     } catch (err) {
       const code = errorCodeFor(err);
       logger.warn("clips_feed_load_failed", { code, error: parseFirebaseError(err) });
@@ -166,32 +154,26 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   }, [hydrateUpvotes]);
 
   useEffect(() => {
-    loadFirstPage();
-  }, [loadFirstPage]);
+    loadPool();
+  }, [loadPool]);
 
-  const loadMore = useCallback(async () => {
-    if (!cursor || loadingMore || endOfFeed) return;
-    setLoadingMore(true);
-    setLoadMoreError(null);
-    setLoadMoreErrorCode(null);
-    try {
-      const page = await fetchClipsFeed(cursor, PAGE_SIZE);
-      if (!mountedRef.current) return;
-      setClips((prev) => [...prev, ...page.clips]);
-      setCursor(page.cursor);
-      if (page.clips.length < PAGE_SIZE) setEndOfFeed(true);
-      void hydrateUpvotes(page.clips);
-    } catch (err) {
-      const code = errorCodeFor(err);
-      logger.warn("clips_feed_loadmore_failed", { code, error: parseFirebaseError(err) });
-      if (mountedRef.current) {
-        setLoadMoreError(copyForError(code));
-        setLoadMoreErrorCode(code ?? null);
-      }
-    } finally {
-      if (mountedRef.current) setLoadingMore(false);
+  // Filter blocked users + reported clips out on the client.
+  const visibleClips = useMemo(
+    () => pool.filter((c) => !blockedUids.has(c.playerUid) && !reportedClipIds.has(c.id)),
+    [pool, blockedUids, reportedClipIds],
+  );
+
+  const safeIndex = visibleClips.length === 0 ? 0 : Math.min(currentIndex, visibleClips.length - 1);
+  const currentClip = visibleClips[safeIndex];
+
+  const handleNext = useCallback(() => {
+    if (safeIndex + 1 >= visibleClips.length) {
+      // Pool exhausted — refetch + reshuffle.
+      void loadPool();
+      return;
     }
-  }, [cursor, loadingMore, endOfFeed, hydrateUpvotes]);
+    setCurrentIndex(safeIndex + 1);
+  }, [safeIndex, visibleClips.length, loadPool]);
 
   const handleUpvote = useCallback(
     async (clip: ClipDoc) => {
@@ -204,8 +186,6 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         next.add(clip.id);
         return next;
       });
-      // Optimistic flip — feels instant, rolled back below if the write
-      // fails for any reason other than AlreadyUpvotedError.
       setUpvoteState((prev) => {
         const next = new Map(prev);
         next.set(clip.id, { count: current.count + 1, alreadyUpvoted: true });
@@ -221,11 +201,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
           return next;
         });
       } catch (err) {
-        if (err instanceof AlreadyUpvotedError) {
-          // Server already has our vote (e.g. a second device or stale
-          // local state). Optimistic state matches truth — keep it.
-          return;
-        }
+        if (err instanceof AlreadyUpvotedError) return;
         logger.warn("clips_feed_upvote_failed", { clipId: clip.id, error: parseFirebaseError(err) });
         if (!mountedRef.current) return;
         setUpvoteState((prev) => {
@@ -246,75 +222,21 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     [profile.uid, upvoteState, upvotingIds],
   );
 
-  // Filter blocked users out on the client (matches how games/directory work).
-  const visibleClips = useMemo(
-    () => clips.filter((c) => !blockedUids.has(c.playerUid) && !reportedClipIds.has(c.id)),
-    [clips, blockedUids, reportedClipIds],
-  );
-
-  // Top-of-feed rotation. The top slot auto-advances through the visible
-  // landed-trick clips so the lobby always feels alive — once one clip
-  // finishes, the next plays. Wraps back to the start at the end of the
-  // loaded page (and tries to fetch more so the rotation can keep growing).
-  //
-  // Tracked by clip id rather than positional index: a positional index
-  // silently points at a different clip whenever the list mutates (a clip
-  // gets reported, a blocked user's clip is filtered out, pagination
-  // inserts new clips). Identity tracking keeps the "currently playing"
-  // clip stable across those mutations.
-  //
-  // `topClipId` holds the user's rotation selection; `effectiveTopClipId`
-  // resolves it against the live `visibleClips` list. Deriving the
-  // effective id via memo (instead of sync'ing via `useEffect`) removes
-  // the render-window where state is null but the DOM is already showing
-  // visibleClips[0] — that window was the source of a CI race where an
-  // `ended` event arrived before the sync effect had run and rotation
-  // silently no-op'd back onto the clip already playing.
-  const [topClipId, setTopClipId] = useState<string | null>(null);
-  const effectiveTopClipId = useMemo<string | null>(() => {
-    if (visibleClips.length === 0) return null;
-    if (topClipId && visibleClips.some((c) => c.id === topClipId)) return topClipId;
-    return visibleClips[0].id;
-  }, [visibleClips, topClipId]);
-
-  const advanceTopClip = useCallback(() => {
-    if (visibleClips.length === 0) return;
-    setTopClipId((current) => {
-      // Resolve the "current" selection the same way the DOM does via
-      // `effectiveTopClipId` — a stale or null `current` still maps to
-      // visibleClips[0], so advancing always moves forward by one slot.
-      const resolved = current && visibleClips.some((c) => c.id === current) ? current : visibleClips[0].id;
-      const currentIndex = visibleClips.findIndex((c) => c.id === resolved);
-      const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % visibleClips.length;
-      // Approaching the end of what's loaded? Kick off a load-more so the
-      // rotation has fresh material before we wrap back to clip 0.
-      if (nextIndex >= visibleClips.length - 2 && !endOfFeed && !loadingMore && cursor) {
-        void loadMore();
-      }
-      return visibleClips[nextIndex].id;
-    });
-  }, [visibleClips, endOfFeed, loadingMore, cursor, loadMore]);
-
-  const myUid = profile.uid;
-
-  // Reorder so the rotating clip is always rendered at index 0 (and thus
-  // gets the autoplay TopClipVideo branch below). The rest of the feed
-  // keeps its reverse-chronological order behind it.
-  const orderedClips = useMemo(() => {
-    if (visibleClips.length === 0) return visibleClips;
-    const idx = effectiveTopClipId ? visibleClips.findIndex((c) => c.id === effectiveTopClipId) : -1;
-    if (idx <= 0) return visibleClips;
-    return [visibleClips[idx], ...visibleClips.filter((_, i) => i !== idx)];
-  }, [visibleClips, effectiveTopClipId]);
+  const isOwnClip = currentClip ? currentClip.playerUid === profile.uid : false;
+  const upvote: ClipUpvoteState = currentClip
+    ? (upvoteState.get(currentClip.id) ?? { count: 0, alreadyUpvoted: false })
+    : { count: 0, alreadyUpvoted: false };
+  const isUpvoting = currentClip ? upvotingIds.has(currentClip.id) : false;
+  const upvoteDisabled = isOwnClip || upvote.alreadyUpvoted || isUpvoting;
 
   return (
     <section className="mb-6" aria-label="Community feed">
-      {/* Section header — matches Lobby's other section headings (SKATERS, ACTIVE, COMPLETED) */}
+      {/* Section header */}
       <div className="flex items-center gap-2 mb-3">
         <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">FEED</h3>
         {visibleClips.length > 0 && (
           <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
-            {visibleClips.length}
+            {safeIndex + 1}/{visibleClips.length}
           </span>
         )}
       </div>
@@ -323,56 +245,50 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       {error && !loading && (
         <div className="glass-card rounded-2xl p-5 mb-3 border border-brand-red/30">
           <p className="font-body text-sm text-white/80 mb-3">{error}</p>
-          {/* Surface the Firestore error code in dev so "Couldn't load" is
-              actually diagnosable from a dev-tools screenshot. Hidden in
-              prod to keep the user-facing copy clean. */}
           {errorCode && import.meta.env.DEV && (
             <p className="font-body text-[10px] text-faint mb-3">code: {errorCode}</p>
           )}
-          <Btn onClick={loadFirstPage} variant="secondary">
+          <Btn onClick={loadPool} variant="secondary">
             Try again
           </Btn>
         </div>
       )}
 
-      {/* Loading (first page) — content-shaped skeleton so the viewport
-          doesn't jump ~600px when the feed lands. Mirrors the real clip
-          card: meta row (avatar + handle + role badge + time), 9:16 video
-          slot, trick name, action row. Announced via role="status" +
-          aria-busy so assistive tech picks up the loading state. */}
+      {/* Loading skeleton */}
       {loading && (
-        <ul className="space-y-4 animate-pulse" role="status" aria-busy="true" aria-label="Loading clips">
-          {[0, 1].map((i) => (
-            <li key={i} className="glass-card rounded-2xl overflow-hidden">
-              <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full bg-surface-alt border border-border" />
-                  <div className="h-3 w-20 rounded-md bg-surface-alt" />
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-4 w-10 rounded-md bg-surface-alt" />
-                  <div className="h-3 w-12 rounded-md bg-surface-alt/70" />
-                </div>
-              </div>
-              <div className="px-4">
-                <div className="w-full aspect-[9/16] max-h-[560px] rounded-xl bg-surface-alt border border-border" />
-              </div>
-              <div className="px-4 pt-3">
-                <div className="h-5 w-40 rounded-md bg-surface-alt" />
-              </div>
-              <div className="px-4 pt-3 pb-4 flex items-center gap-2">
-                <div className="h-11 w-16 rounded-xl bg-surface-alt" />
-                <div className="h-11 flex-1 rounded-xl bg-surface-alt" />
-                <div className="h-11 w-20 rounded-xl bg-surface-alt" />
-              </div>
-            </li>
-          ))}
+        <div
+          className="glass-card rounded-2xl overflow-hidden animate-pulse"
+          role="status"
+          aria-busy="true"
+          aria-label="Loading clips"
+        >
+          <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-full bg-surface-alt border border-border" />
+              <div className="h-3 w-20 rounded-md bg-surface-alt" />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-4 w-10 rounded-md bg-surface-alt" />
+              <div className="h-3 w-12 rounded-md bg-surface-alt/70" />
+            </div>
+          </div>
+          <div className="px-4">
+            <div className="w-full aspect-[9/16] max-h-[560px] rounded-xl bg-surface-alt border border-border" />
+          </div>
+          <div className="px-4 pt-3">
+            <div className="h-5 w-40 rounded-md bg-surface-alt" />
+          </div>
+          <div className="px-4 pt-3 pb-4 flex items-center gap-2">
+            <div className="h-11 w-16 rounded-xl bg-surface-alt" />
+            <div className="h-11 flex-1 rounded-xl bg-surface-alt" />
+            <div className="h-11 w-20 rounded-xl bg-surface-alt" />
+          </div>
           <span className="sr-only">Loading feed…</span>
-        </ul>
+        </div>
       )}
 
       {/* Empty */}
-      {!loading && !error && visibleClips.length === 0 && (
+      {!loading && !error && !currentClip && (
         <div className="flex flex-col items-center py-10 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30">
           <FilmIcon size={24} className="mb-3 text-faint" />
           <p className="font-body text-sm text-dim">No clips yet.</p>
@@ -380,161 +296,97 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         </div>
       )}
 
-      {/* Clips list */}
-      {!loading && visibleClips.length > 0 && (
-        <ul className="space-y-4" aria-label="Clips feed">
-          {orderedClips.map((clip, index) => {
-            const isOwnClip = clip.playerUid === myUid;
-            const upvote = upvoteState.get(clip.id) ?? { count: 0, alreadyUpvoted: false };
-            const isUpvoting = upvotingIds.has(clip.id);
-            const upvoteDisabled = isOwnClip || upvote.alreadyUpvoted || isUpvoting;
-            return (
-              <li key={clip.id} className="glass-card rounded-2xl overflow-hidden">
-                {/* Top meta row: player + time + role badge */}
-                <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
-                  <button
-                    type="button"
-                    onClick={() => onViewPlayer(clip.playerUid)}
-                    className="flex items-center gap-2 touch-target rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
-                  >
-                    <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
-                      <span className="font-display text-[11px] text-brand-orange leading-none">
-                        {clip.playerUsername[0]?.toUpperCase() ?? "?"}
-                      </span>
-                    </div>
-                    <ProUsername
-                      username={clip.playerUsername}
-                      className="font-body text-xs text-white/80 group-hover:text-brand-orange transition-colors duration-200"
-                    />
-                  </button>
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`font-display text-[10px] tracking-[0.2em] px-2 py-0.5 rounded-md border ${
-                        clip.role === "set"
-                          ? "text-brand-orange border-brand-orange/30 bg-brand-orange/5"
-                          : "text-brand-green border-brand-green/30 bg-brand-green/5"
-                      }`}
-                      aria-label={clip.role === "set" ? "Setter's landed trick" : "Matcher's landed response"}
-                    >
-                      {clip.role === "set" ? "SET" : "MATCH"}
-                    </span>
-                    <span className="font-body text-[11px] text-faint">{relativeClipTime(clip.createdAt)}</span>
-                  </div>
-                </div>
+      {/* Spotlight clip */}
+      {!loading && currentClip && (
+        <article className="glass-card rounded-2xl overflow-hidden" aria-label="Current clip">
+          <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
+            <button
+              type="button"
+              onClick={() => onViewPlayer(currentClip.playerUid)}
+              className="flex items-center gap-2 touch-target rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
+            >
+              <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
+                <span className="font-display text-[11px] text-brand-orange leading-none">
+                  {currentClip.playerUsername[0]?.toUpperCase() ?? "?"}
+                </span>
+              </div>
+              <ProUsername
+                username={currentClip.playerUsername}
+                className="font-body text-xs text-white/80 group-hover:text-brand-orange transition-colors duration-200"
+              />
+            </button>
+            <div className="flex items-center gap-2">
+              <span
+                className={`font-display text-[10px] tracking-[0.2em] px-2 py-0.5 rounded-md border ${
+                  currentClip.role === "set"
+                    ? "text-brand-orange border-brand-orange/30 bg-brand-orange/5"
+                    : "text-brand-green border-brand-green/30 bg-brand-green/5"
+                }`}
+                aria-label={currentClip.role === "set" ? "Setter's landed trick" : "Matcher's landed response"}
+              >
+                {currentClip.role === "set" ? "SET" : "MATCH"}
+              </span>
+              <span className="font-body text-[11px] text-faint">{relativeClipTime(currentClip.createdAt)}</span>
+            </div>
+          </div>
 
-                {/* Video — top clip autoplays muted with tap-to-unmute. When
-                    the top clip ends it rotates to the next landed-trick
-                    clip in the feed, so the lobby always feels alive even
-                    before the user scrolls. Subsequent clips stay
-                    click-to-play to keep mobile data + battery sane. The
-                    key forces a fresh muted state on every rotation tick.
-                    When only one clip is visible, there's nothing to
-                    rotate to — hand off to the native `loop` attribute
-                    so the single clip replays without a stall gap. */}
-                <div className="px-4">
-                  {index === 0 ? (
-                    <TopClipVideo
-                      key={clip.id}
-                      src={clip.videoUrl}
-                      loop={visibleClips.length <= 1}
-                      onEnded={visibleClips.length > 1 ? advanceTopClip : undefined}
-                    />
-                  ) : (
-                    <video
-                      src={clip.videoUrl}
-                      controls
-                      playsInline
-                      preload="metadata"
-                      className="w-full aspect-[9/16] max-h-[560px] rounded-xl bg-black object-cover border border-border"
-                    />
-                  )}
-                </div>
+          {/* Video — plays once, no loop, no auto-advance. `key={clip.id}`
+              remounts (and resets ended/muted state) on every Next. */}
+          <div className="px-4">
+            <SpotlightVideo key={currentClip.id} src={currentClip.videoUrl} onNext={handleNext} />
+          </div>
 
-                {/* Trick name */}
-                <div className="px-4 pt-3">
-                  <h2 className="font-display text-xl text-white tracking-wide leading-tight">{clip.trickName}</h2>
-                </div>
+          {/* Trick name */}
+          <div className="px-4 pt-3">
+            <h2 className="font-display text-xl text-white tracking-wide leading-tight">{currentClip.trickName}</h2>
+          </div>
 
-                {/* Actions */}
-                <div className="px-4 pt-3 pb-4 flex items-center gap-2">
-                  {!isOwnClip && (
-                    <button
-                      type="button"
-                      onClick={() => handleUpvote(clip)}
-                      disabled={upvoteDisabled}
-                      aria-pressed={upvote.alreadyUpvoted}
-                      aria-label={
-                        upvote.alreadyUpvoted
-                          ? `Upvoted · ${upvote.count}`
-                          : `Upvote clip by @${clip.playerUsername} · current count ${upvote.count}`
-                      }
-                      className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 border transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed active:scale-[0.97] ${
-                        upvote.alreadyUpvoted
-                          ? "border-brand-orange/40 bg-brand-orange/15 text-brand-orange"
-                          : "border-border bg-surface/60 text-white/90 hover:border-brand-orange/30 hover:bg-brand-orange/5"
-                      }`}
-                    >
-                      <FlameIcon
-                        size={14}
-                        className={upvote.alreadyUpvoted ? "text-brand-orange" : "text-brand-orange/80"}
-                      />
-                      <span className="font-display text-xs tracking-wider tabular-nums">{upvote.count}</span>
-                    </button>
-                  )}
-                  {!isOwnClip && (
-                    <button
-                      type="button"
-                      onClick={() => onChallengeUser(clip.playerUsername)}
-                      aria-label={`Challenge @${clip.playerUsername}`}
-                      className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all duration-300 shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-                    >
-                      <span>Challenge</span>
-                      <ChevronRightIcon size={14} />
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setReportTarget(clip)}
-                    disabled={isOwnClip}
-                    aria-label={`Report clip by @${clip.playerUsername}`}
-                    className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 font-display text-[11px] tracking-[0.15em] text-faint border border-border hover:text-white hover:border-border-hover hover:bg-white/[0.02] disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-                  >
-                    <FlagIcon size={13} />
-                    REPORT
-                  </button>
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
-      {/* Pagination */}
-      {!loading && visibleClips.length > 0 && !endOfFeed && !loadMoreError && (
-        <div className="mt-4">
-          <Btn onClick={loadMore} variant="secondary" disabled={loadingMore}>
-            {loadingMore ? "Loading…" : "Load more"}
-          </Btn>
-        </div>
-      )}
-
-      {/* Load-more failure — shown in place of the Load more button so the
-          already-loaded clips above stay visible and the user sees a real
-          affordance to retry (rather than a silently stuck feed). */}
-      {!loading && visibleClips.length > 0 && !endOfFeed && loadMoreError && (
-        <div className="glass-card rounded-2xl p-5 mt-4 border border-brand-red/30">
-          <p className="font-body text-sm text-white/80 mb-3">{loadMoreError}</p>
-          {loadMoreErrorCode && import.meta.env.DEV && (
-            <p className="font-body text-[10px] text-faint mb-3">code: {loadMoreErrorCode}</p>
-          )}
-          <Btn onClick={loadMore} variant="secondary" disabled={loadingMore}>
-            {loadingMore ? "Loading…" : "Try again"}
-          </Btn>
-        </div>
-      )}
-
-      {!loading && visibleClips.length > 0 && endOfFeed && (
-        <p className="font-body text-xs text-faint text-center mt-4">You're all caught up.</p>
+          {/* Actions — vote, challenge, report stay visible always. */}
+          <div className="px-4 pt-3 pb-4 flex items-center gap-2">
+            {!isOwnClip && (
+              <button
+                type="button"
+                onClick={() => handleUpvote(currentClip)}
+                disabled={upvoteDisabled}
+                aria-pressed={upvote.alreadyUpvoted}
+                aria-label={
+                  upvote.alreadyUpvoted
+                    ? `Upvoted · ${upvote.count}`
+                    : `Upvote clip by @${currentClip.playerUsername} · current count ${upvote.count}`
+                }
+                className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 border transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed active:scale-[0.97] ${
+                  upvote.alreadyUpvoted
+                    ? "border-brand-orange/40 bg-brand-orange/15 text-brand-orange"
+                    : "border-border bg-surface/60 text-white/90 hover:border-brand-orange/30 hover:bg-brand-orange/5"
+                }`}
+              >
+                <FlameIcon size={14} className={upvote.alreadyUpvoted ? "text-brand-orange" : "text-brand-orange/80"} />
+                <span className="font-display text-xs tracking-wider tabular-nums">{upvote.count}</span>
+              </button>
+            )}
+            {!isOwnClip && (
+              <button
+                type="button"
+                onClick={() => onChallengeUser(currentClip.playerUsername)}
+                aria-label={`Challenge @${currentClip.playerUsername}`}
+                className="flex-1 min-h-[44px] flex items-center justify-center gap-1.5 rounded-xl font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all duration-300 shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                <span>Challenge</span>
+                <ChevronRightIcon size={14} />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setReportTarget(currentClip)}
+              disabled={isOwnClip}
+              aria-label={`Report clip by @${currentClip.playerUsername}`}
+              className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 font-display text-[11px] tracking-[0.15em] text-faint border border-border hover:text-white hover:border-border-hover hover:bg-white/[0.02] disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              <FlagIcon size={13} />
+              REPORT
+            </button>
+          </div>
+        </article>
       )}
 
       {/* Report modal */}
@@ -562,32 +414,27 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 }
 
 /**
- * Auto-playing top-of-feed clip with a tap-to-unmute affordance.
+ * Single-clip video with tap-to-unmute and a Replay / Next Trick overlay on end.
  *
- * Autoplay+muted by default; tapping the video toggles audio. Lives inline
- * rather than as a shared component because this surface and
- * `TurnHistoryViewer.ClipVideo` have slightly different chrome — premature
- * abstraction would obscure more than it would save.
- *
- * Pauses when scrolled out of the viewport so the clip isn't silently
- * decoding audio/video frames while the user reads the rest of the feed
- * — a meaningful battery and cellular-data saving on mobile.
+ * Autoplays muted once (no loop, no auto-advance). Pauses when scrolled out of
+ * the viewport — but only AFTER the first play() has resolved, because mobile
+ * Safari revokes the muted-autoplay grant if pause() runs too early, which
+ * surfaces as "feed loaded but clip won't play".
  */
-function TopClipVideo({ src, loop = false, onEnded }: { src: string; loop?: boolean; onEnded?: () => void }) {
+function SpotlightVideo({ src, onNext }: { src: string; onNext: () => void }) {
   const [muted, setMuted] = useState(true);
+  const [ended, setEnded] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const containerRef = useRef<HTMLButtonElement | null>(null);
-  // Tracks whether the video has ever successfully started playing. We use
-  // this to gate the IntersectionObserver's pause(): if pause() runs before
-  // the first play() resolves, mobile Safari treats the muted-autoplay
-  // grant as revoked and silently rejects every subsequent play() — which
-  // is exactly the "feed loaded but no clips play" symptom.
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const hasPlayedRef = useRef(false);
+
   const handlePlay = useCallback(() => {
-    // Belt-and-suspenders: if the native `autoPlay` attribute fires
-    // before (or instead of) our IO-driven play() call, flip the gate
-    // here too so a subsequent out-of-viewport pause() is still allowed.
     hasPlayedRef.current = true;
+    setEnded(false);
+  }, []);
+
+  const handleEnded = useCallback(() => {
+    setEnded(true);
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -599,24 +446,23 @@ function TopClipVideo({ src, loop = false, onEnded }: { src: string; loop?: bool
     });
   }, []);
 
+  const handleReplay = useCallback(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    el.currentTime = 0;
+    setEnded(false);
+    el.play().catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     const video = videoRef.current;
     const container = containerRef.current;
-    // IntersectionObserver is unavailable in some older browsers and most
-    // jsdom test environments — skip the pause-on-scroll enhancement
-    // rather than crash. Autoplay continues in full uninterrupted mode.
     if (!video || !container || typeof IntersectionObserver === "undefined") return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (!entry) return;
         if (entry.isIntersecting) {
-          // play() returns a Promise that rejects on interrupted
-          // autoplay (e.g. user tab-switches mid-resume). Swallow —
-          // the browser will retry on next intersection tick. We call
-          // play() explicitly rather than rely on the `autoPlay`
-          // attribute, because autoPlay only fires on element insert
-          // and is unreliable when the element mounts off-screen.
           video
             .play()
             .then(() => {
@@ -624,9 +470,8 @@ function TopClipVideo({ src, loop = false, onEnded }: { src: string; loop?: bool
             })
             .catch(() => undefined);
         } else if (hasPlayedRef.current) {
-          // Only pause once the video has actually started playing. The
-          // mount-time "below the fold" callback would otherwise race
-          // the autoplay attempt and revoke the muted-autoplay grant.
+          // Gate with hasPlayedRef: an early pause revokes the muted-autoplay
+          // grant on mobile Safari, which breaks every subsequent play().
           video.pause();
         }
       },
@@ -637,33 +482,64 @@ function TopClipVideo({ src, loop = false, onEnded }: { src: string; loop?: bool
   }, []);
 
   return (
-    <button
-      ref={containerRef}
-      type="button"
-      onClick={toggleMute}
-      aria-label={muted ? "Unmute clip" : "Mute clip"}
-      className="relative block w-full text-left rounded-xl overflow-hidden border border-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-    >
+    <div ref={containerRef} className="relative rounded-xl overflow-hidden border border-border">
       <video
         ref={videoRef}
         src={src}
         autoPlay
-        loop={loop}
         muted
         playsInline
         preload="metadata"
         onPlay={handlePlay}
-        onEnded={onEnded}
+        onEnded={handleEnded}
         className="w-full aspect-[9/16] max-h-[560px] bg-black object-cover"
       />
-      {muted && (
-        <span
-          aria-hidden="true"
-          className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-display tracking-[0.2em] text-white backdrop-blur"
+
+      {/* Tap-to-unmute overlay. Hidden once the clip ends so the Replay /
+          Next Trick overlay below can receive taps. */}
+      {!ended && (
+        <button
+          type="button"
+          onClick={toggleMute}
+          aria-label={muted ? "Unmute clip" : "Mute clip"}
+          className="absolute inset-0 z-10 w-full h-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
         >
-          MUTED · TAP
-        </span>
+          {muted && (
+            <span
+              aria-hidden="true"
+              className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-1 text-[10px] font-display tracking-[0.2em] text-white backdrop-blur"
+            >
+              MUTED · TAP
+            </span>
+          )}
+        </button>
       )}
-    </button>
+
+      {/* End-of-clip prompt: REPLAY or NEXT TRICK. */}
+      {ended && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 backdrop-blur-sm p-4">
+          <p className="font-display text-[11px] tracking-[0.2em] text-white/70">Clip ended</p>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleReplay}
+              aria-label="Replay clip"
+              className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-5 border border-border bg-surface/80 text-white/90 font-display text-sm tracking-wider hover:bg-white/[0.04] active:scale-[0.97] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              REPLAY
+            </button>
+            <button
+              type="button"
+              onClick={onNext}
+              aria-label="Next trick"
+              className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-5 font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              NEXT TRICK
+              <ChevronRightIcon size={14} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
