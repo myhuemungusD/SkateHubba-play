@@ -24,6 +24,19 @@ import { logger } from "./services/logger";
 // True when the Zod-validated env includes every required VITE_FIREBASE_* var.
 export const firebaseReady = env !== null;
 
+// Named Firestore database the app talks to. Single source of truth — used
+// both by initializeFirestore() below and by diagnostics (e.g. the
+// permission-denied breadcrumb in useAuth) so the value reported to Sentry
+// always matches the value the SDK actually queried.
+export const FIRESTORE_DB_NAME = "skatehubba";
+
+// Flipped to true only after a successful initializeAppCheck() call. Stays
+// false on every other path: opt-in skipped, missing site key, init threw.
+// Diagnostics read this to disambiguate permission-denied between an App
+// Check enforcement mismatch and a genuine rules failure.
+let appCheckInitialized = false;
+export const isAppCheckInitialized = (): boolean => appCheckInitialized;
+
 let app: FirebaseApp | null = null;
 let db: Firestore | null = null;
 let auth: Auth | null = null;
@@ -54,7 +67,7 @@ if (env) {
             tabManager: persistentMultipleTabManager(),
           }),
         },
-    "skatehubba",
+    FIRESTORE_DB_NAME,
   );
 
   auth = getAuth(app);
@@ -94,6 +107,7 @@ if (env) {
         provider: new ReCaptchaV3Provider(env.VITE_RECAPTCHA_SITE_KEY),
         isTokenAutoRefreshEnabled: true,
       });
+      appCheckInitialized = true;
     } catch (err) {
       // An invalid site key or blocked reCAPTCHA loader throws synchronously here.
       // Without this catch the whole Firebase init module would crash on load,
