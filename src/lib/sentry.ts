@@ -25,6 +25,7 @@ import { Capacitor } from "@capacitor/core";
 type SentryInitConfig = Parameters<typeof SentryTypes.init>[0];
 type AddBreadcrumbArg = Parameters<typeof SentryTypes.addBreadcrumb>[0];
 type CaptureExceptionArg = Parameters<typeof SentryTypes.captureException>[1];
+type CaptureMessageContext = Parameters<typeof SentryTypes.captureMessage>[1];
 type SentryUser = Parameters<typeof SentryTypes.setUser>[0];
 
 // Minimum shape we use from whichever SDK variant is active. Both
@@ -33,7 +34,7 @@ type SentryUser = Parameters<typeof SentryTypes.setUser>[0];
 // so a single structural type covers both.
 type SentryLike = {
   captureException: (err: unknown, ctx?: CaptureExceptionArg) => string;
-  captureMessage: (msg: string, level?: SentryTypes.SeverityLevel) => string;
+  captureMessage: (msg: string, context?: CaptureMessageContext) => string;
   addBreadcrumb: (crumb: AddBreadcrumbArg) => void;
   setUser: (user: SentryUser) => void;
 };
@@ -62,8 +63,8 @@ export function captureException(err: unknown, ctx?: CaptureExceptionArg): void 
   sdk?.captureException(err, ctx);
 }
 
-export function captureMessage(msg: string, level?: SentryTypes.SeverityLevel): void {
-  sdk?.captureMessage(msg, level);
+export function captureMessage(msg: string, context?: CaptureMessageContext): void {
+  sdk?.captureMessage(msg, context);
 }
 
 export function addBreadcrumb(crumb: AddBreadcrumbArg): void {

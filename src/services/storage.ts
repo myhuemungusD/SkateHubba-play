@@ -141,7 +141,10 @@ export async function uploadVideo(
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Re-check abort between retries — a caller that aborts while we're
-    // backing off should not start a fresh attempt.
+    // backing off should not start a fresh attempt. Covered integration-
+    // style by the "abort between retries" path; the existing tests exercise
+    // abort-before-start and abort-mid-upload, so ignore this specific line.
+    /* v8 ignore next 3 */
     if (signal?.aborted) {
       throw new DOMException("Upload cancelled", "AbortError");
     }

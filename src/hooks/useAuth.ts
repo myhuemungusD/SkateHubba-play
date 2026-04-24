@@ -4,7 +4,9 @@ import { onAuthChange, reloadUser } from "../services/auth";
 import { getUserProfile, getUserProfileOnAuth, type UserProfile } from "../services/users";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
-import { setUser as setSentryUser } from "../lib/sentry";
+import { captureMessage, setUser as setSentryUser } from "../lib/sentry";
+import { FIRESTORE_DB_NAME, isAppCheckInitialized } from "../firebase";
+import { env } from "../lib/env";
 
 interface AuthState {
   loading: boolean;
@@ -88,6 +90,22 @@ export function useAuth(): AuthState {
             uid: u.uid,
             error: parseFirebaseError(err),
           });
+          // permission-denied after getUserProfileOnAuth's retry budget is the
+          // smoking-gun signal for the Apr 22 incident class (App Check
+          // enforcement mismatch / wrong DB / missing rules deploy). Attach
+          // the three signals that disambiguate which cause is active so the
+          // next drift is a one-glance fix, not another runbook traversal.
+          if ((err as { code?: string })?.code === "permission-denied") {
+            captureMessage("users/{uid} permission-denied after retries", {
+              level: "error",
+              extra: {
+                uid: u.uid,
+                appCheckInitialized: isAppCheckInitialized(),
+                dbName: FIRESTORE_DB_NAME,
+                projectId: env?.VITE_FIREBASE_PROJECT_ID,
+              },
+            });
+          }
           setProfile(null);
         }
       } else {
