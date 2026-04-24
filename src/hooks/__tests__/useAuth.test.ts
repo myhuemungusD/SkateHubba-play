@@ -23,6 +23,23 @@ vi.mock("../../services/users", () => ({
   getUserProfileOnAuth: (uid: string) => mockGetUserProfile(uid),
 }));
 
+const mockCaptureMessage = vi.fn();
+const mockSetSentryUser = vi.fn();
+vi.mock("../../lib/sentry", () => ({
+  captureMessage: (...args: unknown[]) => mockCaptureMessage(...args),
+  setUser: (...args: unknown[]) => mockSetSentryUser(...args),
+  // logger.ts (transitively imported) calls addBreadcrumb on every warn/error
+  // emit; stub it so the mock is a complete swap, not a partial one.
+  addBreadcrumb: vi.fn(),
+  captureException: vi.fn(),
+}));
+
+const mockIsAppCheckInitialized = vi.fn(() => false);
+vi.mock("../../firebase", () => ({
+  FIRESTORE_DB_NAME: "skatehubba",
+  isAppCheckInitialized: () => mockIsAppCheckInitialized(),
+}));
+
 import { useAuth } from "../useAuth";
 
 beforeEach(() => {
@@ -120,6 +137,43 @@ describe("useAuth hook", () => {
       expect(result.current.profile).toBeNull();
       expect(result.current.user).toEqual({ uid: "u1" });
     });
+
+    // A generic Error (not a permission-denied) must NOT trigger the
+    // diagnostics breadcrumb — we only want it for the App Check / rules
+    // failure mode, otherwise every new-user sign-in would page Sentry.
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
+  });
+
+  it("emits Sentry diagnostics with App Check + DB signals on permission-denied", async () => {
+    mockIsAppCheckInitialized.mockReturnValueOnce(false);
+    const denied = Object.assign(new Error("Missing or insufficient permissions."), {
+      code: "permission-denied",
+    });
+    mockGetUserProfile.mockRejectedValueOnce(denied);
+
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      authChangeCallback?.({ uid: "u-denied" });
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+      expect(result.current.profile).toBeNull();
+    });
+
+    expect(mockCaptureMessage).toHaveBeenCalledTimes(1);
+    expect(mockCaptureMessage).toHaveBeenCalledWith(
+      "users/{uid} permission-denied after retries",
+      expect.objectContaining({
+        level: "error",
+        extra: expect.objectContaining({
+          uid: "u-denied",
+          appCheckInitialized: false,
+          dbName: "skatehubba",
+        }),
+      }),
+    );
   });
 
   it("refreshProfile does nothing when there is no user", async () => {
