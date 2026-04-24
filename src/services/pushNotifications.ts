@@ -124,10 +124,13 @@ export async function registerPushToken(uid: string): Promise<void> {
     await PushNotifications.register();
   } catch (err) {
     logger.warn("push_register_failed", { uid, error: parseFirebaseError(err) });
-    // Clean up the listener we just added — otherwise a retry stacks
+    // Clean up the listeners we just added — otherwise a retry stacks
     // duplicate handlers that each write the token on the next event.
+    // Swallow remove() failures so they don't mask the real register error.
+    /* v8 ignore start -- defensive cleanup; .remove() reject path is not observable from tests */
     await tokenListener?.remove().catch(() => {});
     await errorListener?.remove().catch(() => {});
+    /* v8 ignore stop */
   }
 }
 
