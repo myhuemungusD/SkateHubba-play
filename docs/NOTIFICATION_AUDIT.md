@@ -238,16 +238,16 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 ## Summary
 
-| #        | Severity   | Finding                                                                    | Type        | Status                                              |
-| -------- | ---------- | -------------------------------------------------------------------------- | ----------- | --------------------------------------------------- |
-| BUG-1    | **High**   | Client delete operations always fail (rules deny, docs accumulate forever) | Bug         | Resolved (recipient delete allowed)                 |
-| BUG-2    | **High**   | `dismissNotification` passes local ID, not Firestore doc ID                | Bug         | Resolved (`firestoreId` plumbed through)            |
-| SEC-1    | **Medium** | Rate-limit collection reads open to all authenticated users                | Security    | Resolved (reads scoped to `senderUid`)              |
-| SEC-2    | **Low**    | Nudge localStorage key not scoped to user                                  | Security    | Resolved                                            |
-| PERF-1   | **Medium** | No TTL or GC for notification documents + missing composite index          | Performance | Partially resolved (index added; no scheduled GC)   |
-| PERF-2   | **Low**    | FCM token array grows without proactive cleanup                            | Performance | Open (no Cloud Functions to run cleanup)            |
-| ROBUST-1 | **Medium** | Notifications marked read before user sees them                            | Robustness  | Resolved (read-marking is user-driven)              |
-| ROBUST-2 | **Low**    | Service worker Firebase SDK version manually synced                        | Robustness  | Open                                                |
+| #        | Severity   | Finding                                                                    | Type        | Status                                                        |
+| -------- | ---------- | -------------------------------------------------------------------------- | ----------- | ------------------------------------------------------------- |
+| BUG-1    | **High**   | Client delete operations always fail (rules deny, docs accumulate forever) | Bug         | Resolved (recipient delete allowed)                           |
+| BUG-2    | **High**   | `dismissNotification` passes local ID, not Firestore doc ID                | Bug         | Resolved (`firestoreId` plumbed through)                      |
+| SEC-1    | **Medium** | Rate-limit collection reads open to all authenticated users                | Security    | Resolved (reads scoped to `senderUid`)                        |
+| SEC-2    | **Low**    | Nudge localStorage key not scoped to user                                  | Security    | Resolved                                                      |
+| PERF-1   | **Medium** | No TTL or GC for notification documents + missing composite index          | Performance | Partially resolved (index added; no scheduled GC)             |
+| PERF-2   | **Low**    | FCM token array grows without proactive cleanup                            | Performance | Open (no Cloud Functions to run cleanup)                      |
+| ROBUST-1 | **Medium** | Notifications marked read before user sees them                            | Robustness  | Resolved (read-marking is user-driven)                        |
+| ROBUST-2 | **Low**    | Service worker Firebase SDK version manually synced                        | Robustness  | Open                                                          |
 | ROBUST-3 | **Low**    | `judge_invite` has no dedicated chime or FCM push path                     | Robustness  | Resolved (chime mapping); FCM push moot until sender re-added |
-| TEST-1   | **Medium** | No Firestore rules tests for `/notifications`, `/nudges`, `/nudge_limits`  | Coverage    | Partially resolved (`/notifications` covered)       |
-| TEST-2   | **Medium** | No Cloud Function unit tests                                               | Coverage    | N/A (no `functions/` package in repo)               |
+| TEST-1   | **Medium** | No Firestore rules tests for `/notifications`, `/nudges`, `/nudge_limits`  | Coverage    | Partially resolved (`/notifications` covered)                 |
+| TEST-2   | **Medium** | No Cloud Function unit tests                                               | Coverage    | N/A (no `functions/` package in repo)                         |

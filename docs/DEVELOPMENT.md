@@ -33,22 +33,22 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Available Scripts
 
-| Command                 | Description                                                              |
-| ----------------------- | ------------------------------------------------------------------------ |
-| `npm run dev`           | Start Vite dev server at `localhost:5173` with HMR                       |
-| `npm run build`         | TypeScript check + production build → `dist/`                            |
-| `npm run preview`       | Serve the production build locally                                       |
-| `npm run typecheck`     | Run `tsc -b` only                                                        |
-| `npm test`              | Run the full test suite once (CI mode)                                   |
-| `npm run test:watch`    | Run tests in watch mode while editing                                    |
-| `npm run test:coverage` | Run tests with coverage report (CI gate enforces thresholds)             |
-| `npm run test:rules`    | Run Firestore rules tests against the rules emulator                     |
+| Command                 | Description                                                                 |
+| ----------------------- | --------------------------------------------------------------------------- |
+| `npm run dev`           | Start Vite dev server at `localhost:5173` with HMR                          |
+| `npm run build`         | TypeScript check + production build → `dist/`                               |
+| `npm run preview`       | Serve the production build locally                                          |
+| `npm run typecheck`     | Run `tsc -b` only                                                           |
+| `npm test`              | Run the full test suite once (CI mode)                                      |
+| `npm run test:watch`    | Run tests in watch mode while editing                                       |
+| `npm run test:coverage` | Run tests with coverage report (CI gate enforces thresholds)                |
+| `npm run test:rules`    | Run Firestore rules tests against the rules emulator                        |
 | `npm run test:e2e`      | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators) |
-| `npm run lint`          | Lint `src/` with ESLint                                                  |
-| `npm run lint:fix`      | Lint and auto-fix where possible                                         |
-| `npm run format`        | Format `src/**/*.{ts,tsx}` with Prettier                                 |
-| `npm run verify`        | Full CI gate: `tsc -b && lint && test:coverage && build`                 |
-| `npm run emulators`     | Start the Firebase emulator suite locally                                |
+| `npm run lint`          | Lint `src/` with ESLint                                                     |
+| `npm run lint:fix`      | Lint and auto-fix where possible                                            |
+| `npm run format`        | Format `src/**/*.{ts,tsx}` with Prettier                                    |
+| `npm run verify`        | Full CI gate: `tsc -b && lint && test:coverage && build`                    |
+| `npm run emulators`     | Start the Firebase emulator suite locally                                   |
 
 ---
 

@@ -16,40 +16,40 @@ Status legend:
 
 ## 1. Phase 1 — Core Loop (Released v1.0.0)
 
-| Feature                        | Status   | Evidence                                                                  |
-| ------------------------------ | -------- | ------------------------------------------------------------------------- |
-| Email/password sign-up         | **Done** | `src/services/auth.ts`, `e2e/auth.spec.ts`                                |
-| Email/password sign-in         | **Done** | `src/services/auth.ts`                                                    |
-| Email verification + resend    | **Done** | `src/services/auth.ts`, `src/components/VerifyEmailBanner.tsx`            |
-| Google OAuth (popup+redirect)  | **Done** | `src/services/auth.ts`, `src/services/__tests__/auth-google.test.ts`      |
-| Password reset                 | **Done** | `src/services/auth.ts`                                                    |
-| Atomic username reservation    | **Done** | `src/services/users.ts` (uses `runTransaction`)                           |
-| Profile setup (stance, name)   | **Done** | `src/screens/ProfileSetup.tsx`                                            |
-| Challenge by username          | **Done** | `src/screens/ChallengeScreen.tsx`                                         |
-| Setting phase (record + name)  | **Done** | `src/screens/GamePlayScreen.tsx`, `src/components/VideoRecorder.tsx`      |
-| Matching phase (watch+attempt) | **Done** | `src/screens/GamePlayScreen.tsx`                                          |
-| Self-judging (landed/missed)   | **Done** | `src/services/games.ts`                                                   |
-| S.K.A.T.E. letter accumulation | **Done** | `src/components/LetterDisplay.tsx`, rules in `firestore.rules`            |
-| Win condition (5 letters)      | **Done** | `src/screens/GameOverScreen.tsx`, `firestore.rules`                       |
-| Real-time game updates         | **Done** | `src/services/games.ts` (dual `onSnapshot` for OR query)                  |
-| 24-hour turn timer             | **Done** | `src/components/Timer.tsx`, `src/components/LobbyTimer.tsx`               |
-| Auto-forfeit on expiry         | **Done** | `src/services/games.ts`                                                   |
-| WebM video recording (web)     | **Done** | `src/components/VideoRecorder.tsx`                                        |
-| MP4 capture (native)           | **Done** | `src/services/nativeVideo.ts`                                             |
-| Video upload + size guard      | **Done** | `src/services/storage.ts` (1 KB – 50 MB, retry w/ backoff)                |
-| Lobby (active+completed games) | **Done** | `src/screens/Lobby.tsx`                                                   |
-| Player profile + game history  | **Done** | `src/screens/PlayerProfileScreen.tsx`                                     |
-| Privacy Policy / ToS / Data    | **Done** | `src/screens/PrivacyPolicy.tsx`, `TermsOfService.tsx`, `DataDeletion.tsx` |
-| Account deletion               | **Done** | `src/services/auth.ts`, `src/components/DeleteAccountModal.tsx`           |
+| Feature                        | Status   | Evidence                                                                                                                        |
+| ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Email/password sign-up         | **Done** | `src/services/auth.ts`, `e2e/auth.spec.ts`                                                                                      |
+| Email/password sign-in         | **Done** | `src/services/auth.ts`                                                                                                          |
+| Email verification + resend    | **Done** | `src/services/auth.ts`, `src/components/VerifyEmailBanner.tsx`                                                                  |
+| Google OAuth (popup+redirect)  | **Done** | `src/services/auth.ts`, `src/services/__tests__/auth-google.test.ts`                                                            |
+| Password reset                 | **Done** | `src/services/auth.ts`                                                                                                          |
+| Atomic username reservation    | **Done** | `src/services/users.ts` (uses `runTransaction`)                                                                                 |
+| Profile setup (stance, name)   | **Done** | `src/screens/ProfileSetup.tsx`                                                                                                  |
+| Challenge by username          | **Done** | `src/screens/ChallengeScreen.tsx`                                                                                               |
+| Setting phase (record + name)  | **Done** | `src/screens/GamePlayScreen.tsx`, `src/components/VideoRecorder.tsx`                                                            |
+| Matching phase (watch+attempt) | **Done** | `src/screens/GamePlayScreen.tsx`                                                                                                |
+| Self-judging (landed/missed)   | **Done** | `src/services/games.ts`                                                                                                         |
+| S.K.A.T.E. letter accumulation | **Done** | `src/components/LetterDisplay.tsx`, rules in `firestore.rules`                                                                  |
+| Win condition (5 letters)      | **Done** | `src/screens/GameOverScreen.tsx`, `firestore.rules`                                                                             |
+| Real-time game updates         | **Done** | `src/services/games.ts` (dual `onSnapshot` for OR query)                                                                        |
+| 24-hour turn timer             | **Done** | `src/components/Timer.tsx`, `src/components/LobbyTimer.tsx`                                                                     |
+| Auto-forfeit on expiry         | **Done** | `src/services/games.ts`                                                                                                         |
+| WebM video recording (web)     | **Done** | `src/components/VideoRecorder.tsx`                                                                                              |
+| MP4 capture (native)           | **Done** | `src/services/nativeVideo.ts`                                                                                                   |
+| Video upload + size guard      | **Done** | `src/services/storage.ts` (1 KB – 50 MB, retry w/ backoff)                                                                      |
+| Lobby (active+completed games) | **Done** | `src/screens/Lobby.tsx`                                                                                                         |
+| Player profile + game history  | **Done** | `src/screens/PlayerProfileScreen.tsx`                                                                                           |
+| Privacy Policy / ToS / Data    | **Done** | `src/screens/PrivacyPolicy.tsx`, `TermsOfService.tsx`, `DataDeletion.tsx`                                                       |
+| Account deletion               | **Done** | `src/services/auth.ts`, `src/components/DeleteAccountModal.tsx`                                                                 |
 | Age gate (COPPA, 13+)          | **Done** | Inline DOB + parental-consent on `src/screens/AuthScreen.tsx`; carried to ProfileSetup via `NavigationContext.setAgeGateResult` |
-| Consent banner                 | **Done** | `src/components/ConsentBanner.tsx`                                        |
-| Offline read support           | **Done** | `src/firebase.ts` (persistent cache), `src/components/OfflineBanner.tsx`  |
-| PWA install                    | **Done** | `index.html`, `public/manifest`                                           |
-| Capacitor iOS/Android shells   | **Done** | `capacitor.config.ts`, `android/`, `ios/` (per `cap:open:*` scripts)      |
-| Sentry error tracking          | **Done** | `src/lib/sentry`, `src/main.tsx`                                          |
-| Vercel Analytics + Speed       | **Done** | `src/App.tsx` (`Analytics`, `SpeedInsights`)                              |
-| Firestore security rules       | **Done** | `firestore.rules` (~66 KB, validates turn order + scores + rate limits + judge paths) |
-| Storage security rules         | **Done** | `storage.rules`                                                           |
+| Consent banner                 | **Done** | `src/components/ConsentBanner.tsx`                                                                                              |
+| Offline read support           | **Done** | `src/firebase.ts` (persistent cache), `src/components/OfflineBanner.tsx`                                                        |
+| PWA install                    | **Done** | `index.html`, `public/manifest`                                                                                                 |
+| Capacitor iOS/Android shells   | **Done** | `capacitor.config.ts`, `android/`, `ios/` (per `cap:open:*` scripts)                                                            |
+| Sentry error tracking          | **Done** | `src/lib/sentry`, `src/main.tsx`                                                                                                |
+| Vercel Analytics + Speed       | **Done** | `src/App.tsx` (`Analytics`, `SpeedInsights`)                                                                                    |
+| Firestore security rules       | **Done** | `firestore.rules` (~66 KB, validates turn order + scores + rate limits + judge paths)                                           |
+| Storage security rules         | **Done** | `storage.rules`                                                                                                                 |
 
 **Phase 1 verdict:** 100% complete, in production at [skatehubba.com](https://skatehubba.com).
 
@@ -57,17 +57,17 @@ Status legend:
 
 ## 2. Phase 2 — Viral Mechanics
 
-| Feature                          | Status   | Evidence                                                                                                |
-| -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------- |
-| Invite flow (SMS / link / share) | **Done** | `src/components/InviteButton.tsx` + `invite_sent` analytics                                             |
-| Rematch from Game Over           | **Done** | `src/screens/GameOverScreen.tsx`; rematch handler wired on the `/gameover` route in `src/App.tsx`       |
-| Push notification registration   | **Done** | `src/services/fcm.ts`, `src/components/PushPermissionBanner.tsx`                                        |
-| In-app notification bell         | **Done** | `src/components/NotificationBell.tsx`, `src/services/notifications.ts`                                  |
-| Game notification watcher        | **Done** | `src/components/GameNotificationWatcher.tsx`                                                            |
+| Feature                          | Status   | Evidence                                                                                                                |
+| -------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Invite flow (SMS / link / share) | **Done** | `src/components/InviteButton.tsx` + `invite_sent` analytics                                                             |
+| Rematch from Game Over           | **Done** | `src/screens/GameOverScreen.tsx`; rematch handler wired on the `/gameover` route in `src/App.tsx`                       |
+| Push notification registration   | **Done** | `src/services/fcm.ts`, `src/components/PushPermissionBanner.tsx`                                                        |
+| In-app notification bell         | **Done** | `src/components/NotificationBell.tsx`, `src/services/notifications.ts`                                                  |
+| Game notification watcher        | **Done** | `src/components/GameNotificationWatcher.tsx`                                                                            |
 | Deep-link from push → game       | **Done** | `src/App.tsx` — `useEffect` registers the `skatehubba:open-game` window listener and routes to the matching active game |
-| Clip sharing (social platforms)  | **Done** | `src/components/ClipsFeed.tsx`, `src/services/clips.ts` + `clip_shared`                                 |
-| Clip save (local download)       | **Done** | `clip_saved` analytic, `ClipsFeed.tsx`                                                                  |
-| Game share (post-game)           | **Done** | `game_shared` analytic                                                                                  |
+| Clip sharing (social platforms)  | **Done** | `src/components/ClipsFeed.tsx`, `src/services/clips.ts` + `clip_shared`                                                 |
+| Clip save (local download)       | **Done** | `clip_saved` analytic, `ClipsFeed.tsx`                                                                                  |
+| Game share (post-game)           | **Done** | `game_shared` analytic                                                                                                  |
 
 **Phase 2 verdict:** All listed Phase 2 mechanics are shipped; README roadmap matches.
 
@@ -81,7 +81,7 @@ Status legend:
 | Search / challenge by username | **Done**        | `src/screens/ChallengeScreen.tsx` (uses `getUidByUsername`)                                                                                                                                                                                                                        |
 | Leaderboard                    | **Done**        | `src/components/Leaderboard.tsx` + tests                                                                                                                                                                                                                                           |
 | Cross-game clips feed          | **Done**        | `src/components/ClipsFeed.tsx` (incl. autoplaying top-slot rotation), `src/services/clips.ts`                                                                                                                                                                                      |
-| Clip upvote primitives         | **Done**        | `upvoteClip()`, `clipVotes` collection, `/clipVotes/{voteId}` match block in `firestore.rules`, `AlreadyUpvotedError`, UI in `ClipsFeed`                                                                                                                                |
+| Clip upvote primitives         | **Done**        | `upvoteClip()`, `clipVotes` collection, `/clipVotes/{voteId}` match block in `firestore.rules`, `AlreadyUpvotedError`, UI in `ClipsFeed`                                                                                                                                           |
 | Vote-driven clip ranking       | **In Progress** | ⚠️ The clips feed is currently ordered by `createdAt desc` with a `__name__` tiebreaker — see `fetchClipsFeed()` in `src/services/clips.ts`. Upvote counts are surfaced in the UI (via `fetchClipUpvoteState`) but don't drive ordering anywhere yet — that's the active work item |
 | Block / report users           | **Done**        | `src/services/blocking.ts`, `src/services/reports.ts`, `ReportModal`                                                                                                                                                                                                               |
 | Spectator mode (watch live)    | **Deferred**    | Pushed back per product call (2026-04-15) — revisit after vote-driven ranking ships                                                                                                                                                                                                |
@@ -93,17 +93,17 @@ Status legend:
 
 ## 4. Phase 4 — Network Effects
 
-| Feature                         | Status          | Evidence                                                                                                                                               |
-| ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Spot tagging (geo-tagged map)   | **Done**        | `src/screens/MapPage.tsx`, `SpotDetailPage.tsx`, `src/components/map/*`, `src/services/spots.ts`, `e2e/map.spec.ts`, `rules-tests/spots.rules.test.ts` |
+| Feature                         | Status          | Evidence                                                                                                                                                |
+| ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spot tagging (geo-tagged map)   | **Done**        | `src/screens/MapPage.tsx`, `SpotDetailPage.tsx`, `src/components/map/*`, `src/services/spots.ts`, `e2e/map.spec.ts`, `rules-tests/spots.rules.test.ts`  |
 | Spot ↔ game linkage             | **Done**        | `SpotDetailPage.tsx` challenge button navigates to `/challenge?spot=`, `SpotPreviewCard.tsx` mirrors the flow, `rules-tests/games-spotId.rules.test.ts` |
-| Add a Spot UX                   | **Done**        | `src/components/map/AddSpotSheet.tsx`                                                                                                                  |
-| Spot filters (gnar / bust risk) | **Done**        | `src/components/map/SpotFilterBar.tsx`, `BustRisk.tsx`, `GnarRating.tsx`                                                                               |
-| Bottom tab bar (Home/Map/Me)    | **Done**        | `src/components/BottomNav.tsx`, persistent navigation across main screens                                                                              |
-| Custom Mapbox style             | **In Progress** | Issue [#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191) — design + infra task, no code change needed                                 |
-| Crew challenges (3v3)           | **Planned**     | No code yet                                                                                                                                            |
-| Trick library                   | **Planned**     | No code yet                                                                                                                                            |
-| Tournaments                     | **Planned**     | No code yet                                                                                                                                            |
+| Add a Spot UX                   | **Done**        | `src/components/map/AddSpotSheet.tsx`                                                                                                                   |
+| Spot filters (gnar / bust risk) | **Done**        | `src/components/map/SpotFilterBar.tsx`, `BustRisk.tsx`, `GnarRating.tsx`                                                                                |
+| Bottom tab bar (Home/Map/Me)    | **Done**        | `src/components/BottomNav.tsx`, persistent navigation across main screens                                                                               |
+| Custom Mapbox style             | **In Progress** | Issue [#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191) — design + infra task, no code change needed                                   |
+| Crew challenges (3v3)           | **Planned**     | No code yet                                                                                                                                             |
+| Trick library                   | **Planned**     | No code yet                                                                                                                                             |
+| Tournaments                     | **Planned**     | No code yet                                                                                                                                             |
 
 **Phase 4 verdict:** Spots/Map sub-feature is shipped (map UI, CRUD, filters, spot↔game linkage, tab bar). Custom Mapbox style is a design/infra task in progress. Crew, library, and tournaments remain on the roadmap.
 
@@ -116,17 +116,17 @@ Status legend:
 > migration for in-flight games. Rows that reference product behavior use
 > "referee"; rows that reference schema fields keep the literal `judge*` names.
 
-| Feature                                 | Status        | Evidence                                                          |
-| --------------------------------------- | ------------- | ----------------------------------------------------------------- |
-| Optional referee nomination at create   | **In Review** | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[Unreleased]`       |
-| Referee accept / decline notification   | **In Review** | `src/services/notifications.ts`                                   |
-| Dispute → referee ruling (24 h)         | **In Review** | `src/services/games.ts`, `firestore.rules`                        |
-| "Call BS" on setter (24 h)              | **In Review** | `src/services/games.ts`                                           |
-| Referee-only `setReview` phase          | **In Review** | New `GamePhase` value                                             |
-| Honor system path (no referee)          | **In Review** | CHANGELOG `Changed` section                                       |
-| `judgeId` / `judgeStatus` schema        | **In Review** | `GameDoc` extension (internal names preserved)                    |
-| `TurnRecord.judgedBy`                   | **In Review** | Schema change (internal name preserved)                           |
-| Rules: referee immutability + scoping   | **In Review** | `firestore.rules` updates                                         |
+| Feature                               | Status        | Evidence                                                    |
+| ------------------------------------- | ------------- | ----------------------------------------------------------- |
+| Optional referee nomination at create | **In Review** | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[Unreleased]` |
+| Referee accept / decline notification | **In Review** | `src/services/notifications.ts`                             |
+| Dispute → referee ruling (24 h)       | **In Review** | `src/services/games.ts`, `firestore.rules`                  |
+| "Call BS" on setter (24 h)            | **In Review** | `src/services/games.ts`                                     |
+| Referee-only `setReview` phase        | **In Review** | New `GamePhase` value                                       |
+| Honor system path (no referee)        | **In Review** | CHANGELOG `Changed` section                                 |
+| `judgeId` / `judgeStatus` schema      | **In Review** | `GameDoc` extension (internal names preserved)              |
+| `TurnRecord.judgedBy`                 | **In Review** | Schema change (internal name preserved)                     |
+| Rules: referee immutability + scoping | **In Review** | `firestore.rules` updates                                   |
 
 **Verdict:** Code complete, awaiting next release tag. Honor-system path replaces the old `disputable` mid-turn pause for non-refereed games.
 

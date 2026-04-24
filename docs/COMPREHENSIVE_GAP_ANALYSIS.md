@@ -85,13 +85,13 @@ SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript er
 
 **Remaining gaps:**
 
-| #   | Gap                             | Severity | Owner | Details                                                                                                                                     |
-| --- | ------------------------------- | -------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| T1  | No E2E tests                    | Resolved | —     | Playwright suite lives at `e2e/auth.spec.ts`, `e2e/game.spec.ts`, `e2e/map.spec.ts` and runs in CI via `npm run test:e2e` against the Firebase emulators                                          |
-| T2  | No Firestore rule unit tests    | Resolved | —     | `rules-tests/` covers clips, spots, games (`spotId`/`turnorder`/`turndeadline`/`updatedat`), notifications, judge, storage, and rate-limit bypass paths via `npm run test:rules` (PR-gated)        |
-| T3  | No accessibility testing in CI  | P2       | Dev   | No axe-core or Lighthouse accessibility audit in pipeline                                                                                   |
-| T4  | Low coverage on `RecordScreen`  | P3       | Dev   | 0% coverage — likely a newer screen. Needs smoke tests                                                                                      |
-| T5  | Low coverage on `ollieSound.ts` | P3       | Dev   | 20% — audio playback not easily testable in JSDOM. Acceptable                                                                               |
+| #   | Gap                             | Severity | Owner | Details                                                                                                                                                                                     |
+| --- | ------------------------------- | -------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| T1  | No E2E tests                    | Resolved | —     | Playwright suite lives at `e2e/auth.spec.ts`, `e2e/game.spec.ts`, `e2e/map.spec.ts` and runs in CI via `npm run test:e2e` against the Firebase emulators                                    |
+| T2  | No Firestore rule unit tests    | Resolved | —     | `rules-tests/` covers clips, spots, games (`spotId`/`turnorder`/`turndeadline`/`updatedat`), notifications, judge, storage, and rate-limit bypass paths via `npm run test:rules` (PR-gated) |
+| T3  | No accessibility testing in CI  | P2       | Dev   | No axe-core or Lighthouse accessibility audit in pipeline                                                                                                                                   |
+| T4  | Low coverage on `RecordScreen`  | P3       | Dev   | 0% coverage — likely a newer screen. Needs smoke tests                                                                                                                                      |
+| T5  | Low coverage on `ollieSound.ts` | P3       | Dev   | 20% — audio playback not easily testable in JSDOM. Acceptable                                                                                                                               |
 
 ### 4. Type Safety — 10/10
 
@@ -176,11 +176,11 @@ SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript er
 
 **Remaining gaps:**
 
-| #   | Gap                                       | Severity | Owner | Details                                                                                               |
-| --- | ----------------------------------------- | -------- | ----- | ----------------------------------------------------------------------------------------------------- |
-| C1  | No automated Firebase rules deployment    | Resolved | —     | `.github/workflows/firebase-rules-deploy.yml` deploys rules + indexes on every push to `main` that touches them                                            |
-| C2  | No branch protection rules                | Resolved | —     | `scripts/apply-branch-protection.sh` + `.github/BRANCH_PROTECTION.md` codify the policy; `.github/workflows/pr-gate.yml` enforces the CI guards            |
-| C3  | SW placeholder validation is warning-only | Info     | —     | Build succeeds even with unreplaced placeholders (warning logged). Consider failing in CI             |
+| #   | Gap                                       | Severity | Owner | Details                                                                                                                                         |
+| --- | ----------------------------------------- | -------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1  | No automated Firebase rules deployment    | Resolved | —     | `.github/workflows/firebase-rules-deploy.yml` deploys rules + indexes on every push to `main` that touches them                                 |
+| C2  | No branch protection rules                | Resolved | —     | `scripts/apply-branch-protection.sh` + `.github/BRANCH_PROTECTION.md` codify the policy; `.github/workflows/pr-gate.yml` enforces the CI guards |
+| C3  | SW placeholder validation is warning-only | Info     | —     | Build succeeds even with unreplaced placeholders (warning logged). Consider failing in CI                                                       |
 
 ### 9. Data Privacy & Compliance — 10/10
 
@@ -196,9 +196,9 @@ SkateHubba-Play is production-ready with strong fundamentals: zero TypeScript er
 
 **Remaining gaps:**
 
-| #   | Gap                                   | Severity | Owner   | Details                                                            |
-| --- | ------------------------------------- | -------- | ------- | ------------------------------------------------------------------ |
-| D1  | No user data export (GDPR Article 20) | Resolved | —       | "Download My Data" ships from the lobby account menu (`Lobby.tsx#onDownloadData` → `AuthContext.handleDownloadData`)                                  |
+| #   | Gap                                   | Severity | Owner | Details                                                                                                              |
+| --- | ------------------------------------- | -------- | ----- | -------------------------------------------------------------------------------------------------------------------- |
+| D1  | No user data export (GDPR Article 20) | Resolved | —     | "Download My Data" ships from the lobby account menu (`Lobby.tsx#onDownloadData` → `AuthContext.handleDownloadData`) |
 
 ### 10. Infrastructure & Operations — 6/10
 

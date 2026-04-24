@@ -98,23 +98,23 @@ Service helper functions (`requireDb()`, `requireAuth()`, `requireStorage()`) th
 
 All Firebase SDK calls live in `src/services/`. Components and hooks import from services — never from the Firebase SDK directly. This keeps Firebase logic testable (services are easily mocked) and keeps `App.tsx` readable.
 
-| File                          | Responsibility                                                               |
-| ----------------------------- | ---------------------------------------------------------------------------- |
-| `src/services/auth.ts`        | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
-| `src/services/users.ts`       | User profile CRUD, atomic username reservation, verified-pro lookup          |
-| `src/services/userData.ts`    | Account-deletion cascade + GDPR data export                                  |
-| `src/services/games.ts`       | Game creation, turn actions (transactions), real-time subscriptions          |
-| `src/services/clips.ts`       | Landed-trick clips feed + upvotes                                            |
-| `src/services/spots.ts`       | Geo-tagged skate spot CRUD + comments                                        |
-| `src/services/storage.ts`     | Video upload (WebM web / MP4 native) with retry + progress                   |
-| `src/services/notifications.ts` | In-app notification writes + subscriptions                                 |
-| `src/services/fcm.ts`         | FCM token registration + service-worker wiring                               |
-| `src/services/nudge.ts`       | Push-notification "your turn" nudges                                         |
-| `src/services/blocking.ts`    | Block / unblock users                                                        |
-| `src/services/reports.ts`     | UGC content + player reports                                                 |
-| `src/services/analytics.ts`   | Vercel Analytics + PostHog event wrapper                                     |
-| `src/services/logger.ts`      | Structured log + metrics emitter                                             |
-| `src/hooks/useAuth.ts`        | React hook that wraps `onAuthStateChanged` + profile fetch                   |
+| File                            | Responsibility                                                               |
+| ------------------------------- | ---------------------------------------------------------------------------- |
+| `src/services/auth.ts`          | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
+| `src/services/users.ts`         | User profile CRUD, atomic username reservation, verified-pro lookup          |
+| `src/services/userData.ts`      | Account-deletion cascade + GDPR data export                                  |
+| `src/services/games.ts`         | Game creation, turn actions (transactions), real-time subscriptions          |
+| `src/services/clips.ts`         | Landed-trick clips feed + upvotes                                            |
+| `src/services/spots.ts`         | Geo-tagged skate spot CRUD + comments                                        |
+| `src/services/storage.ts`       | Video upload (WebM web / MP4 native) with retry + progress                   |
+| `src/services/notifications.ts` | In-app notification writes + subscriptions                                   |
+| `src/services/fcm.ts`           | FCM token registration + service-worker wiring                               |
+| `src/services/nudge.ts`         | Push-notification "your turn" nudges                                         |
+| `src/services/blocking.ts`      | Block / unblock users                                                        |
+| `src/services/reports.ts`       | UGC content + player reports                                                 |
+| `src/services/analytics.ts`     | Vercel Analytics + PostHog event wrapper                                     |
+| `src/services/logger.ts`        | Structured log + metrics emitter                                             |
+| `src/hooks/useAuth.ts`          | React hook that wraps `onAuthStateChanged` + profile fetch                   |
 
 ### Why all write operations use transactions
 
