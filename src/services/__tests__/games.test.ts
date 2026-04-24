@@ -1680,9 +1680,7 @@ describe("games service", () => {
     // Helper: find an in-tx notification write by type + recipient. Returns
     // the staged notification payload (or undefined if none match).
     function findInTxNotification(type: string, recipientUid: string): Record<string, unknown> | undefined {
-      const match = mockTxSetCalls.find(
-        (c) => c.data?.type === type && c.data?.recipientUid === recipientUid,
-      );
+      const match = mockTxSetCalls.find((c) => c.data?.type === type && c.data?.recipientUid === recipientUid);
       return match?.data;
     }
 

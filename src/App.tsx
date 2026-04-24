@@ -450,14 +450,8 @@ function AppRoutes() {
               }
             />
 
-            <Route
-              path="/map"
-              element={auth.user ? <MapPage /> : <Navigate to="/auth" replace />}
-            />
-            <Route
-              path="/spots/:id"
-              element={auth.user ? <SpotDetailPage /> : <Navigate to="/auth" replace />}
-            />
+            <Route path="/map" element={auth.user ? <MapPage /> : <Navigate to="/auth" replace />} />
+            <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/auth" replace />} />
 
             {/* /feed used to live as its own route + tab — it's now embedded in
               the lobby. Redirect lingering deep-links so old shares still land. */}

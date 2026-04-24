@@ -261,9 +261,9 @@ describe("storage service", () => {
       controller.abort();
       const blob = validBlob();
 
-      await expect(
-        uploadVideo("game1", 1, "set", blob, undefined, 2, controller.signal),
-      ).rejects.toMatchObject({ name: "AbortError" });
+      await expect(uploadVideo("game1", 1, "set", blob, undefined, 2, controller.signal)).rejects.toMatchObject({
+        name: "AbortError",
+      });
       // Critically, we must NOT have started the resumable upload.
       expect(mockUploadBytesResumable).not.toHaveBeenCalled();
     });
@@ -353,9 +353,7 @@ describe("storage service", () => {
       }));
 
       const blob = validBlob();
-      await expect(uploadVideo("game1", 1, "set", blob, undefined, 3)).rejects.toThrow(
-        "not authorized",
-      );
+      await expect(uploadVideo("game1", 1, "set", blob, undefined, 3)).rejects.toThrow("not authorized");
       // Only one attempt — permanent error must break the loop.
       expect(callCount).toBe(1);
     });

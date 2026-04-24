@@ -116,9 +116,7 @@ describe("reports — companion write + 1h cooldown", () => {
     // doc doesn't exist after the commit because the client didn't include
     // it in the batch.
     const ctx = asReporter();
-    await assertFails(
-      setDoc(doc(ctx.firestore(), "reports", "r1"), makeValidReport()),
-    );
+    await assertFails(setDoc(doc(ctx.firestore(), "reports", "r1"), makeValidReport()));
   });
 
   it("attack: CANNOT submit a second report 59 minutes after the first", async () => {
@@ -138,18 +136,14 @@ describe("reports — companion write + 1h cooldown", () => {
     // cooldown is instantly satisfied on every future report. The limit
     // doc's own create rule (lastSentAt == request.time) rejects this —
     // which cascades to fail the report batch as a whole.
-    await assertFails(
-      submitReportBatch({}, { lastSentAt: new Date(0) }),
-    );
+    await assertFails(submitReportBatch({}, { lastSentAt: new Date(0) }));
   });
 
   it("attack: CANNOT spoof the limit doc with a client-wall-clock lastSentAt", async () => {
     // Even a "now-ish" client timestamp is rejected — only request.time
     // (serverTimestamp) is trusted. Matches the notification_limits and
     // nudge_limits pattern.
-    await assertFails(
-      submitReportBatch({}, { lastSentAt: new Date() }),
-    );
+    await assertFails(submitReportBatch({}, { lastSentAt: new Date() }));
   });
 
   it("attack: CANNOT update an existing limit doc with a stale lastSentAt", async () => {
@@ -174,9 +168,7 @@ describe("reports — companion write + 1h cooldown", () => {
 
   it("attack: CANNOT delete the limit doc to reset the cooldown", async () => {
     await seedLimit(new Date(Date.now() - 30 * 60 * 1000));
-    await assertFails(
-      deleteDoc(doc(asReporter().firestore(), "reports_limits", LIMIT_ID)),
-    );
+    await assertFails(deleteDoc(doc(asReporter().firestore(), "reports_limits", LIMIT_ID)));
   });
 
   it("attack: CANNOT mutate reporterUid on the limit doc (cross-pollute)", async () => {
