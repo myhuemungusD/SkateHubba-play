@@ -41,6 +41,17 @@ vi.mock("../../services/haptics", async () => {
       store.enabled = v;
     },
     playHaptic: vi.fn(),
+    hapticForVariant: (variant: string | null | undefined) => {
+      if (variant == null) return "button_primary";
+      const table: Record<string, string> = {
+        primary: "button_primary",
+        success: "button_primary",
+        danger: "button_primary",
+        secondary: "toast",
+        ghost: "toast",
+      };
+      return table[variant] ?? "toast";
+    },
     __setStore(v: boolean) {
       store.enabled = v;
     },

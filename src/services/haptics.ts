@@ -22,6 +22,37 @@ export type HapticType =
   | "button_primary"
   | "toast";
 
+/**
+ * Standard button intents shared across Btn and SkateButton. Kept in sync with
+ * `Btn`'s variant prop so both primitives map identical intents to identical
+ * haptic weights.
+ */
+export type ButtonVariant = "primary" | "secondary" | "success" | "danger" | "ghost";
+
+/**
+ * Map button variants to the haptic vocabulary. Primary/success/danger are
+ * the weight-class CTAs users consciously commit to (Challenge, Land It,
+ * Delete), so they get Medium impact. Secondary / ghost are navigational or
+ * cancel-ish — Light impact keeps the feedback proportional to intent.
+ * `toast` is the lightest pulse we have; `button_primary` is medium.
+ */
+const variantHaptic: Record<ButtonVariant, HapticType> = {
+  primary: "button_primary",
+  success: "button_primary",
+  danger: "button_primary",
+  secondary: "toast",
+  ghost: "toast",
+};
+
+/**
+ * Resolve the canonical haptic for a button variant. Unknown variants fall
+ * back to `"toast"` so a stray/legacy variant never silences the tap entirely.
+ */
+export function hapticForVariant(variant: ButtonVariant | null | undefined): HapticType {
+  if (!variant) return variantHaptic.primary;
+  return variantHaptic[variant] ?? "toast";
+}
+
 const STORAGE_KEY = "skate_haptics_enabled";
 
 /* ── Preference ────────────────────────────── */
