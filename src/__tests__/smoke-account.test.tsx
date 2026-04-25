@@ -1,31 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { authedUser, testProfile, renderApp, createMockHelpers } from "./smoke-helpers";
-import App from "../App";
+import { renderApp, createMockHelpers } from "./smoke-helpers";
+import { makeAuthStateSetters } from "./harness/mockAuth";
 
 /* ── Hoisted mocks ──────────────────────────── */
-// Harness factories are loaded via dynamic import inside vi.hoisted so the
-// ref objects exist before vi.mock() factories run. Top-level `await` is
-// supported in vitest's ESM test modules.
+// The aggregate factory lives in ./harness/mockServices. Dynamic-importing it
+// inside vi.hoisted() keeps the ref objects available before vi.mock() factory
+// callbacks run.
 const { auth, authSvc, users, userData, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
-  async () => {
-    const m = await import("./harness/mockServices");
-    return {
-      auth: m.createUseAuthMocks(),
-      authSvc: m.createAuthServiceMocks(),
-      users: m.createUsersServiceMocks(),
-      userData: m.createUserDataServiceMocks(),
-      games: m.createGamesServiceMocks(),
-      storage: m.createStorageServiceMocks(),
-      fcm: m.createFcmServiceMocks(),
-      firebase: m.createFirebaseMocks(),
-      analytics: m.createAnalyticsMocks(),
-      blocking: m.createBlockingServiceMocks(),
-      sentry: m.createSentryMocks(),
-    };
-  },
+  async () => (await import("./harness/mockServices")).createAllSmokeMocks(),
 );
 
 vi.mock("../hooks/useAuth", () => auth.module);
@@ -45,8 +29,12 @@ beforeEach(() => {
   sessionStorage.clear();
 });
 
-const profile = testProfile;
+const { asUnverifiedUser, asSignedOut } = makeAuthStateSetters(auth.refs);
 
+/** Build an auth/requires-recent-login error matching Firebase's shape. */
+function requiresRecentLoginError(message = "auth/requires-recent-login"): Error & { code: string } {
+  return Object.assign(new Error(message), { code: "auth/requires-recent-login" });
+}
 const { withGames, renderLobby } = createMockHelpers({
   mockUseAuth: auth.refs.useAuth,
   mockSubscribeToMyGames: games.refs.subscribeToMyGames,
@@ -58,14 +46,7 @@ describe("Smoke: Account & Sign Out", () => {
     authSvc.refs.signOut.mockResolvedValueOnce(undefined);
 
     // After sign out, useAuth returns no user
-    auth.refs.useAuth.mockImplementation(() => {
-      return {
-        loading: false,
-        user: authedUser,
-        profile,
-        refreshProfile: vi.fn(),
-      };
-    });
+    asUnverifiedUser();
     withGames([]);
 
     await renderApp();
@@ -79,12 +60,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("sign out scrubs the FCM token BEFORE revoking the auth session", async () => {
     fcm.refs.removeCurrentFcmToken.mockClear();
     authSvc.refs.signOut.mockResolvedValueOnce(undefined);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser();
     withGames([]);
     await renderApp();
 
@@ -103,17 +79,12 @@ describe("Smoke: Account & Sign Out", () => {
   it("sign out proceeds even when the FCM scrub write fails", async () => {
     fcm.refs.removeCurrentFcmToken.mockRejectedValueOnce(new Error("network fail"));
     authSvc.refs.signOut.mockResolvedValueOnce(undefined);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser();
     withGames([]);
     await renderApp();
 
     // Post-signout useAuth snaps to null so the UI flips to landing
-    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    asSignedOut();
 
     await userEvent.click(await screen.findByText("Sign Out"));
 
@@ -157,21 +128,12 @@ describe("Smoke: Account & Sign Out", () => {
     // from AuthContext anymore; it's called from inside deleteAccount.
     authSvc.refs.deleteAccount.mockImplementationOnce(async () => {
       // Simulate Firebase sign-out after auth account deletion
-      auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+      asSignedOut();
     });
 
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser();
     withGames([]);
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    await renderApp();
 
     await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
@@ -205,9 +167,7 @@ describe("Smoke: Account & Sign Out", () => {
   });
 
   it("shows friendly message when deleteAccount requires recent login", async () => {
-    const err = new Error("auth/requires-recent-login");
-    (err as unknown as { code: string }).code = "auth/requires-recent-login";
-    authSvc.refs.deleteAccount.mockRejectedValueOnce(err);
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError());
     await renderLobby([]);
 
     await userEvent.click(await screen.findByText("Delete Account"));
@@ -224,9 +184,7 @@ describe("Smoke: Account & Sign Out", () => {
   });
 
   it("captures pending uid to sessionStorage on requires-recent-login", async () => {
-    const err = new Error("auth/requires-recent-login");
-    (err as unknown as { code: string }).code = "auth/requires-recent-login";
-    authSvc.refs.deleteAccount.mockRejectedValueOnce(err);
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError());
     await renderLobby([]);
 
     await userEvent.click(await screen.findByText("Delete Account"));
@@ -250,18 +208,9 @@ describe("Smoke: Account & Sign Out", () => {
     //      reverse-order deleteAccount and the flag is cleared.
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
     authSvc.refs.deleteAccount.mockResolvedValueOnce(undefined);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser();
     withGames([]);
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    await renderApp();
 
     const finishBtn = await screen.findByRole("button", { name: /finish deleting your account/i });
     await userEvent.click(finishBtn);
@@ -276,20 +225,10 @@ describe("Smoke: Account & Sign Out", () => {
 
   it("banner surfaces error message when retry fails", async () => {
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
-    const stillRecentErr = Object.assign(new Error("re-auth needed"), { code: "auth/requires-recent-login" });
-    authSvc.refs.deleteAccount.mockRejectedValueOnce(stillRecentErr);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError("re-auth needed"));
+    asUnverifiedUser();
     withGames([]);
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    await renderApp();
 
     const finishBtn = await screen.findByRole("button", { name: /finish deleting your account/i });
     await userEvent.click(finishBtn);
@@ -302,18 +241,9 @@ describe("Smoke: Account & Sign Out", () => {
   });
 
   it("banner is hidden when no pending delete is captured", async () => {
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser(null);
     withGames([]);
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    await renderApp();
 
     // Give the app a tick to settle on whichever screen it routes to.
     await waitFor(() => {
@@ -325,18 +255,9 @@ describe("Smoke: Account & Sign Out", () => {
     // Defensive: stale pending flag from a different account must not
     // surface the banner to the current user.
     sessionStorage.setItem("skate.pendingDeleteUid", "SOMEONE_ELSE");
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser();
     withGames([]);
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    await renderApp();
 
     await waitFor(() => {
       expect(screen.queryByRole("button", { name: /finish deleting your account/i })).not.toBeInTheDocument();
@@ -353,25 +274,13 @@ describe("Smoke: Account & Sign Out", () => {
     // preserved). User re-auths and re-triggers; second attempt succeeds.
     // deleteUserData is never called from AuthContext — it lives inside
     // deleteAccount now.
-    const recentErr = Object.assign(new Error("auth/requires-recent-login"), {
-      code: "auth/requires-recent-login",
-    });
-    authSvc.refs.deleteAccount.mockRejectedValueOnce(recentErr).mockImplementationOnce(async () => {
-      auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError()).mockImplementationOnce(async () => {
+      asSignedOut();
     });
 
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser();
     withGames([]);
-    render(
-      <MemoryRouter>
-        <App />
-      </MemoryRouter>,
-    );
+    await renderApp();
 
     await userEvent.click(await screen.findByText("Delete Account"));
     await userEvent.click(screen.getByText("Delete Forever"));
@@ -396,7 +305,7 @@ describe("Smoke: Account & Sign Out", () => {
 
   it("shows generic error message for unknown firebase auth error", async () => {
     authSvc.refs.signIn.mockRejectedValueOnce({ code: "auth/some-unknown-error", message: "Unknown auth error" });
-    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    asSignedOut();
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -412,17 +321,12 @@ describe("Smoke: Account & Sign Out", () => {
 
   it("handles signOut error gracefully without crashing", async () => {
     authSvc.refs.signOut.mockRejectedValueOnce(new Error("Sign out network error"));
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser();
     withGames([]);
     await renderApp();
 
     // After sign-out (even on error), the context clears state → useAuth returns no user
-    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    asSignedOut();
 
     await userEvent.click(await screen.findByText("Sign Out"));
 
@@ -502,16 +406,11 @@ describe("Smoke: Account & Sign Out", () => {
 
   it("handles signOut non-Error rejection gracefully", async () => {
     authSvc.refs.signOut.mockRejectedValueOnce("string error");
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser();
     withGames([]);
     await renderApp();
 
-    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    asSignedOut();
     await userEvent.click(await screen.findByText("Sign Out"));
 
     await waitFor(() => {
