@@ -20,6 +20,20 @@
  */
 import { vi, type Mock } from "vitest";
 
+/**
+ * Forward each `Mock` in `refs` as an arity-agnostic function so the resulting
+ * object matches the shape vitest's `vi.mock(factory)` expects. Each call
+ * delegates to the underlying mock, so per-test `mockResolvedValueOnce(...)`
+ * etc. on `refs.X` is picked up immediately.
+ */
+function bindRefs<R extends Record<string, Mock>>(refs: R): { [K in keyof R]: (...args: unknown[]) => unknown } {
+  const out = {} as { [K in keyof R]: (...args: unknown[]) => unknown };
+  for (const key of Object.keys(refs) as Array<keyof R>) {
+    out[key] = (...args: unknown[]) => refs[key](...args);
+  }
+  return out;
+}
+
 /* ──────────────────────────────────────────
  * useAuth hook
  * ────────────────────────────────────────── */
@@ -69,19 +83,7 @@ export function createAuthServiceMocks(): AuthServiceMocks {
     resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
     deleteAccount: vi.fn(),
   };
-  return {
-    refs,
-    module: {
-      signUp: (...args: unknown[]) => refs.signUp(...args),
-      signIn: (...args: unknown[]) => refs.signIn(...args),
-      signOut: (...args: unknown[]) => refs.signOut(...args),
-      resetPassword: (...args: unknown[]) => refs.resetPassword(...args),
-      resendVerification: (...args: unknown[]) => refs.resendVerification(...args),
-      signInWithGoogle: (...args: unknown[]) => refs.signInWithGoogle(...args),
-      resolveGoogleRedirect: (...args: unknown[]) => refs.resolveGoogleRedirect(...args),
-      deleteAccount: (...args: unknown[]) => refs.deleteAccount(...args),
-    },
-  };
+  return { refs, module: bindRefs(refs) };
 }
 
 /* ──────────────────────────────────────────
@@ -152,15 +154,7 @@ export function createUsersServiceMocks(): UsersServiceMocks {
   return {
     refs,
     module: {
-      createProfile: (...args: unknown[]) => refs.createProfile(...args),
-      isUsernameAvailable: (...args: unknown[]) => refs.isUsernameAvailable(...args),
-      getUidByUsername: (...args: unknown[]) => refs.getUidByUsername(...args),
-      deleteUserData: (...args: unknown[]) => refs.deleteUserData(...args),
-      getPlayerDirectory: (...args: unknown[]) => refs.getPlayerDirectory(...args),
-      getLeaderboard: (...args: unknown[]) => refs.getLeaderboard(...args),
-      getUserProfile: (...args: unknown[]) => refs.getUserProfile(...args),
-      getUserProfileOnAuth: (...args: unknown[]) => refs.getUserProfileOnAuth(...args),
-      updatePlayerStats: (...args: unknown[]) => refs.updatePlayerStats(...args),
+      ...bindRefs(refs),
       USERNAME_MIN: 3,
       USERNAME_MAX: 20,
       USERNAME_RE: /^[a-z0-9_]+$/,
@@ -206,14 +200,7 @@ export function createUserDataServiceMocks(): UserDataServiceMocks {
     serializeUserData: vi.fn(() => "{}"),
     userDataFilename: vi.fn(() => "export.json"),
   };
-  return {
-    refs,
-    module: {
-      exportUserData: (...args: unknown[]) => refs.exportUserData(...args),
-      serializeUserData: (...args: unknown[]) => refs.serializeUserData(...args),
-      userDataFilename: (...args: unknown[]) => refs.userDataFilename(...args),
-    },
-  };
+  return { refs, module: bindRefs(refs) };
 }
 
 /* ──────────────────────────────────────────
@@ -275,18 +262,7 @@ export function createGamesServiceMocks(): GamesServiceMocks {
   return {
     refs,
     module: {
-      createGame: (...args: unknown[]) => refs.createGame(...args),
-      setTrick: (...args: unknown[]) => refs.setTrick(...args),
-      failSetTrick: (...args: unknown[]) => refs.failSetTrick(...args),
-      submitMatchAttempt: (...args: unknown[]) => refs.submitMatchAttempt(...args),
-      forfeitExpiredTurn: (...args: unknown[]) => refs.forfeitExpiredTurn(...args),
-      subscribeToMyGames: (...args: unknown[]) => refs.subscribeToMyGames(...args),
-      subscribeToGame: (...args: unknown[]) => refs.subscribeToGame(...args),
-      resolveDispute: (...args: unknown[]) => refs.resolveDispute(...args),
-      callBSOnSetTrick: (...args: unknown[]) => refs.callBSOnSetTrick(...args),
-      judgeRuleSetTrick: (...args: unknown[]) => refs.judgeRuleSetTrick(...args),
-      acceptJudgeInvite: (...args: unknown[]) => refs.acceptJudgeInvite(...args),
-      declineJudgeInvite: (...args: unknown[]) => refs.declineJudgeInvite(...args),
+      ...bindRefs(refs),
       isJudgeActive: (game: { judgeId?: string | null; judgeStatus?: string | null }) =>
         !!game.judgeId && game.judgeStatus === "accepted",
       timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
@@ -309,10 +285,7 @@ export interface StorageServiceMocks {
 
 export function createStorageServiceMocks(): StorageServiceMocks {
   const refs: StorageServiceRefs = { uploadVideo: vi.fn() };
-  return {
-    refs,
-    module: { uploadVideo: (...args: unknown[]) => refs.uploadVideo(...args) },
-  };
+  return { refs, module: bindRefs(refs) };
 }
 
 /* ──────────────────────────────────────────
@@ -338,15 +311,7 @@ export function createFcmServiceMocks(): FcmServiceMocks {
     removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
     onForegroundMessage: vi.fn(() => vi.fn()),
   };
-  return {
-    refs,
-    module: {
-      requestPushPermission: (...args: unknown[]) => refs.requestPushPermission(...args),
-      removeFcmToken: (...args: unknown[]) => refs.removeFcmToken(...args),
-      removeCurrentFcmToken: (...args: unknown[]) => refs.removeCurrentFcmToken(...args),
-      onForegroundMessage: (...args: unknown[]) => refs.onForegroundMessage(...args),
-    },
-  };
+  return { refs, module: bindRefs(refs) };
 }
 
 /* ──────────────────────────────────────────
@@ -480,16 +445,7 @@ export function createBlockingServiceMocks(): BlockingServiceMocks {
     getBlockedUserIds: vi.fn().mockResolvedValue(new Set<string>()),
     subscribeToBlockedUsers: vi.fn(() => vi.fn()),
   };
-  return {
-    refs,
-    module: {
-      blockUser: (...args: unknown[]) => refs.blockUser(...args),
-      unblockUser: (...args: unknown[]) => refs.unblockUser(...args),
-      isUserBlocked: (...args: unknown[]) => refs.isUserBlocked(...args),
-      getBlockedUserIds: (...args: unknown[]) => refs.getBlockedUserIds(...args),
-      subscribeToBlockedUsers: (...args: unknown[]) => refs.subscribeToBlockedUsers(...args),
-    },
-  };
+  return { refs, module: bindRefs(refs) };
 }
 
 /* ──────────────────────────────────────────

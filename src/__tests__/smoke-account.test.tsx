@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderApp, createMockHelpers } from "./smoke-helpers";
+import { renderApp, attemptSignIn, createMockHelpers } from "./smoke-helpers";
 import { makeAuthStateSetters } from "./harness/mockAuth";
 
 /* ── Hoisted mocks ──────────────────────────── */
@@ -306,13 +306,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("shows generic error message for unknown firebase auth error", async () => {
     authSvc.refs.signIn.mockRejectedValueOnce({ code: "auth/some-unknown-error", message: "Unknown auth error" });
     asSignedOut();
-    await renderApp();
-
-    await userEvent.click(await screen.findByText("Account"));
-
-    await userEvent.type(await screen.findByPlaceholderText("you@email.com"), "user@test.com");
-    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
-    await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+    await attemptSignIn();
 
     await waitFor(() => {
       expect(screen.getByText("Unknown auth error")).toBeInTheDocument();

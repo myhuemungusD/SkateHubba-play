@@ -71,6 +71,40 @@ export async function passAgeGate() {
   await userEvent.type(screen.getByLabelText("Birth year"), "2000");
 }
 
+/**
+ * Mount the app, navigate from landing to the inline signup form, and pass the
+ * DOB age gate. Returns the email + password inputs the caller will type into.
+ *
+ * Caller is responsible for setting up the auth-state mock (e.g. `asSignedOut()`)
+ * before calling — this helper assumes the app boots into the unauthenticated
+ * landing screen.
+ */
+export async function openSignupForm(): Promise<{ emailInput: HTMLElement; passwordInputs: HTMLElement[] }> {
+  await renderApp();
+  await userEvent.click(await screen.findByText("Use email"));
+  await passAgeGate();
+  return {
+    emailInput: screen.getByPlaceholderText("you@email.com"),
+    passwordInputs: screen.getAllByPlaceholderText(/•/),
+  };
+}
+
+/**
+ * Mount the app, navigate to the sign-in card, type the supplied credentials,
+ * and submit. Wraps the recurring "open Account → fill form → click Sign In"
+ * choreography that ~every error-path sign-in test needs.
+ *
+ * Caller is responsible for setting up the auth-state mock (e.g. `asSignedOut()`)
+ * and the relevant `signIn.mockRejectedValueOnce(...)` before calling.
+ */
+export async function attemptSignIn(email = "user@test.com", password = "password123"): Promise<void> {
+  await renderApp();
+  await userEvent.click(await screen.findByText("Account"));
+  await userEvent.type(await screen.findByPlaceholderText("you@email.com"), email);
+  await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], password);
+  await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+}
+
 /* ── Mock-dependent helper factories ──────────── */
 
 /**
