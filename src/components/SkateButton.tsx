@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useId, type ReactNode } from "react";
 import { playOlliePop } from "../utils/ollieSound";
-import { playHaptic } from "../services/haptics";
+import { hapticForVariant, playHaptic } from "../services/haptics";
 
 /**
  * A skateboard deck-shaped button that does an ollie animation on click.
@@ -32,7 +32,9 @@ export function SkateButton({
     if (disabled) return;
     setPopping(true);
     playOlliePop();
-    playHaptic("button_primary");
+    // SkateButton is a branded primary CTA — share the Btn variant=primary
+    // haptic so the tap stays aligned if the table is ever retuned.
+    playHaptic(hapticForVariant("primary"));
     if (popTimerRef.current) clearTimeout(popTimerRef.current);
     popTimerRef.current = setTimeout(() => setPopping(false), 500);
     onClick?.();

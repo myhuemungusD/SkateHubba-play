@@ -171,4 +171,48 @@ describe("haptics service", () => {
       expect(() => playHaptic("button_primary")).not.toThrow();
     });
   });
+
+  describe("hapticForVariant", () => {
+    it("maps primary to button_primary", async () => {
+      const { hapticForVariant } = await freshHaptics();
+      expect(hapticForVariant("primary")).toBe("button_primary");
+    });
+
+    it("maps success to button_primary", async () => {
+      const { hapticForVariant } = await freshHaptics();
+      expect(hapticForVariant("success")).toBe("button_primary");
+    });
+
+    it("maps danger to button_primary", async () => {
+      const { hapticForVariant } = await freshHaptics();
+      expect(hapticForVariant("danger")).toBe("button_primary");
+    });
+
+    it("maps secondary to toast", async () => {
+      const { hapticForVariant } = await freshHaptics();
+      expect(hapticForVariant("secondary")).toBe("toast");
+    });
+
+    it("maps ghost to toast", async () => {
+      const { hapticForVariant } = await freshHaptics();
+      expect(hapticForVariant("ghost")).toBe("toast");
+    });
+
+    it("falls back to primary mapping for null variant", async () => {
+      const { hapticForVariant } = await freshHaptics();
+      expect(hapticForVariant(null)).toBe("button_primary");
+    });
+
+    it("falls back to primary mapping for undefined variant", async () => {
+      const { hapticForVariant } = await freshHaptics();
+      expect(hapticForVariant(undefined)).toBe("button_primary");
+    });
+
+    it("falls back to toast for an unknown variant string", async () => {
+      const { hapticForVariant } = await freshHaptics();
+      // Simulate a legacy/stray variant that escaped the type system —
+      // the runtime guard keeps the tap from silencing entirely.
+      expect(hapticForVariant("bogus" as unknown as "primary")).toBe("toast");
+    });
+  });
 });
