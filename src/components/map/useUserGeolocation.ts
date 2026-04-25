@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 
 interface UseUserGeolocationParams {
@@ -113,19 +113,16 @@ export function useUserGeolocation({ map }: UseUserGeolocationParams): UseUserGe
     }
   }, [map, userLocation, isTrackingUser]);
 
-  const handleRecenter = useCallback(
-    (onWaiting: () => void) => {
-      const loc = userLocationRef.current;
-      if (!loc) {
-        onWaiting();
-        return;
-      }
-      if (!map.current) return;
-      setIsTrackingUser(true);
-      map.current.flyTo({ center: [loc.lng, loc.lat], zoom: 15 });
-    },
-    [setIsTrackingUser],
-  );
+  const handleRecenter = (onWaiting: () => void) => {
+    const loc = userLocationRef.current;
+    if (!loc) {
+      onWaiting();
+      return;
+    }
+    if (!map.current) return;
+    setIsTrackingUser(true);
+    map.current.flyTo({ center: [loc.lng, loc.lat], zoom: 15 });
+  };
 
   return {
     userLocation,

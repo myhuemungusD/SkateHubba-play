@@ -122,7 +122,6 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   }, [hydrateUpvotes]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadPool is async (awaits Firestore before setState), not a synchronous setState
     loadPool();
   }, [loadPool]);
 
