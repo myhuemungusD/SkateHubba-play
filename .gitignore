@@ -14,6 +14,9 @@ playwright-report
 playwright/.auth
 test-results
 
+# One-shot seed tool output (scripts/seed-spots.py) — large data, regenerated
+scripts/output/
+
 # Large media files in src/ (use public/ for static assets)
 src/**/*.mp4
 src/**/*.webm
