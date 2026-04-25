@@ -23,6 +23,8 @@ export interface LobbyController {
   active: GameDoc[];
   done: GameDoc[];
   liveActive: GameDoc[];
+  showActiveEmpty: boolean;
+  showCompletedEmpty: boolean;
 
   isJudge: (g: GameDoc) => boolean;
   isPlayer: (g: GameDoc) => boolean;
@@ -60,6 +62,8 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
   const liveActive = active.filter((g) => !isGameExpired(g));
+  const showActiveEmpty = active.length === 0 && done.length > 0;
+  const showCompletedEmpty = done.length === 0 && active.length > 0;
 
   const isJudge = useCallback((g: GameDoc) => !!g.judgeId && g.judgeId === profile.uid, [profile.uid]);
   const isPlayer = useCallback(
@@ -162,6 +166,8 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
     active,
     done,
     liveActive,
+    showActiveEmpty,
+    showCompletedEmpty,
     isJudge,
     isPlayer,
     opponent,
