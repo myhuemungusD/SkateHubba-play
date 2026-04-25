@@ -1,7 +1,7 @@
-import type { FocusEvent, KeyboardEvent } from "react";
 import type { GameDoc } from "../../../services/games";
 import { ChevronRightIcon } from "../../../components/icons";
 import { ProUsername } from "../../../components/ProUsername";
+import type { CardButtonProps } from "../useLobbyController";
 
 interface Props {
   game: GameDoc;
@@ -10,11 +10,7 @@ interface Props {
   opponentName: string;
   opponentUid: string;
   opponentIsVerifiedPro: boolean | undefined;
-  cardButtonProps: {
-    onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
-    onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
-    onBlur: (e: FocusEvent<HTMLElement>) => void;
-  };
+  cardButtonProps: CardButtonProps;
   onOpenGame: () => void;
   onViewPlayer?: (uid: string) => void;
 }

@@ -1,4 +1,3 @@
-import type { UserProfile } from "../../../services/users";
 import type { usePlayerDirectory } from "../../../hooks/usePlayerDirectory";
 import { ProUsername } from "../../../components/ProUsername";
 
@@ -92,7 +91,7 @@ export function PlayerDirectory({ players, loading, user, onViewPlayer, onChalle
               <div className="min-w-0">
                 <ProUsername
                   username={p.username}
-                  isVerifiedPro={(p as UserProfile).isVerifiedPro}
+                  isVerifiedPro={p.isVerifiedPro}
                   className="font-display text-base text-white block leading-none"
                 />
                 <span className="font-body text-[11px] text-brand-green block mt-1">

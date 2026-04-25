@@ -4,9 +4,15 @@ import type { UserProfile } from "../../services/users";
 import { usePlayerDirectory } from "../../hooks/usePlayerDirectory";
 import { usePullToRefresh } from "../../hooks/usePullToRefresh";
 
-export function isGameExpired(g: GameDoc): boolean {
+function isGameExpired(g: GameDoc): boolean {
   const deadline = g.turnDeadline?.toMillis?.() ?? 0;
   return deadline > 0 && deadline <= Date.now();
+}
+
+export interface CardButtonProps {
+  onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
+  onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
+  onBlur: (e: FocusEvent<HTMLElement>) => void;
 }
 
 interface Args {
@@ -34,11 +40,7 @@ export interface LobbyController {
   theirLetters: (g: GameDoc) => number;
   turnLabel: (g: GameDoc) => string;
 
-  cardButtonProps: (handler: () => void) => {
-    onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
-    onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
-    onBlur: (e: FocusEvent<HTMLElement>) => void;
-  };
+  cardButtonProps: (handler: () => void) => CardButtonProps;
 
   showDeleteModal: boolean;
   openDeleteModal: () => void;

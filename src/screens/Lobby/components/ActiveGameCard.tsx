@@ -1,9 +1,9 @@
-import type { FocusEvent, KeyboardEvent } from "react";
 import type { GameDoc } from "../../../services/games";
 import { LETTERS } from "../../../utils/helpers";
 import { LobbyTimer } from "../../../components/LobbyTimer";
 import { ChevronRightIcon } from "../../../components/icons";
 import { ProUsername } from "../../../components/ProUsername";
+import type { CardButtonProps } from "../useLobbyController";
 
 interface Props {
   game: GameDoc;
@@ -15,11 +15,7 @@ interface Props {
   myLetters: number;
   theirLetters: number;
   turnLabel: string;
-  cardButtonProps: {
-    onKeyDown: (e: KeyboardEvent<HTMLElement>) => void;
-    onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
-    onBlur: (e: FocusEvent<HTMLElement>) => void;
-  };
+  cardButtonProps: CardButtonProps;
   onOpenGame: () => void;
   onViewPlayer?: (uid: string) => void;
 }
