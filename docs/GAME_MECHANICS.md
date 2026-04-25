@@ -116,8 +116,8 @@ A player does not submit their turn within 24 hours of the `turnDeadline`. Eithe
 ## Video Recording
 
 - One take only. The camera starts recording immediately when the player taps "Record." There is no re-record option before submission.
-- Format: `video/webm` (via MediaRecorder API).
-- Storage path: `games/{gameId}/turn-{turnNumber}/{role}.webm` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt).
+- Format: `video/webm` on web (via MediaRecorder API) or `video/mp4` on native (via Capacitor).
+- Storage path: `games/{gameId}/turn-{turnNumber}/{role}.{ext}` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt) and `{ext}` is `webm` (web) or `mp4` (native).
 - Size limits: 1 KB minimum (prevents empty uploads), 50 MB maximum per video.
 - Videos are stored permanently — there is no cleanup process in the current version.
 
