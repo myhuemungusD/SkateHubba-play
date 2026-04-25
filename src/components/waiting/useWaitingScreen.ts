@@ -8,7 +8,6 @@ export type NudgeStatus = "idle" | "pending" | "sent" | "error";
 export interface WaitingScreenState {
   // Derived role / phase booleans
   isJudge: boolean;
-  isJudgeTurn: boolean;
   // Derived player-centric values
   myLetters: number;
   theirLetters: number;
@@ -32,9 +31,7 @@ export interface WaitingScreenState {
 }
 
 export function useWaitingScreen(game: GameDoc, profile: UserProfile): WaitingScreenState {
-  const [nudgeStatus, setNudgeStatus] = useState<NudgeStatus>(() =>
-    canNudge(game.id, profile.uid) ? "idle" : "sent",
-  );
+  const [nudgeStatus, setNudgeStatus] = useState<NudgeStatus>(() => (canNudge(game.id, profile.uid) ? "idle" : "sent"));
   const [nudgeError, setNudgeError] = useState("");
   const [showReport, setShowReport] = useState(false);
   const [reported, setReported] = useState(false);
@@ -102,7 +99,6 @@ export function useWaitingScreen(game: GameDoc, profile: UserProfile): WaitingSc
 
   return {
     isJudge,
-    isJudgeTurn,
     myLetters,
     theirLetters,
     opponentName,
