@@ -2,27 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { authedUser, verifiedUser, testProfile, renderApp, passAgeGate, createMockHelpers } from "./smoke-helpers";
+import { makeAuthStateSetters } from "./harness/mockAuth";
 
 /* ── Hoisted mocks ──────────────────────────── */
-// Harness factories are loaded via dynamic import inside vi.hoisted so the
-// ref objects exist before vi.mock() factories run. Top-level `await` is
-// supported in vitest's ESM test modules.
+// The aggregate factory lives in ./harness/mockServices. Dynamic-importing it
+// inside vi.hoisted() keeps the ref objects available before vi.mock() factory
+// callbacks run.
 const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
-  async () => {
-    const m = await import("./harness/mockServices");
-    return {
-      auth: m.createUseAuthMocks(),
-      authSvc: m.createAuthServiceMocks(),
-      users: m.createUsersServiceMocks(),
-      games: m.createGamesServiceMocks(),
-      storage: m.createStorageServiceMocks(),
-      fcm: m.createFcmServiceMocks(),
-      firebase: m.createFirebaseMocks(),
-      analytics: m.createAnalyticsMocks(),
-      blocking: m.createBlockingServiceMocks(),
-      sentry: m.createSentryMocks(),
-    };
-  },
+  async () => (await import("./harness/mockServices")).createAllSmokeMocks(),
 );
 
 vi.mock("../hooks/useAuth", () => auth.module);
@@ -40,6 +27,7 @@ beforeEach(() => vi.clearAllMocks());
 
 const profile = testProfile;
 
+const { asUnverifiedUser, asVerifiedUser } = makeAuthStateSetters(auth.refs);
 const { withGames, renderLobby } = createMockHelpers({
   mockUseAuth: auth.refs.useAuth,
   mockSubscribeToMyGames: games.refs.subscribeToMyGames,
@@ -118,12 +106,8 @@ describe("Smoke: Auth", () => {
   });
 
   it("shows email verification banner when email not verified", async () => {
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser, // emailVerified: false
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    // authedUser has emailVerified: false → triggers the verify banner.
+    asUnverifiedUser();
     withGames([]);
     await renderApp();
 
@@ -132,12 +116,7 @@ describe("Smoke: Auth", () => {
   });
 
   it("hides email verification banner when email is verified", async () => {
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: verifiedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asVerifiedUser();
     withGames([]);
     await renderApp();
 
@@ -148,12 +127,7 @@ describe("Smoke: Auth", () => {
 
   it("resend verification button calls resendVerification", async () => {
     authSvc.refs.resendVerification.mockResolvedValueOnce(undefined);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser();
     withGames([]);
     await renderApp();
 
@@ -425,12 +399,7 @@ describe("Smoke: Auth", () => {
 
   it("resend verification handles errors gracefully", async () => {
     authSvc.refs.resendVerification.mockRejectedValueOnce(new Error("send error"));
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: false },
-      profile,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser(profile, { uid: "u1", email: "a@b.com", emailVerified: false });
     withGames([]);
     await renderApp();
 

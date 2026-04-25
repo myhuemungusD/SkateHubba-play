@@ -519,3 +519,51 @@ export function createSentryMocks(): SentryMocks {
   // name and we want to assert on the same handles.
   return { refs, module: refs };
 }
+
+/* ──────────────────────────────────────────
+ * Aggregate factory for smoke tests
+ * ────────────────────────────────────────── */
+
+/**
+ * Bundle of every per-service mock factory used by smoke-*.test.tsx files.
+ *
+ * Every smoke test mocks the same set of dependency modules (auth hook,
+ * services/auth, services/users, services/userData, services/games,
+ * services/storage, services/fcm, firebase, services/analytics, @sentry/react,
+ * services/blocking) so that `App` can render without touching real Firebase.
+ * The aggregate factory keeps the per-file `vi.hoisted()` block to a single
+ * line — see `src/__tests__/smoke-*.test.tsx` for the call site.
+ *
+ * Note: `userData` is included unconditionally. Smoke tests that don't render
+ * the data-export flow simply leave it unmocked at the `vi.mock()` level; the
+ * factory call itself has no side effects beyond instantiating `vi.fn()`s.
+ */
+export interface AllSmokeMocks {
+  auth: UseAuthMocks;
+  authSvc: AuthServiceMocks;
+  users: UsersServiceMocks;
+  userData: UserDataServiceMocks;
+  games: GamesServiceMocks;
+  storage: StorageServiceMocks;
+  fcm: FcmServiceMocks;
+  firebase: FirebaseMocks;
+  analytics: AnalyticsMocks;
+  blocking: BlockingServiceMocks;
+  sentry: SentryMocks;
+}
+
+export function createAllSmokeMocks(): AllSmokeMocks {
+  return {
+    auth: createUseAuthMocks(),
+    authSvc: createAuthServiceMocks(),
+    users: createUsersServiceMocks(),
+    userData: createUserDataServiceMocks(),
+    games: createGamesServiceMocks(),
+    storage: createStorageServiceMocks(),
+    fcm: createFcmServiceMocks(),
+    firebase: createFirebaseMocks(),
+    analytics: createAnalyticsMocks(),
+    blocking: createBlockingServiceMocks(),
+    sentry: createSentryMocks(),
+  };
+}
