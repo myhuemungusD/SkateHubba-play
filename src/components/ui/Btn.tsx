@@ -1,20 +1,5 @@
 import type { ReactNode } from "react";
-import { playHaptic, type HapticType } from "../../services/haptics";
-
-/**
- * Map button variants to the haptic vocabulary. Primary/success/danger are
- * the weight-class CTAs users consciously commit to (Challenge, Land It,
- * Delete), so they get Medium impact. Secondary / ghost are navigational or
- * cancel-ish — Light impact keeps the feedback proportional to intent.
- * `toast` is the lightest pulse we have; `button_primary` is medium.
- */
-const variantHaptic: Record<string, HapticType> = {
-  primary: "button_primary",
-  success: "button_primary",
-  danger: "button_primary",
-  secondary: "toast",
-  ghost: "toast",
-};
+import { hapticForVariant, playHaptic, type ButtonVariant } from "../../services/haptics";
 
 export function Btn({
   children,
@@ -30,7 +15,7 @@ export function Btn({
 }: {
   children: ReactNode;
   onClick?: () => void;
-  variant?: "primary" | "secondary" | "success" | "danger" | "ghost";
+  variant?: ButtonVariant;
   disabled?: boolean;
   className?: string;
   type?: "button" | "submit";
@@ -51,7 +36,7 @@ export function Btn({
       "bg-transparent border border-border text-muted py-3 text-lg hover:border-border-hover hover:text-white hover:-translate-y-0.5 hover:shadow-[0_4px_16px_rgba(0,0,0,0.15)]",
   };
   const handleClick = () => {
-    if (haptic) playHaptic(variantHaptic[variant] ?? "toast");
+    if (haptic) playHaptic(hapticForVariant(variant));
     onClick?.();
   };
 

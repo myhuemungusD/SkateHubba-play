@@ -2,150 +2,43 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import userEvent from "@testing-library/user-event";
-import {
-  authedUser,
-  verifiedUser,
-  testProfile,
-  activeGame,
-  renderApp,
-  flushLazy,
-  createMockHelpers,
-} from "./smoke-helpers";
+import { authedUser, testProfile, renderApp, createMockHelpers } from "./smoke-helpers";
 import App from "../App";
 
 /* ── Hoisted mocks ──────────────────────────── */
-
-const mockUseAuth = vi.fn();
-
-const mockSignUp = vi.fn();
-const mockSignIn = vi.fn();
-const mockSignOut = vi.fn();
-const mockResetPassword = vi.fn();
-
-const mockCreateProfile = vi.fn();
-const mockIsUsernameAvailable = vi.fn();
-const mockGetUidByUsername = vi.fn();
-const mockDeleteUserData = vi.fn();
-
-const mockCreateGame = vi.fn();
-const mockSetTrick = vi.fn();
-const mockFailSetTrick = vi.fn();
-const mockSubmitMatchAttempt = vi.fn();
-const mockForfeitExpiredTurn = vi.fn();
-const mockSubscribeToMyGames = vi.fn(() => vi.fn());
-const mockSubscribeToGame = vi.fn(() => vi.fn());
-
-const mockUploadVideo = vi.fn();
-
-vi.mock("../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
-const mockDeleteAccount = vi.fn();
-const mockResendVerification = vi.fn();
-const mockSignInWithGoogle = vi.fn();
-const mockResolveGoogleRedirect = vi.fn().mockResolvedValue(null);
-vi.mock("../services/auth", () => ({
-  signUp: (...args: unknown[]) => mockSignUp(...args),
-  signIn: (...args: unknown[]) => mockSignIn(...args),
-  signOut: (...args: unknown[]) => mockSignOut(...args),
-  resetPassword: (...args: unknown[]) => mockResetPassword(...args),
-  resendVerification: (...args: unknown[]) => mockResendVerification(...args),
-  signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
-  resolveGoogleRedirect: (...args: unknown[]) => mockResolveGoogleRedirect(...args),
-  deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
-}));
-vi.mock("../services/users", () => ({
-  createProfile: (...args: unknown[]) => mockCreateProfile(...args),
-  isUsernameAvailable: (...args: unknown[]) => mockIsUsernameAvailable(...args),
-  getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
-  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
-  getPlayerDirectory: vi.fn().mockResolvedValue([]),
-  getLeaderboard: vi.fn().mockResolvedValue([]),
-  getUserProfile: vi.fn().mockResolvedValue(null),
-  getUserProfileOnAuth: vi.fn().mockResolvedValue(null),
-  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
-  // ProfileSetup imports these constants and the AgeVerificationRequiredError
-  // class. Add minimal stand-ins so a signed-in-but-profile-null user being
-  // routed to /profile during recovery-banner tests doesn't crash the mount.
-  USERNAME_MIN: 3,
-  USERNAME_MAX: 20,
-  USERNAME_RE: /^[a-z0-9_]+$/,
-  AgeVerificationRequiredError: class AgeVerificationRequiredError extends Error {},
-}));
-vi.mock("../services/userData", () => ({
-  exportUserData: vi.fn().mockResolvedValue({
-    schemaVersion: 1,
-    exportedAt: "2026-04-15T00:00:00.000Z",
-    capped: false,
-    subject: { uid: "u1", username: "sk8r" },
-    profile: null,
-    usernameReservation: null,
-    games: [],
-    clips: [],
-    clipVotes: [],
-    spots: [],
-    notifications: [],
-    nudges: [],
-    blockedUsers: [],
-    reports: [],
-  }),
-  serializeUserData: vi.fn(() => "{}"),
-  userDataFilename: vi.fn(() => "export.json"),
-}));
-vi.mock("../services/games", () => ({
-  createGame: (...args: unknown[]) => mockCreateGame(...args),
-  setTrick: (...args: unknown[]) => mockSetTrick(...args),
-  failSetTrick: (...args: unknown[]) => mockFailSetTrick(...args),
-  submitMatchAttempt: (...args: unknown[]) => mockSubmitMatchAttempt(...args),
-  forfeitExpiredTurn: (...args: unknown[]) => mockForfeitExpiredTurn(...args),
-  subscribeToMyGames: (...args: unknown[]) => mockSubscribeToMyGames(...args),
-  subscribeToGame: (...args: unknown[]) => mockSubscribeToGame(...args),
-  timestampFromMillis: (ms: number) => ({ toMillis: () => ms }),
-}));
-vi.mock("../services/storage", () => ({
-  uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
-}));
-const mockRemoveCurrentFcmToken = vi.fn().mockResolvedValue(undefined);
-vi.mock("../services/fcm", () => ({
-  requestPushPermission: vi.fn().mockResolvedValue(null),
-  removeFcmToken: vi.fn().mockResolvedValue(undefined),
-  removeCurrentFcmToken: (...args: unknown[]) => mockRemoveCurrentFcmToken(...args),
-  onForegroundMessage: vi.fn(() => vi.fn()),
-}));
-vi.mock("../firebase", () => ({
-  firebaseReady: true,
-  auth: { currentUser: null },
-  db: {},
-  storage: {},
-  default: {},
-}));
-vi.mock("../services/analytics", () => ({
-  trackEvent: vi.fn(),
-  analytics: {
-    gameCreated: vi.fn(),
-    trickSet: vi.fn(),
-    matchSubmitted: vi.fn(),
-    gameCompleted: vi.fn(),
-    videoUploaded: vi.fn(),
-    signUp: vi.fn(),
-    signIn: vi.fn(),
-    signInAttempt: vi.fn(),
-    signInFailure: vi.fn(),
-    signUpAttempt: vi.fn(),
-    signUpFailure: vi.fn(),
+// Harness factories are loaded via dynamic import inside vi.hoisted so the
+// ref objects exist before vi.mock() factories run. Top-level `await` is
+// supported in vitest's ESM test modules.
+const { auth, authSvc, users, userData, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
+  async () => {
+    const m = await import("./harness/mockServices");
+    return {
+      auth: m.createUseAuthMocks(),
+      authSvc: m.createAuthServiceMocks(),
+      users: m.createUsersServiceMocks(),
+      userData: m.createUserDataServiceMocks(),
+      games: m.createGamesServiceMocks(),
+      storage: m.createStorageServiceMocks(),
+      fcm: m.createFcmServiceMocks(),
+      firebase: m.createFirebaseMocks(),
+      analytics: m.createAnalyticsMocks(),
+      blocking: m.createBlockingServiceMocks(),
+      sentry: m.createSentryMocks(),
+    };
   },
-}));
-vi.mock("@sentry/react", () => ({
-  init: vi.fn(),
-  captureException: vi.fn(),
-  captureMessage: vi.fn(),
-  addBreadcrumb: vi.fn(),
-}));
-vi.mock("../services/blocking", () => ({
-  blockUser: vi.fn().mockResolvedValue(undefined),
-  unblockUser: vi.fn().mockResolvedValue(undefined),
-  isUserBlocked: vi.fn().mockResolvedValue(false),
-  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
-  subscribeToBlockedUsers: vi.fn(() => vi.fn()),
-}));
+);
+
+vi.mock("../hooks/useAuth", () => auth.module);
+vi.mock("../services/auth", () => authSvc.module);
+vi.mock("../services/users", () => users.module);
+vi.mock("../services/userData", () => userData.module);
+vi.mock("../services/games", () => games.module);
+vi.mock("../services/storage", () => storage.module);
+vi.mock("../services/fcm", () => fcm.module);
+vi.mock("../firebase", () => firebase.module);
+vi.mock("../services/analytics", () => analytics.module);
+vi.mock("@sentry/react", () => sentry.module);
+vi.mock("../services/blocking", () => blocking.module);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -154,18 +47,18 @@ beforeEach(() => {
 
 const profile = testProfile;
 
-const { withGames, withGameSub, renderLobby, renderVerifiedLobby } = createMockHelpers({
-  mockUseAuth,
-  mockSubscribeToMyGames,
-  mockSubscribeToGame,
+const { withGames, renderLobby } = createMockHelpers({
+  mockUseAuth: auth.refs.useAuth,
+  mockSubscribeToMyGames: games.refs.subscribeToMyGames,
+  mockSubscribeToGame: games.refs.subscribeToGame,
 });
 
 describe("Smoke: Account & Sign Out", () => {
   it("sign out returns to landing", async () => {
-    mockSignOut.mockResolvedValueOnce(undefined);
+    authSvc.refs.signOut.mockResolvedValueOnce(undefined);
 
     // After sign out, useAuth returns no user
-    mockUseAuth.mockImplementation(() => {
+    auth.refs.useAuth.mockImplementation(() => {
       return {
         loading: false,
         user: authedUser,
@@ -180,13 +73,13 @@ describe("Smoke: Account & Sign Out", () => {
     expect(await screen.findByText("Sign Out")).toBeInTheDocument();
     await userEvent.click(screen.getByText("Sign Out"));
 
-    expect(mockSignOut).toHaveBeenCalled();
+    expect(authSvc.refs.signOut).toHaveBeenCalled();
   });
 
   it("sign out scrubs the FCM token BEFORE revoking the auth session", async () => {
-    mockRemoveCurrentFcmToken.mockClear();
-    mockSignOut.mockResolvedValueOnce(undefined);
-    mockUseAuth.mockReturnValue({
+    fcm.refs.removeCurrentFcmToken.mockClear();
+    authSvc.refs.signOut.mockResolvedValueOnce(undefined);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -197,18 +90,20 @@ describe("Smoke: Account & Sign Out", () => {
 
     await userEvent.click(await screen.findByText("Sign Out"));
 
-    expect(mockRemoveCurrentFcmToken).toHaveBeenCalledWith("u1");
-    expect(mockSignOut).toHaveBeenCalled();
+    expect(fcm.refs.removeCurrentFcmToken).toHaveBeenCalledWith("u1");
+    expect(authSvc.refs.signOut).toHaveBeenCalled();
     // The FCM scrub must fire before fbSignOut — once the ID token is
     // gone, the owner-only rule on the private-profile subcollection
     // denies the write and the token lingers.
-    expect(mockRemoveCurrentFcmToken.mock.invocationCallOrder[0]).toBeLessThan(mockSignOut.mock.invocationCallOrder[0]);
+    expect(fcm.refs.removeCurrentFcmToken.mock.invocationCallOrder[0]).toBeLessThan(
+      authSvc.refs.signOut.mock.invocationCallOrder[0],
+    );
   });
 
   it("sign out proceeds even when the FCM scrub write fails", async () => {
-    mockRemoveCurrentFcmToken.mockRejectedValueOnce(new Error("network fail"));
-    mockSignOut.mockResolvedValueOnce(undefined);
-    mockUseAuth.mockReturnValue({
+    fcm.refs.removeCurrentFcmToken.mockRejectedValueOnce(new Error("network fail"));
+    authSvc.refs.signOut.mockResolvedValueOnce(undefined);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -218,14 +113,14 @@ describe("Smoke: Account & Sign Out", () => {
     await renderApp();
 
     // Post-signout useAuth snaps to null so the UI flips to landing
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
 
     await userEvent.click(await screen.findByText("Sign Out"));
 
     // fbSignOut still runs — a failed scrub can't strand the user on a
     // "still signed in" screen.
     await waitFor(() => {
-      expect(mockSignOut).toHaveBeenCalled();
+      expect(authSvc.refs.signOut).toHaveBeenCalled();
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
   });
@@ -250,8 +145,8 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Cancel"));
 
     expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument();
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
-    expect(mockDeleteAccount).not.toHaveBeenCalled();
+    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
+    expect(authSvc.refs.deleteAccount).not.toHaveBeenCalled();
   });
 
   it("successful delete calls deleteAccount with uid+username and navigates to landing", async () => {
@@ -260,12 +155,12 @@ describe("Smoke: Account & Sign Out", () => {
     // AuthContext. If Auth deletion fails we never touch Firestore — the
     // profile is preserved for retry. deleteUserData is NOT called directly
     // from AuthContext anymore; it's called from inside deleteAccount.
-    mockDeleteAccount.mockImplementationOnce(async () => {
+    authSvc.refs.deleteAccount.mockImplementationOnce(async () => {
       // Simulate Firebase sign-out after auth account deletion
-      mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+      auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     });
 
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -282,17 +177,17 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(mockDeleteAccount).toHaveBeenCalledWith("u1", "sk8r");
+      expect(authSvc.refs.deleteAccount).toHaveBeenCalledWith("u1", "sk8r");
       // After deletion, app navigates to landing
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
     // Firestore wipe is now internal to deleteAccount — AuthContext must
     // not call it directly (that's the old orphaning path).
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
   });
 
   it("shows error when deleteAccount fails (profile preserved for retry)", async () => {
-    mockDeleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
     await renderLobby([]);
 
     await userEvent.click(await screen.findByText("Delete Account"));
@@ -304,7 +199,7 @@ describe("Smoke: Account & Sign Out", () => {
     // Under reverse order, a deleteAccount throw means Auth deletion failed
     // BEFORE the Firestore wipe — so the caller never touches user data and
     // the profile stays intact for retry.
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
     // Modal stays open so user can retry
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
@@ -312,7 +207,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("shows friendly message when deleteAccount requires recent login", async () => {
     const err = new Error("auth/requires-recent-login");
     (err as unknown as { code: string }).code = "auth/requires-recent-login";
-    mockDeleteAccount.mockRejectedValueOnce(err);
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(err);
     await renderLobby([]);
 
     await userEvent.click(await screen.findByText("Delete Account"));
@@ -323,7 +218,7 @@ describe("Smoke: Account & Sign Out", () => {
     });
     // No Firestore touch on requires-recent-login — reverse order means the
     // user's profile is still intact for the retry after re-auth.
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
     // Modal stays open
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   });
@@ -331,7 +226,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("captures pending uid to sessionStorage on requires-recent-login", async () => {
     const err = new Error("auth/requires-recent-login");
     (err as unknown as { code: string }).code = "auth/requires-recent-login";
-    mockDeleteAccount.mockRejectedValueOnce(err);
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(err);
     await renderLobby([]);
 
     await userEvent.click(await screen.findByText("Delete Account"));
@@ -354,8 +249,8 @@ describe("Smoke: Account & Sign Out", () => {
     //      exposes a "Finish" affordance; tapping it re-runs the full
     //      reverse-order deleteAccount and the flag is cleared.
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
-    mockDeleteAccount.mockResolvedValueOnce(undefined);
-    mockUseAuth.mockReturnValue({
+    authSvc.refs.deleteAccount.mockResolvedValueOnce(undefined);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -372,18 +267,18 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(finishBtn);
 
     await waitFor(() => {
-      expect(mockDeleteAccount).toHaveBeenCalledWith("u1", "sk8r");
+      expect(authSvc.refs.deleteAccount).toHaveBeenCalledWith("u1", "sk8r");
     });
     // AuthContext no longer calls deleteUserData directly — it's inside deleteAccount.
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBeNull();
   });
 
   it("banner surfaces error message when retry fails", async () => {
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
     const stillRecentErr = Object.assign(new Error("re-auth needed"), { code: "auth/requires-recent-login" });
-    mockDeleteAccount.mockRejectedValueOnce(stillRecentErr);
-    mockUseAuth.mockReturnValue({
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(stillRecentErr);
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -407,7 +302,7 @@ describe("Smoke: Account & Sign Out", () => {
   });
 
   it("banner is hidden when no pending delete is captured", async () => {
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile: null,
@@ -430,7 +325,7 @@ describe("Smoke: Account & Sign Out", () => {
     // Defensive: stale pending flag from a different account must not
     // surface the banner to the current user.
     sessionStorage.setItem("skate.pendingDeleteUid", "SOMEONE_ELSE");
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -461,11 +356,11 @@ describe("Smoke: Account & Sign Out", () => {
     const recentErr = Object.assign(new Error("auth/requires-recent-login"), {
       code: "auth/requires-recent-login",
     });
-    mockDeleteAccount.mockRejectedValueOnce(recentErr).mockImplementationOnce(async () => {
-      mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(recentErr).mockImplementationOnce(async () => {
+      auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     });
 
-    mockUseAuth.mockReturnValue({
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -484,8 +379,8 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
     });
-    expect(mockDeleteAccount).toHaveBeenCalledTimes(1);
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    expect(authSvc.refs.deleteAccount).toHaveBeenCalledTimes(1);
+    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
 
     // Second attempt (simulating user re-auth + retry) succeeds end-to-end.
     await userEvent.click(screen.getByText("Delete Forever"));
@@ -493,15 +388,15 @@ describe("Smoke: Account & Sign Out", () => {
     await waitFor(() => {
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
-    expect(mockDeleteAccount).toHaveBeenCalledTimes(2);
+    expect(authSvc.refs.deleteAccount).toHaveBeenCalledTimes(2);
     // deleteUserData is never called directly by AuthContext under the
     // reverse-order flow; it's called from inside deleteAccount.
-    expect(mockDeleteUserData).not.toHaveBeenCalled();
+    expect(users.refs.deleteUserData).not.toHaveBeenCalled();
   });
 
   it("shows generic error message for unknown firebase auth error", async () => {
-    mockSignIn.mockRejectedValueOnce({ code: "auth/some-unknown-error", message: "Unknown auth error" });
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    authSvc.refs.signIn.mockRejectedValueOnce({ code: "auth/some-unknown-error", message: "Unknown auth error" });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
     await userEvent.click(await screen.findByText("Account"));
@@ -516,8 +411,8 @@ describe("Smoke: Account & Sign Out", () => {
   });
 
   it("handles signOut error gracefully without crashing", async () => {
-    mockSignOut.mockRejectedValueOnce(new Error("Sign out network error"));
-    mockUseAuth.mockReturnValue({
+    authSvc.refs.signOut.mockRejectedValueOnce(new Error("Sign out network error"));
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -527,7 +422,7 @@ describe("Smoke: Account & Sign Out", () => {
     await renderApp();
 
     // After sign-out (even on error), the context clears state → useAuth returns no user
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
 
     await userEvent.click(await screen.findByText("Sign Out"));
 
@@ -574,7 +469,7 @@ describe("Smoke: Account & Sign Out", () => {
   });
 
   it("delete modal shows error banner and allows dismissal", async () => {
-    mockDeleteAccount.mockRejectedValueOnce(new Error("Deletion failed"));
+    authSvc.refs.deleteAccount.mockRejectedValueOnce(new Error("Deletion failed"));
     await renderLobby([]);
 
     await userEvent.click(await screen.findByText("Delete Account"));
@@ -594,7 +489,7 @@ describe("Smoke: Account & Sign Out", () => {
   });
 
   it("delete modal shows fallback error for non-Error thrown", async () => {
-    mockDeleteAccount.mockRejectedValueOnce("string error");
+    authSvc.refs.deleteAccount.mockRejectedValueOnce("string error");
     await renderLobby([]);
 
     await userEvent.click(await screen.findByText("Delete Account"));
@@ -606,8 +501,8 @@ describe("Smoke: Account & Sign Out", () => {
   });
 
   it("handles signOut non-Error rejection gracefully", async () => {
-    mockSignOut.mockRejectedValueOnce("string error");
-    mockUseAuth.mockReturnValue({
+    authSvc.refs.signOut.mockRejectedValueOnce("string error");
+    auth.refs.useAuth.mockReturnValue({
       loading: false,
       user: authedUser,
       profile,
@@ -616,7 +511,7 @@ describe("Smoke: Account & Sign Out", () => {
     withGames([]);
     await renderApp();
 
-    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await userEvent.click(await screen.findByText("Sign Out"));
 
     await waitFor(() => {
