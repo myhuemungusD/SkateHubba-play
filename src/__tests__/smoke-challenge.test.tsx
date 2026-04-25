@@ -4,25 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { activeGame, renderApp, createMockHelpers } from "./smoke-helpers";
 
 /* ── Hoisted mocks ──────────────────────────── */
-// Harness factories are loaded via dynamic import inside vi.hoisted so the
-// ref objects exist before vi.mock() factories run. Top-level `await` is
-// supported in vitest's ESM test modules.
+// The aggregate factory lives in ./harness/mockServices. Dynamic-importing it
+// inside vi.hoisted() keeps the ref objects available before vi.mock() factory
+// callbacks run.
 const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
-  async () => {
-    const m = await import("./harness/mockServices");
-    return {
-      auth: m.createUseAuthMocks(),
-      authSvc: m.createAuthServiceMocks(),
-      users: m.createUsersServiceMocks(),
-      games: m.createGamesServiceMocks(),
-      storage: m.createStorageServiceMocks(),
-      fcm: m.createFcmServiceMocks(),
-      firebase: m.createFirebaseMocks(),
-      analytics: m.createAnalyticsMocks(),
-      blocking: m.createBlockingServiceMocks(),
-      sentry: m.createSentryMocks(),
-    };
-  },
+  async () => (await import("./harness/mockServices")).createAllSmokeMocks(),
 );
 
 vi.mock("../hooks/useAuth", () => auth.module);

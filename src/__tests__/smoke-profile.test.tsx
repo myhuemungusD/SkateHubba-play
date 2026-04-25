@@ -1,28 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { authedUser, renderApp, createMockHelpers } from "./smoke-helpers";
+import { renderApp, createMockHelpers } from "./smoke-helpers";
+import { makeAuthStateSetters } from "./harness/mockAuth";
 
 /* ── Hoisted mocks ──────────────────────────── */
-// Harness factories are loaded via dynamic import inside vi.hoisted so the
-// ref objects exist before vi.mock() factories run. Top-level `await` is
-// supported in vitest's ESM test modules.
+// The aggregate factory lives in ./harness/mockServices. Dynamic-importing it
+// inside vi.hoisted() keeps the ref objects available before vi.mock() factory
+// callbacks run.
 const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
-  async () => {
-    const m = await import("./harness/mockServices");
-    return {
-      auth: m.createUseAuthMocks(),
-      authSvc: m.createAuthServiceMocks(),
-      users: m.createUsersServiceMocks(),
-      games: m.createGamesServiceMocks(),
-      storage: m.createStorageServiceMocks(),
-      fcm: m.createFcmServiceMocks(),
-      firebase: m.createFirebaseMocks(),
-      analytics: m.createAnalyticsMocks(),
-      blocking: m.createBlockingServiceMocks(),
-      sentry: m.createSentryMocks(),
-    };
-  },
+  async () => (await import("./harness/mockServices")).createAllSmokeMocks(),
 );
 
 vi.mock("../hooks/useAuth", () => auth.module);
@@ -38,6 +25,7 @@ vi.mock("../services/blocking", () => blocking.module);
 
 beforeEach(() => vi.clearAllMocks());
 
+const { asUnverifiedUser, setAuthState } = makeAuthStateSetters(auth.refs);
 const { withGames } = createMockHelpers({
   mockUseAuth: auth.refs.useAuth,
   mockSubscribeToMyGames: games.refs.subscribeToMyGames,
@@ -46,23 +34,13 @@ const { withGames } = createMockHelpers({
 
 describe("Smoke: Profile Setup", () => {
   it("shows profile setup when user exists but has no profile", async () => {
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser(null);
     await renderApp();
     expect(await screen.findByText("Pick your handle")).toBeInTheDocument();
   });
 
   it("profile setup disables submit with short username", async () => {
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser(null);
     await renderApp();
 
     const usernameInput = await screen.findByPlaceholderText("sk8legend");
@@ -76,12 +54,7 @@ describe("Smoke: Profile Setup", () => {
 
   it("profile setup shows username available indicator", async () => {
     users.refs.isUsernameAvailable.mockResolvedValueOnce(true);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser(null);
     await renderApp();
 
     const usernameInput = await screen.findByPlaceholderText("sk8legend");
@@ -94,12 +67,7 @@ describe("Smoke: Profile Setup", () => {
 
   it("profile setup shows username taken indicator", async () => {
     users.refs.isUsernameAvailable.mockResolvedValueOnce(false);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser(null);
     await renderApp();
 
     const usernameInput = await screen.findByPlaceholderText("sk8legend");
@@ -112,12 +80,7 @@ describe("Smoke: Profile Setup", () => {
 
   it("profile setup allows toggling stance on the single-card form", async () => {
     users.refs.isUsernameAvailable.mockResolvedValue(true);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    asUnverifiedUser(null);
     await renderApp();
 
     await screen.findByPlaceholderText("sk8legend");
@@ -136,17 +99,11 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup creates profile and transitions to lobby with inline DOB", async () => {
-    const refreshProfile = vi.fn();
     const newProfile = { uid: "u1", username: "newsk8r", stance: "Regular", emailVerified: false, createdAt: null };
     users.refs.createProfile.mockResolvedValueOnce(newProfile);
     users.refs.isUsernameAvailable.mockResolvedValue(true);
 
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: null,
-      refreshProfile,
-    });
+    asUnverifiedUser(null);
     await renderApp();
 
     // Username
@@ -160,12 +117,7 @@ describe("Smoke: Profile Setup", () => {
     await userEvent.type(screen.getByLabelText("Birth year"), "2000");
 
     // Auth state flips to reflect the new profile once createProfile resolves.
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: authedUser,
-      profile: newProfile,
-      refreshProfile,
-    });
+    asUnverifiedUser(newProfile);
     withGames([]);
 
     await userEvent.click(screen.getByText("Lock It In"));
@@ -177,12 +129,7 @@ describe("Smoke: Profile Setup", () => {
 
   it("shows error when username availability check fails", async () => {
     users.refs.isUsernameAvailable.mockRejectedValue(new Error("Firestore unavailable"));
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: false },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    setAuthState({ user: { uid: "u1", email: "a@b.com", emailVerified: false }, profile: null });
     await renderApp();
 
     const input = await screen.findByPlaceholderText("sk8legend");
@@ -200,12 +147,7 @@ describe("Smoke: Profile Setup", () => {
   it("shows error when profile creation fails", async () => {
     users.refs.isUsernameAvailable.mockResolvedValue(true);
     users.refs.createProfile.mockRejectedValueOnce(new Error("Firestore write failed"));
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: true },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    setAuthState({ user: { uid: "u1", email: "a@b.com", emailVerified: true }, profile: null });
     await renderApp();
 
     const input = await screen.findByPlaceholderText("sk8legend");
@@ -226,12 +168,7 @@ describe("Smoke: Profile Setup", () => {
 
   it("profile setup rejects username > 20 characters", async () => {
     users.refs.isUsernameAvailable.mockResolvedValue(true);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: false },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    setAuthState({ user: { uid: "u1", email: "a@b.com", emailVerified: false }, profile: null });
     await renderApp();
 
     // Since maxLength=20 on input, we can't type more than 20 chars via userEvent.
@@ -249,12 +186,7 @@ describe("Smoke: Profile Setup", () => {
   it("profile setup shows error when submitting while username check is pending", async () => {
     // Make availability check never resolve (stays null)
     users.refs.isUsernameAvailable.mockImplementation(() => new Promise(() => {}));
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: false },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    setAuthState({ user: { uid: "u1", email: "a@b.com", emailVerified: false }, profile: null });
     await renderApp();
 
     const input = await screen.findByPlaceholderText("sk8legend");
@@ -276,12 +208,7 @@ describe("Smoke: Profile Setup", () => {
 
   it("profile setup shows error when submitting taken username", async () => {
     users.refs.isUsernameAvailable.mockResolvedValue(false);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: false },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    setAuthState({ user: { uid: "u1", email: "a@b.com", emailVerified: false }, profile: null });
     await renderApp();
 
     const input = await screen.findByPlaceholderText("sk8legend");
@@ -301,12 +228,7 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup rejects username shorter than 3 characters on form submit", async () => {
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: false },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    setAuthState({ user: { uid: "u1", email: "a@b.com", emailVerified: false }, profile: null });
     await renderApp();
 
     const input = await screen.findByPlaceholderText("sk8legend");
@@ -325,12 +247,7 @@ describe("Smoke: Profile Setup", () => {
 
   it("profile setup error banner can be dismissed", async () => {
     users.refs.isUsernameAvailable.mockResolvedValue(false);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: false },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    setAuthState({ user: { uid: "u1", email: "a@b.com", emailVerified: false }, profile: null });
     await renderApp();
 
     const input = await screen.findByPlaceholderText("sk8legend");
@@ -352,11 +269,9 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup uses displayName as suggested username", async () => {
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
+    setAuthState({
       user: { uid: "u1", email: "a@b.com", emailVerified: false, displayName: "Cool Skater123" },
       profile: null,
-      refreshProfile: vi.fn(),
     });
     await renderApp();
 
@@ -367,12 +282,7 @@ describe("Smoke: Profile Setup", () => {
   it("profile setup rejects username with invalid characters on form submit", async () => {
     // The input already strips invalid chars, but the validation still checks
     users.refs.isUsernameAvailable.mockResolvedValue(true);
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: "a@b.com", emailVerified: false },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    setAuthState({ user: { uid: "u1", email: "a@b.com", emailVerified: false }, profile: null });
     await renderApp();
 
     // Type valid chars via input
@@ -383,12 +293,7 @@ describe("Smoke: Profile Setup", () => {
   });
 
   it("profile setup handles user with null email", async () => {
-    auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "u1", email: null, emailVerified: false, displayName: null },
-      profile: null,
-      refreshProfile: vi.fn(),
-    });
+    setAuthState({ user: { uid: "u1", email: null, emailVerified: false, displayName: null }, profile: null });
     await renderApp();
 
     await waitFor(() => expect(screen.getByText("Pick your handle")).toBeInTheDocument());
