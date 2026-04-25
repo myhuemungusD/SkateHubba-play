@@ -32,8 +32,6 @@ export function SkateButton({
     if (disabled) return;
     setPopping(true);
     playOlliePop();
-    // SkateButton is a branded primary CTA — share the Btn variant=primary
-    // haptic so the tap stays aligned if the table is ever retuned.
     playHaptic(hapticForVariant("primary"));
     if (popTimerRef.current) clearTimeout(popTimerRef.current);
     popTimerRef.current = setTimeout(() => setPopping(false), 500);
