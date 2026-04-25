@@ -45,8 +45,12 @@ const variantHaptic: Record<ButtonVariant, HapticType> = {
 };
 
 /**
- * Resolve the canonical haptic for a button variant. Unknown variants fall
- * back to `"toast"` so a stray/legacy variant never silences the tap entirely.
+ * Resolve the canonical haptic for a button variant.
+ *
+ * - A missing variant (`null` / `undefined`) maps to the `primary` haptic so
+ *   it stays aligned with `Btn`'s default `variant="primary"` rendering.
+ * - An unknown variant string falls back to `"toast"` (the lightest pulse)
+ *   so a stray/legacy variant never silences the tap entirely.
  */
 export function hapticForVariant(variant: ButtonVariant | null | undefined): HapticType {
   if (!variant) return variantHaptic.primary;

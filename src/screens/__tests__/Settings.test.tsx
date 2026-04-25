@@ -34,24 +34,17 @@ vi.mock("../../services/fcm", () => ({
 }));
 
 vi.mock("../../services/haptics", async () => {
+  const actual = await vi.importActual<typeof import("../../services/haptics")>("../../services/haptics");
+  // In-memory toggle backs Settings' optimistic switch — bypassing localStorage
+  // keeps the test deterministic across the various permission scenarios below.
   const store = { enabled: true };
   return {
+    ...actual,
     isHapticsEnabled: () => store.enabled,
     setHapticsEnabled: (v: boolean) => {
       store.enabled = v;
     },
     playHaptic: vi.fn(),
-    hapticForVariant: (variant: string | null | undefined) => {
-      if (variant == null) return "button_primary";
-      const table: Record<string, string> = {
-        primary: "button_primary",
-        success: "button_primary",
-        danger: "button_primary",
-        secondary: "toast",
-        ghost: "toast",
-      };
-      return table[variant] ?? "toast";
-    },
     __setStore(v: boolean) {
       store.enabled = v;
     },

@@ -34,20 +34,15 @@ vi.mock("../../services/storage", () => ({
 
 const mockPlayHaptic = vi.fn();
 
-vi.mock("../../services/haptics", () => ({
-  playHaptic: (...args: unknown[]) => mockPlayHaptic(...args),
-  hapticForVariant: (variant: string | null | undefined) => {
-    if (variant == null) return "button_primary";
-    const table: Record<string, string> = {
-      primary: "button_primary",
-      success: "button_primary",
-      danger: "button_primary",
-      secondary: "toast",
-      ghost: "toast",
-    };
-    return table[variant] ?? "toast";
-  },
-}));
+// Spy on playHaptic but keep the real `hapticForVariant` so the variant→haptic
+// table only lives in `services/haptics.ts`.
+vi.mock("../../services/haptics", async () => {
+  const actual = await vi.importActual<typeof import("../../services/haptics")>("../../services/haptics");
+  return {
+    ...actual,
+    playHaptic: (...args: unknown[]) => mockPlayHaptic(...args),
+  };
+});
 
 const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
 

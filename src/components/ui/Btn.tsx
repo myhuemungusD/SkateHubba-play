@@ -24,7 +24,7 @@ export function Btn({
 }) {
   const base =
     "w-full rounded-2xl font-display tracking-wider text-center transition-all duration-300 ease-smooth disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
-  const variants: Record<string, string> = {
+  const variants: Record<ButtonVariant, string> = {
     primary:
       "bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white py-4 text-xl shadow-[0_2px_12px_rgba(255,107,0,0.2),0_1px_2px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.28),0_2px_6px_rgba(0,0,0,0.12)] hover:-translate-y-0.5 ring-1 ring-white/[0.08]",
     secondary: "glass-card text-white py-3.5 text-lg hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.2)]",
