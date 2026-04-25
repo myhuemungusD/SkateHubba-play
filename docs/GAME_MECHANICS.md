@@ -96,7 +96,7 @@ Letters never decrease and only one player can gain a letter per turn. Both cons
 
 ### Normal completion (`status: "complete"`)
 
-A player reaches 5 letters. The player who did **not** reach 5 letters is the winner. This is determined inside the `submitMatchResult` transaction and immediately stored in the game document.
+A player reaches 5 letters. The player who did **not** reach 5 letters is the winner. This is determined inside the `submitMatchAttempt` transaction and immediately stored in the game document.
 
 ### Forfeit (`status: "forfeit"`)
 
