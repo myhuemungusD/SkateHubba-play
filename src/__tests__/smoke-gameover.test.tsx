@@ -5,24 +5,11 @@ import { activeGame, createMockHelpers } from "./smoke-helpers";
 import type { GameDoc } from "../services/games";
 
 /* ── Hoisted mocks ──────────────────────────── */
-// Harness factories are loaded via dynamic import inside vi.hoisted so the
-// ref objects exist before vi.mock() factories run.
+// The aggregate factory lives in ./harness/mockServices. Dynamic-importing it
+// inside vi.hoisted() keeps the ref objects available before vi.mock() factory
+// callbacks run.
 const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
-  async () => {
-    const m = await import("./harness/mockServices");
-    return {
-      auth: m.createUseAuthMocks(),
-      authSvc: m.createAuthServiceMocks(),
-      users: m.createUsersServiceMocks(),
-      games: m.createGamesServiceMocks(),
-      storage: m.createStorageServiceMocks(),
-      fcm: m.createFcmServiceMocks(),
-      firebase: m.createFirebaseMocks(),
-      analytics: m.createAnalyticsMocks(),
-      blocking: m.createBlockingServiceMocks(),
-      sentry: m.createSentryMocks(),
-    };
-  },
+  async () => (await import("./harness/mockServices")).createAllSmokeMocks(),
 );
 
 vi.mock("../hooks/useAuth", () => auth.module);
@@ -43,6 +30,21 @@ const { withGameSub, renderLobby, renderVerifiedLobby } = createMockHelpers({
   mockSubscribeToMyGames: games.refs.subscribeToMyGames,
   mockSubscribeToGame: games.refs.subscribeToGame,
 });
+
+/**
+ * Wire `subscribeToGame` to push `initial` synchronously and capture the
+ * callback so the test can drive a follow-up update via `pushUpdate(g)`.
+ * Used by the realtime-transition tests below.
+ */
+function captureGameSub(initial: GameDoc): { pushUpdate: (g: GameDoc) => void } {
+  let cb: (g: GameDoc) => void = () => {};
+  games.refs.subscribeToGame.mockImplementation((_id: string, fn: (g: GameDoc) => void) => {
+    cb = fn;
+    fn(initial);
+    return vi.fn();
+  });
+  return { pushUpdate: (g: GameDoc) => cb(g) };
+}
 
 describe("Smoke: Game Over", () => {
   it("shows game over screen for a completed game (winner)", async () => {
@@ -169,12 +171,7 @@ describe("Smoke: Game Over", () => {
     await renderLobby([game]);
 
     // First subscription returns active game, then sends a completed update
-    let gameUpdateCb: (g: ReturnType<typeof activeGame>) => void;
-    games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: ReturnType<typeof activeGame>) => void) => {
-      gameUpdateCb = cb;
-      cb(game); // initial active state
-      return vi.fn();
-    });
+    const { pushUpdate } = captureGameSub(game);
 
     await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
@@ -190,7 +187,7 @@ describe("Smoke: Game Over", () => {
       p2Letters: 5,
     });
     act(() => {
-      gameUpdateCb!(completedGame);
+      pushUpdate(completedGame);
     });
 
     await waitFor(() => {
@@ -294,12 +291,7 @@ describe("Smoke: Game Over", () => {
     });
     await renderLobby([game]);
 
-    let gameUpdateCb: (g: ReturnType<typeof activeGame>) => void;
-    games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: ReturnType<typeof activeGame>) => void) => {
-      gameUpdateCb = cb;
-      cb(game);
-      return vi.fn();
-    });
+    const { pushUpdate } = captureGameSub(game);
 
     await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
@@ -307,7 +299,7 @@ describe("Smoke: Game Over", () => {
 
     const forfeitGame = activeGame({ status: "forfeit", winner: "u1" });
     act(() => {
-      gameUpdateCb!(forfeitGame);
+      pushUpdate(forfeitGame);
     });
 
     await waitFor(() => {
