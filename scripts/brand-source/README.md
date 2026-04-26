@@ -3,11 +3,11 @@
 Canonical source PNGs for every SkateHubba derived asset (favicons, PWA icons,
 iOS AppIcon, iOS launch splash, OG card, README hero, in-app horizontal mark).
 
-| File                 | Used for                                               |
-| -------------------- | ------------------------------------------------------ |
-| `fiery-badge.png`    | OG/Twitter social card, README hero, iOS launch splash |
-| `black-badge.png`    | iOS AppIcon, PWA icons, favicons, apple-touch-icon     |
-| `landscape-mark.png` | In-app horizontal logo (`public/logonew.webp`)         |
+| File                  | Used for                                               |
+| --------------------- | ------------------------------------------------------ |
+| `fiery-badge.png`     | OG/Twitter social card, README hero, iOS launch splash |
+| `black-badge.png`     | iOS AppIcon, PWA icons, favicons, apple-touch-icon     |
+| `landscape-light.png` | In-app horizontal logo (`public/logonew.webp`)         |
 
 ## Regenerating derived assets
 

@@ -9,9 +9,11 @@ Requirements: Pillow (pip install Pillow), pngquant (apt install pngquant).
 pngquant is optional — if missing, palette PNGs from Pillow are used as-is.
 
 Sources (scripts/brand-source/):
-    fiery-badge.png      1536x1024 RGBA — the fiery orange hero
-    black-badge.png      1536x1024 RGBA — black-circle SkateHubba badge
-    landscape-mark.png   1536x1024 RGBA — transparent landscape rider+text
+    fiery-badge.png        1536x1024 RGBA — the fiery orange hero
+    black-badge.png        1536x1024 RGBA — black-circle SkateHubba badge
+    landscape-light.png    1536x1024 RGB  — white-circle badge (used in-app on
+                                            the dark #0A0A0A header for max
+                                            contrast at small heights)
 
 Outputs:
     public/logonew.webp                    — in-app horizontal mark (used app-wide)
@@ -149,13 +151,15 @@ def splash_canvas(fiery: Image.Image, size: int = 2732, scale: float = 0.32) -> 
 def main() -> None:
     fiery = load("fiery-badge.png")
     black = load("black-badge.png")
-    landscape = load("landscape-mark.png")
+    landscape = load("landscape-light.png")
 
     # Square 1024 source for icons (cropped from black-badge)
     square_rgba = crop_center_square(black).resize((1024, 1024), Image.LANCZOS)
     square_rgb = flatten(square_rgba)
 
-    # In-app horizontal mark (every screen renders this)
+    # In-app horizontal mark (every screen renders this). Uses the white-circle
+    # variant so the badge stays visible on the app's dark #0A0A0A surfaces
+    # even at h-4 (16px). The image's black framing blends with the header.
     landscape.save(PUBLIC / "logonew.webp", "WEBP", quality=92, method=6)
 
     # PWA "any" icons
