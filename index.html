@@ -25,11 +25,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SkateHubba" />
-    <!-- Use the larger PWA icon as the iOS home-screen icon so it stays sharp
-         on high-DPI devices (iPad Pro, Plus iPhones). Keep the smaller 192 as
-         a declared size hint; iOS picks the best match for the display. -->
-    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
+    <!-- iOS home-screen icon: 180x180 is Apple's canonical apple-touch-icon
+         size (60pt @3x). Larger sizes are kept as fallbacks so iPad Pro and
+         older Safari versions still pick a sharp asset. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="/icon-192.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="/icon-512.png" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
@@ -38,17 +39,17 @@
     <meta property="og:description" content="The first async S.K.A.T.E. trick battle game. For the love of the game." />
     <meta property="og:site_name" content="SkateHubba" />
     <meta property="og:locale" content="en_US" />
-    <meta property="og:image" content="https://skatehubba.com/logonew.png" />
+    <meta property="og:image" content="https://skatehubba.com/og-image.png" />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="1536" />
-    <meta property="og:image:height" content="1024" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta property="og:image:alt" content="SkateHubba — async S.K.A.T.E. trick battle game logo" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="SkateHubba™ — For the Love of the Game" />
     <meta name="twitter:description" content="The first async S.K.A.T.E. trick battle game. For the love of the game." />
-    <meta name="twitter:image" content="https://skatehubba.com/logonew.png" />
+    <meta name="twitter:image" content="https://skatehubba.com/og-image.png" />
     <meta name="twitter:image:alt" content="SkateHubba — async S.K.A.T.E. trick battle game logo" />
 
     <!-- Firebase -->
@@ -76,7 +77,7 @@
       "applicationCategory": "GameApplication",
       "operatingSystem": "Any",
       "browserRequirements": "Requires a modern browser with camera access",
-      "image": "https://skatehubba.com/logonew.png",
+      "image": "https://skatehubba.com/og-image.png",
       "offers": {
         "@type": "Offer",
         "price": "0",
