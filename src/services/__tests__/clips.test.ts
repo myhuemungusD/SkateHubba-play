@@ -66,6 +66,7 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
+import type { Transaction } from "firebase/firestore";
 import {
   writeLandedClipsInTransaction,
   fetchClipsFeed,
@@ -80,15 +81,17 @@ import {
 
 /* ── Helpers ────────────────────────────────── */
 
-function makeTx() {
-  // Cast: the real Transaction has a richer surface (delete, runQuery, etc.)
-  // that writeLandedClipsInTransaction never invokes. Casting through unknown
-  // keeps the test focused on the methods actually exercised.
-  return { set: vi.fn(), update: vi.fn(), get: vi.fn() } as unknown as import("firebase/firestore").Transaction & {
-    set: ReturnType<typeof vi.fn>;
-    update: ReturnType<typeof vi.fn>;
-    get: ReturnType<typeof vi.fn>;
-  };
+// The real Transaction has a richer surface (delete, runQuery, etc.) that
+// writeLandedClipsInTransaction never invokes. We cast through unknown so the
+// stub can satisfy the production signature with only the methods exercised.
+type MockTransaction = Transaction & {
+  set: ReturnType<typeof vi.fn>;
+  update: ReturnType<typeof vi.fn>;
+  get: ReturnType<typeof vi.fn>;
+};
+
+function makeTx(): MockTransaction {
+  return { set: vi.fn(), update: vi.fn(), get: vi.fn() } as unknown as MockTransaction;
 }
 
 function baseCtx(overrides: Partial<LandedClipContext> = {}): LandedClipContext {

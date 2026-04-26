@@ -1,19 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /* ── mock firebase packages ─────────────────── */
-// Each mock is typed variadic so the (...args) => mock(...args) dispatcher
-// pattern below type-checks under vitest 4's stricter `vi.fn()` signature.
-const mockInitializeApp = vi.fn((..._: unknown[]) => ({ name: "test-app" }));
-const mockGetAuth = vi.fn((..._: unknown[]) => ({ name: "test-auth" }));
-const mockGetStorage = vi.fn((..._: unknown[]) => ({ name: "test-storage" }));
-const mockInitializeFirestore = vi.fn((..._: unknown[]) => ({ name: "test-db" }));
-const mockConnectAuthEmulator = vi.fn((..._: unknown[]) => undefined);
-const mockConnectFirestoreEmulator = vi.fn((..._: unknown[]) => undefined);
-const mockConnectStorageEmulator = vi.fn((..._: unknown[]) => undefined);
-const mockMemoryLocalCache = vi.fn((..._: unknown[]) => ({ __cache: "memory" }));
-const mockPersistentLocalCache = vi.fn((..._: unknown[]) => ({ __cache: "persistent" }));
-const mockPersistentMultipleTabManager = vi.fn((..._: unknown[]) => ({}));
-const mockAddBreadcrumb = vi.fn((..._: unknown[]) => undefined);
+// Each impl is variadic so the `(...args: unknown[]) => mock(...args)` factory
+// dispatchers below type-check under vitest 4's stricter mock signature.
+const mockInitializeApp = vi.fn((..._args: unknown[]) => ({ name: "test-app" }));
+const mockGetAuth = vi.fn((..._args: unknown[]) => ({ name: "test-auth" }));
+const mockGetStorage = vi.fn((..._args: unknown[]) => ({ name: "test-storage" }));
+const mockInitializeFirestore = vi.fn((..._args: unknown[]) => ({ name: "test-db" }));
+const mockConnectAuthEmulator = vi.fn();
+const mockConnectFirestoreEmulator = vi.fn();
+const mockConnectStorageEmulator = vi.fn();
+const mockMemoryLocalCache = vi.fn((..._args: unknown[]) => ({ __cache: "memory" }));
+const mockPersistentLocalCache = vi.fn((..._args: unknown[]) => ({ __cache: "persistent" }));
+const mockPersistentMultipleTabManager = vi.fn((..._args: unknown[]) => ({}));
+const mockAddBreadcrumb = vi.fn();
 
 vi.mock("../lib/sentry", () => ({
   addBreadcrumb: (...args: unknown[]) => mockAddBreadcrumb(...args),

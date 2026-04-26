@@ -2,11 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /* ── mock firebase/messaging ─────────────────── */
 
-// Variadic signatures keep these mocks compatible with vitest 4's stricter
-// `vi.fn()` default type while allowing tests to swap return values freely.
-const mockGetToken = vi.fn<(...args: unknown[]) => unknown>();
-const mockOnMessage = vi.fn<(...args: unknown[]) => unknown>(() => vi.fn());
-const mockGetMessaging = vi.fn<(...args: unknown[]) => unknown>(() => "messaging-instance");
+const mockGetToken = vi.fn();
+const mockOnMessage = vi.fn((..._args: unknown[]) => vi.fn());
+const mockGetMessaging = vi.fn((..._args: unknown[]) => "messaging-instance");
 
 vi.mock("firebase/messaging", () => ({
   getMessaging: (...args: unknown[]) => mockGetMessaging(...args),
@@ -16,8 +14,8 @@ vi.mock("firebase/messaging", () => ({
 
 /* ── mock firebase/firestore ─────────────────── */
 
-const mockSetDoc = vi.fn<(...args: unknown[]) => unknown>(() => Promise.resolve(undefined));
-const mockDoc = vi.fn<(...args: unknown[]) => unknown>((..._args) => (_args.slice(1) as string[]).join("/"));
+const mockSetDoc = vi.fn().mockResolvedValue(undefined);
+const mockDoc = vi.fn((..._args: unknown[]) => (_args.slice(1) as string[]).join("/"));
 const mockArrayUnion = vi.fn((v: string) => ({ _op: "arrayUnion", value: v }));
 const mockArrayRemove = vi.fn((v: string) => ({ _op: "arrayRemove", value: v }));
 

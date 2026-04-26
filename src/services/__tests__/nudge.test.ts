@@ -2,11 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 /* ── mock firebase/firestore ─────────────────── */
 
-type AnyMock = (...args: unknown[]) => unknown;
-const mockSetDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
-const mockAddDoc = vi.fn<AnyMock>(() => Promise.resolve({ id: "nudge1" }));
-const mockDoc = vi.fn<AnyMock>((..._args) => (_args.slice(1) as string[]).join("/"));
-const mockCollection = vi.fn<AnyMock>((..._args) => _args[1]);
+const mockSetDoc = vi.fn().mockResolvedValue(undefined);
+const mockAddDoc = vi.fn().mockResolvedValue({ id: "nudge1" });
+const mockDoc = vi.fn((..._args: unknown[]) => (_args.slice(1) as string[]).join("/"));
+const mockCollection = vi.fn((..._args: unknown[]) => _args[1]);
 const mockServerTimestamp = vi.fn(() => "SERVER_TS");
 
 vi.mock("firebase/firestore", () => ({

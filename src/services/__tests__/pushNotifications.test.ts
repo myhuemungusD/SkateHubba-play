@@ -39,8 +39,8 @@ vi.mock("@capacitor/push-notifications", () => ({
 
 /* ── mock firebase/firestore ─────────────────── */
 
-const mockSetDoc = vi.fn<(...args: unknown[]) => unknown>(() => Promise.resolve(undefined));
-const mockDoc = vi.fn<(...args: unknown[]) => unknown>((..._args) => (_args.slice(1) as string[]).join("/"));
+const mockSetDoc = vi.fn().mockResolvedValue(undefined);
+const mockDoc = vi.fn((..._args: unknown[]) => (_args.slice(1) as string[]).join("/"));
 const mockArrayUnion = vi.fn((v: string) => ({ _op: "arrayUnion", value: v }));
 const mockArrayRemove = vi.fn((v: string) => ({ _op: "arrayRemove", value: v }));
 

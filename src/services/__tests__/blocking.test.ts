@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-type AnyMock = (...args: unknown[]) => unknown;
-const mockSetDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
-const mockDeleteDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
-const mockGetDoc = vi.fn<AnyMock>();
-const mockGetDocs = vi.fn<AnyMock>();
-const mockOnSnapshot = vi.fn<AnyMock>();
-const mockDoc = vi.fn<AnyMock>((..._args) => (_args.slice(1) as string[]).join("/"));
-const mockCollection = vi.fn<AnyMock>((..._args) => (_args.slice(1) as string[]).join("/"));
+const mockSetDoc = vi.fn().mockResolvedValue(undefined);
+const mockDeleteDoc = vi.fn().mockResolvedValue(undefined);
+const mockGetDoc = vi.fn();
+const mockGetDocs = vi.fn();
+const mockOnSnapshot = vi.fn();
+const mockDoc = vi.fn((..._args: unknown[]) => (_args.slice(1) as string[]).join("/"));
+const mockCollection = vi.fn((..._args: unknown[]) => (_args.slice(1) as string[]).join("/"));
 const mockServerTimestamp = vi.fn(() => "SERVER_TS");
 
 vi.mock("firebase/firestore", () => ({
@@ -149,8 +148,7 @@ describe("getBlockedUserIds", () => {
 describe("subscribeToBlockedUsers", () => {
   it("calls onUpdate with blocked UIDs from snapshot", () => {
     const callback = vi.fn();
-    mockOnSnapshot.mockImplementation((..._args: unknown[]) => {
-      const onNext = _args[1] as (snap: { docs: { id: string }[] }) => void;
+    mockOnSnapshot.mockImplementation((_ref: unknown, onNext: (snap: { docs: { id: string }[] }) => void) => {
       onNext({
         docs: [{ id: "u2" }, { id: "u3" }],
       });
@@ -172,8 +170,7 @@ describe("subscribeToBlockedUsers", () => {
 
   it("handles snapshot errors gracefully", () => {
     const callback = vi.fn();
-    mockOnSnapshot.mockImplementation((..._args: unknown[]) => {
-      const onError = _args[2] as (err: Error) => void;
+    mockOnSnapshot.mockImplementation((_ref: unknown, _onNext: unknown, onError: (err: Error) => void) => {
       onError(new Error("permission denied"));
       return vi.fn();
     });
