@@ -22,8 +22,16 @@
       "destination": "https://skatehubba.com/$1",
       "permanent": true
     },
-    { "source": "/logonew.png", "destination": "/og-image.png", "permanent": true },
-    { "source": "/logoblack.png", "destination": "/favicon.ico", "permanent": true }
+    {
+      "source": "/logonew.png",
+      "destination": "/og-image.png",
+      "permanent": true
+    },
+    {
+      "source": "/logoblack.png",
+      "destination": "/icon-192.png",
+      "permanent": true
+    }
   ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
