@@ -21,7 +21,10 @@
       "has": [{ "type": "host", "value": "www.skatehubba.com" }],
       "destination": "https://skatehubba.com/$1",
       "permanent": true
-    }
+    },
+    { "source": "/logonew.png", "destination": "/logo.png", "permanent": true },
+    { "source": "/logonew.webp", "destination": "/logo.webp", "permanent": true },
+    { "source": "/logoblack.png", "destination": "/logo-black.png", "permanent": true }
   ],
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
