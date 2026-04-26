@@ -22,7 +22,7 @@ import type { FirebaseStorage } from "firebase/storage";
 
 export const firebaseReady = true;
 export const FIRESTORE_DB_NAME = "skatehubba";
-export const firestoreCacheMode: "persistent" | "memory" = "memory";
+export const firestoreCacheMode: "persistent" | "memory" = "persistent";
 
 // `let` so tests can flip emulator behaviour via Object.defineProperty on the
 // module namespace (see auth.test.ts). Vite's SSR transform preserves the
