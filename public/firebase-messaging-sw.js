@@ -33,8 +33,8 @@ messaging.onBackgroundMessage(function (payload) {
   var title = notification.title || "SkateHubba";
   var options = {
     body: notification.body || "You have a new notification",
-    icon: "/logoblack.png",
-    badge: "/logoblack.png",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
     data: payload.data || {},
     // Tag groups notifications by game so they replace rather than stack
     tag: payload.data && payload.data.gameId ? "game_" + payload.data.gameId : "skatehubba",
