@@ -35,7 +35,7 @@ Each turn has two phases: **setting** and **matching**.
 The current setter must:
 
 1. Type the trick name (max 100 characters, trimmed of whitespace)
-2. Record a one-take video using the device camera (WebM format via MediaRecorder API)
+2. Record a one-take video using the device camera (WebM via MediaRecorder on web, MP4 via Capacitor on native)
 3. Submit
 
 On submit (`setTrick`):

@@ -108,10 +108,10 @@ Thoroughly reviewed all four `allow update` rules:
 
 ### Rules Summary
 
-| Path                                   | Read          | Write         | Constraints                                                |
-| -------------------------------------- | ------------- | ------------- | ---------------------------------------------------------- |
-| `games/{gameId}/{turnPath}/{fileName}` | Authenticated | Authenticated | 1KB–50MB, `video/webm` only, filename `(set\|match)\.webm` |
-| Everything else                        | Denied        | Denied        | Default deny                                               |
+| Path                                   | Read          | Write         | Constraints                                                                 |
+| -------------------------------------- | ------------- | ------------- | --------------------------------------------------------------------------- |
+| `games/{gameId}/{turnPath}/{fileName}` | Authenticated | Authenticated | 1KB–50MB, `video/webm` or `video/mp4`, filename `(set\|match)\.(webm\|mp4)` |
+| Everything else                        | Denied        | Denied        | Default deny                                                                |
 
 ### Findings
 
@@ -125,8 +125,8 @@ a comment in the rules file). Any authenticated user can upload a video to any g
 - Firestore game rules validate that only the current-turn player can update `currentTrickVideoUrl`
   and `matchVideoUrl` fields, so an attacker can upload garbage to a path but can't inject it into
   the game document.
-- Files must be `video/webm` and between 1KB–50MB.
-- Filename restricted to `set.webm` or `match.webm` — blocks path traversal.
+- Files must be `video/webm` (web) or `video/mp4` (native) and between 1KB–50MB.
+- Filename restricted to `set.webm`, `set.mp4`, `match.webm`, or `match.mp4` — blocks path traversal.
 
 **Recommendation:** This is an accepted limitation. The real access control is on the Firestore game
 document, not the storage blob. An attacker could waste storage quota by uploading to arbitrary game
