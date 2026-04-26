@@ -4,9 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { TurnHistoryViewer } from "../TurnHistoryViewer";
 import type { TurnRecord } from "../../services/games";
 
-vi.mock("../../utils/helpers", () => ({
-  isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com"),
-}));
+vi.mock("../../utils/helpers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils/helpers")>();
+  return {
+    ...actual,
+    isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com"),
+  };
+});
 
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
@@ -143,6 +147,69 @@ describe("TurnHistoryViewer", () => {
       expect(screen.getByText("Saved!")).toBeInTheDocument();
     });
 
+    vi.restoreAllMocks();
+  });
+
+  it("download anchor uses .webm extension for video/webm blobs (web clips)", async () => {
+    const blob = new Blob(["video"], { type: "video/webm" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, blob: () => Promise.resolve(blob) } as Response);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const downloadAttr = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadAttr(this.download);
+    });
+
+    render(<TurnHistoryViewer turns={[makeTurn(7)]} currentUserUid="u1" defaultExpanded showDownload />);
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+
+    await waitFor(() => expect(downloadAttr).toHaveBeenCalledWith("skatehubba-round7-set.webm"));
+    clickSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it("download anchor uses .mp4 extension for video/mp4 blobs (native clips)", async () => {
+    const blob = new Blob(["video"], { type: "video/mp4" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, blob: () => Promise.resolve(blob) } as Response);
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+    const downloadAttr = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadAttr(this.download);
+    });
+
+    render(<TurnHistoryViewer turns={[makeTurn(9)]} currentUserUid="u1" defaultExpanded showDownload />);
+    await userEvent.click(screen.getAllByText("Save clip")[0]);
+
+    await waitFor(() => expect(downloadAttr).toHaveBeenCalledWith("skatehubba-round9-set.mp4"));
+    clickSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it("share file uses video/mp4 type and .mp4 name for native clips", async () => {
+    const blob = new Blob(["video"], { type: "video/mp4" });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue({ ok: true, blob: () => Promise.resolve(blob) } as Response);
+    const shareFn = vi.fn().mockResolvedValue(undefined);
+    const canShareFn = vi.fn().mockReturnValue(true);
+    const origShare = navigator.share;
+    const origCanShare = (navigator as Navigator & { canShare?: (data: ShareData) => boolean }).canShare;
+    Object.defineProperty(navigator, "share", { value: shareFn, configurable: true, writable: true });
+    Object.defineProperty(navigator, "canShare", { value: canShareFn, configurable: true, writable: true });
+
+    render(<TurnHistoryViewer turns={[makeTurn(3)]} currentUserUid="u1" defaultExpanded showShare />);
+    await userEvent.click(screen.getAllByText("Share clip")[0]);
+
+    await waitFor(() => expect(shareFn).toHaveBeenCalled());
+    const shared = shareFn.mock.calls[0][0] as { files: File[] };
+    expect(shared.files[0].name).toBe("skatehubba-kickflip-3.mp4");
+    expect(shared.files[0].type).toBe("video/mp4");
+
+    Object.defineProperty(navigator, "share", { value: origShare, configurable: true, writable: true });
+    Object.defineProperty(navigator, "canShare", { value: origCanShare, configurable: true, writable: true });
     vi.restoreAllMocks();
   });
 

@@ -1,6 +1,6 @@
 import { useState, useCallback, memo } from "react";
 import type { TurnRecord } from "../services/games";
-import { isFirebaseStorageUrl } from "../utils/helpers";
+import { clipExportFormat, isFirebaseStorageUrl } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
 import { captureException } from "../lib/sentry";
 
@@ -101,7 +101,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                     </p>
                     <ClipVideo url={turn.setVideoUrl || ""} label={`${turn.trickName} set by ${turn.setterUsername}`} />
                     {showDownload && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
-                      <DownloadBtn url={turn.setVideoUrl} filename={`skatehubba-round${turn.turnNumber}-set.webm`} />
+                      <DownloadBtn url={turn.setVideoUrl} filenameStem={`skatehubba-round${turn.turnNumber}-set`} />
                     )}
                     {showShare && turn.setVideoUrl && isFirebaseStorageUrl(turn.setVideoUrl) && (
                       <ShareBtn url={turn.setVideoUrl} trickName={turn.trickName} context="turn_history" />
@@ -118,10 +118,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
                       label={`${turn.trickName} attempted by ${turn.matcherUsername}`}
                     />
                     {showDownload && turn.matchVideoUrl && isFirebaseStorageUrl(turn.matchVideoUrl) && (
-                      <DownloadBtn
-                        url={turn.matchVideoUrl}
-                        filename={`skatehubba-round${turn.turnNumber}-match.webm`}
-                      />
+                      <DownloadBtn url={turn.matchVideoUrl} filenameStem={`skatehubba-round${turn.turnNumber}-match`} />
                     )}
                     {showShare && turn.matchVideoUrl && isFirebaseStorageUrl(turn.matchVideoUrl) && (
                       <ShareBtn url={turn.matchVideoUrl} trickName={turn.trickName} context="turn_history" />
@@ -148,7 +145,7 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
   );
 });
 
-function DownloadBtn({ url, filename }: { url: string; filename: string }) {
+function DownloadBtn({ url, filenameStem }: { url: string; filenameStem: string }) {
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
 
   const handleDownload = async () => {
@@ -157,17 +154,18 @@ function DownloadBtn({ url, filename }: { url: string; filename: string }) {
       const res = await fetch(url);
       if (!res.ok) throw new Error("Download failed");
       const blob = await res.blob();
+      const { ext } = clipExportFormat(blob);
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objectUrl;
-      a.download = filename;
+      a.download = `${filenameStem}.${ext}`;
       a.click();
       // Delay revocation so the browser has time to start the download
       setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
       setStatus("saved");
       setTimeout(() => setStatus("idle"), 2000);
     } catch (err) {
-      captureException(err, { extra: { context: "DownloadBtn", url, filename } });
+      captureException(err, { extra: { context: "DownloadBtn", url, filenameStem } });
       setStatus("failed");
       setTimeout(() => setStatus("idle"), 2000);
     }
@@ -207,8 +205,9 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
       const res = await fetch(url);
       if (!res.ok) throw new Error("Fetch failed");
       const blob = await res.blob();
-      const file = new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, {
-        type: "video/webm",
+      const { ext, mimeType } = clipExportFormat(blob);
+      const file = new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.${ext}`, {
+        type: mimeType,
       });
       if (typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
         await navigator.share({

@@ -61,6 +61,18 @@ export function isFirebaseStorageUrl(url: string): boolean {
   }
 }
 
+/**
+ * Map a fetched clip blob to its export extension + MIME type for download
+ * and Web Share API filenames. Storage rules constrain trick-video objects
+ * to `video/webm` (web / MediaRecorder) or `video/mp4` (native / Capacitor),
+ * so the response Content-Type — surfaced as `blob.type` — is the source of
+ * truth. Falls back to webm if a CDN strips the header.
+ */
+export function clipExportFormat(blob: Blob): { ext: "mp4" | "webm"; mimeType: "video/mp4" | "video/webm" } {
+  if (blob.type === "video/mp4") return { ext: "mp4", mimeType: "video/mp4" };
+  return { ext: "webm", mimeType: "video/webm" };
+}
+
 /** Returns 1 (weak) | 2 (fair) | 3 (strong) — used for signup password indicator. */
 export function pwStrength(pw: string): 1 | 2 | 3 {
   if (pw.length < 8) return 1;

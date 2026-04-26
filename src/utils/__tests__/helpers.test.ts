@@ -7,6 +7,7 @@ import {
   isFirebaseStorageUrl,
   pwStrength,
   newGameShell,
+  clipExportFormat,
 } from "../helpers";
 
 describe("getErrorCode", () => {
@@ -157,5 +158,28 @@ describe("newGameShell", () => {
     const validSpotId = "11111111-2222-3333-4444-555555555555";
     const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", validSpotId);
     expect(shell.spotId).toBe(validSpotId);
+  });
+});
+
+describe("clipExportFormat", () => {
+  it("maps video/mp4 blobs to mp4 + video/mp4 (native clips)", () => {
+    expect(clipExportFormat(new Blob([], { type: "video/mp4" }))).toEqual({
+      ext: "mp4",
+      mimeType: "video/mp4",
+    });
+  });
+
+  it("maps video/webm blobs to webm + video/webm (web clips)", () => {
+    expect(clipExportFormat(new Blob([], { type: "video/webm" }))).toEqual({
+      ext: "webm",
+      mimeType: "video/webm",
+    });
+  });
+
+  it("falls back to webm when blob.type is empty (CDN stripped header)", () => {
+    expect(clipExportFormat(new Blob([]))).toEqual({
+      ext: "webm",
+      mimeType: "video/webm",
+    });
   });
 });

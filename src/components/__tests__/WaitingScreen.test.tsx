@@ -5,10 +5,14 @@ import { WaitingScreen } from "../WaitingScreen";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 
-vi.mock("../../utils/helpers", () => ({
-  isFirebaseStorageUrl: (url: string) => url?.startsWith("https://firebasestorage.googleapis.com"),
-  LETTERS: ["S", "K", "A", "T", "E"],
-}));
+vi.mock("../../utils/helpers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../utils/helpers")>();
+  return {
+    ...actual,
+    isFirebaseStorageUrl: (url: string) => url?.startsWith("https://firebasestorage.googleapis.com"),
+    LETTERS: ["S", "K", "A", "T", "E"],
+  };
+});
 
 const mockSendNudge = vi.fn();
 const mockCanNudge = vi.fn();
