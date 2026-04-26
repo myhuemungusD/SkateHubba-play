@@ -207,7 +207,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               className="w-full aspect-video object-cover bg-surface"
               aria-label="SkateHubba gameplay demo"
             >
-              <source src="/SHvideoedit.mp4" type="video/mp4" />
+              <source src="/sh-video-edit.mp4" type="video/mp4" />
             </video>
             {/* Bottom fade */}
             <div className="absolute inset-0 pointer-events-none bg-video-overlay" />
