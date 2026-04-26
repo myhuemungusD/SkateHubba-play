@@ -20,7 +20,6 @@ import type { Auth } from "firebase/auth";
 import type { Firestore } from "firebase/firestore";
 import type { FirebaseStorage } from "firebase/storage";
 
-
 export const firebaseReady = true;
 export const FIRESTORE_DB_NAME = "skatehubba";
 export const firestoreCacheMode: "persistent" | "memory" = "persistent";
