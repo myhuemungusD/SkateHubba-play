@@ -108,7 +108,7 @@ describe("PlayerProfileScreen", () => {
 
   it("renders own profile header", () => {
     render(<PlayerProfileScreen {...baseProps} />);
-    expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
+    expect(document.querySelector('img[src="/logo.webp"]')).toBeInTheDocument();
     expect(screen.getByText("@viewer")).toBeInTheDocument();
     expect(screen.getByText("regular")).toBeInTheDocument();
   });
@@ -217,7 +217,7 @@ describe("PlayerProfileScreen", () => {
       error: null,
     });
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
-    expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
+    expect(document.querySelector('img[src="/logo.webp"]')).toBeInTheDocument();
     expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
   });
 

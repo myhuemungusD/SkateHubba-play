@@ -302,7 +302,7 @@ export function ProfileSetup({
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in">
-        <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-6" aria-hidden="true" />
+        <img src="/logo.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-6" aria-hidden="true" />
         <h2 className="font-display text-3xl text-white mb-1">Pick your handle</h2>
         <p className="font-body text-sm text-muted mb-7">
           Choose your username and stance. Your username can&apos;t be changed.

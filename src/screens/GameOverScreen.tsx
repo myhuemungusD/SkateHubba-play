@@ -212,7 +212,7 @@ export function GameOverScreen({
       {/* Brand watermark */}
       <div className="brand-watermark mt-auto">
         <div className="brand-divider flex-1 max-w-16" />
-        <img src="/logonew.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
+        <img src="/logo.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
         <div className="brand-divider flex-1 max-w-16" />
       </div>
 

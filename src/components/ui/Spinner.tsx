@@ -8,7 +8,7 @@ export function Spinner() {
           <div className="absolute inset-2 rounded-full border border-transparent border-t-brand-orange/30 animate-spin [animation-duration:1.5s] [animation-direction:reverse]" />
           <div className="absolute inset-0 rounded-full shadow-[0_0_20px_rgba(255,107,0,0.1)]" />
         </div>
-        <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
+        <img src="/logo.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
       </div>
     </div>
   );

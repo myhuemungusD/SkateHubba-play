@@ -12,13 +12,7 @@ export function ProfileHeader({ onBack }: { onBack: () => void }) {
         <ChevronLeftIcon size={16} />
         <span className="font-body text-xs">Lobby</span>
       </button>
-      <img
-        src="/logonew.webp"
-        alt=""
-        draggable={false}
-        className="h-5 w-auto select-none opacity-40"
-        aria-hidden="true"
-      />
+      <img src="/logo.webp" alt="" draggable={false} className="h-5 w-auto select-none opacity-40" aria-hidden="true" />
       <div className="w-16" aria-hidden="true" />
     </div>
   );

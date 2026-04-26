@@ -43,7 +43,7 @@ export function AccountActionsFooter({
 
       <div className="brand-watermark mt-6">
         <div className="brand-divider flex-1 max-w-16" />
-        <img src="/logonew.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
+        <img src="/logo.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
         <div className="brand-divider flex-1 max-w-16" />
       </div>
     </>

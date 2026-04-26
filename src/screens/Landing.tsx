@@ -105,7 +105,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
             className="inline-flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             <img
-              src="/logonew.webp"
+              src="/logo.webp"
               alt="SkateHubba"
               draggable={false}
               fetchPriority="high"
@@ -207,7 +207,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               className="w-full aspect-video object-cover bg-surface"
               aria-label="SkateHubba gameplay demo"
             >
-              <source src="/SHvideoedit.mp4" type="video/mp4" />
+              <source src="/sh-video-edit.mp4" type="video/mp4" />
             </video>
             {/* Bottom fade */}
             <div className="absolute inset-0 pointer-events-none bg-video-overlay" />
@@ -388,7 +388,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
         <div className="max-w-6xl mx-auto px-6 py-8 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex flex-col items-center md:items-start gap-1.5">
             <img
-              src="/logonew.webp"
+              src="/logo.webp"
               alt=""
               draggable={false}
               loading="lazy"

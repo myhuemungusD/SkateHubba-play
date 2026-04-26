@@ -14,7 +14,7 @@ export function CoppaBlockedCard({ onBack }: { onBack: () => void }) {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6">
       <div className="w-full max-w-sm p-8 rounded-2xl glass-card animate-scale-in text-center">
-        <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-5" aria-hidden="true" />
+        <img src="/logo.webp" alt="" draggable={false} className="h-7 w-auto select-none mb-5" aria-hidden="true" />
         <h2 className="font-display text-3xl text-white mb-3">Sorry!</h2>
         <p className="font-body text-sm text-muted mb-6 leading-relaxed">
           You must be at least {MIN_AGE} years old to use SkateHubba. This is required by the Children&apos;s Online

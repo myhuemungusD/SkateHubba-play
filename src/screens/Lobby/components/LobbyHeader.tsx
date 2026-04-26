@@ -15,7 +15,7 @@ interface Props {
 export function LobbyHeader({ profile, games, onViewRecord, onOpenGame, onOpenSettings, onSignOut }: Props) {
   return (
     <div className="px-5 pt-safe pb-4 flex justify-between items-center border-b border-white/[0.04] glass max-w-2xl mx-auto">
-      <img src="/logonew.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
+      <img src="/logo.webp" alt="" draggable={false} className="h-7 w-auto select-none" aria-hidden="true" />
       <div className="flex items-center gap-2.5">
         <button
           type="button"

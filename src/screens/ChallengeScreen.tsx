@@ -188,7 +188,7 @@ export function ChallengeScreen({
           ← Back
         </button>
         <img
-          src="/logonew.webp"
+          src="/logo.webp"
           alt=""
           draggable={false}
           className="h-5 w-auto select-none opacity-40"

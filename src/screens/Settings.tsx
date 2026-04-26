@@ -342,7 +342,7 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
           <span className="font-body text-xs">Lobby</span>
         </button>
         <img
-          src="/logonew.webp"
+          src="/logo.webp"
           alt=""
           draggable={false}
           className="h-5 w-auto select-none opacity-40"
@@ -474,7 +474,7 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
         {/* Brand watermark */}
         <div className="brand-watermark mt-10">
           <div className="brand-divider flex-1 max-w-16" />
-          <img src="/logonew.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
+          <img src="/logo.webp" alt="" draggable={false} className="h-4 w-auto select-none" aria-hidden="true" />
           <div className="brand-divider flex-1 max-w-16" />
         </div>
       </div>

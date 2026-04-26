@@ -290,7 +290,7 @@ describe("Smoke: Auth", () => {
 
     // Spinner renders an accessible loading status with brand logo
     expect(await screen.findByRole("status", { name: "Loading" })).toBeInTheDocument();
-    expect(screen.getByRole("status").querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
+    expect(screen.getByRole("status").querySelector('img[src="/logo.webp"]')).toBeInTheDocument();
   });
 
   it("shows setup required when firebase is not configured", async () => {

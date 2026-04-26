@@ -11,7 +11,7 @@ describe("Spinner", () => {
 
   it("displays brand logo", () => {
     render(<Spinner />);
-    const logo = screen.getByRole("status").querySelector('img[src="/logonew.webp"]');
+    const logo = screen.getByRole("status").querySelector('img[src="/logo.webp"]');
     expect(logo).toBeInTheDocument();
   });
 });
