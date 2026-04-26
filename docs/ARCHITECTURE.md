@@ -118,7 +118,7 @@ All Firebase SDK calls live in `src/services/`. Components and hooks import from
 
 ### Why all write operations use transactions
 
-Game state transitions (`setTrick`, `submitMatchResult`, `forfeitExpiredTurn`) use `runTransaction`. This ensures that the read-then-write sequence is atomic — if another client modifies the document between the read and the write, Firestore will retry the transaction. Without transactions, two simultaneous actions (e.g., one player submits a trick while the opponent's client triggers a forfeit) could produce inconsistent state.
+Game state transitions (`setTrick`, `submitMatchAttempt`, `forfeitExpiredTurn`) use `runTransaction`. This ensures that the read-then-write sequence is atomic — if another client modifies the document between the read and the write, Firestore will retry the transaction. Without transactions, two simultaneous actions (e.g., one player submits a trick while the opponent's client triggers a forfeit) could produce inconsistent state.
 
 ### `subscribeToMyGames` — dual query merge
 

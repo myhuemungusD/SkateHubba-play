@@ -54,28 +54,16 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Environment Variables
 
-Copy `.env.example` to `.env.local` and fill in your Firebase project values.
+[`.env.example`](../.env.example) is the source of truth — copy it to `.env.local` and fill in the values you need. Each variable is documented inline with where to get it and what it controls.
 
-### Required
+Quick summary:
 
-Get these from Firebase Console → Project Settings → General → Your Apps → Web App:
+- **Required for any local run:** the six `VITE_FIREBASE_*` keys from Firebase Console → Project Settings → General → Your Apps → Web App.
+- **Required for the `/map` page:** `VITE_MAPBOX_TOKEN`. The map silently fails to render without it.
+- **Local-only:** `VITE_USE_EMULATORS=true` to point the app at the Firebase emulator suite (see below). Only takes effect in `npm run dev`.
+- **Optional / production-recommended:** FCM push (`VITE_FIREBASE_VAPID_KEY`), Analytics (`VITE_FIREBASE_MEASUREMENT_ID`), App Check (`VITE_RECAPTCHA_SITE_KEY` + `VITE_APPCHECK_ENABLED`), Sentry (`VITE_SENTRY_DSN`), PostHog (`VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST`), and `VITE_APP_URL` for Firebase email action links.
 
-```
-VITE_FIREBASE_API_KEY=
-VITE_FIREBASE_AUTH_DOMAIN=
-VITE_FIREBASE_PROJECT_ID=
-VITE_FIREBASE_STORAGE_BUCKET=
-VITE_FIREBASE_MESSAGING_SENDER_ID=
-VITE_FIREBASE_APP_ID=
-```
-
-### Optional
-
-```
-VITE_USE_EMULATORS=true    # Connect to local Firebase emulators (see below)
-VITE_APP_URL=https://...   # Used in Firebase email action links (password reset,
-                           # verification). Falls back to window.location.origin.
-```
+For Vercel preview/production setup, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ---
 

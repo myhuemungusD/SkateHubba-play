@@ -71,7 +71,7 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 
 | Layer     | Technology                                                   |
 | --------- | ------------------------------------------------------------ |
-| Frontend  | React 19, TypeScript 5.6, Vite 8 (Rolldown)                  |
+| Frontend  | React 19, TypeScript 5.6, Vite 8                             |
 | Styling   | Tailwind CSS 4 (dark theme, custom brand tokens)             |
 | Auth      | Firebase Authentication (email/password + Google OAuth)      |
 | Database  | Cloud Firestore (real-time, offline-capable)                 |

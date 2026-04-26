@@ -1,7 +1,7 @@
 # Feature Completion Status Report
 
 **Generated:** 2026-04-16
-**Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`, `docs/COMPREHENSIVE_GAP_ANALYSIS.md`
+**Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`, `docs/archive/COMPREHENSIVE_GAP_ANALYSIS.md`
 
 Status legend:
 
@@ -150,7 +150,7 @@ Status legend:
 
 ---
 
-## 7. Outstanding Gaps (from `docs/COMPREHENSIVE_GAP_ANALYSIS.md`)
+## 7. Outstanding Gaps (from `docs/archive/COMPREHENSIVE_GAP_ANALYSIS.md`)
 
 ### P1 — Infrastructure / Ops (not code-blocked)
 
