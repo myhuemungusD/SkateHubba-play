@@ -1,51 +1,93 @@
 import "@testing-library/jest-dom/vitest";
+import { afterEach, vi } from "vitest";
 
-// Mock Firebase Messaging — jsdom lacks Service Worker and Push APIs required
-// by the Firebase Messaging SDK, which throws "unsupported-browser" on init.
+// Firebase Messaging requires Service Worker + Push APIs that jsdom does not
+// provide; without this mock, getMessaging() throws "unsupported-browser" at
+// import time for any test that loads src/services/fcm.ts.
 vi.mock("firebase/messaging", () => ({
   getMessaging: vi.fn(() => ({})),
   getToken: vi.fn(() => Promise.resolve(null)),
   onMessage: vi.fn(() => vi.fn()),
 }));
 
-// Mock navigator.mediaDevices with a fake stream so VideoRecorder enters
-// preview state normally. The stream has no real tracks but satisfies the API.
-const mockStop = vi.fn();
-const mockStream = {
-  getTracks: () => [{ stop: mockStop }],
-  getVideoTracks: () => [{ stop: mockStop }],
-  getAudioTracks: () => [{ stop: mockStop }],
-};
+// jsdom does not implement getUserMedia, MediaRecorder, HTMLMediaElement
+// playback, or URL object-URL helpers. The stubs below give every test a
+// working baseline; tests that need richer behavior override these per-test
+// (see src/components/__tests__/VideoRecorder.test.tsx) and are responsible
+// for restoring the original on teardown.
+
+function createFakeStream() {
+  const track = { stop: vi.fn() };
+  return {
+    getTracks: () => [track],
+    getVideoTracks: () => [track],
+    getAudioTracks: () => [track],
+  };
+}
+
 Object.defineProperty(globalThis.navigator, "mediaDevices", {
-  writable: true,
   configurable: true,
-  value: {
-    getUserMedia: vi.fn().mockResolvedValue(mockStream),
-  },
+  writable: true,
+  value: { getUserMedia: vi.fn(async () => createFakeStream()) },
 });
 
-// Stub MediaRecorder (not needed in demo mode, but prevents ReferenceError if accessed).
+// Models the real MediaRecorder state machine (inactive → recording →
+// inactive) so callers that branch on `state` behave correctly under the
+// default stub. Tests needing data emission swap in a custom subclass.
 class MockMediaRecorder {
   static isTypeSupported = vi.fn().mockReturnValue(false);
+  state: "inactive" | "recording" | "paused" = "inactive";
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
-  start = vi.fn();
-  stop = vi.fn().mockImplementation(function (this: MockMediaRecorder) {
+  start = vi.fn(() => {
+    this.state = "recording";
+  });
+  stop = vi.fn(() => {
+    this.state = "inactive";
     this.onstop?.();
   });
 }
-(globalThis as unknown as Record<string, unknown>).MediaRecorder = MockMediaRecorder;
+Object.defineProperty(globalThis, "MediaRecorder", {
+  configurable: true,
+  writable: true,
+  value: MockMediaRecorder,
+});
 
-// Mock HTMLMediaElement.play() — jsdom does not implement it.
 Object.defineProperty(window.HTMLMediaElement.prototype, "play", {
   configurable: true,
   writable: true,
   value: vi.fn().mockResolvedValue(undefined),
 });
-
-// Mock HTMLMediaElement.pause() — jsdom does not implement it.
 Object.defineProperty(window.HTMLMediaElement.prototype, "pause", {
   configurable: true,
   writable: true,
   value: vi.fn(),
+});
+Object.defineProperty(window.HTMLMediaElement.prototype, "load", {
+  configurable: true,
+  writable: true,
+  value: vi.fn(),
+});
+
+// VideoRecorder, TurnHistoryViewer, AuthContext, and ClipShareButtons all
+// hit createObjectURL during normal render paths; jsdom returns undefined
+// for both helpers, which then breaks downstream src= assignments.
+let blobCounter = 0;
+Object.defineProperty(URL, "createObjectURL", {
+  configurable: true,
+  writable: true,
+  value: vi.fn(() => `blob:mock-${++blobCounter}`),
+});
+Object.defineProperty(URL, "revokeObjectURL", {
+  configurable: true,
+  writable: true,
+  value: vi.fn(),
+});
+
+// Clear mock call history between tests so per-test assertions like
+// `toHaveBeenCalledTimes(1)` don't observe leakage from earlier tests in
+// the same file. Implementations are preserved (clear, not reset); tests
+// that swap globals (e.g. globalThis.MediaRecorder) still own restoration.
+afterEach(() => {
+  vi.clearAllMocks();
 });
