@@ -96,7 +96,7 @@ Letters never decrease and only one player can gain a letter per turn. Both cons
 
 ### Normal completion (`status: "complete"`)
 
-A player reaches 5 letters. The player who did **not** reach 5 letters is the winner. This is determined inside the `submitMatchResult` transaction and immediately stored in the game document.
+A player reaches 5 letters. The player who did **not** reach 5 letters is the winner. This is determined inside the `submitMatchAttempt` transaction and immediately stored in the game document.
 
 ### Forfeit (`status: "forfeit"`)
 
@@ -116,8 +116,8 @@ A player does not submit their turn within 24 hours of the `turnDeadline`. Eithe
 ## Video Recording
 
 - One take only. The camera starts recording immediately when the player taps "Record." There is no re-record option before submission.
-- Format: `video/webm` (via MediaRecorder API).
-- Storage path: `games/{gameId}/turn-{turnNumber}/{role}.webm` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt).
+- Format: `video/webm` on web (via MediaRecorder API) or `video/mp4` on native (via Capacitor).
+- Storage path: `games/{gameId}/turn-{turnNumber}/{role}.{ext}` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt) and `{ext}` is `webm` (web) or `mp4` (native).
 - Size limits: 1 KB minimum (prevents empty uploads), 50 MB maximum per video.
 - Videos are stored permanently — there is no cleanup process in the current version.
 
