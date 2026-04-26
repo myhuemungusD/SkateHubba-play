@@ -50,7 +50,6 @@ const profile: UserProfile = {
   uid: "me",
   username: "viewer",
   stance: "regular",
-  emailVerified: true,
   createdAt: null,
 };
 

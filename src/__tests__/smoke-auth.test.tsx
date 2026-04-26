@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { authedUser, verifiedUser, testProfile, renderApp, passAgeGate, createMockHelpers } from "./smoke-helpers";
+import { authedUser, testProfile, renderApp, passAgeGate, createMockHelpers } from "./smoke-helpers";
 import { makeAuthStateSetters } from "./harness/mockAuth";
 
 /* ── Hoisted mocks ──────────────────────────── */
@@ -28,7 +28,7 @@ beforeEach(() => vi.clearAllMocks());
 const profile = testProfile;
 
 const { asUnverifiedUser, asVerifiedUser } = makeAuthStateSetters(auth.refs);
-const { withGames, renderLobby } = createMockHelpers({
+const { withGames } = createMockHelpers({
   mockUseAuth: auth.refs.useAuth,
   mockSubscribeToMyGames: games.refs.subscribeToMyGames,
   mockSubscribeToGame: games.refs.subscribeToGame,

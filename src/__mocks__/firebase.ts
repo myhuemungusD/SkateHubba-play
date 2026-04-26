@@ -4,8 +4,6 @@
  * vi.mock("../firebase") in each test file will resolve to this __mocks__ version
  * automatically thanks to Vitest's manual-mock convention.
  */
-import { vi } from "vitest";
-
 export const firebaseReady = true;
 
 export const auth = {

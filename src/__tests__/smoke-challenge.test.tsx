@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { activeGame, renderApp, createMockHelpers } from "./smoke-helpers";
+import { activeGame, createMockHelpers } from "./smoke-helpers";
 
 /* ── Hoisted mocks ──────────────────────────── */
 // The aggregate factory lives in ./harness/mockServices. Dynamic-importing it

@@ -10,7 +10,7 @@ import type { UserProfile } from "../../services/users";
 
 vi.mock("../../services/blocking", () => ({
   unblockUser: vi.fn().mockResolvedValue(undefined),
-  subscribeToBlockedUsers: vi.fn((uid: string, cb: (ids: Set<string>) => void) => {
+  subscribeToBlockedUsers: vi.fn((_uid: string, cb: (ids: Set<string>) => void) => {
     // Return the mock unsubscribe immediately; tests stub specific cases via
     // `subscribeToBlockedUsersMock` below when they need a non-empty list.
     cb(new Set());
@@ -85,6 +85,7 @@ const profile: UserProfile = {
   uid: "me",
   username: "me",
   stance: "Regular",
+  createdAt: null,
   wins: 0,
   losses: 0,
 };

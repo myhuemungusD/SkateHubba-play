@@ -2,10 +2,26 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, waitFor } from "@testing-library/react";
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
+import type { UserProfile } from "../../services/users";
+
+// Widened return shape so mockReturnValue can swap user/profile to non-null
+// values mid-test (the initial () => null literals would otherwise narrow the
+// inferred return to { user: null; profile: null } and reject any override).
+type AuthState = {
+  loading: boolean;
+  user: { uid: string } | null;
+  profile: { uid: string; username: string } | null;
+  refreshProfile: () => void;
+};
 
 const { mockUseAuth, mockDeleteAccount, mockDeleteUserData, mockLoggerError, mockLoggerInfo, mockCaptureException } =
   vi.hoisted(() => ({
-    mockUseAuth: vi.fn(() => ({ loading: false, user: null, profile: null, refreshProfile: vi.fn() })),
+    mockUseAuth: vi.fn<() => AuthState>(() => ({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    })),
     mockDeleteAccount: vi.fn(),
     mockDeleteUserData: vi.fn(),
     mockLoggerError: vi.fn(),
@@ -134,7 +150,7 @@ describe("handleDeleteAccount", () => {
       useEffect(() => {
         if (!seeded.current) {
           seeded.current = true;
-          ctx.setActiveProfile(initialProfile);
+          ctx.setActiveProfile(initialProfile as unknown as UserProfile);
         }
       }, [ctx]);
       useEffect(() => {

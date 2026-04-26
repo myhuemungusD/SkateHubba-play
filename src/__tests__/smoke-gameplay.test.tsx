@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { activeGame, createMockHelpers } from "./smoke-helpers";
 import type { GameDoc } from "../services/games";
@@ -122,7 +122,7 @@ describe("Smoke: Gameplay", () => {
       phase: "setting",
       currentSetter: "u2",
       currentTurn: "u2",
-      turnDeadline: { toMillis: () => Date.now() - 1000 }, // expired
+      turnDeadline: { toMillis: () => Date.now() - 1000 } as GameDoc["turnDeadline"], // expired
     });
     await renderLobby([game]);
     withGameSub(game);
@@ -588,7 +588,7 @@ describe("Smoke: Gameplay", () => {
     const game = activeGame({
       currentTurn: "u2",
       currentSetter: "u2",
-      turnDeadline: { toMillis: () => Date.now() - 1000 },
+      turnDeadline: { toMillis: () => Date.now() - 1000 } as GameDoc["turnDeadline"],
     });
     await renderLobby([game]);
     withGameSub(game);
@@ -609,7 +609,7 @@ describe("Smoke: Gameplay", () => {
     const game = activeGame({
       currentTurn: "u2",
       currentSetter: "u2",
-      turnDeadline: { toMillis: () => Date.now() - 1000 },
+      turnDeadline: { toMillis: () => Date.now() - 1000 } as GameDoc["turnDeadline"],
     });
     await renderLobby([game]);
     withGameSub(game);

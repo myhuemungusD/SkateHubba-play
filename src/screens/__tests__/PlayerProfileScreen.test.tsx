@@ -31,7 +31,6 @@ const currentUserProfile: UserProfile = {
   uid: "me",
   username: "viewer",
   stance: "regular",
-  emailVerified: true,
   createdAt: null,
 };
 
@@ -39,7 +38,6 @@ const otherProfile: UserProfile = {
   uid: "u2",
   username: "sk8rboi",
   stance: "goofy",
-  emailVerified: true,
   createdAt: null,
   wins: 10,
   losses: 3,

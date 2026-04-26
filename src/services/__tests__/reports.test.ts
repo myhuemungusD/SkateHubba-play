@@ -15,7 +15,7 @@ interface FakeRef {
 const reportRef: FakeRef = { id: "auto-id-1", path: "reports/auto-id-1" };
 const batchSet = vi.fn();
 const batchCommit = vi.fn().mockResolvedValue(undefined);
-const mockWriteBatch = vi.fn(() => ({ set: batchSet, commit: batchCommit }));
+const mockWriteBatch = vi.fn<(...args: unknown[]) => unknown>(() => ({ set: batchSet, commit: batchCommit }));
 // `doc(collection(db, 'reports'))` returns the report ref;
 // `doc(db, 'reports_limits', id)` returns a limits ref whose path contains the id.
 const mockDoc = vi.fn((...args: unknown[]) => {

@@ -128,10 +128,10 @@ describe("main entry — splash screen hide", () => {
 
     expect(mockHide).not.toHaveBeenCalled();
     // And no splash lifecycle breadcrumb on web.
-    const splashCrumbs = mockAddBreadcrumb.mock.calls.filter(
-      ([crumb]: [{ message?: string } | undefined]) =>
-        crumb?.message === "splash_hidden" || crumb?.message === "splash_hide_failed",
-    );
+    const splashCrumbs = mockAddBreadcrumb.mock.calls.filter(([rawCrumb]) => {
+      const crumb = rawCrumb as { message?: string } | undefined;
+      return crumb?.message === "splash_hidden" || crumb?.message === "splash_hide_failed";
+    });
     expect(splashCrumbs).toHaveLength(0);
   });
 });
