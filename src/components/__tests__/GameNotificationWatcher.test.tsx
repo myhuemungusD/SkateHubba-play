@@ -1,9 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render } from "@testing-library/react";
+import type { MessagePayload } from "firebase/messaging";
 import { GameNotificationWatcher, OPEN_GAME_EVENT } from "../GameNotificationWatcher";
 import type { GameDoc } from "../../services/games";
 import { onForegroundMessage } from "../../services/fcm";
 import { subscribeToNudges, subscribeToNotifications } from "../../services/notifications";
+
+/**
+ * `MessagePayload` from firebase/messaging requires `from`, `collapseKey`,
+ * and `messageId`. Tests only care about `notification` + `data`, so this
+ * helper fills the FCM transport fields with stubs.
+ */
+function fcmPayload(overrides: Partial<MessagePayload>): MessagePayload {
+  return { from: "test", collapseKey: "k", messageId: "m", ...overrides };
+}
 
 /* ── Mocks ─────────────────────────────────── */
 
@@ -345,7 +355,7 @@ describe("FCM foreground bridge", () => {
     (type) => {
       render(<GameNotificationWatcher />);
       const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
-      cb!({ notification: { title: "x", body: "y" }, data: { type } });
+      cb!(fcmPayload({ notification: { title: "x", body: "y" }, data: { type } }));
       expect(mockNotify).not.toHaveBeenCalled();
     },
   );
@@ -353,7 +363,9 @@ describe("FCM foreground bridge", () => {
   it("passes through unknown types as a 'general' fallback", () => {
     render(<GameNotificationWatcher />);
     const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
-    cb!({ notification: { title: "Promo", body: "msg" }, data: { type: "tournament_invite", gameId: "g5" } });
+    cb!(
+      fcmPayload({ notification: { title: "Promo", body: "msg" }, data: { type: "tournament_invite", gameId: "g5" } }),
+    );
 
     expect(mockNotify).toHaveBeenCalledWith({
       type: "game_event",
@@ -367,21 +379,21 @@ describe("FCM foreground bridge", () => {
   it("ignores payloads without a notification block", () => {
     render(<GameNotificationWatcher />);
     const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
-    cb!({ data: { type: "promo" } });
+    cb!(fcmPayload({ data: { type: "promo" } }));
     expect(mockNotify).not.toHaveBeenCalled();
   });
 
   it("treats a missing data block as an unknown type and falls through", () => {
     render(<GameNotificationWatcher />);
     const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
-    cb!({ notification: { title: "x", body: "y" } });
+    cb!(fcmPayload({ notification: { title: "x", body: "y" } }));
     expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ chime: "general" }));
   });
 
   it("uses fallback title/message when fields are missing", () => {
     render(<GameNotificationWatcher />);
     const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
-    cb!({ notification: {}, data: { type: "promo" } });
+    cb!(fcmPayload({ notification: {}, data: { type: "promo" } }));
     expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: "SkateHubba", message: "" }));
   });
 });
