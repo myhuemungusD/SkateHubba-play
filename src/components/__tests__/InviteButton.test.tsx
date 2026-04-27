@@ -51,7 +51,6 @@ describe("InviteButton", () => {
     (navigator as any).contacts = {
       select: vi.fn().mockResolvedValue([{ name: ["John"], tel: ["555-1234"] }]),
     };
-    const originalHref = window.location.href;
 
     render(<InviteButton />);
     await userEvent.click(screen.getByText("Invite a Friend"));

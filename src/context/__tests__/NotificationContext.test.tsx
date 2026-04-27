@@ -42,10 +42,6 @@ function wrapper({ children }: { children: ReactNode }) {
   return <NotificationProvider uid="u1">{children}</NotificationProvider>;
 }
 
-function nullUidWrapper({ children }: { children: ReactNode }) {
-  return <NotificationProvider uid={null}>{children}</NotificationProvider>;
-}
-
 class ErrorCatcher extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
   static getDerivedStateFromError(error: Error) {

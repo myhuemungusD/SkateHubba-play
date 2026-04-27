@@ -1,13 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const mockAddDoc = vi.fn().mockResolvedValue({ id: "notif1" });
-const mockSetDoc = vi.fn().mockResolvedValue(undefined);
+// Variadic signatures keep these mocks compatible with vitest 4's stricter
+// `vi.fn()` default while letting tests assign any return value or rejection.
+type AnyMock = (...args: unknown[]) => unknown;
+type OnSnapshotImpl = (q: unknown, cb: (snap: unknown) => void, onError?: (err: Error) => void) => () => void;
+const mockAddDoc = vi.fn<AnyMock>(() => Promise.resolve({ id: "notif1" }));
+const mockSetDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
 const mockCollection = vi.fn((...args: unknown[]) => args[1]);
 const mockDoc = vi.fn((...args: unknown[]) => args);
-const mockUpdateDoc = vi.fn().mockResolvedValue(undefined);
-const mockDeleteDoc = vi.fn().mockResolvedValue(undefined);
-const mockGetDocs = vi.fn();
-const mockOnSnapshot = vi.fn(() => vi.fn());
+const mockUpdateDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
+const mockDeleteDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
+const mockGetDocs = vi.fn<AnyMock>();
+// onSnapshot is typed against its real callback shape so test impls reading
+// the snapshot/error callbacks type-check; the factory wrapper casts away
+// the variadic mismatch.
+const mockOnSnapshot = vi.fn<OnSnapshotImpl>(() => () => {});
 const mockQuery = vi.fn((...args: unknown[]) => args);
 const mockWhere = vi.fn((...args: unknown[]) => args);
 const mockOrderBy = vi.fn((...args: unknown[]) => args);
@@ -22,7 +29,7 @@ vi.mock("firebase/firestore", () => ({
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
   deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
   getDocs: (...args: unknown[]) => mockGetDocs(...args),
-  onSnapshot: (...args: unknown[]) => mockOnSnapshot(...args),
+  onSnapshot: (...args: unknown[]) => (mockOnSnapshot as unknown as (...a: unknown[]) => unknown)(...args),
   query: (...args: unknown[]) => mockQuery(...args),
   where: (...args: unknown[]) => mockWhere(...args),
   orderBy: (...args: unknown[]) => mockOrderBy(...args),
@@ -58,7 +65,7 @@ describe("writeNotification", () => {
     });
 
     expect(mockAddDoc).toHaveBeenCalledTimes(1);
-    const docData = mockAddDoc.mock.calls[0][1];
+    const docData = mockAddDoc.mock.calls[0][1] as Record<string, unknown>;
     expect(docData.senderUid).toBe("sender456");
     expect(docData.recipientUid).toBe("user123");
     expect(docData.type).toBe("your_turn");
@@ -81,7 +88,7 @@ describe("writeNotification", () => {
 
     expect(mockSetDoc).toHaveBeenCalledTimes(1);
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "notification_limits", "sender456_game456_your_turn");
-    const limitData = mockSetDoc.mock.calls[0][1];
+    const limitData = mockSetDoc.mock.calls[0][1] as Record<string, unknown>;
     expect(limitData.senderUid).toBe("sender456");
     expect(limitData.gameId).toBe("game456");
     expect(limitData.type).toBe("your_turn");
@@ -424,8 +431,8 @@ describe("subscribeToNudges", () => {
 
   it("logs a warning when the snapshot listener errors", () => {
     let errorHandler: (err: Error) => void = () => {};
-    mockOnSnapshot.mockImplementationOnce((_q: unknown, _cb: unknown, onError: (err: Error) => void) => {
-      errorHandler = onError;
+    mockOnSnapshot.mockImplementationOnce((_q, _cb, onError) => {
+      errorHandler = onError as (err: Error) => void;
       return vi.fn();
     });
 
@@ -603,8 +610,8 @@ describe("subscribeToNotifications", () => {
 
   it("logs a warning when the snapshot listener errors", () => {
     let errorHandler: (err: Error) => void = () => {};
-    mockOnSnapshot.mockImplementationOnce((_q: unknown, _cb: unknown, onError: (err: Error) => void) => {
-      errorHandler = onError;
+    mockOnSnapshot.mockImplementationOnce((_q, _cb, onError) => {
+      errorHandler = onError as (err: Error) => void;
       return vi.fn();
     });
 

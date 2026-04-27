@@ -63,7 +63,7 @@ import {
   deleteAccount,
   resolveGoogleRedirect,
 } from "../auth";
-import { auth, isEmulatorMode } from "../../firebase";
+import { auth } from "../../firebase";
 
 beforeEach(() => {
   vi.clearAllMocks();
