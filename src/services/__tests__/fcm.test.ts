@@ -16,17 +16,13 @@ vi.mock("firebase/messaging", () => ({
 
 /* ── mock firebase/firestore ─────────────────── */
 
-const mockSetDoc = vi.fn<(...args: unknown[]) => unknown>(() => Promise.resolve(undefined));
-const mockDoc = vi.fn<(...args: unknown[]) => unknown>((..._args) => (_args.slice(1) as string[]).join("/"));
-const mockArrayUnion = vi.fn((v: string) => ({ _op: "arrayUnion", value: v }));
-const mockArrayRemove = vi.fn((v: string) => ({ _op: "arrayRemove", value: v }));
+import { firestoreNotifMocks } from "../../__tests__/harness/firestoreNotifMock";
+const { setDoc: mockSetDoc } = firestoreNotifMocks;
 
-vi.mock("firebase/firestore", () => ({
-  setDoc: (...args: unknown[]) => mockSetDoc(...args),
-  doc: (...args: unknown[]) => mockDoc(...args),
-  arrayUnion: (v: string) => mockArrayUnion(v),
-  arrayRemove: (v: string) => mockArrayRemove(v),
-}));
+vi.mock(
+  "firebase/firestore",
+  async () => (await import("../../__tests__/harness/firestoreNotifMock")).notifFirestoreModule,
+);
 
 vi.mock("../../firebase");
 

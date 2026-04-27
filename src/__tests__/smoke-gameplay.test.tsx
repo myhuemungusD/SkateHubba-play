@@ -31,6 +31,29 @@ const { withGames, withGameSub, renderLobby } = createMockHelpers({
   mockSubscribeToGame: games.refs.subscribeToGame,
 });
 
+/**
+ * Set up an active game whose turn deadline has just expired, render the
+ * lobby with that game in view, and click into it. Used by the
+ * forfeit-expired-turn coverage cases — three of them share this exact
+ * setup so the helper keeps the file's per-case bodies focused on the
+ * assertions that actually differ between them.
+ */
+async function openExpiredDeadlineGame(extraOverrides: Partial<GameDoc> = {}): Promise<GameDoc> {
+  const game = activeGame({
+    currentTurn: "u2",
+    currentSetter: "u2",
+    turnDeadline: { toMillis: () => Date.now() - 1000 } as GameDoc["turnDeadline"], // expired
+    ...extraOverrides,
+  });
+  await renderLobby([game]);
+  withGameSub(game);
+
+  const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
+  await userEvent.click(gameButton);
+
+  return game;
+}
+
 describe("Smoke: Gameplay", () => {
   it("gameplay screen shows setter UI when it's your turn to set", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
@@ -118,17 +141,7 @@ describe("Smoke: Gameplay", () => {
 
   it("checks for expired turn when opening a game", async () => {
     games.refs.forfeitExpiredTurn.mockResolvedValueOnce({ forfeited: false, winner: null });
-    const game = activeGame({
-      phase: "setting",
-      currentSetter: "u2",
-      currentTurn: "u2",
-      turnDeadline: { toMillis: () => Date.now() - 1000 } as GameDoc["turnDeadline"], // expired
-    });
-    await renderLobby([game]);
-    withGameSub(game);
-
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openExpiredDeadlineGame({ phase: "setting" });
 
     await waitFor(() => {
       expect(games.refs.forfeitExpiredTurn).toHaveBeenCalledWith("game1");
@@ -585,16 +598,7 @@ describe("Smoke: Gameplay", () => {
 
   it("forfeit check runs only once per game", async () => {
     games.refs.forfeitExpiredTurn.mockResolvedValue({ forfeited: false, winner: null });
-    const game = activeGame({
-      currentTurn: "u2",
-      currentSetter: "u2",
-      turnDeadline: { toMillis: () => Date.now() - 1000 } as GameDoc["turnDeadline"],
-    });
-    await renderLobby([game]);
-    withGameSub(game);
-
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openExpiredDeadlineGame();
 
     // GameContext auto-forfeit fires once when the subscription pushes the
     // expired game, then GamePlayScreen's forfeit check fires once after
@@ -606,16 +610,7 @@ describe("Smoke: Gameplay", () => {
 
   it("forfeit check error does not crash", async () => {
     games.refs.forfeitExpiredTurn.mockRejectedValueOnce(new Error("Forfeit error"));
-    const game = activeGame({
-      currentTurn: "u2",
-      currentSetter: "u2",
-      turnDeadline: { toMillis: () => Date.now() - 1000 } as GameDoc["turnDeadline"],
-    });
-    await renderLobby([game]);
-    withGameSub(game);
-
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openExpiredDeadlineGame();
 
     // No crash — waiting screen shows
     await waitFor(() => {
