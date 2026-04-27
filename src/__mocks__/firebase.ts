@@ -16,8 +16,8 @@ export const db = {};
 
 export const storage = {};
 
-export const requireDb = () => db;
-export const requireAuth = () => auth;
-export const requireStorage = () => storage;
+export const requireDb = vi.fn(() => db);
+export const requireAuth = vi.fn(() => auth);
+export const requireStorage = vi.fn(() => storage);
 
 export default {}; // default export (the app object)

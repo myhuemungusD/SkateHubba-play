@@ -40,6 +40,7 @@ import {
   subscribeToNudges,
   subscribeToNotifications,
 } from "../notifications";
+import { requireDb } from "../../firebase";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -434,6 +435,20 @@ describe("subscribeToNudges", () => {
 
     // Error handler should not throw — it logs via logger.warn
   });
+
+  it("returns a no-op unsub when Firestore is not initialized", () => {
+    vi.mocked(requireDb).mockImplementationOnce(() => {
+      throw new Error("firebase not initialized");
+    });
+
+    const onNudge = vi.fn();
+    const unsub = subscribeToNudges("u1", onNudge);
+
+    expect(typeof unsub).toBe("function");
+    expect(() => unsub()).not.toThrow();
+    expect(mockOnSnapshot).not.toHaveBeenCalled();
+    expect(onNudge).not.toHaveBeenCalled();
+  });
 });
 
 describe("subscribeToNotifications", () => {
@@ -612,5 +627,19 @@ describe("subscribeToNotifications", () => {
     errorHandler(new Error("permission-denied"));
 
     // Error handler should not throw — it logs via logger.warn
+  });
+
+  it("returns a no-op unsub when Firestore is not initialized", () => {
+    vi.mocked(requireDb).mockImplementationOnce(() => {
+      throw new Error("firebase not initialized");
+    });
+
+    const onNotification = vi.fn();
+    const unsub = subscribeToNotifications("u1", onNotification);
+
+    expect(typeof unsub).toBe("function");
+    expect(() => unsub()).not.toThrow();
+    expect(mockOnSnapshot).not.toHaveBeenCalled();
+    expect(onNotification).not.toHaveBeenCalled();
   });
 });

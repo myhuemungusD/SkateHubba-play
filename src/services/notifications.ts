@@ -186,6 +186,22 @@ export async function deleteUserNotifications(uid: string): Promise<void> {
 
 // ── Real-time subscriptions (extracted from GameNotificationWatcher) ──
 
+/**
+ * Variant of `requireDb` that returns `null` instead of throwing when
+ * Firestore isn't initialized. Used by the subscribe helpers below so
+ * callers can mount unconditionally during tests or pre-`firebaseReady`
+ * renders without wrapping every subscription in their own try/catch.
+ */
+function tryRequireDb(): ReturnType<typeof requireDb> | null {
+  try {
+    return requireDb();
+  } catch {
+    return null;
+  }
+}
+
+const NOOP_UNSUB: Unsubscribe = () => {};
+
 export interface NudgeEvent {
   senderUsername: string;
   gameId: string;
@@ -196,14 +212,8 @@ export interface NudgeEvent {
  * newly added docs (skips the initial snapshot seed).
  */
 export function subscribeToNudges(uid: string, onNudge: (nudge: NudgeEvent) => void): Unsubscribe {
-  let db;
-  try {
-    db = requireDb();
-  } catch {
-    // Firestore not initialized (tests, or pre-`firebaseReady` render).
-    // Return a no-op unsub so callers can mount unconditionally.
-    return () => {};
-  }
+  const db = tryRequireDb();
+  if (!db) return NOOP_UNSUB;
   const q = query(collection(db, "nudges"), where("recipientUid", "==", uid), orderBy("createdAt", "desc"), limit(5));
 
   let initialIds: Set<string> | null = null;
@@ -252,14 +262,8 @@ export interface NotificationEvent {
  * as read when the user has actually seen them (via `markNotificationRead`).
  */
 export function subscribeToNotifications(uid: string, onNotification: (notif: NotificationEvent) => void): Unsubscribe {
-  let db;
-  try {
-    db = requireDb();
-  } catch {
-    // Firestore not initialized (tests, or pre-`firebaseReady` render).
-    // Return a no-op unsub so callers can mount unconditionally.
-    return () => {};
-  }
+  const db = tryRequireDb();
+  if (!db) return NOOP_UNSUB;
   const q = query(
     collection(db, "notifications"),
     where("recipientUid", "==", uid),
