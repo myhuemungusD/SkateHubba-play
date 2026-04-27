@@ -81,7 +81,14 @@ import {
 /* ── Helpers ────────────────────────────────── */
 
 function makeTx() {
-  return { set: vi.fn(), update: vi.fn(), get: vi.fn() };
+  // Cast: the real Transaction has a richer surface (delete, runQuery, etc.)
+  // that writeLandedClipsInTransaction never invokes. Casting through unknown
+  // keeps the test focused on the methods actually exercised.
+  return { set: vi.fn(), update: vi.fn(), get: vi.fn() } as unknown as import("firebase/firestore").Transaction & {
+    set: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+  };
 }
 
 function baseCtx(overrides: Partial<LandedClipContext> = {}): LandedClipContext {
@@ -464,7 +471,7 @@ describe("deleteUserClips", () => {
 
     expect(mockWhere).toHaveBeenCalledWith("playerUid", "==", "p1");
     expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
-    const deletedIds = mockDeleteDoc.mock.calls.map(([ref]: [{ id: string }]) => ref.id);
+    const deletedIds = mockDeleteDoc.mock.calls.map(([ref]) => (ref as { id: string }).id);
     expect(deletedIds).toEqual(["g1_2_set", "g7_4_match"]);
   });
 

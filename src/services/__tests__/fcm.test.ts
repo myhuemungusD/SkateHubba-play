@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 /* ── mock firebase/messaging ─────────────────── */
 
-const mockGetToken = vi.fn();
-const mockOnMessage = vi.fn(() => vi.fn());
-const mockGetMessaging = vi.fn(() => "messaging-instance");
+// Variadic signatures keep these mocks compatible with vitest 4's stricter
+// `vi.fn()` default type while allowing tests to swap return values freely.
+const mockGetToken = vi.fn<(...args: unknown[]) => unknown>();
+const mockOnMessage = vi.fn<(...args: unknown[]) => unknown>(() => vi.fn());
+const mockGetMessaging = vi.fn<(...args: unknown[]) => unknown>(() => "messaging-instance");
 
 vi.mock("firebase/messaging", () => ({
   getMessaging: (...args: unknown[]) => mockGetMessaging(...args),
@@ -14,8 +16,8 @@ vi.mock("firebase/messaging", () => ({
 
 /* ── mock firebase/firestore ─────────────────── */
 
-const mockSetDoc = vi.fn().mockResolvedValue(undefined);
-const mockDoc = vi.fn((_db: unknown, ...segments: string[]) => segments.join("/"));
+const mockSetDoc = vi.fn<(...args: unknown[]) => unknown>(() => Promise.resolve(undefined));
+const mockDoc = vi.fn<(...args: unknown[]) => unknown>((..._args) => (_args.slice(1) as string[]).join("/"));
 const mockArrayUnion = vi.fn((v: string) => ({ _op: "arrayUnion", value: v }));
 const mockArrayRemove = vi.fn((v: string) => ({ _op: "arrayRemove", value: v }));
 
@@ -40,7 +42,7 @@ import {
 } from "../fcm";
 
 // jsdom doesn't provide Notification — stub it globally for these tests
-const mockRequestPermission = vi.fn<[], Promise<NotificationPermission>>();
+const mockRequestPermission = vi.fn<() => Promise<NotificationPermission>>();
 const originalNotification = globalThis.Notification;
 
 beforeEach(() => {
@@ -71,7 +73,6 @@ afterEach(() => {
 
 describe("requestPushPermission", () => {
   it("returns null when Notification API is missing", async () => {
-    // @ts-expect-error - testing missing API
     delete (globalThis as Record<string, unknown>).Notification;
     const result = await requestPushPermission("u1");
     expect(result).toBeNull();

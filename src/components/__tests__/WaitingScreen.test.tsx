@@ -38,7 +38,6 @@ const profile: UserProfile = {
   username: "alice",
   stance: "regular",
   createdAt: null,
-  emailVerified: true,
 };
 
 const makeGame = (overrides?: Partial<GameDoc>): GameDoc => ({
@@ -232,7 +231,6 @@ describe("WaitingScreen", () => {
       username: "ref",
       stance: "regular",
       createdAt: null,
-      emailVerified: true,
     };
     const judgeGame = (overrides?: Partial<GameDoc>): GameDoc =>
       makeGame({
