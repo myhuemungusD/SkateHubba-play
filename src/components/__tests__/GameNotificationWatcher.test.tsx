@@ -122,8 +122,6 @@ describe("notifications collection listener", () => {
   it.each([
     ["your_turn", "your_turn"],
     ["new_challenge", "new_challenge"],
-    ["game_won", "game_won"],
-    ["game_lost", "game_lost"],
     ["judge_invite", "general"],
     ["unknown_future_type", "general"],
   ])("maps type %s → chime %s", (type, expectedChime) => {
@@ -142,6 +140,16 @@ describe("notifications collection listener", () => {
       }),
     );
   });
+
+  it.each(["game_won", "game_lost"])(
+    "suppresses %s — game completion is canonical via the games-snapshot watcher",
+    (type) => {
+      render(<GameNotificationWatcher />);
+      const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
+      cb!({ firestoreId: "fs1", type, title: "T", body: "B", gameId: "g1" });
+      expect(mockNotify).not.toHaveBeenCalled();
+    },
+  );
 });
 
 /* ── /nudges listener ───────────────────────── */
@@ -167,9 +175,41 @@ describe("nudge listener", () => {
   });
 });
 
-/* ── Forfeit fallback (the only games-diff path) ─ */
+/* ── Game completion watcher (canonical for active -> non-active) ─ */
 
-describe("forfeit fallback watcher", () => {
+describe("game completion watcher", () => {
+  it("notifies winner with 'You Won!' on active -> complete", () => {
+    mockActiveGame = makeGame({ id: "g1", status: "active" });
+    const { rerender } = render(<GameNotificationWatcher />);
+
+    mockActiveGame = makeGame({ id: "g1", status: "complete", winner: "u1" });
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: "success",
+      title: "You Won!",
+      message: "vs @bob",
+      chime: "game_won",
+      gameId: "g1",
+    });
+  });
+
+  it("notifies loser with 'Game Over' on active -> complete", () => {
+    mockActiveGame = makeGame({ id: "g1", status: "active" });
+    const { rerender } = render(<GameNotificationWatcher />);
+
+    mockActiveGame = makeGame({ id: "g1", status: "complete", winner: "u2" });
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: "game_event",
+      title: "Game Over",
+      message: "vs @bob",
+      chime: "game_lost",
+      gameId: "g1",
+    });
+  });
+
   it("notifies winner with 'Opponent Forfeited!' when active game flips to forfeit", () => {
     mockActiveGame = makeGame({ id: "g1", status: "active" });
     const { rerender } = render(<GameNotificationWatcher />);
@@ -271,16 +311,6 @@ describe("forfeit fallback watcher", () => {
     mockGames.push(makeGame({ id: "g1", status: "forfeit", winner: "u1" }));
     const { rerender } = render(<GameNotificationWatcher />);
     rerender(<GameNotificationWatcher />);
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-
-  it("does not toast for status=complete — that path is handled by /notifications", () => {
-    mockActiveGame = makeGame({ id: "g1", status: "active" });
-    const { rerender } = render(<GameNotificationWatcher />);
-
-    mockActiveGame = makeGame({ id: "g1", status: "complete", winner: "u1" });
-    rerender(<GameNotificationWatcher />);
-
     expect(mockNotify).not.toHaveBeenCalled();
   });
 
@@ -427,6 +457,25 @@ describe("service worker deep-link bridge", () => {
     expect(
       dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT),
     ).toBeUndefined();
+  });
+
+  it("accepts messages on uncontrolled tabs (cold-start / first install / post-update)", () => {
+    // controller=null mirrors the state firebase-messaging-sw.js targets via
+    // `clients.matchAll({ includeUncontrolled: true })` — without this case
+    // legitimate notification taps would be dropped.
+    const { listeners } = stubServiceWorker(null);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<GameNotificationWatcher />);
+    const evt = new MessageEvent("message", {
+      data: { type: "OPEN_GAME", gameId: "g99" },
+      source: { id: "any-sw" } as unknown as Window,
+    });
+    listeners["message"][0](evt);
+
+    const ev = dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT);
+    expect(ev).toBeDefined();
+    expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g99" });
   });
 
   it("no-ops when navigator.serviceWorker is undefined", () => {

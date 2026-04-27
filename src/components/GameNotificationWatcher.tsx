@@ -40,6 +40,19 @@ const FIRESTORE_HANDLED_FCM_TYPES = new Set([
   "judge_invite",
 ]);
 
+/**
+ * Notification doc `type` values whose toast is produced by
+ * useGameCompletionWatcher from the games snapshot. The games-diff path is
+ * canonical for completions because it catches every active -> non-active
+ * transition, including paths that don't write a notification doc:
+ *   • `forfeitExpiredTurn` (no notification written)
+ *   • `resolveDispute` game-over (only the matcher gets `game_lost`; the
+ *     setter who wins receives no doc)
+ * Suppressing these in the /notifications listener keeps a single toast
+ * per completion regardless of which path produced the event.
+ */
+const LOCALLY_HANDLED_NOTIFICATION_TYPES = new Set(["game_won", "game_lost"]);
+
 type Notify = ReturnType<typeof useNotifications>["notify"];
 
 /**
@@ -54,6 +67,7 @@ function useNotificationDocListener(uid: string | null, gated: boolean, notify: 
   useEffect(() => {
     if (!uid || !gated) return;
     return subscribeToNotifications(uid, (notif) => {
+      if (LOCALLY_HANDLED_NOTIFICATION_TYPES.has(notif.type)) return;
       notify({
         type: "game_event",
         title: notif.title,
@@ -83,49 +97,61 @@ function useNudgeListener(uid: string | null, gated: boolean, notify: Notify) {
 }
 
 /**
- * Forfeit fallback — the one game lifecycle event that does NOT write a
- * notification doc. `forfeitExpiredTurn` flips a game's status from `active`
- * to `forfeit` in a transaction with no `writeNotificationInTx` call, so the
- * `/notifications` listener never fires for forfeits. We watch the games
- * snapshot for the transition and fire exactly one toast per game id.
+ * Game completion watcher — the canonical source for "game over" toasts.
+ *
+ * Diffs the games snapshot for any `active -> {complete, forfeit}` transition
+ * and fires exactly one toast per game id. This path is canonical (rather
+ * than the /notifications doc) because two service-layer flows skip the
+ * notification write for one of the participants:
+ *   • `forfeitExpiredTurn` writes no notification doc at all.
+ *   • `resolveDispute` game-over writes `game_lost` only to the matcher;
+ *     the setter who wins gets no doc.
+ * Watching the games snapshot covers all four (won/lost × complete/forfeit)
+ * uniformly and keeps the LOCALLY_HANDLED_NOTIFICATION_TYPES suppression
+ * in `useNotificationDocListener` as a single dedup point.
+ *
+ * If `forfeitExpiredTurn` AND `resolveDispute` are ever updated to write
+ * notification docs for every affected player, this watcher (and the
+ * suppression set) can be removed entirely.
  *
  * Dedup across the active-game pointer and the games list is handled by a
  * `seen` set; whichever subscription delivers the transition first claims it.
  */
-function useForfeitFallbackWatcher(uid: string | null, games: GameDoc[], activeGame: GameDoc | null, notify: Notify) {
+function useGameCompletionWatcher(uid: string | null, games: GameDoc[], activeGame: GameDoc | null, notify: Notify) {
   const prevStatusRef = useRef<Map<string, GameDoc["status"]>>(new Map());
-  const seenForfeitRef = useRef<Set<string>>(new Set());
+  const seenCompletionRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!uid) {
       prevStatusRef.current.clear();
-      seenForfeitRef.current.clear();
+      seenCompletionRef.current.clear();
       return;
     }
 
     const prev = prevStatusRef.current;
-    const seen = seenForfeitRef.current;
+    const seen = seenCompletionRef.current;
     const activeId = activeGame?.id;
 
     const visit = (g: GameDoc) => {
       const prevStatus = prev.get(g.id);
 
       if (prevStatus === undefined) {
-        // First time we observe this game — never notify on seed. Pre-seed
-        // an already-forfeit game into the seen set so a snapshot landing
-        // mid-session doesn't surface a stale completion as new.
+        // First observation — never notify on seed. Pre-seed already-terminal
+        // games into the seen set so a reload mid-completed-game does not
+        // surface a stale completion as new.
         prev.set(g.id, g.status);
-        if (g.status === "forfeit") seen.add(g.id);
+        if (g.status !== "active") seen.add(g.id);
         return;
       }
 
-      if (prevStatus === "active" && g.status === "forfeit" && !seen.has(g.id)) {
+      if (prevStatus === "active" && g.status !== "active" && !seen.has(g.id)) {
         seen.add(g.id);
         const won = g.winner === uid;
+        const isForfeit = g.status === "forfeit";
         const opponentName = g.player1Uid === uid ? g.player2Username : g.player1Username;
         notify({
           type: won ? "success" : "game_event",
-          title: won ? "Opponent Forfeited!" : "Time Expired",
+          title: won ? (isForfeit ? "Opponent Forfeited!" : "You Won!") : isForfeit ? "Time Expired" : "Game Over",
           message: `vs @${opponentName}`,
           chime: won ? "game_won" : "game_lost",
           gameId: g.id,
@@ -158,9 +184,14 @@ function useServiceWorkerDeepLink(uid: string | null) {
     if (!sw) return;
 
     const handler = (event: MessageEvent) => {
-      // Defense-in-depth: only trust messages from our controlling SW.
-      // Other windows / extensions can also post into this channel.
-      if (event.source && event.source !== sw.controller) return;
+      // Defense-in-depth: when the tab is controlled, drop messages from any
+      // SW other than its controller. When uncontrolled (controller === null,
+      // common on cold-start / first install / after an SW update),
+      // firebase-messaging-sw.js posts into this tab via
+      // `clients.matchAll({ includeUncontrolled: true })` — there is no
+      // controller to compare against, so allow the message through and
+      // rely on the data-shape check below.
+      if (sw.controller && event.source && event.source !== sw.controller) return;
       if (event.data?.type !== "OPEN_GAME") return;
       const gameId = event.data.gameId;
       if (typeof gameId !== "string" || gameId.length === 0) return;
@@ -217,7 +248,7 @@ export function GameNotificationWatcher() {
 
   useNotificationDocListener(uid, profileGated, notify);
   useNudgeListener(uid, profileGated, notify);
-  useForfeitFallbackWatcher(uid, games, activeGame, notify);
+  useGameCompletionWatcher(uid, games, activeGame, notify);
   useServiceWorkerDeepLink(uid);
   useFcmForegroundBridge(uid, notify);
 
