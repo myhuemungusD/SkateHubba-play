@@ -10,7 +10,7 @@ import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
 import { ToastContainer } from "./components/ToastContainer";
-import { GameNotificationWatcher } from "./components/GameNotificationWatcher";
+import { GameNotificationWatcher, OPEN_GAME_EVENT } from "./components/GameNotificationWatcher";
 import { OfflineBanner } from "./components/OfflineBanner";
 import { BottomNav } from "./components/BottomNav";
 import { useBlockedUsers } from "./hooks/useBlockedUsers";
@@ -184,8 +184,8 @@ function AppRoutes() {
       const found = game.games.find((g) => g.id === gameId);
       if (found) game.openGame(found);
     };
-    window.addEventListener("skatehubba:open-game", handler);
-    return () => window.removeEventListener("skatehubba:open-game", handler);
+    window.addEventListener(OPEN_GAME_EVENT, handler);
+    return () => window.removeEventListener(OPEN_GAME_EVENT, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-subscribe when games list or openGame changes
   }, [game.games, game.openGame]);
 

@@ -1,9 +1,19 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, act } from "@testing-library/react";
-import { GameNotificationWatcher } from "../GameNotificationWatcher";
+import { render } from "@testing-library/react";
+import type { MessagePayload } from "firebase/messaging";
+import { GameNotificationWatcher, OPEN_GAME_EVENT } from "../GameNotificationWatcher";
 import type { GameDoc } from "../../services/games";
 import { onForegroundMessage } from "../../services/fcm";
 import { subscribeToNudges, subscribeToNotifications } from "../../services/notifications";
+
+/**
+ * `MessagePayload` from firebase/messaging requires `from`, `collapseKey`,
+ * and `messageId`. Tests only care about `notification` + `data`, so this
+ * helper fills the FCM transport fields with stubs.
+ */
+function fcmPayload(overrides: Partial<MessagePayload>): MessagePayload {
+  return { from: "test", collapseKey: "k", messageId: "m", ...overrides };
+}
 
 /* ── Mocks ─────────────────────────────────── */
 
@@ -27,30 +37,7 @@ vi.mock("../../context/GameContext", () => ({
 }));
 
 vi.mock("../../context/NotificationContext", () => ({
-  useNotifications: vi.fn(() => ({
-    notify: mockNotify,
-  })),
-}));
-
-vi.mock("../../firebase", () => ({
-  db: {},
-}));
-
-const mockOnSnapshotUnsub = vi.fn();
-
-vi.mock("firebase/firestore", () => ({
-  collection: vi.fn(),
-  query: vi.fn(),
-  where: vi.fn(),
-  orderBy: vi.fn(),
-  limit: vi.fn(),
-  onSnapshot: vi.fn(() => mockOnSnapshotUnsub),
-  updateDoc: vi.fn().mockResolvedValue(undefined),
-  doc: vi.fn(),
-}));
-
-vi.mock("../../services/logger", () => ({
-  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
+  useNotifications: vi.fn(() => ({ notify: mockNotify })),
 }));
 
 const mockNudgeUnsub = vi.fn();
@@ -65,10 +52,6 @@ const mockFcmUnsub = vi.fn();
 
 vi.mock("../../services/fcm", () => ({
   onForegroundMessage: vi.fn(() => mockFcmUnsub),
-}));
-
-vi.mock("../../utils/helpers", () => ({
-  parseFirebaseError: (e: unknown) => String(e),
 }));
 
 /* ── Helpers ────────────────────────────────── */
@@ -98,602 +81,445 @@ function makeGame(overrides: Partial<GameDoc> = {}): GameDoc {
   };
 }
 
-/* ── Setup ──────────────────────────────────── */
-
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.useFakeTimers();
   mockGames.length = 0;
   mockActiveGame = null;
   mockUser = { uid: "u1", displayName: "Alice" };
 });
 
 afterEach(() => {
-  vi.useRealTimers();
+  // Reset any navigator.serviceWorker stubs from individual tests.
+  Object.defineProperty(navigator, "serviceWorker", { value: undefined, configurable: true, writable: true });
 });
 
-/* ── Tests ──────────────────────────────────── */
+/* ── Smoke ──────────────────────────────────── */
 
 describe("GameNotificationWatcher", () => {
-  it("renders null (no visible UI)", () => {
+  it("renders null", () => {
     const { container } = render(<GameNotificationWatcher />);
     expect(container.firstChild).toBeNull();
   });
 
-  it("does not notify on initial game list load", () => {
-    mockGames.push(makeGame());
+  it("does not toast on initial games snapshot (seed only)", () => {
+    mockGames.push(makeGame({ status: "active" }), makeGame({ id: "g2", status: "forfeit", winner: "u1" }));
     render(<GameNotificationWatcher />);
     expect(mockNotify).not.toHaveBeenCalled();
   });
 
-  it("mounts and unmounts without errors", () => {
-    const { unmount } = render(<GameNotificationWatcher />);
-    expect(() => unmount()).not.toThrow();
-  });
-});
-
-describe("ready pattern guards", () => {
-  it("updates prevGameIdsRef without notifying when gamesReadyRef is false", () => {
-    mockGames.push(makeGame({ id: "g1", player1Uid: "u3", player2Uid: "u1" }));
-
-    const { rerender } = render(<GameNotificationWatcher />);
-
-    // Before the setTimeout fires, add another game and rerender
-    // This hits the !gamesReadyRef.current guard (lines 77-79)
-    mockGames.push(makeGame({ id: "g2", player1Uid: "u4", player2Uid: "u1" }));
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-
-  it("updates prevGameRef without notifying when gameReadyRef is false", () => {
-    mockActiveGame = makeGame({ id: "g1", currentTurn: "u2" });
-
-    const { rerender } = render(<GameNotificationWatcher />);
-
-    // Before the setTimeout fires, update the active game
-    // This hits the !gameReadyRef.current guard (lines 125-127)
-    mockActiveGame = makeGame({ id: "g1", currentTurn: "u1" });
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-});
-
-describe("new challenge detection", () => {
-  it("notifies player2 when new game appears after ready", () => {
-    // User is player2 in the new game
-    const game = makeGame({ id: "g1", player1Uid: "u3", player2Uid: "u1", player1Username: "charlie" });
-    mockGames.push(game);
-
-    const { rerender } = render(<GameNotificationWatcher />);
-
-    // Flush the setTimeout to mark ready
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // Add a new game
-    const newGame = makeGame({ id: "g2", player1Uid: "u4", player2Uid: "u1", player1Username: "dave" });
-    mockGames.push(newGame);
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "game_event",
-        title: "New Challenge!",
-        message: "@dave challenged you to S.K.A.T.E.",
-        chime: "new_challenge",
-        gameId: "g2",
-      }),
-    );
-  });
-
-  it("does NOT notify player1 (the challenger)", () => {
-    const game = makeGame({ id: "g1" });
-    mockGames.push(game);
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // New game where u1 is player1 (challenger)
-    const newGame = makeGame({ id: "g2", player1Uid: "u1", player2Uid: "u5" });
-    mockGames.push(newGame);
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-
-  it("does not notify for non-active new games", () => {
-    const game = makeGame({ id: "g1", player1Uid: "u3", player2Uid: "u1" });
-    mockGames.push(game);
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    const completedGame = makeGame({
-      id: "g2",
-      player1Uid: "u4",
-      player2Uid: "u1",
-      status: "complete",
-    });
-    mockGames.push(completedGame);
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-});
-
-describe("active game state changes", () => {
-  it("notifies on game completion — won", () => {
-    const game = makeGame({ id: "g1", currentTurn: "u2" });
-    mockActiveGame = game;
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // Game completes — u1 wins
-    mockActiveGame = makeGame({
-      id: "g1",
-      status: "complete",
-      winner: "u1",
-      currentTurn: "u2",
-    });
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "success",
-        title: "You Won!",
-        chime: "game_won",
-        gameId: "g1",
-      }),
-    );
-  });
-
-  it("notifies on game completion — lost", () => {
-    const game = makeGame({ id: "g1", currentTurn: "u2" });
-    mockActiveGame = game;
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    mockActiveGame = makeGame({
-      id: "g1",
-      status: "complete",
-      winner: "u2",
-      currentTurn: "u2",
-    });
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "game_event",
-        title: "Game Over",
-        chime: "game_lost",
-      }),
-    );
-  });
-
-  it("notifies on forfeit with correct titles", () => {
-    const game = makeGame({ id: "g1" });
-    mockActiveGame = game;
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // u1 wins by forfeit
-    mockActiveGame = makeGame({
-      id: "g1",
-      status: "forfeit",
-      winner: "u1",
-    });
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Opponent Forfeited!",
-        type: "success",
-        chime: "game_won",
-      }),
-    );
-  });
-
-  it("notifies on forfeit — lost (time expired)", () => {
-    const game = makeGame({ id: "g1" });
-    mockActiveGame = game;
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    mockActiveGame = makeGame({
-      id: "g1",
-      status: "forfeit",
-      winner: "u2",
-    });
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Time Expired",
-        type: "game_event",
-        chime: "game_lost",
-      }),
-    );
-  });
-
-  it("notifies turn change — matching phase (includes trick name)", () => {
-    const game = makeGame({ id: "g1", currentTurn: "u2", phase: "setting" });
-    mockActiveGame = game;
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    mockActiveGame = makeGame({
-      id: "g1",
-      currentTurn: "u1",
-      phase: "matching",
-      currentTrickName: "kickflip",
-    });
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Your Turn!",
-        message: "Match @bob's kickflip",
-        chime: "your_turn",
-      }),
-    );
-  });
-
-  it("notifies turn change — setting phase", () => {
-    const game = makeGame({ id: "g1", currentTurn: "u2", phase: "matching" });
-    mockActiveGame = game;
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    mockActiveGame = makeGame({
-      id: "g1",
-      currentTurn: "u1",
-      phase: "setting",
-    });
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Your Turn to Set!",
-        message: "Set a trick for @bob",
-        chime: "your_turn",
-      }),
-    );
-  });
-
-  it("seeds on first render without notifying", () => {
-    mockActiveGame = makeGame({ id: "g1", currentTurn: "u1", phase: "matching" });
-
+  it("does not subscribe to /nudges or /notifications when activeProfile is null", async () => {
+    mockUser = { uid: "u1", displayName: "Alice" };
+    const { useAuthContext } = await import("../../context/AuthContext");
+    vi.mocked(useAuthContext).mockReturnValueOnce({
+      user: mockUser,
+      activeProfile: null,
+      loading: false,
+    } as ReturnType<typeof useAuthContext>);
     render(<GameNotificationWatcher />);
-
-    // Even though it's our turn and matching phase, no notification on seed
-    expect(mockNotify).not.toHaveBeenCalled();
+    expect(vi.mocked(subscribeToNudges)).not.toHaveBeenCalled();
+    expect(vi.mocked(subscribeToNotifications)).not.toHaveBeenCalled();
   });
 });
 
-describe("background games list changes", () => {
-  it("notifies turn change for non-active game", () => {
-    const bg = makeGame({ id: "g2", currentTurn: "u2" });
-    const active = makeGame({ id: "g1" });
-    mockGames.push(active, bg);
-    mockActiveGame = active;
+/* ── /notifications listener (canonical source) ─ */
 
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // Intermediate rerender to populate prevGamesMapRef (gamesReadyRef is now true)
-    rerender(<GameNotificationWatcher />);
-    expect(mockNotify).not.toHaveBeenCalled();
-
-    // Now update background game: turn changes to u1
-    mockGames.length = 0;
-    mockGames.push(active, makeGame({ id: "g2", currentTurn: "u1" }));
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "Your Turn!",
-        message: expect.stringContaining("@bob"),
-        chime: "your_turn",
-        gameId: "g2",
-      }),
-    );
-  });
-
-  it("notifies completion for non-active game", () => {
-    const bg = makeGame({ id: "g2" });
-    const active = makeGame({ id: "g1" });
-    mockGames.push(active, bg);
-    mockActiveGame = active;
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // Intermediate rerender to populate prevGamesMapRef
-    rerender(<GameNotificationWatcher />);
-
-    mockGames.length = 0;
-    mockGames.push(active, makeGame({ id: "g2", status: "complete", winner: "u1" }));
-    rerender(<GameNotificationWatcher />);
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "You Won!",
-        chime: "game_won",
-        gameId: "g2",
-      }),
-    );
-  });
-
-  it("skips active game to avoid duplicate notification", () => {
-    const game = makeGame({ id: "g1", currentTurn: "u2" });
-    mockGames.push(game);
-    mockActiveGame = game;
-
-    const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
-
-    // Turn changes to u1 in the active game via the games list
-    const updated = makeGame({ id: "g1", currentTurn: "u1" });
-    mockGames.length = 0;
-    mockGames.push(updated);
-    mockActiveGame = updated;
-    rerender(<GameNotificationWatcher />);
-
-    // The active game watcher will handle this — the background watcher should skip it
-    // Verify that notify was called at most once (from the active game watcher, not both)
-    const turnCalls = mockNotify.mock.calls.filter(
-      (call) => call[0].title === "Your Turn to Set!" || call[0].title === "Your Turn!",
-    );
-    expect(turnCalls.length).toBeLessThanOrEqual(1);
-  });
-});
-
-describe("nudge listener", () => {
-  it("subscribes to nudges with the user uid", () => {
+describe("notifications collection listener", () => {
+  it("subscribes with the user uid", () => {
     render(<GameNotificationWatcher />);
-
-    expect(vi.mocked(subscribeToNudges)).toHaveBeenCalledWith("u1", expect.any(Function));
-  });
-
-  it("notifies with correct payload when nudge callback fires", () => {
-    render(<GameNotificationWatcher />);
-
-    const nudgeCb = vi.mocked(subscribeToNudges).mock.calls[0]?.[1];
-    expect(nudgeCb).toBeDefined();
-
-    nudgeCb!({ senderUsername: "bob", gameId: "g1" });
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: "You got nudged!",
-        message: "@bob is waiting for your move",
-        chime: "nudge",
-        gameId: "g1",
-      }),
-    );
-  });
-});
-
-describe("notifications listener", () => {
-  it("subscribes to notifications with the user uid", () => {
-    render(<GameNotificationWatcher />);
-
     expect(vi.mocked(subscribeToNotifications)).toHaveBeenCalledWith("u1", expect.any(Function));
   });
 
-  it("surfaces new notification as toast with correct chime", () => {
+  it.each([
+    ["your_turn", "your_turn"],
+    ["new_challenge", "new_challenge"],
+    ["judge_invite", "general"],
+    ["unknown_future_type", "general"],
+  ])("maps type %s → chime %s", (type, expectedChime) => {
     render(<GameNotificationWatcher />);
-
-    const notifCb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
-    expect(notifCb).toBeDefined();
-
-    notifCb!({
-      firestoreId: "fs1",
-      type: "your_turn",
-      title: "Your Turn",
-      body: "Go play!",
-      gameId: "g1",
-    });
+    const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
+    cb!({ firestoreId: "fs1", type, title: "T", body: "B", gameId: "g1" });
 
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({
         type: "game_event",
-        title: "Your Turn",
-        message: "Go play!",
-        chime: "your_turn",
+        title: "T",
+        message: "B",
+        chime: expectedChime,
         gameId: "g1",
         firestoreId: "fs1",
       }),
     );
   });
 
-  it("uses general chime for unknown notification type", () => {
+  it.each(["game_won", "game_lost"])(
+    "suppresses %s — game completion is canonical via the games-snapshot watcher",
+    (type) => {
+      render(<GameNotificationWatcher />);
+      const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
+      cb!({ firestoreId: "fs1", type, title: "T", body: "B", gameId: "g1" });
+      expect(mockNotify).not.toHaveBeenCalled();
+    },
+  );
+});
+
+/* ── /nudges listener ───────────────────────── */
+
+describe("nudge listener", () => {
+  it("subscribes with the user uid", () => {
     render(<GameNotificationWatcher />);
+    expect(vi.mocked(subscribeToNudges)).toHaveBeenCalledWith("u1", expect.any(Function));
+  });
 
-    const notifCb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
-    expect(notifCb).toBeDefined();
+  it("notifies with a nudge chime + sender username", () => {
+    render(<GameNotificationWatcher />);
+    const cb = vi.mocked(subscribeToNudges).mock.calls[0]?.[1];
+    cb!({ senderUsername: "bob", gameId: "g1" });
 
-    notifCb!({
-      firestoreId: "fs2",
-      type: "unknown_type",
-      title: "X",
-      body: "Y",
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: "game_event",
+      title: "You got nudged!",
+      message: "@bob is waiting for your move",
+      chime: "nudge",
       gameId: "g1",
     });
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        chime: "general",
-      }),
-    );
   });
 });
 
-describe("FCM foreground bridge", () => {
-  it("suppresses nudge type (already handled by onSnapshot)", () => {
-    render(<GameNotificationWatcher />);
+/* ── Game completion watcher (canonical for active -> non-active) ─ */
 
-    const fcmCb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0] as (payload: unknown) => void;
-    expect(fcmCb).toBeDefined();
-
-    fcmCb({
-      notification: { title: "Nudge", body: "Go!" },
-      data: { type: "nudge" },
-    });
-
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-
-  it("suppresses FIRESTORE_HANDLED_TYPES", () => {
-    render(<GameNotificationWatcher />);
-
-    const fcmCb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0] as (payload: unknown) => void;
-
-    for (const type of ["your_turn", "new_challenge", "game_won", "game_lost"]) {
-      fcmCb({
-        notification: { title: "Event", body: "msg" },
-        data: { type },
-      });
-    }
-
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-
-  it("passes through unknown FCM type as fallback", () => {
-    render(<GameNotificationWatcher />);
-
-    const fcmCb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0] as (payload: unknown) => void;
-
-    fcmCb({
-      notification: { title: "New Feature", body: "Check it out" },
-      data: { type: "promo", gameId: "g5" },
-    });
-
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        type: "game_event",
-        title: "New Feature",
-        message: "Check it out",
-        chime: "general",
-        gameId: "g5",
-      }),
-    );
-  });
-
-  it("ignores payloads without notification", () => {
-    render(<GameNotificationWatcher />);
-
-    const fcmCb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0] as (payload: unknown) => void;
-
-    fcmCb({ data: { type: "promo" } });
-
-    expect(mockNotify).not.toHaveBeenCalled();
-  });
-});
-
-describe("service worker deep-link", () => {
-  it("dispatches skatehubba:open-game on OPEN_GAME message", () => {
-    // Mock navigator.serviceWorker since jsdom doesn't provide it
-    const listeners: Record<string, EventListener[]> = {};
-    const mockSW = {
-      addEventListener: vi.fn((event: string, handler: EventListener) => {
-        (listeners[event] ??= []).push(handler);
-      }),
-      removeEventListener: vi.fn(),
-    };
-    Object.defineProperty(navigator, "serviceWorker", {
-      value: mockSW,
-      configurable: true,
-      writable: true,
-    });
-
-    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
-
-    render(<GameNotificationWatcher />);
-
-    // Fire the registered message handler
-    const handlers = listeners["message"] ?? [];
-    expect(handlers.length).toBeGreaterThan(0);
-    handlers[0](new MessageEvent("message", { data: { type: "OPEN_GAME", gameId: "g99" } }));
-
-    const customEvent = dispatchSpy.mock.calls.find(
-      (c) => c[0] instanceof CustomEvent && c[0].type === "skatehubba:open-game",
-    );
-    expect(customEvent).toBeDefined();
-    expect((customEvent![0] as CustomEvent).detail).toEqual({ gameId: "g99" });
-
-    dispatchSpy.mockRestore();
-    // Clean up mock
-    Object.defineProperty(navigator, "serviceWorker", {
-      value: undefined,
-      configurable: true,
-      writable: true,
-    });
-  });
-});
-
-describe("cleanup", () => {
-  it("unsubscribes nudge and notification listeners on unmount", () => {
-    const { unmount } = render(<GameNotificationWatcher />);
-
-    unmount();
-
-    expect(mockNudgeUnsub).toHaveBeenCalled();
-    expect(mockNotifUnsub).toHaveBeenCalled();
-  });
-
-  it("unsubscribes FCM listener on unmount", () => {
-    const { unmount } = render(<GameNotificationWatcher />);
-
-    unmount();
-
-    expect(mockFcmUnsub).toHaveBeenCalled();
-  });
-
-  it("resets when user logs out (uid becomes null)", () => {
-    mockGames.push(makeGame());
-
+describe("game completion watcher", () => {
+  it("notifies winner with 'You Won!' on active -> complete", () => {
+    mockActiveGame = makeGame({ id: "g1", status: "active" });
     const { rerender } = render(<GameNotificationWatcher />);
-    act(() => {
-      vi.advanceTimersByTime(1);
-    });
 
-    // Log out
+    mockActiveGame = makeGame({ id: "g1", status: "complete", winner: "u1" });
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: "success",
+      title: "You Won!",
+      message: "vs @bob",
+      chime: "game_won",
+      gameId: "g1",
+    });
+  });
+
+  it("notifies loser with 'Game Over' on active -> complete", () => {
+    mockActiveGame = makeGame({ id: "g1", status: "active" });
+    const { rerender } = render(<GameNotificationWatcher />);
+
+    mockActiveGame = makeGame({ id: "g1", status: "complete", winner: "u2" });
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: "game_event",
+      title: "Game Over",
+      message: "vs @bob",
+      chime: "game_lost",
+      gameId: "g1",
+    });
+  });
+
+  it("notifies winner with 'Opponent Forfeited!' when active game flips to forfeit", () => {
+    mockActiveGame = makeGame({ id: "g1", status: "active" });
+    const { rerender } = render(<GameNotificationWatcher />);
+    expect(mockNotify).not.toHaveBeenCalled();
+
+    mockActiveGame = makeGame({ id: "g1", status: "forfeit", winner: "u1" });
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: "success",
+      title: "Opponent Forfeited!",
+      message: "vs @bob",
+      chime: "game_won",
+      gameId: "g1",
+    });
+  });
+
+  it("notifies loser with 'Time Expired' when active game flips to forfeit", () => {
+    mockActiveGame = makeGame({ id: "g1", status: "active" });
+    const { rerender } = render(<GameNotificationWatcher />);
+
+    mockActiveGame = makeGame({ id: "g1", status: "forfeit", winner: "u2" });
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: "game_event",
+      title: "Time Expired",
+      message: "vs @bob",
+      chime: "game_lost",
+      gameId: "g1",
+    });
+  });
+
+  it("uses player1's username when the viewer is player2", () => {
+    mockActiveGame = makeGame({
+      id: "g1",
+      status: "active",
+      player1Uid: "u2",
+      player1Username: "bob",
+      player2Uid: "u1",
+      player2Username: "alice",
+    });
+    const { rerender } = render(<GameNotificationWatcher />);
+
+    mockActiveGame = makeGame({
+      id: "g1",
+      status: "forfeit",
+      winner: "u1",
+      player1Uid: "u2",
+      player1Username: "bob",
+      player2Uid: "u1",
+      player2Username: "alice",
+    });
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ message: "vs @bob" }));
+  });
+
+  it("notifies for a background game (in list, not active)", () => {
+    mockGames.push(makeGame({ id: "g1", status: "active" }));
+    const { rerender } = render(<GameNotificationWatcher />);
+
+    mockGames.length = 0;
+    mockGames.push(makeGame({ id: "g1", status: "forfeit", winner: "u1" }));
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: "Opponent Forfeited!", gameId: "g1" }));
+  });
+
+  it("dedups across activeGame + games list — fires once per gameId", () => {
+    const active = makeGame({ id: "g1", status: "active" });
+    mockActiveGame = active;
+    mockGames.push(active);
+    const { rerender } = render(<GameNotificationWatcher />);
+
+    const forfeited = makeGame({ id: "g1", status: "forfeit", winner: "u1" });
+    mockActiveGame = forfeited;
+    mockGames.length = 0;
+    mockGames.push(forfeited);
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not re-fire on subsequent renders of the same forfeit", () => {
+    mockActiveGame = makeGame({ id: "g1", status: "active" });
+    const { rerender } = render(<GameNotificationWatcher />);
+
+    mockActiveGame = makeGame({ id: "g1", status: "forfeit", winner: "u1" });
+    rerender(<GameNotificationWatcher />);
+    rerender(<GameNotificationWatcher />);
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not toast for a game that was already forfeit on first render", () => {
+    mockGames.push(makeGame({ id: "g1", status: "forfeit", winner: "u1" }));
+    const { rerender } = render(<GameNotificationWatcher />);
+    rerender(<GameNotificationWatcher />);
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it("clears state when user logs out", () => {
+    mockActiveGame = makeGame({ id: "g1", status: "active" });
+    const { rerender } = render(<GameNotificationWatcher />);
+
     mockUser = null;
+    mockActiveGame = null;
     mockGames.length = 0;
     rerender(<GameNotificationWatcher />);
 
+    // Log back in with a stale "active" game and then forfeit it — the
+    // post-logout reset must allow this to fire even though gameId reused.
+    mockUser = { uid: "u1", displayName: "Alice" };
+    mockActiveGame = makeGame({ id: "g1", status: "active" });
+    rerender(<GameNotificationWatcher />);
+
+    mockActiveGame = makeGame({ id: "g1", status: "forfeit", winner: "u1" });
+    rerender(<GameNotificationWatcher />);
+
+    expect(mockNotify).toHaveBeenCalledTimes(1);
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ gameId: "g1" }));
+  });
+});
+
+/* ── FCM foreground bridge ──────────────────── */
+
+describe("FCM foreground bridge", () => {
+  it.each(["nudge", "your_turn", "new_challenge", "game_won", "game_lost", "judge_invite"])(
+    "suppresses Firestore-handled type %s",
+    (type) => {
+      render(<GameNotificationWatcher />);
+      const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
+      cb!(fcmPayload({ notification: { title: "x", body: "y" }, data: { type } }));
+      expect(mockNotify).not.toHaveBeenCalled();
+    },
+  );
+
+  it("passes through unknown types as a 'general' fallback", () => {
+    render(<GameNotificationWatcher />);
+    const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
+    cb!(
+      fcmPayload({ notification: { title: "Promo", body: "msg" }, data: { type: "tournament_invite", gameId: "g5" } }),
+    );
+
+    expect(mockNotify).toHaveBeenCalledWith({
+      type: "game_event",
+      title: "Promo",
+      message: "msg",
+      chime: "general",
+      gameId: "g5",
+    });
+  });
+
+  it("ignores payloads without a notification block", () => {
+    render(<GameNotificationWatcher />);
+    const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
+    cb!(fcmPayload({ data: { type: "promo" } }));
     expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it("treats a missing data block as an unknown type and falls through", () => {
+    render(<GameNotificationWatcher />);
+    const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
+    cb!(fcmPayload({ notification: { title: "x", body: "y" } }));
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ chime: "general" }));
+  });
+
+  it("uses fallback title/message when fields are missing", () => {
+    render(<GameNotificationWatcher />);
+    const cb = vi.mocked(onForegroundMessage).mock.calls[0]?.[0];
+    cb!(fcmPayload({ notification: {}, data: { type: "promo" } }));
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: "SkateHubba", message: "" }));
+  });
+});
+
+/* ── Service worker deep-link ───────────────── */
+
+describe("service worker deep-link bridge", () => {
+  function stubServiceWorker(controller: unknown = null) {
+    const listeners: Record<string, EventListener[]> = {};
+    const sw = {
+      controller,
+      addEventListener: vi.fn((event: string, h: EventListener) => {
+        (listeners[event] ??= []).push(h);
+      }),
+      removeEventListener: vi.fn((event: string, h: EventListener) => {
+        listeners[event] = (listeners[event] ?? []).filter((x) => x !== h);
+      }),
+    };
+    Object.defineProperty(navigator, "serviceWorker", { value: sw, configurable: true, writable: true });
+    return { sw, listeners };
+  }
+
+  it("dispatches OPEN_GAME_EVENT for a valid OPEN_GAME message", () => {
+    const { listeners } = stubServiceWorker();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<GameNotificationWatcher />);
+    listeners["message"][0](new MessageEvent("message", { data: { type: "OPEN_GAME", gameId: "g99" } }));
+
+    const ev = dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT);
+    expect(ev).toBeDefined();
+    expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g99" });
+  });
+
+  it("ignores messages with a non-OPEN_GAME type", () => {
+    const { listeners } = stubServiceWorker();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<GameNotificationWatcher />);
+    listeners["message"][0](new MessageEvent("message", { data: { type: "OTHER", gameId: "g1" } }));
+
+    expect(
+      dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT),
+    ).toBeUndefined();
+  });
+
+  it("ignores messages with missing/empty gameId", () => {
+    const { listeners } = stubServiceWorker();
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<GameNotificationWatcher />);
+    listeners["message"][0](new MessageEvent("message", { data: { type: "OPEN_GAME" } }));
+    listeners["message"][0](new MessageEvent("message", { data: { type: "OPEN_GAME", gameId: "" } }));
+    listeners["message"][0](new MessageEvent("message", { data: { type: "OPEN_GAME", gameId: 42 } }));
+
+    expect(
+      dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT),
+    ).toBeUndefined();
+  });
+
+  it("ignores messages whose source is not the controlling SW", () => {
+    const controller = { id: "trusted-sw" };
+    const { listeners } = stubServiceWorker(controller);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<GameNotificationWatcher />);
+    const evt = new MessageEvent("message", {
+      data: { type: "OPEN_GAME", gameId: "g99" },
+      source: { id: "spoofed" } as unknown as Window,
+    });
+    listeners["message"][0](evt);
+
+    expect(
+      dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT),
+    ).toBeUndefined();
+  });
+
+  it("accepts messages on uncontrolled tabs (cold-start / first install / post-update)", () => {
+    // controller=null mirrors the state firebase-messaging-sw.js targets via
+    // `clients.matchAll({ includeUncontrolled: true })` — without this case
+    // legitimate notification taps would be dropped.
+    const { listeners } = stubServiceWorker(null);
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+
+    render(<GameNotificationWatcher />);
+    const evt = new MessageEvent("message", {
+      data: { type: "OPEN_GAME", gameId: "g99" },
+      source: { id: "any-sw" } as unknown as Window,
+    });
+    listeners["message"][0](evt);
+
+    const ev = dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT);
+    expect(ev).toBeDefined();
+    expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g99" });
+  });
+
+  it("no-ops when navigator.serviceWorker is undefined", () => {
+    Object.defineProperty(navigator, "serviceWorker", { value: undefined, configurable: true, writable: true });
+    expect(() => render(<GameNotificationWatcher />)).not.toThrow();
+  });
+});
+
+/* ── Cleanup ────────────────────────────────── */
+
+describe("cleanup", () => {
+  it("unsubscribes nudge, notifications, and FCM listeners on unmount", () => {
+    const { unmount } = render(<GameNotificationWatcher />);
+    unmount();
+    expect(mockNudgeUnsub).toHaveBeenCalled();
+    expect(mockNotifUnsub).toHaveBeenCalled();
+    expect(mockFcmUnsub).toHaveBeenCalled();
+  });
+
+  it("removes the service worker message listener on unmount", () => {
+    const listeners: Record<string, EventListener[]> = {};
+    const sw = {
+      controller: null,
+      addEventListener: vi.fn((event: string, h: EventListener) => {
+        (listeners[event] ??= []).push(h);
+      }),
+      removeEventListener: vi.fn(),
+    };
+    Object.defineProperty(navigator, "serviceWorker", { value: sw, configurable: true, writable: true });
+
+    const { unmount } = render(<GameNotificationWatcher />);
+    unmount();
+    expect(sw.removeEventListener).toHaveBeenCalledWith("message", expect.any(Function));
   });
 });

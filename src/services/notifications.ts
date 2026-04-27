@@ -196,7 +196,14 @@ export interface NudgeEvent {
  * newly added docs (skips the initial snapshot seed).
  */
 export function subscribeToNudges(uid: string, onNudge: (nudge: NudgeEvent) => void): Unsubscribe {
-  const db = requireDb();
+  let db;
+  try {
+    db = requireDb();
+  } catch {
+    // Firestore not initialized (tests, or pre-`firebaseReady` render).
+    // Return a no-op unsub so callers can mount unconditionally.
+    return () => {};
+  }
   const q = query(collection(db, "nudges"), where("recipientUid", "==", uid), orderBy("createdAt", "desc"), limit(5));
 
   let initialIds: Set<string> | null = null;
@@ -245,7 +252,14 @@ export interface NotificationEvent {
  * as read when the user has actually seen them (via `markNotificationRead`).
  */
 export function subscribeToNotifications(uid: string, onNotification: (notif: NotificationEvent) => void): Unsubscribe {
-  const db = requireDb();
+  let db;
+  try {
+    db = requireDb();
+  } catch {
+    // Firestore not initialized (tests, or pre-`firebaseReady` render).
+    // Return a no-op unsub so callers can mount unconditionally.
+    return () => {};
+  }
   const q = query(
     collection(db, "notifications"),
     where("recipientUid", "==", uid),
