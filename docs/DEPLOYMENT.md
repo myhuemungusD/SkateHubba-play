@@ -118,8 +118,15 @@ VITE_MAPBOX_TOKEN    — Required for /map. Without this the map page renders
 ### Optional
 
 ```
-VITE_MAPBOX_STYLE_URL — Custom Mapbox Studio style URL. Defaults to
-                        mapbox://styles/mapbox/dark-v11 if unset.
+VITE_MAPBOX_STYLE_URL — Custom Mapbox style URL. Optional override consumed
+                        by `src/lib/mapbox.ts`. Must either start with
+                        `mapbox://styles/` (a Mapbox Studio style URI) or be
+                        a valid `https://` URL pointing at a self-hosted style
+                        JSON; any other value is rejected at startup, a
+                        warning is logged to the browser console, and the
+                        map falls back to `mapbox://styles/mapbox/dark-v11`
+                        so a typo can't take the /map page down. Leave
+                        unset to use the default dark style.
 
 VITE_APP_URL         — Set to https://skatehubba.com in production.
                        Used as the redirect URL in Firebase email action links
