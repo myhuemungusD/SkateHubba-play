@@ -13,15 +13,13 @@ import { logger } from "../../services/logger";
 import { parseFirebaseError } from "../../utils/helpers";
 import { useBlockedUsers } from "../../hooks/useBlockedUsers";
 import { ReportModal } from "../ReportModal";
-import { ProUsername } from "../ProUsername";
 import type { UserProfile } from "../../services/users";
-import { ClipActions } from "./ClipActions";
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
-import { SpotlightVideo } from "./SpotlightVideo";
-import { copyForError, errorCodeFor, relativeClipTime } from "./utils";
+import { SpotlightCard } from "./SpotlightCard";
+import { copyForError, errorCodeFor } from "./utils";
 
-const SAMPLE_SIZE = 12;
+const PAGE_SIZE = 12;
 
 export interface ClipsFeedProps {
   profile: UserProfile;
@@ -106,7 +104,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     setError(null);
     setErrorCode(null);
     try {
-      const page = await fetchClipsFeed(null, SAMPLE_SIZE, sort);
+      const page = await fetchClipsFeed(null, PAGE_SIZE, sort);
       if (!mountedRef.current) return;
       setPool(page.clips);
       setCurrentIndex(0);
@@ -198,6 +196,17 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     [profile.uid, sort, upvoteState, upvotingIds],
   );
 
+  const handleSortChange = useCallback(
+    (next: ClipsFeedSort) => {
+      if (next === sort) return;
+      // Track engagement with the toggle itself — clip_upvoted.fromSort tells
+      // us where votes happen, this tells us whether viewers actually toggle.
+      trackEvent("clips_sort_changed", { from: sort, to: next });
+      setSort(next);
+    },
+    [sort],
+  );
+
   const isOwnClip = currentClip ? currentClip.playerUid === profile.uid : false;
   const upvote: ClipUpvoteState = currentClip
     ? (upvoteState.get(currentClip.id) ?? { count: 0, alreadyUpvoted: false })
@@ -209,7 +218,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     <section className="mb-6" aria-label="Community feed">
       <ClipsFeedHeader
         sort={sort}
-        onSortChange={setSort}
+        onSortChange={handleSortChange}
+        // Lock the toggle during a load so rapid taps don't queue concurrent
+        // fetches (the latest would still win, but it wastes reads + flickers).
+        disabled={loading}
         position={visibleClips.length > 0 ? { index: safeIndex, total: visibleClips.length } : undefined}
       />
 
@@ -219,62 +231,18 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
       {!loading && !error && !currentClip && <ClipsFeedEmpty />}
 
-      {/* Spotlight clip */}
       {!loading && currentClip && (
-        <article className="glass-card rounded-2xl overflow-hidden" aria-label="Current clip">
-          <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
-            <button
-              type="button"
-              onClick={() => onViewPlayer(currentClip.playerUid)}
-              className="flex items-center gap-2 touch-target rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
-            >
-              <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
-                <span className="font-display text-[11px] text-brand-orange leading-none">
-                  {currentClip.playerUsername[0]?.toUpperCase() ?? "?"}
-                </span>
-              </div>
-              <ProUsername
-                username={currentClip.playerUsername}
-                className="font-body text-xs text-white/80 group-hover:text-brand-orange transition-colors duration-200"
-              />
-            </button>
-            <div className="flex items-center gap-2">
-              <span
-                className={`font-display text-[10px] tracking-[0.2em] px-2 py-0.5 rounded-md border ${
-                  currentClip.role === "set"
-                    ? "text-brand-orange border-brand-orange/30 bg-brand-orange/5"
-                    : "text-brand-green border-brand-green/30 bg-brand-green/5"
-                }`}
-                aria-label={currentClip.role === "set" ? "Setter's landed trick" : "Matcher's landed response"}
-              >
-                {currentClip.role === "set" ? "SET" : "MATCH"}
-              </span>
-              <span className="font-body text-[11px] text-faint">{relativeClipTime(currentClip.createdAt)}</span>
-            </div>
-          </div>
-
-          {/* Video — plays once, no loop, no auto-advance. `key={clip.id}`
-              remounts (and resets ended/muted state) on every Next. */}
-          <div className="px-4">
-            <SpotlightVideo key={currentClip.id} src={currentClip.videoUrl} onNext={handleNext} />
-          </div>
-
-          {/* Trick name */}
-          <div className="px-4 pt-3">
-            <h2 className="font-display text-xl text-white tracking-wide leading-tight">{currentClip.trickName}</h2>
-          </div>
-
-          {/* Actions — vote, challenge, report stay visible always. */}
-          <ClipActions
-            clip={currentClip}
-            isOwnClip={isOwnClip}
-            upvote={upvote}
-            upvoteDisabled={upvoteDisabled}
-            onUpvote={handleUpvote}
-            onChallenge={onChallengeUser}
-            onReport={setReportTarget}
-          />
-        </article>
+        <SpotlightCard
+          clip={currentClip}
+          isOwnClip={isOwnClip}
+          upvote={upvote}
+          upvoteDisabled={upvoteDisabled}
+          onViewPlayer={onViewPlayer}
+          onNext={handleNext}
+          onUpvote={handleUpvote}
+          onChallenge={onChallengeUser}
+          onReport={setReportTarget}
+        />
       )}
 
       {/* Report modal */}

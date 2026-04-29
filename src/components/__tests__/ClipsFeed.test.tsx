@@ -5,36 +5,29 @@ import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
 import type { ClipDoc } from "../../services/clips";
 
-const {
-  mockFetchRandomLandedClips,
-  mockFetchClipUpvoteState,
-  mockUpvoteClip,
-  mockTrackEvent,
-  MockAlreadyUpvotedError,
-} = vi.hoisted(() => {
-  class MockAlreadyUpvotedError extends Error {
-    constructor(public readonly clipId: string) {
-      super(`already_upvoted:${clipId}`);
-      this.name = "AlreadyUpvotedError";
+const { mockFetchClipsFeed, mockFetchClipUpvoteState, mockUpvoteClip, mockTrackEvent, MockAlreadyUpvotedError } =
+  vi.hoisted(() => {
+    class MockAlreadyUpvotedError extends Error {
+      constructor(public readonly clipId: string) {
+        super(`already_upvoted:${clipId}`);
+        this.name = "AlreadyUpvotedError";
+      }
     }
-  }
-  // Named `mockFetchRandomLandedClips` historically — kept under that
-  // name so test bodies can still queue `[clip, clip]` arrays without
-  // wrapping each one in `{ clips, cursor }`. The mock shim below
-  // translates the array into the ClipsFeedPage shape the component now
-  // expects from `fetchClipsFeed`.
-  return {
-    mockFetchRandomLandedClips: vi.fn(),
-    mockFetchClipUpvoteState: vi.fn(),
-    mockUpvoteClip: vi.fn(),
-    mockTrackEvent: vi.fn(),
-    MockAlreadyUpvotedError,
-  };
-});
+    // The shim below lets tests queue plain `[clip, clip]` arrays instead
+    // of `{ clips, cursor }` page objects — kept compact so the test bodies
+    // stay focused on behavior, not Firestore page shape.
+    return {
+      mockFetchClipsFeed: vi.fn(),
+      mockFetchClipUpvoteState: vi.fn(),
+      mockUpvoteClip: vi.fn(),
+      mockTrackEvent: vi.fn(),
+      MockAlreadyUpvotedError,
+    };
+  });
 
 vi.mock("../../services/clips", () => ({
   fetchClipsFeed: async (...args: unknown[]) => {
-    const result = await mockFetchRandomLandedClips(...args);
+    const result = await mockFetchClipsFeed(...args);
     return Array.isArray(result) ? { clips: result, cursor: null } : result;
   },
   fetchClipUpvoteState: (...args: unknown[]) => mockFetchClipUpvoteState(...args),
@@ -106,26 +99,26 @@ beforeEach(() => {
 
 describe("ClipsFeed", () => {
   it("shows the loading state on first mount", () => {
-    mockFetchRandomLandedClips.mockImplementation(() => new Promise(() => {}));
+    mockFetchClipsFeed.mockImplementation(() => new Promise(() => {}));
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     expect(screen.getByRole("status", { name: /loading clips/i })).toBeInTheDocument();
   });
 
   it("renders the empty state when the page comes back empty", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([]);
+    mockFetchClipsFeed.mockResolvedValueOnce([]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText(/No clips yet\./i)).toBeInTheDocument());
   });
 
   it("requests fetchClipsFeed with sort='top' (sample 12) on mount — top is the default", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    expect(mockFetchRandomLandedClips).toHaveBeenCalledWith(null, 12, "top");
+    expect(mockFetchClipsFeed).toHaveBeenCalledWith(null, 12, "top");
   });
 
   it("renders the Top/New toggle with Top selected by default", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
@@ -138,7 +131,7 @@ describe("ClipsFeed", () => {
   it("clicking New re-fetches with sort='new' and resets the spotlight to the first clip", async () => {
     const user = userEvent.setup();
     // First page (top) has TopTrick; toggling to new returns NewTrick.
-    mockFetchRandomLandedClips
+    mockFetchClipsFeed
       .mockResolvedValueOnce([makeClip({ id: "top1", trickName: "TopTrick" })])
       .mockResolvedValueOnce([makeClip({ id: "new1", trickName: "NewTrick", playerUid: "p2", playerUsername: "bob" })]);
 
@@ -149,15 +142,71 @@ describe("ClipsFeed", () => {
 
     // Second call uses sort='new' and the spotlight swaps to the new page.
     await waitFor(() => expect(screen.getByText("NewTrick")).toBeInTheDocument());
-    expect(mockFetchRandomLandedClips).toHaveBeenLastCalledWith(null, 12, "new");
+    expect(mockFetchClipsFeed).toHaveBeenLastCalledWith(null, 12, "new");
     // aria-pressed flips so the selected affordance is on New.
     expect(screen.getByRole("button", { name: "New" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "Top" })).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("fires clips_sort_changed when the user flips the toggle", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed
+      .mockResolvedValueOnce([makeClip()])
+      .mockResolvedValueOnce([makeClip({ id: "n", trickName: "NewTrick", playerUid: "p2", playerUsername: "bob" })]);
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+
+    await waitFor(() => expect(mockTrackEvent).toHaveBeenCalledWith("clips_sort_changed", { from: "top", to: "new" }));
+  });
+
+  it("does NOT fire clips_sort_changed when the same sort is re-selected (no-op tap)", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Top" }));
+
+    expect(mockTrackEvent).not.toHaveBeenCalledWith("clips_sort_changed", expect.any(Object));
+    // No re-fetch either — first call only.
+    expect(mockFetchClipsFeed).toHaveBeenCalledTimes(1);
+  });
+
+  it("locks the toggle while a fetch is in flight (no concurrent requests on rapid taps)", async () => {
+    const user = userEvent.setup();
+    // First load resolves; second is blocked so the loading state persists
+    // across the second tap. The component must reject the third tap because
+    // the toggle is disabled.
+    const blocker = deferred<ClipDoc[]>();
+    mockFetchClipsFeed
+      .mockResolvedValueOnce([makeClip()])
+      .mockImplementationOnce(() => blocker.promise as Promise<unknown>);
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+    // Loading skeleton renders → toggle is disabled.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Top" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "New" })).toBeDisabled();
+
+    // Rapid second tap on Top should be ignored — still only 2 fetches total.
+    await user.click(screen.getByRole("button", { name: "Top" }));
+    expect(mockFetchClipsFeed).toHaveBeenCalledTimes(2);
+
+    blocker.resolve([makeClip({ id: "n", trickName: "NewTrick", playerUid: "p2", playerUsername: "bob" })]);
+    await waitFor(() => expect(screen.getByText("NewTrick")).toBeInTheDocument());
+    // Once the load completes, toggle re-enables.
+    expect(screen.getByRole("button", { name: "Top" })).not.toBeDisabled();
+  });
+
   it("fires clip_upvoted with fromSort and newCount on a successful upvote", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
     mockUpvoteClip.mockResolvedValueOnce(3);
 
@@ -177,7 +226,7 @@ describe("ClipsFeed", () => {
 
   it("does NOT fire clip_upvoted when upvoteClip throws AlreadyUpvotedError", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
     mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
 
@@ -193,7 +242,7 @@ describe("ClipsFeed", () => {
   });
 
   it("renders the spotlight clip with player + trick + role + timestamp", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
     expect(screen.getByText("@alice")).toBeInTheDocument();
@@ -204,7 +253,7 @@ describe("ClipsFeed", () => {
   it("fires onViewPlayer when the username is tapped", async () => {
     const user = userEvent.setup();
     const onViewPlayer = vi.fn();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     render(<ClipsFeed profile={profile} onViewPlayer={onViewPlayer} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
@@ -215,7 +264,7 @@ describe("ClipsFeed", () => {
   it("fires onChallengeUser when the challenge CTA is tapped", async () => {
     const user = userEvent.setup();
     const onChallengeUser = vi.fn();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={onChallengeUser} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
@@ -224,9 +273,7 @@ describe("ClipsFeed", () => {
   });
 
   it("hides the challenge CTA on the viewer's own clip", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([
-      makeClip({ playerUid: profile.uid, playerUsername: profile.username }),
-    ]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ playerUid: profile.uid, playerUsername: profile.username })]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /challenge/i })).not.toBeInTheDocument();
@@ -234,7 +281,7 @@ describe("ClipsFeed", () => {
 
   it("opens the report modal and skips the reported clip", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([
+    mockFetchClipsFeed.mockResolvedValueOnce([
       makeClip({ id: "a", trickName: "TrickA" }),
       makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
     ]);
@@ -252,7 +299,7 @@ describe("ClipsFeed", () => {
 
   it("renders an error state with retry when the initial fetch fails", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce([makeClip()]);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText(/Couldn't load the feed/i)).toBeInTheDocument());
@@ -262,7 +309,7 @@ describe("ClipsFeed", () => {
   });
 
   it("uses service-side error copy when the failure is permission-denied", async () => {
-    mockFetchRandomLandedClips.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    mockFetchClipsFeed.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() =>
       expect(screen.getByText(/Feed temporarily unavailable — please try again in a moment\./i)).toBeInTheDocument(),
@@ -271,7 +318,7 @@ describe("ClipsFeed", () => {
   });
 
   it("uses service-side error copy for failed-precondition (missing index)", async () => {
-    mockFetchRandomLandedClips.mockRejectedValueOnce(
+    mockFetchClipsFeed.mockRejectedValueOnce(
       Object.assign(new Error("index missing"), { code: "failed-precondition" }),
     );
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
@@ -281,7 +328,7 @@ describe("ClipsFeed", () => {
   });
 
   it("renders an upvote button next to challenge with the hydrated count", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 4, alreadyUpvoted: false }]]));
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
@@ -292,9 +339,7 @@ describe("ClipsFeed", () => {
   });
 
   it("does not render an upvote button on the viewer's own clip (no self-upvote)", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([
-      makeClip({ playerUid: profile.uid, playerUsername: profile.username }),
-    ]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ playerUid: profile.uid, playerUsername: profile.username })]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: /Upvote clip/i })).not.toBeInTheDocument();
@@ -302,7 +347,7 @@ describe("ClipsFeed", () => {
 
   it("optimistically increments and locks the upvote button on tap", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
     mockUpvoteClip.mockResolvedValueOnce(3);
 
@@ -319,7 +364,7 @@ describe("ClipsFeed", () => {
 
   it("rolls back the optimistic upvote on a non-AlreadyUpvotedError failure", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
     mockUpvoteClip.mockRejectedValueOnce(new Error("network down"));
 
@@ -336,7 +381,7 @@ describe("ClipsFeed", () => {
 
   it("keeps the optimistic upvoted state when the server already had our vote", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
     mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
 
@@ -351,7 +396,7 @@ describe("ClipsFeed", () => {
   });
 
   it("renders the spotlight video with autoplay/muted attributes and a tap-to-unmute affordance", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
@@ -369,7 +414,7 @@ describe("ClipsFeed", () => {
 
   it("toggles mute on the spotlight clip when the unmute affordance is tapped", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
@@ -382,7 +427,7 @@ describe("ClipsFeed", () => {
   });
 
   it("does not fetch upvote state for the viewer's own clips (wasted read)", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([
+    mockFetchClipsFeed.mockResolvedValueOnce([
       makeClip({ id: "own", playerUid: profile.uid, playerUsername: profile.username }),
       makeClip({ id: "other", playerUid: "p2", playerUsername: "bob" }),
     ]);
@@ -394,9 +439,7 @@ describe("ClipsFeed", () => {
   });
 
   it("doesn't run upvote hydration at all when every visible clip is the viewer's own", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([
-      makeClip({ playerUid: profile.uid, playerUsername: profile.username }),
-    ]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ playerUid: profile.uid, playerUsername: profile.username })]);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
@@ -406,7 +449,7 @@ describe("ClipsFeed", () => {
 
   it("preserves an optimistic upvote when a slow hydration resolves after the user's tap (race guard)", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     const hydration = deferred<Map<string, { count: number; alreadyUpvoted: boolean }>>();
     mockFetchClipUpvoteState.mockReturnValueOnce(hydration.promise);
     mockUpvoteClip.mockResolvedValueOnce(6);
@@ -427,7 +470,7 @@ describe("ClipsFeed", () => {
   });
 
   it("shows a Replay + Next Trick overlay when the spotlight clip ends", async () => {
-    mockFetchRandomLandedClips.mockResolvedValueOnce([
+    mockFetchClipsFeed.mockResolvedValueOnce([
       makeClip({ id: "a", trickName: "TrickA" }),
       makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
     ]);
@@ -449,7 +492,7 @@ describe("ClipsFeed", () => {
 
   it("REPLAY restarts the same clip from the beginning", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip({ id: "only", trickName: "OnlyTrick" })]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ id: "only", trickName: "OnlyTrick" })]);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("OnlyTrick")).toBeInTheDocument());
@@ -471,7 +514,7 @@ describe("ClipsFeed", () => {
 
   it("NEXT TRICK advances to the next clip in the random pool", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips.mockResolvedValueOnce([
+    mockFetchClipsFeed.mockResolvedValueOnce([
       makeClip({ id: "a", trickName: "TrickA" }),
       makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
     ]);
@@ -490,7 +533,7 @@ describe("ClipsFeed", () => {
 
   it("NEXT TRICK refetches a fresh random pool when the current one is exhausted", async () => {
     const user = userEvent.setup();
-    mockFetchRandomLandedClips
+    mockFetchClipsFeed
       .mockResolvedValueOnce([makeClip({ id: "only", trickName: "OnlyTrick" })])
       .mockResolvedValueOnce([
         makeClip({ id: "fresh", trickName: "FreshTrick", playerUid: "p2", playerUsername: "bob" }),
@@ -507,7 +550,7 @@ describe("ClipsFeed", () => {
     });
 
     await waitFor(() => expect(screen.getByText("FreshTrick")).toBeInTheDocument());
-    expect(mockFetchRandomLandedClips).toHaveBeenCalledTimes(2);
+    expect(mockFetchClipsFeed).toHaveBeenCalledTimes(2);
   });
 
   it("pauses the spotlight clip when it scrolls out of the viewport and resumes on re-entry", async () => {
@@ -530,7 +573,7 @@ describe("ClipsFeed", () => {
     } as unknown as typeof IntersectionObserver;
 
     try {
-      mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+      mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
 
       render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
       await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
@@ -585,7 +628,7 @@ describe("ClipsFeed", () => {
     } as unknown as typeof IntersectionObserver;
 
     try {
-      mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+      mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
 
       render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
       await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());

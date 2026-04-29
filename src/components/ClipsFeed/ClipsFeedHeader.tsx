@@ -4,6 +4,8 @@ import { TopNewToggle } from "./TopNewToggle";
 export interface ClipsFeedHeaderProps {
   sort: ClipsFeedSort;
   onSortChange: (sort: ClipsFeedSort) => void;
+  /** Disables the Top/New toggle (e.g. while a fetch is in flight). */
+  disabled?: boolean;
   /** Position pill ("3/12"). Omitted while loading or when the pool is empty. */
   position?: { index: number; total: number };
 }
@@ -15,7 +17,7 @@ export interface ClipsFeedHeaderProps {
  * Lives next to ClipsFeed/index.tsx so the parent stays close to the 250 LOC
  * component budget after the toggle was added.
  */
-export function ClipsFeedHeader({ sort, onSortChange, position }: ClipsFeedHeaderProps) {
+export function ClipsFeedHeader({ sort, onSortChange, disabled, position }: ClipsFeedHeaderProps) {
   return (
     <div className="flex items-center justify-between gap-2 mb-3">
       <div className="flex items-center gap-2">
@@ -26,7 +28,7 @@ export function ClipsFeedHeader({ sort, onSortChange, position }: ClipsFeedHeade
           </span>
         )}
       </div>
-      <TopNewToggle sort={sort} onChange={onSortChange} />
+      <TopNewToggle sort={sort} onChange={onSortChange} disabled={disabled} />
     </div>
   );
 }

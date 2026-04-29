@@ -69,7 +69,6 @@ vi.mock("../../firebase");
 import {
   writeLandedClipsInTransaction,
   fetchClipsFeed,
-  fetchRandomLandedClips,
   deleteUserClips,
   upvoteClip,
   fetchClipUpvoteState,
@@ -476,88 +475,6 @@ describe("fetchClipsFeed (sort='top', the default)", () => {
     const page = await fetchClipsFeed(null, 20, "top");
 
     expect(page.cursor).toEqual({ createdAt: duck, id: "a", upvoteCount: 4 });
-  });
-});
-
-/* ── fetchRandomLandedClips ───────────────────── */
-
-describe("fetchRandomLandedClips", () => {
-  it("queries active clips, sorts by createdAt desc (with docId tiebreaker), limits to poolSize", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        makeClipSnap("a", validClipData({ trickName: "A" })),
-        makeClipSnap("b", validClipData({ trickName: "B" })),
-        makeClipSnap("c", validClipData({ trickName: "C" })),
-      ],
-    });
-
-    const clips = await fetchRandomLandedClips(3, 60);
-
-    expect(mockWhere).toHaveBeenCalledWith("moderationStatus", "==", "active");
-    expect(mockOrderBy).toHaveBeenCalledWith("createdAt", "desc");
-    expect(mockOrderBy).toHaveBeenCalledWith({ __documentId: true }, "desc");
-    expect(mockLimit).toHaveBeenCalledWith(60);
-    expect(clips).toHaveLength(3);
-    // Set of trick names preserved; exact order depends on shuffle.
-    expect(clips.map((c) => c.trickName).sort()).toEqual(["A", "B", "C"]);
-  });
-
-  it("Fisher-Yates shuffles the pool (with a deterministic Math.random)", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [
-        makeClipSnap("a", validClipData({ trickName: "A" })),
-        makeClipSnap("b", validClipData({ trickName: "B" })),
-        makeClipSnap("c", validClipData({ trickName: "C" })),
-      ],
-    });
-
-    // For n=3 the shuffle runs i=2 then i=1. With Math.random=0 both swaps
-    // pick j=0: [A,B,C] → swap [0,2] → [C,B,A] → swap [0,1] → [B,C,A].
-    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
-    try {
-      const clips = await fetchRandomLandedClips(3, 60);
-      expect(clips.map((c) => c.trickName)).toEqual(["B", "C", "A"]);
-    } finally {
-      randomSpy.mockRestore();
-    }
-  });
-
-  it("returns only `sampleSize` clips even when the pool is larger", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: Array.from({ length: 10 }, (_, i) => makeClipSnap(`id${i}`, validClipData({ trickName: `T${i}` }))),
-    });
-
-    const clips = await fetchRandomLandedClips(4, 10);
-    expect(clips).toHaveLength(4);
-  });
-
-  it("clamps sampleSize to [1, 50] and poolSize to [sampleSize, 200]", async () => {
-    mockGetDocs.mockResolvedValue({ docs: [] });
-
-    // sampleSize=0 → clamped to 1; poolSize=500 → clamped to 200.
-    await fetchRandomLandedClips(0, 500);
-    expect(mockLimit).toHaveBeenLastCalledWith(200);
-
-    // sampleSize=999 → clamped to 50; poolSize=5 (< sampleSize) → 50.
-    await fetchRandomLandedClips(999, 5);
-    expect(mockLimit).toHaveBeenLastCalledWith(50);
-  });
-
-  it("skips malformed docs rather than throwing the whole page away", async () => {
-    mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("ok", validClipData()), { id: "broken", data: () => undefined }],
-    });
-
-    const clips = await fetchRandomLandedClips(5, 10);
-    expect(clips).toHaveLength(1);
-    expect(clips[0].id).toBe("ok");
-  });
-
-  it("returns an empty array when the collection has no active clips", async () => {
-    mockGetDocs.mockResolvedValueOnce({ docs: [] });
-
-    const clips = await fetchRandomLandedClips(12, 60);
-    expect(clips).toEqual([]);
   });
 });
 
