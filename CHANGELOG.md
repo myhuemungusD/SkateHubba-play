@@ -311,32 +311,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Version
 - **Build-time release identifier.** `VITE_APP_VERSION` is injected by `vite.config.ts` from `package.json` (overridable via env var) and forwarded to Sentry (`release`) and PostHog (`app_version` super-property) so every event traces back to a specific build.
 - **Fastlane scaffolding** (`fastlane/Fastfile`, `Appfile`, `Matchfile`, `Pluginfile`, `Gemfile`, `fastlane/README.md`). iOS lanes: `certificates`, `beta`, `release`. Android lanes: `internal`, `beta`, `release`. Lanes don't auto-run in CI yet — iOS needs `npx cap add ios` on a macOS host before `fastlane ios beta` can complete. Full setup instructions + secret checklist in `fastlane/README.md`.
 
-**Referee system (optional dispute resolution)**
-
-- Challenge screen now has an optional "Add a referee?" friend picker — nominate a third player who rules on disputes and "Call BS" claims.
-- Nominated referees receive a notification and can accept or decline the invite from inside the game screen.
-- While the invite is pending (or declined), the game operates on the honor system — no disputes or BS calls.
-- Once the referee accepts, two new paths unlock:
-  - **Dispute**: When the matcher claims "landed," the referee reviews both videos and rules landed or missed. Referee (never the setter) has 24 h; after that, the matcher's call auto-accepts.
-  - **Call BS on setter**: Before attempting, the matcher can send the setter's video to the referee. Referee rules clean (matcher must attempt) or sketchy (setter re-sets). 24 h timeout → set stands (benefit of the doubt to the setter).
-- Both players see a "Referee Pending / Referee / No Referee" badge on the game screen so they always know which resolution path is live.
-- Referees appear in their own game list and see a neutral "Referee's Call" / "Call BS Review" UI — they never record, never hold a letter.
-
-### Changed
-
-- **Referee terminology (UI-only rename).** All user-visible strings that previously said "judge" now say "referee" — error messages, badges, notification titles, dispute-review copy. The underlying Firestore schema fields (`judgeId`, `judgeUsername`, `judgeStatus`, `judgeReviewFor`, `judgedBy`), service functions (`acceptJudgeInvite`, `declineJudgeInvite`, `judgeRuleSetTrick`, `isJudgeActive`), types (`JudgeStatus`), and the `judge_invite` notification type code are **unchanged** — renaming those would require a data migration for in-flight games. This is a copy-only change; no data model or API surface is affected.
-- **Game-start latency on the challenge screen.** Opponent and optional referee username lookups now run in parallel via `Promise.allSettled`. A transient network failure on the referee lookup no longer blocks the required opponent path; the UI surfaces a specific per-field error with an actionable path ("retry, or remove the referee to start now") instead of a generic banner. Sentry captures the lookup reason with `challenge.opponent_lookup` / `challenge.judge_lookup` context for production triage.
-- **Waiting screen rendering for referees.** A referee observing a game (between review phases) now sees a neutral "player1 vs player2" letter header with correct scores, the currently-acting player named in the "Waiting on @x" label, and contextual phase copy (e.g. "@alice is setting a trick"). The Nudge and Report opponent controls are hidden — referees have no opponent. Previously the player-centric fallbacks silently used player2's letter count and labelled player1 as the referee's "opponent."
-- Honor-system (no referee) games skip the `disputable` phase entirely. A claimed-landed attempt now swaps roles immediately; a claimed-missed attempt applies a letter immediately. The 24 h review window no longer sits in the middle of every turn when there's no referee to arbitrate.
-- Dispute resolution is now referee-only. The setter never self-judges — that was the point of inviting a neutral third party. Existing games without a referee continue to run on the honor system.
-
-### Schema
-
-- `GameDoc` gains `judgeId: string | null`, `judgeUsername: string | null`, `judgeStatus: 'pending' | 'accepted' | 'declined' | null`, `judgeReviewFor: string | null`.
-- New `GamePhase` value: `setReview` (judge reviewing a "Call BS" on the set trick).
-- `TurnRecord.judgedBy` records the judge UID when a turn was judged (null otherwise).
-- Firestore security rules validate judge immutability, judge-only dispute paths, and participant-scoped reads (player or judge).
-
 ---
 
 ## [1.0.0] — 2024-12-01
