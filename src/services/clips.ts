@@ -29,6 +29,7 @@ import {
   getCountFromServer,
   getDoc,
   getDocs,
+  increment,
   limit as limitFn,
   orderBy,
   query,
@@ -46,40 +47,16 @@ import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import type { Clip, ClipModerationStatus, ClipRole } from "../types/clip";
 
 /* ────────────────────────────────────────────
  * Types
  * ──────────────────────────────────────────── */
 
-export type ClipRole = "set" | "match";
+export type { Clip, ClipModerationStatus, ClipRole } from "../types/clip";
 
-/**
- * Client-writable moderation state. Clients can only ever create clips with
- * `active` status; transitions to `hidden` happen server-side (Admin SDK,
- * via a trust-and-safety tooling path outside this repo) when a clip is
- * taken down in response to a user report. App Store Guideline 1.2
- * compliance requires the feed to never surface hidden clips, so the
- * feed query filters `moderationStatus == 'active'` explicitly.
- */
-export type ClipModerationStatus = "active" | "hidden";
-
-export interface ClipDoc {
-  id: string;
-  gameId: string;
-  turnNumber: number;
-  role: ClipRole;
-  playerUid: string;
-  playerUsername: string;
-  trickName: string;
-  videoUrl: string;
-  spotId: string | null;
-  createdAt: Timestamp | null;
-  moderationStatus: ClipModerationStatus;
-  // Stored counter incremented inside the upvoteClip transaction. Defaults
-  // to 0 for legacy docs that predate the field; the backfill rewrites
-  // existing rows so 'top' ranking is stable across the full collection.
-  upvoteCount: number;
-}
+/** Persisted clip document — alias retained for callers that already import this name. */
+export type ClipDoc = Clip;
 
 /**
  * Sort modes for `fetchClipsFeed`.
@@ -156,6 +133,7 @@ interface ClipWritePayload {
   spotId: string | null;
   createdAt: FieldValue;
   moderationStatus: ClipModerationStatus;
+  upvoteCount: number;
 }
 
 function buildClipPayload(ctx: Omit<ClipWritePayload, "createdAt">, createdAt: FieldValue): ClipWritePayload {
@@ -189,6 +167,7 @@ export function writeLandedClipsInTransaction(tx: Transaction, ctx: LandedClipCo
           videoUrl: ctx.setVideoUrl,
           spotId: ctx.spotId,
           moderationStatus: "active",
+          upvoteCount: 0,
         },
         createdAt,
       ),
@@ -210,6 +189,7 @@ export function writeLandedClipsInTransaction(tx: Transaction, ctx: LandedClipCo
           videoUrl: ctx.matchVideoUrl,
           spotId: ctx.spotId,
           moderationStatus: "active",
+          upvoteCount: 0,
         },
         createdAt,
       ),
@@ -253,10 +233,9 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
   // is already excluded upstream by the feed query's where() filter.
   const moderationStatus: ClipModerationStatus = raw.moderationStatus === "hidden" ? "hidden" : "active";
 
-  // Stored counter — populated by the upvote transaction and the S1 backfill.
-  // Default to 0 so a missing-field doc still renders cleanly; clients should
-  // treat 0 as authoritative (no extra aggregate query needed).
-  const upvoteCount = typeof raw.upvoteCount === "number" && Number.isFinite(raw.upvoteCount) ? raw.upvoteCount : 0;
+  // Pre-aggregate clips lack the field; default to 0 until the backfill
+  // (scripts/backfill-clip-upvote-count.mjs) runs.
+  const upvoteCount = typeof raw.upvoteCount === "number" && raw.upvoteCount >= 0 ? raw.upvoteCount : 0;
 
   return {
     id: snap.id,
@@ -458,12 +437,22 @@ export async function fetchClipUpvoteState(
  * Uniqueness is enforced by the deterministic `{uid}_{clipId}` doc id: the
  * transaction reads the doc and throws `AlreadyUpvotedError` when it already
  * exists. The `clipVotes` rule additionally enforces this via
- * `allow update/delete: if false` so a rule-only client can't double-vote
- * by setDoc-ing over the existing entry.
+ * `allow update: if false` so a rule-only client can't double-vote by
+ * setDoc-ing over the existing entry (deletes are owner-only and back the
+ * un-upvote / account-deletion paths).
+ *
+ * The same transaction also bumps the parent clip's `upvoteCount` aggregate
+ * via `increment(1)`. Pairing the vote-doc create and the count delta in
+ * one `runTransaction` is what keeps the aggregate consistent with the
+ * underlying votes — a half-applied write (vote doc but no count, or count
+ * but no vote doc) is impossible. The matching firestore rule on `clips`
+ * uses `existsAfter` to verify the vote-doc side of the pair, so a client
+ * cannot increment the count without also creating its vote doc.
  */
 export async function upvoteClip(uid: string, clipId: string): Promise<number> {
   const db = requireDb();
   const voteRef = doc(db, "clipVotes", clipVoteId(uid, clipId));
+  const clipRef = doc(db, "clips", clipId);
 
   try {
     await runTransaction(db, async (tx) => {
@@ -474,6 +463,7 @@ export async function upvoteClip(uid: string, clipId: string): Promise<number> {
         clipId,
         createdAt: serverTimestamp(),
       });
+      tx.update(clipRef, { upvoteCount: increment(1) });
     });
   } catch (err) {
     if (err instanceof AlreadyUpvotedError) throw err;
