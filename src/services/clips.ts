@@ -59,14 +59,29 @@ export type { Clip, ClipModerationStatus, ClipRole } from "../types/clip";
 export type ClipDoc = Clip;
 
 /**
+ * Sort modes for `fetchClipsFeed`.
+ *
+ *  • 'top' — orders by `upvoteCount` desc with `createdAt` desc as a natural
+ *            tiebreak (so a zero-upvotes collection still falls through to
+ *            most-recent-first without a code branch).
+ *  • 'new' — legacy `createdAt` desc ordering, preserved for the toggle.
+ */
+export type ClipsFeedSort = "top" | "new";
+
+/**
  * Opaque cursor returned by `fetchClipsFeed`. Callers round-trip it verbatim
  * to fetch the next page. Includes both the creation time and the doc id so
  * pagination stays stable when multiple clips share a server timestamp
  * (which happens on every landed turn: set + match are written atomically).
+ *
+ * `upvoteCount` is populated only when the page was fetched with sort='top'
+ * — Firestore's `startAfter` must align lengthwise with the orderBy chain,
+ * so the field is required for top-sort pagination but ignored for new-sort.
  */
 export interface ClipsFeedCursor {
   createdAt: Timestamp;
   id: string;
+  upvoteCount?: number;
 }
 
 export interface ClipsFeedPage {
@@ -239,26 +254,50 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
 }
 
 /**
- * Fetch one page of the landed-trick feed, newest first.
+ * Fetch one page of the landed-trick feed.
  *
- * Pagination uses both `createdAt` and the doc id as an explicit tiebreaker
- * so two clips written in the same transaction (same `createdAt`) don't
- * cause a skipped or duplicated row at page boundaries.
+ * `sort` selects the ranking strategy:
+ *   • 'top' (default) — `upvoteCount` desc, then `createdAt` desc, then doc
+ *     id desc. The createdAt tiebreaker means a collection where every clip
+ *     has zero upvotes naturally falls through to most-recent-first, so the
+ *     featured-clip surface degrades gracefully before vote data exists.
+ *   • 'new' — `createdAt` desc, then doc id desc. Legacy ordering, kept for
+ *     the Top/New toggle.
+ *
+ * The doc-id tiebreaker exists because set + match clips share a transaction
+ * `serverTimestamp()`; without it pagination would skip or duplicate rows at
+ * page boundaries.
  */
-export async function fetchClipsFeed(cursor: ClipsFeedCursor | null = null, pageSize = 20): Promise<ClipsFeedPage> {
+export async function fetchClipsFeed(
+  cursor: ClipsFeedCursor | null = null,
+  pageSize = 20,
+  sort: ClipsFeedSort = "top",
+): Promise<ClipsFeedPage> {
   const boundedSize = Math.max(1, Math.min(50, pageSize));
 
   // App Store Guideline 1.2 requires offensive UGC to be removable from
   // the feed. Hidden clips (moderationStatus === 'hidden') are filtered
-  // out server-side. Paired with the (moderationStatus, createdAt desc,
-  // __name__ desc) composite index in firestore.indexes.json.
-  const constraints: QueryConstraint[] = [
-    where("moderationStatus", "==", "active"),
-    orderBy("createdAt", "desc"),
-    orderBy(documentId(), "desc"),
-  ];
+  // out server-side. Paired with composite indexes in firestore.indexes.json:
+  //   • new: (moderationStatus, createdAt desc, __name__ desc)
+  //   • top: (moderationStatus, upvoteCount desc, createdAt desc, __name__ desc)
+  const constraints: QueryConstraint[] =
+    sort === "top"
+      ? [
+          where("moderationStatus", "==", "active"),
+          orderBy("upvoteCount", "desc"),
+          orderBy("createdAt", "desc"),
+          orderBy(documentId(), "desc"),
+        ]
+      : [where("moderationStatus", "==", "active"), orderBy("createdAt", "desc"), orderBy(documentId(), "desc")];
   if (cursor) {
-    constraints.push(startAfter(cursor.createdAt, cursor.id));
+    // startAfter must match the orderBy chain length-for-length. For 'top'
+    // we thread upvoteCount through (defaulting to 0 if a caller round-trips
+    // a 'new'-sourced cursor by mistake — defensive, not a real path).
+    constraints.push(
+      sort === "top"
+        ? startAfter(cursor.upvoteCount ?? 0, cursor.createdAt, cursor.id)
+        : startAfter(cursor.createdAt, cursor.id),
+    );
   }
   constraints.push(limitFn(boundedSize));
 
@@ -278,56 +317,28 @@ export async function fetchClipsFeed(cursor: ClipsFeedCursor | null = null, page
   }
 
   const lastRaw = snap.docs[snap.docs.length - 1];
-  const lastRawCreatedAt = lastRaw ? (lastRaw.data() as { createdAt?: unknown } | undefined)?.createdAt : undefined;
+  const lastRawData = lastRaw
+    ? (lastRaw.data() as { createdAt?: unknown; upvoteCount?: unknown } | undefined)
+    : undefined;
+  const lastRawCreatedAt = lastRawData?.createdAt;
+  const lastRawUpvoteCount =
+    typeof lastRawData?.upvoteCount === "number" && Number.isFinite(lastRawData.upvoteCount)
+      ? lastRawData.upvoteCount
+      : 0;
   const nextCursor: ClipsFeedCursor | null =
     lastRaw && lastRawCreatedAt instanceof Timestamp
-      ? { createdAt: lastRawCreatedAt, id: lastRaw.id }
+      ? sort === "top"
+        ? { createdAt: lastRawCreatedAt, id: lastRaw.id, upvoteCount: lastRawUpvoteCount }
+        : { createdAt: lastRawCreatedAt, id: lastRaw.id }
       : (() => {
           const last = clips[clips.length - 1];
-          return last && last.createdAt ? { createdAt: last.createdAt, id: last.id } : null;
+          if (!last || !last.createdAt) return null;
+          return sort === "top"
+            ? { createdAt: last.createdAt, id: last.id, upvoteCount: last.upvoteCount }
+            : { createdAt: last.createdAt, id: last.id };
         })();
 
   return { clips, cursor: nextCursor };
-}
-
-/**
- * Fetch a random sample of recent active landed-trick clips for the lobby
- * spotlight.
- *
- * Client-side shuffle of the most-recent N clips. Gives the lobby feed variety
- * without an expensive cross-collection random query, and still favors fresh
- * content because the pool is recent-first.
- */
-export async function fetchRandomLandedClips(sampleSize = 12, poolSize = 60): Promise<ClipDoc[]> {
-  const boundedSample = Math.max(1, Math.min(50, sampleSize));
-  const boundedPool = Math.max(boundedSample, Math.min(200, poolSize));
-
-  const q = query(
-    clipsRef(),
-    where("moderationStatus", "==", "active"),
-    orderBy("createdAt", "desc"),
-    orderBy(documentId(), "desc"),
-    limitFn(boundedPool),
-  );
-
-  const snap = await withRetry(() => getDocs(q));
-
-  const clips: ClipDoc[] = [];
-  for (const d of snap.docs) {
-    try {
-      clips.push(toClipDoc(d));
-    } catch (err) {
-      logger.warn("clips_random_doc_malformed", { docId: d.id, error: parseFirebaseError(err) });
-    }
-  }
-
-  // Fisher-Yates shuffle.
-  for (let i = clips.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [clips[i], clips[j]] = [clips[j], clips[i]];
-  }
-
-  return clips.slice(0, Math.min(boundedSample, clips.length));
 }
 
 /* ────────────────────────────────────────────
