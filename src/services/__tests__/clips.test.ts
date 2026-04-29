@@ -72,7 +72,6 @@ vi.mock("../../firebase");
 import {
   writeLandedClipsInTransaction,
   fetchClipsFeed,
-  fetchRandomLandedClips,
   deleteUserClips,
   upvoteClip,
   fetchClipUpvoteState,
@@ -220,11 +219,12 @@ function validClipData(overrides: Record<string, unknown> = {}) {
     spotId: "spot-1",
     createdAt: new FakeTimestamp(1_700_000_000_000),
     moderationStatus: "active",
+    upvoteCount: 0,
     ...overrides,
   };
 }
 
-describe("fetchClipsFeed", () => {
+describe("fetchClipsFeed (sort='new')", () => {
   it("queries active clips ordered by createdAt desc (with docId tiebreaker) and returns mapped docs", async () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [
@@ -233,13 +233,16 @@ describe("fetchClipsFeed", () => {
       ],
     });
 
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
 
     // Feed must filter to active clips only so hidden-by-moderation content
     // never reaches users (App Store Guideline 1.2).
     expect(mockWhere).toHaveBeenCalledWith("moderationStatus", "==", "active");
     expect(mockOrderBy).toHaveBeenCalledWith("createdAt", "desc");
     expect(mockOrderBy).toHaveBeenCalledWith({ __documentId: true }, "desc");
+    // Regression guard: legacy 'new' sort never orders by upvoteCount, so a
+    // user flipping back to New still hits the original composite index.
+    expect(mockOrderBy).not.toHaveBeenCalledWith("upvoteCount", expect.anything());
     expect(mockLimit).toHaveBeenCalledWith(20);
     expect(mockStartAfter).not.toHaveBeenCalled();
 
@@ -256,7 +259,7 @@ describe("fetchClipsFeed", () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [makeClipSnap("legacy", validClipData({ moderationStatus: undefined }))],
     });
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips[0].moderationStatus).toBe("active");
   });
 
@@ -264,7 +267,7 @@ describe("fetchClipsFeed", () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [makeClipSnap("g1_2_set", validClipData({ moderationStatus: "hidden" }))],
     });
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips[0].moderationStatus).toBe("hidden");
   });
 
@@ -275,7 +278,7 @@ describe("fetchClipsFeed", () => {
       createdAt: new FakeTimestamp(1_700_000_000_000) as unknown as ClipsFeedCursor["createdAt"],
       id: "g1_5_match",
     };
-    const page = await fetchClipsFeed(cursor, 10);
+    const page = await fetchClipsFeed(cursor, 10, "new");
 
     expect(mockStartAfter).toHaveBeenCalledWith(cursor.createdAt, cursor.id);
     expect(mockLimit).toHaveBeenCalledWith(10);
@@ -286,10 +289,10 @@ describe("fetchClipsFeed", () => {
   it("clamps pageSize into [1, 50]", async () => {
     mockGetDocs.mockResolvedValue({ docs: [] });
 
-    await fetchClipsFeed(null, 0);
+    await fetchClipsFeed(null, 0, "new");
     expect(mockLimit).toHaveBeenLastCalledWith(1);
 
-    await fetchClipsFeed(null, 999);
+    await fetchClipsFeed(null, 999, "new");
     expect(mockLimit).toHaveBeenLastCalledWith(50);
   });
 
@@ -298,7 +301,7 @@ describe("fetchClipsFeed", () => {
       docs: [makeClipSnap("g1_2_set", validClipData({ createdAt: null }))],
     });
 
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
 
     expect(page.clips).toHaveLength(1);
     expect(page.clips[0].createdAt).toBeNull();
@@ -310,7 +313,7 @@ describe("fetchClipsFeed", () => {
       docs: [makeClipSnap("g1_2_set", validClipData({ spotId: undefined }))],
     });
 
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips[0].spotId).toBeNull();
   });
 
@@ -319,7 +322,7 @@ describe("fetchClipsFeed", () => {
       docs: [{ id: "broken", data: () => undefined }, makeClipSnap("g1_2_set", validClipData())],
     });
 
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips).toHaveLength(1);
     expect(page.clips[0].id).toBe("g1_2_set");
   });
@@ -329,7 +332,7 @@ describe("fetchClipsFeed", () => {
       docs: [makeClipSnap("bad", validClipData({ role: "judge" })), makeClipSnap("g1_2_set", validClipData())],
     });
 
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips).toHaveLength(1);
     expect(page.clips[0].id).toBe("g1_2_set");
   });
@@ -339,7 +342,7 @@ describe("fetchClipsFeed", () => {
       docs: [makeClipSnap("bad", validClipData({ videoUrl: 42 })), makeClipSnap("g1_2_set", validClipData())],
     });
 
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips).toHaveLength(1);
     expect(page.clips[0].id).toBe("g1_2_set");
   });
@@ -349,7 +352,7 @@ describe("fetchClipsFeed", () => {
       docs: [{ id: "broken", data: () => undefined }],
     });
 
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips).toHaveLength(0);
     // Cursor stays null so the caller can stop paginating cleanly.
     expect(page.cursor).toBeNull();
@@ -366,7 +369,7 @@ describe("fetchClipsFeed", () => {
       ],
     });
 
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips).toHaveLength(1);
     expect(page.cursor).toEqual({ createdAt: trailingTs, id: "g1_3_set" });
   });
@@ -377,7 +380,7 @@ describe("fetchClipsFeed", () => {
       docs: [makeClipSnap("g1_2_set", validClipData({ createdAt: duck }))],
     });
 
-    const page = await fetchClipsFeed();
+    const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips[0].createdAt).toBe(duck);
   });
 
@@ -408,85 +411,101 @@ describe("fetchClipsFeed", () => {
   });
 });
 
-/* ── fetchRandomLandedClips ───────────────────── */
-
-describe("fetchRandomLandedClips", () => {
-  it("queries active clips, sorts by createdAt desc (with docId tiebreaker), limits to poolSize", async () => {
+describe("fetchClipsFeed (sort='top', the default)", () => {
+  it("defaults to sort='top' — orders by upvoteCount desc then createdAt desc with __name__ tiebreak", async () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [
-        makeClipSnap("a", validClipData({ trickName: "A" })),
-        makeClipSnap("b", validClipData({ trickName: "B" })),
-        makeClipSnap("c", validClipData({ trickName: "C" })),
+        makeClipSnap("hot", validClipData({ upvoteCount: 9 })),
+        makeClipSnap("warm", validClipData({ upvoteCount: 4 })),
       ],
     });
 
-    const clips = await fetchRandomLandedClips(3, 60);
+    const page = await fetchClipsFeed();
 
     expect(mockWhere).toHaveBeenCalledWith("moderationStatus", "==", "active");
+    expect(mockOrderBy).toHaveBeenCalledWith("upvoteCount", "desc");
     expect(mockOrderBy).toHaveBeenCalledWith("createdAt", "desc");
     expect(mockOrderBy).toHaveBeenCalledWith({ __documentId: true }, "desc");
-    expect(mockLimit).toHaveBeenCalledWith(60);
-    expect(clips).toHaveLength(3);
-    // Set of trick names preserved; exact order depends on shuffle.
-    expect(clips.map((c) => c.trickName).sort()).toEqual(["A", "B", "C"]);
+    // upvoteCount must be the FIRST orderBy so 'top' ranks by votes;
+    // createdAt is the no-upvotes-yet fallback tiebreaker.
+    const orderByFields = mockOrderBy.mock.calls.map((c) => c[0]);
+    expect(orderByFields[0]).toBe("upvoteCount");
+    expect(orderByFields[1]).toBe("createdAt");
+
+    expect(page.clips).toHaveLength(2);
+    expect(page.clips[0]).toMatchObject({ id: "hot", upvoteCount: 9 });
+    expect(page.cursor).toEqual({
+      createdAt: expect.any(FakeTimestamp),
+      id: "warm",
+      upvoteCount: 4,
+    });
   });
 
-  it("Fisher-Yates shuffles the pool (with a deterministic Math.random)", async () => {
+  it("threads upvoteCount through startAfter(upvoteCount, createdAt, id) for top-sort cursors", async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    const ts = new FakeTimestamp(1_700_000_000_000) as unknown as ClipsFeedCursor["createdAt"];
+    const cursor: ClipsFeedCursor = { createdAt: ts, id: "g1_5_match", upvoteCount: 5 };
+
+    await fetchClipsFeed(cursor, 10, "top");
+
+    expect(mockStartAfter).toHaveBeenCalledWith(5, ts, "g1_5_match");
+  });
+
+  it("defaults a missing cursor.upvoteCount to 0 (defensive — not a real path)", async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    const ts = new FakeTimestamp(1_700_000_000_000) as unknown as ClipsFeedCursor["createdAt"];
+    // Caller round-tripped a 'new'-sourced cursor with sort='top' — wrong
+    // but possible. Don't crash; degrade gracefully to upvoteCount=0.
+    const cursor: ClipsFeedCursor = { createdAt: ts, id: "g1_5_match" };
+
+    await fetchClipsFeed(cursor, 10, "top");
+
+    expect(mockStartAfter).toHaveBeenCalledWith(0, ts, "g1_5_match");
+  });
+
+  it("projects upvoteCount onto every clip (defaults missing/non-numeric to 0)", async () => {
     mockGetDocs.mockResolvedValueOnce({
       docs: [
-        makeClipSnap("a", validClipData({ trickName: "A" })),
-        makeClipSnap("b", validClipData({ trickName: "B" })),
-        makeClipSnap("c", validClipData({ trickName: "C" })),
+        makeClipSnap("a", validClipData({ upvoteCount: 3 })),
+        makeClipSnap("b", validClipData({ upvoteCount: undefined })),
+        makeClipSnap("c", validClipData({ upvoteCount: "broken" })),
       ],
     });
 
-    // For n=3 the shuffle runs i=2 then i=1. With Math.random=0 both swaps
-    // pick j=0: [A,B,C] → swap [0,2] → [C,B,A] → swap [0,1] → [B,C,A].
-    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0);
-    try {
-      const clips = await fetchRandomLandedClips(3, 60);
-      expect(clips.map((c) => c.trickName)).toEqual(["B", "C", "A"]);
-    } finally {
-      randomSpy.mockRestore();
-    }
+    const page = await fetchClipsFeed(null, 20, "top");
+
+    expect(page.clips.map((c) => ({ id: c.id, upvoteCount: c.upvoteCount }))).toEqual([
+      { id: "a", upvoteCount: 3 },
+      { id: "b", upvoteCount: 0 },
+      { id: "c", upvoteCount: 0 },
+    ]);
   });
 
-  it("returns only `sampleSize` clips even when the pool is larger", async () => {
+  it("returns a top-sort cursor that reads upvoteCount off the trailing raw doc", async () => {
+    const trailingTs = new FakeTimestamp(1_700_000_000_500);
     mockGetDocs.mockResolvedValueOnce({
-      docs: Array.from({ length: 10 }, (_, i) => makeClipSnap(`id${i}`, validClipData({ trickName: `T${i}` }))),
+      docs: [makeClipSnap("a", validClipData({ upvoteCount: 7, createdAt: trailingTs }))],
     });
 
-    const clips = await fetchRandomLandedClips(4, 10);
-    expect(clips).toHaveLength(4);
+    const page = await fetchClipsFeed(null, 20, "top");
+
+    expect(page.cursor).toEqual({ createdAt: trailingTs, id: "a", upvoteCount: 7 });
   });
 
-  it("clamps sampleSize to [1, 50] and poolSize to [sampleSize, 200]", async () => {
-    mockGetDocs.mockResolvedValue({ docs: [] });
-
-    // sampleSize=0 → clamped to 1; poolSize=500 → clamped to 200.
-    await fetchRandomLandedClips(0, 500);
-    expect(mockLimit).toHaveBeenLastCalledWith(200);
-
-    // sampleSize=999 → clamped to 50; poolSize=5 (< sampleSize) → 50.
-    await fetchRandomLandedClips(999, 5);
-    expect(mockLimit).toHaveBeenLastCalledWith(50);
-  });
-
-  it("skips malformed docs rather than throwing the whole page away", async () => {
+  it("falls back to the parsed clip's upvoteCount when the trailing raw doc has a duck-typed createdAt", async () => {
+    // Duck-typed createdAt isn't a Timestamp instance, so the raw-doc cursor
+    // path fails and we fall through to the per-clip IIFE. Ensure the top
+    // branch in that fallback still includes upvoteCount.
+    const duck = { toMillis: () => 1 };
     mockGetDocs.mockResolvedValueOnce({
-      docs: [makeClipSnap("ok", validClipData()), { id: "broken", data: () => undefined }],
+      docs: [makeClipSnap("a", validClipData({ upvoteCount: 4, createdAt: duck }))],
     });
 
-    const clips = await fetchRandomLandedClips(5, 10);
-    expect(clips).toHaveLength(1);
-    expect(clips[0].id).toBe("ok");
-  });
+    const page = await fetchClipsFeed(null, 20, "top");
 
-  it("returns an empty array when the collection has no active clips", async () => {
-    mockGetDocs.mockResolvedValueOnce({ docs: [] });
-
-    const clips = await fetchRandomLandedClips(12, 60);
-    expect(clips).toEqual([]);
+    expect(page.cursor).toEqual({ createdAt: duck, id: "a", upvoteCount: 4 });
   });
 });
 
