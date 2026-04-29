@@ -260,8 +260,7 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
  *   • 'top' (default) — `upvoteCount` desc, then `createdAt` desc, then doc
  *     id desc. The createdAt tiebreaker means a collection where every clip
  *     has zero upvotes naturally falls through to most-recent-first, so the
- *     featured-clip surface degrades gracefully before the feature has any
- *     vote data.
+ *     featured-clip surface degrades gracefully before vote data exists.
  *   • 'new' — `createdAt` desc, then doc id desc. Legacy ordering, kept for
  *     the Top/New toggle.
  *

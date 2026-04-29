@@ -92,6 +92,35 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+/**
+ * Shared preamble for the upvote tests: render the feed with one hydrated
+ * clip at `initialCount` and the named upvote outcome staged on the mock,
+ * then return the upvote button so the test can drive the click + assert.
+ */
+async function mountWithUpvoteSetup(
+  outcome: { kind: "success"; resolved: number } | { kind: "alreadyUpvoted" } | { kind: "error"; error: Error },
+) {
+  const initialCount = 2;
+  const user = userEvent.setup();
+  mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+  mockFetchClipUpvoteState.mockResolvedValueOnce(
+    new Map([["g1_2_set", { count: initialCount, alreadyUpvoted: false }]]),
+  );
+  if (outcome.kind === "success") {
+    mockUpvoteClip.mockResolvedValueOnce(outcome.resolved);
+  } else if (outcome.kind === "alreadyUpvoted") {
+    mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
+  } else {
+    mockUpvoteClip.mockRejectedValueOnce(outcome.error);
+  }
+  render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+  await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+  const upvoteBtn = await screen.findByRole("button", {
+    name: /Upvote clip by @alice · current count 2/i,
+  });
+  return { user, upvoteBtn };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchClipUpvoteState.mockResolvedValue(new Map());
@@ -205,14 +234,7 @@ describe("ClipsFeed", () => {
   });
 
   it("fires clip_upvoted with fromSort and newCount on a successful upvote", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockResolvedValueOnce(3);
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "success", resolved: 3 });
 
     await user.click(upvoteBtn);
 
@@ -225,14 +247,7 @@ describe("ClipsFeed", () => {
   });
 
   it("does NOT fire clip_upvoted when upvoteClip throws AlreadyUpvotedError", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "alreadyUpvoted" });
 
     await user.click(upvoteBtn);
 
@@ -346,14 +361,7 @@ describe("ClipsFeed", () => {
   });
 
   it("optimistically increments and locks the upvote button on tap", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockResolvedValueOnce(3);
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "success", resolved: 3 });
 
     await user.click(upvoteBtn);
 
@@ -363,14 +371,7 @@ describe("ClipsFeed", () => {
   });
 
   it("rolls back the optimistic upvote on a non-AlreadyUpvotedError failure", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockRejectedValueOnce(new Error("network down"));
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "error", error: new Error("network down") });
 
     await user.click(upvoteBtn);
 
@@ -380,14 +381,7 @@ describe("ClipsFeed", () => {
   });
 
   it("keeps the optimistic upvoted state when the server already had our vote", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "alreadyUpvoted" });
 
     await user.click(upvoteBtn);
 
