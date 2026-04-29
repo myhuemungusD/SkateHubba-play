@@ -21,7 +21,14 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://jitpack.io' }
+        maven {
+            url 'https://jitpack.io'
+            content {
+                // Required by @capacitor-community/video-recorder for
+                // com.github.triniwiz:fancycamera (not on Maven Central / Google).
+                includeGroup 'com.github.triniwiz'
+            }
+        }
     }
 }
 
