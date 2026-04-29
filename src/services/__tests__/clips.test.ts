@@ -541,16 +541,40 @@ function countSnap(count: number) {
 }
 
 describe("upvoteClip", () => {
-  it("writes the vote inside a transaction and returns the refreshed count", async () => {
+  type ObservedTx = {
+    set: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+  };
+
+  /**
+   * Wires `mockRunTransaction` to capture and return the Transaction stub
+   * the service body sees. `voteExists` toggles the existing-vote branch
+   * (drives AlreadyUpvotedError vs the happy path). All three test cases
+   * around the atomic write share this scaffolding — keeping it inline
+   * tripped the test-duplication gate.
+   */
+  function captureTxOnce(voteExists: boolean): { observed: () => ObservedTx } {
+    let captured: ObservedTx | undefined;
     mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
-      const tx = {
-        get: vi.fn().mockResolvedValue({ exists: () => false }),
+      const tx: ObservedTx = {
+        get: vi.fn().mockResolvedValue({ exists: () => voteExists }),
         set: vi.fn(),
         update: vi.fn(),
       };
+      captured = tx;
       await cb(tx);
-      return tx;
     });
+    return {
+      observed: () => {
+        if (!captured) throw new Error("transaction was never invoked");
+        return captured;
+      },
+    };
+  }
+
+  it("writes the vote inside a transaction and returns the refreshed count", async () => {
+    captureTxOnce(false);
     mockGetCountFromServer.mockResolvedValueOnce(countSnap(7));
 
     const count = await upvoteClip("me", "g1_2_set");
@@ -561,77 +585,38 @@ describe("upvoteClip", () => {
   });
 
   it("atomically increments upvoteCount on the clip in the same transaction as the vote write", async () => {
-    let observedTx:
-      | undefined
-      | {
-          set: ReturnType<typeof vi.fn>;
-          update: ReturnType<typeof vi.fn>;
-          get: ReturnType<typeof vi.fn>;
-        };
-
-    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
-      const tx = {
-        get: vi.fn().mockResolvedValue({ exists: () => false }),
-        set: vi.fn(),
-        update: vi.fn(),
-      };
-      observedTx = tx;
-      await cb(tx);
-    });
+    const cap = captureTxOnce(false);
     mockGetCountFromServer.mockResolvedValueOnce(countSnap(1));
 
     await upvoteClip("me", "g1_2_set");
 
     // Both writes must land on the same Transaction object — that's what
     // makes the aggregate consistent with the votes underneath.
-    expect(observedTx).toBeDefined();
-    expect(observedTx!.set).toHaveBeenCalledTimes(1);
-    expect(observedTx!.update).toHaveBeenCalledTimes(1);
+    const tx = cap.observed();
+    expect(tx.set).toHaveBeenCalledTimes(1);
+    expect(tx.update).toHaveBeenCalledTimes(1);
 
-    const [voteRef, votePayload] = observedTx!.set.mock.calls[0];
+    const [voteRef, votePayload] = tx.set.mock.calls[0];
     expect((voteRef as { __path: string }).__path).toBe("clipVotes/me_g1_2_set");
     expect(votePayload).toMatchObject({ uid: "me", clipId: "g1_2_set" });
 
-    const [clipRef, clipPayload] = observedTx!.update.mock.calls[0];
+    const [clipRef, clipPayload] = tx.update.mock.calls[0];
     expect((clipRef as { __path: string }).__path).toBe("clips/g1_2_set");
     expect(clipPayload).toEqual({ upvoteCount: { _op: "increment", operand: 1 } });
     expect(mockIncrement).toHaveBeenCalledWith(1);
   });
 
   it("does not bump upvoteCount when the user has already upvoted (error path)", async () => {
-    let observedTx:
-      | undefined
-      | {
-          set: ReturnType<typeof vi.fn>;
-          update: ReturnType<typeof vi.fn>;
-          get: ReturnType<typeof vi.fn>;
-        };
-
-    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
-      const tx = {
-        get: vi.fn().mockResolvedValue({ exists: () => true }),
-        set: vi.fn(),
-        update: vi.fn(),
-      };
-      observedTx = tx;
-      await cb(tx);
-    });
+    const cap = captureTxOnce(true);
 
     await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
-    expect(observedTx!.set).not.toHaveBeenCalled();
-    expect(observedTx!.update).not.toHaveBeenCalled();
+    const tx = cap.observed();
+    expect(tx.set).not.toHaveBeenCalled();
+    expect(tx.update).not.toHaveBeenCalled();
   });
 
   it("throws AlreadyUpvotedError when the vote doc already exists", async () => {
-    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
-      const tx = {
-        get: vi.fn().mockResolvedValue({ exists: () => true }),
-        set: vi.fn(),
-        update: vi.fn(),
-      };
-      await cb(tx);
-    });
-
+    captureTxOnce(true);
     await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
   });
 

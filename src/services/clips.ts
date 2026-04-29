@@ -425,8 +425,9 @@ export async function fetchClipUpvoteState(
  * Uniqueness is enforced by the deterministic `{uid}_{clipId}` doc id: the
  * transaction reads the doc and throws `AlreadyUpvotedError` when it already
  * exists. The `clipVotes` rule additionally enforces this via
- * `allow update/delete: if false` so a rule-only client can't double-vote
- * by setDoc-ing over the existing entry.
+ * `allow update: if false` so a rule-only client can't double-vote by
+ * setDoc-ing over the existing entry (deletes are owner-only and back the
+ * un-upvote / account-deletion paths).
  *
  * The same transaction also bumps the parent clip's `upvoteCount` aggregate
  * via `increment(1)`. Pairing the vote-doc create and the count delta in

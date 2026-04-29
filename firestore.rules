@@ -1342,18 +1342,22 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvoteCount'])
         && request.resource.data.upvoteCount is int
         && request.resource.data.upvoteCount >= 0
+        // Legacy clips that pre-date the aggregate lack the field on disk.
+        // get(field, default) treats them as 0 so a first-time upvote on a
+        // pre-backfill clip isn't rejected as a permission-denied — the
+        // service mapper applies the same default on read.
         && (
           // +1 path: vote doc was just created in this transaction —
           // didn't exist before AND exists after. Without the !exists()
           // guard, a client could increment the count without writing a
           // vote doc (the doc already exists from a prior upvote).
-          (request.resource.data.upvoteCount == resource.data.upvoteCount + 1
+          (request.resource.data.upvoteCount == resource.data.get('upvoteCount', 0) + 1
             && !exists(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId))
             && existsAfter(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId)))
           ||
           // -1 path: vote doc was just deleted in this transaction —
           // existed before AND no longer exists after.
-          (request.resource.data.upvoteCount == resource.data.upvoteCount - 1
+          (request.resource.data.upvoteCount == resource.data.get('upvoteCount', 0) - 1
             && exists(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId))
             && !existsAfter(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId)))
         );

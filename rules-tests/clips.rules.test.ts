@@ -295,6 +295,71 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
     return doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`);
   }
 
+  /**
+   * Seed a pre-existing upvote: a clipVote doc owned by `voterUid` plus the
+   * clip's count bumped to `count`. Used by the un-upvote path tests so they
+   * have something to undo. Bypasses rules (writes go through
+   * `withSecurityRulesDisabled`) — we only want to exercise the *next*
+   * write's rule evaluation, not the seed's.
+   */
+  async function seedExistingUpvote(clipId: string, voterUid: string, count: number): Promise<void> {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`), {
+        uid: voterUid,
+        clipId,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      await setDoc(doc(ctx.firestore(), "clips", clipId), makeValidClip({ upvoteCount: count }));
+    });
+  }
+
+  /**
+   * Run an upvote-style transaction: create the vote doc + apply
+   * `clipUpdate` to the clip in the same atomic write. Used by the
+   * arbitrary-delta and multi-field-diff red-team tests. Returns the
+   * promise so the caller can wrap it in `assertSucceeds` / `assertFails`.
+   */
+  function voteAndUpdate(
+    ctx: RulesTestContext,
+    voterUid: string,
+    clipId: string,
+    clipUpdate: Record<string, unknown>,
+  ): Promise<void> {
+    return runTransaction(ctx.firestore(), async (tx) => {
+      tx.set(voteRef(ctx, voterUid, clipId), {
+        uid: voterUid,
+        clipId,
+        createdAt: serverTimestamp(),
+      });
+      tx.update(clipRef(ctx, clipId), clipUpdate);
+    });
+  }
+
+  it("a verified user CAN bump upvoteCount on a LEGACY clip that lacks the field (treated as 0)", async () => {
+    // Mirrors the service mapper: a pre-backfill clip is read as
+    // upvoteCount=0 client-side, so the rule must accept the same default
+    // server-side or first-time upvotes get rejected as permission-denied
+    // until backfill completes.
+    const id = deterministicId();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const legacy = makeValidClip();
+      delete (legacy as Record<string, unknown>).upvoteCount;
+      await setDoc(doc(ctx.firestore(), "clips", id), legacy);
+    });
+    const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
+    await assertSucceeds(
+      runTransaction(voter.firestore(), async (tx) => {
+        await tx.get(clipRef(voter, id));
+        tx.set(voteRef(voter, "voter-uid", id), {
+          uid: "voter-uid",
+          clipId: id,
+          createdAt: serverTimestamp(),
+        });
+        tx.update(clipRef(voter, id), { upvoteCount: 1 });
+      }),
+    );
+  });
+
   it("a verified user CAN bump upvoteCount by +1 when they create the matching vote doc atomically", async () => {
     const id = await seedClip();
     const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
@@ -321,31 +386,13 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
   it("a user CANNOT bump upvoteCount by an arbitrary delta (e.g. +5)", async () => {
     const id = await seedClip();
     const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
-    await assertFails(
-      runTransaction(voter.firestore(), async (tx) => {
-        tx.set(voteRef(voter, "voter-uid", id), {
-          uid: "voter-uid",
-          clipId: id,
-          createdAt: serverTimestamp(),
-        });
-        tx.update(clipRef(voter, id), { upvoteCount: 5 });
-      }),
-    );
+    await assertFails(voteAndUpdate(voter, "voter-uid", id, { upvoteCount: 5 }));
   });
 
   it("a user CANNOT change upvoteCount alongside another field (only upvoteCount may diff)", async () => {
     const id = await seedClip();
     const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
-    await assertFails(
-      runTransaction(voter.firestore(), async (tx) => {
-        tx.set(voteRef(voter, "voter-uid", id), {
-          uid: "voter-uid",
-          clipId: id,
-          createdAt: serverTimestamp(),
-        });
-        tx.update(clipRef(voter, id), { upvoteCount: 1, trickName: "rewritten" });
-      }),
-    );
+    await assertFails(voteAndUpdate(voter, "voter-uid", id, { upvoteCount: 1, trickName: "rewritten" }));
   });
 
   it("an unverified user CANNOT bump upvoteCount (matches the vote-doc verification gate)", async () => {
@@ -362,16 +409,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
 
   it("a user CAN decrement upvoteCount by -1 when they delete their existing vote doc atomically", async () => {
     const id = await seedClip();
-    // Seed a pre-existing vote and a count of 1 with rules disabled so the
-    // un-upvote path has something to undo.
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "clipVotes", `voter-uid_${id}`), {
-        uid: "voter-uid",
-        clipId: id,
-        createdAt: new Date(Date.now() - 60_000),
-      });
-      await setDoc(doc(ctx.firestore(), "clips", id), makeValidClip({ upvoteCount: 1 }));
-    });
+    await seedExistingUpvote(id, "voter-uid", 1);
     const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
     await assertSucceeds(
       runTransaction(voter.firestore(), async (tx) => {
@@ -384,14 +422,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
 
   it("a user CANNOT decrement upvoteCount without deleting their vote doc", async () => {
     const id = await seedClip();
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "clipVotes", `voter-uid_${id}`), {
-        uid: "voter-uid",
-        clipId: id,
-        createdAt: new Date(Date.now() - 60_000),
-      });
-      await setDoc(doc(ctx.firestore(), "clips", id), makeValidClip({ upvoteCount: 1 }));
-    });
+    await seedExistingUpvote(id, "voter-uid", 1);
     const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
     // Solo update with the vote doc still present after the tx → reject.
     await assertFails(setDoc(clipRef(voter, id), makeValidClip({ upvoteCount: 0 })));
