@@ -1,4 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// Mock at file scope so the eager `import("../mapbox")` at the top of the
+// `isValidStyleUrl` block also gets the stub — otherwise that import would
+// pull in the real lib/sentry and trigger an unmocked dynamic SDK load.
+const mockCaptureMessage = vi.hoisted(() => vi.fn());
+vi.mock("../sentry", () => ({
+  captureMessage: mockCaptureMessage,
+  captureException: vi.fn(),
+  addBreadcrumb: vi.fn(),
+}));
+
 import { isValidStyleUrl, DEFAULT_MAP_STYLE } from "../mapbox";
 
 describe("isValidStyleUrl", () => {
@@ -29,6 +40,7 @@ describe("isValidStyleUrl", () => {
 describe("MAP_STYLE module-level resolver", () => {
   beforeEach(() => {
     vi.resetModules();
+    mockCaptureMessage.mockClear();
   });
 
   afterEach(() => {
@@ -40,19 +52,22 @@ describe("MAP_STYLE module-level resolver", () => {
     vi.stubEnv("VITE_MAPBOX_STYLE_URL", "");
     const { MAP_STYLE, DEFAULT_MAP_STYLE: defaultStyle } = await import("../mapbox");
     expect(MAP_STYLE).toBe(defaultStyle);
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
   it("uses the override when VITE_MAPBOX_STYLE_URL is a valid mapbox:// style", async () => {
     vi.stubEnv("VITE_MAPBOX_STYLE_URL", "mapbox://styles/skatehubba/abc123");
     const { MAP_STYLE } = await import("../mapbox");
     expect(MAP_STYLE).toBe("mapbox://styles/skatehubba/abc123");
+    expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
-  it("warns and falls back when VITE_MAPBOX_STYLE_URL is set but malformed", async () => {
+  it("warns and reports to Sentry when VITE_MAPBOX_STYLE_URL is malformed", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubEnv("VITE_MAPBOX_STYLE_URL", "not-a-valid-url");
     const { MAP_STYLE, DEFAULT_MAP_STYLE: defaultStyle } = await import("../mapbox");
     expect(MAP_STYLE).toBe(defaultStyle);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("VITE_MAPBOX_STYLE_URL"));
+    expect(mockCaptureMessage).toHaveBeenCalledWith("map_style_invalid", "warning");
   });
 });
