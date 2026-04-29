@@ -5,28 +5,45 @@ import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
 import type { ClipDoc } from "../../services/clips";
 
-const { mockFetchRandomLandedClips, mockFetchClipUpvoteState, mockUpvoteClip, MockAlreadyUpvotedError } = vi.hoisted(
-  () => {
-    class MockAlreadyUpvotedError extends Error {
-      constructor(public readonly clipId: string) {
-        super(`already_upvoted:${clipId}`);
-        this.name = "AlreadyUpvotedError";
-      }
+const {
+  mockFetchRandomLandedClips,
+  mockFetchClipUpvoteState,
+  mockUpvoteClip,
+  mockTrackEvent,
+  MockAlreadyUpvotedError,
+} = vi.hoisted(() => {
+  class MockAlreadyUpvotedError extends Error {
+    constructor(public readonly clipId: string) {
+      super(`already_upvoted:${clipId}`);
+      this.name = "AlreadyUpvotedError";
     }
-    return {
-      mockFetchRandomLandedClips: vi.fn(),
-      mockFetchClipUpvoteState: vi.fn(),
-      mockUpvoteClip: vi.fn(),
-      MockAlreadyUpvotedError,
-    };
-  },
-);
+  }
+  // Named `mockFetchRandomLandedClips` historically — kept under that
+  // name so test bodies can still queue `[clip, clip]` arrays without
+  // wrapping each one in `{ clips, cursor }`. The mock shim below
+  // translates the array into the ClipsFeedPage shape the component now
+  // expects from `fetchClipsFeed`.
+  return {
+    mockFetchRandomLandedClips: vi.fn(),
+    mockFetchClipUpvoteState: vi.fn(),
+    mockUpvoteClip: vi.fn(),
+    mockTrackEvent: vi.fn(),
+    MockAlreadyUpvotedError,
+  };
+});
 
 vi.mock("../../services/clips", () => ({
-  fetchRandomLandedClips: (...args: unknown[]) => mockFetchRandomLandedClips(...args),
+  fetchClipsFeed: async (...args: unknown[]) => {
+    const result = await mockFetchRandomLandedClips(...args);
+    return Array.isArray(result) ? { clips: result, cursor: null } : result;
+  },
   fetchClipUpvoteState: (...args: unknown[]) => mockFetchClipUpvoteState(...args),
   upvoteClip: (...args: unknown[]) => mockUpvoteClip(...args),
   AlreadyUpvotedError: MockAlreadyUpvotedError,
+}));
+
+vi.mock("../../services/analytics", () => ({
+  trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
 }));
 
 vi.mock("../../hooks/useBlockedUsers", () => ({
@@ -66,6 +83,7 @@ function makeClip(overrides: Partial<ClipDoc> = {}): ClipDoc {
     spotId: null,
     createdAt: { toMillis: () => Date.now() - 3 * 60_000 } as ClipDoc["createdAt"],
     moderationStatus: "active",
+    upvoteCount: 0,
     ...overrides,
   };
 }
@@ -93,17 +111,85 @@ describe("ClipsFeed", () => {
     expect(screen.getByRole("status", { name: /loading clips/i })).toBeInTheDocument();
   });
 
-  it("renders the empty state when the random pool comes back empty", async () => {
+  it("renders the empty state when the page comes back empty", async () => {
     mockFetchRandomLandedClips.mockResolvedValueOnce([]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText(/No clips yet\./i)).toBeInTheDocument());
   });
 
-  it("requests a random pool (sample 12, pool 60) on mount", async () => {
+  it("requests fetchClipsFeed with sort='top' (sample 12) on mount — top is the default", async () => {
     mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    expect(mockFetchRandomLandedClips).toHaveBeenCalledWith(12, 60);
+    expect(mockFetchRandomLandedClips).toHaveBeenCalledWith(null, 12, "top");
+  });
+
+  it("renders the Top/New toggle with Top selected by default", async () => {
+    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+
+    const topBtn = screen.getByRole("button", { name: "Top" });
+    const newBtn = screen.getByRole("button", { name: "New" });
+    expect(topBtn).toHaveAttribute("aria-pressed", "true");
+    expect(newBtn).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("clicking New re-fetches with sort='new' and resets the spotlight to the first clip", async () => {
+    const user = userEvent.setup();
+    // First page (top) has TopTrick; toggling to new returns NewTrick.
+    mockFetchRandomLandedClips
+      .mockResolvedValueOnce([makeClip({ id: "top1", trickName: "TopTrick" })])
+      .mockResolvedValueOnce([makeClip({ id: "new1", trickName: "NewTrick", playerUid: "p2", playerUsername: "bob" })]);
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TopTrick")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "New" }));
+
+    // Second call uses sort='new' and the spotlight swaps to the new page.
+    await waitFor(() => expect(screen.getByText("NewTrick")).toBeInTheDocument());
+    expect(mockFetchRandomLandedClips).toHaveBeenLastCalledWith(null, 12, "new");
+    // aria-pressed flips so the selected affordance is on New.
+    expect(screen.getByRole("button", { name: "New" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Top" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("fires clip_upvoted with fromSort and newCount on a successful upvote", async () => {
+    const user = userEvent.setup();
+    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
+    mockUpvoteClip.mockResolvedValueOnce(3);
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+
+    await user.click(upvoteBtn);
+
+    await waitFor(() => expect(mockTrackEvent).toHaveBeenCalledWith("clip_upvoted", expect.any(Object)));
+    expect(mockTrackEvent).toHaveBeenCalledWith("clip_upvoted", {
+      clipId: "g1_2_set",
+      fromSort: "top",
+      newCount: 3,
+    });
+  });
+
+  it("does NOT fire clip_upvoted when upvoteClip throws AlreadyUpvotedError", async () => {
+    const user = userEvent.setup();
+    mockFetchRandomLandedClips.mockResolvedValueOnce([makeClip()]);
+    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
+    mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+
+    await user.click(upvoteBtn);
+
+    // Wait for the optimistic state to settle so we don't false-pass on timing.
+    await waitFor(() => expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeInTheDocument());
+    expect(mockTrackEvent).not.toHaveBeenCalled();
   });
 
   it("renders the spotlight clip with player + trick + role + timestamp", async () => {
