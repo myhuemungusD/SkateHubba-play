@@ -16,6 +16,7 @@ const {
   mockGetCountFromServer,
   mockGetDoc,
   mockRunTransaction,
+  mockIncrement,
   FakeTimestamp,
 } = vi.hoisted(() => {
   class FakeTimestamp {
@@ -42,6 +43,7 @@ const {
     mockGetCountFromServer: vi.fn(),
     mockGetDoc: vi.fn(),
     mockRunTransaction: vi.fn(),
+    mockIncrement: vi.fn((n: number) => ({ _op: "increment", operand: n })),
     FakeTimestamp,
   };
 });
@@ -61,6 +63,7 @@ vi.mock("firebase/firestore", () => ({
   getCountFromServer: mockGetCountFromServer,
   getDoc: mockGetDoc,
   runTransaction: mockRunTransaction,
+  increment: mockIncrement,
   Timestamp: FakeTimestamp,
 }));
 
@@ -136,6 +139,7 @@ describe("writeLandedClipsInTransaction", () => {
       spotId: "spot-abc",
       createdAt: "SERVER_TS",
       moderationStatus: "active",
+      upvoteCount: 0,
     });
 
     const [, matchPayload] = tx.set.mock.calls[1];
@@ -146,6 +150,7 @@ describe("writeLandedClipsInTransaction", () => {
       videoUrl: "https://example.com/match.webm",
       createdAt: "SERVER_TS",
       moderationStatus: "active",
+      upvoteCount: 0,
     });
   });
 
@@ -375,6 +380,32 @@ describe("fetchClipsFeed", () => {
     const page = await fetchClipsFeed();
     expect(page.clips[0].createdAt).toBe(duck);
   });
+
+  it("propagates a numeric upvoteCount on the persisted doc through to the mapped clip", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_2_set", validClipData({ upvoteCount: 42 }))],
+    });
+    const page = await fetchClipsFeed();
+    expect(page.clips[0].upvoteCount).toBe(42);
+  });
+
+  it("defaults upvoteCount to 0 on legacy docs that predate the aggregate", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("legacy", validClipData({ upvoteCount: undefined }))],
+    });
+    const page = await fetchClipsFeed();
+    expect(page.clips[0].upvoteCount).toBe(0);
+  });
+
+  it("treats a negative upvoteCount as a corrupt value and defaults to 0", async () => {
+    // Defense-in-depth: rules forbid negative deltas, but a malformed write
+    // via Admin SDK shouldn't be able to surface a nonsensical UI state.
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_2_set", validClipData({ upvoteCount: -3 }))],
+    });
+    const page = await fetchClipsFeed();
+    expect(page.clips[0].upvoteCount).toBe(0);
+  });
 });
 
 /* ── fetchRandomLandedClips ───────────────────── */
@@ -515,6 +546,7 @@ describe("upvoteClip", () => {
       const tx = {
         get: vi.fn().mockResolvedValue({ exists: () => false }),
         set: vi.fn(),
+        update: vi.fn(),
       };
       await cb(tx);
       return tx;
@@ -525,6 +557,69 @@ describe("upvoteClip", () => {
 
     expect(count).toBe(7);
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clipVotes", "me_g1_2_set");
+    expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clips", "g1_2_set");
+  });
+
+  it("atomically increments upvoteCount on the clip in the same transaction as the vote write", async () => {
+    let observedTx:
+      | undefined
+      | {
+          set: ReturnType<typeof vi.fn>;
+          update: ReturnType<typeof vi.fn>;
+          get: ReturnType<typeof vi.fn>;
+        };
+
+    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({ exists: () => false }),
+        set: vi.fn(),
+        update: vi.fn(),
+      };
+      observedTx = tx;
+      await cb(tx);
+    });
+    mockGetCountFromServer.mockResolvedValueOnce(countSnap(1));
+
+    await upvoteClip("me", "g1_2_set");
+
+    // Both writes must land on the same Transaction object — that's what
+    // makes the aggregate consistent with the votes underneath.
+    expect(observedTx).toBeDefined();
+    expect(observedTx!.set).toHaveBeenCalledTimes(1);
+    expect(observedTx!.update).toHaveBeenCalledTimes(1);
+
+    const [voteRef, votePayload] = observedTx!.set.mock.calls[0];
+    expect((voteRef as { __path: string }).__path).toBe("clipVotes/me_g1_2_set");
+    expect(votePayload).toMatchObject({ uid: "me", clipId: "g1_2_set" });
+
+    const [clipRef, clipPayload] = observedTx!.update.mock.calls[0];
+    expect((clipRef as { __path: string }).__path).toBe("clips/g1_2_set");
+    expect(clipPayload).toEqual({ upvoteCount: { _op: "increment", operand: 1 } });
+    expect(mockIncrement).toHaveBeenCalledWith(1);
+  });
+
+  it("does not bump upvoteCount when the user has already upvoted (error path)", async () => {
+    let observedTx:
+      | undefined
+      | {
+          set: ReturnType<typeof vi.fn>;
+          update: ReturnType<typeof vi.fn>;
+          get: ReturnType<typeof vi.fn>;
+        };
+
+    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({ exists: () => true }),
+        set: vi.fn(),
+        update: vi.fn(),
+      };
+      observedTx = tx;
+      await cb(tx);
+    });
+
+    await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
+    expect(observedTx!.set).not.toHaveBeenCalled();
+    expect(observedTx!.update).not.toHaveBeenCalled();
   });
 
   it("throws AlreadyUpvotedError when the vote doc already exists", async () => {
@@ -532,6 +627,7 @@ describe("upvoteClip", () => {
       const tx = {
         get: vi.fn().mockResolvedValue({ exists: () => true }),
         set: vi.fn(),
+        update: vi.fn(),
       };
       await cb(tx);
     });

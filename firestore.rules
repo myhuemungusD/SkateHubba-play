@@ -1314,6 +1314,9 @@ service cloud.firestore {
         // are server-side only (Admin SDK), keeping the App Store takedown
         // path out of client reach.
         && request.resource.data.moderationStatus == 'active'
+        // upvoteCount aggregate must seed at 0; client-side ranking reads
+        // this field directly so it has to start at the empty state.
+        && request.resource.data.upvoteCount == 0
         // Writer must be a game participant (player OR nominated judge).
         && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
         // playerUid must be one of the game's two players — never the judge,
@@ -1323,9 +1326,37 @@ service cloud.firestore {
           || request.resource.data.playerUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
         );
 
-      // Clips are immutable once written — content edits and moderation
-      // flips both go through Admin SDK to keep the audit trail clean.
-      allow update: if false;
+      // Clips are otherwise immutable once written — content edits and
+      // moderation flips both go through Admin SDK to keep the audit trail
+      // clean. The narrow exception is the `upvoteCount` aggregate, which
+      // a signed-in user can adjust by ±1 ONLY when paired with the
+      // corresponding clipVotes/{uid}_{clipId} create or delete in the
+      // same atomic write (see src/services/clips.ts → upvoteClip). The
+      // existsAfter() / !existsAfter() checks bind the count delta to the
+      // post-transaction state of the vote doc, so a client cannot inflate
+      // the count without also creating its vote doc, and cannot deflate
+      // the count without also deleting it.
+      allow update: if isSignedIn()
+        && request.auth.token.email_verified == true
+        // Only upvoteCount is allowed to change — every other field stays put.
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvoteCount'])
+        && request.resource.data.upvoteCount is int
+        && request.resource.data.upvoteCount >= 0
+        && (
+          // +1 path: vote doc was just created in this transaction —
+          // didn't exist before AND exists after. Without the !exists()
+          // guard, a client could increment the count without writing a
+          // vote doc (the doc already exists from a prior upvote).
+          (request.resource.data.upvoteCount == resource.data.upvoteCount + 1
+            && !exists(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId))
+            && existsAfter(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId)))
+          ||
+          // -1 path: vote doc was just deleted in this transaction —
+          // existed before AND no longer exists after.
+          (request.resource.data.upvoteCount == resource.data.upvoteCount - 1
+            && exists(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId))
+            && !existsAfter(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId)))
+        );
 
       // The owning player (the one who actually landed the trick) can delete
       // their own clip. This backs the account-deletion cascade in

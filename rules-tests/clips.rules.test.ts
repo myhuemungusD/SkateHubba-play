@@ -21,7 +21,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, setDoc, deleteDoc, getDoc, serverTimestamp, setLogLevel } from "firebase/firestore";
+import { doc, setDoc, deleteDoc, getDoc, runTransaction, serverTimestamp, setLogLevel } from "firebase/firestore";
 
 const PROJECT_ID = "demo-skatehubba-rules-clips";
 
@@ -72,6 +72,7 @@ function makeValidClip(overrides: Record<string, unknown> = {}): Record<string, 
     spotId: null,
     createdAt: serverTimestamp(),
     moderationStatus: "active",
+    upvoteCount: 0,
     ...overrides,
   };
 }
@@ -252,6 +253,16 @@ describe("clips — create", () => {
     delete (clip as Record<string, unknown>).moderationStatus;
     await assertFails(setDoc(clipRef(asP1(), deterministicId()), clip));
   });
+
+  it("rejects a clip whose upvoteCount seeds at a non-zero value", async () => {
+    await assertFails(setDoc(clipRef(asP1(), deterministicId()), makeValidClip({ upvoteCount: 5 })));
+  });
+
+  it("rejects a clip missing the upvoteCount field", async () => {
+    const clip = makeValidClip();
+    delete (clip as Record<string, unknown>).upvoteCount;
+    await assertFails(setDoc(clipRef(asP1(), deterministicId()), clip));
+  });
 });
 
 /* ────────────────────────────────────────────
@@ -272,6 +283,139 @@ describe("clips — update forbidden", () => {
   it("the clip owner CANNOT flip moderationStatus themselves (takedown path is Admin SDK only)", async () => {
     const id = await seedClip();
     await assertFails(setDoc(clipRef(asP1(), id), makeValidClip({ moderationStatus: "hidden" })));
+  });
+});
+
+/* ────────────────────────────────────────────
+ * UPDATE — upvoteCount delta (paired with clipVotes write)
+ * ──────────────────────────────────────────── */
+
+describe("clips — upvoteCount aggregate (paired delta only)", () => {
+  function voteRef(ctx: RulesTestContext, voterUid: string, clipId: string) {
+    return doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`);
+  }
+
+  it("a verified user CAN bump upvoteCount by +1 when they create the matching vote doc atomically", async () => {
+    const id = await seedClip();
+    const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
+    await assertSucceeds(
+      runTransaction(voter.firestore(), async (tx) => {
+        const snap = await tx.get(clipRef(voter, id));
+        tx.set(voteRef(voter, "voter-uid", id), {
+          uid: "voter-uid",
+          clipId: id,
+          createdAt: serverTimestamp(),
+        });
+        tx.update(clipRef(voter, id), { upvoteCount: (snap.data()?.upvoteCount ?? 0) + 1 });
+      }),
+    );
+  });
+
+  it("a user CANNOT inflate upvoteCount without writing the matching vote doc", async () => {
+    const id = await seedClip();
+    const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
+    // Solo update with no paired clipVote write — existsAfter() is false → reject.
+    await assertFails(setDoc(clipRef(voter, id), makeValidClip({ upvoteCount: 1 })));
+  });
+
+  it("a user CANNOT bump upvoteCount by an arbitrary delta (e.g. +5)", async () => {
+    const id = await seedClip();
+    const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
+    await assertFails(
+      runTransaction(voter.firestore(), async (tx) => {
+        tx.set(voteRef(voter, "voter-uid", id), {
+          uid: "voter-uid",
+          clipId: id,
+          createdAt: serverTimestamp(),
+        });
+        tx.update(clipRef(voter, id), { upvoteCount: 5 });
+      }),
+    );
+  });
+
+  it("a user CANNOT change upvoteCount alongside another field (only upvoteCount may diff)", async () => {
+    const id = await seedClip();
+    const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
+    await assertFails(
+      runTransaction(voter.firestore(), async (tx) => {
+        tx.set(voteRef(voter, "voter-uid", id), {
+          uid: "voter-uid",
+          clipId: id,
+          createdAt: serverTimestamp(),
+        });
+        tx.update(clipRef(voter, id), { upvoteCount: 1, trickName: "rewritten" });
+      }),
+    );
+  });
+
+  it("an unverified user CANNOT bump upvoteCount (matches the vote-doc verification gate)", async () => {
+    const id = await seedClip();
+    const unverified = testEnv.authenticatedContext("voter-uid", { email_verified: false });
+    await assertFails(
+      runTransaction(unverified.firestore(), async (tx) => {
+        // The clipVotes create rule will fail too, but we want to prove the
+        // clip update side independently rejects unverified callers.
+        tx.update(clipRef(unverified, id), { upvoteCount: 1 });
+      }),
+    );
+  });
+
+  it("a user CAN decrement upvoteCount by -1 when they delete their existing vote doc atomically", async () => {
+    const id = await seedClip();
+    // Seed a pre-existing vote and a count of 1 with rules disabled so the
+    // un-upvote path has something to undo.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clipVotes", `voter-uid_${id}`), {
+        uid: "voter-uid",
+        clipId: id,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      await setDoc(doc(ctx.firestore(), "clips", id), makeValidClip({ upvoteCount: 1 }));
+    });
+    const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
+    await assertSucceeds(
+      runTransaction(voter.firestore(), async (tx) => {
+        await tx.get(clipRef(voter, id));
+        tx.delete(voteRef(voter, "voter-uid", id));
+        tx.update(clipRef(voter, id), { upvoteCount: 0 });
+      }),
+    );
+  });
+
+  it("a user CANNOT decrement upvoteCount without deleting their vote doc", async () => {
+    const id = await seedClip();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clipVotes", `voter-uid_${id}`), {
+        uid: "voter-uid",
+        clipId: id,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+      await setDoc(doc(ctx.firestore(), "clips", id), makeValidClip({ upvoteCount: 1 }));
+    });
+    const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
+    // Solo update with the vote doc still present after the tx → reject.
+    await assertFails(setDoc(clipRef(voter, id), makeValidClip({ upvoteCount: 0 })));
+  });
+
+  it("a user CANNOT push upvoteCount below zero", async () => {
+    const id = await seedClip();
+    // Vote doc must exist beforehand so the delete in the tx is valid.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clipVotes", `voter-uid_${id}`), {
+        uid: "voter-uid",
+        clipId: id,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+    });
+    const voter = testEnv.authenticatedContext("voter-uid", { email_verified: true });
+    // Seed clip count is 0, so a -1 from this base would be -1: rule rejects.
+    await assertFails(
+      runTransaction(voter.firestore(), async (tx) => {
+        await tx.get(clipRef(voter, id));
+        tx.delete(voteRef(voter, "voter-uid", id));
+        tx.update(clipRef(voter, id), { upvoteCount: -1 });
+      }),
+    );
   });
 });
 
