@@ -18,7 +18,10 @@
  * Rules in `firestore.rules` gate:
  *   • read   — any signed-in user
  *   • create — only game participants, verified via `get()` on the game doc
- *   • update/delete — forbidden (clips are immutable once written)
+ *   • update — forbidden EXCEPT a ±1 delta on the `upvoteCount` aggregate,
+ *              and only when paired with the matching `clipVotes/{uid}_{clipId}`
+ *              create/delete in the same transaction (see `upvoteClip` below)
+ *   • delete — owner-only (backs the account-deletion cascade)
  */
 
 import {
@@ -219,8 +222,16 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
   const moderationStatus: ClipModerationStatus = raw.moderationStatus === "hidden" ? "hidden" : "active";
 
   // Pre-aggregate clips lack the field; default to 0 until the backfill
-  // (scripts/backfill-clip-upvote-count.mjs) runs.
-  const upvoteCount = typeof raw.upvoteCount === "number" && raw.upvoteCount >= 0 ? raw.upvoteCount : 0;
+  // (scripts/backfill-clip-upvote-count.mjs) runs. Negative or non-numeric
+  // values shouldn't reach here — rules forbid negative writes and the
+  // payload contract is `number` — so surface them as a warning instead of
+  // silently smoothing over what is almost certainly upstream corruption.
+  let upvoteCount = 0;
+  if (typeof raw.upvoteCount === "number" && raw.upvoteCount >= 0) {
+    upvoteCount = raw.upvoteCount;
+  } else if (raw.upvoteCount !== undefined) {
+    logger.warn("clip_upvote_count_invalid", { docId: snap.id, raw: raw.upvoteCount });
+  }
 
   return {
     id: snap.id,
@@ -465,6 +476,18 @@ export async function upvoteClip(uid: string, clipId: string): Promise<number> {
     throw err;
   }
 
+  // Read the maintained aggregate that the transaction just incremented.
+  // This is the whole point of the upvoteCount field: avoid a fan-out
+  // count query over `clipVotes`. Fall back to the fan-out count only when
+  // the field is missing on a legacy clip that pre-dates the backfill, so
+  // this path remains correct during the rollout window.
+  try {
+    const clipSnap = await withRetry(() => getDoc(clipRef));
+    const aggregate = clipSnap.data()?.upvoteCount;
+    if (typeof aggregate === "number" && aggregate >= 0) return aggregate;
+  } catch (err) {
+    logger.warn("clip_upvote_aggregate_read_failed", { clipId, error: parseFirebaseError(err) });
+  }
   return countClipUpvotes(clipId);
 }
 

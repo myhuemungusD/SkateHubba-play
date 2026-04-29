@@ -397,14 +397,37 @@ describe("fetchClipsFeed", () => {
     expect(page.clips[0].upvoteCount).toBe(0);
   });
 
-  it("treats a negative upvoteCount as a corrupt value and defaults to 0", async () => {
+  it("treats a negative upvoteCount as a corrupt value, defaults to 0, and warns", async () => {
     // Defense-in-depth: rules forbid negative deltas, but a malformed write
     // via Admin SDK shouldn't be able to surface a nonsensical UI state.
+    // We also want the corruption visible in logs so we notice it.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mockGetDocs.mockResolvedValueOnce({
       docs: [makeClipSnap("g1_2_set", validClipData({ upvoteCount: -3 }))],
     });
+
     const page = await fetchClipsFeed();
     expect(page.clips[0].upvoteCount).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("WARN"),
+      "clip_upvote_count_invalid",
+      expect.objectContaining({ docId: "g1_2_set", raw: -3 }),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn when upvoteCount is simply absent on a legacy clip", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("legacy", validClipData({ upvoteCount: undefined }))],
+    });
+
+    const page = await fetchClipsFeed();
+    expect(page.clips[0].upvoteCount).toBe(0);
+    // Absence is the documented legacy state — no warn.
+    const invalidWarn = warnSpy.mock.calls.find((c) => c[1] === "clip_upvote_count_invalid");
+    expect(invalidWarn).toBeUndefined();
+    warnSpy.mockRestore();
   });
 });
 
@@ -541,7 +564,7 @@ function countSnap(count: number) {
 }
 
 describe("upvoteClip", () => {
-  it("writes the vote inside a transaction and returns the refreshed count", async () => {
+  it("writes the vote inside a transaction and returns the maintained aggregate", async () => {
     mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
       const tx = {
         get: vi.fn().mockResolvedValue({ exists: () => false }),
@@ -551,13 +574,50 @@ describe("upvoteClip", () => {
       await cb(tx);
       return tx;
     });
-    mockGetCountFromServer.mockResolvedValueOnce(countSnap(7));
+    // Post-transaction read of the maintained aggregate — no fan-out count.
+    mockGetDoc.mockResolvedValueOnce({ data: () => ({ upvoteCount: 7 }) });
 
     const count = await upvoteClip("me", "g1_2_set");
 
     expect(count).toBe(7);
+    expect(mockGetCountFromServer).not.toHaveBeenCalled();
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clipVotes", "me_g1_2_set");
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clips", "g1_2_set");
+  });
+
+  it("falls back to the fan-out count for legacy clips that lack the aggregate field", async () => {
+    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({ exists: () => false }),
+        set: vi.fn(),
+        update: vi.fn(),
+      };
+      await cb(tx);
+    });
+    mockGetDoc.mockResolvedValueOnce({ data: () => ({}) });
+    mockGetCountFromServer.mockResolvedValueOnce(countSnap(3));
+
+    const count = await upvoteClip("me", "legacy_clip");
+
+    expect(count).toBe(3);
+    expect(mockGetDoc).toHaveBeenCalled();
+    expect(mockGetCountFromServer).toHaveBeenCalled();
+  });
+
+  it("falls back to the fan-out count when the post-transaction aggregate read rejects", async () => {
+    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({ exists: () => false }),
+        set: vi.fn(),
+        update: vi.fn(),
+      };
+      await cb(tx);
+    });
+    mockGetDoc.mockRejectedValueOnce(new Error("boom"));
+    mockGetCountFromServer.mockResolvedValueOnce(countSnap(2));
+
+    const count = await upvoteClip("me", "g1_2_set");
+    expect(count).toBe(2);
   });
 
   it("atomically increments upvoteCount on the clip in the same transaction as the vote write", async () => {
@@ -578,7 +638,7 @@ describe("upvoteClip", () => {
       observedTx = tx;
       await cb(tx);
     });
-    mockGetCountFromServer.mockResolvedValueOnce(countSnap(1));
+    mockGetDoc.mockResolvedValueOnce({ data: () => ({ upvoteCount: 1 }) });
 
     await upvoteClip("me", "g1_2_set");
 
