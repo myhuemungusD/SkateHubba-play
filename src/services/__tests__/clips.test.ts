@@ -16,6 +16,7 @@ const {
   mockGetCountFromServer,
   mockGetDoc,
   mockRunTransaction,
+  mockIncrement,
   FakeTimestamp,
 } = vi.hoisted(() => {
   class FakeTimestamp {
@@ -42,6 +43,7 @@ const {
     mockGetCountFromServer: vi.fn(),
     mockGetDoc: vi.fn(),
     mockRunTransaction: vi.fn(),
+    mockIncrement: vi.fn((n: number) => ({ __increment: n })),
     FakeTimestamp,
   };
 });
@@ -61,6 +63,7 @@ vi.mock("firebase/firestore", () => ({
   getCountFromServer: mockGetCountFromServer,
   getDoc: mockGetDoc,
   runTransaction: mockRunTransaction,
+  increment: mockIncrement,
   Timestamp: FakeTimestamp,
 }));
 
@@ -193,6 +196,17 @@ describe("writeLandedClipsInTransaction", () => {
 
     const [, payload] = tx.set.mock.calls[0];
     expect(payload.spotId).toBeNull();
+  });
+
+  it("initializes upvoteCount to 0 on every clip — required so 'top' sort's orderBy includes the doc", () => {
+    const tx = makeTx();
+
+    writeLandedClipsInTransaction(tx, baseCtx());
+
+    expect(tx.set).toHaveBeenCalledTimes(2);
+    for (const [, payload] of tx.set.mock.calls) {
+      expect(payload.upvoteCount).toBe(0);
+    }
   });
 });
 
@@ -534,6 +548,7 @@ describe("upvoteClip", () => {
       const tx = {
         get: vi.fn().mockResolvedValue({ exists: () => false }),
         set: vi.fn(),
+        update: vi.fn(),
       };
       await cb(tx);
       return tx;
@@ -546,11 +561,60 @@ describe("upvoteClip", () => {
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clipVotes", "me_g1_2_set");
   });
 
+  it("queues an increment(1) on the target clip's upvoteCount inside the same transaction", async () => {
+    // Regression guard for the "top sort never sorts" bug: without this update,
+    // upvoteCount stays at 0 and the orderBy degrades to most-recent-first.
+    let capturedTx: { update: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> } | null = null;
+    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({ exists: () => false }),
+        set: vi.fn(),
+        update: vi.fn(),
+      };
+      await cb(tx);
+      capturedTx = tx;
+      return tx;
+    });
+    mockGetCountFromServer.mockResolvedValueOnce(countSnap(1));
+
+    await upvoteClip("me", "g1_2_set");
+
+    expect(mockIncrement).toHaveBeenCalledWith(1);
+    expect(capturedTx).not.toBeNull();
+    expect(capturedTx!.update).toHaveBeenCalledTimes(1);
+    const [clipRef, patch] = capturedTx!.update.mock.calls[0];
+    expect((clipRef as { id: string }).id).toBe("g1_2_set");
+    expect(patch).toEqual({ upvoteCount: { __increment: 1 } });
+  });
+
+  it("does NOT bump the counter when the vote doc already exists (AlreadyUpvotedError)", async () => {
+    let capturedTx: { update: ReturnType<typeof vi.fn>; set: ReturnType<typeof vi.fn> } | null = null;
+    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({ exists: () => true }),
+        set: vi.fn(),
+        update: vi.fn(),
+      };
+      try {
+        await cb(tx);
+      } catch (err) {
+        capturedTx = tx;
+        throw err;
+      }
+      capturedTx = tx;
+    });
+
+    await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
+    expect(capturedTx!.update).not.toHaveBeenCalled();
+    expect(capturedTx!.set).not.toHaveBeenCalled();
+  });
+
   it("throws AlreadyUpvotedError when the vote doc already exists", async () => {
     mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
       const tx = {
         get: vi.fn().mockResolvedValue({ exists: () => true }),
         set: vi.fn(),
+        update: vi.fn(),
       };
       await cb(tx);
     });

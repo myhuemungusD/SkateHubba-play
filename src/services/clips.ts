@@ -29,6 +29,7 @@ import {
   getCountFromServer,
   getDoc,
   getDocs,
+  increment,
   limit as limitFn,
   orderBy,
   query,
@@ -40,6 +41,7 @@ import {
   type DocumentSnapshot,
   type FieldValue,
   type QueryConstraint,
+  type QueryDocumentSnapshot,
   type Transaction,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
@@ -75,9 +77,11 @@ export interface ClipDoc {
   spotId: string | null;
   createdAt: Timestamp | null;
   moderationStatus: ClipModerationStatus;
-  // Stored counter incremented inside the upvoteClip transaction. Defaults
-  // to 0 for legacy docs that predate the field; the backfill rewrites
-  // existing rows so 'top' ranking is stable across the full collection.
+  // Stored counter incremented atomically inside the upvoteClip transaction
+  // (alongside the matching clipVotes doc creation). Defaults to 0 on read
+  // for legacy docs that predate the field — those rows are excluded from
+  // 'top' sort by Firestore's orderBy semantics until they're rewritten with
+  // the field present.
   upvoteCount: number;
 }
 
@@ -156,10 +160,18 @@ interface ClipWritePayload {
   spotId: string | null;
   createdAt: FieldValue;
   moderationStatus: ClipModerationStatus;
+  // Initialized to 0 at create. Subsequent increments come from upvoteClip's
+  // transaction (alongside the matching clipVotes write). Writing the field
+  // explicitly is required so the 'top' sort's orderBy("upvoteCount") doesn't
+  // skip the doc — Firestore excludes rows where the orderBy field is missing.
+  upvoteCount: 0;
 }
 
-function buildClipPayload(ctx: Omit<ClipWritePayload, "createdAt">, createdAt: FieldValue): ClipWritePayload {
-  return { ...ctx, createdAt };
+function buildClipPayload(
+  ctx: Omit<ClipWritePayload, "createdAt" | "upvoteCount">,
+  createdAt: FieldValue,
+): ClipWritePayload {
+  return { ...ctx, createdAt, upvoteCount: 0 };
 }
 
 /**
@@ -253,9 +265,10 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
   // is already excluded upstream by the feed query's where() filter.
   const moderationStatus: ClipModerationStatus = raw.moderationStatus === "hidden" ? "hidden" : "active";
 
-  // Stored counter — populated by the upvote transaction and the S1 backfill.
-  // Default to 0 so a missing-field doc still renders cleanly; clients should
-  // treat 0 as authoritative (no extra aggregate query needed).
+  // Stored counter — incremented atomically inside the upvoteClip transaction.
+  // Defaults to 0 here so a legacy doc that predates the field still renders
+  // cleanly; those rows are excluded from 'top' sort by Firestore's orderBy
+  // semantics until they're rewritten with the field present.
   const upvoteCount = typeof raw.upvoteCount === "number" && Number.isFinite(raw.upvoteCount) ? raw.upvoteCount : 0;
 
   return {
@@ -338,29 +351,43 @@ export async function fetchClipsFeed(
     }
   }
 
-  const lastRaw = snap.docs[snap.docs.length - 1];
-  const lastRawData = lastRaw
-    ? (lastRaw.data() as { createdAt?: unknown; upvoteCount?: unknown } | undefined)
-    : undefined;
-  const lastRawCreatedAt = lastRawData?.createdAt;
-  const lastRawUpvoteCount =
-    typeof lastRawData?.upvoteCount === "number" && Number.isFinite(lastRawData.upvoteCount)
-      ? lastRawData.upvoteCount
-      : 0;
-  const nextCursor: ClipsFeedCursor | null =
-    lastRaw && lastRawCreatedAt instanceof Timestamp
-      ? sort === "top"
-        ? { createdAt: lastRawCreatedAt, id: lastRaw.id, upvoteCount: lastRawUpvoteCount }
-        : { createdAt: lastRawCreatedAt, id: lastRaw.id }
-      : (() => {
-          const last = clips[clips.length - 1];
-          if (!last || !last.createdAt) return null;
-          return sort === "top"
-            ? { createdAt: last.createdAt, id: last.id, upvoteCount: last.upvoteCount }
-            : { createdAt: last.createdAt, id: last.id };
-        })();
+  return { clips, cursor: buildNextCursor(snap.docs, clips, sort) };
+}
 
-  return { clips, cursor: nextCursor };
+/**
+ * Build the next-page cursor.
+ *
+ * Prefers the trailing *raw* doc so pagination still progresses through a
+ * window where the last row failed validation in `toClipDoc` (otherwise we'd
+ * stall on the same window indefinitely). Falls back to the last parsed clip
+ * when the raw doc lacks a Firestore `Timestamp` createdAt — only the duck-
+ * typed test path hits that branch in practice.
+ */
+function buildNextCursor(
+  rawDocs: readonly QueryDocumentSnapshot[],
+  parsedClips: readonly ClipDoc[],
+  sort: ClipsFeedSort,
+): ClipsFeedCursor | null {
+  const lastRaw = rawDocs[rawDocs.length - 1];
+  if (lastRaw) {
+    const lastRawData = lastRaw.data() as { createdAt?: unknown; upvoteCount?: unknown } | undefined;
+    const rawCreatedAt = lastRawData?.createdAt;
+    if (rawCreatedAt instanceof Timestamp) {
+      const upvoteCount =
+        typeof lastRawData?.upvoteCount === "number" && Number.isFinite(lastRawData.upvoteCount)
+          ? lastRawData.upvoteCount
+          : 0;
+      return sort === "top"
+        ? { createdAt: rawCreatedAt, id: lastRaw.id, upvoteCount }
+        : { createdAt: rawCreatedAt, id: lastRaw.id };
+    }
+  }
+
+  const lastParsed = parsedClips[parsedClips.length - 1];
+  if (!lastParsed?.createdAt) return null;
+  return sort === "top"
+    ? { createdAt: lastParsed.createdAt, id: lastParsed.id, upvoteCount: lastParsed.upvoteCount }
+    : { createdAt: lastParsed.createdAt, id: lastParsed.id };
 }
 
 /* ────────────────────────────────────────────
@@ -455,15 +482,24 @@ export async function fetchClipUpvoteState(
 /**
  * Record a single upvote on a clip and return the resulting count.
  *
- * Uniqueness is enforced by the deterministic `{uid}_{clipId}` doc id: the
- * transaction reads the doc and throws `AlreadyUpvotedError` when it already
- * exists. The `clipVotes` rule additionally enforces this via
- * `allow update/delete: if false` so a rule-only client can't double-vote
- * by setDoc-ing over the existing entry.
+ * One transaction does two writes:
+ *   1. Create `clipVotes/{uid}_{clipId}` — uniqueness is enforced by the
+ *      deterministic id; the rule's `allow update: if false` blocks any
+ *      attempt to overwrite an existing entry.
+ *   2. `increment(1)` on `clips/{clipId}.upvoteCount` — keeps the field that
+ *      drives 'top' sort in lockstep with the actual vote rows. The matching
+ *      clip rule allows this narrow update only when the caller has no prior
+ *      vote, so a malicious client can't bump the counter without also
+ *      creating a (rule-validated) vote doc in the same transaction.
+ *
+ * `AlreadyUpvotedError` is thrown when the vote doc already exists. The
+ * second-tap UI converts that into the "already filled" state without
+ * surfacing an error toast (spec: single-tap upvote, no undo).
  */
 export async function upvoteClip(uid: string, clipId: string): Promise<number> {
   const db = requireDb();
   const voteRef = doc(db, "clipVotes", clipVoteId(uid, clipId));
+  const targetClipRef = doc(db, "clips", clipId);
 
   try {
     await runTransaction(db, async (tx) => {
@@ -474,6 +510,10 @@ export async function upvoteClip(uid: string, clipId: string): Promise<number> {
         clipId,
         createdAt: serverTimestamp(),
       });
+      // Bump the stored counter atomically with the vote write so the 'top'
+      // sort and the clipVotes aggregate can never disagree by more than the
+      // window of an in-flight transaction.
+      tx.update(targetClipRef, { upvoteCount: increment(1) });
     });
   } catch (err) {
     if (err instanceof AlreadyUpvotedError) throw err;

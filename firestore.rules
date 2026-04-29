@@ -1314,6 +1314,10 @@ service cloud.firestore {
         // are server-side only (Admin SDK), keeping the App Store takedown
         // path out of client reach.
         && request.resource.data.moderationStatus == 'active'
+        // Counter must start at 0; subsequent +1 updates are gated by the
+        // narrow upvote rule below. Writing the field at create is required
+        // so the 'top' feed's orderBy("upvoteCount") can include the doc.
+        && request.resource.data.upvoteCount == 0
         // Writer must be a game participant (player OR nominated judge).
         && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
         // playerUid must be one of the game's two players — never the judge,
@@ -1323,9 +1327,28 @@ service cloud.firestore {
           || request.resource.data.playerUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
         );
 
-      // Clips are immutable once written — content edits and moderation
-      // flips both go through Admin SDK to keep the audit trail clean.
-      allow update: if false;
+      // The only mutation allowed from a client is the upvote counter bump,
+      // and only when paired with a fresh clipVote write in the same
+      // transaction. Content edits and moderation flips remain Admin SDK
+      // only — keeps the audit trail clean and the takedown path off-client.
+      //
+      // Gating keys:
+      //   • affectedKeys is exactly {upvoteCount}
+      //   • upvoteCount transitions oldValue → oldValue + 1
+      //   • the caller had NO clipVote pre-tx (no double-bump on retry)
+      //   • the caller HAS a clipVote post-tx (no naked counter inflation
+      //     without an accompanying, rule-validated vote doc write)
+      //
+      // The vote doc's create rule already enforces uid==auth.uid and email
+      // verification, so existsAfter() implicitly validates the vote's
+      // shape — reaching this rule by any path other than a paired upvote
+      // transaction is impossible.
+      allow update: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvoteCount'])
+        && request.resource.data.upvoteCount == resource.data.upvoteCount + 1
+        && !exists(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId))
+        && existsAfter(/databases/$(database)/documents/clipVotes/$(request.auth.uid + '_' + clipId));
 
       // The owning player (the one who actually landed the trick) can delete
       // their own clip. This backs the account-deletion cascade in
