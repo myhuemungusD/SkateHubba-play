@@ -82,6 +82,7 @@ async function seedClipAndGame(): Promise<void> {
       spotId: null,
       createdAt: serverTimestamp(),
       moderationStatus: "active",
+      upvoteCount: 0,
     });
   });
 }

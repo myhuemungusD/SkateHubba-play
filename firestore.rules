@@ -1316,6 +1316,9 @@ service cloud.firestore {
         && request.resource.data.moderationStatus == 'active'
         // upvoteCount aggregate must seed at 0; client-side ranking reads
         // this field directly so it has to start at the empty state.
+        // Writing the field at create is also required so the 'top' feed's
+        // orderBy("upvoteCount") can include the doc — Firestore's orderBy
+        // semantics silently exclude documents missing the sort key.
         && request.resource.data.upvoteCount == 0
         // Writer must be a game participant (player OR nominated judge).
         && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)

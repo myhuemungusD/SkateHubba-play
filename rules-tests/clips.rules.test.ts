@@ -21,7 +21,17 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, setDoc, deleteDoc, getDoc, runTransaction, serverTimestamp, setLogLevel } from "firebase/firestore";
+import {
+  doc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  getDoc,
+  serverTimestamp,
+  setLogLevel,
+  writeBatch,
+  runTransaction,
+} from "firebase/firestore";
 
 const PROJECT_ID = "demo-skatehubba-rules-clips";
 
@@ -266,10 +276,10 @@ describe("clips — create", () => {
 });
 
 /* ────────────────────────────────────────────
- * UPDATE (immutable by client — Admin SDK only)
+ * UPDATE — content/moderation immutable, only the upvote +1 path is open
  * ──────────────────────────────────────────── */
 
-describe("clips — update forbidden", () => {
+describe("clips — update forbidden (content + moderation)", () => {
   it("even the original writer CANNOT update a clip's trick name", async () => {
     const id = await seedClip();
     await assertFails(setDoc(clipRef(asP1(), id), makeValidClip({ trickName: "revised" })));
@@ -283,6 +293,103 @@ describe("clips — update forbidden", () => {
   it("the clip owner CANNOT flip moderationStatus themselves (takedown path is Admin SDK only)", async () => {
     const id = await seedClip();
     await assertFails(setDoc(clipRef(asP1(), id), makeValidClip({ moderationStatus: "hidden" })));
+  });
+
+  it("nobody can update a field other than upvoteCount, even with a vote in place", async () => {
+    const id = await seedClip();
+    // Even with the vote precondition met, the affectedKeys clause restricts
+    // the diff to {upvoteCount} only — a content edit is still rejected.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clipVotes", `${P2_UID}_${id}`), {
+        uid: P2_UID,
+        clipId: id,
+        createdAt: serverTimestamp(),
+      });
+    });
+    // Note: P2 already has a vote, so the !exists clause would also fail —
+    // but the affectedKeys check is the first-line guarantee of immutability.
+    await assertFails(updateDoc(clipRef(asP2(), id), { trickName: "rewrite" }));
+  });
+});
+
+describe("clips — upvoteCount narrow update path", () => {
+  it("a verified voter CAN bump upvoteCount by 1 when their clipVote is created in the same transaction", async () => {
+    const id = await seedClip();
+    // Mirrors the production path in services/clips.ts#upvoteClip: vote
+    // create + upvoteCount += 1 in one transaction, gated by the rule's
+    // !exists() pre-check and existsAfter() post-check.
+    await assertSucceeds(
+      runTransaction(asP2().firestore(), async (tx) => {
+        tx.set(doc(asP2().firestore(), "clipVotes", `${P2_UID}_${id}`), {
+          uid: P2_UID,
+          clipId: id,
+          createdAt: serverTimestamp(),
+        });
+        tx.update(doc(asP2().firestore(), "clips", id), { upvoteCount: 1 });
+      }),
+    );
+  });
+
+  it("rejects a naked upvoteCount bump that isn't paired with a clipVote create", async () => {
+    // Without the vote write, existsAfter() fails — the counter cannot move
+    // unless an accompanying rule-validated vote doc exists post-tx.
+    const id = await seedClip();
+    await assertFails(updateDoc(clipRef(asP2(), id), { upvoteCount: 1 }));
+  });
+
+  it("rejects an upvoteCount bump from a user who already has a clipVote (no double-bump on retry)", async () => {
+    const id = await seedClip();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clipVotes", `${P2_UID}_${id}`), {
+        uid: P2_UID,
+        clipId: id,
+        createdAt: serverTimestamp(),
+      });
+      await setDoc(doc(ctx.firestore(), "clips", id), { ...makeValidClip(), upvoteCount: 1 });
+    });
+    // Even bundled with another clipVote create attempt, the create would
+    // fail (allow update: if false on clipVotes), so we test the standalone
+    // update — !exists() returns false since the vote already exists.
+    await assertFails(updateDoc(clipRef(asP2(), id), { upvoteCount: 2 }));
+  });
+
+  it("rejects bumps larger than +1 (rate-limit on counter inflation)", async () => {
+    const id = await seedClip();
+    const batch = writeBatch(asP2().firestore());
+    batch.set(doc(asP2().firestore(), "clipVotes", `${P2_UID}_${id}`), {
+      uid: P2_UID,
+      clipId: id,
+      createdAt: serverTimestamp(),
+    });
+    batch.update(doc(asP2().firestore(), "clips", id), { upvoteCount: 5 });
+    await assertFails(batch.commit());
+  });
+
+  it("rejects bumps that decrement (no implicit downvote path)", async () => {
+    const id = await seedClip({ upvoteCount: 3 });
+    const batch = writeBatch(asP2().firestore());
+    batch.set(doc(asP2().firestore(), "clipVotes", `${P2_UID}_${id}`), {
+      uid: P2_UID,
+      clipId: id,
+      createdAt: serverTimestamp(),
+    });
+    batch.update(doc(asP2().firestore(), "clips", id), { upvoteCount: 2 });
+    await assertFails(batch.commit());
+  });
+
+  it("rejects an unverified-email user from bumping upvoteCount (mirrors clipVote create gate)", async () => {
+    const id = await seedClip();
+    const unverified = testEnv.authenticatedContext("throwaway", { email_verified: false });
+    await assertFails(
+      runTransaction(unverified.firestore(), async (tx) => {
+        tx.set(doc(unverified.firestore(), "clipVotes", `throwaway_${id}`), {
+          uid: "throwaway",
+          clipId: id,
+          createdAt: serverTimestamp(),
+        });
+        tx.update(doc(unverified.firestore(), "clips", id), { upvoteCount: 1 });
+      }),
+    );
   });
 });
 

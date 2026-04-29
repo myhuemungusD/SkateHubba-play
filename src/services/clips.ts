@@ -41,6 +41,7 @@ import {
   type DocumentSnapshot,
   type FieldValue,
   type QueryConstraint,
+  type QueryDocumentSnapshot,
   type Transaction,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
@@ -316,29 +317,43 @@ export async function fetchClipsFeed(
     }
   }
 
-  const lastRaw = snap.docs[snap.docs.length - 1];
-  const lastRawData = lastRaw
-    ? (lastRaw.data() as { createdAt?: unknown; upvoteCount?: unknown } | undefined)
-    : undefined;
-  const lastRawCreatedAt = lastRawData?.createdAt;
-  const lastRawUpvoteCount =
-    typeof lastRawData?.upvoteCount === "number" && Number.isFinite(lastRawData.upvoteCount)
-      ? lastRawData.upvoteCount
-      : 0;
-  const nextCursor: ClipsFeedCursor | null =
-    lastRaw && lastRawCreatedAt instanceof Timestamp
-      ? sort === "top"
-        ? { createdAt: lastRawCreatedAt, id: lastRaw.id, upvoteCount: lastRawUpvoteCount }
-        : { createdAt: lastRawCreatedAt, id: lastRaw.id }
-      : (() => {
-          const last = clips[clips.length - 1];
-          if (!last || !last.createdAt) return null;
-          return sort === "top"
-            ? { createdAt: last.createdAt, id: last.id, upvoteCount: last.upvoteCount }
-            : { createdAt: last.createdAt, id: last.id };
-        })();
+  return { clips, cursor: buildNextCursor(snap.docs, clips, sort) };
+}
 
-  return { clips, cursor: nextCursor };
+/**
+ * Build the next-page cursor.
+ *
+ * Prefers the trailing *raw* doc so pagination still progresses through a
+ * window where the last row failed validation in `toClipDoc` (otherwise we'd
+ * stall on the same window indefinitely). Falls back to the last parsed clip
+ * when the raw doc lacks a Firestore `Timestamp` createdAt — only the duck-
+ * typed test path hits that branch in practice.
+ */
+function buildNextCursor(
+  rawDocs: readonly QueryDocumentSnapshot[],
+  parsedClips: readonly ClipDoc[],
+  sort: ClipsFeedSort,
+): ClipsFeedCursor | null {
+  const lastRaw = rawDocs[rawDocs.length - 1];
+  if (lastRaw) {
+    const lastRawData = lastRaw.data() as { createdAt?: unknown; upvoteCount?: unknown } | undefined;
+    const rawCreatedAt = lastRawData?.createdAt;
+    if (rawCreatedAt instanceof Timestamp) {
+      const upvoteCount =
+        typeof lastRawData?.upvoteCount === "number" && Number.isFinite(lastRawData.upvoteCount)
+          ? lastRawData.upvoteCount
+          : 0;
+      return sort === "top"
+        ? { createdAt: rawCreatedAt, id: lastRaw.id, upvoteCount }
+        : { createdAt: rawCreatedAt, id: lastRaw.id };
+    }
+  }
+
+  const lastParsed = parsedClips[parsedClips.length - 1];
+  if (!lastParsed?.createdAt) return null;
+  return sort === "top"
+    ? { createdAt: lastParsed.createdAt, id: lastParsed.id, upvoteCount: lastParsed.upvoteCount }
+    : { createdAt: lastParsed.createdAt, id: lastParsed.id };
 }
 
 /* ────────────────────────────────────────────

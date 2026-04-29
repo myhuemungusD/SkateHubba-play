@@ -199,6 +199,17 @@ describe("writeLandedClipsInTransaction", () => {
     const [, payload] = tx.set.mock.calls[0];
     expect(payload.spotId).toBeNull();
   });
+
+  it("initializes upvoteCount to 0 on every clip — required so 'top' sort's orderBy includes the doc", () => {
+    const tx = makeTx();
+
+    writeLandedClipsInTransaction(tx, baseCtx());
+
+    expect(tx.set).toHaveBeenCalledTimes(2);
+    for (const [, payload] of tx.set.mock.calls) {
+      expect(payload.upvoteCount).toBe(0);
+    }
+  });
 });
 
 /* ── fetchClipsFeed ──────────────────────────── */
