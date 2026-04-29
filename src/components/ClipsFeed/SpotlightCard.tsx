@@ -1,5 +1,4 @@
-import type { ClipDoc } from "../../services/clips";
-import type { ClipUpvoteState } from "../../services/clips";
+import type { ClipDoc, ClipUpvoteState } from "../../services/clips";
 import { ProUsername } from "../ProUsername";
 import { ClipActions } from "./ClipActions";
 import { SpotlightVideo } from "./SpotlightVideo";

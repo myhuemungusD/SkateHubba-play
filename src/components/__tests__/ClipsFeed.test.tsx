@@ -512,7 +512,7 @@ describe("ClipsFeed", () => {
     expect(screen.getByText("OnlyTrick")).toBeInTheDocument();
   });
 
-  it("NEXT TRICK advances to the next clip in the random pool", async () => {
+  it("NEXT TRICK advances to the next clip in the page", async () => {
     const user = userEvent.setup();
     mockFetchClipsFeed.mockResolvedValueOnce([
       makeClip({ id: "a", trickName: "TrickA" }),
@@ -531,7 +531,7 @@ describe("ClipsFeed", () => {
     expect(screen.queryByText("TrickA")).not.toBeInTheDocument();
   });
 
-  it("NEXT TRICK refetches a fresh random pool when the current one is exhausted", async () => {
+  it("NEXT TRICK refetches a fresh page when the current one is exhausted", async () => {
     const user = userEvent.setup();
     mockFetchClipsFeed
       .mockResolvedValueOnce([makeClip({ id: "only", trickName: "OnlyTrick" })])
