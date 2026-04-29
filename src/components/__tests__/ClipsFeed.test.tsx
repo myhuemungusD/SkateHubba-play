@@ -66,6 +66,7 @@ function makeClip(overrides: Partial<ClipDoc> = {}): ClipDoc {
     spotId: null,
     createdAt: { toMillis: () => Date.now() - 3 * 60_000 } as ClipDoc["createdAt"],
     moderationStatus: "active",
+    upvoteCount: 0,
     ...overrides,
   };
 }
