@@ -62,12 +62,15 @@ describe("MAP_STYLE module-level resolver", () => {
     expect(mockCaptureMessage).not.toHaveBeenCalled();
   });
 
-  it("warns and reports to Sentry when VITE_MAPBOX_STYLE_URL is malformed", async () => {
+  it("warns and reports to Sentry with the offending URL when malformed", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     vi.stubEnv("VITE_MAPBOX_STYLE_URL", "not-a-valid-url");
     const { MAP_STYLE, DEFAULT_MAP_STYLE: defaultStyle } = await import("../mapbox");
     expect(MAP_STYLE).toBe(defaultStyle);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("VITE_MAPBOX_STYLE_URL"));
-    expect(mockCaptureMessage).toHaveBeenCalledWith("map_style_invalid", "warning");
+    expect(mockCaptureMessage).toHaveBeenCalledWith("map_style_invalid", {
+      level: "warning",
+      extra: { styleUrl: "not-a-valid-url" },
+    });
   });
 });

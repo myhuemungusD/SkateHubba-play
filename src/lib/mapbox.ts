@@ -39,7 +39,7 @@ function resolveMapStyle(): string {
   console.warn(
     `[mapbox] Ignoring invalid VITE_MAPBOX_STYLE_URL — must start with "mapbox://styles/" or be an https URL. Falling back to ${DEFAULT_MAP_STYLE}.`,
   );
-  captureMessage("map_style_invalid", "warning");
+  captureMessage("map_style_invalid", { level: "warning", extra: { styleUrl: override } });
   return DEFAULT_MAP_STYLE;
 }
 
