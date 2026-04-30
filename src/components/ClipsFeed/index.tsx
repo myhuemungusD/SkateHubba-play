@@ -2,24 +2,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlreadyUpvotedError,
   fetchClipUpvoteState,
-  fetchRandomLandedClips,
+  fetchClipsFeed,
   upvoteClip,
   type ClipDoc,
   type ClipUpvoteState,
+  type ClipsFeedSort,
 } from "../../services/clips";
+import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
 import { parseFirebaseError } from "../../utils/helpers";
 import { useBlockedUsers } from "../../hooks/useBlockedUsers";
 import { ReportModal } from "../ReportModal";
-import { ProUsername } from "../ProUsername";
 import type { UserProfile } from "../../services/users";
-import { ClipActions } from "./ClipActions";
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedSkeleton } from "./ClipsFeedStates";
-import { SpotlightVideo } from "./SpotlightVideo";
-import { copyForError, errorCodeFor, relativeClipTime } from "./utils";
+import { ClipsFeedHeader } from "./ClipsFeedHeader";
+import { SpotlightCard } from "./SpotlightCard";
+import { copyForError, errorCodeFor } from "./utils";
 
-const SAMPLE_SIZE = 12;
-const POOL_SIZE = 60;
+const PAGE_SIZE = 12;
 
 export interface ClipsFeedProps {
   profile: UserProfile;
@@ -32,15 +32,17 @@ export interface ClipsFeedProps {
 /**
  * Community clips spotlight, embedded inside the Lobby.
  *
- * Shows one random landed-trick clip at a time. The video plays through once
- * (no loop, no auto-advance); when it ends, the viewer picks REPLAY or
- * NEXT TRICK. Upvote, challenge-user, and report controls stay visible on
- * the action row below the video.
+ * Shows one landed-trick clip at a time, ordered by `sort` (Top by default —
+ * `upvoteCount` desc with most-recent as tiebreak; or New — reverse-chrono).
+ * The video plays through once (no loop, no auto-advance); when it ends, the
+ * viewer picks REPLAY or NEXT TRICK. Upvote, challenge-user, and report
+ * controls stay visible on the action row below the video.
  *
- * Random pool is refetched (and reshuffled) transparently when the viewer
- * exhausts it with NEXT TRICK.
+ * Page is refetched transparently when the viewer exhausts it with NEXT
+ * TRICK or flips the Top/New toggle.
  */
 export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedProps) {
+  const [sort, setSort] = useState<ClipsFeedSort>("top");
   const [pool, setPool] = useState<ClipDoc[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -102,13 +104,13 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     setError(null);
     setErrorCode(null);
     try {
-      const fresh = await fetchRandomLandedClips(SAMPLE_SIZE, POOL_SIZE);
+      const page = await fetchClipsFeed(null, PAGE_SIZE, sort);
       if (!mountedRef.current) return;
-      setPool(fresh);
+      setPool(page.clips);
       setCurrentIndex(0);
       // Hydration is fire-and-forget — spotlight renders immediately,
       // upvote counts pop in once the batch resolves.
-      void hydrateUpvotes(fresh);
+      void hydrateUpvotes(page.clips);
     } catch (err) {
       const code = errorCodeFor(err);
       logger.warn("clips_feed_load_failed", { code, error: parseFirebaseError(err) });
@@ -119,7 +121,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [hydrateUpvotes]);
+  }, [hydrateUpvotes, sort]);
 
   useEffect(() => {
     loadPool();
@@ -136,7 +138,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
   const handleNext = useCallback(() => {
     if (safeIndex + 1 >= visibleClips.length) {
-      // Pool exhausted — refetch + reshuffle.
+      // Page exhausted — refetch with the current sort.
       void loadPool();
       return;
     }
@@ -163,6 +165,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       try {
         const nextCount = await upvoteClip(profile.uid, clip.id);
         if (!mountedRef.current) return;
+        // Fire on success so AlreadyUpvotedError replays don't double-count.
+        // trackEvent is consent-gated inside services/analytics — callers
+        // don't need to gate again.
+        trackEvent("clip_upvoted", { clipId: clip.id, fromSort: sort, newCount: nextCount });
         setUpvoteState((prev) => {
           const next = new Map(prev);
           next.set(clip.id, { count: nextCount, alreadyUpvoted: true });
@@ -187,7 +193,18 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         }
       }
     },
-    [profile.uid, upvoteState, upvotingIds],
+    [profile.uid, sort, upvoteState, upvotingIds],
+  );
+
+  const handleSortChange = useCallback(
+    (next: ClipsFeedSort) => {
+      if (next === sort) return;
+      // Track engagement with the toggle itself — clip_upvoted.fromSort tells
+      // us where votes happen, this tells us whether viewers actually toggle.
+      trackEvent("clips_sort_changed", { from: sort, to: next });
+      setSort(next);
+    },
+    [sort],
   );
 
   const isOwnClip = currentClip ? currentClip.playerUid === profile.uid : false;
@@ -199,15 +216,14 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
   return (
     <section className="mb-6" aria-label="Community feed">
-      {/* Section header */}
-      <div className="flex items-center gap-2 mb-3">
-        <h3 className="font-display text-[11px] tracking-[0.2em] text-brand-orange">FEED</h3>
-        {visibleClips.length > 0 && (
-          <span className="px-1.5 py-0.5 rounded bg-surface-alt border border-border font-display text-[10px] text-brand-orange leading-none tabular-nums">
-            {safeIndex + 1}/{visibleClips.length}
-          </span>
-        )}
-      </div>
+      <ClipsFeedHeader
+        sort={sort}
+        onSortChange={handleSortChange}
+        // Lock the toggle during a load so rapid taps don't queue concurrent
+        // fetches (the latest would still win, but it wastes reads + flickers).
+        disabled={loading}
+        position={visibleClips.length > 0 ? { index: safeIndex, total: visibleClips.length } : undefined}
+      />
 
       {error && !loading && <ClipsFeedError error={error} errorCode={errorCode} onRetry={loadPool} />}
 
@@ -215,62 +231,18 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
       {!loading && !error && !currentClip && <ClipsFeedEmpty />}
 
-      {/* Spotlight clip */}
       {!loading && currentClip && (
-        <article className="glass-card rounded-2xl overflow-hidden" aria-label="Current clip">
-          <div className="flex items-center justify-between px-4 pt-3.5 pb-3">
-            <button
-              type="button"
-              onClick={() => onViewPlayer(currentClip.playerUid)}
-              className="flex items-center gap-2 touch-target rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
-            >
-              <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
-                <span className="font-display text-[11px] text-brand-orange leading-none">
-                  {currentClip.playerUsername[0]?.toUpperCase() ?? "?"}
-                </span>
-              </div>
-              <ProUsername
-                username={currentClip.playerUsername}
-                className="font-body text-xs text-white/80 group-hover:text-brand-orange transition-colors duration-200"
-              />
-            </button>
-            <div className="flex items-center gap-2">
-              <span
-                className={`font-display text-[10px] tracking-[0.2em] px-2 py-0.5 rounded-md border ${
-                  currentClip.role === "set"
-                    ? "text-brand-orange border-brand-orange/30 bg-brand-orange/5"
-                    : "text-brand-green border-brand-green/30 bg-brand-green/5"
-                }`}
-                aria-label={currentClip.role === "set" ? "Setter's landed trick" : "Matcher's landed response"}
-              >
-                {currentClip.role === "set" ? "SET" : "MATCH"}
-              </span>
-              <span className="font-body text-[11px] text-faint">{relativeClipTime(currentClip.createdAt)}</span>
-            </div>
-          </div>
-
-          {/* Video — plays once, no loop, no auto-advance. `key={clip.id}`
-              remounts (and resets ended/muted state) on every Next. */}
-          <div className="px-4">
-            <SpotlightVideo key={currentClip.id} src={currentClip.videoUrl} onNext={handleNext} />
-          </div>
-
-          {/* Trick name */}
-          <div className="px-4 pt-3">
-            <h2 className="font-display text-xl text-white tracking-wide leading-tight">{currentClip.trickName}</h2>
-          </div>
-
-          {/* Actions — vote, challenge, report stay visible always. */}
-          <ClipActions
-            clip={currentClip}
-            isOwnClip={isOwnClip}
-            upvote={upvote}
-            upvoteDisabled={upvoteDisabled}
-            onUpvote={handleUpvote}
-            onChallenge={onChallengeUser}
-            onReport={setReportTarget}
-          />
-        </article>
+        <SpotlightCard
+          clip={currentClip}
+          isOwnClip={isOwnClip}
+          upvote={upvote}
+          upvoteDisabled={upvoteDisabled}
+          onViewPlayer={onViewPlayer}
+          onNext={handleNext}
+          onUpvote={handleUpvote}
+          onChallenge={onChallengeUser}
+          onReport={setReportTarget}
+        />
       )}
 
       {/* Report modal */}

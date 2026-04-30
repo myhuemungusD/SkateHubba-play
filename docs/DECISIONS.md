@@ -78,3 +78,19 @@ This caps each listener at 50 documents per side (up to 100 total after dedup), 
 - Add `startAfter` cursor support and a "Load more" button when game count approaches 50.
 - Consider adding a Firestore composite index on `(playerXUid, updatedAt)` to support ordered pagination.
 - Optionally surface an in-app notice when the 50-game cap is reached.
+
+---
+
+## DEC-004 — Clip ranking: `upvoteCount` aggregate field
+
+**Date:** 2026-04-29
+**Status:** Accepted
+**Category:** Data model / Clips feed
+
+### Context
+
+Clip upvote counts were derived on demand via `getCountFromServer` over `clipVotes` filtered by `clipId`. That works for per-page fan-out but blocks any Top-ranking server-side query — Firestore can't sort by a count it doesn't store.
+
+### Decision
+
+Add a server-validated `upvoteCount: number` aggregate to each `clips/{id}` doc. The field is maintained inside the same `runTransaction` that creates the matching `clipVotes/{uid_clipId}` doc — pairing the vote-doc write with a `±1` `increment` keeps the aggregate consistent with its underlying votes. Firestore rules use `exists` / `existsAfter` on the vote-doc path to bind the count delta to a real create/delete, so a client cannot inflate or deflate the count without the matching vote action. Existing clips are seeded by `scripts/backfill-clip-upvote-count.mjs`.
