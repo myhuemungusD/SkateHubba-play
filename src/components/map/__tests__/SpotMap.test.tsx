@@ -28,13 +28,19 @@ vi.mock("../../../lib/sentry", () => ({
   addBreadcrumb: vi.fn(),
 }));
 
-// Provide a fake Mapbox token so the component doesn't render the
-// unavailable-state fallback. The fake mapbox-gl below ignores the value.
-vi.mock("../../../lib/mapbox", () => ({
-  MAPBOX_TOKEN: "pk.test-token",
-  MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
-  MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
-}));
+// Forward the real lib/mapbox so MAP_STYLE flows through the actual
+// resolveMapStyle() path — only MAPBOX_TOKEN is overridden so the
+// component skips the unavailable-state fallback. This catches a
+// regression where SpotMap.tsx stops importing MAP_STYLE from the
+// helper, or where the helper's default value drifts from what
+// mapbox-gl is being told to load.
+vi.mock("../../../lib/mapbox", async () => {
+  const actual = await vi.importActual<typeof import("../../../lib/mapbox")>("../../../lib/mapbox");
+  return {
+    ...actual,
+    MAPBOX_TOKEN: "pk.test-token",
+  };
+});
 
 // Mock mapbox-gl: real GL JS requires WebGL2 which jsdom doesn't provide.
 // The mock implements just enough surface for SpotMap's lifecycle hooks
@@ -43,6 +49,10 @@ const mapEventHandlers: Record<string, Array<() => void>> = {};
 // Observable count — the missing-token fallback test asserts that the map
 // constructor is never invoked when VITE_MAPBOX_TOKEN is unset.
 let fakeMapConstructorCalls = 0;
+// Last init options the map constructor saw — lets the wiring test assert
+// that the resolved MAP_STYLE actually reaches mapbox-gl, not just that
+// SpotMap renders without throwing.
+let lastMapInitOpts: { style?: unknown } | null = null;
 
 vi.mock("mapbox-gl", () => {
   class FakeMarker {
@@ -63,8 +73,9 @@ vi.mock("mapbox-gl", () => {
     }
   }
   class FakeMap {
-    constructor(opts: { container: HTMLElement }) {
+    constructor(opts: { container: HTMLElement; style?: unknown }) {
       fakeMapConstructorCalls += 1;
+      lastMapInitOpts = opts;
       // Trigger the load event on the next microtask so SpotMap's load
       // listener fires after the constructor returns.
       queueMicrotask(() => mapEventHandlers["load"]?.forEach((cb) => cb()));
@@ -121,6 +132,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   for (const k of Object.keys(mapEventHandlers)) delete mapEventHandlers[k];
   fakeMapConstructorCalls = 0;
+  lastMapInitOpts = null;
   mockGetSpotsInBounds.mockResolvedValue([FIXTURE]);
 });
 
@@ -133,6 +145,25 @@ describe("SpotMap", () => {
     );
     // The Add-Spot FAB is always present.
     expect(screen.getByLabelText("Add a spot")).toBeInTheDocument();
+  });
+
+  it("forwards the MAP_STYLE resolved by lib/mapbox into mapbox-gl's Map constructor", async () => {
+    // End-to-end wiring check: if SpotMap.tsx ever stops importing MAP_STYLE
+    // from ../../lib/mapbox (or lib/mapbox stops resolving the default
+    // VITE_MAPBOX_STYLE_URL fallback correctly), the value passed to
+    // `new mapboxgl.Map({ style })` will diverge from DEFAULT_MAP_STYLE
+    // and this assertion will fail. The unit test in lib/__tests__/mapbox.test.ts
+    // covers the resolver in isolation; this closes the integration loop.
+    const { DEFAULT_MAP_STYLE } = await import("../../../lib/mapbox");
+    render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(fakeMapConstructorCalls).toBe(1);
+    });
+    expect(lastMapInitOpts?.style).toBe(DEFAULT_MAP_STYLE);
   });
 
   it("calls getSpotsInBounds after the map's initial load fires", async () => {
