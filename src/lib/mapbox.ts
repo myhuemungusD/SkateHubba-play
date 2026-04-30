@@ -27,23 +27,56 @@ export function isValidStyleUrl(value: string): boolean {
   }
 }
 
-function resolveMapStyle(): string {
-  const override = import.meta.env.VITE_MAPBOX_STYLE_URL as string | undefined;
-  if (!override) return DEFAULT_MAP_STYLE;
-  if (isValidStyleUrl(override)) return override;
-  // Surface a misconfigured override to both the operator's local console
-  // and Sentry. The console.warn is what shows up in dev; captureMessage
-  // creates a Sentry warning event that alert rules can fire on. Mirrors
-  // the `map_token_missing` pattern in SpotMap.tsx — same volume profile,
-  // same dedup-by-fingerprint behavior.
+interface ResolvedMapStyle {
+  /** The style URL to hand to mapbox-gl. Always a valid value. */
+  url: string;
+  /**
+   * The original env-var value when it was set but rejected, so the consumer
+   * can surface it to Sentry/console with the offending input attached.
+   * `null` when the override was unset or accepted.
+   */
+  invalidOverride: string | null;
+}
+
+function resolveMapStyle(): ResolvedMapStyle {
+  const raw = import.meta.env.VITE_MAPBOX_STYLE_URL as string | undefined;
+  // Trim because Vercel's env editor and shell-redirected `.env` files are
+  // both happy to ship trailing whitespace, and a stray space would otherwise
+  // demote a perfectly valid URL to "invalid".
+  const override = raw?.trim();
+  if (!override) return { url: DEFAULT_MAP_STYLE, invalidOverride: null };
+  if (isValidStyleUrl(override)) return { url: override, invalidOverride: null };
+  return { url: DEFAULT_MAP_STYLE, invalidOverride: override };
+}
+
+const resolved = resolveMapStyle();
+export const MAP_STYLE = resolved.url;
+
+/**
+ * Surface a misconfigured `VITE_MAPBOX_STYLE_URL` to both the operator's
+ * console and Sentry. Idempotent — safe to call from a `useEffect` that
+ * may re-fire under StrictMode or remounts.
+ *
+ * Why this isn't called at module-init time: `initSentry()` resolves
+ * asynchronously (it dynamically imports `@sentry/react`), so a synchronous
+ * `captureMessage` from this file's top-level evaluation would no-op while
+ * the SDK is still bootstrapping. Calling from `useEffect` defers past
+ * first paint, by which point the SDK has typically resolved — same
+ * pattern as `map_token_missing` in SpotMap.tsx.
+ */
+let mapStyleConfigReported = false;
+export function reportMapStyleConfig(): void {
+  if (mapStyleConfigReported) return;
+  mapStyleConfigReported = true;
+  if (!resolved.invalidOverride) return;
   console.warn(
     `[mapbox] Ignoring invalid VITE_MAPBOX_STYLE_URL — must start with "mapbox://styles/" or be an https URL. Falling back to ${DEFAULT_MAP_STYLE}.`,
   );
-  captureMessage("map_style_invalid", { level: "warning", extra: { styleUrl: override } });
-  return DEFAULT_MAP_STYLE;
+  captureMessage("map_style_invalid", {
+    level: "warning",
+    extra: { styleUrl: resolved.invalidOverride },
+  });
 }
-
-export const MAP_STYLE = resolveMapStyle();
 
 export const MAP_DEFAULTS = {
   zoom: 13,

@@ -314,7 +314,9 @@ describe("SpotMap without a Mapbox token", () => {
     vi.doMock("../../../lib/mapbox", () => ({
       MAPBOX_TOKEN: "",
       MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+      DEFAULT_MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
       MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
+      reportMapStyleConfig: vi.fn(),
     }));
     const { SpotMap: SpotMapWithoutToken } = await import("../SpotMap");
     render(
@@ -341,7 +343,9 @@ describe("SpotMap without a Mapbox token", () => {
     vi.doMock("../../../lib/mapbox", () => ({
       MAPBOX_TOKEN: "",
       MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+      DEFAULT_MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
       MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
+      reportMapStyleConfig: vi.fn(),
     }));
     const { SpotMap: SpotMapWithoutToken } = await import("../SpotMap");
     const onRetry = vi.fn();
@@ -352,6 +356,32 @@ describe("SpotMap without a Mapbox token", () => {
     );
     await userEvent.click(screen.getByRole("button", { name: /retry/i }));
     expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("SpotMap style-config telemetry", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("invokes reportMapStyleConfig from the telemetry effect", async () => {
+    const reportMapStyleConfig = vi.fn();
+    vi.doMock("../../../lib/mapbox", () => ({
+      MAPBOX_TOKEN: "pk.test-token",
+      MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+      DEFAULT_MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+      MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
+      reportMapStyleConfig,
+    }));
+    const { SpotMap: SpotMapWithStub } = await import("../SpotMap");
+    render(
+      <MemoryRouter>
+        <SpotMapWithStub />
+      </MemoryRouter>,
+    );
+    // The effect runs synchronously after the first commit. If wiring
+    // breaks (helper not imported, effect deleted), this assertion fires.
+    expect(reportMapStyleConfig).toHaveBeenCalledTimes(1);
   });
 });
 
