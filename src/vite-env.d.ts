@@ -26,6 +26,8 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string;
   readonly VITE_RECAPTCHA_SITE_KEY?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
+  /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
+  readonly VITE_MAPBOX_STYLE_URL?: string;
   readonly VITE_USE_EMULATORS?: string;
   readonly VITE_APP_URL?: string;
   readonly VITE_SENTRY_DSN?: string;

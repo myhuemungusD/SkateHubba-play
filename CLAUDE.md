@@ -21,8 +21,8 @@ This file establishes the production-level problem-solving mindset for working o
 Run these before considering any work complete:
 
 ```bash
-# The full gate — mirrors CI exactly
-npx tsc -b && npm run lint && npm run test:coverage && npm run build
+# The full gate — mirrors CI exactly. Equivalent to `npm run verify`.
+npx tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup
 
 # Quick check during development
 npx tsc -b && npm test

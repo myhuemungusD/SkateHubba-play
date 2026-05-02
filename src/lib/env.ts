@@ -47,6 +47,11 @@ const envSchema = z.object({
 
   // ── Optional: third-party integrations ──────────────────────────────
   VITE_MAPBOX_TOKEN: z.string().optional(),
+  // Format validation (mapbox://styles/ prefix or https URL) deliberately
+  // lives in src/lib/mapbox.ts, not here: an invalid override should fall
+  // back to the default dark style with a Sentry warning, not trip
+  // safeParseEnv → null → the "Setup Required" lockout for an opt-in
+  // cosmetic flag.
   VITE_MAPBOX_STYLE_URL: z.string().optional(),
   VITE_SENTRY_DSN: z.string().optional(),
   VITE_POSTHOG_KEY: z.string().optional(),
