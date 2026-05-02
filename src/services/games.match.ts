@@ -36,11 +36,18 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
     const matcherUid = getOpponent(game, game.currentSetter);
     const setterUsername = game.currentSetter === game.player1Uid ? game.player1Username : game.player2Username;
 
+    // Don't write matchVideoUrl here. The setting-phase rule pins
+    // matchVideoUrl == resource.data.matchVideoUrl (anti-stash hardening),
+    // so writing null after turn 1 — when the previous turn left a real URL
+    // on the doc — would be permission-denied. Leaving the field untouched
+    // is safe: nothing reads game.matchVideoUrl during setting/matching of
+    // the new turn (UI sources from currentTrickVideoUrl + turnHistory),
+    // and the next match attempt overwrites it under the matching-phase
+    // rule which has no immutability pin.
     tx.update(gameRef, {
       phase: "matching",
       currentTrickName: safeTrickName,
       currentTrickVideoUrl: videoUrl,
-      matchVideoUrl: null,
       currentTurn: matcherUid,
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
       updatedAt: serverTimestamp(),
@@ -80,13 +87,16 @@ export async function failSetTrick(gameId: string): Promise<void> {
     const nextSetter = getOpponent(game, game.currentSetter);
     const prevSetterUsername = game.currentSetter === game.player1Uid ? game.player1Username : game.player2Username;
 
+    // matchVideoUrl intentionally omitted — see setTrick above for the
+    // rationale. The setting-phase rule pins it against the stored value,
+    // so writing null after a turn that landed a match would fail rules
+    // with permission-denied.
     tx.update(gameRef, {
       phase: "setting",
       currentSetter: nextSetter,
       currentTurn: nextSetter,
       currentTrickName: null,
       currentTrickVideoUrl: null,
-      matchVideoUrl: null,
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
       turnNumber: game.turnNumber + 1,
       updatedAt: serverTimestamp(),

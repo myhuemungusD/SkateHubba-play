@@ -268,6 +268,89 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
     );
   });
 
+  // (7) Regression: turn-2+ setTrick must succeed when the game doc still
+  // carries the previous turn's matchVideoUrl. The matchVideoUrl-immutable
+  // pin (anti-stash hardening) was correct in spirit but the production
+  // setTrick used to also write `matchVideoUrl: null` on every set, which
+  // is permission-denied once any prior turn left a real URL on the doc.
+  // The fix dropped the field from setTrick's update; this test guards it.
+  it("legitimate: setter CAN set a trick when previous turn's matchVideoUrl is non-null", async () => {
+    await seedGame({
+      currentTurn: P1_UID,
+      currentSetter: P1_UID,
+      phase: "setting",
+      turnNumber: 2,
+      // The previous matcher landed and the matching-phase rule wrote a
+      // real URL into the doc — this is what every turn-2+ game looks like.
+      matchVideoUrl: "https://example.com/prev-turn-match.webm",
+    });
+    await assertSucceeds(
+      updateDoc(gameRef(asP1()), {
+        phase: "matching",
+        currentTrickName: "kickflip",
+        currentTrickVideoUrl: VALID_VIDEO_URL,
+        currentTurn: P2_UID,
+        turnDeadline: VALID_DEADLINE(),
+        updatedAt: serverTimestamp(),
+        // NOTE: matchVideoUrl intentionally NOT included — the rule pins it
+        // immutable across setting-phase updates.
+      }),
+    );
+  });
+
+  // (8) Regression sibling: the SAME write WITH `matchVideoUrl: null` must
+  // be rejected. This locks in the contract — if a future refactor reintroduces
+  // the field on setTrick, this test will fail and surface the regression
+  // before it reaches users mid-game.
+  it("attack: setter CANNOT clear a non-null matchVideoUrl during setting→matching", async () => {
+    await seedGame({
+      currentTurn: P1_UID,
+      currentSetter: P1_UID,
+      phase: "setting",
+      turnNumber: 2,
+      matchVideoUrl: "https://example.com/prev-turn-match.webm",
+    });
+    await assertFails(
+      updateDoc(gameRef(asP1()), {
+        phase: "matching",
+        currentTrickName: "kickflip",
+        currentTrickVideoUrl: VALID_VIDEO_URL,
+        currentTurn: P2_UID,
+        // Illegal: the setter must not be able to wipe the previous turn's
+        // match URL — only the matching-phase rule writes this field.
+        matchVideoUrl: null,
+        turnDeadline: VALID_DEADLINE(),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  // (9) Regression: failSetTrick (setting→setting role swap) must also work
+  // when the doc carries a previous turn's matchVideoUrl. Same root cause
+  // as (7): the production code used to write `matchVideoUrl: null` here too.
+  it("legitimate: setter CAN fail-set when previous turn's matchVideoUrl is non-null", async () => {
+    await seedGame({
+      currentTurn: P1_UID,
+      currentSetter: P1_UID,
+      phase: "setting",
+      turnNumber: 3,
+      matchVideoUrl: "https://example.com/prev-turn-match.webm",
+    });
+    await assertSucceeds(
+      updateDoc(gameRef(asP1()), {
+        phase: "setting",
+        currentSetter: P2_UID,
+        currentTurn: P2_UID,
+        currentTrickName: null,
+        currentTrickVideoUrl: null,
+        // NOTE: matchVideoUrl intentionally NOT included.
+        turnNumber: 4,
+        turnDeadline: VALID_DEADLINE(),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
   // Also prove the attack path is really about the MISSING invariants, not
   // about the attacker being a non-player: drive the canonical attack from
   // P2's account when currentTurn starts on P2 and phase='setting' (i.e.
