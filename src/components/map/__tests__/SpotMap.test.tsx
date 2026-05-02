@@ -303,6 +303,18 @@ describe("SpotMap load timeout", () => {
 });
 
 describe("SpotMap without a Mapbox token", () => {
+  // Shared factory for the two missing-token tests below — extracted so the
+  // dedup gate (`scripts/check-test-duplication.mjs`) doesn't flag the
+  // identical mock shape twice. Returns a fresh object each call so the
+  // `reportMapStyleConfig` spy doesn't leak state across tests.
+  const mockLibMapboxWithoutToken = () => ({
+    MAPBOX_TOKEN: "",
+    MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+    DEFAULT_MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
+    MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
+    reportMapStyleConfig: vi.fn(),
+  });
+
   beforeEach(() => {
     vi.resetModules();
     mockLoggerWarn.mockClear();
@@ -311,13 +323,7 @@ describe("SpotMap without a Mapbox token", () => {
   });
 
   it("renders the polished unavailable state, reports to Sentry, and never constructs a map", async () => {
-    vi.doMock("../../../lib/mapbox", () => ({
-      MAPBOX_TOKEN: "",
-      MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
-      DEFAULT_MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
-      MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
-      reportMapStyleConfig: vi.fn(),
-    }));
+    vi.doMock("../../../lib/mapbox", () => mockLibMapboxWithoutToken());
     const { SpotMap: SpotMapWithoutToken } = await import("../SpotMap");
     render(
       <MemoryRouter>
@@ -340,13 +346,7 @@ describe("SpotMap without a Mapbox token", () => {
   });
 
   it("calls onRetry instead of reloading when the fallback Retry is clicked", async () => {
-    vi.doMock("../../../lib/mapbox", () => ({
-      MAPBOX_TOKEN: "",
-      MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
-      DEFAULT_MAP_STYLE: "mapbox://styles/mapbox/dark-v11",
-      MAP_DEFAULTS: { zoom: 13, minZoom: 5, maxZoom: 19 },
-      reportMapStyleConfig: vi.fn(),
-    }));
+    vi.doMock("../../../lib/mapbox", () => mockLibMapboxWithoutToken());
     const { SpotMap: SpotMapWithoutToken } = await import("../SpotMap");
     const onRetry = vi.fn();
     render(
