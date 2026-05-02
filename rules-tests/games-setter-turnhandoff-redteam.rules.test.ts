@@ -59,6 +59,8 @@ const GAME_ID = "g-setter";
 
 const VALID_DEADLINE = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
 const VALID_VIDEO_URL = "https://example.com/set.webm";
+/** A realistic non-null matchVideoUrl as it appears on a turn-2+ game doc. */
+const PREV_MATCH_URL = "https://example.com/prev-turn-match.webm";
 
 let testEnv: RulesTestEnvironment;
 
@@ -104,6 +106,58 @@ function makeActiveGame(overrides: Record<string, unknown> = {}): Record<string,
 async function seedGame(overrides: Record<string, unknown> = {}): Promise<void> {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), "games", GAME_ID), makeActiveGame(overrides));
+  });
+}
+
+/**
+ * Production setTrick payload (setting → matching). The setter is P1, the
+ * matcher (currentTurn target) is P2; override per-test for the mirror case
+ * or to inject illegal field combinations.
+ */
+function setTrickUpdate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    phase: "matching",
+    currentTrickName: "kickflip",
+    currentTrickVideoUrl: VALID_VIDEO_URL,
+    currentTurn: P2_UID,
+    turnDeadline: VALID_DEADLINE(),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+/**
+ * Production failSetTrick payload (setting → setting, role swap to P2).
+ * `turnNumber` is the new turn count to write — pass `seedTurn + 1` for
+ * the legit path or any other value to exercise the strict-increment pin.
+ */
+function failSetUpdate(turnNumber: number, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    phase: "setting",
+    currentSetter: P2_UID,
+    currentTurn: P2_UID,
+    currentTrickName: null,
+    currentTrickVideoUrl: null,
+    turnNumber,
+    turnDeadline: VALID_DEADLINE(),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+/**
+ * Seed a turn-2+ game where the previous matcher landed and the matching-
+ * phase rule already wrote a real `matchVideoUrl` into the doc. This is the
+ * exact precondition under which the original "matchVideoUrl: null" bug fired.
+ */
+async function seedTurn2WithPrevMatch(extras: Record<string, unknown> = {}): Promise<void> {
+  await seedGame({
+    currentTurn: P1_UID,
+    currentSetter: P1_UID,
+    phase: "setting",
+    turnNumber: 2,
+    matchVideoUrl: PREV_MATCH_URL,
+    ...extras,
   });
 }
 
@@ -158,16 +212,8 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   it("attack: setter CANNOT rewrite currentSetter during setting→matching", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting" });
     await assertFails(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        // Illegal: role changes hands even though the match hasn't resolved.
-        currentSetter: P2_UID,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
+      // Illegal: role changes hands even though the match hasn't resolved.
+      updateDoc(gameRef(asP1()), setTrickUpdate({ currentSetter: P2_UID })),
     );
   });
 
@@ -179,16 +225,8 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   it("attack: setter CANNOT set matchVideoUrl during a setting-phase update", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", matchVideoUrl: null });
     await assertFails(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        // Illegal: match video URL only comes from the matching-phase rule.
-        matchVideoUrl: "https://example.com/fake-match.webm",
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
+      // Illegal: match video URL only comes from the matching-phase rule.
+      updateDoc(gameRef(asP1()), setTrickUpdate({ matchVideoUrl: "https://example.com/fake-match.webm" })),
     );
   });
 
@@ -200,36 +238,16 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   it("attack: setter CANNOT regress turnNumber during a setting→matching update", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", turnNumber: 5 });
     await assertFails(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        // Illegal: 5 → 4.
-        turnNumber: 4,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
+      // Illegal: 5 → 4 (setting→matching pins turnNumber unchanged).
+      updateDoc(gameRef(asP1()), setTrickUpdate({ turnNumber: 4 })),
     );
   });
 
   // Same attack, setting→setting variant — the rule requires strict +1.
   it("attack: setter CANNOT regress turnNumber during a setting→setting (fail-set) update", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", turnNumber: 5 });
-    await assertFails(
-      updateDoc(gameRef(asP1()), {
-        phase: "setting",
-        // Legit fail-set swaps setter and currentTurn…
-        currentSetter: P2_UID,
-        currentTurn: P2_UID,
-        currentTrickName: null,
-        currentTrickVideoUrl: null,
-        // …but regresses turnNumber from 5 to 4.
-        turnNumber: 4,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
-    );
+    // Illegal: regresses turnNumber from seeded 5 to 4 instead of advancing to 6.
+    await assertFails(updateDoc(gameRef(asP1()), failSetUpdate(4)));
   });
 
   // (5) Happy path: legitimate failSetTrick write from src/services/games.ts
@@ -239,18 +257,7 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   // turn-2+ regression that locks this contract in).
   it("legitimate: setter CAN fail-set (setting→setting, role flips, turn+1)", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", turnNumber: 3 });
-    await assertSucceeds(
-      updateDoc(gameRef(asP1()), {
-        phase: "setting",
-        currentSetter: P2_UID,
-        currentTurn: P2_UID,
-        currentTrickName: null,
-        currentTrickVideoUrl: null,
-        turnNumber: 4,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
-    );
+    await assertSucceeds(updateDoc(gameRef(asP1()), failSetUpdate(4)));
   });
 
   // (6) Happy path: legitimate setTrick write from src/services/games.ts
@@ -258,16 +265,7 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   // turnNumber unchanged, currentSetter unchanged).
   it("legitimate: setter CAN set a trick (setting→matching, role stays, turn unchanged)", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", turnNumber: 3 });
-    await assertSucceeds(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
-    );
+    await assertSucceeds(updateDoc(gameRef(asP1()), setTrickUpdate()));
   });
 
   // (7) Regression: turn-2+ setTrick must succeed when the game doc still
@@ -277,27 +275,10 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   // is permission-denied once any prior turn left a real URL on the doc.
   // The fix dropped the field from setTrick's update; this test guards it.
   it("legitimate: setter CAN set a trick when previous turn's matchVideoUrl is non-null", async () => {
-    await seedGame({
-      currentTurn: P1_UID,
-      currentSetter: P1_UID,
-      phase: "setting",
-      turnNumber: 2,
-      // The previous matcher landed and the matching-phase rule wrote a
-      // real URL into the doc — this is what every turn-2+ game looks like.
-      matchVideoUrl: "https://example.com/prev-turn-match.webm",
-    });
-    await assertSucceeds(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-        // NOTE: matchVideoUrl intentionally NOT included — the rule pins it
-        // immutable across setting-phase updates.
-      }),
-    );
+    await seedTurn2WithPrevMatch();
+    // setTrickUpdate() intentionally OMITS matchVideoUrl — the rule pins it
+    // immutable across setting-phase updates.
+    await assertSucceeds(updateDoc(gameRef(asP1()), setTrickUpdate()));
   });
 
   // (8) Regression sibling: the SAME write WITH `matchVideoUrl: null` must
@@ -305,25 +286,11 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   // the field on setTrick, this test will fail and surface the regression
   // before it reaches users mid-game.
   it("attack: setter CANNOT clear a non-null matchVideoUrl during setting→matching", async () => {
-    await seedGame({
-      currentTurn: P1_UID,
-      currentSetter: P1_UID,
-      phase: "setting",
-      turnNumber: 2,
-      matchVideoUrl: "https://example.com/prev-turn-match.webm",
-    });
+    await seedTurn2WithPrevMatch();
     await assertFails(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        // Illegal: the setter must not be able to wipe the previous turn's
-        // match URL — only the matching-phase rule writes this field.
-        matchVideoUrl: null,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
+      // Illegal: the setter must not be able to wipe the previous turn's
+      // match URL — only the matching-phase rule writes this field.
+      updateDoc(gameRef(asP1()), setTrickUpdate({ matchVideoUrl: null })),
     );
   });
 
@@ -331,26 +298,8 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   // when the doc carries a previous turn's matchVideoUrl. Same root cause
   // as (7): the production code used to write `matchVideoUrl: null` here too.
   it("legitimate: setter CAN fail-set when previous turn's matchVideoUrl is non-null", async () => {
-    await seedGame({
-      currentTurn: P1_UID,
-      currentSetter: P1_UID,
-      phase: "setting",
-      turnNumber: 3,
-      matchVideoUrl: "https://example.com/prev-turn-match.webm",
-    });
-    await assertSucceeds(
-      updateDoc(gameRef(asP1()), {
-        phase: "setting",
-        currentSetter: P2_UID,
-        currentTurn: P2_UID,
-        currentTrickName: null,
-        currentTrickVideoUrl: null,
-        // NOTE: matchVideoUrl intentionally NOT included.
-        turnNumber: 4,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
-    );
+    await seedTurn2WithPrevMatch({ turnNumber: 3 });
+    await assertSucceeds(updateDoc(gameRef(asP1()), failSetUpdate(4)));
   });
 
   // (10) Mirror of (7): P2 setter on an even-numbered turn with non-null
@@ -363,17 +312,11 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
       currentSetter: P2_UID,
       phase: "setting",
       turnNumber: 4,
-      matchVideoUrl: "https://example.com/prev-turn-match.webm",
+      matchVideoUrl: PREV_MATCH_URL,
     });
     await assertSucceeds(
-      updateDoc(gameRef(asP2()), {
-        phase: "matching",
-        currentTrickName: "heelflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P1_UID,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
+      // Mirror: matcher target is P1 instead of P2, different trick name.
+      updateDoc(gameRef(asP2()), setTrickUpdate({ currentTurn: P1_UID, currentTrickName: "heelflip" })),
     );
   });
 
@@ -381,24 +324,10 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   // non-null URL. The `==` pin must reject any change, not just null-clearing
   // — this is the original exploit shape the rule was added to block.
   it("attack: setter CANNOT swap a non-null matchVideoUrl for a different non-null URL", async () => {
-    await seedGame({
-      currentTurn: P1_UID,
-      currentSetter: P1_UID,
-      phase: "setting",
-      turnNumber: 2,
-      matchVideoUrl: "https://example.com/prev-turn-match.webm",
-    });
+    await seedTurn2WithPrevMatch();
     await assertFails(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        // Illegal: a forged URL must be rejected the same as null-clearing.
-        matchVideoUrl: "https://example.com/forged-match.webm",
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
+      // Illegal: a forged URL must be rejected the same as null-clearing.
+      updateDoc(gameRef(asP1()), setTrickUpdate({ matchVideoUrl: "https://example.com/forged-match.webm" })),
     );
   });
 
@@ -407,25 +336,8 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   // in request.resource.data)) that would break legitimate retries on
   // resumable transactions.
   it("legitimate: setter MAY explicitly re-write the same non-null matchVideoUrl", async () => {
-    const PREV = "https://example.com/prev-turn-match.webm";
-    await seedGame({
-      currentTurn: P1_UID,
-      currentSetter: P1_UID,
-      phase: "setting",
-      turnNumber: 2,
-      matchVideoUrl: PREV,
-    });
-    await assertSucceeds(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        matchVideoUrl: PREV,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
-    );
+    await seedTurn2WithPrevMatch();
+    await assertSucceeds(updateDoc(gameRef(asP1()), setTrickUpdate({ matchVideoUrl: PREV_MATCH_URL })));
   });
 
   // Also prove the attack path is really about the MISSING invariants, not
