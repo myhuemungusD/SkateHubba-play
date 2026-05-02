@@ -550,7 +550,9 @@ describe("games service", () => {
 
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.currentTrickVideoUrl).toBeNull();
-      expect(updates.matchVideoUrl).toBeNull();
+      // matchVideoUrl is intentionally NOT written by setTrick — see the
+      // service file for rationale (setting-phase rule pins it immutable).
+      expect("matchVideoUrl" in updates).toBe(false);
     });
 
     it("assigns p1 as matcher when p2 is the setter", async () => {
@@ -644,7 +646,9 @@ describe("games service", () => {
       expect(updates.currentTurn).toBe("p2");
       expect(updates.currentTrickName).toBeNull();
       expect(updates.currentTrickVideoUrl).toBeNull();
-      expect(updates.matchVideoUrl).toBeNull();
+      // matchVideoUrl is intentionally NOT written by failSetTrick — see
+      // the service file for rationale (setting-phase rule pins it immutable).
+      expect("matchVideoUrl" in updates).toBe(false);
       expect(updates.turnNumber).toBe(2);
     });
 
