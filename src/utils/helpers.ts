@@ -1,8 +1,6 @@
 import type { GameDoc } from "../services/games";
 import { timestampFromMillis } from "../services/games";
 
-export const BG = "#0A0A0A";
-
 /** Extract a Firebase error code from an unknown error value. */
 export function getErrorCode(err: unknown): string {
   if (typeof err === "object" && err !== null && "code" in err) {
