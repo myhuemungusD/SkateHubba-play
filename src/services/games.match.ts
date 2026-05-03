@@ -36,11 +36,15 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
     const matcherUid = getOpponent(game, game.currentSetter);
     const setterUsername = game.currentSetter === game.player1Uid ? game.player1Username : game.player2Username;
 
+    // matchVideoUrl is intentionally NOT written here — the setting-phase
+    // rule (firestore.rules) pins it immutable, so writing null after a
+    // prior turn left a real URL on the doc would be permission-denied.
+    // Nothing reads game.matchVideoUrl during the next turn's setting/
+    // matching phases (UI sources from currentTrickVideoUrl + turnHistory).
     tx.update(gameRef, {
       phase: "matching",
       currentTrickName: safeTrickName,
       currentTrickVideoUrl: videoUrl,
-      matchVideoUrl: null,
       currentTurn: matcherUid,
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
       updatedAt: serverTimestamp(),
@@ -80,13 +84,13 @@ export async function failSetTrick(gameId: string): Promise<void> {
     const nextSetter = getOpponent(game, game.currentSetter);
     const prevSetterUsername = game.currentSetter === game.player1Uid ? game.player1Username : game.player2Username;
 
+    // matchVideoUrl intentionally omitted — see setTrick above.
     tx.update(gameRef, {
       phase: "setting",
       currentSetter: nextSetter,
       currentTurn: nextSetter,
       currentTrickName: null,
       currentTrickVideoUrl: null,
-      matchVideoUrl: null,
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
       turnNumber: game.turnNumber + 1,
       updatedAt: serverTimestamp(),
