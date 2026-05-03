@@ -144,7 +144,8 @@ async function seedGame(overrides: Record<string, unknown> = {}): Promise<void> 
 }
 
 // Seed a P1-setter, setting-phase game with a non-null prior matchVideoUrl —
-// the shape every turn-2+ game has. Used by tests #7, #8, #11, #12.
+// the shape every turn-2+ game has, since the matching-phase rule pins this
+// field on the doc once the previous matcher landed.
 async function seedP1SettingWithPriorMatch(turnNumber: number): Promise<void> {
   return seedGame({
     currentTurn: P1_UID,
