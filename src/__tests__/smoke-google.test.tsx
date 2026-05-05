@@ -7,9 +7,8 @@ import { renderApp, passAgeGate, createMockHelpers } from "./smoke-helpers";
 // The aggregate factory lives in ./harness/mockServices. Dynamic-importing it
 // inside vi.hoisted() keeps the ref objects available before vi.mock() factory
 // callbacks run.
-const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
-  async () => (await import("./harness/mockServices")).createAllSmokeMocks(),
-);
+const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, onboarding, sentry } =
+  await vi.hoisted(async () => (await import("./harness/mockServices")).createAllSmokeMocks());
 
 vi.mock("../hooks/useAuth", () => auth.module);
 vi.mock("../services/auth", () => authSvc.module);
@@ -21,6 +20,7 @@ vi.mock("../firebase", () => firebase.module);
 vi.mock("../services/analytics", () => analytics.module);
 vi.mock("@sentry/react", () => sentry.module);
 vi.mock("../services/blocking", () => blocking.module);
+vi.mock("../services/onboarding", () => onboarding.module);
 
 beforeEach(() => vi.clearAllMocks());
 

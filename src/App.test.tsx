@@ -52,6 +52,26 @@ vi.mock("./services/blocking", () => ({
   subscribeToBlockedUsers: vi.fn(() => vi.fn()),
 }));
 
+vi.mock("./services/onboarding", () => ({
+  TUTORIAL_VERSION: 1,
+  // Default to "completed" so the OnboardingProvider does not render the tour
+  // overlay across App-level integration tests. The dedicated coverage for
+  // the tutorial flow lives under src/__tests__/smoke-onboarding.test.tsx
+  // and src/components/onboarding/__tests__/.
+  getOnboardingState: vi.fn().mockResolvedValue({
+    tutorialVersion: 1,
+    completedAt: { seconds: 0, nanoseconds: 0 },
+    skippedAt: null,
+  }),
+  markOnboardingStarted: vi.fn().mockResolvedValue(undefined),
+  markOnboardingCompleted: vi.fn().mockResolvedValue(undefined),
+  markOnboardingSkipped: vi.fn().mockResolvedValue(undefined),
+  resetOnboarding: vi.fn().mockResolvedValue(undefined),
+  getLocalProgress: vi.fn().mockReturnValue(null),
+  setLocalProgress: vi.fn(),
+  clearLocalProgress: vi.fn(),
+}));
+
 vi.mock("./services/analytics", () => ({
   trackEvent: vi.fn(),
   analytics: {

@@ -252,13 +252,20 @@ export async function createProfile(
     // Private profile — owner-only. Holds emailVerified + dob +
     // optional parentalConsent today; future sensitive fields
     // (email, fcmTokens) get written here via dedicated updates.
+    //
+    // merge:true is defense-in-depth: the OnboardingProvider gate on
+    // activeProfile prevents onboarding writes from landing here before
+    // createProfile runs, but a future caller (or a races we haven't
+    // anticipated) could write a sibling field — e.g. an FCM token via
+    // requestPushPermission — to this doc before profile creation. Without
+    // merge, those untouched fields would be silently dropped here.
     const privateRef = doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID);
     const privateData: UserPrivateProfile = {
       emailVerified,
       dob,
       ...(parentalConsent !== undefined ? { parentalConsent } : {}),
     };
-    tx.set(privateRef, privateData);
+    tx.set(privateRef, privateData, { merge: true });
 
     return profileData;
   });

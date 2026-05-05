@@ -10,6 +10,7 @@ import { logger } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
 import { ProUsername } from "../components/ProUsername";
 import { ChevronLeftIcon } from "../components/icons";
+import { useOnboardingContext } from "../context/OnboardingContext";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
 
@@ -273,6 +274,18 @@ function BlockedPlayersList({
 
 export function Settings({ profile, onBack }: { profile: UserProfile; onBack: () => void }) {
   const { soundEnabled, toggleSound } = useNotifications();
+  const { replay: replayTutorial } = useOnboardingContext();
+  const [replayingTutorial, setReplayingTutorial] = useState(false);
+
+  const handleReplayTutorial = useCallback(async () => {
+    setReplayingTutorial(true);
+    try {
+      await replayTutorial();
+      onBack();
+    } finally {
+      setReplayingTutorial(false);
+    }
+  }, [replayTutorial, onBack]);
 
   // Haptic preference — local state mirrors the localStorage-backed service
   // flag so the switch renders synchronously without a read-through on every
@@ -446,6 +459,20 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
             <p className="font-display text-sm text-white tracking-wide">Send feedback</p>
             <p className="font-body text-xs text-faint mt-1">Tell us what you&apos;d like to see in the app.</p>
           </a>
+        </div>
+
+        {/* Tutorial replay — re-arms Hubz's onboarding tour */}
+        <SectionHeader title="TUTORIAL" />
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={handleReplayTutorial}
+            disabled={replayingTutorial}
+            className="block w-full text-left p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <p className="font-display text-sm text-white tracking-wide">Replay onboarding</p>
+            <p className="font-body text-xs text-faint mt-1">Run Hubz&apos;s welcome tour again from the top.</p>
+          </button>
         </div>
 
         {/* Legal */}

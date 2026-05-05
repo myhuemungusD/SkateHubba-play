@@ -79,6 +79,11 @@ vi.mock("../../services/notifications", () => ({
   markNotificationRead: vi.fn(),
 }));
 
+const replayTutorialMock = vi.fn().mockResolvedValue(undefined);
+vi.mock("../../context/OnboardingContext", () => ({
+  useOnboardingContext: () => ({ replay: replayTutorialMock }),
+}));
+
 /* ── Helpers ───────────────────────────────────────────── */
 
 const profile: UserProfile = {
