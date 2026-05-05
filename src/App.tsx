@@ -6,6 +6,8 @@ import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { NavigationProvider, useNavigationContext } from "./context/NavigationContext";
 import { GameProvider, useGameContext } from "./context/GameContext";
 import { NotificationProvider } from "./context/NotificationContext";
+import { OnboardingProvider } from "./context/OnboardingContext";
+import { TutorialOverlay } from "./components/onboarding/TutorialOverlay";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Spinner } from "./components/ui/Spinner";
@@ -91,6 +93,7 @@ function AppScreens() {
       <GameNotificationWatcher />
       <AppRoutes />
       <ToastContainer />
+      <TutorialOverlay />
     </>
   );
 }
@@ -485,7 +488,9 @@ function AppInner() {
       <NavigationProvider>
         <NotificationAuthBridge>
           <GameProvider>
-            <AppScreens />
+            <OnboardingProvider>
+              <AppScreens />
+            </OnboardingProvider>
           </GameProvider>
         </NotificationAuthBridge>
       </NavigationProvider>

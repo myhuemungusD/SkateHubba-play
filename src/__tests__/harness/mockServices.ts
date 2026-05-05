@@ -493,6 +493,60 @@ export function createBlockingServiceMocks(): BlockingServiceMocks {
 }
 
 /* ──────────────────────────────────────────
+ * services/onboarding
+ * ────────────────────────────────────────── */
+
+export interface OnboardingServiceRefs {
+  getOnboardingState: Mock;
+  markOnboardingStarted: Mock;
+  markOnboardingCompleted: Mock;
+  markOnboardingSkipped: Mock;
+  resetOnboarding: Mock;
+  getLocalProgress: Mock;
+  setLocalProgress: Mock;
+  clearLocalProgress: Mock;
+}
+
+export interface OnboardingServiceMocks {
+  refs: OnboardingServiceRefs;
+  module: Record<keyof OnboardingServiceRefs, (...args: unknown[]) => unknown> & { TUTORIAL_VERSION: number };
+}
+
+export function createOnboardingServiceMocks(): OnboardingServiceMocks {
+  const refs: OnboardingServiceRefs = {
+    // Default: returns a "completed" state so the tour does not auto-render
+    // in smoke tests that don't care about onboarding. Tests that DO care
+    // override via refs.getOnboardingState.mockResolvedValueOnce(null).
+    getOnboardingState: vi.fn().mockResolvedValue({
+      tutorialVersion: 1,
+      completedAt: { seconds: 0, nanoseconds: 0 },
+      skippedAt: null,
+    }),
+    markOnboardingStarted: vi.fn().mockResolvedValue(undefined),
+    markOnboardingCompleted: vi.fn().mockResolvedValue(undefined),
+    markOnboardingSkipped: vi.fn().mockResolvedValue(undefined),
+    resetOnboarding: vi.fn().mockResolvedValue(undefined),
+    getLocalProgress: vi.fn().mockReturnValue(null),
+    setLocalProgress: vi.fn(),
+    clearLocalProgress: vi.fn(),
+  };
+  return {
+    refs,
+    module: {
+      TUTORIAL_VERSION: 1,
+      getOnboardingState: (...args: unknown[]) => refs.getOnboardingState(...args),
+      markOnboardingStarted: (...args: unknown[]) => refs.markOnboardingStarted(...args),
+      markOnboardingCompleted: (...args: unknown[]) => refs.markOnboardingCompleted(...args),
+      markOnboardingSkipped: (...args: unknown[]) => refs.markOnboardingSkipped(...args),
+      resetOnboarding: (...args: unknown[]) => refs.resetOnboarding(...args),
+      getLocalProgress: (...args: unknown[]) => refs.getLocalProgress(...args),
+      setLocalProgress: (...args: unknown[]) => refs.setLocalProgress(...args),
+      clearLocalProgress: (...args: unknown[]) => refs.clearLocalProgress(...args),
+    },
+  };
+}
+
+/* ──────────────────────────────────────────
  * @sentry/react
  * ────────────────────────────────────────── */
 
@@ -549,6 +603,7 @@ export interface AllSmokeMocks {
   firebase: FirebaseMocks;
   analytics: AnalyticsMocks;
   blocking: BlockingServiceMocks;
+  onboarding: OnboardingServiceMocks;
   sentry: SentryMocks;
 }
 
@@ -564,6 +619,7 @@ export function createAllSmokeMocks(): AllSmokeMocks {
     firebase: createFirebaseMocks(),
     analytics: createAnalyticsMocks(),
     blocking: createBlockingServiceMocks(),
+    onboarding: createOnboardingServiceMocks(),
     sentry: createSentryMocks(),
   };
 }
