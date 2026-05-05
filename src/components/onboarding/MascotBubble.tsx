@@ -14,7 +14,6 @@ interface MascotBubbleProps {
 }
 
 const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
-const TOUCH_TARGET = "min-h-11 min-w-11";
 
 /**
  * Speech-bubble UI for a single tutorial step. Owns the visible step label
@@ -61,7 +60,7 @@ export function MascotBubble({
             <button
               type="button"
               onClick={onBack}
-              className={`font-body text-sm text-muted hover:text-white rounded-lg px-3 ${TOUCH_TARGET} ${FOCUS_RING}`}
+              className={`touch-target inline-flex items-center font-body text-sm text-muted hover:text-white rounded-lg ${FOCUS_RING}`}
             >
               back
             </button>
@@ -70,7 +69,7 @@ export function MascotBubble({
             <button
               type="button"
               onClick={onSkip}
-              className={`font-body text-sm text-muted hover:text-white rounded-lg px-3 ${TOUCH_TARGET} ${FOCUS_RING}`}
+              className={`touch-target inline-flex items-center font-body text-sm text-muted hover:text-white rounded-lg ${FOCUS_RING}`}
             >
               skip
             </button>
@@ -80,7 +79,7 @@ export function MascotBubble({
           type="button"
           onClick={primaryCta.onClick}
           autoFocus
-          className={`font-display tracking-wider text-base text-white bg-brand-orange hover:brightness-110 active:brightness-95 rounded-xl px-5 ${TOUCH_TARGET} ${FOCUS_RING}`}
+          className={`touch-target inline-flex items-center font-display tracking-wider text-base text-white bg-brand-orange hover:brightness-110 active:brightness-95 rounded-xl px-5 ${FOCUS_RING}`}
         >
           {primaryCta.label}
         </button>

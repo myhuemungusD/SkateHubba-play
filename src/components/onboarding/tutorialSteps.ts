@@ -13,8 +13,6 @@ export interface TutorialStep {
   id: string;
   title: string;
   bubble: string;
-  /** Encouraging copy shown if the user taps Skip from this step. */
-  skipMessage: string;
   /** CSS selector — when present, SpotlightOverlay highlights this element. */
   anchorSelector?: string;
   primaryCtaLabel: string;
@@ -27,14 +25,12 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     id: "welcome",
     title: "yo, welcome",
     bubble: "i'm Hubz. show you the park real quick?",
-    skipMessage: "no rush, the park's always open.",
     primaryCtaLabel: "let's go",
   },
   {
     id: "handle",
     title: "your tag",
     bubble: "pick a name. that's how everyone'll know you.",
-    skipMessage: "trip on it later — you can change this.",
     anchorSelector: '[data-tutorial="profile-form"]',
     primaryCtaLabel: "got it",
   },
@@ -42,7 +38,6 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     id: "challenge",
     title: "first session",
     bubble: "challenge a friend or hop in quickplay.",
-    skipMessage: "no friends yet? i'll be your first.",
     anchorSelector: '[data-tutorial="challenge-cta"]',
     primaryCtaLabel: "got it",
   },
@@ -50,7 +45,6 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     id: "record",
     title: "land your first trick",
     bubble: "tap record. land it. bails are part of it.",
-    skipMessage: "bailed? good. that means you tried.",
     anchorSelector: '[data-tutorial="record-button"]',
     primaryCtaLabel: "got it",
   },
@@ -58,7 +52,6 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     id: "celebrate",
     title: "you're in",
     bubble: "that's it. clean trick lands on the feed. catch you out there.",
-    skipMessage: "saved as a draft. send when you're ready.",
     primaryCtaLabel: "finish",
     isFinal: true,
   },

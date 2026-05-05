@@ -42,7 +42,6 @@ vi.mock("../../lib/sentry", () => {
 import {
   TUTORIAL_VERSION,
   getOnboardingState,
-  markOnboardingStarted,
   markOnboardingCompleted,
   markOnboardingSkipped,
   resetOnboarding,
@@ -259,50 +258,32 @@ describe("getOnboardingState", () => {
  * Write helpers (start, completed, skipped, reset)
  * ──────────────────────────────────────────── */
 
-describe("markOnboardingStarted", () => {
-  it("writes only the tutorialVersion with merge:true", async () => {
-    await markOnboardingStarted(UID);
-    expect(mockSetDoc).toHaveBeenCalledTimes(1);
-    const [ref, payload, options] = mockSetDoc.mock.calls[0];
-    expect((ref as { __path: string }).__path).toBe(`users/${UID}/private/profile`);
-    expect(payload).toEqual({ onboardingTutorialVersion: TUTORIAL_VERSION });
-    expect(options).toEqual({ merge: true });
-  });
-
-  it("is a no-op for an empty uid", async () => {
-    await markOnboardingStarted("");
-    expect(mockSetDoc).not.toHaveBeenCalled();
-  });
-
-  it("swallows write failures and reports to Sentry", async () => {
-    mockSetDoc.mockRejectedValueOnce(new Error("network down"));
-    await expect(markOnboardingStarted(UID)).resolves.toBeUndefined();
-    expect(mockSentry).toHaveBeenCalledWith(
-      expect.any(Error),
-      expect.objectContaining({ tags: { op: "markOnboardingStarted" } }),
-    );
-  });
-});
-
 describe("markOnboardingCompleted", () => {
   it("writes serverTimestamp() to completedAt and null to skippedAt", async () => {
     await markOnboardingCompleted(UID);
     expect(mockSetDoc).toHaveBeenCalledTimes(1);
-    expect(mockSetDoc.mock.calls[0][1]).toEqual({
+    const [ref, payload, options] = mockSetDoc.mock.calls[0];
+    expect((ref as { __path: string }).__path).toBe(`users/${UID}/private/profile`);
+    expect(payload).toEqual({
       onboardingTutorialVersion: TUTORIAL_VERSION,
       onboardingCompletedAt: "SERVER_TS",
       onboardingSkippedAt: null,
     });
+    expect(options).toEqual({ merge: true });
+  });
+
+  it("reports write failures to Sentry with the operation tag", async () => {
+    mockSetDoc.mockRejectedValueOnce(new Error("network down"));
+    await expect(markOnboardingCompleted(UID)).resolves.toBeUndefined();
+    expect(mockSentry).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({ tags: { op: "markOnboardingCompleted" } }),
+    );
   });
 
   it("is a no-op for an empty uid", async () => {
     await markOnboardingCompleted("");
     expect(mockSetDoc).not.toHaveBeenCalled();
-  });
-
-  it("swallows failures", async () => {
-    mockSetDoc.mockRejectedValueOnce(new Error("offline"));
-    await expect(markOnboardingCompleted(UID)).resolves.toBeUndefined();
   });
 });
 

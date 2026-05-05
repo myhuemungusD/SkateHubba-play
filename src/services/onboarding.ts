@@ -9,8 +9,8 @@
  *    We add three optional fields (onboardingTutorialVersion,
  *    onboardingCompletedAt, onboardingSkippedAt) — no rule change required.
  *
- * Three writes max per tour: optional start, then either skip or complete.
- * Bumping {@link TUTORIAL_VERSION} re-arms the tour for everyone.
+ * One write per tour: skip or complete. Bumping {@link TUTORIAL_VERSION}
+ * re-arms the tour for everyone.
  *
  * All writes are best-effort: failures are logged + reported to Sentry but
  * never thrown to the caller — UI keeps moving even if persistence fails so
@@ -141,12 +141,6 @@ async function safeWrite(uid: string, payload: Record<string, unknown>, op: stri
     logger.warn("onboarding_write_failed", { op, error: parseFirebaseError(err) });
     captureException(err, { tags: { op } });
   }
-}
-
-/** Idempotent — records that the tour has been started without setting timestamps. */
-export async function markOnboardingStarted(uid: string): Promise<void> {
-  if (!uid) return;
-  await safeWrite(uid, { onboardingTutorialVersion: TUTORIAL_VERSION }, "markOnboardingStarted");
 }
 
 export async function markOnboardingCompleted(uid: string): Promise<void> {

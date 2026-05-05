@@ -498,7 +498,6 @@ export function createBlockingServiceMocks(): BlockingServiceMocks {
 
 export interface OnboardingServiceRefs {
   getOnboardingState: Mock;
-  markOnboardingStarted: Mock;
   markOnboardingCompleted: Mock;
   markOnboardingSkipped: Mock;
   resetOnboarding: Mock;
@@ -522,7 +521,6 @@ export function createOnboardingServiceMocks(): OnboardingServiceMocks {
       completedAt: { seconds: 0, nanoseconds: 0 },
       skippedAt: null,
     }),
-    markOnboardingStarted: vi.fn().mockResolvedValue(undefined),
     markOnboardingCompleted: vi.fn().mockResolvedValue(undefined),
     markOnboardingSkipped: vi.fn().mockResolvedValue(undefined),
     resetOnboarding: vi.fn().mockResolvedValue(undefined),
@@ -535,7 +533,6 @@ export function createOnboardingServiceMocks(): OnboardingServiceMocks {
     module: {
       TUTORIAL_VERSION: 1,
       getOnboardingState: (...args: unknown[]) => refs.getOnboardingState(...args),
-      markOnboardingStarted: (...args: unknown[]) => refs.markOnboardingStarted(...args),
       markOnboardingCompleted: (...args: unknown[]) => refs.markOnboardingCompleted(...args),
       markOnboardingSkipped: (...args: unknown[]) => refs.markOnboardingSkipped(...args),
       resetOnboarding: (...args: unknown[]) => refs.resetOnboarding(...args),
