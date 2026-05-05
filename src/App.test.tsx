@@ -53,13 +53,13 @@ vi.mock("./services/blocking", () => ({
 }));
 
 vi.mock("./services/onboarding", () => ({
-  TUTORIAL_VERSION: 1,
+  TUTORIAL_VERSION: 2,
   // Default to "completed" so the OnboardingProvider does not render the tour
   // overlay across App-level integration tests. The dedicated coverage for
   // the tutorial flow lives under src/__tests__/smoke-onboarding.test.tsx
   // and src/components/onboarding/__tests__/.
   getOnboardingState: vi.fn().mockResolvedValue({
-    tutorialVersion: 1,
+    tutorialVersion: 2,
     completedAt: { seconds: 0, nanoseconds: 0 },
     skippedAt: null,
   }),
@@ -70,6 +70,9 @@ vi.mock("./services/onboarding", () => ({
   getLocalProgress: vi.fn().mockReturnValue(null),
   setLocalProgress: vi.fn(),
   clearLocalProgress: vi.fn(),
+  getLocalDismissed: vi.fn().mockReturnValue(false),
+  setLocalDismissed: vi.fn(),
+  clearLocalDismissed: vi.fn(),
 }));
 
 vi.mock("./services/analytics", () => ({

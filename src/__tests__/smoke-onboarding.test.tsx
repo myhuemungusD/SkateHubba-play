@@ -30,6 +30,7 @@ beforeEach(() => {
   // unless it overrides with mockResolvedValueOnce.
   onboarding.refs.getOnboardingState.mockResolvedValue(null);
   onboarding.refs.getLocalProgress.mockReturnValue(null);
+  onboarding.refs.getLocalDismissed.mockReturnValue(false);
 });
 
 const { renderVerifiedLobby } = createMockHelpers({
@@ -44,8 +45,10 @@ describe("Smoke: Onboarding tour", () => {
 
     // Welcome bubble appears once OnboardingProvider resolves the null state.
     const overlay = await screen.findByTestId("tutorial-overlay");
-    expect(overlay).toHaveAttribute("aria-modal", "true");
-    expect(screen.getByText(/i'm Hubz/i)).toBeInTheDocument();
+    // Coach mark is non-modal (tour points at controls but does not block them),
+    // so the dialog must NOT advertise itself as modal.
+    expect(overlay).not.toHaveAttribute("aria-modal");
+    expect(screen.getByText(/quick tour/i)).toBeInTheDocument();
     // stepLabel renders twice (visible decoration + sr-only inside the
     // aria-live region) so we assert via getAllByText rather than getByText.
     expect(screen.getAllByText(/Step 1 of 5/).length).toBeGreaterThan(0);
@@ -62,8 +65,8 @@ describe("Smoke: Onboarding tour", () => {
     await renderVerifiedLobby([]);
     await screen.findByTestId("tutorial-overlay");
 
-    // Step 1 → 2: "let's go"
-    await userEvent.click(screen.getByRole("button", { name: /let's go/i }));
+    // Step 1 → 2: "show me"
+    await userEvent.click(screen.getByRole("button", { name: /show me/i }));
     await waitFor(() => {
       expect(screen.getAllByText(/Step 2 of 5/).length).toBeGreaterThan(0);
     });
@@ -72,7 +75,7 @@ describe("Smoke: Onboarding tour", () => {
 
   it("does NOT show the tour for users who already completed it", async () => {
     onboarding.refs.getOnboardingState.mockResolvedValueOnce({
-      tutorialVersion: 1,
+      tutorialVersion: 2,
       completedAt: { seconds: 0, nanoseconds: 0 },
       skippedAt: null,
     });

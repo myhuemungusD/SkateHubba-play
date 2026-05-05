@@ -14,13 +14,16 @@ interface MascotBubbleProps {
 }
 
 const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
-const TOUCH_TARGET = "min-h-11 min-w-11";
+const TOUCH_TARGET = "min-h-10 min-w-10";
 
 /**
- * Speech-bubble UI for a single tutorial step. Owns the visible step label
- * + aria-live announcement, the mascot illustration, and the three actions
- * (back/skip/primary). The outer dialog framing lives in TutorialOverlay so
- * this component can be unit-tested in isolation.
+ * Compact chat-style coach bubble: small mascot on the left, message on the
+ * right, primary CTA + dismiss in a single tight row. Sized so it never
+ * dominates the viewport — the user keeps seeing the underlying app while
+ * the bubble speaks.
+ *
+ * The outer overlay (SpotlightOverlay) handles positioning & tap-outside
+ * dismissal so this component can be unit-tested in isolation.
  */
 export function MascotBubble({
   title,
@@ -36,51 +39,50 @@ export function MascotBubble({
 
   return (
     <div
-      className={`glass-card rounded-3xl px-6 pt-6 pb-safe max-w-md w-full ${enterAnim}`}
+      className={`glass-card rounded-2xl px-4 py-3 shadow-2xl ring-1 ring-brand-orange/20 ${enterAnim}`}
       data-testid="mascot-bubble"
     >
-      <div className="flex items-start gap-4">
-        <HubzMascot state={mascotState} className="w-20 h-20 shrink-0 text-brand-orange" />
+      <div className="flex items-start gap-3">
+        <HubzMascot state={mascotState} className="w-12 h-12 shrink-0 text-brand-orange" />
         <div className="flex-1 min-w-0">
-          <p className="font-body text-xs text-muted uppercase tracking-widest" aria-hidden="true">
-            {stepLabel}
-          </p>
-          <h2 id="onboarding-title" className="font-display text-xl text-white tracking-wider mt-1">
-            {title}
-          </h2>
-          <div className="mt-2" role="status" aria-live="polite">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 id="onboarding-title" className="font-display text-base text-white tracking-wide">
+              {title}
+            </h2>
+            <p className="font-body text-[10px] text-muted uppercase tracking-widest" aria-hidden="true">
+              {stepLabel}
+            </p>
+          </div>
+          <div className="mt-0.5" role="status" aria-live="polite">
             <span className="sr-only">{stepLabel}. </span>
-            <p className="font-body text-sm text-bright leading-relaxed">{message}</p>
+            <p className="font-body text-sm text-bright leading-snug">{message}</p>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between mt-6 gap-3">
-        <div className="flex items-center gap-2">
-          {onBack && (
-            <button
-              type="button"
-              onClick={onBack}
-              className={`font-body text-sm text-muted hover:text-white rounded-lg px-3 ${TOUCH_TARGET} ${FOCUS_RING}`}
-            >
-              back
-            </button>
-          )}
-          {onSkip && (
-            <button
-              type="button"
-              onClick={onSkip}
-              className={`font-body text-sm text-muted hover:text-white rounded-lg px-3 ${TOUCH_TARGET} ${FOCUS_RING}`}
-            >
-              skip
-            </button>
-          )}
-        </div>
+      <div className="flex items-center justify-end mt-3 gap-1">
+        {onSkip && (
+          <button
+            type="button"
+            onClick={onSkip}
+            className={`font-body text-xs text-muted hover:text-white rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
+          >
+            skip
+          </button>
+        )}
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className={`font-body text-xs text-muted hover:text-white rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
+          >
+            back
+          </button>
+        )}
         <button
           type="button"
           onClick={primaryCta.onClick}
-          autoFocus
-          className={`font-display tracking-wider text-base text-white bg-brand-orange hover:brightness-110 active:brightness-95 rounded-xl px-5 ${TOUCH_TARGET} ${FOCUS_RING}`}
+          className={`font-display tracking-wider text-sm text-white bg-brand-orange hover:brightness-110 active:brightness-95 rounded-lg px-4 ${TOUCH_TARGET} ${FOCUS_RING}`}
         >
           {primaryCta.label}
         </button>

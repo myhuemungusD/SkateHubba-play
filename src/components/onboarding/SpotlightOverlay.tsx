@@ -8,9 +8,11 @@ interface Rect {
 }
 
 interface SpotlightOverlayProps {
-  /** CSS selector of the element to highlight; if absent, the overlay is plain dim. */
+  /** CSS selector of the element to highlight; if absent, no ring is painted. */
   targetSelector?: string;
   reducedMotion: boolean;
+  /** Tap-on-backdrop handler. Called when the user taps anywhere outside the bubble. */
+  onBackdropTap?: () => void;
   children: ReactNode;
 }
 
@@ -25,16 +27,17 @@ function readRect(selector: string): Rect | null {
 }
 
 /**
- * Full-screen dim with an optional rectangular "cutout" highlighting a target
- * element. The cutout is faked via a thick 9999px box-shadow on a transparent
- * div so we don't need an SVG mask — keeps the implementation under 200 LOC
- * and works in every browser without compositing tricks.
+ * Non-blocking coach-mark frame: paints an optional pulsing ring around a
+ * target element and renders the bubble pinned to the bottom of the viewport.
+ * Unlike the previous full-screen modal treatment, the underlying app stays
+ * fully interactive — taps anywhere outside the bubble flow through to the
+ * page (and optionally fire `onBackdropTap` to dismiss the tour).
  *
- * The `inert` attribute is applied to #main-content while mounted so the
- * underlying app can't be clicked / tabbed into. Cleanup restores the prior
- * inert state on unmount, even if it was inert for unrelated reasons.
+ * Pokemon-Go-style: the user can keep using the app while the tour points at
+ * the relevant control. This means no `inert`, no focus trap, no
+ * `aria-modal` — those would all imply blocking the page.
  */
-export function SpotlightOverlay({ targetSelector, reducedMotion, children }: SpotlightOverlayProps) {
+export function SpotlightOverlay({ targetSelector, reducedMotion, onBackdropTap, children }: SpotlightOverlayProps) {
   const [rect, setRect] = useState<Rect | null>(null);
 
   useLayoutEffect(() => {
@@ -65,28 +68,35 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, children }: Sp
   }, [targetSelector]);
 
   // When the selector is removed, clear any previously-computed rect so the
-  // backdrop falls back to the plain dim.
+  // ring disappears.
   const effectiveRect = targetSelector ? rect : null;
 
-  // Lock the underlying app while the overlay is mounted so screen readers and
-  // keyboard users can't tab past the dialog. Mirrors the WAI-ARIA modal recipe.
+  // Backdrop tap-to-dismiss: a transparent layer sits behind the bubble and
+  // catches taps. Pointer-events stay off the rest of the overlay so the
+  // pulsing ring never steals input from the highlighted control.
   useEffect(() => {
-    const el = document.getElementById("main-content");
-    if (!el) return;
-    const prev = el.hasAttribute("inert");
-    el.setAttribute("inert", "");
-    return () => {
-      if (!prev) el.removeAttribute("inert");
+    if (!onBackdropTap) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      // Ignore clicks that originate inside the bubble itself or on the
+      // highlighted control — the user should be able to interact with the
+      // anchored element without dismissing the coach mark.
+      if (target.closest('[data-testid="mascot-bubble"]')) return;
+      if (targetSelector && target.closest(targetSelector)) return;
+      onBackdropTap();
     };
-  }, []);
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, [onBackdropTap, targetSelector]);
 
   const ringPulse = reducedMotion ? "" : "motion-safe:animate-pulse";
 
   return (
-    <div className="fixed inset-0 z-[60]" data-testid="spotlight-overlay">
-      {effectiveRect ? (
+    <div className="fixed inset-0 z-[60] pointer-events-none" data-testid="spotlight-overlay">
+      {effectiveRect && (
         <>
-          {/* Cutout: transparent rect with a huge outer shadow that paints the dim everywhere else */}
+          {/* Soft glow halo behind the ring for depth without dimming the page */}
           <div
             aria-hidden="true"
             data-testid="spotlight-cutout"
@@ -96,7 +106,7 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, children }: Sp
               left: effectiveRect.left,
               width: effectiveRect.width,
               height: effectiveRect.height,
-              boxShadow: "0 0 0 9999px rgba(0,0,0,0.72)",
+              boxShadow: "0 0 0 4px rgba(255, 107, 0, 0.18), 0 0 32px 8px rgba(255, 107, 0, 0.25)",
             }}
           />
           {/* Pulsing accent ring around the highlighted target */}
@@ -111,12 +121,13 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, children }: Sp
             }}
           />
         </>
-      ) : (
-        <div aria-hidden="true" className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
       )}
 
-      <div className="absolute inset-0 flex items-end sm:items-center justify-center px-4 pb-6 sm:pb-0 pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-md">{children}</div>
+      {/* Bubble pinned to bottom-center, above the bottom nav. pointer-events-auto
+          on the bubble itself so it's tappable; the surrounding layer stays
+          transparent so the rest of the page is fully interactable. */}
+      <div className="absolute inset-x-0 bottom-0 flex justify-center px-4 pb-safe pointer-events-none">
+        <div className="pointer-events-auto w-full max-w-md mb-20 sm:mb-6">{children}</div>
       </div>
     </div>
   );

@@ -5,6 +5,8 @@ import {
   getLocalProgress,
   setLocalProgress,
   clearLocalProgress,
+  getLocalDismissed,
+  setLocalDismissed,
   markOnboardingCompleted,
   markOnboardingSkipped,
   resetOnboarding,
@@ -51,30 +53,47 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
 
     let stale = false;
 
-    getOnboardingState(uid)
-      .then((state) => {
-        if (stale) return;
+    // The local dismissed flag is the device-local short-circuit. We still
+    // fetch from Firestore (cheap, picks up cross-device dismissals) but
+    // resolve via the local flag immediately if it's set — both paths set
+    // shouldShow=false so the tour never re-fires on a refresh.
+    const locallyDismissed = getLocalDismissed(uid);
 
-        // Treat the tour as "done" only when the recorded version matches the
-        // current TUTORIAL_VERSION. Bumping the constant resurfaces the tour
-        // for everyone with stale persisted state.
-        const versionMatches = state?.tutorialVersion === TUTORIAL_VERSION;
-        const alreadyDone = !!state && versionMatches && (state.completedAt !== null || state.skippedAt !== null);
+    const fetchPromise = locallyDismissed ? Promise.resolve(null) : getOnboardingState(uid).catch(() => "ERR" as const);
 
-        if (alreadyDone) {
-          setResolved({ fetchedFor: uid, shouldShow: false, currentStep: 0 });
-        } else {
-          const local = getLocalProgress(uid);
-          const restoredStep = local ? Math.min(Math.max(local.currentStep, 0), totalSteps - 1) : 0;
-          setResolved({ fetchedFor: uid, shouldShow: true, currentStep: restoredStep });
-        }
-      })
-      .catch(() => {
-        // getOnboardingState already swallows errors and returns null —
+    fetchPromise.then((stateOrErr) => {
+      if (stale) return;
+
+      if (locallyDismissed) {
+        setResolved({ fetchedFor: uid, shouldShow: false, currentStep: 0 });
+        return;
+      }
+
+      if (stateOrErr === "ERR") {
+        // getOnboardingState already swallows errors and returns null,
         // but defend against a future change in case it ever throws again.
-        if (stale) return;
         setResolved({ fetchedFor: uid, shouldShow: true, currentStep: 0 });
-      });
+        return;
+      }
+
+      const state = stateOrErr;
+      // Treat the tour as "done" only when the recorded version matches the
+      // current TUTORIAL_VERSION. Bumping the constant resurfaces the tour
+      // for everyone with stale persisted state.
+      const versionMatches = state?.tutorialVersion === TUTORIAL_VERSION;
+      const alreadyDone = !!state && versionMatches && (state.completedAt !== null || state.skippedAt !== null);
+
+      if (alreadyDone) {
+        // Mirror the Firestore "done" bit into localStorage so future loads
+        // on this device skip the network round-trip entirely.
+        setLocalDismissed(uid);
+        setResolved({ fetchedFor: uid, shouldShow: false, currentStep: 0 });
+      } else {
+        const local = getLocalProgress(uid);
+        const restoredStep = local ? Math.min(Math.max(local.currentStep, 0), totalSteps - 1) : 0;
+        setResolved({ fetchedFor: uid, shouldShow: true, currentStep: restoredStep });
+      }
+    });
 
     return () => {
       stale = true;
@@ -123,7 +142,11 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
   const skip = useCallback(async () => {
     setResolved((prev) => ({ ...prev, shouldShow: false }));
     if (!uid) return;
+    // Synchronous local writes BEFORE the async Firestore call — if the user
+    // closes the tab or the network drops, the device-local flag alone is
+    // enough to keep the tour from re-firing on reload.
     clearLocalProgress(uid);
+    setLocalDismissed(uid);
     await markOnboardingSkipped(uid);
   }, [uid]);
 
@@ -131,6 +154,7 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
     setResolved((prev) => ({ ...prev, shouldShow: false }));
     if (!uid) return;
     clearLocalProgress(uid);
+    setLocalDismissed(uid);
     await markOnboardingCompleted(uid);
   }, [uid]);
 

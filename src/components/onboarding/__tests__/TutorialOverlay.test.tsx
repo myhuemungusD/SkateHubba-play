@@ -43,10 +43,12 @@ describe("TutorialOverlay", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders the dialog framing with the current step copy", () => {
+  it("renders the non-modal coach mark with the current step copy", () => {
     render(<TutorialOverlay />);
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveAttribute("aria-modal", "true");
+    // Coach mark is intentionally non-modal (Pokemon Go style) so the
+    // underlying app stays interactive — aria-modal MUST NOT be set.
+    expect(dialog).not.toHaveAttribute("aria-modal");
     expect(dialog).toHaveAttribute("aria-labelledby", "onboarding-title");
     expect(screen.getByRole("heading", { name: TUTORIAL_STEPS[0].title })).toBeInTheDocument();
     expect(screen.getByText(TUTORIAL_STEPS[0].bubble)).toBeInTheDocument();

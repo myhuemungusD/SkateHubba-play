@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { SpotlightOverlay } from "../SpotlightOverlay";
 
 afterEach(() => {
@@ -21,30 +22,27 @@ function mountTarget(selectorAttr: string, rect: { top: number; left: number; wi
   return el;
 }
 
-function mountMain(): HTMLElement {
-  const main = document.createElement("main");
-  main.id = "main-content";
-  document.body.appendChild(main);
-  return main;
-}
-
-function renderOverlay(props: { targetSelector?: string; reducedMotion?: boolean } = {}) {
+function renderOverlay(props: { targetSelector?: string; reducedMotion?: boolean; onBackdropTap?: () => void } = {}) {
   return render(
-    <SpotlightOverlay targetSelector={props.targetSelector} reducedMotion={props.reducedMotion ?? false}>
-      <div>tutorial body</div>
+    <SpotlightOverlay
+      targetSelector={props.targetSelector}
+      reducedMotion={props.reducedMotion ?? false}
+      onBackdropTap={props.onBackdropTap}
+    >
+      <div data-testid="mascot-bubble">tutorial body</div>
     </SpotlightOverlay>,
   );
 }
 
 describe("SpotlightOverlay", () => {
-  it("renders the dim backdrop and centered children when no targetSelector is provided", () => {
+  it("renders the overlay frame and bubble children with no ring when no target is given", () => {
     renderOverlay();
     expect(screen.getByTestId("spotlight-overlay")).toBeInTheDocument();
     expect(screen.getByText("tutorial body")).toBeInTheDocument();
     expect(screen.queryByTestId("spotlight-cutout")).toBeNull();
   });
 
-  it("computes and renders the cutout rect when targetSelector resolves", async () => {
+  it("computes and renders the highlight rect when targetSelector resolves", async () => {
     mountTarget("challenge-cta", { top: 100, left: 50, width: 200, height: 60 });
     renderOverlay({ targetSelector: '[data-tutorial="challenge-cta"]' });
     // The initial measurement is rAF-deferred to keep setState off the
@@ -57,39 +55,47 @@ describe("SpotlightOverlay", () => {
     expect(cutout.style.height).toBe("76px");
   });
 
-  it("falls back to the plain dim backdrop when the selector matches an element with zero size", () => {
+  it("does NOT paint a highlight when the selector matches an element with zero size", () => {
     mountTarget("ghost", { top: 0, left: 0, width: 0, height: 0 });
     renderOverlay({ targetSelector: '[data-tutorial="ghost"]' });
     expect(screen.queryByTestId("spotlight-cutout")).toBeNull();
   });
 
-  it("falls back when selector matches nothing", () => {
+  it("does NOT paint a highlight when selector matches nothing", () => {
     renderOverlay({ targetSelector: '[data-tutorial="missing"]' });
     expect(screen.queryByTestId("spotlight-cutout")).toBeNull();
   });
 
-  it("sets inert on #main-content while mounted and removes it on unmount", () => {
-    const main = mountMain();
-    expect(main.hasAttribute("inert")).toBe(false);
-    const { unmount } = renderOverlay();
-    expect(main.hasAttribute("inert")).toBe(true);
-    unmount();
-    expect(main.hasAttribute("inert")).toBe(false);
+  it("is non-blocking (pointer-events none on the root frame so the page stays interactive)", () => {
+    renderOverlay();
+    const overlay = screen.getByTestId("spotlight-overlay");
+    expect(overlay.className).toContain("pointer-events-none");
   });
 
-  it("preserves a pre-existing inert attribute on #main-content across unmount", () => {
-    const main = mountMain();
-    main.setAttribute("inert", "");
-    const { unmount } = renderOverlay();
-    expect(main.hasAttribute("inert")).toBe(true);
-    unmount();
-    expect(main.hasAttribute("inert")).toBe(true);
+  it("invokes onBackdropTap when the user clicks outside the bubble and target", async () => {
+    const onBackdropTap = vi.fn();
+    renderOverlay({ onBackdropTap });
+    // Click on a stray element outside the bubble.
+    const stray = document.createElement("button");
+    stray.textContent = "stray";
+    document.body.appendChild(stray);
+    await userEvent.click(stray);
+    expect(onBackdropTap).toHaveBeenCalledTimes(1);
   });
 
-  it("does nothing inert-wise when #main-content is not present in the DOM", () => {
-    const { unmount } = renderOverlay();
-    // Should mount + unmount without throwing
-    expect(() => unmount()).not.toThrow();
+  it("does NOT invoke onBackdropTap when the user clicks inside the bubble", async () => {
+    const onBackdropTap = vi.fn();
+    renderOverlay({ onBackdropTap });
+    await userEvent.click(screen.getByTestId("mascot-bubble"));
+    expect(onBackdropTap).not.toHaveBeenCalled();
+  });
+
+  it("does NOT invoke onBackdropTap when the user clicks the highlighted target itself", async () => {
+    const target = mountTarget("zone", { top: 0, left: 0, width: 50, height: 50 });
+    const onBackdropTap = vi.fn();
+    renderOverlay({ targetSelector: '[data-tutorial="zone"]', onBackdropTap });
+    await userEvent.click(target);
+    expect(onBackdropTap).not.toHaveBeenCalled();
   });
 
   it("registers and cleans up resize/scroll listeners", () => {
