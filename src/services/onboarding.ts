@@ -1,0 +1,195 @@
+/**
+ * Onboarding tutorial service.
+ *
+ * Hybrid persistence model:
+ *  - localStorage holds in-progress step state (currentStep + seenSteps) so
+ *    advancing/backing up between steps is instantaneous and offline-safe.
+ *  - Firestore holds the COMPLETION bit on the existing private subcollection
+ *    `users/{uid}/private/profile`, which is owner-locked by firestore.rules.
+ *    We add three optional fields (onboardingTutorialVersion,
+ *    onboardingCompletedAt, onboardingSkippedAt) — no rule change required.
+ *
+ * Three writes max per tour: optional start, then either skip or complete.
+ * Bumping {@link TUTORIAL_VERSION} re-arms the tour for everyone.
+ *
+ * All writes are best-effort: failures are logged + reported to Sentry but
+ * never thrown to the caller — UI keeps moving even if persistence fails so
+ * a transient permission-denied or network blip doesn't strand the user.
+ */
+
+import { doc, getDoc, serverTimestamp, setDoc, type Timestamp } from "firebase/firestore";
+import { requireDb } from "../firebase";
+import { logger } from "./logger";
+import { captureException } from "../lib/sentry";
+import { parseFirebaseError } from "../utils/helpers";
+import { PRIVATE_PROFILE_DOC_ID } from "./users";
+
+/**
+ * Bump this when the tutorial copy/flow changes meaningfully — every user
+ * with a stale `onboardingTutorialVersion` will see the tour again on next
+ * sign-in. Local progress is namespaced by version too, so old in-progress
+ * state from a previous version is ignored automatically.
+ */
+export const TUTORIAL_VERSION = 1 as const;
+
+export interface OnboardingState {
+  tutorialVersion: number | null;
+  completedAt: Timestamp | null;
+  skippedAt: Timestamp | null;
+}
+
+export interface LocalOnboardingProgress {
+  tutorialVersion: number;
+  currentStep: number;
+  seenSteps: number[];
+}
+
+/* ────────────────────────────────────────────
+ * localStorage helpers
+ * ──────────────────────────────────────────── */
+
+function localKey(uid: string): string {
+  return `skatehubba.onboarding.v${TUTORIAL_VERSION}.${uid}`;
+}
+
+function isLocalProgress(v: unknown): v is LocalOnboardingProgress {
+  if (!v || typeof v !== "object") return false;
+  const obj = v as Record<string, unknown>;
+  return (
+    typeof obj.tutorialVersion === "number" &&
+    typeof obj.currentStep === "number" &&
+    Array.isArray(obj.seenSteps) &&
+    obj.seenSteps.every((s) => typeof s === "number")
+  );
+}
+
+export function getLocalProgress(uid: string): LocalOnboardingProgress | null {
+  if (!uid) return null;
+  try {
+    const raw = window.localStorage.getItem(localKey(uid));
+    if (raw === null) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isLocalProgress(parsed)) return null;
+    if (parsed.tutorialVersion !== TUTORIAL_VERSION) return null;
+    return parsed;
+  } catch (err) {
+    logger.warn("onboarding_local_read_failed", { error: parseFirebaseError(err) });
+    return null;
+  }
+}
+
+export function setLocalProgress(uid: string, p: LocalOnboardingProgress): void {
+  if (!uid) return;
+  try {
+    window.localStorage.setItem(localKey(uid), JSON.stringify(p));
+  } catch (err) {
+    logger.warn("onboarding_local_write_failed", { error: parseFirebaseError(err) });
+  }
+}
+
+export function clearLocalProgress(uid: string): void {
+  if (!uid) return;
+  try {
+    window.localStorage.removeItem(localKey(uid));
+  } catch (err) {
+    logger.warn("onboarding_local_clear_failed", { error: parseFirebaseError(err) });
+  }
+}
+
+/* ────────────────────────────────────────────
+ * Firestore reads/writes
+ * ──────────────────────────────────────────── */
+
+function privateProfileRef(uid: string) {
+  return doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID);
+}
+
+function isTimestamp(v: unknown): v is Timestamp {
+  return !!v && typeof v === "object" && typeof (v as { toDate?: unknown }).toDate === "function";
+}
+
+/**
+ * Read the persisted completion state. Returns null if the doc is missing,
+ * the read fails, or none of the onboarding fields are set yet — callers
+ * treat null as "tour not yet completed".
+ */
+export async function getOnboardingState(uid: string): Promise<OnboardingState | null> {
+  if (!uid) return null;
+  try {
+    const snap = await getDoc(privateProfileRef(uid));
+    if (!snap.exists()) return null;
+    const data = snap.data();
+    const tutorialVersion = typeof data.onboardingTutorialVersion === "number" ? data.onboardingTutorialVersion : null;
+    const completedAt = isTimestamp(data.onboardingCompletedAt) ? data.onboardingCompletedAt : null;
+    const skippedAt = isTimestamp(data.onboardingSkippedAt) ? data.onboardingSkippedAt : null;
+    if (tutorialVersion === null && completedAt === null && skippedAt === null) return null;
+    return { tutorialVersion, completedAt, skippedAt };
+  } catch (err) {
+    logger.warn("onboarding_read_failed", { error: parseFirebaseError(err) });
+    captureException(err, { tags: { op: "getOnboardingState" } });
+    return null;
+  }
+}
+
+async function safeWrite(uid: string, payload: Record<string, unknown>, op: string): Promise<void> {
+  try {
+    await setDoc(privateProfileRef(uid), payload, { merge: true });
+  } catch (err) {
+    // Persistence failures are non-blocking — the UI continues regardless so
+    // a flaky network never strands the user mid-tour. Sentry captures the
+    // failure for ops visibility.
+    logger.warn("onboarding_write_failed", { op, error: parseFirebaseError(err) });
+    captureException(err, { tags: { op } });
+  }
+}
+
+/** Idempotent — records that the tour has been started without setting timestamps. */
+export async function markOnboardingStarted(uid: string): Promise<void> {
+  if (!uid) return;
+  await safeWrite(uid, { onboardingTutorialVersion: TUTORIAL_VERSION }, "markOnboardingStarted");
+}
+
+export async function markOnboardingCompleted(uid: string): Promise<void> {
+  if (!uid) return;
+  await safeWrite(
+    uid,
+    {
+      onboardingTutorialVersion: TUTORIAL_VERSION,
+      onboardingCompletedAt: serverTimestamp(),
+      onboardingSkippedAt: null,
+    },
+    "markOnboardingCompleted",
+  );
+}
+
+export async function markOnboardingSkipped(uid: string): Promise<void> {
+  if (!uid) return;
+  await safeWrite(
+    uid,
+    {
+      onboardingTutorialVersion: TUTORIAL_VERSION,
+      onboardingCompletedAt: null,
+      onboardingSkippedAt: serverTimestamp(),
+    },
+    "markOnboardingSkipped",
+  );
+}
+
+/**
+ * Wipe both server and local persistence — used by Settings → "replay tour".
+ * After this, the next mount of useOnboarding will see no completion state
+ * and surface the tour from step 0.
+ */
+export async function resetOnboarding(uid: string): Promise<void> {
+  if (!uid) return;
+  clearLocalProgress(uid);
+  await safeWrite(
+    uid,
+    {
+      onboardingTutorialVersion: null,
+      onboardingCompletedAt: null,
+      onboardingSkippedAt: null,
+    },
+    "resetOnboarding",
+  );
+}
