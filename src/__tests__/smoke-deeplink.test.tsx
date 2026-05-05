@@ -12,7 +12,7 @@
  * auth user must render the requested screen, not bounce.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen, waitFor, type RenderResult } from "@testing-library/react";
+import { act, render, screen, type RenderResult } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import App from "../App";
 import { verifiedUser, testProfile } from "./smoke-helpers";
@@ -42,12 +42,20 @@ async function renderAt(initialPath: string): Promise<RenderResult> {
       </MemoryRouter>,
     );
   });
-  // Wait for the React.lazy() Suspense boundary to settle so the assertions
-  // inspect the final route, not the loading spinner.
-  await waitFor(() => {
-    expect(screen.queryByRole("status", { name: "Loading" })).not.toBeInTheDocument();
-  });
+  // Wait for the persistent BottomNav to mount — it only renders on the
+  // four authed primary screens (lobby/map/record/player), so its presence
+  // confirms the route resolved past the Suspense fallback. Asserting on a
+  // route-agnostic readiness signal (rather than the global "Loading"
+  // spinner) keeps the helper insensitive to per-screen status overlays
+  // (e.g. MapPage's "Loading map" while tiles initialize).
+  await screen.findByRole("navigation", { name: "Primary navigation" });
   return result;
+}
+
+/** Returns the screen name marked as the active bottom-nav tab. */
+function activeNavTab(): string | null {
+  const link = document.querySelector('a[aria-current="page"]');
+  return link?.getAttribute("aria-label") ?? null;
 }
 
 describe("Smoke: direct-URL deep-linking", () => {
@@ -63,31 +71,25 @@ describe("Smoke: direct-URL deep-linking", () => {
 
   it("loads /record directly without bouncing to /lobby", async () => {
     await renderAt("/record");
-    // PlayerProfileScreen renders its own layout — assert on something the
-    // lobby does NOT render so a stray bounce-to-lobby would fail loud.
-    await waitFor(() => {
-      expect(screen.queryByText("Your Games")).not.toBeInTheDocument();
-    });
+    // The "Me" tab being active proves NavigationContext resolved the URL
+    // to the record screen rather than bouncing through /profile → /lobby.
+    expect(activeNavTab()).toBe("Me");
   });
 
   it("loads /map directly without bouncing to /lobby", async () => {
     await renderAt("/map");
-    // The map screen renders Mapbox-based UI; we just verify we didn't get
-    // routed to the lobby's "Your Games" header.
-    await waitFor(() => {
-      expect(screen.queryByText("Your Games")).not.toBeInTheDocument();
-    });
+    expect(activeNavTab()).toBe("Map");
   });
 
   it("loads /player/:uid directly without bouncing to /lobby", async () => {
     await renderAt("/player/u2");
-    await waitFor(() => {
-      expect(screen.queryByText("Your Games")).not.toBeInTheDocument();
-    });
+    // BottomNav's matchPaths config lights up "Me" for /player/* deep links.
+    expect(activeNavTab()).toBe("Me");
   });
 
   it("loads /lobby directly and renders the lobby", async () => {
     await renderAt("/lobby");
+    expect(activeNavTab()).toBe("Home");
     expect(await screen.findByText("Your Games")).toBeInTheDocument();
   });
 });
