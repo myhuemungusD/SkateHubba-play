@@ -464,10 +464,11 @@ service cloud.firestore {
            // anchor, a setter could point currentTrickVideoUrl at any HTTP
            // origin — exfiltrating viewer IPs via referrer/preconnect, or
            // serving NSFW/malicious media inside the matcher's recorder UI.
-           // Firebase Storage download URLs are served from
-           // firebasestorage.googleapis.com (legacy) and firebasestorage.app
-           // (current default). Both are in scope; nothing else is.
-           && request.resource.data.currentTrickVideoUrl.matches('^https://firebasestorage\\.(googleapis\\.com|app)/.+'))
+           // Mirrors the client-side `isFirebaseStorageUrl` helper
+           // (src/utils/helpers.ts): the legacy
+           // firebasestorage.googleapis.com host (literal) and the newer
+           // bucket-as-subdomain *.firebasestorage.app host.
+           && request.resource.data.currentTrickVideoUrl.matches('^https://(firebasestorage\\.googleapis\\.com|[^/]+\\.firebasestorage\\.app)/.+'))
           // setting → setting (setter failed to land, turn passes to opponent)
           //   • currentSetter MUST flip to the other player (the whole point of
           //     failSetTrick is the role passes) — this is the invariant the
