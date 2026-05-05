@@ -59,6 +59,7 @@ export function BottomNav() {
                   to={path}
                   aria-current={active ? "page" : undefined}
                   aria-label={item.label}
+                  data-tutorial={item.screen === "record" ? "record-button" : undefined}
                   className={`group relative w-full flex flex-col items-center justify-center gap-1 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
                     active
                       ? "text-brand-orange"
