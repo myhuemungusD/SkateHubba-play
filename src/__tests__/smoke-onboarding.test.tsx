@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createMockHelpers } from "./smoke-helpers";
+import { createMockHelpers, renderApp, verifiedUser } from "./smoke-helpers";
 
 /* ── Hoisted mocks ──────────────────────────── */
 // Mirrors the smoke-* harness so the same App boot sequence runs end-to-end.
@@ -90,5 +90,26 @@ describe("Smoke: Onboarding tour", () => {
     });
     await renderVerifiedLobby([]);
     expect(await screen.findByTestId("tutorial-overlay")).toBeInTheDocument();
+  });
+
+  it("does NOT render the tour while a brand-new user is still on /profile", async () => {
+    // Signed-in user with NO active profile yet — they're on /profile
+    // creating their account. The tour must not fire here, otherwise a
+    // skip/complete would write fields to users/{uid}/private/profile that
+    // the subsequent createProfile transaction would clobber.
+    auth.refs.useAuth.mockReturnValue({
+      loading: false,
+      user: verifiedUser,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    games.refs.subscribeToMyGames.mockImplementation(() => () => {});
+    await renderApp();
+
+    // Wait long enough for any racing onboarding fetch to resolve.
+    await waitFor(() => {
+      expect(onboarding.refs.getOnboardingState).not.toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId("tutorial-overlay")).not.toBeInTheDocument();
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { SpotlightOverlay } from "../SpotlightOverlay";
 
 afterEach(() => {
@@ -44,10 +44,12 @@ describe("SpotlightOverlay", () => {
     expect(screen.queryByTestId("spotlight-cutout")).toBeNull();
   });
 
-  it("computes and renders the cutout rect when targetSelector resolves", () => {
+  it("computes and renders the cutout rect when targetSelector resolves", async () => {
     mountTarget("challenge-cta", { top: 100, left: 50, width: 200, height: 60 });
     renderOverlay({ targetSelector: '[data-tutorial="challenge-cta"]' });
-    const cutout = screen.getByTestId("spotlight-cutout") as HTMLElement;
+    // The initial measurement is rAF-deferred to keep setState off the
+    // synchronous effect path — wait for the next frame before asserting.
+    const cutout = (await screen.findByTestId("spotlight-cutout")) as HTMLElement;
     // 8px padding is added on every side, see PADDING constant in source
     expect(cutout.style.top).toBe("92px");
     expect(cutout.style.left).toBe("42px");
@@ -107,11 +109,14 @@ describe("SpotlightOverlay", () => {
     removeSpy.mockRestore();
   });
 
-  it("drops the pulsing ring animation class when reducedMotion=true", () => {
+  it("drops the pulsing ring animation class when reducedMotion=true", async () => {
     mountTarget("z", { top: 0, left: 0, width: 10, height: 10 });
     const { container } = renderOverlay({ targetSelector: '[data-tutorial="z"]', reducedMotion: true });
+    // Initial measurement is rAF-deferred — wait for the ring to mount.
+    await waitFor(() => {
+      expect(container.querySelectorAll("div.border-brand-orange").length).toBe(1);
+    });
     const rings = container.querySelectorAll("div.border-brand-orange");
-    expect(rings.length).toBe(1);
     expect(rings[0].className).not.toContain("animate-pulse");
   });
 });

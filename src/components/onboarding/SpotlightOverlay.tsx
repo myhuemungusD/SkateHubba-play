@@ -40,12 +40,25 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, children }: Sp
   useLayoutEffect(() => {
     if (!targetSelector) return;
 
-    const update = () => setRect(readRect(targetSelector));
+    // rAF-coalesce scroll/resize so multiple events per frame trigger a
+    // single getBoundingClientRect (forced layout) + setState. Otherwise
+    // every scroll tick on low-end mobile would stutter the overlay. The
+    // initial measurement is also deferred to rAF so we never call setState
+    // synchronously inside the effect body (react-hooks/set-state-in-effect).
+    let rafId = 0;
+    const update = () => {
+      if (rafId !== 0) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        setRect(readRect(targetSelector));
+      });
+    };
     update();
 
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, { passive: true, capture: true });
     return () => {
+      if (rafId !== 0) cancelAnimationFrame(rafId);
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, { capture: true });
     };

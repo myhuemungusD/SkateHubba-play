@@ -93,6 +93,17 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
     [uid],
   );
 
+  // The localStorage write is intentionally inside the setResolved updater so
+  // it observes the SAME `prev` the state machine just transitioned from —
+  // critical for double-click correctness: a second advance() before React
+  // re-renders sees prev=1 (queued from the first call) and computes 2,
+  // keeping persisted state and React state in lockstep. Pulling persistStep
+  // out into the closure body would capture a stale `resolved.currentStep`
+  // and silently desync.
+  //
+  // Under React StrictMode the updater can run twice with the same prev,
+  // which would write the same value twice — harmless because the writes
+  // are idempotent (same key, same JSON payload).
   const advance = useCallback(() => {
     setResolved((prev) => {
       const next = Math.min(prev.currentStep + 1, totalSteps - 1);
