@@ -4,10 +4,24 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // `vi.fn()` default while letting tests assign any return value or rejection.
 type AnyMock = (...args: unknown[]) => unknown;
 type OnSnapshotImpl = (q: unknown, cb: (snap: unknown) => void, onError?: (err: Error) => void) => () => void;
-const mockAddDoc = vi.fn<AnyMock>(() => Promise.resolve({ id: "notif1" }));
-const mockSetDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
+type BatchSetCall = { ref: unknown; data: unknown };
+const batchSetCalls: BatchSetCall[] = [];
+const mockBatchCommit = vi.fn<AnyMock>(() => Promise.resolve(undefined));
+const mockBatchSet = vi.fn<AnyMock>((ref: unknown, data: unknown) => {
+  batchSetCalls.push({ ref, data });
+});
+const mockWriteBatch = vi.fn<AnyMock>(() => ({
+  set: mockBatchSet,
+  commit: mockBatchCommit,
+}));
 const mockCollection = vi.fn((...args: unknown[]) => args[1]);
-const mockDoc = vi.fn((...args: unknown[]) => args);
+// doc(collectionRef) (single arg) returns a stub auto-id ref so we can detect
+// the notification doc; doc(db, "notification_limits", id) (3 args) returns the
+// path string so assertions can grep for the limit doc.
+const mockDoc = vi.fn((...args: unknown[]) => {
+  if (args.length === 1) return { auto: true, parent: args[0] };
+  return args;
+});
 const mockUpdateDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
 const mockDeleteDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
 const mockGetDocs = vi.fn<AnyMock>();
@@ -21,9 +35,7 @@ const mockOrderBy = vi.fn((...args: unknown[]) => args);
 const mockLimit = vi.fn((...args: unknown[]) => args);
 
 vi.mock("firebase/firestore", () => ({
-  addDoc: (...args: unknown[]) => mockAddDoc(...args),
   collection: (...args: unknown[]) => mockCollection(...args),
-  setDoc: (...args: unknown[]) => mockSetDoc(...args),
   doc: (...args: unknown[]) => mockDoc(...args),
   serverTimestamp: () => "SERVER_TS",
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
@@ -34,6 +46,7 @@ vi.mock("firebase/firestore", () => ({
   where: (...args: unknown[]) => mockWhere(...args),
   orderBy: (...args: unknown[]) => mockOrderBy(...args),
   limit: (...args: unknown[]) => mockLimit(...args),
+  writeBatch: (...args: unknown[]) => mockWriteBatch(...args),
 }));
 
 vi.mock("../../firebase");
@@ -50,11 +63,22 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  batchSetCalls.length = 0;
   _resetNotificationRateLimit();
 });
 
+function findLimitSet(): BatchSetCall | undefined {
+  // doc(db, "notification_limits", "...") returns the args array via the mock,
+  // so we identify the limit-doc batch.set call by the second arg ("notification_limits").
+  return batchSetCalls.find((c) => Array.isArray(c.ref) && (c.ref as unknown[])[1] === "notification_limits");
+}
+
+function findNotificationSet(): BatchSetCall | undefined {
+  return batchSetCalls.find((c) => !Array.isArray(c.ref));
+}
+
 describe("writeNotification", () => {
-  it("writes a notification doc with senderUid to the notifications collection", async () => {
+  it("commits a notification + limit doc atomically in a single writeBatch", async () => {
     await writeNotification({
       senderUid: "sender456",
       recipientUid: "user123",
@@ -64,8 +88,13 @@ describe("writeNotification", () => {
       gameId: "game456",
     });
 
-    expect(mockAddDoc).toHaveBeenCalledTimes(1);
-    const docData = mockAddDoc.mock.calls[0][1] as Record<string, unknown>;
+    expect(mockWriteBatch).toHaveBeenCalledTimes(1);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+    expect(mockBatchSet).toHaveBeenCalledTimes(2);
+
+    const notifSet = findNotificationSet();
+    expect(notifSet).toBeDefined();
+    const docData = notifSet!.data as Record<string, unknown>;
     expect(docData.senderUid).toBe("sender456");
     expect(docData.recipientUid).toBe("user123");
     expect(docData.type).toBe("your_turn");
@@ -76,7 +105,7 @@ describe("writeNotification", () => {
     expect(docData.createdAt).toBe("SERVER_TS");
   });
 
-  it("writes rate-limit doc after successful notification", async () => {
+  it("includes the matching notification_limits doc in the same batch", async () => {
     await writeNotification({
       senderUid: "sender456",
       recipientUid: "user123",
@@ -86,17 +115,18 @@ describe("writeNotification", () => {
       gameId: "game456",
     });
 
-    expect(mockSetDoc).toHaveBeenCalledTimes(1);
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "notification_limits", "sender456_game456_your_turn");
-    const limitData = mockSetDoc.mock.calls[0][1] as Record<string, unknown>;
+    const limitSet = findLimitSet();
+    expect(limitSet).toBeDefined();
+    const limitData = limitSet!.data as Record<string, unknown>;
     expect(limitData.senderUid).toBe("sender456");
     expect(limitData.gameId).toBe("game456");
     expect(limitData.type).toBe("your_turn");
     expect(limitData.lastSentAt).toBe("SERVER_TS");
   });
 
-  it("does not throw when addDoc fails", async () => {
-    mockAddDoc.mockRejectedValueOnce(new Error("Firestore unavailable"));
+  it("does not throw when batch commit fails", async () => {
+    mockBatchCommit.mockRejectedValueOnce(new Error("Firestore unavailable"));
     await expect(
       writeNotification({
         senderUid: "sender456",
@@ -109,33 +139,17 @@ describe("writeNotification", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("does not write rate-limit doc when addDoc fails", async () => {
-    mockAddDoc.mockRejectedValueOnce(new Error("Firestore unavailable"));
-    await writeNotification({
+  // Shared between rate-limit assertions to keep the cases parametrized
+  // and avoid the test-duplication gate flagging copy/paste params blocks.
+  const yourTurnParams = () =>
+    ({
       senderUid: "sender456",
       recipientUid: "user123",
-      type: "game_won",
-      title: "You Won!",
-      body: "vs @bob",
-      gameId: "game789",
-    });
-
-    expect(mockSetDoc).not.toHaveBeenCalled();
-  });
-
-  it("does not throw when rate-limit setDoc fails", async () => {
-    mockSetDoc.mockRejectedValueOnce(new Error("setDoc failed"));
-    await expect(
-      writeNotification({
-        senderUid: "sender456",
-        recipientUid: "user123",
-        type: "your_turn",
-        title: "Your Turn!",
-        body: "Match trick",
-        gameId: "game456",
-      }),
-    ).resolves.toBeUndefined();
-  });
+      type: "your_turn" as const,
+      title: "Your Turn!",
+      body: "Match trick",
+      gameId: "game456",
+    }) as const;
 
   describe("client-side rate limiting", () => {
     beforeEach(() => {
@@ -147,41 +161,25 @@ describe("writeNotification", () => {
     });
 
     it("skips duplicate notification within 5s cooldown", async () => {
-      const params = {
-        senderUid: "sender456",
-        recipientUid: "user123",
-        type: "your_turn" as const,
-        title: "Your Turn!",
-        body: "Match trick",
-        gameId: "game456",
-      };
-
+      const params = yourTurnParams();
       await writeNotification(params);
-      expect(mockAddDoc).toHaveBeenCalledTimes(1);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
 
       // Second call within cooldown — should be silently skipped
       await writeNotification(params);
-      expect(mockAddDoc).toHaveBeenCalledTimes(1);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
     });
 
     it("allows notification after cooldown expires", async () => {
-      const params = {
-        senderUid: "sender456",
-        recipientUid: "user123",
-        type: "your_turn" as const,
-        title: "Your Turn!",
-        body: "Match trick",
-        gameId: "game456",
-      };
-
+      const params = yourTurnParams();
       await writeNotification(params);
-      expect(mockAddDoc).toHaveBeenCalledTimes(1);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
 
       // Advance past the 5s cooldown
       vi.advanceTimersByTime(5_001);
 
       await writeNotification(params);
-      expect(mockAddDoc).toHaveBeenCalledTimes(2);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(2);
     });
 
     it("allows different game+type combos concurrently", async () => {
@@ -203,27 +201,20 @@ describe("writeNotification", () => {
         gameId: "game789",
       });
 
-      expect(mockAddDoc).toHaveBeenCalledTimes(2);
+      expect(mockBatchCommit).toHaveBeenCalledTimes(2);
     });
   });
 
   it("_resetNotificationRateLimit clears rate-limit state", async () => {
-    const params = {
-      senderUid: "sender456",
-      recipientUid: "user123",
-      type: "your_turn" as const,
-      title: "Your Turn!",
-      body: "Match trick",
-      gameId: "game456",
-    };
+    const params = yourTurnParams();
 
     await writeNotification(params);
-    expect(mockAddDoc).toHaveBeenCalledTimes(1);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
 
     // Reset and call again — should allow through
     _resetNotificationRateLimit();
     await writeNotification(params);
-    expect(mockAddDoc).toHaveBeenCalledTimes(2);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(2);
   });
 });
 
