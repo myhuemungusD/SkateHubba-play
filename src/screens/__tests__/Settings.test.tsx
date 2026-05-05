@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { Settings } from "../Settings";
 import { NotificationProvider } from "../../context/NotificationContext";
 import type { UserProfile } from "../../services/users";
@@ -96,7 +97,14 @@ const profile: UserProfile = {
 };
 
 function wrap(ui: ReactNode) {
-  return <NotificationProvider uid="me">{ui}</NotificationProvider>;
+  // MemoryRouter satisfies <Link>'s required Router context — Settings now
+  // uses react-router Links for /privacy, /terms, /data-deletion (replacing
+  // plain <a> that triggered a full reload and dropped SPA state).
+  return (
+    <MemoryRouter>
+      <NotificationProvider uid="me">{ui}</NotificationProvider>
+    </MemoryRouter>
+  );
 }
 
 function setPermission(value: NotificationPermission) {

@@ -25,6 +25,10 @@ interface ImportMetaEnv {
   readonly VITE_FIREBASE_VAPID_KEY?: string;
   readonly VITE_FIREBASE_MEASUREMENT_ID?: string;
   readonly VITE_RECAPTCHA_SITE_KEY?: string;
+  /** Opt-in switch for App Check enforcement. Parsed by zod in src/lib/env.ts;
+   *  declared here so direct `import.meta.env.VITE_APPCHECK_ENABLED` reads
+   *  remain typed. Keep in sync with src/lib/env.ts. */
+  readonly VITE_APPCHECK_ENABLED?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;

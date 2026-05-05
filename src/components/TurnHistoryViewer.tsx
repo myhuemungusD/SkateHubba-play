@@ -1,4 +1,4 @@
-import { useState, useCallback, memo } from "react";
+import { useState, useCallback, useEffect, useRef, memo } from "react";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
@@ -150,6 +150,22 @@ export const TurnHistoryViewer = memo(function TurnHistoryViewer({
 
 function DownloadBtn({ url, filename }: { url: string; filename: string }) {
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "failed">("idle");
+  // Track the pending status-reset timer so an unmount mid-download (e.g.
+  // user taps "Rematch" between save and the 2s reset) doesn't fire
+  // setState on an unmounted component.
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    },
+    [],
+  );
+
+  const scheduleReset = () => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = setTimeout(() => setStatus("idle"), 2000);
+  };
 
   const handleDownload = async () => {
     setStatus("saving");
@@ -165,11 +181,11 @@ function DownloadBtn({ url, filename }: { url: string; filename: string }) {
       // Delay revocation so the browser has time to start the download
       setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
       setStatus("saved");
-      setTimeout(() => setStatus("idle"), 2000);
+      scheduleReset();
     } catch (err) {
       captureException(err, { extra: { context: "DownloadBtn", url, filename } });
       setStatus("failed");
-      setTimeout(() => setStatus("idle"), 2000);
+      scheduleReset();
     }
   };
 
@@ -200,6 +216,20 @@ function DownloadBtn({ url, filename }: { url: string; filename: string }) {
 
 function ShareBtn({ url, trickName, context }: { url: string; trickName: string; context: string }) {
   const [status, setStatus] = useState<"idle" | "sharing" | "shared" | "failed">("idle");
+  // Same unmount-safety pattern as DownloadBtn.
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    },
+    [],
+  );
+
+  const scheduleReset = () => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = setTimeout(() => setStatus("idle"), 2000);
+  };
 
   const handleShare = useCallback(async () => {
     setStatus("sharing");
@@ -231,11 +261,11 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
         trackEvent("clip_shared", { method: "clipboard", context });
       }
       setStatus("shared");
-      setTimeout(() => setStatus("idle"), 2000);
+      scheduleReset();
     } catch (err) {
       captureException(err, { extra: { context: "ShareBtn", url, trickName } });
       setStatus("failed");
-      setTimeout(() => setStatus("idle"), 2000);
+      scheduleReset();
     }
   }, [url, trickName, context]);
 
