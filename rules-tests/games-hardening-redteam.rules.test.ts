@@ -225,8 +225,20 @@ describe("games update — currentTrickVideoUrl host pin (setting→matching bra
     await assertSucceeds(updateDoc(gameRef(asP1()), setTrickUpdate(VALID_TRICK_URL)));
   });
 
-  it("permits a firebasestorage.app URL (newer default host)", async () => {
+  it("permits a <bucket>.firebasestorage.app URL (newer default host carries the bucket as subdomain)", async () => {
     await seedSettingGameOwnedByP1();
     await assertSucceeds(updateDoc(gameRef(asP1()), setTrickUpdate("https://test.firebasestorage.app/clip.webm")));
+  });
+
+  it("rejects bare firebasestorage.app (no bucket subdomain — apex could be parked/repurposed)", async () => {
+    await seedSettingGameOwnedByP1();
+    await assertFails(updateDoc(gameRef(asP1()), setTrickUpdate("https://firebasestorage.app/clip.webm")));
+  });
+
+  it("rejects a host that merely embeds firebasestorage.app as a substring", async () => {
+    // e.g. attacker registers `firebasestorage.app.evil.com` and counts on a
+    // sloppy regex matching anywhere in the hostname. The pin must anchor.
+    await seedSettingGameOwnedByP1();
+    await assertFails(updateDoc(gameRef(asP1()), setTrickUpdate("https://firebasestorage.app.evil.com/clip.webm")));
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { getLeaderboard, type UserProfile } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { ProUsername } from "./ProUsername";
@@ -17,6 +17,15 @@ export function Leaderboard({
   const [players, setPlayers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Mounted-state flag shared by the initial mount and the retry handler so a
+  // late resolve (slow network) never calls setState on an unmounted view.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // Single loader used by both initial mount and the error-state retry. The
   // retry MUST apply the blocked-user filter — otherwise a transient error
@@ -58,9 +67,15 @@ export function Leaderboard({
             setError("");
             setLoading(true);
             loadLeaderboard()
-              .then(setPlayers)
-              .catch(() => setError("Could not load leaderboard"))
-              .finally(() => setLoading(false));
+              .then((filtered) => {
+                if (mountedRef.current) setPlayers(filtered);
+              })
+              .catch(() => {
+                if (mountedRef.current) setError("Could not load leaderboard");
+              })
+              .finally(() => {
+                if (mountedRef.current) setLoading(false);
+              });
           }}
           className="font-body text-xs text-brand-orange mt-2 underline underline-offset-2"
         >
