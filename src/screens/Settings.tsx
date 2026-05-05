@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { UserProfile } from "../services/users";
 import { getUserProfile } from "../services/users";
 import { unblockUser } from "../services/blocking";
@@ -478,24 +479,24 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
         {/* Legal */}
         <SectionHeader title="LEGAL" />
         <div className="space-y-2">
-          <a
-            href="/privacy"
+          <Link
+            to="/privacy"
             className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             <p className="font-display text-sm text-white tracking-wide">Privacy Policy</p>
-          </a>
-          <a
-            href="/terms"
+          </Link>
+          <Link
+            to="/terms"
             className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             <p className="font-display text-sm text-white tracking-wide">Terms of Service</p>
-          </a>
-          <a
-            href="/data-deletion"
+          </Link>
+          <Link
+            to="/data-deletion"
             className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             <p className="font-display text-sm text-white tracking-wide">Data Deletion</p>
-          </a>
+          </Link>
         </div>
 
         {/* Brand watermark */}

@@ -141,7 +141,7 @@ describe("games — red-team regression guards on game state", () => {
       updateDoc(doc(asP1().firestore(), "games", GAME_ID), {
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://example.com/set.webm",
+        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
         currentTurn: P2_UID,
         turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
         updatedAt: serverTimestamp(),
