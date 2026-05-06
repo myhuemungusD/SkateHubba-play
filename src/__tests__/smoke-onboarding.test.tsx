@@ -87,7 +87,7 @@ describe("Smoke: Onboarding tour", () => {
 
   it("re-arms the tour when a new tutorial version supersedes a stale completion", async () => {
     onboarding.refs.getOnboardingState.mockResolvedValueOnce({
-      tutorialVersion: 0, // older than current TUTORIAL_VERSION = 1
+      tutorialVersion: 0, // older than current TUTORIAL_VERSION (see services/onboarding.ts)
       completedAt: { seconds: 0, nanoseconds: 0 },
       skippedAt: null,
     });

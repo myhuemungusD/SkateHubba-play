@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 interface Rect {
   top: number;
@@ -39,6 +39,7 @@ function readRect(selector: string): Rect | null {
  */
 export function SpotlightOverlay({ targetSelector, reducedMotion, onBackdropTap, children }: SpotlightOverlayProps) {
   const [rect, setRect] = useState<Rect | null>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     if (!targetSelector) return;
@@ -77,13 +78,15 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, onBackdropTap,
   useEffect(() => {
     if (!onBackdropTap) return;
     const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
+      const target = e.target as Node | null;
       if (!target) return;
       // Ignore clicks that originate inside the bubble itself or on the
       // highlighted control — the user should be able to interact with the
-      // anchored element without dismissing the coach mark.
-      if (target.closest('[data-testid="mascot-bubble"]')) return;
-      if (targetSelector && target.closest(targetSelector)) return;
+      // anchored element without dismissing the coach mark. Hit-testing the
+      // bubble via the wrapper ref keeps production behavior independent of
+      // any data-testid hooks the bubble carries for tests.
+      if (bubbleRef.current?.contains(target)) return;
+      if (targetSelector && target instanceof Element && target.closest(targetSelector)) return;
       onBackdropTap();
     };
     document.addEventListener("click", handler);
@@ -127,7 +130,9 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, onBackdropTap,
           on the bubble itself so it's tappable; the surrounding layer stays
           transparent so the rest of the page is fully interactable. */}
       <div className="absolute inset-x-0 bottom-0 flex justify-center px-4 pb-safe pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-md mb-20 sm:mb-6">{children}</div>
+        <div ref={bubbleRef} className="pointer-events-auto w-full max-w-md mb-20 sm:mb-6">
+          {children}
+        </div>
       </div>
     </div>
   );
