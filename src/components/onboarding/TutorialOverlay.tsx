@@ -57,8 +57,16 @@ export function TutorialOverlay() {
   const showBack = currentStep > 0;
   const showConfetti = isFinal && !reducedMotion;
 
+  // The dialog wrapper used to be `display: contents`, but some AT
+  // combinations drop `display: contents` nodes from the accessibility tree —
+  // which would silently strip the dialog role and label. Use a regular block
+  // element instead. The children inside are all `position: fixed`, so this
+  // wrapper has zero intrinsic layout impact, but it survives in the a11y
+  // tree so screen readers reliably announce the coach mark as a dialog —
+  // and the labelling MascotBubble (inside SpotlightOverlay) stays inside
+  // the dialog subtree so aria-labelledby resolves correctly.
   return (
-    <div role="dialog" aria-labelledby="onboarding-title" data-testid="tutorial-overlay" className="contents">
+    <div role="dialog" aria-labelledby="onboarding-title" data-testid="tutorial-overlay">
       <SpotlightOverlay
         targetSelector={step.anchorSelector}
         reducedMotion={reducedMotion}

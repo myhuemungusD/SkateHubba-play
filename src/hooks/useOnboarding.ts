@@ -53,26 +53,24 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
 
     let stale = false;
 
-    // The local dismissed flag is the device-local short-circuit. We still
-    // fetch from Firestore (cheap, picks up cross-device dismissals) but
-    // resolve via the local flag immediately if it's set — both paths set
-    // shouldShow=false so the tour never re-fires on a refresh.
+    // We trust local-dismissed AS WELL AS Firestore: either signal alone is
+    // enough to keep the tour hidden. This protects against the original bug
+    // (Firestore write never landed — closed tab, network drop, permission
+    // blip) while still respecting the server. We always fetch Firestore so
+    // a positive "already done" record from another device still mirrors
+    // into local. The only way to "resurrect" the tour after a dismissal is
+    // a TUTORIAL_VERSION bump (intentional copy refresh) or an explicit
+    // resetOnboarding from THIS device — both clear the local flag too.
     const locallyDismissed = getLocalDismissed(uid);
-
-    const fetchPromise = locallyDismissed ? Promise.resolve(null) : getOnboardingState(uid).catch(() => "ERR" as const);
+    const fetchPromise = getOnboardingState(uid).catch(() => "ERR" as const);
 
     fetchPromise.then((stateOrErr) => {
       if (stale) return;
 
-      if (locallyDismissed) {
-        setResolved({ fetchedFor: uid, shouldShow: false, currentStep: 0 });
-        return;
-      }
-
       if (stateOrErr === "ERR") {
-        // getOnboardingState already swallows errors and returns null,
-        // but defend against a future change in case it ever throws again.
-        setResolved({ fetchedFor: uid, shouldShow: true, currentStep: 0 });
+        // Network/permission failure. Trust local — if we know the user
+        // dismissed here, keep the tour hidden; otherwise default to showing.
+        setResolved({ fetchedFor: uid, shouldShow: !locallyDismissed, currentStep: 0 });
         return;
       }
 
@@ -83,10 +81,10 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
       const versionMatches = state?.tutorialVersion === TUTORIAL_VERSION;
       const alreadyDone = !!state && versionMatches && (state.completedAt !== null || state.skippedAt !== null);
 
-      if (alreadyDone) {
-        // Mirror the Firestore "done" bit into localStorage so future loads
-        // on this device skip the network round-trip entirely.
-        setLocalDismissed(uid);
+      if (alreadyDone || locallyDismissed) {
+        // Mirror an authoritative "done" bit from the server into local so
+        // a subsequent network failure still lands on shouldShow=false.
+        if (alreadyDone) setLocalDismissed(uid);
         setResolved({ fetchedFor: uid, shouldShow: false, currentStep: 0 });
       } else {
         const local = getLocalProgress(uid);

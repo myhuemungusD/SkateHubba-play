@@ -8,6 +8,7 @@ const {
   mockClearLocalProgress,
   mockGetLocalDismissed,
   mockSetLocalDismissed,
+  mockClearLocalDismissed,
   mockMarkOnboardingCompleted,
   mockMarkOnboardingSkipped,
   mockResetOnboarding,
@@ -18,6 +19,7 @@ const {
   mockClearLocalProgress: vi.fn(),
   mockGetLocalDismissed: vi.fn(),
   mockSetLocalDismissed: vi.fn(),
+  mockClearLocalDismissed: vi.fn(),
   mockMarkOnboardingCompleted: vi.fn().mockResolvedValue(undefined),
   mockMarkOnboardingSkipped: vi.fn().mockResolvedValue(undefined),
   mockResetOnboarding: vi.fn().mockResolvedValue(undefined),
@@ -31,6 +33,7 @@ vi.mock("../../services/onboarding", () => ({
   clearLocalProgress: mockClearLocalProgress,
   getLocalDismissed: mockGetLocalDismissed,
   setLocalDismissed: mockSetLocalDismissed,
+  clearLocalDismissed: mockClearLocalDismissed,
   markOnboardingCompleted: mockMarkOnboardingCompleted,
   markOnboardingSkipped: mockMarkOnboardingSkipped,
   resetOnboarding: mockResetOnboarding,
@@ -100,14 +103,24 @@ describe("useOnboarding", () => {
     expect(result.current.shouldShow).toBe(true);
   });
 
-  it("hides the tour synchronously when the local dismissed flag is set (no Firestore round-trip)", async () => {
+  it("hides the tour when the local dismissed flag is set even if the server returns null (write-flake guard)", async () => {
+    // The original bug: user clicks skip, the Firestore write hadn't yet
+    // committed when they closed the tab. Next mount, Firestore returns null
+    // → without the local flag the tour would resurrect. We trust local here
+    // so the dismiss is sticky even when the network was flaky.
     mockGetLocalDismissed.mockReturnValue(true);
+    mockGetOnboardingState.mockResolvedValueOnce(null);
     const { result } = renderHook(() => useOnboarding("u1", TOTAL_STEPS));
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.shouldShow).toBe(false);
-    // Whole point of the local flag: skip the network call when we already
-    // know the user dismissed on this device.
-    expect(mockGetOnboardingState).not.toHaveBeenCalled();
+  });
+
+  it("trusts the local dismissed flag when the Firestore fetch errors (offline-correct)", async () => {
+    mockGetLocalDismissed.mockReturnValue(true);
+    mockGetOnboardingState.mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useOnboarding("u1", TOTAL_STEPS));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.shouldShow).toBe(false);
   });
 
   it("mirrors a Firestore 'done' state into the local dismissed flag", async () => {

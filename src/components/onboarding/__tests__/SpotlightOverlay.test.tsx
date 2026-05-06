@@ -29,7 +29,12 @@ function renderOverlay(props: { targetSelector?: string; reducedMotion?: boolean
       reducedMotion={props.reducedMotion ?? false}
       onBackdropTap={props.onBackdropTap}
     >
-      <div data-testid="mascot-bubble">tutorial body</div>
+      {/* data-coach-bubble is the runtime attribute SpotlightOverlay reads to
+          decide whether a click is "inside the bubble" — keep test fixture
+          aligned with production markup. */}
+      <div data-testid="mascot-bubble" data-coach-bubble="">
+        tutorial body
+      </div>
     </SpotlightOverlay>,
   );
 }

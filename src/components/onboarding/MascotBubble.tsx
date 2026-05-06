@@ -14,7 +14,9 @@ interface MascotBubbleProps {
 }
 
 const FOCUS_RING = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
-const TOUCH_TARGET = "min-h-10 min-w-10";
+// Apple HIG mandates 44pt minimum tap targets — keep the buttons hit-friendly
+// even though the visual chrome is compact.
+const TOUCH_TARGET = "min-h-11 min-w-11";
 
 /**
  * Compact chat-style coach bubble: small mascot on the left, message on the
@@ -41,6 +43,10 @@ export function MascotBubble({
     <div
       className={`glass-card rounded-2xl px-4 py-3 shadow-2xl ring-1 ring-brand-orange/20 ${enterAnim}`}
       data-testid="mascot-bubble"
+      // Runtime hook (separate from the test id) used by SpotlightOverlay's
+      // backdrop-tap detection so a future build plugin that strips test ids
+      // can't break dismissal behavior.
+      data-coach-bubble=""
     >
       <div className="flex items-start gap-3">
         <HubzMascot state={mascotState} className="w-12 h-12 shrink-0 text-brand-orange" />

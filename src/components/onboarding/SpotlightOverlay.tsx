@@ -81,8 +81,11 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, onBackdropTap,
       if (!target) return;
       // Ignore clicks that originate inside the bubble itself or on the
       // highlighted control — the user should be able to interact with the
-      // anchored element without dismissing the coach mark.
-      if (target.closest('[data-testid="mascot-bubble"]')) return;
+      // anchored element without dismissing the coach mark. We key off a
+      // dedicated `data-coach-bubble` attribute (NOT data-testid) so a
+      // future build plugin that strips test ids in production cannot
+      // accidentally route bubble clicks to the dismissal handler.
+      if (target.closest("[data-coach-bubble]")) return;
       if (targetSelector && target.closest(targetSelector)) return;
       onBackdropTap();
     };
