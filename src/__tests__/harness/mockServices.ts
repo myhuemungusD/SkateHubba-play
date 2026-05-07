@@ -498,7 +498,7 @@ export function createBlockingServiceMocks(): BlockingServiceMocks {
 
 export interface OnboardingServiceRefs {
   getOnboardingState: Mock;
-  markOnboardingStarted: Mock;
+  subscribeToOnboardingState: Mock;
   markOnboardingCompleted: Mock;
   markOnboardingSkipped: Mock;
   resetOnboarding: Mock;
@@ -516,16 +516,21 @@ export interface OnboardingServiceMocks {
 }
 
 export function createOnboardingServiceMocks(): OnboardingServiceMocks {
+  // Default seed: subscribeToOnboardingState fires once with a "completed"
+  // state so smoke tests that don't care about onboarding never see the
+  // tour overlay. Tests that DO care override via the refs.
   const refs: OnboardingServiceRefs = {
-    // Default: returns a "completed" state so the tour does not auto-render
-    // in smoke tests that don't care about onboarding. Tests that DO care
-    // override via refs.getOnboardingState.mockResolvedValueOnce(null).
     getOnboardingState: vi.fn().mockResolvedValue({
       tutorialVersion: 2,
       completedAt: { seconds: 0, nanoseconds: 0 },
       skippedAt: null,
     }),
-    markOnboardingStarted: vi.fn().mockResolvedValue(undefined),
+    subscribeToOnboardingState: vi.fn(
+      (_uid: string, cb: (state: { tutorialVersion: number; completedAt: unknown; skippedAt: null }) => void) => {
+        cb({ tutorialVersion: 2, completedAt: { seconds: 0, nanoseconds: 0 }, skippedAt: null });
+        return () => undefined;
+      },
+    ),
     markOnboardingCompleted: vi.fn().mockResolvedValue(undefined),
     markOnboardingSkipped: vi.fn().mockResolvedValue(undefined),
     resetOnboarding: vi.fn().mockResolvedValue(undefined),
@@ -541,7 +546,7 @@ export function createOnboardingServiceMocks(): OnboardingServiceMocks {
     module: {
       TUTORIAL_VERSION: 2,
       getOnboardingState: (...args: unknown[]) => refs.getOnboardingState(...args),
-      markOnboardingStarted: (...args: unknown[]) => refs.markOnboardingStarted(...args),
+      subscribeToOnboardingState: (...args: unknown[]) => refs.subscribeToOnboardingState(...args),
       markOnboardingCompleted: (...args: unknown[]) => refs.markOnboardingCompleted(...args),
       markOnboardingSkipped: (...args: unknown[]) => refs.markOnboardingSkipped(...args),
       resetOnboarding: (...args: unknown[]) => refs.resetOnboarding(...args),

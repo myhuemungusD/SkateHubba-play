@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import { Z_TUTORIAL_OVERLAY } from "./constants";
+import { logger } from "../../services/logger";
 
 interface Rect {
   top: number;
@@ -11,12 +13,18 @@ interface SpotlightOverlayProps {
   /** CSS selector of the element to highlight; if absent, no ring is painted. */
   targetSelector?: string;
   reducedMotion: boolean;
-  /** Tap-on-backdrop handler. Called when the user taps anywhere outside the bubble. */
-  onBackdropTap?: () => void;
+  /**
+   * Fires when an `IntersectionObserver` confirms the resolved target hasn't
+   * intersected the viewport within {@link ANCHOR_TIMEOUT_MS}. Caller should
+   * silently advance the tour past this step rather than render a ringless
+   * bubble pointing at empty space.
+   */
+  onAnchorMissing?: () => void;
   children: ReactNode;
 }
 
 const PADDING = 8;
+const ANCHOR_TIMEOUT_MS = 1500;
 
 function readRect(selector: string): Rect | null {
   const el = document.querySelector(selector);
@@ -31,13 +39,14 @@ function readRect(selector: string): Rect | null {
  * target element and renders the bubble pinned to the bottom of the viewport.
  * Unlike the previous full-screen modal treatment, the underlying app stays
  * fully interactive — taps anywhere outside the bubble flow through to the
- * page (and optionally fire `onBackdropTap` to dismiss the tour).
+ * page (dismissal is exposed as an explicit close affordance on the bubble
+ * itself; see {@link MascotBubble}).
  *
  * Pokemon-Go-style: the user can keep using the app while the tour points at
  * the relevant control. This means no `inert`, no focus trap, no
  * `aria-modal` — those would all imply blocking the page.
  */
-export function SpotlightOverlay({ targetSelector, reducedMotion, onBackdropTap, children }: SpotlightOverlayProps) {
+export function SpotlightOverlay({ targetSelector, reducedMotion, onAnchorMissing, children }: SpotlightOverlayProps) {
   const [rect, setRect] = useState<Rect | null>(null);
 
   useLayoutEffect(() => {
@@ -58,45 +67,67 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, onBackdropTap,
     };
     update();
 
+    // The exact same options object is passed to add and remove so the
+    // listener is reliably torn down. Browsers compare the `capture` flag
+    // when matching add/remove pairs — a mismatch here would silently leak
+    // the listener across tour-step transitions.
+    const scrollOptions: AddEventListenerOptions = { passive: true, capture: true };
     window.addEventListener("resize", update);
-    window.addEventListener("scroll", update, { passive: true, capture: true });
+    window.addEventListener("scroll", update, scrollOptions);
     return () => {
       if (rafId !== 0) cancelAnimationFrame(rafId);
       window.removeEventListener("resize", update);
-      window.removeEventListener("scroll", update, { capture: true });
+      window.removeEventListener("scroll", update, scrollOptions);
     };
   }, [targetSelector]);
+
+  // Anchor-missing watchdog: when a step targets a selector that doesn't
+  // intersect the viewport within ANCHOR_TIMEOUT_MS, fire the callback so the
+  // orchestrator can silently advance past this step. Avoids painting a
+  // ringless bubble pointing at an off-screen / DOM-detached control.
+  useEffect(() => {
+    if (!targetSelector || !onAnchorMissing) return;
+    const el = document.querySelector(targetSelector);
+    if (!(el instanceof HTMLElement)) {
+      logger.warn("tutorial_step_anchor_missing", { reason: "no-element", selector: targetSelector });
+      onAnchorMissing();
+      return;
+    }
+    let intersected = false;
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          intersected = true;
+          io.disconnect();
+          return;
+        }
+      }
+    });
+    io.observe(el);
+    const timer = window.setTimeout(() => {
+      if (intersected) return;
+      io.disconnect();
+      logger.warn("tutorial_step_anchor_missing", { reason: "no-intersect", selector: targetSelector });
+      onAnchorMissing();
+    }, ANCHOR_TIMEOUT_MS);
+    return () => {
+      io.disconnect();
+      window.clearTimeout(timer);
+    };
+  }, [targetSelector, onAnchorMissing]);
 
   // When the selector is removed, clear any previously-computed rect so the
   // ring disappears.
   const effectiveRect = targetSelector ? rect : null;
 
-  // Backdrop tap-to-dismiss: a transparent layer sits behind the bubble and
-  // catches taps. Pointer-events stay off the rest of the overlay so the
-  // pulsing ring never steals input from the highlighted control.
-  useEffect(() => {
-    if (!onBackdropTap) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      // Ignore clicks that originate inside the bubble itself or on the
-      // highlighted control — the user should be able to interact with the
-      // anchored element without dismissing the coach mark. We key off a
-      // dedicated `data-coach-bubble` attribute (NOT data-testid) so a
-      // future build plugin that strips test ids in production cannot
-      // accidentally route bubble clicks to the dismissal handler.
-      if (target.closest("[data-coach-bubble]")) return;
-      if (targetSelector && target.closest(targetSelector)) return;
-      onBackdropTap();
-    };
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [onBackdropTap, targetSelector]);
-
   const ringPulse = reducedMotion ? "" : "motion-safe:animate-pulse";
 
   return (
-    <div className="fixed inset-0 z-[60] pointer-events-none" data-testid="spotlight-overlay">
+    <div
+      className="fixed inset-0 pointer-events-none"
+      style={{ zIndex: Z_TUTORIAL_OVERLAY }}
+      data-testid="spotlight-overlay"
+    >
       {effectiveRect && (
         <>
           {/* Soft glow halo behind the ring for depth without dimming the page */}

@@ -692,3 +692,51 @@ input:-webkit-autofill {
     background-position: 200% center;
   }
 }
+
+/* ── Onboarding tour transitions ─────────────────────────
+ * stencil-wipe: a brief clip-path reveal used between tour steps so the
+ * incoming bubble eases in from the left like a spray-can stencil rather
+ * than swapping abruptly. Pure clip-path so it composites on the GPU and
+ * never delays the underlying step advance.
+ * graffiti-drip: one-shot drip-paint motion used on the final celebrate
+ * step so the awarded "S" lands like a tag on the corner of the screen.
+ * Both animations are gated by motion-safe at the call site so users with
+ * prefers-reduced-motion never see them.
+ */
+@keyframes stencil-wipe {
+  from {
+    clip-path: inset(0 100% 0 0);
+    opacity: 0.4;
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+    opacity: 1;
+  }
+}
+
+.animate-stencil-wipe {
+  animation: stencil-wipe 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes graffiti-drip {
+  0% {
+    transform: translateY(-12px) scale(0.85);
+    opacity: 0;
+  }
+  40% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(4px) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(8px) scale(1);
+    opacity: 0.9;
+  }
+}
+
+.animate-graffiti-drip {
+  animation: graffiti-drip 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}

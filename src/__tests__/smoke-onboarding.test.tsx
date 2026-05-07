@@ -29,6 +29,10 @@ beforeEach(() => {
   // so each test starts with the same "fresh user, no completion" baseline
   // unless it overrides with mockResolvedValueOnce.
   onboarding.refs.getOnboardingState.mockResolvedValue(null);
+  onboarding.refs.subscribeToOnboardingState.mockImplementation((_uid: string, cb: (s: unknown) => void) => {
+    cb(null);
+    return () => undefined;
+  });
   onboarding.refs.getLocalProgress.mockReturnValue(null);
   onboarding.refs.getLocalDismissed.mockReturnValue(false);
 });
@@ -65,19 +69,24 @@ describe("Smoke: Onboarding tour", () => {
     await renderVerifiedLobby([]);
     await screen.findByTestId("tutorial-overlay");
 
-    // Step 1 → 2: "show me"
+    // Step 1 ("welcome") has no anchor and screen=null so it always renders.
+    // Clicking "show me" advances; step 2 ("your tag") targets a selector
+    // that lives on the /profile screen (not /lobby), so the anchor-missing
+    // watchdog will silently advance past it. We assert the next visible
+    // step lands on a heading whose anchor exists on the lobby (challenge
+    // or record).
     await userEvent.click(screen.getByRole("button", { name: /show me/i }));
     await waitFor(() => {
-      expect(screen.getAllByText(/Step 2 of 5/).length).toBeGreaterThan(0);
+      // Anchor-missing watchdog has up to 1500ms — give the assertion room.
+      const headings = screen.queryAllByRole("heading");
+      expect(headings.some((h) => /start a session|land it/i.test(h.textContent ?? ""))).toBe(true);
     });
-    expect(screen.getByRole("heading", { name: /your tag/i })).toBeInTheDocument();
   });
 
   it("does NOT show the tour for users who already completed it", async () => {
-    onboarding.refs.getOnboardingState.mockResolvedValueOnce({
-      tutorialVersion: 2,
-      completedAt: { seconds: 0, nanoseconds: 0 },
-      skippedAt: null,
+    onboarding.refs.subscribeToOnboardingState.mockImplementation((_uid: string, cb: (s: unknown) => void) => {
+      cb({ tutorialVersion: 2, completedAt: { seconds: 0, nanoseconds: 0 }, skippedAt: null });
+      return () => undefined;
     });
     await renderVerifiedLobby([]);
     // Lobby content renders normally; the overlay never appears.
@@ -86,10 +95,9 @@ describe("Smoke: Onboarding tour", () => {
   });
 
   it("re-arms the tour when a new tutorial version supersedes a stale completion", async () => {
-    onboarding.refs.getOnboardingState.mockResolvedValueOnce({
-      tutorialVersion: 0, // older than current TUTORIAL_VERSION = 1
-      completedAt: { seconds: 0, nanoseconds: 0 },
-      skippedAt: null,
+    onboarding.refs.subscribeToOnboardingState.mockImplementation((_uid: string, cb: (s: unknown) => void) => {
+      cb({ tutorialVersion: 0, completedAt: { seconds: 0, nanoseconds: 0 }, skippedAt: null });
+      return () => undefined;
     });
     await renderVerifiedLobby([]);
     expect(await screen.findByTestId("tutorial-overlay")).toBeInTheDocument();
@@ -111,7 +119,7 @@ describe("Smoke: Onboarding tour", () => {
 
     // Wait long enough for any racing onboarding fetch to resolve.
     await waitFor(() => {
-      expect(onboarding.refs.getOnboardingState).not.toHaveBeenCalled();
+      expect(onboarding.refs.subscribeToOnboardingState).not.toHaveBeenCalled();
     });
     expect(screen.queryByTestId("tutorial-overlay")).not.toBeInTheDocument();
   });

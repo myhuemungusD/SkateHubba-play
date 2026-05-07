@@ -1,8 +1,10 @@
 import { useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
 import { useOnboardingContext } from "../../context/OnboardingContext";
 import { TUTORIAL_STEPS } from "./tutorialSteps";
 import { MascotBubble } from "./MascotBubble";
 import { SpotlightOverlay } from "./SpotlightOverlay";
+import { Z_TUTORIAL_OVERLAY } from "./constants";
 import type { HubzState } from "./HubzMascot";
 
 const CONFETTI = ["🤘", "🛹", "✨"] as const;
@@ -14,9 +16,23 @@ function mascotStateForStep(stepIndex: number, isFinal: boolean): HubzState {
 }
 
 /**
+ * True when the focus target is something that should swallow text-entry
+ * keyboard input (Enter/Space) — used to skip the tour-advance shortcut so
+ * a user filling out a profile form isn't yanked into the next step on
+ * their first space-bar press.
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+  if (target.isContentEditable) return true;
+  return false;
+}
+
+/**
  * Top-level orchestrator for the non-blocking onboarding tour. Reads the
  * machine state out of OnboardingContext and renders nothing when the tour
- * is dismissed or still loading.
+ * is dismissed, paused (off-screen), or still loading.
  *
  * Unlike a modal dialog, this overlay does NOT trap focus, set `inert`, or
  * mark itself `aria-modal` — the underlying app stays fully interactive
@@ -28,20 +44,59 @@ export function TutorialOverlay() {
   const { loading, shouldShow, currentStep, totalSteps, advance, back, skip, complete, reducedMotion } =
     useOnboardingContext();
 
-  const step = TUTORIAL_STEPS[currentStep];
+  // Defense-in-depth bounds check: the hook clamps but a TUTORIAL_VERSION
+  // bump that shrinks the step count could leave a stale persisted index
+  // briefly out of range.
+  const inRange = currentStep >= 0 && currentStep < TUTORIAL_STEPS.length;
+  const step = inRange ? TUTORIAL_STEPS[currentStep] : undefined;
   const isFinal = step?.isFinal === true;
 
   useEffect(() => {
-    if (loading || !shouldShow) return;
+    if (loading || !shouldShow || !step) return;
     const handleKey = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target ?? document.activeElement)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         void skip();
+        return;
+      }
+      // Enter / Space mirror the primary CTA. Final step routes to complete()
+      // instead of advance() so the celebration fires on keyboard exit too.
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        if (isFinal) void complete();
+        else advance();
       }
     };
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
-  }, [loading, shouldShow, skip]);
+  }, [loading, shouldShow, step, isFinal, skip, advance, complete]);
+
+  // Android hardware-back: gate on Capacitor.isNativePlatform() so the
+  // listener never registers on web. We listen for `popstate` since the
+  // Capacitor WebView translates the hardware Back gesture into a popstate
+  // event by default — pushing a sentinel state lets us detect and absorb
+  // the press instead of letting the WebView navigate away mid-tour.
+  useEffect(() => {
+    if (loading || !shouldShow || !step) return;
+    if (!Capacitor.isNativePlatform()) return;
+    const SENTINEL = "tutorial-back";
+    try {
+      window.history.pushState({ [SENTINEL]: true }, "");
+    } catch {
+      /* sandboxed history APIs — best-effort */
+    }
+    const handler = (e: PopStateEvent) => {
+      // Absorb the back press by skipping the tour. We don't push a fresh
+      // sentinel afterwards so the next back press behaves normally.
+      void skip();
+      e.stopImmediatePropagation();
+    };
+    window.addEventListener("popstate", handler);
+    return () => {
+      window.removeEventListener("popstate", handler);
+    };
+  }, [loading, shouldShow, step, skip]);
 
   if (loading || !shouldShow || !step) return null;
 
@@ -53,9 +108,16 @@ export function TutorialOverlay() {
     }
   };
 
+  // Anchor-missing watchdog: if the step's selector never intersects the
+  // viewport, silently advance one step instead of painting a ringless
+  // bubble. Final step has no anchor and never triggers this path.
+  const onAnchorMissing = step.anchorSelector ? () => advance() : undefined;
+
   const stepLabel = `Step ${currentStep + 1} of ${totalSteps}`;
   const showBack = currentStep > 0;
   const showConfetti = isFinal && !reducedMotion;
+  const showGhostLetter = isFinal && !reducedMotion;
+  const stencilWipe = reducedMotion ? "" : "animate-stencil-wipe";
 
   // The dialog wrapper used to be `display: contents`, but some AT
   // combinations drop `display: contents` nodes from the accessibility tree —
@@ -70,31 +132,48 @@ export function TutorialOverlay() {
       <SpotlightOverlay
         targetSelector={step.anchorSelector}
         reducedMotion={reducedMotion}
-        onBackdropTap={() => void skip()}
+        onAnchorMissing={onAnchorMissing}
       >
-        <MascotBubble
-          title={step.title}
-          message={step.bubble}
-          stepLabel={stepLabel}
-          mascotState={mascotStateForStep(currentStep, isFinal)}
-          primaryCta={{ label: step.primaryCtaLabel, onClick: onPrimary }}
-          onSkip={() => void skip()}
-          onBack={showBack ? back : undefined}
-          reducedMotion={reducedMotion}
-        />
+        <div key={step.id} className={stencilWipe}>
+          <MascotBubble
+            title={step.title}
+            message={step.bubble}
+            stepLabel={stepLabel}
+            stepIndex={currentStep}
+            totalSteps={totalSteps}
+            mascotState={mascotStateForStep(currentStep, isFinal)}
+            primaryCta={{ label: step.primaryCtaLabel, onClick: onPrimary }}
+            onSkip={() => void skip()}
+            onBack={showBack ? back : undefined}
+            onClose={() => void skip()}
+            reducedMotion={reducedMotion}
+          />
+        </div>
       </SpotlightOverlay>
 
       {showConfetti && (
         <div
           aria-hidden="true"
           data-testid="tutorial-confetti"
-          className="pointer-events-none fixed inset-x-0 bottom-44 flex justify-center gap-6 z-[60]"
+          className="pointer-events-none fixed inset-x-0 bottom-44 flex justify-center gap-6"
+          style={{ zIndex: Z_TUTORIAL_OVERLAY }}
         >
           {CONFETTI.map((emoji, i) => (
             <span key={emoji} className="text-3xl motion-safe:animate-float" style={{ animationDelay: `${i * 120}ms` }}>
               {emoji}
             </span>
           ))}
+        </div>
+      )}
+
+      {showGhostLetter && (
+        <div
+          aria-hidden="true"
+          data-testid="tutorial-ghost-letter"
+          className="pointer-events-none fixed top-10 right-6 motion-safe:animate-graffiti-drip"
+          style={{ zIndex: Z_TUTORIAL_OVERLAY }}
+        >
+          <span className="font-display text-7xl text-brand-orange opacity-90 select-none">S</span>
         </div>
       )}
     </div>

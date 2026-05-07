@@ -1,14 +1,13 @@
 /**
  * "Hubz" the chill skate buddy. Pure inline SVG so there are no asset
  * dependencies and the mascot scales with rem-based className sizing. Each
- * `state` props maps to a Tailwind animation class (or plain rotation for
- * the "oops" wiggle, which avoids adding a new keyframe to index.css).
+ * `state` prop maps to a Tailwind animation class.
  *
  * All decorative subnodes are aria-hidden — the outer <svg> carries the
  * single role="img" + aria-label so screen readers announce one element.
  */
 
-export type HubzState = "idle" | "talking" | "cheer" | "think" | "oops";
+export type HubzState = "idle" | "talking" | "cheer";
 
 interface HubzMascotProps {
   state?: HubzState;
@@ -25,13 +24,6 @@ function stateAnimationClass(state: HubzState): string {
       return "motion-safe:animate-float";
     case "cheer":
       return "motion-safe:animate-ollie";
-    case "think":
-      return "motion-safe:animate-pulse";
-    case "oops":
-      // Static rotate substitutes for a wiggle — avoids touching index.css for
-      // a single transient state. Reduced-motion users see the rotation only,
-      // no animated wobble.
-      return "-rotate-3";
   }
 }
 
@@ -83,17 +75,8 @@ export function HubzMascot({ state = "idle", className, decorative = false }: Hu
         <path d="M92 52 L106 56 L92 58 Z" fill="#1a1a1a" opacity="0.7" />
 
         {/* eyes */}
-        {state === "think" ? (
-          <>
-            <line x1="46" y1="60" x2="54" y2="60" stroke="#1a1a1a" strokeWidth="3" strokeLinecap="round" />
-            <line x1="66" y1="60" x2="74" y2="60" stroke="#1a1a1a" strokeWidth="3" strokeLinecap="round" />
-          </>
-        ) : (
-          <>
-            <circle cx="50" cy="62" r="3" fill="#1a1a1a" />
-            <circle cx="70" cy="62" r="3" fill="#1a1a1a" />
-          </>
-        )}
+        <circle cx="50" cy="62" r="3" fill="#1a1a1a" />
+        <circle cx="70" cy="62" r="3" fill="#1a1a1a" />
 
         {/* mouth — varies per state */}
         {state === "talking" && (
@@ -112,10 +95,6 @@ export function HubzMascot({ state = "idle", className, decorative = false }: Hu
             opacity="0.85"
           />
         )}
-        {state === "think" && (
-          <line x1="55" y1="78" x2="65" y2="78" stroke="#1a1a1a" strokeWidth="2.5" strokeLinecap="round" />
-        )}
-        {state === "oops" && <ellipse cx="60" cy="78" rx="4" ry="3" fill="#1a1a1a" />}
 
         {/* cheek tint for warmth */}
         <circle cx="44" cy="70" r="3" fill="#ff6b00" opacity="0.25" />

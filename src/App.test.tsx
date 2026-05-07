@@ -63,7 +63,12 @@ vi.mock("./services/onboarding", () => ({
     completedAt: { seconds: 0, nanoseconds: 0 },
     skippedAt: null,
   }),
-  markOnboardingStarted: vi.fn().mockResolvedValue(undefined),
+  subscribeToOnboardingState: vi.fn(
+    (_uid: string, cb: (state: { tutorialVersion: number; completedAt: unknown; skippedAt: null }) => void) => {
+      cb({ tutorialVersion: 2, completedAt: { seconds: 0, nanoseconds: 0 }, skippedAt: null });
+      return () => undefined;
+    },
+  ),
   markOnboardingCompleted: vi.fn().mockResolvedValue(undefined),
   markOnboardingSkipped: vi.fn().mockResolvedValue(undefined),
   resetOnboarding: vi.fn().mockResolvedValue(undefined),

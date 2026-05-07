@@ -6,19 +6,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  * structural token capturing the path so we can verify the service hits
  * the canonical private profile doc.
  */
-const { mockSetDoc, mockGetDoc, mockDoc } = vi.hoisted(() => ({
+const { mockSetDoc, mockGetDoc, mockDoc, mockOnSnapshot } = vi.hoisted(() => ({
   mockSetDoc: vi.fn().mockResolvedValue(undefined),
   mockGetDoc: vi.fn(),
   mockDoc: vi.fn((...args: unknown[]) => {
     const segments = args.slice(1).filter((s) => typeof s === "string");
     return { __path: segments.join("/"), id: segments[segments.length - 1] ?? "auto" };
   }),
+  mockOnSnapshot: vi.fn(),
 }));
 
 vi.mock("firebase/firestore", () => ({
   doc: mockDoc,
   setDoc: mockSetDoc,
   getDoc: mockGetDoc,
+  onSnapshot: mockOnSnapshot,
   serverTimestamp: () => "SERVER_TS",
 }));
 
@@ -42,7 +44,7 @@ vi.mock("../../lib/sentry", () => {
 import {
   TUTORIAL_VERSION,
   getOnboardingState,
-  markOnboardingStarted,
+  subscribeToOnboardingState,
   markOnboardingCompleted,
   markOnboardingSkipped,
   resetOnboarding,
@@ -263,27 +265,112 @@ describe("getOnboardingState", () => {
  * Write helpers (start, completed, skipped, reset)
  * ──────────────────────────────────────────── */
 
-describe("markOnboardingStarted", () => {
-  it("writes only the tutorialVersion with merge:true", async () => {
-    await markOnboardingStarted(UID);
-    expect(mockSetDoc).toHaveBeenCalledTimes(1);
-    const [ref, payload, options] = mockSetDoc.mock.calls[0];
-    expect((ref as { __path: string }).__path).toBe(`users/${UID}/private/profile`);
-    expect(payload).toEqual({ onboardingTutorialVersion: TUTORIAL_VERSION });
-    expect(options).toEqual({ merge: true });
+describe("subscribeToOnboardingState", () => {
+  it("returns a no-op unsubscribe and immediately invokes the callback with null for an empty uid", () => {
+    const cb = vi.fn();
+    const unsub = subscribeToOnboardingState("", cb);
+    expect(cb).toHaveBeenCalledWith(null);
+    expect(mockOnSnapshot).not.toHaveBeenCalled();
+    expect(typeof unsub).toBe("function");
+    unsub();
   });
 
-  it("is a no-op for an empty uid", async () => {
-    await markOnboardingStarted("");
-    expect(mockSetDoc).not.toHaveBeenCalled();
+  it("forwards onSnapshot's unsubscribe handle", () => {
+    const handle = vi.fn();
+    mockOnSnapshot.mockImplementationOnce(() => handle);
+    const unsub = subscribeToOnboardingState(UID, vi.fn());
+    expect(mockOnSnapshot).toHaveBeenCalledTimes(1);
+    expect(unsub).toBe(handle);
   });
 
-  it("swallows write failures and reports to Sentry", async () => {
-    mockSetDoc.mockRejectedValueOnce(new Error("network down"));
-    await expect(markOnboardingStarted(UID)).resolves.toBeUndefined();
+  it("invokes the callback with null when the doc does not exist", () => {
+    const cb = vi.fn();
+    mockOnSnapshot.mockImplementationOnce((_ref: unknown, onNext: (snap: { exists: () => boolean }) => void) => {
+      onNext({ exists: () => false });
+      return vi.fn();
+    });
+    subscribeToOnboardingState(UID, cb);
+    expect(cb).toHaveBeenCalledWith(null);
+  });
+
+  it("invokes the callback with null when no onboarding fields are set", () => {
+    const cb = vi.fn();
+    mockOnSnapshot.mockImplementationOnce(
+      (_ref: unknown, onNext: (snap: { exists: () => boolean; data: () => Record<string, unknown> }) => void) => {
+        onNext({ exists: () => true, data: () => ({ emailVerified: true }) });
+        return vi.fn();
+      },
+    );
+    subscribeToOnboardingState(UID, cb);
+    expect(cb).toHaveBeenCalledWith(null);
+  });
+
+  it("parses completedAt + tutorialVersion when set", () => {
+    const completedAt = new FakeTimestamp(new Date("2026-04-01T00:00:00Z"));
+    const cb = vi.fn();
+    mockOnSnapshot.mockImplementationOnce(
+      (_ref: unknown, onNext: (snap: { exists: () => boolean; data: () => Record<string, unknown> }) => void) => {
+        onNext({
+          exists: () => true,
+          data: () => ({ onboardingTutorialVersion: TUTORIAL_VERSION, onboardingCompletedAt: completedAt }),
+        });
+        return vi.fn();
+      },
+    );
+    subscribeToOnboardingState(UID, cb);
+    expect(cb).toHaveBeenCalledWith({
+      tutorialVersion: TUTORIAL_VERSION,
+      completedAt,
+      skippedAt: null,
+    });
+  });
+
+  it("parses skippedAt when set", () => {
+    const skippedAt = new FakeTimestamp(new Date("2026-04-02T00:00:00Z"));
+    const cb = vi.fn();
+    mockOnSnapshot.mockImplementationOnce(
+      (_ref: unknown, onNext: (snap: { exists: () => boolean; data: () => Record<string, unknown> }) => void) => {
+        onNext({
+          exists: () => true,
+          data: () => ({ onboardingSkippedAt: skippedAt }),
+        });
+        return vi.fn();
+      },
+    );
+    subscribeToOnboardingState(UID, cb);
+    expect(cb).toHaveBeenCalledWith({ tutorialVersion: null, completedAt: null, skippedAt });
+  });
+
+  it("ignores non-Timestamp shaped fields", () => {
+    const cb = vi.fn();
+    mockOnSnapshot.mockImplementationOnce(
+      (_ref: unknown, onNext: (snap: { exists: () => boolean; data: () => Record<string, unknown> }) => void) => {
+        onNext({
+          exists: () => true,
+          data: () => ({
+            onboardingTutorialVersion: TUTORIAL_VERSION,
+            onboardingCompletedAt: "not-a-timestamp",
+            onboardingSkippedAt: { toDate: "still-not-a-fn" },
+          }),
+        });
+        return vi.fn();
+      },
+    );
+    subscribeToOnboardingState(UID, cb);
+    expect(cb).toHaveBeenCalledWith({ tutorialVersion: TUTORIAL_VERSION, completedAt: null, skippedAt: null });
+  });
+
+  it("invokes the callback with null and reports to Sentry on subscription error", () => {
+    const cb = vi.fn();
+    mockOnSnapshot.mockImplementationOnce((_ref: unknown, _onNext: unknown, onError: (err: Error) => void) => {
+      onError(new Error("permission-denied"));
+      return vi.fn();
+    });
+    subscribeToOnboardingState(UID, cb);
+    expect(cb).toHaveBeenCalledWith(null);
     expect(mockSentry).toHaveBeenCalledWith(
       expect.any(Error),
-      expect.objectContaining({ tags: { op: "markOnboardingStarted" } }),
+      expect.objectContaining({ tags: { op: "subscribeToOnboardingState" } }),
     );
   });
 });
