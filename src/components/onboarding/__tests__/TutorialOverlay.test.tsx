@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Capacitor } from "@capacitor/core";
 
 // jsdom lacks IntersectionObserver — provide a no-op stub so the embedded
 // SpotlightOverlay's anchor watchdog mounts without throwing.
@@ -172,5 +173,42 @@ describe("TutorialOverlay", () => {
     const live = screen.getByRole("status");
     expect(live).toHaveAttribute("aria-live", "polite");
     expect(live).toHaveTextContent(/step 2 of 5/i);
+  });
+
+  it("pushes the Android-back sentinel exactly once per tour session, not per step", () => {
+    // Codex P1: previous implementation kept `step` in the popstate effect
+    // deps, so each step transition stacked another history entry. After
+    // dismissal those extras lingered and the user had to press Back N
+    // times to leave. The push must fire once per shouldShow cycle.
+    const isNative = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    try {
+      const { rerender } = render(<TutorialOverlay />);
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+
+      ctxValue.current = { ...ctxValue.current, currentStep: 1 };
+      rerender(<TutorialOverlay />);
+      ctxValue.current = { ...ctxValue.current, currentStep: 2 };
+      rerender(<TutorialOverlay />);
+      ctxValue.current = { ...ctxValue.current, currentStep: 3 };
+      rerender(<TutorialOverlay />);
+
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      pushSpy.mockRestore();
+      isNative.mockRestore();
+    }
+  });
+
+  it("does not push a history sentinel on web (non-native)", () => {
+    const isNative = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(false);
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    try {
+      render(<TutorialOverlay />);
+      expect(pushSpy).not.toHaveBeenCalled();
+    } finally {
+      pushSpy.mockRestore();
+      isNative.mockRestore();
+    }
   });
 });

@@ -69,18 +69,16 @@ describe("Smoke: Onboarding tour", () => {
     await renderVerifiedLobby([]);
     await screen.findByTestId("tutorial-overlay");
 
-    // Step 1 ("welcome") has no anchor and screen=null so it always renders.
-    // Clicking "show me" advances; step 2 ("your tag") targets a selector
-    // that lives on the /profile screen (not /lobby), so the anchor-missing
-    // watchdog will silently advance past it. We assert the next visible
-    // step lands on a heading whose anchor exists on the lobby (challenge
-    // or record).
+    // Step 0 ("welcome") has no anchor and screen=null so it always renders.
+    // Clicking "show me" advances to step 1 ("your tag"), whose anchor lives
+    // on LobbyHeader (data-tutorial="handle-display") — so the bubble shows
+    // the new title and the live region advertises step 2 of 5.
     await userEvent.click(screen.getByRole("button", { name: /show me/i }));
     await waitFor(() => {
-      // Anchor-missing watchdog has up to 1500ms — give the assertion room.
       const headings = screen.queryAllByRole("heading");
-      expect(headings.some((h) => /start a session|land it/i.test(h.textContent ?? ""))).toBe(true);
+      expect(headings.some((h) => /your tag/i.test(h.textContent ?? ""))).toBe(true);
     });
+    expect(screen.getAllByText(/Step 2 of 5/).length).toBeGreaterThan(0);
   });
 
   it("does NOT show the tour for users who already completed it", async () => {

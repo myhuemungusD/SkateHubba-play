@@ -76,9 +76,12 @@ export function TutorialOverlay() {
   // listener never registers on web. We listen for `popstate` since the
   // Capacitor WebView translates the hardware Back gesture into a popstate
   // event by default — pushing a sentinel state lets us detect and absorb
-  // the press instead of letting the WebView navigate away mid-tour.
+  // the press instead of letting the WebView navigate away mid-tour. Push
+  // exactly once per tour session, NOT per step, otherwise advancing through
+  // the tour stacks history entries and the user has to press Back N times
+  // before normal navigation resumes after dismissal.
   useEffect(() => {
-    if (loading || !shouldShow || !step) return;
+    if (loading || !shouldShow) return;
     if (!Capacitor.isNativePlatform()) return;
     const SENTINEL = "tutorial-back";
     try {
@@ -96,7 +99,7 @@ export function TutorialOverlay() {
     return () => {
       window.removeEventListener("popstate", handler);
     };
-  }, [loading, shouldShow, step, skip]);
+  }, [loading, shouldShow, skip]);
 
   if (loading || !shouldShow || !step) return null;
 
