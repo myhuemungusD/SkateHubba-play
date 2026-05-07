@@ -30,7 +30,7 @@ import { PRIVATE_PROFILE_DOC_ID } from "./users";
  * sign-in. Local progress is namespaced by version too, so old in-progress
  * state from a previous version is ignored automatically.
  */
-export const TUTORIAL_VERSION = 1 as const;
+export const TUTORIAL_VERSION = 2 as const;
 
 export interface OnboardingState {
   tutorialVersion: number | null;
@@ -50,6 +50,17 @@ export interface LocalOnboardingProgress {
 
 function localKey(uid: string): string {
   return `skatehubba.onboarding.v${TUTORIAL_VERSION}.${uid}`;
+}
+
+/**
+ * Per-device "this user has seen the tour" flag, written eagerly on
+ * skip/complete so a closed tab or flaky network can't resurrect the tour
+ * on next refresh. Independent of step state — even if step state is wiped
+ * (replay, version bump), this key alone never causes the tour to skip:
+ * the version bump rewrites it via {@link clearLocalDismissed}.
+ */
+function localDismissedKey(uid: string): string {
+  return `skatehubba.onboarding.dismissed.v${TUTORIAL_VERSION}.${uid}`;
 }
 
 function isLocalProgress(v: unknown): v is LocalOnboardingProgress {
@@ -93,6 +104,40 @@ export function clearLocalProgress(uid: string): void {
     window.localStorage.removeItem(localKey(uid));
   } catch (err) {
     logger.warn("onboarding_local_clear_failed", { error: parseFirebaseError(err) });
+  }
+}
+
+/** True when the user has dismissed the tour on this device at the current version. */
+export function getLocalDismissed(uid: string): boolean {
+  if (!uid) return false;
+  try {
+    return window.localStorage.getItem(localDismissedKey(uid)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mark the tour as dismissed on this device synchronously. Called eagerly
+ * before any async Firestore write so a closed tab, network drop, or flaky
+ * permission check can't strand the user with a tour that re-fires on
+ * every reload.
+ */
+export function setLocalDismissed(uid: string): void {
+  if (!uid) return;
+  try {
+    window.localStorage.setItem(localDismissedKey(uid), "1");
+  } catch (err) {
+    logger.warn("onboarding_local_dismiss_failed", { error: parseFirebaseError(err) });
+  }
+}
+
+export function clearLocalDismissed(uid: string): void {
+  if (!uid) return;
+  try {
+    window.localStorage.removeItem(localDismissedKey(uid));
+  } catch {
+    /* best-effort */
   }
 }
 
@@ -183,6 +228,7 @@ export async function markOnboardingSkipped(uid: string): Promise<void> {
 export async function resetOnboarding(uid: string): Promise<void> {
   if (!uid) return;
   clearLocalProgress(uid);
+  clearLocalDismissed(uid);
   await safeWrite(
     uid,
     {

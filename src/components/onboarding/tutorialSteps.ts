@@ -4,9 +4,11 @@
  * meaningfully should accompany a TUTORIAL_VERSION bump in src/services/onboarding.ts
  * so existing users see the refreshed tour.
  *
- * Anchor selectors are CSS-attribute hooks the orchestrator will sprinkle on
- * existing screens — `data-tutorial="profile-form"`, `"challenge-cta"`,
- * `"record-button"`. Steps without an anchor render the bubble centered.
+ * The new tour is rendered as a small non-blocking coach mark (mascot + speech
+ * bubble) anchored above the bottom nav. Anchor selectors are CSS-attribute
+ * hooks the orchestrator sprinkles on existing screens; when present, the
+ * overlay paints a pulsing ring around the target instead of dimming the whole
+ * screen, so the underlying UI stays interactive.
  */
 
 export interface TutorialStep {
@@ -15,7 +17,7 @@ export interface TutorialStep {
   bubble: string;
   /** Encouraging copy shown if the user taps Skip from this step. */
   skipMessage: string;
-  /** CSS selector — when present, SpotlightOverlay highlights this element. */
+  /** CSS selector — when present, SpotlightOverlay paints a pulsing ring on this element. */
   anchorSelector?: string;
   primaryCtaLabel: string;
   /** When true, primary CTA fires complete() and a celebratory effect renders. */
@@ -25,41 +27,41 @@ export interface TutorialStep {
 export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
     id: "welcome",
-    title: "yo, welcome",
-    bubble: "i'm Hubz. show you the park real quick?",
-    skipMessage: "no rush, the park's always open.",
-    primaryCtaLabel: "let's go",
+    title: "welcome",
+    bubble: "quick tour? takes ten seconds.",
+    skipMessage: "park's always open.",
+    primaryCtaLabel: "show me",
   },
   {
     id: "handle",
     title: "your tag",
-    bubble: "pick a name. that's how everyone'll know you.",
-    skipMessage: "trip on it later — you can change this.",
+    bubble: "this is the name everyone sees.",
+    skipMessage: "you can change it later.",
     anchorSelector: '[data-tutorial="profile-form"]',
-    primaryCtaLabel: "got it",
+    primaryCtaLabel: "next",
   },
   {
     id: "challenge",
-    title: "first session",
-    bubble: "challenge a friend or hop in quickplay.",
-    skipMessage: "no friends yet? i'll be your first.",
+    title: "start a session",
+    bubble: "challenge a friend, or hop in quickplay.",
+    skipMessage: "no pressure.",
     anchorSelector: '[data-tutorial="challenge-cta"]',
-    primaryCtaLabel: "got it",
+    primaryCtaLabel: "next",
   },
   {
     id: "record",
-    title: "land your first trick",
-    bubble: "tap record. land it. bails are part of it.",
-    skipMessage: "bailed? good. that means you tried.",
+    title: "land it",
+    bubble: "tap to record. bails count too.",
+    skipMessage: "everyone bails.",
     anchorSelector: '[data-tutorial="record-button"]',
-    primaryCtaLabel: "got it",
+    primaryCtaLabel: "next",
   },
   {
     id: "celebrate",
-    title: "you're in",
-    bubble: "that's it. clean trick lands on the feed. catch you out there.",
-    skipMessage: "saved as a draft. send when you're ready.",
-    primaryCtaLabel: "finish",
+    title: "you're set",
+    bubble: "clean lands hit the feed. catch you out there.",
+    skipMessage: "saved as a draft.",
+    primaryCtaLabel: "let's skate",
     isFinal: true,
   },
 ] as const;

@@ -77,7 +77,21 @@ export function useAuthContext(): AuthContextValue {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { loading, user, profile, refreshProfile } = useAuth();
 
-  const [activeProfile, setActiveProfile] = useState<UserProfile | null>(null);
+  // Sync activeProfile from `profile` during render rather than via useEffect.
+  // The previous useEffect-mirror introduced a one-render lag because effects
+  // run bottom-up (NavigationContext's routing effect fired before the
+  // AuthContext mirror), so direct deep-links (/map, /record, /player/:uid)
+  // saw activeProfile=null in the gap between profile resolving and the
+  // mirror committing — and got bounced through /profile → /lobby. Adjusting
+  // state during render is the recommended React pattern for this case;
+  // setActiveProfile is still exposed so ProfileSetup / sign-out / delete
+  // flows can override the derived value imperatively.
+  const [activeProfile, setActiveProfile] = useState<UserProfile | null>(profile);
+  const [prevProfile, setPrevProfile] = useState<UserProfile | null>(profile);
+  if (profile !== prevProfile) {
+    setPrevProfile(profile);
+    if (profile) setActiveProfile(profile);
+  }
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
   // Mirror of PENDING_DELETE_KEY in React state so the banner component can
@@ -155,11 +169,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGoogleLoading(false);
     }
   }, []);
-
-  // Sync profile
-  useEffect(() => {
-    if (profile) setActiveProfile(profile);
-  }, [profile]);
 
   // Keep analytics + error-tracking identity in sync with Firebase auth
   // state. PostHog.reset() must fire on sign-out so the next anonymous
