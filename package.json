@@ -37,7 +37,6 @@
     "@capacitor-firebase/app-check": "^8.2.0",
     "@capacitor-firebase/authentication": "^8.2.0",
     "@capacitor/android": "^8.2.0",
-    "@capacitor/camera": "^8.0.2",
     "@capacitor/core": "^8.2.0",
     "@capacitor/haptics": "^8.0.2",
     "@capacitor/ios": "^8.2.0",
@@ -59,7 +58,10 @@
   "overrides": {
     "http-proxy-agent": "^7.0.2",
     "@xmldom/xmldom": "^0.9.10",
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "ip-address": "^10.1.1",
+    "hono": "^4.12.16",
+    "basic-ftp": "^5.3.1"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
