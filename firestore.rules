@@ -246,18 +246,90 @@ service cloud.firestore {
       // guard on the public user doc closed.
       match /private/{docId} {
         allow read: if isOwner(uid);
+
+        // ── fcmTokens cap ──
+        // Every push registration write goes here; cap at ≤10 entries
+        // (one per device the user is currently signed into). String type
+        // is not enforced individually because the FCM SDK opaquely wraps
+        // them, but list shape is mandatory.
+        function fcmTokensOk() {
+          return !('fcmTokens' in request.resource.data)
+            || (request.resource.data.fcmTokens is list
+                && request.resource.data.fcmTokens.size() <= 10);
+        }
+
+        // ── Onboarding field shape validation ──
+        // The onboarding service (src/services/onboarding.ts) writes three
+        // fields here via setDoc(..., { merge: true }):
+        //   - onboardingTutorialVersion: int >= 0  (TUTORIAL_VERSION bump
+        //                                            is monotonic; null is
+        //                                            valid only via the
+        //                                            explicit reset path)
+        //   - onboardingCompletedAt:    serverTimestamp() | null | timestamp ≤ now+5s
+        //   - onboardingSkippedAt:      serverTimestamp() | null | timestamp ≤ now+5s
+        //
+        // Without these checks a malicious client can stuff arbitrary
+        // shapes ("attack", { nested: true }, etc.) into the private doc
+        // and wedge readers in src/services/onboarding.ts that do
+        // `typeof === "number"` / Timestamp duck-typing. Each predicate is
+        // gated on `field in request.resource.data` so unrelated writes
+        // (fcmTokens, emailVerified, etc.) pay zero validation cost.
+        //
+        // The serverTimestamp() sentinel is detected via the same idiom
+        // already in use elsewhere in this file (see lastGameCreatedAt /
+        // lastSpotCreatedAt above): when the client uses the sentinel,
+        // `request.resource.data.field == request.time`.
+        function onboardingTutorialVersionOk() {
+          return !('onboardingTutorialVersion' in request.resource.data)
+            || request.resource.data.onboardingTutorialVersion == null
+            || (request.resource.data.onboardingTutorialVersion is int
+                && request.resource.data.onboardingTutorialVersion >= 0);
+        }
+        function onboardingCompletedAtOk() {
+          return !('onboardingCompletedAt' in request.resource.data)
+            || request.resource.data.onboardingCompletedAt == null
+            || request.resource.data.onboardingCompletedAt == request.time
+            || (request.resource.data.onboardingCompletedAt is timestamp
+                && request.resource.data.onboardingCompletedAt <= request.time + duration.value(5, 's'));
+        }
+        function onboardingSkippedAtOk() {
+          return !('onboardingSkippedAt' in request.resource.data)
+            || request.resource.data.onboardingSkippedAt == null
+            || request.resource.data.onboardingSkippedAt == request.time
+            || (request.resource.data.onboardingSkippedAt is timestamp
+                && request.resource.data.onboardingSkippedAt <= request.time + duration.value(5, 's'));
+        }
+
+        // ── Allowlist of accepted keys ──
+        // Every key currently written to users/{uid}/private/profile by
+        // the codebase. Keep in sync with UserPrivateProfile in
+        // src/services/users.ts and the onboarding writers in
+        // src/services/onboarding.ts. An unknown key here is a bug or an
+        // attack — fail closed.
+        function privateProfileKeysOk() {
+          return request.resource.data.keys().hasOnly([
+            'emailVerified',
+            'dob',
+            'parentalConsent',
+            'fcmTokens',
+            'onboardingTutorialVersion',
+            'onboardingCompletedAt',
+            'onboardingSkippedAt'
+          ]);
+        }
+
         allow create: if isOwner(uid)
-          && (
-            !('fcmTokens' in request.resource.data)
-            || (request.resource.data.fcmTokens is list
-                && request.resource.data.fcmTokens.size() <= 10)
-          );
+          && privateProfileKeysOk()
+          && fcmTokensOk()
+          && onboardingTutorialVersionOk()
+          && onboardingCompletedAtOk()
+          && onboardingSkippedAtOk();
         allow update: if isOwner(uid)
-          && (
-            !('fcmTokens' in request.resource.data)
-            || (request.resource.data.fcmTokens is list
-                && request.resource.data.fcmTokens.size() <= 10)
-          );
+          && privateProfileKeysOk()
+          && fcmTokensOk()
+          && onboardingTutorialVersionOk()
+          && onboardingCompletedAtOk()
+          && onboardingSkippedAtOk();
         allow delete: if isOwner(uid);
       }
 

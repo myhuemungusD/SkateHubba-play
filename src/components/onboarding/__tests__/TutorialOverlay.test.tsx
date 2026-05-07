@@ -1,12 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Capacitor } from "@capacitor/core";
 
-// Stub the context module so the overlay reads test-controlled state.
+// jsdom lacks IntersectionObserver — provide a no-op stub so the embedded
+// SpotlightOverlay's anchor watchdog mounts without throwing.
+beforeEach(() => {
+  (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = function () {
+    return {
+      observe: () => undefined,
+      unobserve: () => undefined,
+      disconnect: () => undefined,
+    };
+  };
+});
+
 const ctxValue = vi.hoisted(() => {
   const makeDefault = () => ({
     loading: false,
     shouldShow: true,
+    tourArmed: true,
     currentStep: 0,
     totalSteps: 5,
     advance: vi.fn(),
@@ -43,11 +56,15 @@ describe("TutorialOverlay", () => {
     expect(container.firstChild).toBeNull();
   });
 
+  it("renders nothing when currentStep is out of range (defense-in-depth)", () => {
+    ctxValue.current.currentStep = 99;
+    const { container } = render(<TutorialOverlay />);
+    expect(container.firstChild).toBeNull();
+  });
+
   it("renders the non-modal coach mark with the current step copy", () => {
     render(<TutorialOverlay />);
     const dialog = screen.getByRole("dialog");
-    // Coach mark is intentionally non-modal (Pokemon Go style) so the
-    // underlying app stays interactive — aria-modal MUST NOT be set.
     expect(dialog).not.toHaveAttribute("aria-modal");
     expect(dialog).toHaveAttribute("aria-labelledby", "onboarding-title");
     expect(screen.getByRole("heading", { name: TUTORIAL_STEPS[0].title })).toBeInTheDocument();
@@ -87,9 +104,44 @@ describe("TutorialOverlay", () => {
     expect(ctxValue.current.skip).toHaveBeenCalledTimes(1);
   });
 
+  it("Enter key advances on non-final steps", async () => {
+    render(<TutorialOverlay />);
+    await userEvent.keyboard("{Enter}");
+    expect(ctxValue.current.advance).toHaveBeenCalledTimes(1);
+  });
+
+  it("Space key completes on final step", async () => {
+    const finalIdx = TUTORIAL_STEPS.findIndex((s) => s.isFinal);
+    ctxValue.current.currentStep = finalIdx;
+    render(<TutorialOverlay />);
+    await userEvent.keyboard(" ");
+    expect(ctxValue.current.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores Enter / Space when focus is on a text input", async () => {
+    render(
+      <>
+        <TutorialOverlay />
+        <input data-testid="form-field" />
+      </>,
+    );
+    const input = screen.getByTestId("form-field") as HTMLInputElement;
+    input.focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard(" ");
+    expect(ctxValue.current.advance).not.toHaveBeenCalled();
+    expect(ctxValue.current.complete).not.toHaveBeenCalled();
+  });
+
   it("skip button triggers skip()", async () => {
     render(<TutorialOverlay />);
     await userEvent.click(screen.getByRole("button", { name: /^skip$/ }));
+    expect(ctxValue.current.skip).toHaveBeenCalledTimes(1);
+  });
+
+  it("close button triggers skip()", async () => {
+    render(<TutorialOverlay />);
+    await userEvent.click(screen.getByRole("button", { name: /close tour/i }));
     expect(ctxValue.current.skip).toHaveBeenCalledTimes(1);
   });
 
@@ -98,14 +150,16 @@ describe("TutorialOverlay", () => {
     ctxValue.current.currentStep = finalIdx;
     render(<TutorialOverlay />);
     expect(screen.getByTestId("tutorial-confetti")).toBeInTheDocument();
+    expect(screen.getByTestId("tutorial-ghost-letter")).toBeInTheDocument();
   });
 
-  it("omits the confetti burst on the final step when reducedMotion is true", () => {
+  it("omits the confetti and ghost-letter on the final step when reducedMotion is true", () => {
     const finalIdx = TUTORIAL_STEPS.findIndex((s) => s.isFinal);
     ctxValue.current.currentStep = finalIdx;
     ctxValue.current.reducedMotion = true;
     render(<TutorialOverlay />);
     expect(screen.queryByTestId("tutorial-confetti")).toBeNull();
+    expect(screen.queryByTestId("tutorial-ghost-letter")).toBeNull();
   });
 
   it("never renders confetti on non-final steps", () => {
@@ -119,5 +173,42 @@ describe("TutorialOverlay", () => {
     const live = screen.getByRole("status");
     expect(live).toHaveAttribute("aria-live", "polite");
     expect(live).toHaveTextContent(/step 2 of 5/i);
+  });
+
+  it("pushes the Android-back sentinel exactly once per tour session, not per step", () => {
+    // Codex P1: previous implementation kept `step` in the popstate effect
+    // deps, so each step transition stacked another history entry. After
+    // dismissal those extras lingered and the user had to press Back N
+    // times to leave. The push must fire once per shouldShow cycle.
+    const isNative = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(true);
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    try {
+      const { rerender } = render(<TutorialOverlay />);
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+
+      ctxValue.current = { ...ctxValue.current, currentStep: 1 };
+      rerender(<TutorialOverlay />);
+      ctxValue.current = { ...ctxValue.current, currentStep: 2 };
+      rerender(<TutorialOverlay />);
+      ctxValue.current = { ...ctxValue.current, currentStep: 3 };
+      rerender(<TutorialOverlay />);
+
+      expect(pushSpy).toHaveBeenCalledTimes(1);
+    } finally {
+      pushSpy.mockRestore();
+      isNative.mockRestore();
+    }
+  });
+
+  it("does not push a history sentinel on web (non-native)", () => {
+    const isNative = vi.spyOn(Capacitor, "isNativePlatform").mockReturnValue(false);
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    try {
+      render(<TutorialOverlay />);
+      expect(pushSpy).not.toHaveBeenCalled();
+    } finally {
+      pushSpy.mockRestore();
+      isNative.mockRestore();
+    }
   });
 });

@@ -1,11 +1,20 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useAuthContext } from "./AuthContext";
+import { useNavigationContext } from "./NavigationContext";
+import { useGameContext } from "./GameContext";
 import { useOnboarding, type UseOnboardingReturn } from "../hooks/useOnboarding";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { TUTORIAL_TOTAL_STEPS } from "../components/onboarding/tutorialSteps";
+import { TUTORIAL_STEPS, TUTORIAL_TOTAL_STEPS } from "../components/onboarding/tutorialSteps";
 
 export interface OnboardingContextValue extends UseOnboardingReturn {
   reducedMotion: boolean;
+  /**
+   * Raw shouldShow from the underlying state machine — true when the tour
+   * is armed regardless of whether the current screen matches. Tests rely
+   * on this to assert the machine state independently of the screen-aware
+   * `shouldShow` that consumers render against.
+   */
+  tourArmed: boolean;
 }
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
@@ -23,32 +32,61 @@ export function useOnboardingContext(): OnboardingContextValue {
 
 /**
  * Hosts the tutorial state. Reads the auth uid from AuthContext so the tour
- * is automatically scoped per-user (signing out + signing back in as someone
- * else re-evaluates from their own persistence).
+ * is automatically scoped per-user.
  *
- * Gated on `activeProfile` (not just `user`) so the tour cannot fire while a
- * brand-new signup is still on `/profile`. Without this gate, a skip or
- * complete mid-ProfileSetup would write onboarding fields to the
- * `users/{uid}/private/profile` doc, and the subsequent `createProfile`
- * transaction would wipe them via `tx.set(privateRef, privateData)` —
- * causing the tour to replay on the next sign-in. Every tutorial anchor
- * (`challenge-cta`, `record-button`) also lives on lobby/lower screens, so
- * gating on profile existence matches the actual UX flow.
+ * Pause-don't-skip: the visible `shouldShow` is gated on the current screen
+ * matching the active step's declared screen. If the user navigates away
+ * mid-tour the overlay stops rendering but the underlying step state is
+ * preserved — they pick back up where they left off when they return.
+ *
+ * The tour is also suppressed while a game is active (or the user is on the
+ * gameplay/gameover screens) so it never overlays match-critical UI.
  */
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const { user, activeProfile } = useAuthContext();
+  const { screen } = useNavigationContext();
+  const { activeGame } = useGameContext();
   const uid = user && activeProfile ? user.uid : null;
   const onboarding = useOnboarding(uid, TUTORIAL_TOTAL_STEPS);
   const reducedMotion = useReducedMotion();
 
-  // useOnboarding returns a fresh object reference each render, so depending
-  // on `onboarding` directly would defeat memoization. Spread the primitives
-  // and stable callbacks so the memoized value is reused as long as the
-  // underlying state hasn't changed.
-  const { loading, shouldShow, currentStep, totalSteps, advance, back, skip, complete, replay } = onboarding;
+  const { loading, shouldShow: tourArmed, currentStep, totalSteps, advance, back, skip, complete, replay } = onboarding;
+
+  // Compute the screen-aware shouldShow. A step with screen=null renders on
+  // any signed-in screen; otherwise the step's declared screen must match
+  // the current screen exactly. Gameplay screens always suppress the tour.
+  const stepScreen = TUTORIAL_STEPS[currentStep]?.screen ?? null;
+  const onGameplayScreen = screen === "game" || screen === "gameover";
+  const screenMatches = stepScreen === null ? true : stepScreen === screen;
+  const effectiveShouldShow = tourArmed && screenMatches && !activeGame && !onGameplayScreen;
+
   const value = useMemo<OnboardingContextValue>(
-    () => ({ loading, shouldShow, currentStep, totalSteps, advance, back, skip, complete, replay, reducedMotion }),
-    [loading, shouldShow, currentStep, totalSteps, advance, back, skip, complete, replay, reducedMotion],
+    () => ({
+      loading,
+      shouldShow: effectiveShouldShow,
+      tourArmed,
+      currentStep,
+      totalSteps,
+      advance,
+      back,
+      skip,
+      complete,
+      replay,
+      reducedMotion,
+    }),
+    [
+      loading,
+      effectiveShouldShow,
+      tourArmed,
+      currentStep,
+      totalSteps,
+      advance,
+      back,
+      skip,
+      complete,
+      replay,
+      reducedMotion,
+    ],
   );
 
   return <OnboardingContext.Provider value={value}>{children}</OnboardingContext.Provider>;

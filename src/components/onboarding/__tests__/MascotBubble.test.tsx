@@ -3,11 +3,19 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MascotBubble } from "../MascotBubble";
 
+vi.mock("../../../services/haptics", () => ({
+  playHaptic: vi.fn(),
+}));
+
+import { playHaptic } from "../../../services/haptics";
+
 function defaultProps() {
   return {
     title: "your tag",
     message: "pick a name.",
     stepLabel: "Step 2 of 5",
+    stepIndex: 1,
+    totalSteps: 5,
     primaryCta: { label: "got it", onClick: vi.fn() },
     reducedMotion: false,
   };
@@ -18,7 +26,6 @@ describe("MascotBubble", () => {
     render(<MascotBubble {...defaultProps()} />);
     expect(screen.getByRole("heading", { name: /your tag/i })).toBeInTheDocument();
     expect(screen.getByText("pick a name.")).toBeInTheDocument();
-    // Step label appears in the visual badge AND inside the live region (sr-only)
     expect(screen.getAllByText(/step 2 of 5/i).length).toBeGreaterThan(0);
   });
 
@@ -27,6 +34,7 @@ describe("MascotBubble", () => {
     render(<MascotBubble {...defaultProps()} primaryCta={{ label: "go", onClick }} />);
     await userEvent.click(screen.getByRole("button", { name: /^go$/ }));
     expect(onClick).toHaveBeenCalledTimes(1);
+    expect(playHaptic).toHaveBeenCalledWith("button_primary");
   });
 
   it("renders the skip button when onSkip is supplied and invokes it on click", async () => {
@@ -51,11 +59,30 @@ describe("MascotBubble", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
+  it("renders the close button when onClose is provided and fires it on click", async () => {
+    const onClose = vi.fn();
+    render(<MascotBubble {...defaultProps()} onClose={onClose} />);
+    await userEvent.click(screen.getByRole("button", { name: /close tour/i }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the close button when onClose is omitted", () => {
+    render(<MascotBubble {...defaultProps()} />);
+    expect(screen.queryByRole("button", { name: /close tour/i })).toBeNull();
+  });
+
   it("exposes a polite live region announcing step changes", () => {
     render(<MascotBubble {...defaultProps()} />);
     const live = screen.getByRole("status");
     expect(live).toHaveAttribute("aria-live", "polite");
     expect(live).toHaveTextContent(/step 2 of 5/i);
+  });
+
+  it("renders a progressbar with the correct aria-valuenow / max", () => {
+    render(<MascotBubble {...defaultProps()} stepIndex={2} totalSteps={5} />);
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+    expect(bar).toHaveAttribute("aria-valuemax", "5");
   });
 
   it("omits the entrance animation class when reducedMotion is true", () => {

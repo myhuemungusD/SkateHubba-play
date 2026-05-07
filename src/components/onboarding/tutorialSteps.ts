@@ -11,6 +11,8 @@
  * screen, so the underlying UI stays interactive.
  */
 
+import type { Screen } from "../../context/NavigationContext";
+
 export interface TutorialStep {
   id: string;
   title: string;
@@ -22,6 +24,13 @@ export interface TutorialStep {
   primaryCtaLabel: string;
   /** When true, primary CTA fires complete() and a celebratory effect renders. */
   isFinal?: boolean;
+  /**
+   * Screen the anchor element lives on. If the user navigates away to a
+   * different screen the overlay pauses (does not unmount the state). `null`
+   * means "any signed-in screen" — used for welcome/celebrate steps with no
+   * spatial anchor.
+   */
+  screen: Screen | null;
 }
 
 export const TUTORIAL_STEPS: readonly TutorialStep[] = [
@@ -31,14 +40,16 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     bubble: "quick tour? takes ten seconds.",
     skipMessage: "park's always open.",
     primaryCtaLabel: "show me",
+    screen: null,
   },
   {
     id: "handle",
     title: "your tag",
     bubble: "this is the name everyone sees.",
     skipMessage: "you can change it later.",
-    anchorSelector: '[data-tutorial="profile-form"]',
+    anchorSelector: '[data-tutorial="handle-display"]',
     primaryCtaLabel: "next",
+    screen: "lobby",
   },
   {
     id: "challenge",
@@ -47,6 +58,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     skipMessage: "no pressure.",
     anchorSelector: '[data-tutorial="challenge-cta"]',
     primaryCtaLabel: "next",
+    screen: "lobby",
   },
   {
     id: "record",
@@ -55,6 +67,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     skipMessage: "everyone bails.",
     anchorSelector: '[data-tutorial="record-button"]',
     primaryCtaLabel: "next",
+    screen: "lobby",
   },
   {
     id: "celebrate",
@@ -63,6 +76,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     skipMessage: "saved as a draft.",
     primaryCtaLabel: "let's skate",
     isFinal: true,
+    screen: null,
   },
 ] as const;
 

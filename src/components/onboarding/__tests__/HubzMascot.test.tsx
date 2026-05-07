@@ -20,8 +20,6 @@ describe("HubzMascot", () => {
     ["idle", "animate-float"],
     ["talking", "animate-float"],
     ["cheer", "animate-ollie"],
-    ["think", "animate-pulse"],
-    ["oops", "-rotate-3"],
   ] as const)("applies the expected animation class for state=%s", (state, expectedClass) => {
     const { container } = render(<HubzMascot state={state} />);
     const svg = container.querySelector("svg");

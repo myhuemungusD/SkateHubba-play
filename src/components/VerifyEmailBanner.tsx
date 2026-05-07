@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { resendVerification } from "../services/auth";
 import { getErrorCode } from "../utils/helpers";
 import { captureException } from "../lib/sentry";
@@ -32,10 +32,32 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
   const [cooldown, setCooldown] = useState(readStoredCooldown);
   const [sendError, setSendError] = useState<string | null>(null);
 
+  // Single setInterval owned by a ref so we never recreate the timer on every
+  // tick. The previous useEffect-on-`cooldown` pattern re-armed a fresh
+  // setTimeout once per second, which subtly drifted the displayed value
+  // whenever React batched a render. The interval fires every 1000ms and
+  // self-clears once the counter hits 0 (or on unmount).
+  const intervalRef = useRef<number | null>(null);
   useEffect(() => {
-    if (cooldown <= 0) return;
-    const t = window.setTimeout(() => setCooldown((c) => c - 1), 1000);
-    return () => clearTimeout(t);
+    if (cooldown <= 0 || intervalRef.current !== null) return;
+    intervalRef.current = window.setInterval(() => {
+      setCooldown((c) => {
+        if (c <= 1) {
+          if (intervalRef.current !== null) {
+            window.clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          return 0;
+        }
+        return c - 1;
+      });
+    }, 1000);
+    return () => {
+      if (intervalRef.current !== null) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
   }, [cooldown]);
 
   if (emailVerified) return null;

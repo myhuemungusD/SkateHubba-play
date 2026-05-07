@@ -309,7 +309,6 @@ export function ProfileSetup({
         </p>
 
         <form
-          data-tutorial="profile-form"
           onSubmit={(e) => {
             e.preventDefault();
             submit();

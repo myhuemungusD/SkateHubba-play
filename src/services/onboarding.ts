@@ -17,7 +17,7 @@
  * a transient permission-denied or network blip doesn't strand the user.
  */
 
-import { doc, getDoc, serverTimestamp, setDoc, type Timestamp } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, serverTimestamp, setDoc, type Timestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { captureException } from "../lib/sentry";
@@ -112,7 +112,8 @@ export function getLocalDismissed(uid: string): boolean {
   if (!uid) return false;
   try {
     return window.localStorage.getItem(localDismissedKey(uid)) === "1";
-  } catch {
+  } catch (err) {
+    logger.warn("onboarding_local_dismiss_read_failed", { error: parseFirebaseError(err) });
     return false;
   }
 }
@@ -136,8 +137,8 @@ export function clearLocalDismissed(uid: string): void {
   if (!uid) return;
   try {
     window.localStorage.removeItem(localDismissedKey(uid));
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    logger.warn("onboarding_local_dismiss_clear_failed", { error: parseFirebaseError(err) });
   }
 }
 
@@ -188,10 +189,44 @@ async function safeWrite(uid: string, payload: Record<string, unknown>, op: stri
   }
 }
 
-/** Idempotent — records that the tour has been started without setting timestamps. */
-export async function markOnboardingStarted(uid: string): Promise<void> {
-  if (!uid) return;
-  await safeWrite(uid, { onboardingTutorialVersion: TUTORIAL_VERSION }, "markOnboardingStarted");
+/**
+ * Subscribe to the persisted onboarding state for a single user. Mirrors
+ * {@link getOnboardingState} but as a real-time stream so a tour completion
+ * recorded on another device propagates instantly to every open tab/session.
+ *
+ * The callback fires once on initial snapshot and again on every server-side
+ * change. Permission errors are logged + swallowed (cb is invoked with null)
+ * so the UI never strands the user — same fail-soft posture as getOnboardingState.
+ */
+export function subscribeToOnboardingState(uid: string, cb: (state: OnboardingState | null) => void): () => void {
+  if (!uid) {
+    cb(null);
+    return () => undefined;
+  }
+  return onSnapshot(
+    privateProfileRef(uid),
+    (snap) => {
+      if (!snap.exists()) {
+        cb(null);
+        return;
+      }
+      const data = snap.data();
+      const tutorialVersion =
+        typeof data.onboardingTutorialVersion === "number" ? data.onboardingTutorialVersion : null;
+      const completedAt = isTimestamp(data.onboardingCompletedAt) ? data.onboardingCompletedAt : null;
+      const skippedAt = isTimestamp(data.onboardingSkippedAt) ? data.onboardingSkippedAt : null;
+      if (tutorialVersion === null && completedAt === null && skippedAt === null) {
+        cb(null);
+        return;
+      }
+      cb({ tutorialVersion, completedAt, skippedAt });
+    },
+    (err) => {
+      logger.warn("onboarding_subscribe_failed", { error: parseFirebaseError(err) });
+      captureException(err, { tags: { op: "subscribeToOnboardingState" } });
+      cb(null);
+    },
+  );
 }
 
 export async function markOnboardingCompleted(uid: string): Promise<void> {
