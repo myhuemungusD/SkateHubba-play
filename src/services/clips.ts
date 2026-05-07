@@ -273,6 +273,46 @@ export async function fetchClipsFeed(
   pageSize = 20,
   sort: ClipsFeedSort = "top",
 ): Promise<ClipsFeedPage> {
+  try {
+    return await runFeedQuery(cursor, pageSize, sort);
+  } catch (err) {
+    // The 'top' sort needs a 4-field composite index. If it's still
+    // building (or hasn't been deployed yet), Firestore returns
+    // `failed-precondition` and the lobby would otherwise render the
+    // "Feed temporarily unavailable" error state. Degrade to the 'new'
+    // sort — its 3-field index has been live for longer — so viewers
+    // still see clips while ops resolves the missing index.
+    if (sort === "top" && isMissingIndexError(err)) {
+      logger.warn("clips_feed_top_index_unavailable_falling_back_to_new", {
+        error: parseFirebaseError(err),
+      });
+      // Cursor shape differs between sorts (top threads upvoteCount, new
+      // doesn't), so we drop it rather than feed an incompatible value
+      // into startAfter on the fallback query.
+      return runFeedQuery(null, pageSize, "new");
+    }
+    throw err;
+  }
+}
+
+function isMissingIndexError(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const code = (err as { code?: unknown }).code;
+  if (code !== "failed-precondition") return false;
+  // Firestore raises failed-precondition for several reasons; the missing-
+  // index variant carries "requires an index" in its message. Be tolerant
+  // — if we can't read the message, treat the code as sufficient signal so
+  // the fallback still triggers in surface-stripped error envelopes.
+  const message = (err as { message?: unknown }).message;
+  if (typeof message !== "string") return true;
+  return message.toLowerCase().includes("index");
+}
+
+async function runFeedQuery(
+  cursor: ClipsFeedCursor | null,
+  pageSize: number,
+  sort: ClipsFeedSort,
+): Promise<ClipsFeedPage> {
   const boundedSize = Math.max(1, Math.min(50, pageSize));
 
   // App Store Guideline 1.2 requires offensive UGC to be removable from

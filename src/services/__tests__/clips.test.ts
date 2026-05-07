@@ -509,6 +509,75 @@ describe("fetchClipsFeed (sort='top', the default)", () => {
   });
 });
 
+describe("fetchClipsFeed (failed-precondition fallback)", () => {
+  function missingIndexError(message = "The query requires an index. You can create it here: ..."): Error {
+    const err = new Error(message);
+    (err as Error & { code?: string }).code = "failed-precondition";
+    return err;
+  }
+
+  it("falls back from sort='top' to sort='new' when the top-index isn't available yet", async () => {
+    // The 4-field top index can be still-building or undeployed in
+    // production. The lobby would otherwise show "Feed temporarily
+    // unavailable" — instead we degrade silently to the new-sort feed so
+    // viewers see clips while ops resolves the missing index.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_2_set", validClipData({ upvoteCount: 0 }))],
+    });
+
+    const page = await fetchClipsFeed(null, 20, "top");
+
+    expect(page.clips).toHaveLength(1);
+    expect(page.clips[0].id).toBe("g1_2_set");
+    // On fallback we drop the upvoteCount orderBy so the cursor must
+    // resemble a 'new'-sort cursor (no upvoteCount field).
+    expect(page.cursor).toEqual({ createdAt: expect.any(FakeTimestamp), id: "g1_2_set" });
+    // Sanity: the fallback issued the new-sort orderBy on its second
+    // attempt rather than the upvoteCount-ranked one.
+    const orderByFields = mockOrderBy.mock.calls.map((c) => c[0]);
+    expect(orderByFields).toContain("createdAt");
+  });
+
+  it("drops the cursor on fallback so an incompatible top-cursor doesn't crash startAfter", async () => {
+    // top-cursor threads upvoteCount through startAfter. Re-using it in a
+    // 'new' query would hand startAfter the wrong number of values.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    const ts = new FakeTimestamp(1_700_000_000_000) as unknown as ClipsFeedCursor["createdAt"];
+    const cursor: ClipsFeedCursor = { createdAt: ts, id: "g1_5_match", upvoteCount: 5 };
+
+    await fetchClipsFeed(cursor, 20, "top");
+
+    // First (failing) call wired the cursor with upvoteCount; the
+    // fallback call must *not* call startAfter at all.
+    expect(mockStartAfter).toHaveBeenCalledTimes(1);
+    expect(mockStartAfter).toHaveBeenCalledWith(5, ts, "g1_5_match");
+  });
+
+  it("does not fall back when sort='new' itself hits failed-precondition (rethrows)", async () => {
+    // No safer fallback exists once the new-sort index is also missing —
+    // surface the error so the lobby still renders its retry CTA.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+
+    await expect(fetchClipsFeed(null, 20, "new")).rejects.toMatchObject({ code: "failed-precondition" });
+    // Single attempt — no fallback was triggered.
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back on permission-denied (rethrows verbatim)", async () => {
+    // permission-denied is an auth/rules problem, not an index problem.
+    // Falling back to 'new' would mask the real failure, so let it surface.
+    const err = new Error("Missing or insufficient permissions.");
+    (err as Error & { code?: string }).code = "permission-denied";
+    mockGetDocs.mockRejectedValueOnce(err);
+
+    await expect(fetchClipsFeed(null, 20, "top")).rejects.toMatchObject({ code: "permission-denied" });
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+  });
+});
+
 /* ── deleteUserClips (account-deletion cascade) ──────────────── */
 
 describe("deleteUserClips", () => {
