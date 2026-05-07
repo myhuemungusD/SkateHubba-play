@@ -23,6 +23,7 @@
 
 import { test, expect, type BrowserContext, type Page, type Locator } from "@playwright/test";
 import { clearAll } from "./helpers/emulator";
+import { signUpAndSetupProfile } from "./helpers/auth-flow";
 
 // ─── Constants pinned from production source ─────────────────────────────────
 //
@@ -33,38 +34,6 @@ const TUTORIAL_TOTAL_STEPS = 5;
 
 function dismissedKey(uid: string): string {
   return `skatehubba.onboarding.dismissed.v${TUTORIAL_VERSION}.${uid}`;
-}
-
-// ─── Shared UI helpers (mirroring auth.spec.ts / game.spec.ts patterns) ──────
-
-async function fillAgeFields(page: Page) {
-  await expect(page.getByLabel("Birth month")).toBeVisible({ timeout: 5_000 });
-  await page.getByLabel("Birth month").fill("01");
-  await page.getByLabel("Birth day").fill("15");
-  await page.getByLabel("Birth year").fill("2000");
-}
-
-async function signUpAndSetupProfile(page: Page, email: string, password: string, username: string) {
-  await page.goto("/");
-  await page.evaluate(async () => {
-    await fetch("http://localhost:9099/", { mode: "no-cors" }).catch(() => {});
-    await fetch("http://localhost:8080/", { mode: "no-cors" }).catch(() => {});
-  });
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
-  await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
-  await page.getByPlaceholder("you@email.com").fill(email);
-  const pwFields = page.getByPlaceholder("••••••••");
-  await pwFields.nth(0).fill(password);
-  await pwFields.nth(1).fill(password);
-  await fillAgeFields(page);
-  await page.getByRole("button", { name: "Create Account" }).click();
-  await page.waitForURL(/\/(profile|lobby)/, { timeout: 15_000 });
-
-  await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
-  await page.getByPlaceholder("sk8legend").fill(username);
-  await expect(page.getByText(`@${username} is available ✓`)).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: "Lock It In" }).click();
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
 }
 
 async function getCurrentUid(page: Page): Promise<string> {
@@ -174,43 +143,39 @@ test("Enter advances when bubble has focus; Enter inside an input does not", asy
   await expect(progress).toHaveAttribute("aria-valuenow", "2");
 });
 
-test("Escape dismisses the tour and the dismissed flag persists across reload", async ({ page }) => {
-  await signUpAndSetupProfile(page, "tour-esc@test.com", "password123", "touresc");
-
-  const progress = tourProgress(page);
-  await expect(progress).toBeVisible({ timeout: 10_000 });
-
-  const uid = await getCurrentUid(page);
-
-  await page.keyboard.press("Escape");
-  await expect(progress).toBeHidden({ timeout: 5_000 });
-
+/**
+ * Asserts the dismiss outcome shared by Escape and close-button paths:
+ * tour hides, localStorage flag is set, the flag survives a reload.
+ */
+async function expectDismissedAndPersisted(page: Page, uid: string) {
+  await expect(tourProgress(page)).toBeHidden({ timeout: 5_000 });
   const stored = await page.evaluate((key) => window.localStorage.getItem(key), dismissedKey(uid));
   expect(stored).toBe("1");
-
   await page.reload();
   await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
   await expect(tourProgress(page)).toBeHidden();
+}
+
+test("Escape dismisses the tour and the dismissed flag persists across reload", async ({ page }) => {
+  await signUpAndSetupProfile(page, "tour-esc@test.com", "password123", "touresc");
+
+  await expect(tourProgress(page)).toBeVisible({ timeout: 10_000 });
+  const uid = await getCurrentUid(page);
+
+  await page.keyboard.press("Escape");
+  await expectDismissedAndPersisted(page, uid);
 });
 
 test("close (×) button dismisses the tour and persists across reload", async ({ page }) => {
   await signUpAndSetupProfile(page, "tour-close@test.com", "password123", "tourclose");
 
-  const progress = tourProgress(page);
-  const dialog = tourDialog(page);
-  await expect(progress).toBeVisible({ timeout: 10_000 });
-
+  await expect(tourProgress(page)).toBeVisible({ timeout: 10_000 });
   const uid = await getCurrentUid(page);
 
-  await dialog.getByRole("button", { name: /close tour/i }).click();
-  await expect(progress).toBeHidden({ timeout: 5_000 });
-
-  const stored = await page.evaluate((key) => window.localStorage.getItem(key), dismissedKey(uid));
-  expect(stored).toBe("1");
-
-  await page.reload();
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
-  await expect(tourProgress(page)).toBeHidden();
+  await tourDialog(page)
+    .getByRole("button", { name: /close tour/i })
+    .click();
+  await expectDismissedAndPersisted(page, uid);
 });
 
 test("tour pauses (does not show) on the gameplay screen, resumes on lobby", async ({ page }) => {
