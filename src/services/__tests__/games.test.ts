@@ -15,6 +15,9 @@ const {
   mockOrderBy,
   mockTxGet,
   mockTxUpdate,
+  mockBatchSet,
+  mockBatchCommit,
+  mockWriteBatch,
 } = vi.hoisted(() => ({
   mockAddDoc: vi.fn(),
   mockSetDoc: vi.fn().mockResolvedValue(undefined),
@@ -32,6 +35,9 @@ const {
   mockOrderBy: vi.fn((...args: unknown[]) => args),
   mockTxGet: vi.fn(),
   mockTxUpdate: vi.fn(),
+  mockBatchSet: vi.fn(),
+  mockBatchCommit: vi.fn().mockResolvedValue(undefined),
+  mockWriteBatch: vi.fn(),
 }));
 
 vi.mock("firebase/firestore", () => ({
@@ -46,6 +52,7 @@ vi.mock("firebase/firestore", () => ({
   limit: mockLimit,
   orderBy: mockOrderBy,
   onSnapshot: mockOnSnapshot,
+  writeBatch: mockWriteBatch,
   serverTimestamp: () => "SERVER_TS",
   arrayUnion: (...elements: unknown[]) => ({ _arrayUnion: elements }),
   Timestamp: {
@@ -87,6 +94,13 @@ beforeEach(() => {
   // silently skips the notification write, making rate-limit assertions flaky.
   _resetNotificationRateLimit();
   mockSetDoc.mockResolvedValue(undefined);
+  mockBatchCommit.mockResolvedValue(undefined);
+  // writeBatch() returns a fresh batch object on each call. The factory wires
+  // .set / .commit through the same hoisted spies so tests can introspect them.
+  mockWriteBatch.mockImplementation(() => ({
+    set: mockBatchSet,
+    commit: mockBatchCommit,
+  }));
   mockTxSetCalls = [];
   // Default: runTransaction calls the callback with a mock tx object. The
   // `set` spy captures in-tx writes (notifications + any other tx.set calls)
@@ -362,12 +376,13 @@ describe("games service", () => {
   });
 
   describe("createGame", () => {
-    // The `createGame` flow now uses a client-generated deterministic id
+    // The `createGame` flow uses a client-generated deterministic id
     // (`doc(gamesRef()).id`) + `setDoc(doc(gamesRef(), id), data)` instead of
-    // `addDoc`. That means `setDoc` is called multiple times:
+    // `addDoc`. That means `setDoc` is called twice:
     //   - call 0: writes the game doc
     //   - call 1: writes the lastGameCreatedAt field on the user profile
-    //   - addDoc is still used once per notification (opponent challenge, etc.)
+    // Notifications (opponent challenge, optional judge invite) now commit
+    // through writeBatch — see writeNotification's H2 companion-write fix.
     const gameSetDocCall = (): Record<string, unknown> => {
       // The game doc write is always the FIRST setDoc call (the user profile
       // merge fires after `metrics.gameCreated`). In all these tests the
@@ -380,12 +395,16 @@ describe("games service", () => {
       const id = await createGame("p1", "alice", "p2", "bob");
       // Deterministic id from mockDoc — `doc(gamesRef()).id` → "auto-id"
       expect(id).toBe("auto-id");
-      // setDoc fires three times: the game write itself, the user profile
-      // merge for `lastGameCreatedAt`, and the `notification_limits` write
-      // inside writeNotification's rate-limit tracking.
-      expect(mockSetDoc).toHaveBeenCalledTimes(3);
-      // addDoc is still used for the non-transactional notification write.
-      expect(mockAddDoc).toHaveBeenCalledTimes(1);
+      // setDoc fires twice: the game write itself and the user profile merge
+      // for `lastGameCreatedAt`. The challenge notification + its companion
+      // notification_limits doc now ride a single writeBatch (H2 hardening),
+      // so addDoc is no longer involved.
+      expect(mockSetDoc).toHaveBeenCalledTimes(2);
+      expect(mockAddDoc).not.toHaveBeenCalled();
+      // The challenge notification → one writeBatch.commit() with two .set()s
+      // (notification + companion notification_limits doc).
+      expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+      expect(mockBatchSet).toHaveBeenCalledTimes(2);
 
       const docData = gameSetDocCall();
       expect(docData.player1Uid).toBe("p1");
@@ -436,8 +455,9 @@ describe("games service", () => {
 
     it("updates lastGameCreatedAt on user profile (best effort)", async () => {
       await createGame("p1", "alice", "p2", "bob");
-      // setDoc: game write, user profile merge, notification rate-limit doc.
-      expect(mockSetDoc).toHaveBeenCalledTimes(3);
+      // setDoc: game write, user profile merge. (Notification + its
+      // companion limit doc now go through writeBatch — see refactor.)
+      expect(mockSetDoc).toHaveBeenCalledTimes(2);
       // The user profile merge is the second setDoc call (after the game).
       const userProfilePath = (mockSetDoc.mock.calls[1][0] as { __path?: string }).__path ?? "";
       expect(userProfilePath).toContain("users");

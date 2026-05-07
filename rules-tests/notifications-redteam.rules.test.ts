@@ -20,7 +20,7 @@ import {
 } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, setDoc, serverTimestamp, setLogLevel } from "firebase/firestore";
+import { doc, setDoc, serverTimestamp, setLogLevel, writeBatch } from "firebase/firestore";
 
 const PROJECT_ID = "demo-skatehubba-rules-notifications-redteam";
 
@@ -127,11 +127,21 @@ describe("notifications — red-team against title/body caps", () => {
   });
 
   it("legitimate: short title and body within caps succeed", async () => {
-    await assertSucceeds(
-      setDoc(
-        doc(asSender().firestore(), "notifications", NOTIF_ID),
-        makeValidNotification({ title: "A".repeat(80), body: "B".repeat(200) }),
-      ),
-    );
+    // After the H2 hardening, /notifications create needs a companion write
+    // to /notification_limits in the same batch (or a games update — see
+    // notifications-companion-write-redteam). Use the batch path so this
+    // happy-path test exercises the realistic prod shape.
+    const ctx = asSender();
+    const notifRef = doc(ctx.firestore(), "notifications", NOTIF_ID);
+    const limitRef = doc(ctx.firestore(), "notification_limits", `${SENDER_UID}_${GAME_ID}_your_turn`);
+    const batch = writeBatch(ctx.firestore());
+    batch.set(notifRef, makeValidNotification({ title: "A".repeat(80), body: "B".repeat(200) }));
+    batch.set(limitRef, {
+      senderUid: SENDER_UID,
+      gameId: GAME_ID,
+      type: "your_turn",
+      lastSentAt: serverTimestamp(),
+    });
+    await assertSucceeds(batch.commit());
   });
 });

@@ -1034,7 +1034,15 @@ service cloud.firestore {
            && request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid)
         )
         // Only nudge active games
-        && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.status == 'active';
+        && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.status == 'active'
+        // Companion-write requirement (May 2026 H1 hardening): in the same
+        // batch the sender MUST also write nudge_limits/{senderUid_gameId}
+        // with lastNudgedAt pinned to request.time. Without this, the client
+        // could write /nudges and skip the rate-limit doc — defeating the
+        // 1-hour cooldown server-side. getAfter() reflects the post-batch
+        // state, so a missing limit write means the doc isn't there and
+        // the rule rejects. Mirrors the /reports pattern (H-R2).
+        && getAfter(/databases/$(database)/documents/nudge_limits/$(request.auth.uid + '_' + request.resource.data.gameId)).data.lastNudgedAt == request.time;
 
       // Only the Admin SDK (Cloud Function) can update delivered status
       allow update: if false;
@@ -1094,6 +1102,31 @@ service cloud.firestore {
         && (
           !exists(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type))
           || request.time > get(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)).data.lastSentAt + duration.value(5, 's')
+        )
+        // Companion-write requirement (May 2026 H2 hardening): a /notifications
+        // create must commit ATOMICALLY with one of two anchors so a malicious
+        // client can't write /notifications and skip the cooldown bookkeeping
+        // (or, worse, omit it entirely and spam an opponent's feed).
+        //
+        //   Path A — standalone (writeNotification): the same batch must write
+        //   notification_limits/{senderUid_gameId_type} with lastSentAt pinned
+        //   to request.time. Mirrors the /reports + /nudges companion-write
+        //   pattern, and refreshes the 5s cooldown anchor in lockstep with
+        //   the notification.
+        //
+        //   Path B — in-tx (writeNotificationInTx): the notification is part
+        //   of a runTransaction that also updates /games/{gameId} with
+        //   updatedAt = serverTimestamp() (i.e. request.time). Every game
+        //   action that emits an in-tx notification already does this, and
+        //   game writes are themselves rate-limited (turn-action 2s
+        //   server cooldown + turn-order rules), so we don't need a second
+        //   limits doc on the in-tx hot path.
+        //
+        // getAfter() reflects the post-commit state; if neither anchor lands
+        // in the same batch the rule rejects.
+        && (
+          getAfter(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)).data.lastSentAt == request.time
+          || getAfter(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.updatedAt == request.time
         );
 
       // Only the recipient can mark a notification as read
