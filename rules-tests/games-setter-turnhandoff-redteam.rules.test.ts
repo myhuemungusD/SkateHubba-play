@@ -58,11 +58,11 @@ const P2_UID = "p2-bob";
 const GAME_ID = "g-setter";
 
 const VALID_DEADLINE = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
-const VALID_VIDEO_URL = "https://example.com/set.webm";
+const VALID_VIDEO_URL = "https://firebasestorage.googleapis.com/test/set.webm";
 // Sentinel value the matching-phase rule writes; any prior turn leaves this on
 // the doc, so every turn-2+ setting-phase write must coexist with it. Used by
 // the matchVideoUrl-immutability tests below.
-const PREV_MATCH_URL = "https://example.com/prev-turn-match.webm";
+const PREV_MATCH_URL = "https://firebasestorage.googleapis.com/test/prev-turn-match.webm";
 
 // Canonical setting→matching payload (setter records a trick). Spread `extra`
 // to override/add fields — e.g. `setTrickPayload({ matchVideoUrl: null })` for
@@ -228,7 +228,10 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", matchVideoUrl: null });
     await assertFails(
       // Illegal: match video URL only comes from the matching-phase rule.
-      updateDoc(gameRef(asP1()), setTrickPayload({ matchVideoUrl: "https://example.com/fake-match.webm" })),
+      updateDoc(
+        gameRef(asP1()),
+        setTrickPayload({ matchVideoUrl: "https://firebasestorage.googleapis.com/test/fake-match.webm" }),
+      ),
     );
   });
 
@@ -341,7 +344,10 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
     await seedP1SettingWithPriorMatch(2);
     // Illegal: a forged URL must be rejected the same as null-clearing.
     await assertFails(
-      updateDoc(gameRef(asP1()), setTrickPayload({ matchVideoUrl: "https://example.com/forged-match.webm" })),
+      updateDoc(
+        gameRef(asP1()),
+        setTrickPayload({ matchVideoUrl: "https://firebasestorage.googleapis.com/test/forged-match.webm" }),
+      ),
     );
   });
 

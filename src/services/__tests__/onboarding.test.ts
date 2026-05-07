@@ -49,11 +49,15 @@ import {
   getLocalProgress,
   setLocalProgress,
   clearLocalProgress,
+  getLocalDismissed,
+  setLocalDismissed,
+  clearLocalDismissed,
   type LocalOnboardingProgress,
 } from "../onboarding";
 
 const UID = "user-1";
 const KEY = `skatehubba.onboarding.v${TUTORIAL_VERSION}.${UID}`;
+const DISMISSED_KEY = `skatehubba.onboarding.dismissed.v${TUTORIAL_VERSION}.${UID}`;
 
 class FakeTimestamp {
   constructor(private readonly date: Date) {}
@@ -328,10 +332,12 @@ describe("markOnboardingSkipped", () => {
 });
 
 describe("resetOnboarding", () => {
-  it("clears localStorage AND nullifies the firestore fields", async () => {
+  it("clears localStorage (progress + dismissed) AND nullifies the firestore fields", async () => {
     window.localStorage.setItem(KEY, "anything");
+    window.localStorage.setItem(DISMISSED_KEY, "1");
     await resetOnboarding(UID);
     expect(window.localStorage.getItem(KEY)).toBeNull();
+    expect(window.localStorage.getItem(DISMISSED_KEY)).toBeNull();
     expect(mockSetDoc.mock.calls[0][1]).toEqual({
       onboardingTutorialVersion: null,
       onboardingCompletedAt: null,
@@ -344,6 +350,60 @@ describe("resetOnboarding", () => {
     await resetOnboarding("");
     expect(mockSetDoc).not.toHaveBeenCalled();
     expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+});
+
+/* ────────────────────────────────────────────
+ * Local-dismissed flag (per-device "saw the tour" bit)
+ * ──────────────────────────────────────────── */
+
+describe("local dismissed flag", () => {
+  it("getLocalDismissed returns false when nothing is stored", () => {
+    expect(getLocalDismissed(UID)).toBe(false);
+  });
+
+  it("setLocalDismissed writes '1' to the versioned per-user key", () => {
+    setLocalDismissed(UID);
+    expect(window.localStorage.getItem(DISMISSED_KEY)).toBe("1");
+    expect(getLocalDismissed(UID)).toBe(true);
+  });
+
+  it("clearLocalDismissed removes the key", () => {
+    window.localStorage.setItem(DISMISSED_KEY, "1");
+    clearLocalDismissed(UID);
+    expect(window.localStorage.getItem(DISMISSED_KEY)).toBeNull();
+    expect(getLocalDismissed(UID)).toBe(false);
+  });
+
+  it("all three are no-ops for an empty uid", () => {
+    const spyGet = vi.spyOn(Storage.prototype, "getItem");
+    const spySet = vi.spyOn(Storage.prototype, "setItem");
+    const spyRemove = vi.spyOn(Storage.prototype, "removeItem");
+    expect(getLocalDismissed("")).toBe(false);
+    setLocalDismissed("");
+    clearLocalDismissed("");
+    expect(spyGet).not.toHaveBeenCalled();
+    expect(spySet).not.toHaveBeenCalled();
+    expect(spyRemove).not.toHaveBeenCalled();
+    spyGet.mockRestore();
+    spySet.mockRestore();
+    spyRemove.mockRestore();
+  });
+
+  it("setLocalDismissed swallows storage errors", () => {
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota");
+    });
+    expect(() => setLocalDismissed(UID)).not.toThrow();
+    spy.mockRestore();
+  });
+
+  it("getLocalDismissed swallows storage errors and returns false", () => {
+    const spy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("disabled");
+    });
+    expect(getLocalDismissed(UID)).toBe(false);
     spy.mockRestore();
   });
 });

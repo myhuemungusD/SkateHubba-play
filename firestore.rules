@@ -460,7 +460,15 @@ service cloud.firestore {
            && request.resource.data.currentTrickName.size() > 0
            && request.resource.data.currentTrickName.size() <= 64
            && request.resource.data.currentTrickVideoUrl is string
-           && request.resource.data.currentTrickVideoUrl.matches('^https?://.+'))
+           // Pin trick-video URL to Firebase Storage hosts only. Without this
+           // anchor, a setter could point currentTrickVideoUrl at any HTTP
+           // origin — exfiltrating viewer IPs via referrer/preconnect, or
+           // serving NSFW/malicious media inside the matcher's recorder UI.
+           // Mirrors the client-side `isFirebaseStorageUrl` helper
+           // (src/utils/helpers.ts): the legacy
+           // firebasestorage.googleapis.com host (literal) and the newer
+           // bucket-as-subdomain *.firebasestorage.app host.
+           && request.resource.data.currentTrickVideoUrl.matches('^https://(firebasestorage\\.googleapis\\.com|[^/]+\\.firebasestorage\\.app)/.+'))
           // setting → setting (setter failed to land, turn passes to opponent)
           //   • currentSetter MUST flip to the other player (the whole point of
           //     failSetTrick is the role passes) — this is the invariant the
@@ -557,8 +565,19 @@ service cloud.firestore {
              request.resource.data.currentTurn == resource.data.player1Uid
              || request.resource.data.currentTurn == resource.data.player2Uid
            ))
+          // Completion: pin winner to the opponent of the player who just
+          // hit 5 letters. Without this pin, a losing matcher whose own
+          // counter just reached 5 could write `winner = themselves` —
+          // every read of the doc (leaderboard, clip feed, push, profile)
+          // would then surface the wrong outcome.
           || (request.resource.data.status == 'complete'
-              && request.resource.data.winner != null)
+              && request.resource.data.winner != null
+              && (
+                (request.resource.data.p1Letters >= 5
+                 && request.resource.data.winner == resource.data.player2Uid)
+                || (request.resource.data.p2Letters >= 5
+                    && request.resource.data.winner == resource.data.player1Uid)
+              ))
           // Honor system + landed — roles swap immediately, no judge routing.
           // Letters must stay unchanged; currentTurn becomes the matcher
           // (opponent of resource.data.currentSetter). Only allowed when the
@@ -645,13 +664,22 @@ service cloud.firestore {
           || (request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters + 1)
         )
-        // Must resolve to setting (continue) or complete (game over)
+        // Must resolve to setting (continue) or complete (game over).
+        // Completion path pins winner direction (see match-resolution rule
+        // for rationale) — judge-overruled dispute that pushes a player to
+        // their 5th letter must record the OTHER player as winner.
         && (
           (request.resource.data.status == 'active'
            && request.resource.data.phase == 'setting'
            && request.resource.data.winner == null)
           || (request.resource.data.status == 'complete'
-              && request.resource.data.winner != null)
+              && request.resource.data.winner != null
+              && (
+                (request.resource.data.p1Letters >= 5
+                 && request.resource.data.winner == resource.data.player2Uid)
+                || (request.resource.data.p2Letters >= 5
+                    && request.resource.data.winner == resource.data.player1Uid)
+              ))
         )
         // turnHistory growth bound — judge rulings append a single
         // TurnRecord with judgedBy set. Same 1-per-write + ≤200 ceiling

@@ -1524,7 +1524,12 @@ describe("games service", () => {
       warnSpy.mockRestore();
     });
 
-    it("re-emits with the cleared slice when an already-seeded listener errors", () => {
+    it("preserves the slice's prior state when an already-seeded listener errors", () => {
+      // After first-load completes, a transient error on a seeded listener
+      // must NOT zero out that slice. The Firestore SDK auto-reconnects on
+      // transient errors and the next successful snapshot replaces the
+      // slice atomically — zeroing here would silently empty the user's
+      // view (e.g. all judge games vanish) on every flaky reconnect cycle.
       const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       const onUpdate = vi.fn();
       const nextFns: Array<(snap: unknown) => void> = [];
@@ -1544,12 +1549,17 @@ describe("games service", () => {
       expect(onUpdate).toHaveBeenCalledTimes(1);
       expect(onUpdate.mock.calls[0][0]).toHaveLength(3);
 
-      // Judge listener errors — its slice must be dropped and a fresh emit
-      // fires so consumers don't see stale judge games forever.
+      // Judge listener errors — slice is preserved. Merged state is
+      // unchanged, so no re-emit fires (wasteful churn avoided).
       errFns[2](new Error("permission-denied"));
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+
+      // A subsequent successful snapshot from the recovered listener
+      // replaces the slice and emits fresh data normally.
+      nextFns[2]({ docs: [{ id: "g3", data: () => ({ ...baseGame, turnNumber: 30 }) }] });
       expect(onUpdate).toHaveBeenCalledTimes(2);
       const games = onUpdate.mock.calls[1][0];
-      expect(games.map((g: { id: string }) => g.id).sort()).toEqual(["g1", "g2"]);
+      expect(games.map((g: { id: string }) => g.id).sort()).toEqual(["g1", "g2", "g3"]);
       warnSpy.mockRestore();
     });
   });

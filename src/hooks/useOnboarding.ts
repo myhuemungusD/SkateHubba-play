@@ -5,6 +5,8 @@ import {
   getLocalProgress,
   setLocalProgress,
   clearLocalProgress,
+  getLocalDismissed,
+  setLocalDismissed,
   markOnboardingCompleted,
   markOnboardingSkipped,
   resetOnboarding,
@@ -51,30 +53,45 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
 
     let stale = false;
 
-    getOnboardingState(uid)
-      .then((state) => {
-        if (stale) return;
+    // We trust local-dismissed AS WELL AS Firestore: either signal alone is
+    // enough to keep the tour hidden. This protects against the original bug
+    // (Firestore write never landed — closed tab, network drop, permission
+    // blip) while still respecting the server. We always fetch Firestore so
+    // a positive "already done" record from another device still mirrors
+    // into local. The only way to "resurrect" the tour after a dismissal is
+    // a TUTORIAL_VERSION bump (intentional copy refresh) or an explicit
+    // resetOnboarding from THIS device — both clear the local flag too.
+    const locallyDismissed = getLocalDismissed(uid);
+    const fetchPromise = getOnboardingState(uid).catch(() => "ERR" as const);
 
-        // Treat the tour as "done" only when the recorded version matches the
-        // current TUTORIAL_VERSION. Bumping the constant resurfaces the tour
-        // for everyone with stale persisted state.
-        const versionMatches = state?.tutorialVersion === TUTORIAL_VERSION;
-        const alreadyDone = !!state && versionMatches && (state.completedAt !== null || state.skippedAt !== null);
+    fetchPromise.then((stateOrErr) => {
+      if (stale) return;
 
-        if (alreadyDone) {
-          setResolved({ fetchedFor: uid, shouldShow: false, currentStep: 0 });
-        } else {
-          const local = getLocalProgress(uid);
-          const restoredStep = local ? Math.min(Math.max(local.currentStep, 0), totalSteps - 1) : 0;
-          setResolved({ fetchedFor: uid, shouldShow: true, currentStep: restoredStep });
-        }
-      })
-      .catch(() => {
-        // getOnboardingState already swallows errors and returns null —
-        // but defend against a future change in case it ever throws again.
-        if (stale) return;
-        setResolved({ fetchedFor: uid, shouldShow: true, currentStep: 0 });
-      });
+      if (stateOrErr === "ERR") {
+        // Network/permission failure. Trust local — if we know the user
+        // dismissed here, keep the tour hidden; otherwise default to showing.
+        setResolved({ fetchedFor: uid, shouldShow: !locallyDismissed, currentStep: 0 });
+        return;
+      }
+
+      const state = stateOrErr;
+      // Treat the tour as "done" only when the recorded version matches the
+      // current TUTORIAL_VERSION. Bumping the constant resurfaces the tour
+      // for everyone with stale persisted state.
+      const versionMatches = state?.tutorialVersion === TUTORIAL_VERSION;
+      const alreadyDone = !!state && versionMatches && (state.completedAt !== null || state.skippedAt !== null);
+
+      if (alreadyDone || locallyDismissed) {
+        // Mirror an authoritative "done" bit from the server into local so
+        // a subsequent network failure still lands on shouldShow=false.
+        if (alreadyDone) setLocalDismissed(uid);
+        setResolved({ fetchedFor: uid, shouldShow: false, currentStep: 0 });
+      } else {
+        const local = getLocalProgress(uid);
+        const restoredStep = local ? Math.min(Math.max(local.currentStep, 0), totalSteps - 1) : 0;
+        setResolved({ fetchedFor: uid, shouldShow: true, currentStep: restoredStep });
+      }
+    });
 
     return () => {
       stale = true;
@@ -123,7 +140,11 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
   const skip = useCallback(async () => {
     setResolved((prev) => ({ ...prev, shouldShow: false }));
     if (!uid) return;
+    // Synchronous local writes BEFORE the async Firestore call — if the user
+    // closes the tab or the network drops, the device-local flag alone is
+    // enough to keep the tour from re-firing on reload.
     clearLocalProgress(uid);
+    setLocalDismissed(uid);
     await markOnboardingSkipped(uid);
   }, [uid]);
 
@@ -131,6 +152,7 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
     setResolved((prev) => ({ ...prev, shouldShow: false }));
     if (!uid) return;
     clearLocalProgress(uid);
+    setLocalDismissed(uid);
     await markOnboardingCompleted(uid);
   }, [uid]);
 

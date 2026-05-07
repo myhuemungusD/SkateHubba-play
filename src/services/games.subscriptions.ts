@@ -146,12 +146,19 @@ export function subscribeToMyGames(
   const handleError = (slice: Slice) => (err: Error) => {
     logger.warn("game_subscription_error", { uid, error: err.message });
     captureException(err, { extra: { context: "subscribeToMyGames", uid } });
-    // Drop this slice's contribution so we don't leave stale data mixed in
-    // with healthy slices. Still counts toward "seeded" — an erroring query
-    // shouldn't block the first emit forever.
-    slices[slice] = new Map();
+    // Preserve whatever the slice last delivered. The Firestore SDK
+    // auto-reconnects on transient errors and the next successful snapshot
+    // replaces the slice atomically — zeroing here would silently empty the
+    // user's view (e.g. all judge games disappear) until reconnect, which
+    // a flaky judge-listener can hit repeatedly. The errored slice still
+    // counts toward "seeded" so an erroring query doesn't block the first
+    // emit forever.
+    const wasFirstLoadComplete = firstLoadComplete;
     markSeeded(slice);
-    if (firstLoadComplete) rebuildAndEmit();
+    // Emit only when this error completes the first-load gate. After first
+    // load, the slice is preserved so merged state is unchanged — a
+    // re-emit would be wasted work and can churn downstream React state.
+    if (!wasFirstLoadComplete && firstLoadComplete) rebuildAndEmit();
   };
 
   const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(limitCount));
