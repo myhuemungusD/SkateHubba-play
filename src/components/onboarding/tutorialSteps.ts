@@ -47,7 +47,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     title: "your tag",
     bubble: "this is the name everyone sees.",
     skipMessage: "you can change it later.",
-    anchorSelector: '[data-tutorial="profile-form"]',
+    anchorSelector: '[data-tutorial="handle-display"]',
     primaryCtaLabel: "next",
     screen: "lobby",
   },
