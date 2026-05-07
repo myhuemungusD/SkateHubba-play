@@ -42,6 +42,16 @@ export function SpotlightVideo({ src, onNext }: { src: string; onNext: () => voi
     el.play().catch(() => undefined);
   }, []);
 
+  // Reset the autoplay-grant gate when the clip changes. Without this, the
+  // ref stays `true` from the previous src and a brief out-of-viewport blip
+  // mid-load can pause the new clip before its muted-autoplay grant has
+  // resolved — exactly the failure mode the gate was designed to prevent.
+  // `ended` is cleared by handlePlay() when the new clip starts, so we
+  // only need to reset the ref here.
+  useEffect(() => {
+    hasPlayedRef.current = false;
+  }, [src]);
+
   useEffect(() => {
     const video = videoRef.current;
     const container = containerRef.current;
