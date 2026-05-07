@@ -12,7 +12,7 @@
 import { initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { serverTimestamp, setLogLevel } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc, setLogLevel } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach } from "vitest";
 
 interface ValidGameOpts {
@@ -33,7 +33,6 @@ export async function seedValidGame(
   overrides: Record<string, unknown> = {},
 ): Promise<void> {
   await env.withSecurityRulesDisabled(async (ctx) => {
-    const { doc, setDoc } = await import("firebase/firestore");
     await setDoc(doc(ctx.firestore(), "games", gameId), makeValidGame(opts, overrides));
   });
 }
