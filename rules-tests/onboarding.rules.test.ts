@@ -20,56 +20,45 @@
  *
  * Run via:  npm run test:rules
  */
-import { describe, it, beforeAll, afterAll, beforeEach } from "vitest";
-import {
-  initializeTestEnvironment,
-  assertSucceeds,
-  assertFails,
-  type RulesTestEnvironment,
-  type RulesTestContext,
-} from "@firebase/rules-unit-testing";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { Timestamp, doc, serverTimestamp, setDoc, setLogLevel } from "firebase/firestore";
-
-const PROJECT_ID = "demo-skatehubba-rules-onboarding";
+import { describe, it } from "vitest";
+import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
+import { Timestamp, doc, serverTimestamp, setDoc } from "firebase/firestore";
+import { setupRulesTestEnv } from "./_fixtures";
 
 const OWNER_UID = "owner-uid";
 const STRANGER_UID = "stranger-uid";
 
-let testEnv: RulesTestEnvironment;
+const getEnv = setupRulesTestEnv("demo-skatehubba-rules-onboarding");
 
 function asOwner(): RulesTestContext {
-  return testEnv.authenticatedContext(OWNER_UID, { email_verified: true });
+  return getEnv().authenticatedContext(OWNER_UID, { email_verified: true });
 }
 
 function asStranger(): RulesTestContext {
-  return testEnv.authenticatedContext(STRANGER_UID, { email_verified: true });
+  return getEnv().authenticatedContext(STRANGER_UID, { email_verified: true });
 }
 
 function ownerPrivateRef() {
   return doc(asOwner().firestore(), "users", OWNER_UID, "private", "profile");
 }
 
-beforeAll(async () => {
-  setLogLevel("error");
-  testEnv = await initializeTestEnvironment({
-    projectId: PROJECT_ID,
-    firestore: {
-      host: "127.0.0.1",
-      port: 8080,
-      rules: readFileSync(resolve(process.cwd(), "firestore.rules"), "utf8"),
+/**
+ * Write the canonical "completed onboarding" payload (version + one timestamp
+ * field + the other reset to null). Repeated across positive and co-existence
+ * tests; collapsed here so the dup-check gate stays green.
+ */
+function writeOnboardingPayload(extra: Record<string, unknown> = {}): Promise<void> {
+  return setDoc(
+    ownerPrivateRef(),
+    {
+      onboardingTutorialVersion: 2,
+      onboardingCompletedAt: serverTimestamp(),
+      onboardingSkippedAt: null,
+      ...extra,
     },
-  });
-});
-
-afterAll(async () => {
-  await testEnv?.cleanup();
-});
-
-beforeEach(async () => {
-  await testEnv.clearFirestore();
-});
+    { merge: true },
+  );
+}
 
 describe("users/{uid}/private/profile — onboarding field shape (positive)", () => {
   it("legitimate: owner CAN write valid onboardingTutorialVersion: 1", async () => {
@@ -77,17 +66,7 @@ describe("users/{uid}/private/profile — onboarding field shape (positive)", ()
   });
 
   it("legitimate: owner CAN write onboardingCompletedAt: serverTimestamp()", async () => {
-    await assertSucceeds(
-      setDoc(
-        ownerPrivateRef(),
-        {
-          onboardingTutorialVersion: 2,
-          onboardingCompletedAt: serverTimestamp(),
-          onboardingSkippedAt: null,
-        },
-        { merge: true },
-      ),
-    );
+    await assertSucceeds(writeOnboardingPayload());
   });
 
   it("legitimate: owner CAN write onboardingSkippedAt: serverTimestamp()", async () => {
@@ -105,8 +84,9 @@ describe("users/{uid}/private/profile — onboarding field shape (positive)", ()
   });
 
   it("legitimate: owner CAN reset onboarding fields to null (replay tour flow)", async () => {
-    // Seed prior completion
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    // Seed prior completion via rules-disabled context so we can exercise the
+    // reset path against the real rule.
+    await getEnv().withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "users", OWNER_UID, "private", "profile"), {
         onboardingTutorialVersion: 1,
         onboardingCompletedAt: Timestamp.now(),
@@ -156,8 +136,6 @@ describe("users/{uid}/private/profile — onboarding field shape (attacks)", () 
 
 describe("users/{uid}/private/profile — cross-user isolation regression guard", () => {
   it("attack: a stranger CANNOT write to another user's private profile doc", async () => {
-    // Existing isOwner(uid) check; verify it still holds after the
-    // new validation predicates were added.
     await assertFails(
       setDoc(
         doc(asStranger().firestore(), "users", OWNER_UID, "private", "profile"),
@@ -176,18 +154,7 @@ describe("users/{uid}/private/profile — legitimate co-existence with fcmTokens
   });
 
   it("legitimate: owner CAN update onboarding fields and fcmTokens in a single setDoc merge", async () => {
-    await assertSucceeds(
-      setDoc(
-        ownerPrivateRef(),
-        {
-          onboardingTutorialVersion: 2,
-          onboardingCompletedAt: serverTimestamp(),
-          onboardingSkippedAt: null,
-          fcmTokens: ["device-1"],
-        },
-        { merge: true },
-      ),
-    );
+    await assertSucceeds(writeOnboardingPayload({ fcmTokens: ["device-1"] }));
   });
 });
 
