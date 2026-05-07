@@ -1,5 +1,4 @@
-import { useEffect, useRef } from "react";
-import { useFocusTrap } from "../../hooks/useFocusTrap";
+import { useEffect } from "react";
 import { useOnboardingContext } from "../../context/OnboardingContext";
 import { TUTORIAL_STEPS } from "./tutorialSteps";
 import { MascotBubble } from "./MascotBubble";
@@ -15,17 +14,19 @@ function mascotStateForStep(stepIndex: number, isFinal: boolean): HubzState {
 }
 
 /**
- * Top-level orchestrator for the cartoon-mascot onboarding tour. Reads the
+ * Top-level orchestrator for the non-blocking onboarding tour. Reads the
  * machine state out of OnboardingContext and renders nothing when the tour
- * is dismissed or still loading. Handles dialog framing (role="dialog",
- * focus trap, Esc-to-skip) and bubbles step-specific concerns down to
- * SpotlightOverlay + MascotBubble.
+ * is dismissed or still loading.
+ *
+ * Unlike a modal dialog, this overlay does NOT trap focus, set `inert`, or
+ * mark itself `aria-modal` — the underlying app stays fully interactive
+ * (Pokemon-Go-style coach mark). The bubble is exposed as a non-modal dialog
+ * so screen readers still announce its label, and Esc still dismisses it as
+ * a courtesy for keyboard users.
  */
 export function TutorialOverlay() {
   const { loading, shouldShow, currentStep, totalSteps, advance, back, skip, complete, reducedMotion } =
     useOnboardingContext();
-  const dialogRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(dialogRef, shouldShow && !loading);
 
   const step = TUTORIAL_STEPS[currentStep];
   const isFinal = step?.isFinal === true;
@@ -56,16 +57,21 @@ export function TutorialOverlay() {
   const showBack = currentStep > 0;
   const showConfetti = isFinal && !reducedMotion;
 
+  // The dialog wrapper used to be `display: contents`, but some AT
+  // combinations drop `display: contents` nodes from the accessibility tree —
+  // which would silently strip the dialog role and label. Use a regular block
+  // element instead. The children inside are all `position: fixed`, so this
+  // wrapper has zero intrinsic layout impact, but it survives in the a11y
+  // tree so screen readers reliably announce the coach mark as a dialog —
+  // and the labelling MascotBubble (inside SpotlightOverlay) stays inside
+  // the dialog subtree so aria-labelledby resolves correctly.
   return (
-    <div
-      ref={dialogRef}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="onboarding-title"
-      data-testid="tutorial-overlay"
-      className="fixed inset-0 z-[60]"
-    >
-      <SpotlightOverlay targetSelector={step.anchorSelector} reducedMotion={reducedMotion}>
+    <div role="dialog" aria-labelledby="onboarding-title" data-testid="tutorial-overlay">
+      <SpotlightOverlay
+        targetSelector={step.anchorSelector}
+        reducedMotion={reducedMotion}
+        onBackdropTap={() => void skip()}
+      >
         <MascotBubble
           title={step.title}
           message={step.bubble}
@@ -82,7 +88,7 @@ export function TutorialOverlay() {
         <div
           aria-hidden="true"
           data-testid="tutorial-confetti"
-          className="pointer-events-none absolute inset-x-0 bottom-32 flex justify-center gap-6"
+          className="pointer-events-none fixed inset-x-0 bottom-44 flex justify-center gap-6 z-[60]"
         >
           {CONFETTI.map((emoji, i) => (
             <span key={emoji} className="text-3xl motion-safe:animate-float" style={{ animationDelay: `${i * 120}ms` }}>

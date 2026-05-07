@@ -505,6 +505,9 @@ export interface OnboardingServiceRefs {
   getLocalProgress: Mock;
   setLocalProgress: Mock;
   clearLocalProgress: Mock;
+  getLocalDismissed: Mock;
+  setLocalDismissed: Mock;
+  clearLocalDismissed: Mock;
 }
 
 export interface OnboardingServiceMocks {
@@ -518,7 +521,7 @@ export function createOnboardingServiceMocks(): OnboardingServiceMocks {
     // in smoke tests that don't care about onboarding. Tests that DO care
     // override via refs.getOnboardingState.mockResolvedValueOnce(null).
     getOnboardingState: vi.fn().mockResolvedValue({
-      tutorialVersion: 1,
+      tutorialVersion: 2,
       completedAt: { seconds: 0, nanoseconds: 0 },
       skippedAt: null,
     }),
@@ -529,11 +532,14 @@ export function createOnboardingServiceMocks(): OnboardingServiceMocks {
     getLocalProgress: vi.fn().mockReturnValue(null),
     setLocalProgress: vi.fn(),
     clearLocalProgress: vi.fn(),
+    getLocalDismissed: vi.fn().mockReturnValue(false),
+    setLocalDismissed: vi.fn(),
+    clearLocalDismissed: vi.fn(),
   };
   return {
     refs,
     module: {
-      TUTORIAL_VERSION: 1,
+      TUTORIAL_VERSION: 2,
       getOnboardingState: (...args: unknown[]) => refs.getOnboardingState(...args),
       markOnboardingStarted: (...args: unknown[]) => refs.markOnboardingStarted(...args),
       markOnboardingCompleted: (...args: unknown[]) => refs.markOnboardingCompleted(...args),
@@ -542,6 +548,9 @@ export function createOnboardingServiceMocks(): OnboardingServiceMocks {
       getLocalProgress: (...args: unknown[]) => refs.getLocalProgress(...args),
       setLocalProgress: (...args: unknown[]) => refs.setLocalProgress(...args),
       clearLocalProgress: (...args: unknown[]) => refs.clearLocalProgress(...args),
+      getLocalDismissed: (...args: unknown[]) => refs.getLocalDismissed(...args),
+      setLocalDismissed: (...args: unknown[]) => refs.setLocalDismissed(...args),
+      clearLocalDismissed: (...args: unknown[]) => refs.clearLocalDismissed(...args),
     },
   };
 }
