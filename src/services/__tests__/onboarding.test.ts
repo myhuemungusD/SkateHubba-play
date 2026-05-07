@@ -493,4 +493,12 @@ describe("local dismissed flag", () => {
     expect(getLocalDismissed(UID)).toBe(false);
     spy.mockRestore();
   });
+
+  it("clearLocalDismissed swallows storage errors", () => {
+    const spy = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+      throw new Error("disabled");
+    });
+    expect(() => clearLocalDismissed(UID)).not.toThrow();
+    spy.mockRestore();
+  });
 });

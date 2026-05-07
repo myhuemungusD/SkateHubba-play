@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   TUTORIAL_VERSION,
   subscribeToOnboardingState,
@@ -141,20 +141,28 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
     [uid],
   );
 
+  // Mirror the resolved state into a ref so advance/back can compute the next
+  // step without putting `persistStep(next)` inside the setState updater —
+  // React StrictMode double-invokes updaters in development and would emit a
+  // duplicate localStorage write on every advance/back if the persistence
+  // call lived inside the updater body. State updaters must stay pure.
+  const resolvedRef = useRef(resolved);
+  useEffect(() => {
+    resolvedRef.current = resolved;
+  }, [resolved]);
+
   const advance = useCallback(() => {
-    setResolved((prev) => {
-      const next = Math.min(prev.currentStep + 1, totalSteps - 1);
-      persistStep(next);
-      return { ...prev, currentStep: next };
-    });
+    const current = resolvedRef.current.currentStep;
+    const next = Math.min(current + 1, totalSteps - 1);
+    if (next !== current) persistStep(next);
+    setResolved((prev) => ({ ...prev, currentStep: next }));
   }, [totalSteps, persistStep]);
 
   const back = useCallback(() => {
-    setResolved((prev) => {
-      const next = Math.max(prev.currentStep - 1, 0);
-      persistStep(next);
-      return { ...prev, currentStep: next };
-    });
+    const current = resolvedRef.current.currentStep;
+    const next = Math.max(current - 1, 0);
+    if (next !== current) persistStep(next);
+    setResolved((prev) => ({ ...prev, currentStep: next }));
   }, [persistStep]);
 
   const skip = useCallback(async () => {

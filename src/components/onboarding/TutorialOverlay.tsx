@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import { useOnboardingContext } from "../../context/OnboardingContext";
 import { TUTORIAL_STEPS } from "./tutorialSteps";
@@ -101,6 +101,16 @@ export function TutorialOverlay() {
     };
   }, [loading, shouldShow, skip]);
 
+  // Anchor-missing watchdog: if the step's selector never intersects the
+  // viewport, silently advance one step instead of painting a ringless
+  // bubble. The callback must be referentially stable — SpotlightOverlay
+  // holds it in a useEffect dep array, so a fresh arrow on every render would
+  // tear down and restart the IntersectionObserver + 1500ms watchdog timer,
+  // and the auto-advance would never fire if the parent re-renders within
+  // the window. Defined before the early return so the hook order stays
+  // stable across renders.
+  const advanceForMissingAnchor = useCallback(() => advance(), [advance]);
+
   if (loading || !shouldShow || !step) return null;
 
   const onPrimary = () => {
@@ -111,10 +121,8 @@ export function TutorialOverlay() {
     }
   };
 
-  // Anchor-missing watchdog: if the step's selector never intersects the
-  // viewport, silently advance one step instead of painting a ringless
-  // bubble. Final step has no anchor and never triggers this path.
-  const onAnchorMissing = step.anchorSelector ? () => advance() : undefined;
+  // Final step has no anchor and never triggers the watchdog path.
+  const onAnchorMissing = step.anchorSelector ? advanceForMissingAnchor : undefined;
 
   const stepLabel = `Step ${currentStep + 1} of ${totalSteps}`;
   const showBack = currentStep > 0;

@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { HubzMascot, type HubzState } from "./HubzMascot";
 import { playHaptic } from "../../services/haptics";
 
@@ -49,6 +50,9 @@ export function MascotBubble({
   onClose,
   reducedMotion,
 }: MascotBubbleProps) {
+  // useId scopes the SVG filter id per component instance so two MascotBubble
+  // siblings can't shadow each other's filter via the document-global id space.
+  const filterId = useId();
   const enterAnim = reducedMotion ? "" : "animate-scale-in";
 
   const handlePrimary = () => {
@@ -132,11 +136,11 @@ export function MascotBubble({
         className="relative mt-2 h-2 rounded-full overflow-hidden bg-[#0d0d0d]"
       >
         <svg className="absolute inset-0 w-full h-full opacity-60" aria-hidden="true">
-          <filter id="grip-noise" x="0" y="0" width="100%" height="100%">
+          <filter id={filterId} x="0" y="0" width="100%" height="100%">
             <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
             <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.7 0" />
           </filter>
-          <rect width="100%" height="100%" filter="url(#grip-noise)" />
+          <rect width="100%" height="100%" filter={`url(#${filterId})`} />
         </svg>
         <div
           className="absolute inset-y-0 left-0 bg-gradient-to-r from-brand-orange/80 to-brand-orange"
@@ -149,7 +153,7 @@ export function MascotBubble({
           <button
             type="button"
             onClick={handleSkip}
-            className={`font-body text-xs text-muted hover:text-white rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
+            className={`font-body text-xs text-muted hover:text-white active:text-white active:bg-white/5 rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
           >
             skip
           </button>
@@ -158,7 +162,7 @@ export function MascotBubble({
           <button
             type="button"
             onClick={handleBack}
-            className={`font-body text-xs text-muted hover:text-white rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
+            className={`font-body text-xs text-muted hover:text-white active:text-white active:bg-white/5 rounded-lg px-2 ${TOUCH_TARGET} ${FOCUS_RING}`}
           >
             back
           </button>

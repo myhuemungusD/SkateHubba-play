@@ -112,7 +112,8 @@ export function getLocalDismissed(uid: string): boolean {
   if (!uid) return false;
   try {
     return window.localStorage.getItem(localDismissedKey(uid)) === "1";
-  } catch {
+  } catch (err) {
+    logger.warn("onboarding_local_dismiss_read_failed", { error: parseFirebaseError(err) });
     return false;
   }
 }
@@ -136,8 +137,8 @@ export function clearLocalDismissed(uid: string): void {
   if (!uid) return;
   try {
     window.localStorage.removeItem(localDismissedKey(uid));
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    logger.warn("onboarding_local_dismiss_clear_failed", { error: parseFirebaseError(err) });
   }
 }
 
