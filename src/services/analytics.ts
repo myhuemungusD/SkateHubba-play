@@ -129,4 +129,16 @@ export const analytics = {
    * writes during the staged rollout.
    */
   statsCounterSkippedFlagOff: (uid: string) => trackEvent("stats_counter_skipped_flag_off", { uid }),
+  // ── Avatar upload (PR-B, plan §6.3) ────────────────────────────────────
+  /** Fires when the AvatarPicker hands a blob to the upload pipeline. */
+  avatarUploadStarted: (source: "camera" | "gallery" | "url", originalSizeBytes: number, nsfwScore?: number) =>
+    trackEvent("avatar_upload_started", { source, originalSizeBytes, nsfwScore }),
+  /** Fires after `setProfileImageUrl` resolves. */
+  avatarUploadCompleted: (uid: string, finalSizeBytes: number, durationMs: number) =>
+    trackEvent("avatar_upload_completed", { uid, finalSizeBytes, durationMs }),
+  /** Fires on every rejection — NSFW, oversize, transport, rule. */
+  avatarUploadFailed: (errorCode: string, source: "camera" | "gallery" | "url", nsfwScore?: number) =>
+    trackEvent("avatar_upload_failed", { errorCode, source, nsfwScore }),
+  /** Fires after `deleteAvatar` resolves. */
+  avatarDeleted: (uid: string) => trackEvent("avatar_deleted", { uid }),
 } as const;

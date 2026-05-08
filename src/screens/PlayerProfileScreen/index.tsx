@@ -73,6 +73,9 @@ export function PlayerProfileScreen({
           username={profile.username}
           isVerifiedPro={profile.isVerifiedPro}
           stance={profile.stance}
+          profileImageUrl={profile.profileImageUrl}
+          isOwnProfile={isOwnProfile}
+          uid={profile.uid}
         />
 
         {!isOwnProfile && onChallenge && !c.isBlocked && (
