@@ -101,14 +101,30 @@ export async function createGame(
   recordGameCreation();
   metrics.gameCreated(newGameId, challengerUid);
   // Update rate-limit timestamp on user profile (best effort — game is already created).
-  setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true }).catch(
-    (err) => {
-      logger.warn("rate_limit_timestamp_write_failed", {
-        uid: challengerUid,
-        error: parseFirebaseError(err),
-      });
-    },
-  );
+  // PR-A1: also reset `tricksLandedThisGame` so the per-game anti-grinding cap
+  // (plan §3.1.3) starts fresh. Same write piggy-backs the existing
+  // `lastGameCreatedAt` merge — one round-trip instead of two.
+  setDoc(
+    doc(requireDb(), "users", challengerUid),
+    { lastGameCreatedAt: serverTimestamp(), tricksLandedThisGame: 0 },
+    { merge: true },
+  ).catch((err) => {
+    logger.warn("rate_limit_timestamp_write_failed", {
+      uid: challengerUid,
+      error: parseFirebaseError(err),
+    });
+  });
+  // The opponent's `tricksLandedThisGame` reset is best-effort: existing
+  // Firestore rules pin `users/{uid}` updates to the owning user, so this
+  // write is denied at the rules layer in PR-A1. Keeping the call here makes
+  // the intent explicit for PR-A2's rule loosening (game-create carve-out)
+  // and falls back silently in the meantime.
+  setDoc(doc(requireDb(), "users", opponentUid), { tricksLandedThisGame: 0 }, { merge: true }).catch((err) => {
+    logger.warn("opponent_tricks_reset_write_failed", {
+      uid: opponentUid,
+      error: parseFirebaseError(err),
+    });
+  });
   // Notify opponent about the new challenge (best-effort). createGame is not
   // transactional, so this stays outside — the only perceivable race is a
   // missed toast if the tab dies in the narrow window between the two writes.

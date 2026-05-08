@@ -13,6 +13,7 @@ import {
   writeBatch,
   serverTimestamp,
   type FieldValue,
+  type Transaction,
 } from "firebase/firestore";
 import { ref as storageRef, deleteObject } from "firebase/storage";
 import { requireAuth, requireDb, requireStorage } from "../firebase";
@@ -21,6 +22,8 @@ import { deleteGameVideos } from "./storage";
 import { deleteUserClips } from "./clips";
 import { analytics } from "./analytics";
 import { logger } from "./logger";
+import { addBreadcrumb } from "../lib/sentry";
+import { isFeatureEnabled } from "./featureFlags";
 
 /**
  * Public profile doc at `users/{uid}`. Every signed-in user can read
@@ -40,8 +43,16 @@ export interface UserProfile {
   stance: string;
   /** serverTimestamp() on write; Firestore Timestamp on read. */
   createdAt: FieldValue | null;
-  /** Denormalized leaderboard stats — updated atomically when games complete. */
+  /**
+   * Denormalized leaderboard stats — updated atomically when games complete.
+   *
+   * @deprecated Kept as a one-release-cycle alias for the new `gamesWon` /
+   * `gamesLost` counter fields wired in PR-A1. New code should read the
+   * `gamesWon` / `gamesLost` fields below; legacy callers continue to work
+   * until the alias is dropped in a follow-up cleanup PR.
+   */
   wins?: number;
+  /** @deprecated See `wins` above; alias for `gamesLost` until cleanup PR. */
   losses?: number;
   /** ID of the last game that updated this user's stats (idempotency key). */
   lastStatsGameId?: string;
@@ -51,6 +62,57 @@ export interface UserProfile {
   verifiedBy?: string;
   /** Timestamp when pro status was granted (serverTimestamp on write, Firestore Timestamp on read). */
   verifiedAt?: FieldValue | null;
+
+  // ===== Counter fields (PR-A1) =====
+  // All optional, default to 0 on read at every call site so legacy profiles
+  // (created before PR-A1) keep rendering without a backfill.
+  /** Total games this user has won (terminal-miss winner + judge-resolved + opponent forfeited). */
+  gamesWon?: number;
+  /** Total games lost on a normal terminal (matcher hit 5 letters). */
+  gamesLost?: number;
+  /** Total games this user forfeited (their own turn deadline expired). */
+  gamesForfeited?: number;
+  /**
+   * Lifetime tricks landed via the honor-system match path. Disputes
+   * resolved-clean by a judge intentionally do NOT count — only undisputed
+   * landed claims qualify. Capped at +1 per write by the rules layer
+   * (PR-A2) and at 6 per game by the service-layer per-game cap.
+   */
+  tricksLanded?: number;
+  /**
+   * Per-game trick counter. Reset to 0 on game create for both players;
+   * `applyTrickLanded` refuses to increment once it reaches 6 (anti-grinding
+   * cap, plan §3.1.3).
+   */
+  tricksLandedThisGame?: number;
+  /** Current win streak — increments on win, resets to 0 on loss OR forfeit (plan §3.1.2). */
+  currentWinStreak?: number;
+  /** Highest `currentWinStreak` ever observed; monotonic. */
+  longestWinStreak?: number;
+  /** See plan §3.1.1 — setter credit when matcher's claim was undisputed at game end. */
+  cleanJudgments?: number;
+  /** Reserved for the future spot-check-in PR; PR-A1 does not write this. */
+  spotsAddedCount?: number;
+  /** Reserved for the future spot-check-in PR; PR-A1 does not write this. */
+  checkInsCount?: number;
+  /** Total lifetime XP, capped at 12000 in PR-E. PR-A1 always passes 0. */
+  xp?: number;
+  /** Derived level (1..30) — wired in PR-E. */
+  level?: number;
+  /** null = lazy-backfill needed on next own-profile load (PR-A2). */
+  statsBackfilledAt?: FieldValue | null;
+  /** Custom avatar URL — set by PR-B; null when fallback initials circle should render. */
+  profileImageUrl?: string | null;
+
+  // ===== RESERVED — do NOT wire in PR-A1 =====
+  // The names below are claimed for upcoming plans so future writers don't
+  // collide with current schema. Intentionally NOT redeclared as fields:
+  // adding them here would invite premature use and tempt the rules layer
+  // to validate fields nothing actually writes.
+  //   profileType         — filmer integration
+  //   tricksFilmed        — filmer counter
+  //   filmCollabsCount    — filmer counter
+  //   friendFeedLastSeenAt — in-app friend feed (replaces push)
 }
 
 /**
@@ -396,36 +458,314 @@ export async function getUidByUsername(username: string): Promise<string | null>
   return typeof data.uid === "string" ? data.uid : null;
 }
 
-/**
- * Atomically update a player's win/loss stats after a game completes.
- * Uses lastStatsGameId as an idempotency key to prevent double-counting
- * when subscriptions fire multiple times for the same game.
+/* ────────────────────────────────────────────
+ * PR-A1: Stats counters wiring
  *
- * The read-then-write is wrapped in a Firestore transaction so the
- * idempotency check and the increment commit as one unit. Without the
- * transaction, two tabs (or the client + the Cloud Function fallback)
- * can both read `lastStatsGameId !== gameId`, then both fire
- * `increment(1)` and the win/loss counter gets bumped twice for the
- * same game. The re-read inside the tx makes the loser of a contention
- * race see the winner's updated lastStatsGameId and bail cleanly.
+ * `applyGameOutcome` and `applyTrickLanded` are the canonical write paths
+ * for the new counter fields. Both are designed to run INSIDE an outer
+ * Firestore transaction (the terminal game-update tx in
+ * games.match.ts/games.judge.ts/games.turns.ts) so the game-state write
+ * and the user-profile write either both land or neither does.
  *
- * Each player's client calls this for their OWN profile only.
- */
-export async function updatePlayerStats(uid: string, gameId: string, won: boolean): Promise<void> {
-  const db = requireDb();
-  const userRef = doc(db, "users", uid);
+ * Idempotency: `lastStatsGameId` doubles as the dedup key. A second call
+ * for the same gameId (e.g. subscription fires twice, or the GameContext
+ * catch-up path overlaps with the in-tx write) becomes a silent no-op.
+ *
+ * Feature flag: gated on `feature.stats_counters_v2`. While the flag is
+ * OFF — the default for the staged rollout — every call is a no-op and
+ * the staged write count is reported as 0, which the GameContext can use
+ * to fall back to the legacy `wins/losses` path until C ships.
+ * ──────────────────────────────────────────── */
 
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(userRef);
-    if (!snap.exists()) return; // profile deleted
-    // Idempotency re-checked inside the tx — a parallel writer that
-    // won the race will have already committed the new lastStatsGameId.
-    if (snap.data().lastStatsGameId === gameId) return;
-    tx.update(userRef, {
-      [won ? "wins" : "losses"]: increment(1),
-      lastStatsGameId: gameId,
+/**
+ * Per-game outcome shape consumed by `applyGameOutcome`. The caller — a
+ * terminal game transaction — is responsible for filling these fields
+ * from the game doc + auth context. We deliberately do NOT read the game
+ * doc inside `applyGameOutcome` to keep the function composable: the
+ * caller usually already has the `GameDoc` snapshot in scope.
+ */
+export interface GameOutcome {
+  result: "win" | "loss" | "forfeit";
+  /**
+   * Number of tricks this user landed during the now-ending game (0..6).
+   * Used for telemetry context only — the counter increment is owned by
+   * `applyTrickLanded`. Caller computes from `turnHistory` since the
+   * per-game count on the user doc is monotonic across the game.
+   */
+  tricksLandedThisGame: number;
+  /**
+   * True iff this user was the SETTER on the final turn AND the matcher's
+   * claim was uncontested (no judge dispute) AND the game completed
+   * normally (status `complete`, not `forfeit`). See plan §3.1.1.
+   */
+  cleanJudgmentEarned: boolean;
+}
+
+/** Feature-flag key for the staged PR-A1 → PR-A2 → … rollout. */
+const STATS_COUNTERS_FLAG = "feature.stats_counters_v2" as const;
+
+/**
+ * Stage stats writes for `uid` inside the supplied transaction.
+ *
+ * MUST be called from within `runTransaction` — the function reads the
+ * user doc via `tx.get` and stages a single `tx.update`; it never commits.
+ * The caller's outer transaction commits both the game doc and the user
+ * doc atomically.
+ *
+ * Returns `{ stagedWrite }` so callers can record telemetry and so a
+ * follow-up writer (e.g. the GameContext catch-up path) can know whether
+ * a write already landed.
+ *
+ * Behaviour matrix (plan §3.1.1 / §3.1.2 / §3.1.4):
+ *  - flag off              → no-op, stagedWrite=false
+ *  - lastStatsGameId match → idempotent no-op, stagedWrite=false
+ *  - win                   → gamesWon+1, currentWinStreak+1,
+ *                            longestWinStreak=max(prev,new),
+ *                            +1 cleanJudgments iff outcome.cleanJudgmentEarned
+ *  - loss                  → gamesLost+1, currentWinStreak=0
+ *  - forfeit               → gamesForfeited+1, currentWinStreak=0
+ *
+ * `xpDelta` is plumbed through but always 0 from PR-A1 callers; PR-E
+ * activates it. Level recomputation is deferred to PR-E as well — see
+ * the placeholder block in the body — so callers passing 0 today see no
+ * level change.
+ */
+export async function applyGameOutcome(
+  tx: Transaction,
+  uid: string,
+  gameId: string,
+  outcome: GameOutcome,
+  xpDelta: number,
+): Promise<{ stagedWrite: boolean }> {
+  if (!isFeatureEnabled(STATS_COUNTERS_FLAG, false)) {
+    addBreadcrumb({
+      category: "stats",
+      message: "applyGameOutcome.skipped_flag_off",
+      data: { uid, gameId, result: outcome.result },
     });
+    analytics.statsCounterSkippedFlagOff(uid);
+    return { stagedWrite: false };
+  }
+
+  const startedAt = Date.now();
+  addBreadcrumb({
+    category: "stats",
+    message: "applyGameOutcome.start",
+    data: { uid, gameId, result: outcome.result },
   });
+
+  try {
+    const userRef = doc(requireDb(), "users", uid);
+    const snap = await tx.get(userRef);
+    if (!snap.exists()) {
+      // Profile missing — likely the user deleted their account while a game
+      // was in flight (deleteUserData preserves active games on purpose).
+      // Silently skip the stats update; tx.update on a missing doc would
+      // abort the entire transaction and block turn resolution for the
+      // surviving player. Codex P1 review fix.
+      addBreadcrumb({
+        category: "stats",
+        message: "applyGameOutcome.profile_missing",
+        data: { uid, gameId },
+      });
+      return { stagedWrite: false };
+    }
+    const data = snap.data() as Partial<UserProfile>;
+
+    if (data.lastStatsGameId === gameId) {
+      // Idempotent: a previous writer already applied this gameId. Silent
+      // no-op so the outer tx still commits its game write cleanly.
+      addBreadcrumb({
+        category: "stats",
+        message: "applyGameOutcome.idempotent_skip",
+        data: { uid, gameId },
+      });
+      analytics.statsCounterIdempotentSkip(uid, gameId);
+      return { stagedWrite: false };
+    }
+
+    const prevGamesWon = data.gamesWon ?? 0;
+    const prevGamesLost = data.gamesLost ?? 0;
+    const prevGamesForfeited = data.gamesForfeited ?? 0;
+    const prevCurrentStreak = data.currentWinStreak ?? 0;
+    const prevLongestStreak = data.longestWinStreak ?? 0;
+    const prevCleanJudgments = data.cleanJudgments ?? 0;
+    const prevXp = data.xp ?? 0;
+    const prevLevel = data.level ?? 1;
+
+    const updates: Record<string, unknown> = {
+      lastStatsGameId: gameId,
+    };
+
+    if (outcome.result === "win") {
+      const nextStreak = prevCurrentStreak + 1;
+      updates.gamesWon = prevGamesWon + 1;
+      updates.currentWinStreak = nextStreak;
+      updates.longestWinStreak = Math.max(prevLongestStreak, nextStreak);
+      if (outcome.cleanJudgmentEarned) {
+        updates.cleanJudgments = prevCleanJudgments + 1;
+      }
+    } else if (outcome.result === "loss") {
+      updates.gamesLost = prevGamesLost + 1;
+      updates.currentWinStreak = 0;
+    } else {
+      // Forfeit — counter increments on the forfeiter, streak resets per §3.1.2.
+      updates.gamesForfeited = prevGamesForfeited + 1;
+      updates.currentWinStreak = 0;
+    }
+
+    // Placeholder for PR-E: apply xpDelta and recompute `level` via the
+    // LEVEL_THRESHOLDS lookup in src/constants/xp.ts. PR-A1 callers always
+    // pass 0, so we
+    // intentionally leave xp/level untouched here to keep the diff small
+    // and the rule surface narrower until PR-E lands the table.
+    if (xpDelta > 0) {
+      updates.xp = Math.min(prevXp + xpDelta, 12000);
+      updates.level = prevLevel; // placeholder — recomputed in PR-E
+    }
+
+    tx.update(userRef, updates);
+
+    const txDurationMs = Date.now() - startedAt;
+    addBreadcrumb({
+      category: "stats",
+      message: "applyGameOutcome.finish",
+      data: { uid, gameId, result: outcome.result, txDurationMs },
+    });
+    analytics.statsCounterApplied(
+      uid,
+      gameId,
+      outcome.result,
+      outcome.tricksLandedThisGame,
+      outcome.cleanJudgmentEarned,
+      txDurationMs,
+    );
+
+    return { stagedWrite: true };
+  } catch (err) {
+    addBreadcrumb({
+      category: "stats",
+      message: "applyGameOutcome.error",
+      level: "error",
+      data: {
+        uid,
+        gameId,
+        // Non-Error throws are effectively unreachable from the Firestore SDK
+        // (always rejects with Error), but the defensive String() coercion
+        // keeps logs readable if a non-conformant mock surfaces in tests.
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    throw err;
+  }
+}
+
+/**
+ * Standalone wrapper around {@link applyGameOutcome} for non-tx callers.
+ *
+ * Most counter writes piggy-back on the terminal game transaction in
+ * `games.match.ts` / `games.judge.ts` / `games.turns.ts`. The outlier is
+ * the catch-up path in `GameContext`: when a player observes a completed
+ * game from a fresh subscription (e.g. the game ended while they were
+ * offline), there is no surrounding transaction to compose into. This
+ * helper opens its own `runTransaction` so the same idempotency +
+ * feature-flag semantics apply.
+ *
+ * Idempotent — `applyGameOutcome`'s `lastStatsGameId` check ensures a
+ * second call for the same gameId becomes a silent no-op even if it
+ * races the in-tx writer from the terminal game transaction.
+ */
+export async function applyGameOutcomeStandalone(
+  uid: string,
+  gameId: string,
+  outcome: GameOutcome,
+  xpDelta: number,
+): Promise<{ stagedWrite: boolean }> {
+  const db = requireDb();
+  return runTransaction(db, (tx) => applyGameOutcome(tx, uid, gameId, outcome, xpDelta));
+}
+
+/**
+ * Stage a +1 increment on `tricksLanded` (and the per-game cap counter)
+ * inside the supplied transaction. Refuses to increment once
+ * `tricksLandedThisGame` has reached the per-game cap of 6 — see plan
+ * §3.1.3 for the anti-grinding rationale.
+ *
+ * Like `applyGameOutcome`, this is in-tx-only and feature-flag gated.
+ * The clean-landed honor path in `submitMatchAttempt` is the sole
+ * caller in PR-A1.
+ */
+export async function applyTrickLanded(
+  tx: Transaction,
+  uid: string,
+  gameId: string,
+): Promise<{ stagedWrite: boolean }> {
+  if (!isFeatureEnabled(STATS_COUNTERS_FLAG, false)) {
+    addBreadcrumb({
+      category: "stats",
+      message: "applyTrickLanded.skipped_flag_off",
+      data: { uid, gameId },
+    });
+    analytics.statsCounterSkippedFlagOff(uid);
+    return { stagedWrite: false };
+  }
+
+  addBreadcrumb({
+    category: "stats",
+    message: "applyTrickLanded.start",
+    data: { uid, gameId },
+  });
+
+  try {
+    const userRef = doc(requireDb(), "users", uid);
+    const snap = await tx.get(userRef);
+    if (!snap.exists()) {
+      // Profile missing — silently skip rather than abort the outer tx.
+      // See applyGameOutcome's matching guard for full rationale (Codex
+      // P1 review fix). Account deletion preserves active games, so a
+      // landed trick can fire after the profile is gone.
+      addBreadcrumb({
+        category: "stats",
+        message: "applyTrickLanded.profile_missing",
+        data: { uid, gameId },
+      });
+      return { stagedWrite: false };
+    }
+    const data = snap.data() as Partial<UserProfile>;
+    const perGame = data.tricksLandedThisGame ?? 0;
+    if (perGame >= 6) {
+      addBreadcrumb({
+        category: "stats",
+        message: "applyTrickLanded.cap_reached",
+        data: { uid, gameId, perGame },
+      });
+      return { stagedWrite: false };
+    }
+    tx.update(userRef, {
+      tricksLanded: increment(1),
+      tricksLandedThisGame: increment(1),
+    });
+    addBreadcrumb({
+      category: "stats",
+      message: "applyTrickLanded.finish",
+      data: { uid, gameId },
+    });
+    return { stagedWrite: true };
+  } catch (err) {
+    addBreadcrumb({
+      category: "stats",
+      message: "applyTrickLanded.error",
+      level: "error",
+      data: {
+        uid,
+        gameId,
+        // See applyGameOutcome above — defensive String() fallback for the
+        // pathological non-Error throw case.
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    throw err;
+  }
 }
 
 /**

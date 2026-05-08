@@ -96,9 +96,15 @@ vi.mock("../clips", () => ({
 }));
 
 const mockAccountDeleted = vi.fn();
+const mockStatsCounterApplied = vi.fn();
+const mockStatsCounterIdempotentSkip = vi.fn();
+const mockStatsCounterSkippedFlagOff = vi.fn();
 vi.mock("../analytics", () => ({
   analytics: {
     accountDeleted: (...args: unknown[]) => mockAccountDeleted(...args),
+    statsCounterApplied: (...args: unknown[]) => mockStatsCounterApplied(...args),
+    statsCounterIdempotentSkip: (...args: unknown[]) => mockStatsCounterIdempotentSkip(...args),
+    statsCounterSkippedFlagOff: (...args: unknown[]) => mockStatsCounterSkippedFlagOff(...args),
   },
 }));
 
@@ -109,6 +115,19 @@ vi.mock("../logger", () => ({
   },
 }));
 
+// PR-A1: feature-flag gating + Sentry breadcrumbs are exercised by the
+// new applyGameOutcome / applyTrickLanded paths. Default the flag to ON
+// so each test's positive paths run; flag-off cases override per test.
+const mockIsFeatureEnabled = vi.fn((_flag: string, _defaultValue?: boolean): boolean => true);
+vi.mock("../featureFlags", () => ({
+  isFeatureEnabled: (flag: string, defaultValue?: boolean) => mockIsFeatureEnabled(flag, defaultValue),
+}));
+
+const mockAddBreadcrumb = vi.fn();
+vi.mock("../../lib/sentry", () => ({
+  addBreadcrumb: (...args: unknown[]) => mockAddBreadcrumb(...args),
+}));
+
 import {
   getUserProfile,
   getUserProfileOnAuth,
@@ -116,7 +135,10 @@ import {
   createProfile,
   getUidByUsername,
   deleteUserData,
-  updatePlayerStats,
+  applyGameOutcome,
+  applyGameOutcomeStandalone,
+  applyTrickLanded,
+  type GameOutcome,
   getLeaderboard,
   getPlayerDirectory,
 } from "../users";
@@ -659,88 +681,353 @@ describe("users service", () => {
     });
   });
 
-  describe("updatePlayerStats", () => {
+  describe("applyGameOutcome", () => {
     /**
-     * Drive a mock Firestore transaction: invoke the user callback with a tx
-     * that reads the current user snapshot and captures the write payload.
-     * Returns the captured update spy so tests can assert on it.
+     * Build a fake Transaction object whose `get` resolves to `snapshot`
+     * and whose `update` is captured. Returns the mock for assertions.
+     * Each test passes its own snapshot so we can exercise idempotency
+     * and the various result branches inline without touching
+     * mockRunTransaction (the function is in-tx-only by contract).
      */
-    function runStubTx(snapshot: { exists: () => boolean; data: () => unknown }) {
+    function makeTx(snapshot: { exists: () => boolean; data: () => unknown }) {
+      const update = vi.fn();
+      const tx = {
+        get: vi.fn().mockResolvedValue(snapshot),
+        update,
+      } as unknown as Parameters<typeof applyGameOutcome>[0];
+      return { tx, update };
+    }
+
+    const baseOutcome: GameOutcome = {
+      result: "win",
+      tricksLandedThisGame: 0,
+      cleanJudgmentEarned: false,
+    };
+
+    beforeEach(() => {
+      mockIsFeatureEnabled.mockReturnValue(true);
+    });
+
+    it("win path increments gamesWon, currentWinStreak and bumps longestWinStreak", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({
+          uid: "u1",
+          gamesWon: 4,
+          gamesLost: 2,
+          gamesForfeited: 0,
+          currentWinStreak: 2,
+          longestWinStreak: 3,
+        }),
+      });
+
+      const res = await applyGameOutcome(tx, "u1", "game-123", { ...baseOutcome, result: "win" }, 0);
+      expect(res.stagedWrite).toBe(true);
+      expect(update).toHaveBeenCalledWith(expect.anything(), {
+        lastStatsGameId: "game-123",
+        gamesWon: 5,
+        currentWinStreak: 3,
+        longestWinStreak: 3,
+      });
+    });
+
+    it("win path raises longestWinStreak when current streak exceeds the previous max", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({ currentWinStreak: 4, longestWinStreak: 4, gamesWon: 9 }),
+      });
+
+      await applyGameOutcome(tx, "u1", "game-7", { ...baseOutcome, result: "win" }, 0);
+      const updates = update.mock.calls[0][1] as Record<string, unknown>;
+      expect(updates.currentWinStreak).toBe(5);
+      expect(updates.longestWinStreak).toBe(5);
+    });
+
+    it("win + cleanJudgmentEarned increments cleanJudgments", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({ cleanJudgments: 2, gamesWon: 1, currentWinStreak: 0 }),
+      });
+
+      await applyGameOutcome(
+        tx,
+        "u1",
+        "game-1",
+        { result: "win", tricksLandedThisGame: 1, cleanJudgmentEarned: true },
+        0,
+      );
+      const updates = update.mock.calls[0][1] as Record<string, unknown>;
+      expect(updates.cleanJudgments).toBe(3);
+    });
+
+    it("win without cleanJudgmentEarned leaves cleanJudgments untouched", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({ cleanJudgments: 5, gamesWon: 0 }),
+      });
+
+      await applyGameOutcome(
+        tx,
+        "u1",
+        "game-2",
+        { result: "win", tricksLandedThisGame: 0, cleanJudgmentEarned: false },
+        0,
+      );
+      const updates = update.mock.calls[0][1] as Record<string, unknown>;
+      expect("cleanJudgments" in updates).toBe(false);
+    });
+
+    it("loss path increments gamesLost and resets currentWinStreak", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({ gamesLost: 1, currentWinStreak: 4, longestWinStreak: 4 }),
+      });
+
+      await applyGameOutcome(tx, "u1", "game-X", { ...baseOutcome, result: "loss" }, 0);
+      const updates = update.mock.calls[0][1] as Record<string, unknown>;
+      expect(updates.gamesLost).toBe(2);
+      expect(updates.currentWinStreak).toBe(0);
+      // longestWinStreak must NOT be touched on a loss — would zero the
+      // proudest stat on the profile. (Plan §3.1.1.)
+      expect("longestWinStreak" in updates).toBe(false);
+    });
+
+    it("forfeit path increments gamesForfeited and resets currentWinStreak (plan §3.1.2)", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({ gamesForfeited: 0, currentWinStreak: 7, longestWinStreak: 7 }),
+      });
+
+      await applyGameOutcome(tx, "u1", "game-Y", { ...baseOutcome, result: "forfeit" }, 0);
+      const updates = update.mock.calls[0][1] as Record<string, unknown>;
+      expect(updates.gamesForfeited).toBe(1);
+      expect(updates.currentWinStreak).toBe(0);
+      expect("longestWinStreak" in updates).toBe(false);
+    });
+
+    it("idempotent — same gameId is a silent no-op and emits the dedup event", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({ lastStatsGameId: "game-123", gamesWon: 5 }),
+      });
+
+      const res = await applyGameOutcome(tx, "u1", "game-123", baseOutcome, 0);
+      expect(res.stagedWrite).toBe(false);
+      expect(update).not.toHaveBeenCalled();
+      expect(mockStatsCounterIdempotentSkip).toHaveBeenCalledWith("u1", "game-123");
+    });
+
+    it("flag off — early returns without reading the user doc", async () => {
+      mockIsFeatureEnabled.mockReturnValueOnce(false);
+      const { tx, update } = makeTx({ exists: () => true, data: () => ({}) });
+
+      const res = await applyGameOutcome(tx, "u1", "game-3", baseOutcome, 0);
+      expect(res.stagedWrite).toBe(false);
+      expect(update).not.toHaveBeenCalled();
+      expect(mockStatsCounterSkippedFlagOff).toHaveBeenCalledWith("u1");
+    });
+
+    it("profile missing — silent no-op (Codex P1: avoid aborting outer tx)", async () => {
+      const { tx, update } = makeTx({ exists: () => false, data: () => ({}) });
+
+      const res = await applyGameOutcome(tx, "u1", "game-missing", baseOutcome, 0);
+      expect(res.stagedWrite).toBe(false);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("emits stats_counter_applied with the result + tricks + clean shape", async () => {
+      const { tx } = makeTx({
+        exists: () => true,
+        data: () => ({ gamesWon: 0, currentWinStreak: 0, longestWinStreak: 0 }),
+      });
+
+      await applyGameOutcome(
+        tx,
+        "u1",
+        "game-T",
+        { result: "win", tricksLandedThisGame: 4, cleanJudgmentEarned: true },
+        0,
+      );
+      expect(mockStatsCounterApplied).toHaveBeenCalledWith("u1", "game-T", "win", 4, true, expect.any(Number));
+    });
+
+    it("xpDelta > 0 stages xp and level (placeholder until PR-E)", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({ xp: 50, level: 1, gamesWon: 0, currentWinStreak: 0 }),
+      });
+
+      await applyGameOutcome(tx, "u1", "game-X1", baseOutcome, 100);
+      const updates = update.mock.calls[0][1] as Record<string, unknown>;
+      expect(updates.xp).toBe(150);
+      expect(updates.level).toBe(1);
+    });
+
+    it("xpDelta caps xp at 12000", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({ xp: 11_950, gamesWon: 0, currentWinStreak: 0 }),
+      });
+
+      await applyGameOutcome(tx, "u1", "game-cap", baseOutcome, 200);
+      const updates = update.mock.calls[0][1] as Record<string, unknown>;
+      expect(updates.xp).toBe(12_000);
+    });
+
+    it("propagates a tx.get failure as an error and emits an error breadcrumb", async () => {
+      const failingTx = {
+        get: vi.fn().mockRejectedValue(new Error("permission-denied")),
+        update: vi.fn(),
+      } as unknown as Parameters<typeof applyGameOutcome>[0];
+
+      await expect(applyGameOutcome(failingTx, "u1", "game-err", baseOutcome, 0)).rejects.toThrow("permission-denied");
+      const errorCrumb = mockAddBreadcrumb.mock.calls.find(
+        ([crumb]) => (crumb as { message?: string }).message === "applyGameOutcome.error",
+      );
+      expect(errorCrumb).toBeDefined();
+    });
+
+    it("falls back to String(err) when a non-Error value is thrown", async () => {
+      // Defensive path — Firestore SDK always rejects with Error, but the
+      // breadcrumb data field guards against a malformed mock surfacing.
+      const failingTx = {
+        get: vi.fn().mockRejectedValue("string-error-not-an-Error"),
+        update: vi.fn(),
+      } as unknown as Parameters<typeof applyGameOutcome>[0];
+
+      await expect(applyGameOutcome(failingTx, "u1", "g", baseOutcome, 0)).rejects.toBe("string-error-not-an-Error");
+    });
+  });
+
+  describe("applyTrickLanded", () => {
+    function makeTx(snapshot: { exists: () => boolean; data: () => unknown }) {
+      const update = vi.fn();
+      const tx = {
+        get: vi.fn().mockResolvedValue(snapshot),
+        update,
+      } as unknown as Parameters<typeof applyTrickLanded>[0];
+      return { tx, update };
+    }
+
+    beforeEach(() => mockIsFeatureEnabled.mockReturnValue(true));
+
+    it("stages a +1 increment when under the per-game cap", async () => {
+      const { tx, update } = makeTx({
+        exists: () => true,
+        data: () => ({ tricksLandedThisGame: 0, tricksLanded: 12 }),
+      });
+
+      const res = await applyTrickLanded(tx, "u1", "game-1");
+      expect(res.stagedWrite).toBe(true);
+      expect(update).toHaveBeenCalledWith(expect.anything(), {
+        tricksLanded: { _op: "increment", operand: 1 },
+        tricksLandedThisGame: { _op: "increment", operand: 1 },
+      });
+    });
+
+    it("allows the 6th increment but refuses the 7th and 8th (per-game cap, plan §3.1.3)", async () => {
+      const fixtures = [
+        { perGame: 5, expected: true }, // 6th: still allowed
+        { perGame: 6, expected: false }, // 7th: blocked
+        { perGame: 7, expected: false }, // 8th: blocked
+      ];
+      for (const { perGame, expected } of fixtures) {
+        const { tx, update } = makeTx({
+          exists: () => true,
+          data: () => ({ tricksLandedThisGame: perGame }),
+        });
+        const res = await applyTrickLanded(tx, "u1", "game-cap");
+        expect(res.stagedWrite).toBe(expected);
+        if (expected) expect(update).toHaveBeenCalledTimes(1);
+        else expect(update).not.toHaveBeenCalled();
+      }
+    });
+
+    it("flag off — no read, no write", async () => {
+      mockIsFeatureEnabled.mockReturnValueOnce(false);
+      const { tx, update } = makeTx({ exists: () => true, data: () => ({}) });
+
+      const res = await applyTrickLanded(tx, "u1", "game-foo");
+      expect(res.stagedWrite).toBe(false);
+      expect(update).not.toHaveBeenCalled();
+      expect(mockStatsCounterSkippedFlagOff).toHaveBeenCalledWith("u1");
+    });
+
+    it("profile missing — silent no-op (Codex P1: avoid aborting outer tx)", async () => {
+      const { tx, update } = makeTx({ exists: () => false, data: () => ({}) });
+
+      const res = await applyTrickLanded(tx, "u1", "game-2");
+      expect(res.stagedWrite).toBe(false);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("propagates tx.get failure as an error and breadcrumbs", async () => {
+      const failingTx = {
+        get: vi.fn().mockRejectedValue(new Error("network")),
+        update: vi.fn(),
+      } as unknown as Parameters<typeof applyTrickLanded>[0];
+
+      await expect(applyTrickLanded(failingTx, "u1", "game-err")).rejects.toThrow("network");
+      const errorCrumb = mockAddBreadcrumb.mock.calls.find(
+        ([crumb]) => (crumb as { message?: string }).message === "applyTrickLanded.error",
+      );
+      expect(errorCrumb).toBeDefined();
+    });
+
+    it("falls back to String(err) when a non-Error value is thrown", async () => {
+      const failingTx = {
+        get: vi.fn().mockRejectedValue("network-err-as-string"),
+        update: vi.fn(),
+      } as unknown as Parameters<typeof applyTrickLanded>[0];
+
+      await expect(applyTrickLanded(failingTx, "u1", "g")).rejects.toBe("network-err-as-string");
+    });
+  });
+
+  describe("applyGameOutcomeStandalone", () => {
+    beforeEach(() => mockIsFeatureEnabled.mockReturnValue(true));
+
+    it("opens its own runTransaction and forwards the tx into applyGameOutcome", async () => {
       const txUpdate = vi.fn();
       mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
         const tx = {
-          get: vi.fn().mockResolvedValue(snapshot),
+          get: vi.fn().mockResolvedValue({
+            exists: () => true,
+            data: () => ({ gamesWon: 0, currentWinStreak: 0 }),
+          }),
           update: txUpdate,
         };
         return fn(tx);
       });
-      return txUpdate;
-    }
 
-    it("increments wins inside a transaction when the player won", async () => {
-      const txUpdate = runStubTx({
-        exists: () => true,
-        data: () => ({ uid: "u1", username: "sk8r", wins: 3, losses: 1, lastStatsGameId: "old-game" }),
-      });
-
-      await updatePlayerStats("u1", "game-123", true);
-
+      const res = await applyGameOutcomeStandalone(
+        "u1",
+        "game-A",
+        { result: "win", tricksLandedThisGame: 0, cleanJudgmentEarned: false },
+        0,
+      );
+      expect(res.stagedWrite).toBe(true);
       expect(mockRunTransaction).toHaveBeenCalledTimes(1);
-      expect(txUpdate).toHaveBeenCalledWith(expect.anything(), {
-        wins: { _op: "increment", operand: 1 },
-        lastStatsGameId: "game-123",
-      });
-      // Must NOT escape the transaction — the previous non-atomic
-      // read-then-write path double-counted when two tabs raced.
-      expect(mockUpdateDoc).not.toHaveBeenCalled();
+      expect(txUpdate).toHaveBeenCalledTimes(1);
     });
 
-    it("increments losses inside a transaction when the player lost", async () => {
-      const txUpdate = runStubTx({
-        exists: () => true,
-        data: () => ({ uid: "u1", username: "sk8r", wins: 2, losses: 5, lastStatsGameId: "old-game" }),
+    it("returns stagedWrite=false when the flag is off (no transaction body work)", async () => {
+      mockIsFeatureEnabled.mockReturnValueOnce(false);
+      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
+        const tx = {
+          get: vi.fn().mockResolvedValue({ exists: () => false, data: () => ({}) }),
+          update: vi.fn(),
+        };
+        return fn(tx);
       });
 
-      await updatePlayerStats("u1", "game-456", false);
-
-      expect(txUpdate).toHaveBeenCalledWith(expect.anything(), {
-        losses: { _op: "increment", operand: 1 },
-        lastStatsGameId: "game-456",
-      });
-    });
-
-    it("uses increment(1) regardless of whether wins field exists", async () => {
-      const txUpdate = runStubTx({
-        exists: () => true,
-        data: () => ({ uid: "u1", username: "sk8r" }),
-      });
-
-      await updatePlayerStats("u1", "game-789", true);
-
-      expect(txUpdate).toHaveBeenCalledWith(expect.anything(), {
-        wins: { _op: "increment", operand: 1 },
-        lastStatsGameId: "game-789",
-      });
-    });
-
-    it("skips the update when lastStatsGameId matches (idempotency re-checked inside tx)", async () => {
-      const txUpdate = runStubTx({
-        exists: () => true,
-        data: () => ({ uid: "u1", wins: 3, losses: 1, lastStatsGameId: "game-123" }),
-      });
-
-      await updatePlayerStats("u1", "game-123", true);
-
-      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
-      expect(txUpdate).not.toHaveBeenCalled();
-    });
-
-    it("skips the update when the profile does not exist", async () => {
-      const txUpdate = runStubTx({ exists: () => false, data: () => ({}) });
-
-      await updatePlayerStats("u1", "game-123", true);
-
-      expect(txUpdate).not.toHaveBeenCalled();
+      const res = await applyGameOutcomeStandalone(
+        "u1",
+        "g",
+        { result: "win", tricksLandedThisGame: 0, cleanJudgmentEarned: false },
+        0,
+      );
+      expect(res.stagedWrite).toBe(false);
     });
   });
 

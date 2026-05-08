@@ -97,7 +97,12 @@ export interface UsersServiceRefs {
   getLeaderboard: Mock;
   getUserProfile: Mock;
   getUserProfileOnAuth: Mock;
-  updatePlayerStats: Mock;
+  /** PR-A1: in-tx counter wiring (rare for smoke tests; default no-op). */
+  applyGameOutcome: Mock;
+  /** PR-A1: in-tx trick-landed wiring. */
+  applyTrickLanded: Mock;
+  /** PR-A1: GameContext catch-up path replacement for `updatePlayerStats`. */
+  applyGameOutcomeStandalone: Mock;
 }
 
 export interface UsersServiceModule {
@@ -109,7 +114,9 @@ export interface UsersServiceModule {
   getLeaderboard: (...args: unknown[]) => unknown;
   getUserProfile: (...args: unknown[]) => unknown;
   getUserProfileOnAuth: (...args: unknown[]) => unknown;
-  updatePlayerStats: (...args: unknown[]) => unknown;
+  applyGameOutcome: (...args: unknown[]) => unknown;
+  applyTrickLanded: (...args: unknown[]) => unknown;
+  applyGameOutcomeStandalone: (...args: unknown[]) => unknown;
   // Validation constants imported by ProfileSetup.
   USERNAME_MIN: number;
   USERNAME_MAX: number;
@@ -147,7 +154,9 @@ export function createUsersServiceMocks(): UsersServiceMocks {
     getLeaderboard: vi.fn().mockResolvedValue([]),
     getUserProfile: vi.fn().mockResolvedValue(null),
     getUserProfileOnAuth: vi.fn().mockResolvedValue(null),
-    updatePlayerStats: vi.fn().mockResolvedValue(undefined),
+    applyGameOutcome: vi.fn().mockResolvedValue({ stagedWrite: false }),
+    applyTrickLanded: vi.fn().mockResolvedValue({ stagedWrite: false }),
+    applyGameOutcomeStandalone: vi.fn().mockResolvedValue({ stagedWrite: false }),
   };
   return {
     refs,
@@ -160,7 +169,9 @@ export function createUsersServiceMocks(): UsersServiceMocks {
       getLeaderboard: (...args: unknown[]) => refs.getLeaderboard(...args),
       getUserProfile: (...args: unknown[]) => refs.getUserProfile(...args),
       getUserProfileOnAuth: (...args: unknown[]) => refs.getUserProfileOnAuth(...args),
-      updatePlayerStats: (...args: unknown[]) => refs.updatePlayerStats(...args),
+      applyGameOutcome: (...args: unknown[]) => refs.applyGameOutcome(...args),
+      applyTrickLanded: (...args: unknown[]) => refs.applyTrickLanded(...args),
+      applyGameOutcomeStandalone: (...args: unknown[]) => refs.applyGameOutcomeStandalone(...args),
       USERNAME_MIN: 3,
       USERNAME_MAX: 20,
       USERNAME_RE: /^[a-z0-9_]+$/,

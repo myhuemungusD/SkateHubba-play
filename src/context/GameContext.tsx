@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, u
 import { useAuthContext } from "./AuthContext";
 import { useNavigationContext } from "./NavigationContext";
 import { useNotifications } from "./NotificationContext";
-import { updatePlayerStats, getUserProfile } from "../services/users";
+import { applyGameOutcomeStandalone, getUserProfile, type GameOutcome } from "../services/users";
 import { isUserBlocked } from "../services/blocking";
 import { createGame, forfeitExpiredTurn, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
 import { newGameShell, parseFirebaseError } from "../utils/helpers";
@@ -36,6 +36,39 @@ export function useGameContext(): GameContextValue {
 
 /** How many games to load per page in the real-time subscription. */
 const GAMES_PAGE_SIZE = 20;
+
+/**
+ * Derive the per-user `GameOutcome` for the catch-up / observer path.
+ *
+ * The terminal game transactions own the SETTER's clean-judgment credit
+ * via the dedicated in-tx wiring; the catch-up path here only covers the
+ * legacy / cross-tab observer case where the player was offline when the
+ * game ended. Per plan §3.1.1, clean-judgment credit is reserved for the
+ * setter at game end on undisputed completes — easier to express in the
+ * terminal-tx writer than to recompute from a snapshot here, so this
+ * helper conservatively reports `cleanJudgmentEarned: false`. The in-tx
+ * writer's idempotency key (`lastStatsGameId`) guarantees this catch-up
+ * path is a no-op when the in-tx writer already won.
+ */
+function computeGameOutcome(g: GameDoc, uid: string): GameOutcome {
+  const tricksLandedThisGame = (g.turnHistory ?? []).filter((t) => t.landed && t.matcherUid === uid).length;
+  if (g.status === "forfeit") {
+    // The current-turn player at terminal time was the forfeiter; the
+    // opponent gets the win. `currentTurn` is preserved on the game doc
+    // when forfeitExpiredTurn fires.
+    if (g.currentTurn === uid) {
+      return { result: "forfeit", tricksLandedThisGame, cleanJudgmentEarned: false };
+    }
+    return { result: "win", tricksLandedThisGame, cleanJudgmentEarned: false };
+  }
+  // Normal complete — winner field is authoritative.
+  const won = g.winner === uid;
+  return {
+    result: won ? "win" : "loss",
+    tricksLandedThisGame,
+    cleanJudgmentEarned: false,
+  };
+}
 
 export function GameProvider({ children }: { children: ReactNode }) {
   const { user, activeProfile } = useAuthContext();
@@ -84,11 +117,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setGamesLoading(false);
         const now = Date.now();
         for (const g of updatedGames) {
-          // Catch up on stats for games that completed while user was away
+          // Catch up on stats for games that completed while user was away.
+          // Idempotent — applyGameOutcome's `lastStatsGameId` check makes a
+          // second call for the same game a silent no-op even when it
+          // races the in-tx writer from the terminal game transaction.
           if ((g.status === "complete" || g.status === "forfeit") && g.winner && !processedStatsRef.current.has(g.id)) {
             processedStatsRef.current.add(g.id);
-            const won = g.winner === user.uid;
-            updatePlayerStats(user.uid, g.id, won).catch((err) => {
+            const outcome = computeGameOutcome(g, user.uid);
+            applyGameOutcomeStandalone(user.uid, g.id, outcome, 0).catch((err) => {
               logger.warn("stats_catchup_failed", {
                 gameId: g.id,
                 error: parseFirebaseError(err),
@@ -150,8 +186,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         !processedStatsRef.current.has(updated.id)
       ) {
         processedStatsRef.current.add(updated.id);
-        const won = updated.winner === currentUser.uid;
-        updatePlayerStats(currentUser.uid, updated.id, won).catch((err) => {
+        const outcome = computeGameOutcome(updated, currentUser.uid);
+        applyGameOutcomeStandalone(currentUser.uid, updated.id, outcome, 0).catch((err) => {
           logger.warn("stats_update_failed", {
             gameId: updated.id,
             error: parseFirebaseError(err),

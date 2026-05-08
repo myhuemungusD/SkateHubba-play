@@ -18,7 +18,11 @@ vi.mock("../../services/auth", () => ({
 }));
 vi.mock("../../services/users", () => ({
   deleteUserData: vi.fn(),
-  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
+  // PR-A1: replaces the old `updatePlayerStats` shim. The catch-up path
+  // wraps `applyGameOutcome` in its own runTransaction, but at the
+  // GameContext layer we just need a no-op that resolves cleanly.
+  applyGameOutcomeStandalone: vi.fn().mockResolvedValue({ stagedWrite: false }),
+  getUserProfile: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("../../services/games", () => ({
   createGame: vi.fn(),

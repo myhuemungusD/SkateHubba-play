@@ -62,6 +62,17 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
+// PR-A1: stub the new in-tx counter wiring so games tests can assert
+// it fires from each terminal transaction. The real implementations
+// require Firestore + featureFlags — out of scope for the games unit
+// tests; they get their own dedicated suite in users.test.ts.
+const mockApplyGameOutcome = vi.fn().mockResolvedValue({ stagedWrite: true });
+const mockApplyTrickLanded = vi.fn().mockResolvedValue({ stagedWrite: true });
+vi.mock("../users", () => ({
+  applyGameOutcome: (...args: unknown[]) => mockApplyGameOutcome(...args),
+  applyTrickLanded: (...args: unknown[]) => mockApplyTrickLanded(...args),
+}));
+
 import {
   createGame,
   _resetCreateGameRateLimit,
@@ -395,11 +406,14 @@ describe("games service", () => {
       const id = await createGame("p1", "alice", "p2", "bob");
       // Deterministic id from mockDoc — `doc(gamesRef()).id` → "auto-id"
       expect(id).toBe("auto-id");
-      // setDoc fires twice: the game write itself and the user profile merge
-      // for `lastGameCreatedAt`. The challenge notification + its companion
-      // notification_limits doc now ride a single writeBatch (H2 hardening),
-      // so addDoc is no longer involved.
-      expect(mockSetDoc).toHaveBeenCalledTimes(2);
+      // setDoc fires three times after PR-A1:
+      //   0 → game doc
+      //   1 → challenger's profile merge (lastGameCreatedAt + tricksLandedThisGame=0)
+      //   2 → opponent's profile merge (tricksLandedThisGame=0; intentionally
+      //       best-effort — see games.create.ts; today's rules deny it).
+      // The challenge notification + its companion notification_limits doc
+      // now ride a single writeBatch (H2 hardening), so addDoc is unused.
+      expect(mockSetDoc).toHaveBeenCalledTimes(3);
       expect(mockAddDoc).not.toHaveBeenCalled();
       // The challenge notification → one writeBatch.commit() with two .set()s
       // (notification + companion notification_limits doc).
@@ -455,12 +469,19 @@ describe("games service", () => {
 
     it("updates lastGameCreatedAt on user profile (best effort)", async () => {
       await createGame("p1", "alice", "p2", "bob");
-      // setDoc: game write, user profile merge. (Notification + its
-      // companion limit doc now go through writeBatch — see refactor.)
-      expect(mockSetDoc).toHaveBeenCalledTimes(2);
-      // The user profile merge is the second setDoc call (after the game).
+      // setDoc: game write + challenger profile merge + opponent profile merge.
+      // (Notification + its companion limit doc go through writeBatch.)
+      expect(mockSetDoc).toHaveBeenCalledTimes(3);
+      // The challenger profile merge is the second setDoc call (after the game).
       const userProfilePath = (mockSetDoc.mock.calls[1][0] as { __path?: string }).__path ?? "";
       expect(userProfilePath).toContain("users");
+      const challengerMerge = mockSetDoc.mock.calls[1][1] as Record<string, unknown>;
+      expect(challengerMerge.lastGameCreatedAt).toBe("SERVER_TS");
+      // PR-A1: per-game trick cap counter resets at game create.
+      expect(challengerMerge.tricksLandedThisGame).toBe(0);
+      // Opponent's reset is the third call — best-effort, today's rules deny it.
+      const opponentMerge = mockSetDoc.mock.calls[2][1] as Record<string, unknown>;
+      expect(opponentMerge.tricksLandedThisGame).toBe(0);
     });
 
     it("still returns game id if rate-limit timestamp update fails", async () => {
@@ -1933,6 +1954,236 @@ describe("games service", () => {
       // SDK is responsible for atomicity. The test proves the call path still
       // hits the transaction boundary even on failure.
       expect(mockRunTransaction).toHaveBeenCalled();
+    });
+  });
+
+  /* ── PR-A1: Stats counter wiring inside terminal transactions ── */
+  describe("stats counter wiring (PR-A1)", () => {
+    /** Build a `matching`-phase game fixture with optional overrides. */
+    function makeMatchingGameFixture<T extends Record<string, unknown>>(overrides: T = {} as T) {
+      return {
+        ...baseGame,
+        phase: "matching",
+        currentSetter: "p1",
+        currentTurn: "p2",
+        currentTrickName: "Kickflip",
+        currentTrickVideoUrl: "https://vid.url/set.webm",
+        ...overrides,
+      };
+    }
+    /** Build a `disputable`-phase, judge-active game fixture. */
+    function makeDisputableGameFixture<T extends Record<string, unknown>>(overrides: T = {} as T) {
+      return {
+        ...baseGame,
+        phase: "disputable",
+        currentSetter: "p1",
+        currentTurn: "j1",
+        currentTrickName: "Kickflip",
+        matchVideoUrl: "https://vid.url/match.webm",
+        judgeId: "j1",
+        judgeUsername: "judge",
+        judgeStatus: "accepted",
+        ...overrides,
+      };
+    }
+    const matchingGame = makeMatchingGameFixture();
+
+    it("honor-system landed → applyTrickLanded fires for matcher inside the same tx", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
+
+      await submitMatchAttempt("g1", "https://vid.url/match.webm", true);
+
+      expect(mockApplyTrickLanded).toHaveBeenCalledTimes(1);
+      // (tx, uid, gameId)
+      expect(mockApplyTrickLanded.mock.calls[0][1]).toBe("p2"); // matcher uid
+      expect(mockApplyTrickLanded.mock.calls[0][2]).toBe("g1");
+      // applyGameOutcome must NOT fire here — game continues.
+      expect(mockApplyGameOutcome).not.toHaveBeenCalled();
+    });
+
+    it("terminal-miss (game over) → applyGameOutcome fires for setter+matcher, setter gets clean credit", async () => {
+      // p2 (matcher) at 4 letters → misses → game over, p1 (setter) wins.
+      const game = { ...matchingGame, p2Letters: 4 };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await submitMatchAttempt("g1", null, false);
+
+      expect(mockApplyGameOutcome).toHaveBeenCalledTimes(2);
+      // First call → setter/winner (p1), result=win, cleanJudgmentEarned=true
+      expect(mockApplyGameOutcome.mock.calls[0][1]).toBe("p1");
+      expect(mockApplyGameOutcome.mock.calls[0][3]).toMatchObject({
+        result: "win",
+        cleanJudgmentEarned: true,
+      });
+      // Second → matcher/loser (p2), result=loss, no clean credit
+      expect(mockApplyGameOutcome.mock.calls[1][1]).toBe("p2");
+      expect(mockApplyGameOutcome.mock.calls[1][3]).toMatchObject({
+        result: "loss",
+        cleanJudgmentEarned: false,
+      });
+      // xpDelta=0 in PR-A1 (PR-E activates real values).
+      expect(mockApplyGameOutcome.mock.calls[0][4]).toBe(0);
+      expect(mockApplyGameOutcome.mock.calls[1][4]).toBe(0);
+    });
+
+    it("terminal-miss → tricksLandedThisGame counts matcher-side landed turns from history", async () => {
+      const game = {
+        ...matchingGame,
+        p2Letters: 4,
+        turnHistory: [
+          { matcherUid: "p2", landed: true },
+          { matcherUid: "p1", landed: true },
+          { matcherUid: "p2", landed: true },
+          { matcherUid: "p2", landed: false },
+        ],
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await submitMatchAttempt("g1", null, false);
+
+      // p1 (setter) has 1 landed (as matcher in prior turns), p2 (matcher) has 2.
+      const setterCall = mockApplyGameOutcome.mock.calls.find((c) => c[1] === "p1");
+      const matcherCall = mockApplyGameOutcome.mock.calls.find((c) => c[1] === "p2");
+      expect(setterCall?.[3]?.tricksLandedThisGame).toBe(1);
+      expect(matcherCall?.[3]?.tricksLandedThisGame).toBe(2);
+    });
+
+    it("terminal-miss with no game over (game continues) → no applyGameOutcome", async () => {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
+
+      await submitMatchAttempt("g1", null, false);
+
+      // p2 only has 1 letter now — game keeps going.
+      expect(mockApplyGameOutcome).not.toHaveBeenCalled();
+    });
+
+    it("resolveDispute terminal → applyGameOutcome fires for both, neither earns clean credit", async () => {
+      const disputableGame = makeDisputableGameFixture({
+        p2Letters: 4, // dispute=false will give p2 a letter → game over
+        // Populated turnHistory exercises the truthy branch of `?? []`
+        // in tricksLandedForUid.
+        turnHistory: [{ matcherUid: "p2", landed: true }],
+      });
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+
+      await resolveDispute("g1", false);
+
+      expect(mockApplyGameOutcome).toHaveBeenCalledTimes(2);
+      const allCalls = mockApplyGameOutcome.mock.calls;
+      // No clean credit on disputed games (plan §3.1.1 condition (b)).
+      for (const call of allCalls) {
+        expect(call[3].cleanJudgmentEarned).toBe(false);
+      }
+      const setterCall = allCalls.find((c) => c[3].result === "win");
+      const matcherCall = allCalls.find((c) => c[3].result === "loss");
+      expect(setterCall?.[1]).toBe("p1"); // setter wins (matcher hit 5)
+      expect(matcherCall?.[1]).toBe("p2");
+      expect(matcherCall?.[3]?.tricksLandedThisGame).toBe(1); // p2 landed once
+    });
+
+    it("resolveDispute terminal handles missing turnHistory (??[] fallback)", async () => {
+      // turnHistory intentionally omitted — exercises the falsy branch.
+      const disputableGame = makeDisputableGameFixture({ p2Letters: 4 });
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+
+      await resolveDispute("g1", false);
+
+      const matcherCall = mockApplyGameOutcome.mock.calls.find((c) => c[3].result === "loss");
+      expect(matcherCall?.[3]?.tricksLandedThisGame).toBe(0);
+    });
+
+    it("resolveDispute non-terminal (accept=true, no letter changes) → no applyGameOutcome", async () => {
+      const disputableGame = makeDisputableGameFixture();
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame));
+
+      await resolveDispute("g1", true);
+
+      expect(mockApplyGameOutcome).not.toHaveBeenCalled();
+    });
+
+    it("forfeitExpiredTurn → forfeit + win pair fires, neither earns clean credit", async () => {
+      const game = {
+        ...baseGame,
+        currentTurn: "p1", // p1 forfeits
+        turnDeadline: { toMillis: () => Date.now() - 1000 },
+        turnHistory: [
+          { matcherUid: "p1", landed: true },
+          { matcherUid: "p2", landed: true },
+        ],
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await forfeitExpiredTurn("g1");
+
+      expect(mockApplyGameOutcome).toHaveBeenCalledTimes(2);
+      const forfeiterCall = mockApplyGameOutcome.mock.calls.find((c) => c[1] === "p1");
+      const winnerCall = mockApplyGameOutcome.mock.calls.find((c) => c[1] === "p2");
+      expect(forfeiterCall?.[3]).toMatchObject({
+        result: "forfeit",
+        cleanJudgmentEarned: false,
+        tricksLandedThisGame: 1,
+      });
+      expect(winnerCall?.[3]).toMatchObject({
+        result: "win",
+        cleanJudgmentEarned: false,
+        tricksLandedThisGame: 1,
+      });
+    });
+
+    it("forfeitExpiredTurn handles missing turnHistory (??[] fallback)", async () => {
+      const game = {
+        ...baseGame,
+        currentTurn: "p1",
+        turnDeadline: { toMillis: () => Date.now() - 1000 },
+        // turnHistory omitted — exercises ??[] in tricksLandedForUid.
+      };
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await forfeitExpiredTurn("g1");
+
+      const forfeiter = mockApplyGameOutcome.mock.calls.find((c) => c[1] === "p1");
+      expect(forfeiter?.[3]?.tricksLandedThisGame).toBe(0);
+    });
+
+    it("disputable phase auto-accept (NOT a terminal forfeit) → no applyGameOutcome", async () => {
+      const game = makeDisputableGameFixture({
+        currentTurn: "p1", // override so the deadline check applies to setter
+        turnDeadline: { toMillis: () => Date.now() - 1000 },
+        // Auto-accept does not require an active judge — drop those overrides.
+        judgeId: undefined,
+        judgeUsername: undefined,
+        judgeStatus: undefined,
+      });
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      await forfeitExpiredTurn("g1");
+
+      // Auto-accept is a turn advance, not a game completion.
+      expect(mockApplyGameOutcome).not.toHaveBeenCalled();
+    });
+
+    it("game-create transaction resets tricksLandedThisGame to 0 for both players", async () => {
+      await createGame("p1", "alice", "p2", "bob");
+      // Three setDoc calls: game doc, challenger merge, opponent merge.
+      const challengerMerge = mockSetDoc.mock.calls[1][1] as Record<string, unknown>;
+      const opponentMerge = mockSetDoc.mock.calls[2][1] as Record<string, unknown>;
+      expect(challengerMerge.tricksLandedThisGame).toBe(0);
+      expect(opponentMerge.tricksLandedThisGame).toBe(0);
+      // The opponent merge intentionally only contains the reset — the
+      // rate-limit anchor is challenger-only.
+      expect("lastGameCreatedAt" in opponentMerge).toBe(false);
+    });
+
+    it("opponent reset is best-effort — a permission-denied write does not fail createGame", async () => {
+      // First setDoc = game write (success). Second = challenger merge (success).
+      // Third = opponent merge (permission-denied today). createGame must still resolve.
+      mockSetDoc
+        .mockResolvedValueOnce(undefined)
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce(Object.assign(new Error("permission-denied"), { code: "permission-denied" }));
+
+      const id = await createGame("p1", "alice", "p2", "bob");
+      expect(id).toBe("auto-id");
     });
   });
 });

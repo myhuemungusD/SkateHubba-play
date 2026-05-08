@@ -198,5 +198,35 @@ describe("analytics service", () => {
         avatarRemoved: true,
       });
     });
+
+    it("statsCounterApplied sends stats_counter_applied with the full per-game shape", () => {
+      analytics.statsCounterApplied("u1", "g1", "win", 3, true, 42);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "stats_counter_applied",
+        uid: "u1",
+        gameId: "g1",
+        result: "win",
+        tricksLandedThisGame: 3,
+        cleanJudgmentEarned: true,
+        txDurationMs: 42,
+      });
+    });
+
+    it("statsCounterIdempotentSkip sends stats_counter_idempotent_skip with uid+gameId", () => {
+      analytics.statsCounterIdempotentSkip("u1", "g1");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "stats_counter_idempotent_skip",
+        uid: "u1",
+        gameId: "g1",
+      });
+    });
+
+    it("statsCounterSkippedFlagOff sends stats_counter_skipped_flag_off with uid", () => {
+      analytics.statsCounterSkippedFlagOff("u1");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "stats_counter_skipped_flag_off",
+        uid: "u1",
+      });
+    });
   });
 });
