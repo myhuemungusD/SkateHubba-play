@@ -13,10 +13,7 @@ const {
   mockGetDocs,
   mockDeleteDoc,
   mockServerTimestamp,
-  mockGetCountFromServer,
-  mockGetDoc,
   mockRunTransaction,
-  mockIncrement,
   FakeTimestamp,
 } = vi.hoisted(() => {
   class FakeTimestamp {
@@ -40,10 +37,7 @@ const {
     mockGetDocs: vi.fn(),
     mockDeleteDoc: vi.fn().mockResolvedValue(undefined),
     mockServerTimestamp: vi.fn(() => "SERVER_TS"),
-    mockGetCountFromServer: vi.fn(),
-    mockGetDoc: vi.fn(),
     mockRunTransaction: vi.fn(),
-    mockIncrement: vi.fn((n: number) => ({ _op: "increment", operand: n })),
     FakeTimestamp,
   };
 });
@@ -60,10 +54,7 @@ vi.mock("firebase/firestore", () => ({
   getDocs: mockGetDocs,
   deleteDoc: mockDeleteDoc,
   serverTimestamp: mockServerTimestamp,
-  getCountFromServer: mockGetCountFromServer,
-  getDoc: mockGetDoc,
   runTransaction: mockRunTransaction,
-  increment: mockIncrement,
   Timestamp: FakeTimestamp,
 }));
 
@@ -695,10 +686,6 @@ describe("deleteUserClips", () => {
 
 /* ── upvoteClip ────────────────────────────────── */
 
-function countSnap(count: number) {
-  return { data: () => ({ count }) };
-}
-
 describe("upvoteClip", () => {
   type ObservedTx = {
     set: ReturnType<typeof vi.fn>;
@@ -708,16 +695,25 @@ describe("upvoteClip", () => {
 
   /**
    * Wires `mockRunTransaction` to capture and return the Transaction stub
-   * the service body sees. `voteExists` toggles the existing-vote branch
-   * (drives AlreadyUpvotedError vs the happy path). All three test cases
-   * around the atomic write share this scaffolding — keeping it inline
-   * tripped the test-duplication gate.
+   * the service body sees. The service issues two `tx.get` calls — one for
+   * the vote doc (drives the AlreadyUpvotedError branch) and one for the
+   * clip doc (drives the post-tx return count). The mock differentiates by
+   * the ref's `__path` prefix produced by the firestore mockDoc helper.
    */
-  function captureTxOnce(voteExists: boolean): { observed: () => ObservedTx } {
+  function captureTxOnce(voteExists: boolean, currentUpvoteCount = 0): { observed: () => ObservedTx } {
     let captured: ObservedTx | undefined;
     mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
       const tx: ObservedTx = {
-        get: vi.fn().mockResolvedValue({ exists: () => voteExists }),
+        get: vi.fn().mockImplementation(async (ref: { __path?: string }) => {
+          const path = ref.__path ?? "";
+          if (path.startsWith("clipVotes/")) {
+            return { exists: () => voteExists };
+          }
+          if (path.startsWith("clips/")) {
+            return { exists: () => true, data: () => ({ upvoteCount: currentUpvoteCount }) };
+          }
+          throw new Error(`Unexpected ref path in tx.get: ${path}`);
+        }),
         set: vi.fn(),
         update: vi.fn(),
       };
@@ -732,20 +728,20 @@ describe("upvoteClip", () => {
     };
   }
 
-  it("writes the vote inside a transaction and returns the refreshed count", async () => {
-    captureTxOnce(false);
-    mockGetCountFromServer.mockResolvedValueOnce(countSnap(7));
+  it("writes the vote inside a transaction and returns the post-increment count from the in-tx clip read", async () => {
+    captureTxOnce(false, 6);
 
     const count = await upvoteClip("me", "g1_2_set");
 
+    // Returned count is current+1, derived from the in-transaction read —
+    // no follow-up aggregate query was needed.
     expect(count).toBe(7);
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clipVotes", "me_g1_2_set");
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clips", "g1_2_set");
   });
 
-  it("atomically increments upvoteCount on the clip in the same transaction as the vote write", async () => {
-    const cap = captureTxOnce(false);
-    mockGetCountFromServer.mockResolvedValueOnce(countSnap(1));
+  it("writes the literal post-increment count to the clip aggregate (not increment(1))", async () => {
+    const cap = captureTxOnce(false, 1);
 
     await upvoteClip("me", "g1_2_set");
 
@@ -761,8 +757,23 @@ describe("upvoteClip", () => {
 
     const [clipRef, clipPayload] = tx.update.mock.calls[0];
     expect((clipRef as { __path: string }).__path).toBe("clips/g1_2_set");
-    expect(clipPayload).toEqual({ upvoteCount: { _op: "increment", operand: 1 } });
-    expect(mockIncrement).toHaveBeenCalledWith(1);
+    // Literal write — current(1) + 1 = 2. The rule explicitly accepts
+    // `upvoteCount == prev + 1` paired with a vote-doc create-after, so a
+    // literal write is rule-equivalent to increment(1) but lets us return
+    // the authoritative count without a second round-trip.
+    expect(clipPayload).toEqual({ upvoteCount: 2 });
+  });
+
+  it("treats a missing or non-numeric upvoteCount on the clip as 0 (legacy / pre-backfill path)", async () => {
+    // captureTxOnce defaults clip data to { upvoteCount: 0 }; verify that
+    // legacy clips with no field at all still take the 0 → 1 path rather
+    // than crashing or writing NaN.
+    const cap = captureTxOnce(false, 0);
+    let count = 0;
+    count = await upvoteClip("me", "g1_2_set");
+    expect(count).toBe(1);
+    const [, clipPayload] = cap.observed().update.mock.calls[0];
+    expect(clipPayload).toEqual({ upvoteCount: 1 });
   });
 
   it("does not bump upvoteCount when the user has already upvoted (error path)", async () => {
@@ -794,52 +805,94 @@ describe("upvoteClip", () => {
 /* ── fetchClipUpvoteState ──────────────────────── */
 
 describe("fetchClipUpvoteState", () => {
-  it("returns an empty Map when no clip ids are passed (no Firestore reads)", async () => {
+  function clip(
+    id: string,
+    upvoteCount: number,
+    playerUid = "other",
+  ): {
+    id: string;
+    upvoteCount: number;
+    playerUid: string;
+  } {
+    return { id, upvoteCount, playerUid };
+  }
+
+  function voteSnap(voteIds: string[]) {
+    return {
+      docs: voteIds.map((vid) => ({
+        id: vid,
+        data: () => {
+          // vote id is `${uid}_${clipId}` — strip the uid prefix to recover
+          // the clip id stored on the doc body (mirrors upvoteClip's write).
+          const sep = vid.indexOf("_");
+          return { uid: vid.slice(0, sep), clipId: vid.slice(sep + 1) };
+        },
+      })),
+    };
+  }
+
+  it("returns an empty Map when no clips are passed (no Firestore reads)", async () => {
     const map = await fetchClipUpvoteState("me", []);
     expect(map.size).toBe(0);
-    expect(mockGetCountFromServer).not.toHaveBeenCalled();
-    expect(mockGetDoc).not.toHaveBeenCalled();
+    expect(mockGetDocs).not.toHaveBeenCalled();
   });
 
-  it("stitches per-clip count + alreadyUpvoted into a Map keyed by clip id", async () => {
-    // Mocks resolve in definition order — match the (count, alreadyUpvoted)
-    // pair structure for each id by interleaving the two mock streams.
-    mockGetCountFromServer
-      .mockResolvedValueOnce(countSnap(3))
-      .mockResolvedValueOnce(countSnap(0))
-      .mockResolvedValueOnce(countSnap(11));
-    mockGetDoc
-      .mockResolvedValueOnce({ exists: () => true })
-      .mockResolvedValueOnce({ exists: () => false })
-      .mockResolvedValueOnce({ exists: () => false });
+  it("seeds count from the denormalized clip aggregate and marks already-upvoted clips via a single batched query", async () => {
+    // Single round-trip: one getDocs call with `where(__name__, in, [...])`
+    // returning only the vote docs that exist for this viewer.
+    mockGetDocs.mockResolvedValueOnce(voteSnap(["me_c1"])); // viewer upvoted c1, not c2/c3
 
-    const map = await fetchClipUpvoteState("me", ["c1", "c2", "c3"]);
+    const map = await fetchClipUpvoteState("me", [clip("c1", 3), clip("c2", 0), clip("c3", 11)]);
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+    expect(mockWhere).toHaveBeenCalledWith({ __documentId: true }, "in", ["me_c1", "me_c2", "me_c3"]);
 
     expect(map.get("c1")).toEqual({ count: 3, alreadyUpvoted: true });
     expect(map.get("c2")).toEqual({ count: 0, alreadyUpvoted: false });
     expect(map.get("c3")).toEqual({ count: 11, alreadyUpvoted: false });
   });
 
-  it("defaults a clip's state to {0,false} when its count read fails (other clips unaffected)", async () => {
-    // First clip's count fails (with a permanent code so withRetry doesn't loop);
-    // second clip succeeds. countClipUpvotes already swallows internally and
-    // returns 0, so the failing clip should still appear with default state.
-    mockGetCountFromServer
-      .mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }))
-      .mockResolvedValueOnce(countSnap(5));
-    mockGetDoc.mockResolvedValueOnce({ exists: () => false }).mockResolvedValueOnce({ exists: () => true });
+  it("filters out the viewer's own clips before issuing any read (rule disallows self-upvote)", async () => {
+    mockGetDocs.mockResolvedValueOnce(voteSnap([]));
 
-    const map = await fetchClipUpvoteState("me", ["broken", "ok"]);
+    const map = await fetchClipUpvoteState("me", [clip("own", 5, "me"), clip("other", 9, "you")]);
 
-    expect(map.get("broken")).toEqual({ count: 0, alreadyUpvoted: false });
-    expect(map.get("ok")).toEqual({ count: 5, alreadyUpvoted: true });
+    // Own clip never enters the result map — its count would be misleading
+    // because the viewer can never upvote it. Hydration is skipped entirely.
+    expect(map.has("own")).toBe(false);
+    expect(map.get("other")).toEqual({ count: 9, alreadyUpvoted: false });
+    // Only the non-self clip's vote id should be batched.
+    expect(mockWhere).toHaveBeenCalledWith({ __documentId: true }, "in", ["me_other"]);
   });
 
-  it("defaults to {0,false} when the vote-doc check fails", async () => {
-    mockGetCountFromServer.mockResolvedValueOnce(countSnap(2));
-    mockGetDoc.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+  it("issues no reads when every supplied clip is owned by the viewer", async () => {
+    const map = await fetchClipUpvoteState("me", [clip("a", 1, "me"), clip("b", 2, "me")]);
+    expect(map.size).toBe(0);
+    expect(mockGetDocs).not.toHaveBeenCalled();
+  });
 
-    const map = await fetchClipUpvoteState("me", ["c1"]);
-    expect(map.get("c1")).toEqual({ count: 2, alreadyUpvoted: false });
+  it("falls back to seeded {count, alreadyUpvoted=false} when the batched read fails (no per-clip blanking)", async () => {
+    // Whole-batch failure: counts still come from the denormalized field
+    // on the clip docs, so the UI continues to render accurate vote totals
+    // even when the viewer's vote-doc lookup is rejected.
+    mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+
+    const map = await fetchClipUpvoteState("me", [clip("c1", 4), clip("c2", 7)]);
+
+    expect(map.get("c1")).toEqual({ count: 4, alreadyUpvoted: false });
+    expect(map.get("c2")).toEqual({ count: 7, alreadyUpvoted: false });
+  });
+
+  it("chunks the in-query into batches of 30 to respect the Firestore in-cap", async () => {
+    // 35 clips → 2 chunks (30 + 5). Each chunk fires its own getDocs.
+    const clips = Array.from({ length: 35 }, (_, i) => clip(`c${i}`, i));
+    mockGetDocs.mockResolvedValueOnce(voteSnap([])).mockResolvedValueOnce(voteSnap([]));
+
+    const map = await fetchClipUpvoteState("me", clips);
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+    // Spot-check: every clip got an entry, all default to not-upvoted.
+    expect(map.size).toBe(35);
+    expect(map.get("c34")).toEqual({ count: 34, alreadyUpvoted: false });
   });
 });

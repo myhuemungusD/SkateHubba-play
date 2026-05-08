@@ -71,15 +71,18 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     upvotingIdsRef.current = upvotingIds;
   }, [upvotingIds]);
 
-  // Hydrate upvote state for a freshly-loaded pool. Best-effort: failures
-  // leave entries missing (UI defaults to count=0, not-upvoted). Own clips
-  // are skipped because self-upvote is disallowed.
+  // Hydrate upvote state for a freshly-loaded pool. The service reads the
+  // denormalized `upvoteCount` directly off the clip docs and batches the
+  // viewer's vote-doc check into a single `where(__name__, in, [...])`
+  // query — at PAGE_SIZE=12 this is 1 read total instead of 24. Own clips
+  // are filtered inside the service since self-upvote is rule-rejected.
+  // Best-effort: page-wide failure leaves the seeded count + not-upvoted
+  // state in place so the UI still renders accurate vote counts.
   const hydrateUpvotes = useCallback(
     async (pageClips: readonly ClipDoc[]) => {
-      const ids = pageClips.filter((c) => c.playerUid !== profile.uid).map((c) => c.id);
-      if (ids.length === 0) return;
+      if (pageClips.length === 0) return;
       try {
-        const map = await fetchClipUpvoteState(profile.uid, ids);
+        const map = await fetchClipUpvoteState(profile.uid, pageClips);
         if (!mountedRef.current) return;
         setUpvoteState((prev) => {
           const next = new Map(prev);

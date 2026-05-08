@@ -26,10 +26,7 @@ import {
   deleteDoc,
   doc,
   documentId,
-  getCountFromServer,
-  getDoc,
   getDocs,
-  increment,
   limit as limitFn,
   orderBy,
   query,
@@ -427,27 +424,6 @@ function clipVoteId(uid: string, clipId: string): string {
   return `${uid}_${clipId}`;
 }
 
-async function countClipUpvotes(clipId: string): Promise<number> {
-  try {
-    const q = query(clipVotesRef(), where("clipId", "==", clipId));
-    const snap = await withRetry(() => getCountFromServer(q));
-    return snap.data().count;
-  } catch (err) {
-    logger.warn("clip_upvote_count_failed", { clipId, error: parseFirebaseError(err) });
-    return 0;
-  }
-}
-
-async function hasUserUpvoted(uid: string, clipId: string): Promise<boolean> {
-  try {
-    const snap = await withRetry(() => getDoc(doc(requireDb(), "clipVotes", clipVoteId(uid, clipId))));
-    return snap.exists();
-  } catch (err) {
-    logger.warn("clip_upvote_check_failed", { clipId, error: parseFirebaseError(err) });
-    return false;
-  }
-}
-
 /** Per-clip upvote state for the lobby feed: live count + whether the
  *  current viewer has already upvoted (controls the filled/disabled UI). */
 export interface ClipUpvoteState {
@@ -455,39 +431,90 @@ export interface ClipUpvoteState {
   alreadyUpvoted: boolean;
 }
 
+/** Firestore caps `where(... in [...])` lists at 30 values. */
+const VOTE_DOC_IN_BATCH_LIMIT = 30;
+
+/** Minimal clip shape required to hydrate upvote state: id, denormalized
+ *  upvoteCount aggregate, and the owner uid (used to skip self-upvote
+ *  hydration since the rule disallows it anyway). */
+export interface ClipForUpvoteHydration {
+  id: string;
+  upvoteCount: number;
+  playerUid: string;
+}
+
 /**
- * Batch-fetch upvote state for a page of clips.
+ * Hydrate upvote state for a page of clips with at most 1–2 Firestore reads.
  *
- * Fires `2 * clipIds.length` Firestore reads in parallel — one aggregate
- * count + one vote-doc existence check per clip. At a feed PAGE_SIZE of 12
- * that's 24 small reads, well under the per-page budget. Per-clip failures
- * are swallowed and default to `{ count: 0, alreadyUpvoted: false }` so the
- * feed can render even when the aggregate index is unavailable or App Check
- * blocks a single read.
+ * The clip doc already carries the `upvoteCount` aggregate (transactionally
+ * incremented inside `upvoteClip`), so per-clip count reads are unnecessary
+ * — we copy the value from the supplied clip docs. The only network work is
+ * checking which of the supplied clips the caller has already upvoted: a
+ * single batched `getDocs(query(clipVotes, where(__name__, in, [...])))`
+ * keyed on the deterministic `${uid}_${clipId}` vote-doc ids.
  *
- * Returns a Map keyed by clipId so callers can look up state by id without
- * a linear scan. Missing entries (e.g. caller passed an empty array) simply
- * won't appear in the Map; callers should treat absence as `{0,false}`.
+ * Reads: `ceil(targetClips.length / 30)` — 1 for PAGE_SIZE ≤ 30, never more
+ * than 2 in practice. Down from `2 * clipIds.length` (24 at PAGE_SIZE=12) in
+ * the previous implementation.
+ *
+ * Own clips are filtered out before the network call because `upvoteClip`
+ * rejects self-upvotes; hydrating their state would burn reads with no UI
+ * value. Callers no longer need to pre-filter.
+ *
+ * Failures are swallowed and the affected entries fall back to
+ * `{ count: clip.upvoteCount, alreadyUpvoted: false }` — viewers see
+ * accurate counts even when App Check blocks the vote-doc lookup; the
+ * "alreadyUpvoted" UI state self-corrects when the user actually taps.
  */
 export async function fetchClipUpvoteState(
   uid: string,
-  clipIds: ReadonlyArray<string>,
+  clips: ReadonlyArray<ClipForUpvoteHydration>,
 ): Promise<Map<string, ClipUpvoteState>> {
   const result = new Map<string, ClipUpvoteState>();
-  if (clipIds.length === 0) return result;
+  if (clips.length === 0) return result;
 
-  // countClipUpvotes and hasUserUpvoted both swallow errors and return
-  // safe defaults (0 / false), so this Promise.all never rejects in
-  // practice — a per-id failure leaves that clip's entry at {0,false}
-  // without taking down the whole batch.
-  const settled = await Promise.all(
-    clipIds.map(async (id): Promise<readonly [string, ClipUpvoteState]> => {
-      const [count, alreadyUpvoted] = await Promise.all([countClipUpvotes(id), hasUserUpvoted(uid, id)]);
-      return [id, { count, alreadyUpvoted }] as const;
-    }),
-  );
+  // Self-upvote is disallowed by rules + by upvoteClip; never burn a read
+  // hydrating it. The owner's display always reads as not-upvoted.
+  const targetClips = clips.filter((c) => c.playerUid !== uid);
 
-  for (const [id, state] of settled) result.set(id, state);
+  // Seed every target with the denormalized count up front so a network
+  // failure below still yields useful UI state.
+  for (const c of targetClips) {
+    result.set(c.id, { count: c.upvoteCount, alreadyUpvoted: false });
+  }
+  if (targetClips.length === 0) return result;
+
+  // Chunk vote-doc ids to respect Firestore's 30-value `in` cap. PAGE_SIZE
+  // is 12 so this is almost always a single chunk; the loop is here so
+  // future page-size growth doesn't silently exceed the limit.
+  const chunks: string[][] = [];
+  for (let i = 0; i < targetClips.length; i += VOTE_DOC_IN_BATCH_LIMIT) {
+    chunks.push(targetClips.slice(i, i + VOTE_DOC_IN_BATCH_LIMIT).map((c) => clipVoteId(uid, c.id)));
+  }
+
+  try {
+    const snaps = await Promise.all(
+      chunks.map((voteIds) => withRetry(() => getDocs(query(clipVotesRef(), where(documentId(), "in", voteIds))))),
+    );
+    for (const snap of snaps) {
+      for (const d of snap.docs) {
+        // The doc data carries clipId verbatim (written by upvoteClip);
+        // prefer it over re-deriving from the doc id so a malformed or
+        // legacy id format doesn't poison the lookup.
+        const data = d.data() as { clipId?: unknown };
+        const clipId = typeof data.clipId === "string" ? data.clipId : null;
+        if (clipId && result.has(clipId)) {
+          const existing = result.get(clipId)!;
+          result.set(clipId, { count: existing.count, alreadyUpvoted: true });
+        }
+      }
+    }
+  } catch (err) {
+    // Page-wide failure: log once and keep the seeded `alreadyUpvoted=false`
+    // defaults. Per-tap upvote attempts will resync via AlreadyUpvotedError.
+    logger.warn("clip_upvote_state_batch_failed", { error: parseFirebaseError(err) });
+  }
+
   return result;
 }
 
@@ -502,28 +529,47 @@ export async function fetchClipUpvoteState(
  * un-upvote / account-deletion paths).
  *
  * The same transaction also bumps the parent clip's `upvoteCount` aggregate
- * via `increment(1)`. Pairing the vote-doc create and the count delta in
- * one `runTransaction` is what keeps the aggregate consistent with the
- * underlying votes — a half-applied write (vote doc but no count, or count
- * but no vote doc) is impossible. The matching firestore rule on `clips`
- * uses `existsAfter` to verify the vote-doc side of the pair, so a client
- * cannot increment the count without also creating its vote doc.
+ * by reading the current value and writing `current + 1` as a literal. The
+ * literal write lets us return the authoritative post-tx count without a
+ * follow-up aggregate read (one fewer round-trip per tap). Pairing the
+ * vote-doc create and the count delta in one `runTransaction` keeps the
+ * aggregate consistent with the underlying votes — a half-applied write
+ * (vote doc but no count, or count but no vote doc) is impossible. The
+ * matching firestore rule on `clips` uses `existsAfter` to verify the
+ * vote-doc side of the pair, so a client cannot inflate the count without
+ * also creating its vote doc.
  */
 export async function upvoteClip(uid: string, clipId: string): Promise<number> {
   const db = requireDb();
   const voteRef = doc(db, "clipVotes", clipVoteId(uid, clipId));
   const clipRef = doc(db, "clips", clipId);
 
+  let nextCount = 0;
   try {
     await runTransaction(db, async (tx) => {
-      const existing = await tx.get(voteRef);
+      // Read both refs together so the transaction's read phase finishes
+      // in a single round-trip. We need the clip doc to compute the post-
+      // increment count and return it without a follow-up aggregate read.
+      const [existing, clipSnap] = await Promise.all([tx.get(voteRef), tx.get(clipRef)]);
       if (existing.exists()) throw new AlreadyUpvotedError(clipId);
+
+      // Legacy clips lack `upvoteCount` on disk; the rule treats missing as
+      // 0 via `get('upvoteCount', 0)` and the mapper does the same on read.
+      // Mirror both here so the literal we write matches the rule's check.
+      const raw = clipSnap.exists() ? (clipSnap.data() as { upvoteCount?: unknown }).upvoteCount : 0;
+      const currentCount = typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : 0;
+      nextCount = currentCount + 1;
+
       tx.set(voteRef, {
         uid,
         clipId,
         createdAt: serverTimestamp(),
       });
-      tx.update(clipRef, { upvoteCount: increment(1) });
+      // Writing a literal (rather than `increment(1)`) lets us return the
+      // authoritative post-write count without a second read. The rule at
+      // firestore.rules:1487 explicitly accepts this shape — it requires
+      // upvoteCount == prev + 1 paired with a vote-doc create-after.
+      tx.update(clipRef, { upvoteCount: nextCount });
     });
   } catch (err) {
     if (err instanceof AlreadyUpvotedError) throw err;
@@ -538,7 +584,7 @@ export async function upvoteClip(uid: string, clipId: string): Promise<number> {
     throw err;
   }
 
-  return countClipUpvotes(clipId);
+  return nextCount;
 }
 
 /* ────────────────────────────────────────────
