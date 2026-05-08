@@ -76,6 +76,7 @@ import {
   upvoteClip,
   fetchClipUpvoteState,
   AlreadyUpvotedError,
+  _resetTopIndexCircuitBreaker,
   type LandedClipContext,
   type ClipsFeedCursor,
 } from "../clips";
@@ -510,6 +511,12 @@ describe("fetchClipsFeed (sort='top', the default)", () => {
 });
 
 describe("fetchClipsFeed (failed-precondition fallback)", () => {
+  beforeEach(() => {
+    // Each case starts with a fresh breaker so they can independently
+    // exercise the first-failure path without leaking state.
+    _resetTopIndexCircuitBreaker();
+  });
+
   function missingIndexError(message = "The query requires an index. You can create it here: ..."): Error {
     const err = new Error(message);
     (err as Error & { code?: string }).code = "failed-precondition";
@@ -575,6 +582,70 @@ describe("fetchClipsFeed (failed-precondition fallback)", () => {
 
     await expect(fetchClipsFeed(null, 20, "top")).rejects.toMatchObject({ code: "permission-denied" });
     expect(mockGetDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it("latches the breaker after one failure so subsequent top calls skip the failing query", async () => {
+    // First call: top fails, fallback to new succeeds — costs 2 reads.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_2_set", validClipData())],
+    });
+    await fetchClipsFeed(null, 20, "top");
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+
+    // Second call: breaker latched, route directly to new — 1 read only.
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_3_set", validClipData())],
+    });
+    const page = await fetchClipsFeed(null, 20, "top");
+    expect(mockGetDocs).toHaveBeenCalledTimes(3);
+    expect(page.clips[0].id).toBe("g1_3_set");
+
+    // Same on a third call — no further failing-top attempts ever issued.
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    await fetchClipsFeed(null, 20, "top");
+    expect(mockGetDocs).toHaveBeenCalledTimes(4);
+
+    // Verify the post-latch calls used the new-sort orderBy chain (no
+    // upvoteCount), not the failing top chain.
+    const orderByFieldsAfterLatch = mockOrderBy.mock.calls.map((c) => c[0]);
+    // upvoteCount only appears in the very first (failing) attempt.
+    const upvoteCountInvocations = orderByFieldsAfterLatch.filter((f) => f === "upvoteCount").length;
+    expect(upvoteCountInvocations).toBe(1);
+  });
+
+  it("drops a top-shaped cursor when the breaker is already latched", async () => {
+    // Latch the breaker via a first failed call.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    await fetchClipsFeed(null, 20, "top");
+
+    // Now hand fetchClipsFeed a top-shaped cursor (with upvoteCount). The
+    // post-latch path must drop it — feeding upvoteCount into a new-sort
+    // startAfter would mismatch the orderBy chain length and crash.
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    const ts = new FakeTimestamp(1_700_000_000_000) as unknown as ClipsFeedCursor["createdAt"];
+    const topCursor: ClipsFeedCursor = { createdAt: ts, id: "g1_5_match", upvoteCount: 5 };
+    await fetchClipsFeed(topCursor, 20, "top");
+
+    // The post-latch call goes straight to runFeedQuery(null, ...) — no
+    // startAfter at all on that invocation.
+    expect(mockStartAfter).not.toHaveBeenCalled();
+  });
+
+  it("breaker only affects sort='top'; explicit sort='new' is unaffected", async () => {
+    // Latch via a top failure.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    await fetchClipsFeed(null, 20, "top");
+
+    // Caller explicitly asks for sort='new' — runs directly, with cursor.
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    const ts = new FakeTimestamp(1_700_000_000_000) as unknown as ClipsFeedCursor["createdAt"];
+    const newCursor: ClipsFeedCursor = { createdAt: ts, id: "g1_5_match" };
+    await fetchClipsFeed(newCursor, 20, "new");
+
+    expect(mockStartAfter).toHaveBeenCalledWith(ts, "g1_5_match");
   });
 });
 

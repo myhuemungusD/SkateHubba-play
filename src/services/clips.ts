@@ -268,27 +268,48 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
  * `serverTimestamp()`; without it pagination would skip or duplicate rows at
  * page boundaries.
  */
+/**
+ * Session-scoped circuit breaker for the 'top' composite index.
+ *
+ * The 'top' sort needs a 4-field composite index that may be still building
+ * (or undeployed). Without this flag, every lobby refresh would burn a
+ * failing Firestore read before the fallback kicks in. Once we've observed
+ * one missing-index failure, route all subsequent 'top' requests directly
+ * to the 'new' sort for the rest of the session — one read per load instead
+ * of two. The flag resets on hard reload, so a freshly-built index is
+ * picked up the next time the user opens the app.
+ */
+let topIndexUnavailable = false;
+
+/** Test-only: reset the circuit breaker between cases. Not part of the
+ *  public surface — exported solely for vitest. */
+export function _resetTopIndexCircuitBreaker(): void {
+  topIndexUnavailable = false;
+}
+
 export async function fetchClipsFeed(
   cursor: ClipsFeedCursor | null = null,
   pageSize = 20,
   sort: ClipsFeedSort = "top",
 ): Promise<ClipsFeedPage> {
+  // If the 'top' index has already failed once this session, skip the
+  // wasted round-trip and serve from 'new' directly. The cursor format
+  // differs between sorts, so a 'top'-shaped cursor must be dropped here
+  // — callers that paginate through the fallback get a fresh first page.
+  if (sort === "top" && topIndexUnavailable) {
+    return runFeedQuery(null, pageSize, "new");
+  }
+
   try {
     return await runFeedQuery(cursor, pageSize, sort);
   } catch (err) {
-    // The 'top' sort needs a 4-field composite index. If it's still
-    // building (or hasn't been deployed yet), Firestore returns
-    // `failed-precondition` and the lobby would otherwise render the
-    // "Feed temporarily unavailable" error state. Degrade to the 'new'
-    // sort — its 3-field index has been live for longer — so viewers
-    // still see clips while ops resolves the missing index.
     if (sort === "top" && isMissingIndexError(err)) {
+      // Latch the breaker so the rest of the session skips the failing
+      // top query entirely. Logged once per session for ops visibility.
+      topIndexUnavailable = true;
       logger.warn("clips_feed_top_index_unavailable_falling_back_to_new", {
         error: parseFirebaseError(err),
       });
-      // Cursor shape differs between sorts (top threads upvoteCount, new
-      // doesn't), so we drop it rather than feed an incompatible value
-      // into startAfter on the fallback query.
       return runFeedQuery(null, pageSize, "new");
     }
     throw err;
