@@ -14,10 +14,13 @@ import {
   serverTimestamp,
   type FieldValue,
 } from "firebase/firestore";
-import { requireAuth, requireDb } from "../firebase";
+import { ref as storageRef, deleteObject } from "firebase/storage";
+import { requireAuth, requireDb, requireStorage } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips } from "./clips";
+import { analytics } from "./analytics";
+import { logger } from "./logger";
 
 /**
  * Public profile doc at `users/{uid}`. Every signed-in user can read
@@ -326,11 +329,49 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // deleted BEFORE the parent users/{uid} doc goes, so the owner's
   // auth context still resolves isOwner(uid) cleanly against the
   // private-subcollection rule.
+  //
+  // Achievements subcollection is folded into the same batch so a single
+  // commit either wipes the whole identity surface or none of it. Without
+  // this, a partial failure could leave orphan achievement docs after the
+  // parent user doc was gone — the GDPR/CCPA gap audit B10/S15 calls out.
+  const achievementsSnap = await getDocs(collection(db, "users", uid, "achievements"));
   const batch = writeBatch(db);
+  for (const achievementDoc of achievementsSnap.docs) {
+    batch.delete(achievementDoc.ref);
+  }
   batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
   batch.delete(doc(db, "users", uid));
   batch.delete(doc(db, "usernames", username.toLowerCase().trim()));
   await batch.commit();
+
+  // Phase 5: Best-effort scrub of avatar binaries from Storage. Three
+  // candidate extensions cover the upload code path (`.webp` is the
+  // canonical encoding, `.jpeg` and `.png` are fallbacks for browsers
+  // that can't encode WebP). `not-found` is the expected case for users
+  // who never uploaded a custom avatar — silently ignored. Any other
+  // failure is logged but does not throw because the auth + Firestore
+  // teardown is already complete.
+  const storage = requireStorage();
+  const avatarExtensions = ["webp", "jpeg", "png"] as const;
+  let avatarRemoved = false;
+  await Promise.all(
+    avatarExtensions.map(async (ext) => {
+      try {
+        await deleteObject(storageRef(storage, `users/${uid}/avatar.${ext}`));
+        avatarRemoved = true;
+      } catch (err) {
+        const code = (err as { code?: string })?.code ?? "";
+        if (code === "storage/object-not-found") return;
+        logger.warn("avatar_delete_failed", {
+          uid,
+          ext,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }),
+  );
+
+  analytics.accountDeleted(uid, achievementsSnap.docs.length, avatarRemoved);
 }
 
 /**

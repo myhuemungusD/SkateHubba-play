@@ -75,4 +75,22 @@ export const analytics = {
   spotPreviewed: (spotId: string) => trackEvent("spot_previewed", { spotId }),
   /** Fired when ChallengeScreen mounts with a valid ?spot= URL param. */
   challengeFromSpot: (spotId: string) => trackEvent("challenge_from_spot", { spotId }),
+  // ── Profile / stats / achievements rollout ────────────────────────────
+  /**
+   * Sampled at 1% in `featureFlags.ts` so callers don't need to think about
+   * volume — every gated surface reads flags on every render and would
+   * swamp ingest unsampled. `defaultUsed` true means PostHog was absent /
+   * consent denied / flag unknown and the fallback fired.
+   */
+  featureFlagEvaluated: (flag: string, value: boolean, defaultUsed: boolean) =>
+    trackEvent("feature_flag_evaluated", { flag, value, defaultUsed }),
+  /**
+   * Fires once per successful `deleteUserData` cascade. Not sampled —
+   * account deletions are rare and we need every one for the GDPR audit
+   * trail. `achievementsRemoved` is the count of subcollection docs the
+   * batch wiped; `avatarRemoved` is true when at least one avatar object
+   * was found and deleted from Storage.
+   */
+  accountDeleted: (uid: string, achievementsRemoved: number, avatarRemoved: boolean) =>
+    trackEvent("account_deleted", { uid, achievementsRemoved, avatarRemoved }),
 } as const;

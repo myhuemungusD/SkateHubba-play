@@ -178,5 +178,25 @@ describe("analytics service", () => {
         spotId: "11111111-2222-3333-4444-555555555555",
       });
     });
+
+    it("featureFlagEvaluated sends feature_flag_evaluated event with all three fields", () => {
+      analytics.featureFlagEvaluated("flag.x", true, false);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "feature_flag_evaluated",
+        flag: "flag.x",
+        value: true,
+        defaultUsed: false,
+      });
+    });
+
+    it("accountDeleted sends account_deleted event with achievement + avatar tally", () => {
+      analytics.accountDeleted("u1", 3, true);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "account_deleted",
+        uid: "u1",
+        achievementsRemoved: 3,
+        avatarRemoved: true,
+      });
+    });
   });
 });
