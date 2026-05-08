@@ -46,7 +46,7 @@ import {
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
-import { parseFirebaseError } from "../utils/helpers";
+import { getErrorCode, parseFirebaseError } from "../utils/helpers";
 import type { Clip, ClipModerationStatus, ClipRole } from "../types/clip";
 
 /* ────────────────────────────────────────────
@@ -253,61 +253,6 @@ function toClipDoc(snap: DocumentSnapshot): ClipDoc {
   };
 }
 
-/**
- * Fetch one page of the landed-trick feed.
- *
- * `sort` selects the ranking strategy:
- *   • 'top' (default) — `upvoteCount` desc, then `createdAt` desc, then doc
- *     id desc. The createdAt tiebreaker means a collection where every clip
- *     has zero upvotes naturally falls through to most-recent-first, so the
- *     featured-clip surface degrades gracefully before vote data exists.
- *   • 'new' — `createdAt` desc, then doc id desc. Legacy ordering, kept for
- *     the Top/New toggle.
- *
- * The doc-id tiebreaker exists because set + match clips share a transaction
- * `serverTimestamp()`; without it pagination would skip or duplicate rows at
- * page boundaries.
- */
-export async function fetchClipsFeed(
-  cursor: ClipsFeedCursor | null = null,
-  pageSize = 20,
-  sort: ClipsFeedSort = "top",
-): Promise<ClipsFeedPage> {
-  try {
-    return await runFeedQuery(cursor, pageSize, sort);
-  } catch (err) {
-    // The 'top' sort needs a 4-field composite index. If it's still
-    // building (or hasn't been deployed yet), Firestore returns
-    // `failed-precondition` and the lobby would otherwise render the
-    // "Feed temporarily unavailable" error state. Degrade to the 'new'
-    // sort — its 3-field index has been live for longer — so viewers
-    // still see clips while ops resolves the missing index.
-    if (sort === "top" && isMissingIndexError(err)) {
-      logger.warn("clips_feed_top_index_unavailable_falling_back_to_new", {
-        error: parseFirebaseError(err),
-      });
-      // Cursor shape differs between sorts (top threads upvoteCount, new
-      // doesn't), so we drop it rather than feed an incompatible value
-      // into startAfter on the fallback query.
-      return runFeedQuery(null, pageSize, "new");
-    }
-    throw err;
-  }
-}
-
-function isMissingIndexError(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) return false;
-  const code = (err as { code?: unknown }).code;
-  if (code !== "failed-precondition") return false;
-  // Firestore raises failed-precondition for several reasons; the missing-
-  // index variant carries "requires an index" in its message. Be tolerant
-  // — if we can't read the message, treat the code as sufficient signal so
-  // the fallback still triggers in surface-stripped error envelopes.
-  const message = (err as { message?: unknown }).message;
-  if (typeof message !== "string") return true;
-  return message.toLowerCase().includes("index");
-}
-
 async function runFeedQuery(
   cursor: ClipsFeedCursor | null,
   pageSize: number,
@@ -379,6 +324,47 @@ async function runFeedQuery(
         })();
 
   return { clips, cursor: nextCursor };
+}
+
+/**
+ * Fetch one page of the landed-trick feed.
+ *
+ * `sort` selects the ranking strategy:
+ *   • 'top' (default) — `upvoteCount` desc, then `createdAt` desc, then doc
+ *     id desc. The createdAt tiebreaker means a collection where every clip
+ *     has zero upvotes naturally falls through to most-recent-first, so the
+ *     featured-clip surface degrades gracefully before vote data exists.
+ *   • 'new' — `createdAt` desc, then doc id desc. Legacy ordering, kept for
+ *     the Top/New toggle.
+ *
+ * The doc-id tiebreaker exists because set + match clips share a transaction
+ * `serverTimestamp()`; without it pagination would skip or duplicate rows at
+ * page boundaries.
+ *
+ * If sort='top' hits a `failed-precondition` (4-field composite index still
+ * building or undeployed — the only failed-precondition cause for getDocs
+ * here, since this module makes no transactional reads), transparently retry
+ * with sort='new' so the lobby keeps rendering clips while ops resolves the
+ * index. The cursor is dropped on fallback because the two sorts thread
+ * different value tuples through `startAfter`.
+ */
+export async function fetchClipsFeed(
+  cursor: ClipsFeedCursor | null = null,
+  pageSize = 20,
+  sort: ClipsFeedSort = "top",
+): Promise<ClipsFeedPage> {
+  try {
+    return await runFeedQuery(cursor, pageSize, sort);
+  } catch (err) {
+    if (sort === "top" && getErrorCode(err) === "failed-precondition") {
+      logger.warn("clips_feed_top_fallback", {
+        reason: "missing-index",
+        error: parseFirebaseError(err),
+      });
+      return runFeedQuery(null, pageSize, "new");
+    }
+    throw err;
+  }
 }
 
 /* ────────────────────────────────────────────

@@ -566,6 +566,17 @@ describe("fetchClipsFeed (failed-precondition fallback)", () => {
     expect(mockGetDocs).toHaveBeenCalledTimes(1);
   });
 
+  it("rethrows when sort='top' falls back AND the 'new' fallback also hits failed-precondition", async () => {
+    // Regression guard: a future try/catch around the fallback call could
+    // accidentally swallow the second failure and return an empty page,
+    // which would mask a total-outage and silently strand the retry CTA.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+
+    await expect(fetchClipsFeed(null, 20, "top")).rejects.toMatchObject({ code: "failed-precondition" });
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+  });
+
   it("does not fall back on permission-denied (rethrows verbatim)", async () => {
     // permission-denied is an auth/rules problem, not an index problem.
     // Falling back to 'new' would mask the real failure, so let it surface.
