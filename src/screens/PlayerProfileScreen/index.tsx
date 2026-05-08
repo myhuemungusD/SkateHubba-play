@@ -1,5 +1,10 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
+import { analytics, trackEvent } from "../../services/analytics";
+import type { StatTileName } from "./components/ProfileStatsGrid";
+import { usePullToRefresh } from "../../hooks/usePullToRefresh";
+import { PullToRefreshIndicator } from "../../components/PullToRefreshIndicator";
 import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
@@ -10,7 +15,9 @@ import { ProfileHeader } from "./components/ProfileHeader";
 import { ProfileIdentityCard } from "./components/ProfileIdentityCard";
 import { ProfileSkeleton } from "./components/ProfileSkeleton";
 import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
-import { WinStreakBanner } from "./components/WinStreakBanner";
+import { StreakBadge } from "./components/StreakBadge";
+import { AchievementsRibbon } from "./components/AchievementsRibbon";
+import { AddedSpotsPlaceholder } from "./components/AddedSpotsPlaceholder";
 
 interface Props {
   viewedUid: string;
@@ -34,6 +41,14 @@ interface Props {
  * When `isOwnProfile` is true, uses the provided `ownGames` prop (from GameContext)
  * to avoid a redundant fetch. When viewing another player, fetches their data via
  * the `usePlayerProfile` hook.
+ *
+ * PR-C additions:
+ *   - Pull-to-refresh on own profile (audit B6 — Lobby pattern reused).
+ *   - "Share my profile" button on own profile (audit E4) — `navigator.share`
+ *     with clipboard fallback. Shares a deep-link to `/profile/{uid}`.
+ *   - StreakBadge replaces the legacy WinStreakBanner (DELETED).
+ *   - AchievementsRibbon + AddedSpotsPlaceholder placeholders for layout
+ *     fidelity; PR-F wires the ribbon to real grant data.
  */
 export function PlayerProfileScreen({
   viewedUid,
@@ -54,6 +69,79 @@ export function PlayerProfileScreen({
     blockedUids,
   });
 
+  // ── profile_viewed telemetry (plan §7.2) ──
+  // Fires once per mount. `msToFirstPaint` is the elapsed time between
+  // the first render commit and the first effect firing — a reasonable
+  // proxy for First Contentful Paint without setting up a
+  // PerformanceObserver (audit deferred per task scope: codebase has
+  // no FCP harness today). The baseline timestamp is captured inside
+  // the effect on first run (not in a useRef initialiser, which the
+  // react-hooks/purity rule rejects for impure clocks like
+  // performance.now()) so `mountStartRef.current` stays null until the
+  // effect commits and React strict-mode double-invocation doesn't
+  // reset it.
+  const mountStartRef = useRef<number | null>(null);
+  const profileViewedFiredRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (profileViewedFiredRef.current) return;
+    if (mountStartRef.current === null) mountStartRef.current = performance.now();
+    profileViewedFiredRef.current = true;
+    const msToFirstPaint = Math.round(performance.now() - mountStartRef.current);
+    analytics.profileViewed(
+      currentUserProfile.uid,
+      viewedUid,
+      currentUserProfile.uid === viewedUid,
+      msToFirstPaint,
+    );
+  }, [currentUserProfile.uid, viewedUid]);
+
+  // ── profile_stat_tile_tapped telemetry (plan §7.2) ──
+  // Engagement signal fires on every tile tap regardless of whether the
+  // per-tile delta popover is built (audit C7 popover deferred). The
+  // `profileUid` is whose profile is being viewed — pairs with
+  // `viewerUid` from `profile_viewed` so the funnel can compute
+  // tile-tap-rate per profile-view session.
+  const handleTileTap = useCallback(
+    (statName: StatTileName) => {
+      analytics.profileStatTileTapped(statName, viewedUid);
+    },
+    [viewedUid],
+  );
+
+  // PTR-no-op for opponent profiles — refresh the local profile snapshot is
+  // a NoOp at this layer because the snapshot is owned by the
+  // ParentControllerContext. Kept as `async () => undefined` so the gesture
+  // visually resolves without a reload loop.
+  const ptr = usePullToRefresh(async () => undefined);
+
+  const [shareCopiedAt, setShareCopiedAt] = useState<number | null>(null);
+  const handleShareProfile = useCallback(async () => {
+    const url = `${window.location.origin}/profile/${currentUserProfile.uid}`;
+    trackEvent("profile_share_my_profile_tapped", { uid: currentUserProfile.uid });
+    const payload: ShareData = {
+      title: `@${currentUserProfile.username} on SkateHubba`,
+      text: `Catch my SkateHubba profile`,
+      url,
+    };
+    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
+    if (typeof nav.share === "function") {
+      try {
+        await nav.share(payload);
+        return;
+      } catch {
+        // User cancelled or platform rejected — fall through to clipboard.
+      }
+    }
+    try {
+      await navigator.clipboard?.writeText?.(url);
+      setShareCopiedAt(Date.now());
+      window.setTimeout(() => setShareCopiedAt(null), 1500);
+    } catch {
+      // No clipboard either — silent fail. Telemetry already fired so we
+      // can detect this on the dashboard.
+    }
+  }, [currentUserProfile.uid, currentUserProfile.username]);
+
   if (c.loading) {
     return <ProfileSkeleton onBack={onBack} />;
   }
@@ -63,9 +151,13 @@ export function PlayerProfileScreen({
   }
 
   const profile = c.profile;
+  const ptrBindings = isOwnProfile ? ptr.containerProps : undefined;
 
   return (
-    <div className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow">
+    <div className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow" {...ptrBindings}>
+      {isOwnProfile && (
+        <PullToRefreshIndicator offset={ptr.offset} state={ptr.state} triggerReached={ptr.triggerReached} />
+      )}
       <ProfileHeader onBack={onBack} />
 
       <div className="px-5 pt-7 max-w-lg mx-auto">
@@ -76,7 +168,22 @@ export function PlayerProfileScreen({
           profileImageUrl={profile.profileImageUrl}
           isOwnProfile={isOwnProfile}
           uid={profile.uid}
+          level={profile.level}
         />
+
+        <StreakBadge currentWinStreak={c.stats.currentStreak} />
+
+        {isOwnProfile && (
+          <button
+            type="button"
+            onClick={handleShareProfile}
+            data-testid="share-my-profile-button"
+            className="w-full mb-6 px-4 py-2.5 rounded-full border border-brand-orange/40 bg-brand-orange/[0.08] font-display text-sm tracking-wider text-brand-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            aria-label="Share my profile"
+          >
+            {shareCopiedAt ? "LINK COPIED" : "SHARE MY PROFILE"}
+          </button>
+        )}
 
         {!isOwnProfile && onChallenge && !c.isBlocked && (
           <ChallengeButton username={profile.username} uid={profile.uid} onChallenge={onChallenge} />
@@ -95,9 +202,16 @@ export function PlayerProfileScreen({
           />
         )}
 
-        <ProfileStatsGrid stats={c.stats} isOwnProfile={isOwnProfile} hasCompletedGames={c.completedGames.length > 0} />
+        <ProfileStatsGrid
+          stats={c.stats}
+          isOwnProfile={isOwnProfile}
+          hasCompletedGames={c.completedGames.length > 0}
+          onTileTap={handleTileTap}
+        />
 
-        {isOwnProfile && c.stats.currentStreak >= 2 && <WinStreakBanner currentStreak={c.stats.currentStreak} />}
+        <AchievementsRibbon />
+
+        {isOwnProfile && <AddedSpotsPlaceholder />}
 
         <OpponentList
           opponents={c.opponents}

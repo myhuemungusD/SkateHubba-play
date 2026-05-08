@@ -170,4 +170,41 @@ export const analytics = {
       durationMs,
       partial,
     }),
+  // ── PR-C profile UX telemetry (plan §6.4 + §7.2) ──────────────────────
+  /**
+   * Fires once per `PlayerProfileScreen` mount. `viewerUid` is always the
+   * current authenticated user; `profileUid` is whose profile is being
+   * viewed; `isOwn` is the precomputed `viewerUid === profileUid`. The
+   * `msToFirstPaint` proxy is the elapsed time between mount start and
+   * the first effect firing — see PlayerProfileScreen wiring for the
+   * measurement boundary.
+   */
+  profileViewed: (
+    viewerUid: string,
+    profileUid: string,
+    isOwn: boolean,
+    msToFirstPaint: number,
+  ) =>
+    trackEvent("profile_viewed", {
+      viewerUid,
+      profileUid,
+      isOwn,
+      msToFirstPaint,
+    }),
+  /**
+   * Fires when a stat tile is tapped. `statName` is the StatTileName from
+   * `ProfileStatsGrid` (e.g. "longestStreak", "wins", "trickLandPercent").
+   * Engagement signal is captured even before the per-tile delta popover
+   * (audit C7) ships — the popover is deferred but the event is wired
+   * now so the dashboard accumulates baseline data.
+   */
+  profileStatTileTapped: (statName: string, profileUid: string) =>
+    trackEvent("profile_stat_tile_tapped", { statName, profileUid }),
+  /**
+   * Fires once per StreakBadge mount when `currentWinStreak >= 3`. The
+   * useRef-guarded effect in StreakBadge ensures it does NOT double-fire
+   * across re-renders for the same streak length.
+   */
+  profileStreakBadgeDisplayed: (streakLength: number) =>
+    trackEvent("profile_streak_badge_displayed", { streakLength }),
 } as const;

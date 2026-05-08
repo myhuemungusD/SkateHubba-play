@@ -313,7 +313,6 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
                 src={pending.previewUrl}
                 alt="Avatar preview"
                 className="w-full h-full object-cover"
-                loading="lazy"
                 decoding="async"
               />
             </div>

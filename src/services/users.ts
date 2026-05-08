@@ -643,6 +643,20 @@ export async function applyGameOutcome(
 
     return { stagedWrite: true };
   } catch (err) {
+    // ── stats_rule_denied breadcrumb (plan §6.2 + §7.3) ──
+    // When the outer commit fails with `permission-denied` the strict
+    // counter rule rejected the write — surface a separate Sentry
+    // breadcrumb so dashboards can alert independently of the generic
+    // applyGameOutcome.error path. Errors from other code paths (network,
+    // SDK-internal aborts) keep the existing generic breadcrumb only.
+    if ((err as { code?: string })?.code === "permission-denied") {
+      addBreadcrumb({
+        category: "stats",
+        message: "stats_rule_denied",
+        level: "warning",
+        data: { uid, gameId, action: "apply_outcome" },
+      });
+    }
     addBreadcrumb({
       category: "stats",
       message: "applyGameOutcome.error",
@@ -752,6 +766,19 @@ export async function applyTrickLanded(
     });
     return { stagedWrite: true };
   } catch (err) {
+    // See applyGameOutcome above — pre-error breadcrumb when the rule
+    // engine rejected the write (plan §6.2 + §7.3). The mid-game trick
+    // carve-out in firestore.rules makes a permission-denied here
+    // unexpected at steady-state; an alert spike signals a regression
+    // in either the rule or the per-game cap path.
+    if ((err as { code?: string })?.code === "permission-denied") {
+      addBreadcrumb({
+        category: "stats",
+        message: "stats_rule_denied",
+        level: "warning",
+        data: { uid, gameId, action: "apply_trick" },
+      });
+    }
     addBreadcrumb({
       category: "stats",
       message: "applyTrickLanded.error",
