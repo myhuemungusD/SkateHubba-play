@@ -764,3 +764,70 @@ export async function getLeaderboard(): Promise<UserProfile[]> {
   });
 }
 
+/**
+ * Build the regex used to validate a Firebase Storage download URL points
+ * at the calling user's own avatar. Mirrors the Firestore rule §4.5 word-
+ * for-word so a payload that passes the client-side guard also passes the
+ * rule — defence in depth, not a duplicated source of truth.
+ *
+ * Bucket is read from the build-time env so unit tests can exercise the
+ * default-emulator bucket and prod can pin `sk8hub-d7806.firebasestorage.app`.
+ */
+function buildAvatarUrlRegex(uid: string): RegExp {
+  // Build env reads as a string; the `?? ""` fallback only fires in
+  // misconfigured envs where the entire `import.meta.env` is missing,
+  // which the env zod schema guards against at boot. Coverage-skip the
+  // fallback because the schema prevents the path in production.
+  /* v8 ignore next */
+  const bucket = (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined) ?? "";
+  // Escape regex metachars in the bucket name (dots most importantly —
+  // `sk8hub-d7806.firebasestorage.app` has them and an unescaped dot would
+  // accept any char). The uid contains only [A-Za-z0-9] from Firebase Auth
+  // but we still escape it for completeness.
+  const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `^https://firebasestorage\\.googleapis\\.com/v0/b/${esc(bucket)}/o/users%2F${esc(uid)}%2Favatar\\.(webp|jpeg|png)(\\?.*)?$`,
+  );
+}
+
+/** Thrown when {@link setProfileImageUrl} is handed a URL that does not
+ *  match the project's bucket + the calling user's UID. The Firestore
+ *  rule rejects the same payload — this client-side check exists to
+ *  surface a clear error before the network round-trip. */
+export class InvalidAvatarUrlError extends Error {
+  constructor(url: string) {
+    super(`Avatar URL is not pinned to this project's bucket and the calling UID: ${url}`);
+    this.name = "InvalidAvatarUrlError";
+  }
+}
+
+/**
+ * Persist a user's `profileImageUrl` field. Pass `null` to clear (caller
+ * is expected to have already deleted the storage object via
+ * `deleteAvatar`). The Firestore rule §4.5 enforces the same predicate
+ * server-side; this guard short-circuits the network round-trip and gives
+ * the UI a clear typed error to surface.
+ *
+ * Only the calling user's own profile may be written — the rule pins
+ * the URL's UID segment to `request.auth.uid`, so a write against another
+ * uid would be rejected even if this function were called with one.
+ */
+export async function setProfileImageUrl(uid: string, url: string | null): Promise<void> {
+  if (url !== null) {
+    if (!buildAvatarUrlRegex(uid).test(url)) {
+      throw new InvalidAvatarUrlError(url);
+    }
+  }
+  const db = requireDb();
+  const ref = doc(db, "users", uid);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) {
+      // Profile must exist before an avatar can be attached to it. The
+      // ProfileSetup screen creates the profile first; uploading from
+      // there pre-creation is not a supported flow.
+      throw new Error("avatar_profile_not_found");
+    }
+    tx.update(ref, { profileImageUrl: url });
+  });
+}

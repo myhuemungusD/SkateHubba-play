@@ -141,6 +141,8 @@ import {
   type GameOutcome,
   getLeaderboard,
   getPlayerDirectory,
+  setProfileImageUrl,
+  InvalidAvatarUrlError,
 } from "../users";
 
 beforeEach(() => vi.clearAllMocks());
@@ -1083,6 +1085,71 @@ describe("users service", () => {
       // Both have 0 wins, 0 losses, 0% rate — alphabetical
       expect(result[0].username).toBe("alice");
       expect(result[1].username).toBe("zorro");
+    });
+  });
+
+  /* ── setProfileImageUrl ─────────────────────── */
+  describe("setProfileImageUrl", () => {
+    const BUCKET = "test-bucket.firebasestorage.app";
+    const validUrl = (uid: string, ext = "webp"): string =>
+      `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/users%2F${uid}%2Favatar.${ext}?alt=media&token=abc`;
+
+    beforeEach(() => {
+      vi.stubEnv("VITE_FIREBASE_STORAGE_BUCKET", BUCKET);
+      // Default tx implementation: profile exists, update applies cleanly.
+      mockRunTransaction.mockImplementation(
+        async (_db: unknown, fn: (tx: { get: typeof vi.fn; update: typeof vi.fn }) => unknown) => {
+          const tx = {
+            get: vi.fn().mockResolvedValue({ exists: () => true }),
+            update: vi.fn(),
+          };
+          return await fn(tx as never);
+        },
+      );
+    });
+
+    it("writes the URL when it matches the bucket+UID pattern", async () => {
+      await expect(setProfileImageUrl("u1", validUrl("u1"))).resolves.toBeUndefined();
+      expect(mockRunTransaction).toHaveBeenCalled();
+    });
+
+    it("accepts null to clear the avatar", async () => {
+      await expect(setProfileImageUrl("u1", null)).resolves.toBeUndefined();
+    });
+
+    it("rejects URLs targeting another user's UID (audit S12)", async () => {
+      await expect(setProfileImageUrl("u1", validUrl("u2"))).rejects.toBeInstanceOf(InvalidAvatarUrlError);
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects URLs pointing at a non-project bucket (audit S5)", async () => {
+      await expect(
+        setProfileImageUrl(
+          "u1",
+          `https://firebasestorage.googleapis.com/v0/b/evil.firebasestorage.app/o/users%2Fu1%2Favatar.webp`,
+        ),
+      ).rejects.toBeInstanceOf(InvalidAvatarUrlError);
+    });
+
+    it("rejects malformed URLs", async () => {
+      await expect(setProfileImageUrl("u1", "not-a-url")).rejects.toBeInstanceOf(InvalidAvatarUrlError);
+    });
+
+    it("rejects extensions outside the allowlist", async () => {
+      await expect(setProfileImageUrl("u1", validUrl("u1", "gif"))).rejects.toBeInstanceOf(InvalidAvatarUrlError);
+    });
+
+    it("throws when the profile does not exist", async () => {
+      mockRunTransaction.mockImplementation(
+        async (_db: unknown, fn: (tx: { get: typeof vi.fn; update: typeof vi.fn }) => unknown) => {
+          const tx = {
+            get: vi.fn().mockResolvedValue({ exists: () => false }),
+            update: vi.fn(),
+          };
+          return await fn(tx as never);
+        },
+      );
+      await expect(setProfileImageUrl("u1", validUrl("u1"))).rejects.toThrow("avatar_profile_not_found");
     });
   });
 });

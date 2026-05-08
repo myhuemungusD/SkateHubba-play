@@ -228,5 +228,40 @@ describe("analytics service", () => {
         uid: "u1",
       });
     });
+
+    it("avatarUploadStarted fires with source + size + score", () => {
+      analytics.avatarUploadStarted("camera", 12345, 0.1);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "avatar_upload_started",
+        source: "camera",
+        originalSizeBytes: 12345,
+        nsfwScore: 0.1,
+      });
+    });
+
+    it("avatarUploadCompleted fires with uid + size + duration", () => {
+      analytics.avatarUploadCompleted("u1", 50_000, 1234);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "avatar_upload_completed",
+        uid: "u1",
+        finalSizeBytes: 50_000,
+        durationMs: 1234,
+      });
+    });
+
+    it("avatarUploadFailed fires with code + source + optional score", () => {
+      analytics.avatarUploadFailed("nsfw", "gallery", 0.92);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "avatar_upload_failed",
+        errorCode: "nsfw",
+        source: "gallery",
+        nsfwScore: 0.92,
+      });
+    });
+
+    it("avatarDeleted fires with uid", () => {
+      analytics.avatarDeleted("u1");
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "avatar_deleted", uid: "u1" });
+    });
   });
 });

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SkateHubba default avatar.
+  Brand-orange (#FF6B00) skateboard outline on a transparent background.
+  Used as the universal fallback when a user has neither a custom
+  profileImageUrl nor a username initial circle.
+  Size budget: ≤2 KB.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Skateboard">
+  <g fill="none" stroke="#FF6B00" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Deck (top + bottom curves form a popsicle silhouette) -->
+    <path d="M14 50c0-5 7-9 14-9h44c7 0 14 4 14 9s-7 9-14 9H28c-7 0-14-4-14-9z"/>
+    <!-- Deck centre stripe for depth -->
+    <line x1="22" y1="50" x2="74" y2="50" stroke-opacity="0.5"/>
+    <!-- Front truck -->
+    <line x1="26" y1="59" x2="26" y2="66"/>
+    <line x1="20" y1="66" x2="32" y2="66"/>
+    <!-- Rear truck -->
+    <line x1="70" y1="59" x2="70" y2="66"/>
+    <line x1="64" y1="66" x2="76" y2="66"/>
+    <!-- Wheels -->
+    <circle cx="22" cy="71" r="4" fill="#FF6B00"/>
+    <circle cx="32" cy="71" r="4" fill="#FF6B00"/>
+    <circle cx="64" cy="71" r="4" fill="#FF6B00"/>
+    <circle cx="74" cy="71" r="4" fill="#FF6B00"/>
+  </g>
+</svg>
