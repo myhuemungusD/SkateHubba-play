@@ -16,6 +16,7 @@ import { ReportModal } from "../ReportModal";
 import type { UserProfile } from "../../services/users";
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
+import { NextClipPrefetcher } from "./NextClipPrefetcher";
 import { SpotlightCard } from "./SpotlightCard";
 import { copyForError, errorCodeFor } from "./utils";
 
@@ -152,6 +153,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
 
   const safeIndex = visibleClips.length === 0 ? 0 : Math.min(currentIndex, visibleClips.length - 1);
   const currentClip = visibleClips[safeIndex];
+  // The clip the viewer will see if they tap NEXT TRICK. We hand its URL
+  // to NextClipPrefetcher so the bytes start arriving in browser cache
+  // while the current clip is still playing.
+  const nextClip = safeIndex + 1 < visibleClips.length ? visibleClips[safeIndex + 1] : null;
 
   const handleNext = useCallback(() => {
     if (safeIndex + 1 >= visibleClips.length) {
@@ -252,17 +257,23 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       {!loading && !error && !currentClip && <ClipsFeedEmpty />}
 
       {!loading && currentClip && (
-        <SpotlightCard
-          clip={currentClip}
-          isOwnClip={isOwnClip}
-          upvote={upvote}
-          upvoteDisabled={upvoteDisabled}
-          onViewPlayer={onViewPlayer}
-          onNext={handleNext}
-          onUpvote={handleUpvote}
-          onChallenge={onChallengeUser}
-          onReport={setReportTarget}
-        />
+        <>
+          <SpotlightCard
+            clip={currentClip}
+            isOwnClip={isOwnClip}
+            upvote={upvote}
+            upvoteDisabled={upvoteDisabled}
+            onViewPlayer={onViewPlayer}
+            onNext={handleNext}
+            onUpvote={handleUpvote}
+            onChallenge={onChallengeUser}
+            onReport={setReportTarget}
+          />
+          {/* Warm the cache for the upcoming clip while the current one
+              plays — NEXT TRICK feels instant when the bytes are already
+              local. Gated on Data-Saver / 2g inside the prefetcher. */}
+          <NextClipPrefetcher src={nextClip?.videoUrl ?? null} />
+        </>
       )}
 
       {/* Report modal */}

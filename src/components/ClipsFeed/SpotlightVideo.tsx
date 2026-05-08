@@ -91,7 +91,14 @@ function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }
         autoPlay
         muted
         playsInline
-        preload="metadata"
+        // preload="auto" — this video IS the LCP element; we always intend
+        // to play it immediately. "metadata" stalls between the moov-atom
+        // fetch and the first media chunk, costing a round-trip that
+        // becomes wasted latency before first frame. The bytes are
+        // immutable (storage upload sets `cacheControl: max-age=1y,
+        // immutable`) so an aggressive preload also primes browser cache
+        // for the inevitable REPLAY.
+        preload="auto"
         onPlay={handlePlay}
         onEnded={handleEnded}
         className="w-full aspect-[9/16] max-h-[560px] bg-black object-cover"
