@@ -64,12 +64,26 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
     };
   }, []);
 
-  // Mirror `upvotingIds` in a ref so hydration can see it without being
-  // re-memoized on every tap (which would retrigger hydration).
+  // Mirror `upvotingIds` and `upvoteState` in refs so handlers can read
+  // their latest values without listing them as useCallback deps. Keeping
+  // these out of the deps is what lets React.memo on SpotlightCard /
+  // ClipActions actually skip renders — a callback identity that flips on
+  // every map mutation would defeat the memo and cascade into the video
+  // subtree on every upvote tap.
   const upvotingIdsRef = useRef<ReadonlySet<string>>(upvotingIds);
   useEffect(() => {
     upvotingIdsRef.current = upvotingIds;
   }, [upvotingIds]);
+  const upvoteStateRef = useRef<ReadonlyMap<string, ClipUpvoteState>>(upvoteState);
+  useEffect(() => {
+    upvoteStateRef.current = upvoteState;
+  }, [upvoteState]);
+  // sortRef lets handleUpvote tag analytics with the active sort without
+  // rebuilding the callback when the user toggles Top/New.
+  const sortRef = useRef<ClipsFeedSort>(sort);
+  useEffect(() => {
+    sortRef.current = sort;
+  }, [sort]);
 
   // Hydrate upvote state for a freshly-loaded pool. The service reads the
   // denormalized `upvoteCount` directly off the clip docs and batches the
@@ -151,8 +165,11 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
   const handleUpvote = useCallback(
     async (clip: ClipDoc) => {
       if (clip.playerUid === profile.uid) return;
-      const current = upvoteState.get(clip.id) ?? { count: 0, alreadyUpvoted: false };
-      if (current.alreadyUpvoted || upvotingIds.has(clip.id)) return;
+      // Read the latest state from refs so this callback's identity stays
+      // stable across upvote-map / upvotingIds mutations. Otherwise every
+      // tap would re-create the function and bust SpotlightCard's memo.
+      const current = upvoteStateRef.current.get(clip.id) ?? { count: 0, alreadyUpvoted: false };
+      if (current.alreadyUpvoted || upvotingIdsRef.current.has(clip.id)) return;
 
       setUpvotingIds((prev) => {
         const next = new Set(prev);
@@ -171,7 +188,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         // Fire on success so AlreadyUpvotedError replays don't double-count.
         // trackEvent is consent-gated inside services/analytics — callers
         // don't need to gate again.
-        trackEvent("clip_upvoted", { clipId: clip.id, fromSort: sort, newCount: nextCount });
+        trackEvent("clip_upvoted", { clipId: clip.id, fromSort: sortRef.current, newCount: nextCount });
         setUpvoteState((prev) => {
           const next = new Map(prev);
           next.set(clip.id, { count: nextCount, alreadyUpvoted: true });
@@ -196,7 +213,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         }
       }
     },
-    [profile.uid, sort, upvoteState, upvotingIds],
+    [profile.uid],
   );
 
   const handleSortChange = useCallback(

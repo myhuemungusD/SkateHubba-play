@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRightIcon } from "../icons";
 
 /**
@@ -8,8 +8,12 @@ import { ChevronRightIcon } from "../icons";
  * the viewport — but only AFTER the first play() has resolved, because mobile
  * Safari revokes the muted-autoplay grant if pause() runs too early, which
  * surfaces as "feed loaded but clip won't play".
+ *
+ * memo: this is the most expensive child in the spotlight subtree (video
+ * element + IntersectionObserver). The parent SpotlightCard is also memoised
+ * — between them every unrelated lobby state mutation skips the video JS.
  */
-export function SpotlightVideo({ src, onNext }: { src: string; onNext: () => void }) {
+function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }) {
   const [muted, setMuted] = useState(true);
   const [ended, setEnded] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -141,3 +145,5 @@ export function SpotlightVideo({ src, onNext }: { src: string; onNext: () => voi
     </div>
   );
 }
+
+export const SpotlightVideo = memo(SpotlightVideoImpl);
