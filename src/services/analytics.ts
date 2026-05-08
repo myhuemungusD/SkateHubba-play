@@ -141,4 +141,33 @@ export const analytics = {
     trackEvent("avatar_upload_failed", { errorCode, source, nsfwScore }),
   /** Fires after `deleteAvatar` resolves. */
   avatarDeleted: (uid: string) => trackEvent("avatar_deleted", { uid }),
+  /**
+   * PR-A2: a one-shot lazy backfill landed for `uid`. Dashboards use the
+   * counter shape to spot anomalies (e.g. a wave of suspicious
+   * gamesWon > 100 backfills) and the duration_ms to size the perf
+   * budget for the reconciliation PR. `partial` true means the 1000-
+   * game safety cap was hit — those uids need follow-up reconciliation.
+   * Audit S8 lowered the suspicion threshold to 100 wins / level 15;
+   * Sentry breadcrumb (not this event) fires for that case.
+   */
+  statsBackfillCompleted: (
+    uid: string,
+    gamesWon: number,
+    gamesLost: number,
+    gamesForfeited: number,
+    tricksLanded: number,
+    gamesSeen: number,
+    durationMs: number,
+    partial: boolean,
+  ) =>
+    trackEvent("stats_backfill_completed", {
+      uid,
+      gamesWon,
+      gamesLost,
+      gamesForfeited,
+      tricksLanded,
+      gamesSeen,
+      durationMs,
+      partial,
+    }),
 } as const;

@@ -1,8 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
+import { backfillStatsIfNeeded } from "../../services/users";
 import { blockUser, unblockUser } from "../../services/blocking";
 import { usePlayerProfile } from "../../hooks/usePlayerProfile";
+import { addBreadcrumb } from "../../lib/sentry";
 
 export interface OpponentRecord {
   uid: string;
@@ -74,6 +76,36 @@ export function usePlayerProfileController({
   const [blockLoading, setBlockLoading] = useState(false);
   const [showBlockConfirm, setShowBlockConfirm] = useState(false);
   const isBlocked = blockedUids?.has(viewedUid) ?? false;
+
+  // ── PR-A2: lazy backfill on own-profile load ────────────────────────
+  // Users whose profile predates PR-A1's counter wiring see all-zero
+  // counters until a one-shot backfill runs. The service is idempotent
+  // (returns `backfilled: false` if `statsBackfilledAt` is set) and
+  // feature-flag gated, so calling it on every own-profile mount is
+  // safe; the ref below de-dupes within a single mount so the inevitable
+  // multi-fire of the parent profile snapshot listener doesn't queue
+  // overlapping transactions while the first one is still in-flight.
+  // Errors surface as Sentry breadcrumbs only — the screen falls back to
+  // whatever counters are already on the profile (likely zeros) rather
+  // than crashing the render.
+  const backfillStartedRef = useRef(false);
+  useEffect(() => {
+    if (!isOwnProfile) return;
+    if (backfillStartedRef.current) return;
+    if (currentUserProfile.statsBackfilledAt != null) return;
+    backfillStartedRef.current = true;
+    backfillStatsIfNeeded(currentUserProfile.uid).catch((err: unknown) => {
+      addBreadcrumb({
+        category: "stats",
+        level: "error",
+        message: "backfillStatsIfNeeded.controller_error",
+        data: {
+          uid: currentUserProfile.uid,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      });
+    });
+  }, [isOwnProfile, currentUserProfile.uid, currentUserProfile.statsBackfilledAt]);
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedGameId((prev) => (prev === id ? null : id));
