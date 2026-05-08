@@ -103,6 +103,19 @@ describe("storage service", () => {
       expect(metadata.customMetadata.uploaderUid).toBe("test-uid");
     });
 
+    it("sets immutable Cache-Control so clip replays + next-clip prefetches stay off the network", async () => {
+      // Clip URLs are deterministic and the bytes are immutable per the
+      // firestore.rules + storage.rules write-once contract. The browser
+      // (and any honouring CDN) should keep replays from crossing the
+      // network for a year. This makes REPLAY a 0-RTT operation and gives
+      // the next-clip prefetch path real cache hits.
+      const blob = validBlob();
+      await uploadVideo("game1", 2, "match", blob);
+
+      const metadata = mockUploadBytesResumable.mock.calls[0][2];
+      expect(metadata.cacheControl).toBe("public, max-age=31536000, immutable");
+    });
+
     it("calls onProgress callback during upload", async () => {
       const progressFn = vi.fn();
       // Mock task that reports progress before completing
