@@ -278,5 +278,44 @@ describe("analytics service", () => {
         partial: false,
       });
     });
+
+    it("profileViewed sends profile_viewed with viewer/profile/isOwn/firstPaint", () => {
+      analytics.profileViewed("v1", "p1", false, 42);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "profile_viewed",
+        viewerUid: "v1",
+        profileUid: "p1",
+        isOwn: false,
+        msToFirstPaint: 42,
+      });
+    });
+
+    it("profileViewed flags isOwn:true when viewer matches profile", () => {
+      analytics.profileViewed("u1", "u1", true, 17);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "profile_viewed",
+        viewerUid: "u1",
+        profileUid: "u1",
+        isOwn: true,
+        msToFirstPaint: 17,
+      });
+    });
+
+    it("profileStatTileTapped sends profile_stat_tile_tapped with stat name + profileUid", () => {
+      analytics.profileStatTileTapped("longestStreak", "p1");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "profile_stat_tile_tapped",
+        statName: "longestStreak",
+        profileUid: "p1",
+      });
+    });
+
+    it("profileStreakBadgeDisplayed sends profile_streak_badge_displayed with streakLength", () => {
+      analytics.profileStreakBadgeDisplayed(7);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "profile_streak_badge_displayed",
+        streakLength: 7,
+      });
+    });
   });
 });

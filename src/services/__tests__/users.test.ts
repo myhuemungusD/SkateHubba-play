@@ -150,6 +150,51 @@ import {
 
 beforeEach(() => vi.clearAllMocks());
 
+/**
+ * Build a minimal failing-tx whose `get` rejects with the given error.
+ * Shared between applyGameOutcome / applyTrickLanded tests so the
+ * permission-denied + non-Error throw setups stay collapsed under the
+ * duplication-gate threshold.
+ */
+function makeFailingTx<T>(rejection: unknown): T {
+  return {
+    get: vi.fn().mockRejectedValue(rejection),
+    update: vi.fn(),
+  } as unknown as T;
+}
+
+/** Convenience: build a permission-denied error matching Firestore's shape. */
+function makePermissionDeniedError(): Error & { code: string } {
+  return Object.assign(new Error("permission-denied"), { code: "permission-denied" });
+}
+
+/**
+ * Asserts (or refutes) that a `stats_rule_denied` Sentry breadcrumb was
+ * recorded for the given uid/gameId/action. Shared by applyGameOutcome
+ * and applyTrickLanded permission-denied tests so the duplication gate
+ * stays clean.
+ */
+function expectStatsRuleDeniedBreadcrumb(opts: {
+  uid: string;
+  gameId: string;
+  action: "apply_outcome" | "apply_trick";
+  emitted: boolean;
+}): void {
+  const denyCrumb = mockAddBreadcrumb.mock.calls.find(
+    ([crumb]) => (crumb as { message?: string }).message === "stats_rule_denied",
+  );
+  if (opts.emitted) {
+    expect(denyCrumb).toBeDefined();
+    expect(denyCrumb?.[0]).toMatchObject({
+      category: "stats",
+      level: "warning",
+      data: { uid: opts.uid, gameId: opts.gameId, action: opts.action },
+    });
+  } else {
+    expect(denyCrumb).toBeUndefined();
+  }
+}
+
 /* ── Tests ──────────────────────────────────── */
 
 describe("users service", () => {
@@ -902,6 +947,31 @@ describe("users service", () => {
       expect(errorCrumb).toBeDefined();
     });
 
+    it("emits stats_rule_denied breadcrumb when the rule rejects with permission-denied", async () => {
+      const permErr = makePermissionDeniedError();
+      const failingTx = makeFailingTx<Parameters<typeof applyGameOutcome>[0]>(permErr);
+
+      await expect(applyGameOutcome(failingTx, "u1", "game-rule", baseOutcome, 0)).rejects.toBe(permErr);
+      expectStatsRuleDeniedBreadcrumb({
+        uid: "u1",
+        gameId: "game-rule",
+        action: "apply_outcome",
+        emitted: true,
+      });
+    });
+
+    it("does NOT emit stats_rule_denied for non-permission-denied errors", async () => {
+      const failingTx = makeFailingTx<Parameters<typeof applyGameOutcome>[0]>(new Error("network"));
+
+      await expect(applyGameOutcome(failingTx, "u1", "game-net", baseOutcome, 0)).rejects.toThrow("network");
+      expectStatsRuleDeniedBreadcrumb({
+        uid: "u1",
+        gameId: "game-net",
+        action: "apply_outcome",
+        emitted: false,
+      });
+    });
+
     it("falls back to String(err) when a non-Error value is thrown", async () => {
       // Defensive path — Firestore SDK always rejects with Error, but the
       // breadcrumb data field guards against a malformed mock surfacing.
@@ -987,6 +1057,31 @@ describe("users service", () => {
         ([crumb]) => (crumb as { message?: string }).message === "applyTrickLanded.error",
       );
       expect(errorCrumb).toBeDefined();
+    });
+
+    it("emits stats_rule_denied breadcrumb when the rule rejects with permission-denied", async () => {
+      const permErr = makePermissionDeniedError();
+      const failingTx = makeFailingTx<Parameters<typeof applyTrickLanded>[0]>(permErr);
+
+      await expect(applyTrickLanded(failingTx, "u1", "game-rule")).rejects.toBe(permErr);
+      expectStatsRuleDeniedBreadcrumb({
+        uid: "u1",
+        gameId: "game-rule",
+        action: "apply_trick",
+        emitted: true,
+      });
+    });
+
+    it("does NOT emit stats_rule_denied for non-permission-denied errors", async () => {
+      const failingTx = makeFailingTx<Parameters<typeof applyTrickLanded>[0]>(new Error("network"));
+
+      await expect(applyTrickLanded(failingTx, "u1", "game-net")).rejects.toThrow("network");
+      expectStatsRuleDeniedBreadcrumb({
+        uid: "u1",
+        gameId: "game-net",
+        action: "apply_trick",
+        emitted: false,
+      });
     });
 
     it("falls back to String(err) when a non-Error value is thrown", async () => {
