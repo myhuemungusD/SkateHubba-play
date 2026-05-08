@@ -93,4 +93,40 @@ export const analytics = {
    */
   accountDeleted: (uid: string, achievementsRemoved: number, avatarRemoved: boolean) =>
     trackEvent("account_deleted", { uid, achievementsRemoved, avatarRemoved }),
+  /**
+   * PR-A1: a stats counter write was staged inside a terminal game
+   * transaction. Captures result + per-game tricks + clean-judgment
+   * credit + tx duration so we can both monitor the staged rollout
+   * and detect regressions in counter math against the legacy field.
+   */
+  statsCounterApplied: (
+    uid: string,
+    gameId: string,
+    result: "win" | "loss" | "forfeit",
+    tricksLandedThisGame: number,
+    cleanJudgmentEarned: boolean,
+    txDurationMs: number,
+  ) =>
+    trackEvent("stats_counter_applied", {
+      uid,
+      gameId,
+      result,
+      tricksLandedThisGame,
+      cleanJudgmentEarned,
+      txDurationMs,
+    }),
+  /**
+   * PR-A1: a duplicate apply for the same gameId — `lastStatsGameId`
+   * matched. Useful as the denominator for "how often does the
+   * subscription / catch-up path race the in-tx writer?" without
+   * flagging it as an error.
+   */
+  statsCounterIdempotentSkip: (uid: string, gameId: string) =>
+    trackEvent("stats_counter_idempotent_skip", { uid, gameId }),
+  /**
+   * PR-A1: a counter write was skipped because the rollout flag is OFF.
+   * Lets the dashboard show the no-op denominator alongside applied
+   * writes during the staged rollout.
+   */
+  statsCounterSkippedFlagOff: (uid: string) => trackEvent("stats_counter_skipped_flag_off", { uid }),
 } as const;

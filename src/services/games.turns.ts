@@ -3,6 +3,15 @@ import { requireDb } from "../firebase";
 import { metrics } from "./logger";
 import { writeLandedClipsInTransaction } from "./clips";
 import { toGameDoc, type GameDoc, type TurnRecord } from "./games.mappers";
+import { applyGameOutcome } from "./users";
+
+/**
+ * Per-user matcher-landed turn count — used as `tricksLandedThisGame`
+ * telemetry on the terminal stats writes from forfeitExpiredTurn.
+ */
+function tricksLandedForUid(game: GameDoc, uid: string): number {
+  return (game.turnHistory ?? []).filter((t) => t.landed && t.matcherUid === uid).length;
+}
 
 export const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -169,12 +178,32 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{
 
     // ── Normal forfeit (setting / matching) ──────────────────
     const winner = getOpponent(game, game.currentTurn);
+    const forfeiter = game.currentTurn;
 
     tx.update(gameRef, {
       status: "forfeit",
       winner,
       updatedAt: serverTimestamp(),
     });
+
+    // PR-A1: stage stats writes — forfeiter's gamesForfeited+1 (streak
+    // resets per §3.1.2), opponent's gamesWon+1. Idempotent + flag-gated.
+    const forfeiterTricks = tricksLandedForUid(game, forfeiter);
+    const winnerTricks = tricksLandedForUid(game, winner);
+    await applyGameOutcome(
+      tx,
+      forfeiter,
+      gameId,
+      { result: "forfeit", tricksLandedThisGame: forfeiterTricks, cleanJudgmentEarned: false },
+      0,
+    );
+    await applyGameOutcome(
+      tx,
+      winner,
+      gameId,
+      { result: "win", tricksLandedThisGame: winnerTricks, cleanJudgmentEarned: false },
+      0,
+    );
 
     metrics.gameForfeit(gameId, winner);
     return { forfeited: true, winner };

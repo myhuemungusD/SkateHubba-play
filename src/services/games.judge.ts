@@ -4,8 +4,18 @@ import { analytics } from "./analytics";
 import { metrics } from "./logger";
 import { writeNotificationInTx } from "./notifications";
 import { writeLandedClipsInTransaction } from "./clips";
-import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
+import { toGameDoc, isJudgeActive, type GameDoc, type TurnRecord } from "./games.mappers";
 import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { applyGameOutcome } from "./users";
+
+/**
+ * Count how many tricks `uid` has landed during `game` (matcher-side
+ * landed turns in `turnHistory`). Used as `tricksLandedThisGame`
+ * telemetry context on the terminal stats writes.
+ */
+function tricksLandedForUid(game: GameDoc, uid: string): number {
+  return (game.turnHistory ?? []).filter((t) => t.landed && t.matcherUid === uid).length;
+}
 
 /* ────────────────────────────────────────────
  * Matcher calls BS on the setter's trick (judge-only feature)
@@ -209,6 +219,31 @@ export async function resolveDispute(
     }
 
     tx.update(gameRef, updates);
+
+    // PR-A1: terminal disputed game → stage stats writes for both players.
+    // No clean-judgment credit — disputes never qualify per plan §3.1.1
+    // (rule: "no `disputes` doc filed for that turn"). In the dispute
+    // path, only the matcher can earn a letter, so when the game ends
+    // the SETTER is always the winner and the MATCHER is always the
+    // loser — matches the existing in-tx notification logic above.
+    if (gameOver && winner) {
+      const setterTricks = tricksLandedForUid(game, game.currentSetter);
+      const matcherTricks = tricksLandedForUid(game, matcherUid);
+      await applyGameOutcome(
+        tx,
+        game.currentSetter,
+        gameId,
+        { result: "win", tricksLandedThisGame: setterTricks, cleanJudgmentEarned: false },
+        0,
+      );
+      await applyGameOutcome(
+        tx,
+        matcherUid,
+        gameId,
+        { result: "loss", tricksLandedThisGame: matcherTricks, cleanJudgmentEarned: false },
+        0,
+      );
+    }
 
     // Set clip always enters the feed here (setter's set was landed). Match
     // clip only if the judge upheld the matcher's "landed" call.

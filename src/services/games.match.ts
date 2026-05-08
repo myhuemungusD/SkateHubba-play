@@ -4,8 +4,19 @@ import { analytics } from "./analytics";
 import { metrics } from "./logger";
 import { writeNotificationInTx } from "./notifications";
 import { writeLandedClipsInTransaction } from "./clips";
-import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
+import { toGameDoc, isJudgeActive, type GameDoc, type TurnRecord } from "./games.mappers";
 import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { applyGameOutcome, applyTrickLanded } from "./users";
+
+/**
+ * Count how many tricks `uid` has landed during `game` (strictly: how
+ * many turns in `turnHistory` they were the matcher on AND landed).
+ * Used as input to `applyGameOutcome` for telemetry context — the
+ * actual counter writes are owned by `applyTrickLanded` per turn.
+ */
+function tricksLandedForUid(game: GameDoc, uid: string): number {
+  return (game.turnHistory ?? []).filter((t) => t.landed && t.matcherUid === uid).length;
+}
 
 /* ────────────────────────────────────────────
  * Set a trick (setter's turn)
@@ -225,6 +236,12 @@ export async function submitMatchAttempt(
         spotId: game.spotId ?? null,
       });
 
+      // PR-A1: increment matcher's tricksLanded counter inside the same tx.
+      // applyTrickLanded refuses past 6/game (anti-grinding cap §3.1.3) and
+      // is feature-flag gated — no-op while `feature.stats_counters_v2` is
+      // off in production rollout.
+      await applyTrickLanded(tx, matcherUid, gameId);
+
       // Honor-system landed: previous setter is next matcher — let them know.
       writeNotificationInTx(tx, {
         senderUid: matcherUid,
@@ -311,6 +328,32 @@ export async function submitMatchAttempt(
       matcherLanded: false,
       spotId: game.spotId ?? null,
     });
+
+    // PR-A1: terminal-miss → stage stats counter writes for both players
+    // inside the same tx. In the missed-attempt code path, only the
+    // matcher can earn a letter, so the SETTER is always the winner and
+    // the MATCHER is always the loser when the game ends here. The setter
+    // earns cleanJudgmentEarned because matcher admitted miss without a
+    // dispute (no judge involvement on this code path — judge-active games
+    // route through resolveDispute instead).
+    if (gameOver) {
+      const setterTricks = tricksLandedForUid(game, game.currentSetter);
+      const matcherTricks = tricksLandedForUid(game, matcherUid);
+      await applyGameOutcome(
+        tx,
+        game.currentSetter,
+        gameId,
+        { result: "win", tricksLandedThisGame: setterTricks, cleanJudgmentEarned: true },
+        0,
+      );
+      await applyGameOutcome(
+        tx,
+        matcherUid,
+        gameId,
+        { result: "loss", tricksLandedThisGame: matcherTricks, cleanJudgmentEarned: false },
+        0,
+      );
+    }
 
     // Notify the setter atomically. In the missed path, only the matcher
     // gains a letter, so the setter always wins when the game ends here.
