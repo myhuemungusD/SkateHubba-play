@@ -741,6 +741,287 @@ export async function applyTrickLanded(
   }
 }
 
+/* ────────────────────────────────────────────
+ * PR-A2: Lazy stats backfill
+ *
+ * One-shot self-attestation path for users whose profile predates PR-A1's
+ * counter wiring. The companion firestore.rules carve-out (plan §4.2)
+ * allows a single transition of `statsBackfilledAt` from null to
+ * `serverTimestamp()`; counters in the same write are accepted because
+ * the user is the only party with read access to their own game history
+ * — a third-party reconciliation PR (committed for Week 2 post-launch
+ * per audit S8) verifies the math afterwards.
+ *
+ * Gated on `feature.stats_rules_strict`. While the flag is OFF the
+ * function is a no-op so PR-A1's staged rollout (counters only, no
+ * backfill) can land without dragging the backfill behaviour with it.
+ * ──────────────────────────────────────────── */
+
+/** Feature-flag key for the PR-A2 strict-rules + lazy-backfill rollout. */
+const STATS_RULES_STRICT_FLAG = "feature.stats_rules_strict" as const;
+
+/** Hard cap on the number of completed games scanned during one backfill. */
+const BACKFILL_GAMES_LIMIT = 1000;
+
+/** Audit S8: alert when a single backfill computes more than this many wins. */
+const BACKFILL_SUSPICIOUS_WINS = 100;
+
+/** Audit S8: alert when a backfilled level exceeds this threshold. */
+const BACKFILL_SUSPICIOUS_LEVEL = 15;
+
+/**
+ * Outcome of a backfill attempt. `backfilled` is false when the call
+ * was a no-op (already backfilled, flag off, or unauthenticated);
+ * `partial` is true when the 1000-game safety cap truncated the scan
+ * and the reconciliation PR will need to top up the remainder.
+ */
+export interface BackfillStatsResult {
+  backfilled: boolean;
+  partial: boolean;
+}
+
+/**
+ * One-shot lazy backfill of denormalized stats counters from completed
+ * game history. Skips if `statsBackfilledAt` is already set.
+ *
+ * Called on own-profile load by `usePlayerProfileController` so users
+ * whose docs predate PR-A1's counter wiring see real numbers instead
+ * of zeros without us running a server-side migration (which would
+ * require Cloud Functions, blocked by CLAUDE.md).
+ *
+ * Math caveats (documented limitations):
+ *  - `tricksLanded` is reconstructed from each game's `turnHistory` —
+ *    we credit one tricksLanded per `landed: true` record where this
+ *    user was the matcher. Honor-system games stored landed claims
+ *    directly; legacy games predating the turnHistory schema will
+ *    contribute 0 (best-effort, matches §3.1 default behaviour).
+ *  - `cleanJudgments` cannot be reconstructed reliably from history
+ *    (the dispute subcollection is truncated on game completion in
+ *    some flows). Set to 0 here; the Week 2 reconciliation PR will
+ *    re-derive from the disputes collection if it grows.
+ *  - `currentWinStreak` walks completedGames in chronological order
+ *    and resets on every loss/forfeit; the most recent suffix-of-wins
+ *    is the live streak. `longestWinStreak` is the max prefix.
+ *
+ * Sentry breadcrumbs flag suspicious deltas (>100 wins or level >15)
+ * so the reconciliation PR has an audit trail without blocking the
+ * write — audit S8 explicitly lowered the suspicion threshold from
+ * 1000 because soft gating preserves the first-time-user UX.
+ */
+export async function backfillStatsIfNeeded(uid: string): Promise<BackfillStatsResult> {
+  if (!isFeatureEnabled(STATS_RULES_STRICT_FLAG, false)) {
+    addBreadcrumb({
+      category: "stats",
+      message: "backfillStatsIfNeeded.skipped_flag_off",
+      data: { uid },
+    });
+    return { backfilled: false, partial: false };
+  }
+
+  const startedAt = Date.now();
+  addBreadcrumb({
+    category: "stats",
+    message: "backfillStatsIfNeeded.start",
+    data: { uid },
+  });
+
+  try {
+    const db = requireDb();
+    const userRef = doc(db, "users", uid);
+    const existing = await withRetry(() => getDoc(userRef));
+    if (!existing.exists()) {
+      // No profile yet — nothing to backfill against. Caller (the
+      // profile screen) only runs this on own-profile load, so the
+      // doc should exist by the time we get here.
+      return { backfilled: false, partial: false };
+    }
+    const existingData = existing.data() as Partial<UserProfile> & {
+      statsBackfilledAt?: unknown;
+    };
+    if (existingData.statsBackfilledAt != null) {
+      // Already backfilled — the rules layer would also reject a
+      // second attempt, but skipping the read+compute round-trip
+      // saves a noticeable chunk of mobile data on slow networks.
+      return { backfilled: false, partial: false };
+    }
+
+    const games = await loadCompletedGamesForUid(uid);
+    const partial = games.length >= BACKFILL_GAMES_LIMIT;
+    const counters = computeBackfillCounters(uid, games);
+
+    await runTransaction(db, async (tx) => {
+      tx.update(userRef, {
+        gamesWon: counters.gamesWon,
+        gamesLost: counters.gamesLost,
+        gamesForfeited: counters.gamesForfeited,
+        tricksLanded: counters.tricksLanded,
+        currentWinStreak: counters.currentWinStreak,
+        longestWinStreak: counters.longestWinStreak,
+        cleanJudgments: 0,
+        statsBackfilledAt: serverTimestamp(),
+      });
+    });
+
+    const durationMs = Date.now() - startedAt;
+    if (counters.gamesWon > BACKFILL_SUSPICIOUS_WINS) {
+      addBreadcrumb({
+        category: "stats",
+        level: "warning",
+        message: "stats_backfill_suspicious",
+        data: { uid, reason: "gamesWon", value: counters.gamesWon },
+      });
+    }
+    // PR-E will derive level from xp; until then we approximate level
+    // from gamesWon for the suspicion gate. Audit S8 only requires a
+    // signal — exact value is not load-bearing for the alert.
+    if (counters.gamesWon / 4 > BACKFILL_SUSPICIOUS_LEVEL) {
+      addBreadcrumb({
+        category: "stats",
+        level: "warning",
+        message: "stats_backfill_suspicious",
+        data: { uid, reason: "level_proxy", value: counters.gamesWon },
+      });
+    }
+    addBreadcrumb({
+      category: "stats",
+      message: "backfillStatsIfNeeded.finish",
+      data: { uid, durationMs, gamesSeen: games.length, partial },
+    });
+    analytics.statsBackfillCompleted(
+      uid,
+      counters.gamesWon,
+      counters.gamesLost,
+      counters.gamesForfeited,
+      counters.tricksLanded,
+      games.length,
+      durationMs,
+      partial,
+    );
+
+    return { backfilled: true, partial };
+  } catch (err) {
+    addBreadcrumb({
+      category: "stats",
+      level: "error",
+      message: "backfillStatsIfNeeded.error",
+      data: {
+        uid,
+        // Defensive String() coercion mirrors applyGameOutcome above.
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
+    throw err;
+  }
+}
+
+/**
+ * Internal type used by the backfill compute helper. Mirrors the
+ * subset of GameDoc fields we depend on without dragging the full
+ * games.mappers import into this layer (avoids a circular dep).
+ */
+interface BackfillGameLike {
+  status?: unknown;
+  winner?: unknown;
+  player1Uid?: unknown;
+  player2Uid?: unknown;
+  updatedAt?: { toMillis?: () => number } | null;
+  turnHistory?: unknown;
+}
+
+/**
+ * Internal: query the games index for completed/forfeited games this
+ * user participated in. Two queries are unioned client-side because
+ * Firestore lacks a native OR on `player1Uid` / `player2Uid` for the
+ * cross-status filter we need; chunking them by status keeps each
+ * query within Firestore's composite-index budget.
+ *
+ * Capped at `BACKFILL_GAMES_LIMIT` per side. Heavy hitters who
+ * exceed the cap get `partial: true` and a follow-up reconciliation
+ * PR (Week 2 post-launch).
+ */
+async function loadCompletedGamesForUid(uid: string): Promise<BackfillGameLike[]> {
+  const db = requireDb();
+  const buildQuery = (playerField: "player1Uid" | "player2Uid") =>
+    query(
+      collection(db, "games"),
+      where(playerField, "==", uid),
+      where("status", "in", ["complete", "forfeit"]),
+      orderBy("updatedAt", "asc"),
+      limit(BACKFILL_GAMES_LIMIT),
+    );
+  const [p1Snap, p2Snap] = await Promise.all([
+    withRetry(() => getDocs(buildQuery("player1Uid"))),
+    withRetry(() => getDocs(buildQuery("player2Uid"))),
+  ]);
+  const merged = new Map<string, BackfillGameLike>();
+  for (const d of [...p1Snap.docs, ...p2Snap.docs]) {
+    if (!merged.has(d.id)) merged.set(d.id, d.data() as BackfillGameLike);
+  }
+  return Array.from(merged.values()).sort((a, b) => {
+    const aMs = a.updatedAt?.toMillis?.() ?? 0;
+    const bMs = b.updatedAt?.toMillis?.() ?? 0;
+    return aMs - bMs;
+  });
+}
+
+/**
+ * Internal: pure function — given a uid and a chronologically-sorted
+ * list of completed games, compute the counters that the backfill
+ * write will set. Exported via tests through the wrapper above; kept
+ * private to limit the public surface.
+ */
+function computeBackfillCounters(uid: string, games: BackfillGameLike[]): {
+  gamesWon: number;
+  gamesLost: number;
+  gamesForfeited: number;
+  tricksLanded: number;
+  currentWinStreak: number;
+  longestWinStreak: number;
+} {
+  let gamesWon = 0;
+  let gamesLost = 0;
+  let gamesForfeited = 0;
+  let tricksLanded = 0;
+  let currentWinStreak = 0;
+  let longestWinStreak = 0;
+
+  for (const g of games) {
+    const status = typeof g.status === "string" ? g.status : "";
+    const won = g.winner === uid;
+    if (status === "forfeit" && !won) {
+      // Only the FORFEITER credits gamesForfeited; the opponent on a
+      // forfeit-completed game still records a win (plan §3.1.2).
+      gamesForfeited++;
+      currentWinStreak = 0;
+    } else if (won) {
+      gamesWon++;
+      currentWinStreak++;
+      if (currentWinStreak > longestWinStreak) longestWinStreak = currentWinStreak;
+    } else {
+      gamesLost++;
+      currentWinStreak = 0;
+    }
+
+    // tricksLanded credits the matcher on every clean-landed turn.
+    // Defensive guards: turnHistory may be missing on legacy docs.
+    if (Array.isArray(g.turnHistory)) {
+      for (const raw of g.turnHistory) {
+        if (
+          raw &&
+          typeof raw === "object" &&
+          "landed" in raw &&
+          (raw as { landed?: unknown }).landed === true &&
+          (raw as { matcherUid?: unknown }).matcherUid === uid
+        ) {
+          tricksLanded++;
+        }
+      }
+    }
+  }
+
+  return { gamesWon, gamesLost, gamesForfeited, tricksLanded, currentWinStreak, longestWinStreak };
+}
+
 /**
  * Fetch user profiles for the leaderboard, sorted by wins descending.
  * Falls back to client-side sorting since existing users may lack the wins field.

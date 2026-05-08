@@ -20,6 +20,290 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // ── Stats counter change detection (PR-A2) ──
+    // Plan §4.2 / §6.2. Returns true iff any of the denormalized stats
+    // counter fields differs between the stored doc and the merged post-
+    // write state. Used by the users/{uid} update rule to gate the more
+    // expensive linked-game proof path: writes that don't touch any
+    // counter field skip the get() and fall through to existing checks.
+    //
+    // `prev` and `next` are full document snapshots — `resource` and
+    // `request.resource` respectively. Accessing `data.field` on a doc
+    // that lacks the field returns null in Firestore rules, so the
+    // null==null branch correctly classifies legacy docs as "unchanged"
+    // until a real value is written.
+    //
+    // Keep this list IDENTICAL to the union of counter fields that
+    // `applyGameOutcome` and `applyTrickLanded` (src/services/users.ts)
+    // can stage. New counters added in future PRs MUST be appended here
+    // before they ship — otherwise a write would fall through to the
+    // unprotected branch and bypass the linked-game proof.
+    function statsCountersChanged(prev, next) {
+      // Use diff(...).affectedKeys().hasAny([...]) so the rules optimizer
+      // computes the change set ONCE per evaluation. The naive form —
+      // nine separate `prev.data.X != next.data.X` comparisons — was
+      // expanded by the rules engine into ~30 micro-expressions, which
+      // (combined with the rest of the users-update tree) tipped legacy
+      // regression paths past Firestore's 1000-expression evaluation
+      // budget. The hasAny() form is one expression.
+      return prev.data.diff(next.data).affectedKeys().hasAny([
+        'gamesWon',
+        'gamesLost',
+        'gamesForfeited',
+        'tricksLanded',
+        'currentWinStreak',
+        'longestWinStreak',
+        'xp',
+        'level',
+        'cleanJudgments'
+      ]);
+    }
+
+    // Returns true iff none of the named fields differ between prev and
+    // next. Companion to statsCountersChanged() — used by the winner/
+    // loser/forfeit branches to ensure counter writes don't piggyback
+    // updates to OTHER counters in the same write (e.g. a winner write
+    // that also bumps gamesLost would slip past the +1 invariant).
+    //
+    // Implementation note: the locked plan text used
+    // `diff(...).affectedKeys()` pseudocode. The actual Firestore rules
+    // grammar tolerates that idiom but it is hard to read; we instead
+    // expand to explicit equality checks below at each call site so the
+    // rule stays grep-able. This helper is preserved for symmetry with
+    // the plan's documented helper API and is used only by the linked-
+    // game-proof branch.
+    function unchangedFields(prev, next, fields) {
+      return fields.removeAll(prev.data.diff(next.data).affectedKeys()).size() == fields.size();
+    }
+
+    // Validate the linked-game proof for a stats counter write. The full
+    // proof — exists() + status terminal + updatedAt freshness + role
+    // matching + per-role counter delta — was originally inlined into
+    // the users/{uid} update rule, but the duplicated `get()` calls
+    // exploded the rule's expression count beyond Firestore's 1000-
+    // expression evaluation budget (every legacy regression test
+    // tripped the limit even on `!statsCountersChanged()` short-
+    // circuits). Folding the body into a function inlines the get()
+    // exactly once per evaluation and keeps the entire users-update
+    // rule tree under budget.
+    //
+    // `gameId` is the prospective new lastStatsGameId. `prev` and
+    // `next` are the doc snapshots (`resource` / `request.resource`).
+    // `auth` is `request.auth` (passed in so the function stays a pure
+    // expression — the rules engine forbids referring to `request` /
+    // `request.auth` from inside helper bodies in some grammars and
+    // staying explicit avoids the foot-gun).
+    function statsCounterWriteOk(gameId, prev, next, auth, nowTime) {
+      // `gameId` arrives unwrapped from `next.data.lastStatsGameId`. On
+      // a write that doesn't include it, the field's value falls
+      // through as `null` (rules' missing-field placeholder), so the
+      // `is string` clause cleanly rejects writes that try to bump
+      // counters without referencing a fresh game. The strict-advance
+      // comparison falls through gracefully because `null != "something"`
+      // is well-defined.
+      return gameId is string
+        && (
+          !('lastStatsGameId' in prev.data)
+          || gameId != prev.data.lastStatsGameId
+        )
+        && exists(/databases/$(database)/documents/games/$(gameId))
+        && getStatsGameProof(gameId, prev, next, auth, nowTime);
+    }
+
+    // Inner helper: receives the prospective gameId and unwraps the
+    // game doc once. Splitting `exists()` (cheap) from the `get()`
+    // payload check (load-bearing) keeps the optimizer happy and lets
+    // the rules engine memoize the doc fetch across the winner / loser
+    // / forfeit branch fan-out. Plan §4.2 — the body is a verbatim
+    // translation of the locked text with the duplicated `get()` calls
+    // collapsed.
+    function getStatsGameProof(gameId, prev, next, auth, nowTime) {
+      return statsGameProof(
+        get(/databases/$(database)/documents/games/$(gameId)).data,
+        prev,
+        next,
+        auth,
+        nowTime
+      );
+    }
+
+    // Strict-counter delta gate: applies the linked-game proof PLUS
+    // the per-write counter caps from plan §3.1.3 / §3.1.5. Wrapped
+    // in its own function so every field access can use defensive
+    // `field in data ? data.field : 0` ternaries — legacy docs that
+    // predate PR-A1 lack the counter fields entirely, and the rules
+    // engine throws "property is undefined on object" the moment a
+    // missing field is referenced even on a short-circuited branch.
+    function strictCounterDeltaOk(prev, next, auth, nowTime) {
+      return statsCounterWriteOk(
+          next.data.lastStatsGameId,
+          prev,
+          next,
+          auth,
+          nowTime
+        )
+        // tricksLanded delta capped at +1 per write (plan §3.1.3, audit TH5).
+        && safeCounter(next, 'tricksLanded') <= safeCounter(prev, 'tricksLanded') + 1
+        && safeCounter(next, 'tricksLanded') >= safeCounter(prev, 'tricksLanded')
+        // tricksLandedThisGame absolute cap of 6 (anti-grinding).
+        && safeCounter(next, 'tricksLandedThisGame') <= 6
+        // cleanJudgments delta capped at +1 per write (plan §3.1.1).
+        && safeCounter(next, 'cleanJudgments') <= safeCounter(prev, 'cleanJudgments') + 1
+        && safeCounter(next, 'cleanJudgments') >= safeCounter(prev, 'cleanJudgments')
+        // XP per-write delta capped at 155 (plan §3.1.5: worst case
+        // win × 1.25 + 6 tricks × 5). Negative deltas denied. Hard
+        // cap at 12000 (L30 anchor).
+        && safeCounter(next, 'xp') <= safeCounter(prev, 'xp') + 155
+        && safeCounter(next, 'xp') >= safeCounter(prev, 'xp')
+        && safeCounter(next, 'xp') <= 12000
+        // Level monotonic and hard-capped at L30.
+        && safeCounter(next, 'level') >= safeCounter(prev, 'level')
+        && safeCounter(next, 'level') <= 30;
+    }
+
+    // Coerce a possibly-missing numeric counter to 0. The Firestore
+    // rules grammar lacks a generic `??` operator; the `field in data`
+    // guard avoids the "property is undefined on object" error that
+    // legacy docs (pre-PR-A1) would otherwise trip on every counter
+    // write. Used from strictCounterDeltaOk so the rule's per-write
+    // delta math is well-defined even mid-rollout.
+    function safeCounter(snap, field) {
+      return field in snap.data ? snap.data[field] : 0;
+    }
+
+    // Non-negative floor on every counter field, evaluated against the
+    // merged post-write state. Plan §6.2 scenario 3 — DENY a backfill
+    // write that introduces negative counters even though the rest of
+    // the carve-out is permissive on absolute values (audit S8 / TH12).
+    function backfillCountersNonNegative(next) {
+      return safeCounter(next, 'gamesWon') >= 0
+        && safeCounter(next, 'gamesLost') >= 0
+        && safeCounter(next, 'gamesForfeited') >= 0
+        && safeCounter(next, 'tricksLanded') >= 0
+        && safeCounter(next, 'currentWinStreak') >= 0
+        && safeCounter(next, 'longestWinStreak') >= 0
+        && safeCounter(next, 'cleanJudgments') >= 0
+        && safeCounter(next, 'xp') >= 0
+        && safeCounter(next, 'level') >= 0;
+    }
+
+    // ── Mid-game trick increment carve-out (PR-A2 fix, plan §3.1.3) ──
+    // The honor-system clean-landed write path in src/services/users.ts
+    // (`applyTrickLanded`) stages `{ tricksLanded: increment(1),
+    // tricksLandedThisGame: increment(1) }` inside the per-turn
+    // resolution transaction. The linked game is `active` (not terminal)
+    // and `lastStatsGameId` is NOT advanced — terminal-game proof is
+    // owned by `applyGameOutcome` later, when the game ends.
+    //
+    // Without this carve-out, `strictCounterDeltaOk()`'s linked-game
+    // proof path rejects the write (status != 'complete'/'forfeit'),
+    // the entire turn-resolution transaction rolls back, and the game
+    // doc update with it. The fix is a tightly-scoped second branch
+    // alongside `strictCounterDeltaOk` that allows in-flight tricksLanded
+    // increments under these constraints:
+    //
+    //   (1) The ONLY fields touched in the write are `tricksLanded`
+    //       and `tricksLandedThisGame` (enforced by hasOnly() on the
+    //       diff's affected-key set). No `gamesWon`/`gamesLost`/
+    //       `gamesForfeited`/`currentWinStreak`/`longestWinStreak`/
+    //       `xp`/`level`/`cleanJudgments` may piggyback — role
+    //       transitions still require terminal-game proof. Crucially,
+    //       this also means `lastStatsGameId` is NOT advanced, which
+    //       is what makes this branch "mid-game" not terminal:
+    //       callers must pick exactly one path per write (this branch
+    //       OR `strictCounterDeltaOk`), never both.
+    //   (2) `tricksLanded` delta is exactly +1.
+    //   (3) `tricksLandedThisGame` delta is exactly +1.
+    //   (4) `tricksLandedThisGame` post-write is ≤ 6 (per-game cap,
+    //       plan §3.1.3). Atomically rejected here so a malicious
+    //       client can't blast past the cap by skipping the service's
+    //       `perGame >= 6` early-return.
+    //
+    // Security argument:
+    //   - Per-game cap is enforced atomically here (constraint 4).
+    //   - `tricksLandedThisGame` is reset to 0 only inside the
+    //     `games.create.ts` server-rule-validated game-create
+    //     transaction, which has its own anti-Sybil rate limit
+    //     (`lastGameCreatedAt` cooldown). A malicious client cannot
+    //     reset the per-game counter independently to grind past the
+    //     cap.
+    //   - Other counters CANNOT change in the same write (constraint 1).
+    //   - Maximum damage from a malicious user farming tricks is
+    //     bounded by their game-creation rate × 6 tricks/game.
+    //   - Sentry alert on `stats_counter_applied` with
+    //     tricksLandedThisGame > 4 per game catches outliers.
+    //
+    // Audit reference: Chief Dev "A2 mid-game tricksLanded rule
+    // rejection" (post-A2 audit BLOCKER).
+    function midGameTrickWriteOk(prev, next) {
+      // hasOnly() pins the changed-key set as a subset of
+      // {tricksLanded, tricksLandedThisGame} — any other field
+      // change (gamesWon, lastStatsGameId, etc.) flips the rule
+      // into strictCounterDeltaOk-only territory. The +1/+1 delta
+      // equality below guarantees both fields actually changed
+      // (delta-from-zero against an unchanged value is impossible),
+      // so a separate hasAll() is unnecessary and would double the
+      // diff() expression cost against the rules engine's 1000-
+      // expression evaluation budget (audit S15 — exact reason the
+      // sibling helpers collapse repeated get() calls).
+      return prev.data.diff(next.data).affectedKeys().hasOnly([
+          'tricksLanded',
+          'tricksLandedThisGame'
+        ])
+        && safeCounter(next, 'tricksLanded') == safeCounter(prev, 'tricksLanded') + 1
+        && safeCounter(next, 'tricksLandedThisGame') == safeCounter(prev, 'tricksLandedThisGame') + 1
+        && safeCounter(next, 'tricksLandedThisGame') <= 6;
+    }
+
+    // Pure proof predicate: takes the unwrapped game data and verifies
+    // every per-role transition. Each `game.x` access is a single
+    // expression; the rules optimizer evaluates it lazily across the
+    // OR-chain so unmatched branches short-circuit cheaply.
+    function statsGameProof(game, prev, next, auth, nowTime) {
+      return game.status in ['complete', 'forfeit']
+        && game.updatedAt > nowTime - duration.value(7200, 's')
+        && (
+          // Winner branch: gamesWon += 1, currentWinStreak += 1,
+          // longestWinStreak >= currentWinStreak. gamesLost and
+          // gamesForfeited unchanged. safeCounter() coerces missing
+          // fields on legacy pre-PR-A1 docs to 0 so the +1 math is
+          // well-defined for first-ever counter writes.
+          (
+            game.winner == auth.uid
+            && safeCounter(next, 'gamesWon') == safeCounter(prev, 'gamesWon') + 1
+            && safeCounter(next, 'currentWinStreak') == safeCounter(prev, 'currentWinStreak') + 1
+            && safeCounter(next, 'longestWinStreak') >= safeCounter(next, 'currentWinStreak')
+            && safeCounter(next, 'gamesLost') == safeCounter(prev, 'gamesLost')
+            && safeCounter(next, 'gamesForfeited') == safeCounter(prev, 'gamesForfeited')
+          )
+          // Loser/forfeiter branch: identified as a player on the
+          // linked game whose UID is NOT the recorded winner.
+          || (
+            game.winner != null
+            && game.winner != auth.uid
+            && (game.player1Uid == auth.uid || game.player2Uid == auth.uid)
+            && (
+              // Standard loss: gamesLost +1, streak resets.
+              (
+                game.status == 'complete'
+                && safeCounter(next, 'gamesLost') == safeCounter(prev, 'gamesLost') + 1
+                && safeCounter(next, 'currentWinStreak') == 0
+                && safeCounter(next, 'gamesWon') == safeCounter(prev, 'gamesWon')
+                && safeCounter(next, 'gamesForfeited') == safeCounter(prev, 'gamesForfeited')
+              )
+              // Forfeit loss: gamesForfeited +1, streak resets.
+              || (
+                game.status == 'forfeit'
+                && safeCounter(next, 'gamesForfeited') == safeCounter(prev, 'gamesForfeited') + 1
+                && safeCounter(next, 'currentWinStreak') == 0
+                && safeCounter(next, 'gamesWon') == safeCounter(prev, 'gamesWon')
+                && safeCounter(next, 'gamesLost') == safeCounter(prev, 'gamesLost')
+              )
+            )
+          )
+        );
+    }
+
     function isOwner(uid) {
       return isSignedIn() && request.auth.uid == uid;
     }
@@ -159,7 +443,50 @@ service cloud.firestore {
         // update rule then pins any future write to serverTimestamp().
         && !('lastGameCreatedAt' in request.resource.data)
         && !('lastSpotCreatedAt' in request.resource.data);
-      allow update: if isOwner(uid)
+      // ── Update rule (PR-A2 hardened) ──
+      // The rule has THREE shapes, ORed together:
+      //   (1) Backfill carve-out — one-shot self-attestation when
+      //       statsBackfilledAt is null. Plan §3 TH12 + §4.2.
+      //   (2) Strict-counter path — any counter delta requires a fresh
+      //       linked /games doc proving the user is the winner/loser/
+      //       forfeiter and that the recorded role matches the delta.
+      //       Plan §4.2 verbatim.
+      //   (3) Non-counter path — every existing rule for username, pro
+      //       fields, sensitive-field transitional handling, wins/losses
+      //       legacy aliases, and the lastGameCreatedAt / lastSpotCreatedAt
+      //       cooldown anchors. Audit S14 — preserved untouched.
+      //
+      // Either (1) suffices on its own (writer is doing a backfill;
+      // counters are self-attested per the documented limitation), OR
+      // both (2) AND (3) must hold (every other write path).
+      allow update: if (
+        // ── (1) Backfill carve-out (PR-A2, plan §4.2) ──
+        // One-shot per user. The caller must transition statsBackfilledAt
+        // from null to request.time (serverTimestamp() sentinel). This
+        // is the only path through which counters may be introduced
+        // without a linked-game proof — see plan §3 TH12 / audit S8 for
+        // the documented self-attestation trade-off. The companion
+        // service (`backfillStatsIfNeeded` in src/services/users.ts)
+        // owns the math and Sentry-flags suspicious deltas.
+        //
+        // Non-negative counter floor: the carve-out is intentionally
+        // permissive on absolute values (audit accepts the trade-off
+        // for first-launch UX), but a NEGATIVE counter is unambiguous
+        // garbage and would break every downstream consumer. Plan §6.2
+        // scenario 3 — DENY. The check uses `>= 0` rather than the
+        // monotonic `>= resource.data.field` form because pre-backfill
+        // legacy docs may have null counter fields (null + comparison
+        // would short-circuit ambiguously).
+        isOwner(uid)
+        && (
+          !('statsBackfilledAt' in resource.data)
+          || resource.data.statsBackfilledAt == null
+        )
+        && 'statsBackfilledAt' in request.resource.data
+        && request.resource.data.statsBackfilledAt == request.time
+        && backfillCountersNonNegative(request.resource)
+      ) || (
+        isOwner(uid)
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
@@ -266,7 +593,42 @@ service cloud.firestore {
               '/o/users%2F' + uid + '%2Favatar\\.(webp|jpeg|png)(\\?.*)?$'
             )
           )
-        );
+        )
+        // ── Strict-counter linked-game proof (PR-A2, plan §4.2) ──
+        // If any of the new denormalized stats counters changed, the
+        // write must reference a fresh /games doc that PROVES the
+        // delta. The proof has four moving parts:
+        //   (a) lastStatsGameId strictly advances (rejects replays —
+        //       audit TH2). The service early-returns on a matching
+        //       lastStatsGameId so this branch only fires for new
+        //       gameIds. Defense-in-depth: a malicious client that
+        //       bypasses the service still gets stopped here.
+        //   (b) The linked /games doc exists, is in a terminal status
+        //       (complete/forfeit), and was updated within 2h —
+        //       prevents stale-game farming (audit TH3).
+        //   (c) Exactly one of the winner / standard-loser / forfeit-
+        //       loser branches is satisfied. Each branch pins the
+        //       delta to +1 on the role's counter and fixes the other
+        //       counters (and currentWinStreak) to the documented
+        //       per-role transition (plan §3.1.2).
+        //   (d) Per-write deltas are bounded: tricksLanded ≤ +1,
+        //       tricksLandedThisGame ≤ 6, xp delta ∈ [0, 155], xp ≤
+        //       12000, level monotonic and ≤ 30. Plan §3.1.3 + §3.1.5.
+        //
+        // Writes that don't change any counter (e.g. lastGameCreatedAt
+        // anchor, stance change, profileImageUrl set above) skip this
+        // entire branch via `!statsCountersChanged()` and fall through.
+        // That's how audit S14's regression check (test #14) stays green.
+        //
+        // The third branch — `midGameTrickWriteOk` — covers the honor-
+        // system mid-game `applyTrickLanded` write path. See its
+        // helper comment above for the full security argument.
+        && (
+          !statsCountersChanged(resource, request.resource)
+          || strictCounterDeltaOk(resource, request.resource, request.auth, request.time)
+          || midGameTrickWriteOk(resource, request.resource)
+        )
+      );
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
 

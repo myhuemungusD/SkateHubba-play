@@ -99,12 +99,14 @@ const mockAccountDeleted = vi.fn();
 const mockStatsCounterApplied = vi.fn();
 const mockStatsCounterIdempotentSkip = vi.fn();
 const mockStatsCounterSkippedFlagOff = vi.fn();
+const mockStatsBackfillCompleted = vi.fn();
 vi.mock("../analytics", () => ({
   analytics: {
     accountDeleted: (...args: unknown[]) => mockAccountDeleted(...args),
     statsCounterApplied: (...args: unknown[]) => mockStatsCounterApplied(...args),
     statsCounterIdempotentSkip: (...args: unknown[]) => mockStatsCounterIdempotentSkip(...args),
     statsCounterSkippedFlagOff: (...args: unknown[]) => mockStatsCounterSkippedFlagOff(...args),
+    statsBackfillCompleted: (...args: unknown[]) => mockStatsBackfillCompleted(...args),
   },
 }));
 
@@ -138,6 +140,7 @@ import {
   applyGameOutcome,
   applyGameOutcomeStandalone,
   applyTrickLanded,
+  backfillStatsIfNeeded,
   type GameOutcome,
   getLeaderboard,
   getPlayerDirectory,
@@ -1150,6 +1153,351 @@ describe("users service", () => {
         },
       );
       await expect(setProfileImageUrl("u1", validUrl("u1"))).rejects.toThrow("avatar_profile_not_found");
+    });
+  });
+
+  /* ──────────────────────────────────────────────────────────────────
+   * PR-A2: backfillStatsIfNeeded
+   *
+   * Each test isolates one branch of the function: flag-off short
+   * circuit, already-backfilled short circuit, missing profile short
+   * circuit, the happy path with counter math, the partial-cap branch,
+   * the suspicious-deltas Sentry breadcrumbs, and the error path.
+   * Coverage target: 100% on lines, branches, statements, functions
+   * — matches the services/** floor in vitest.config.ts.
+   * ────────────────────────────────────────────────────────────────── */
+  describe("backfillStatsIfNeeded", () => {
+    /**
+     * Build a games doc shape that the backfill compute helper will
+     * recognise. Only the fields the function reads are populated.
+     */
+    function gameDoc(overrides: Record<string, unknown>): { id: string; data: () => Record<string, unknown> } {
+      const id = String(overrides.id ?? `g-${Math.random().toString(36).slice(2)}`);
+      const data: Record<string, unknown> = {
+        status: "complete",
+        winner: null,
+        player1Uid: "u1",
+        player2Uid: "u2",
+        updatedAt: { toMillis: () => Number(overrides.ageMs ?? 0) },
+        turnHistory: [],
+        ...overrides,
+      };
+      delete data.ageMs;
+      return { id, data: () => data };
+    }
+
+    /** Build N synthetic "u1 won as player1" games for size-driven tests. */
+    function buildWinDocs(count: number) {
+      return Array.from({ length: count }, (_, i) =>
+        gameDoc({ id: `g${i}`, winner: "u1", ageMs: i }),
+      );
+    }
+
+    /** Stub runTransaction to invoke its callback with a no-op tx. */
+    function stubTx(updateSpy: (...args: unknown[]) => unknown = () => undefined) {
+      mockRunTransaction.mockImplementationOnce(
+        async (_db: unknown, fn: (tx: { update: typeof updateSpy }) => Promise<void>) => {
+          await fn({ update: updateSpy });
+        },
+      );
+    }
+
+    it("no-ops when feature flag is OFF", async () => {
+      mockIsFeatureEnabled.mockReturnValueOnce(false);
+      const result = await backfillStatsIfNeeded("u1");
+      expect(result).toEqual({ backfilled: false, partial: false });
+      expect(mockGetDoc).not.toHaveBeenCalled();
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+      expect(mockStatsBackfillCompleted).not.toHaveBeenCalled();
+    });
+
+    it("no-ops when statsBackfilledAt is already set", async () => {
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", statsBackfilledAt: { seconds: 1, nanoseconds: 0 } }),
+      });
+      const result = await backfillStatsIfNeeded("u1");
+      expect(result).toEqual({ backfilled: false, partial: false });
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+    });
+
+    it("no-ops when profile doc does not exist", async () => {
+      mockGetDoc.mockResolvedValueOnce({ exists: () => false, data: () => ({}) });
+      const result = await backfillStatsIfNeeded("u1");
+      expect(result).toEqual({ backfilled: false, partial: false });
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+    });
+
+    it("happy path: computes counters across wins / losses / forfeits and writes inside a transaction", async () => {
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", statsBackfilledAt: null }),
+      });
+      // Two queries (player1Uid, player2Uid) — each resolves to a list
+      // of completed games. Mix of win, loss, forfeit-loser, forfeit-winner
+      // exercises every branch in computeBackfillCounters.
+      mockGetDocs.mockResolvedValueOnce({
+        docs: [
+          // Win with one landed turn for u1 as matcher.
+          gameDoc({
+            id: "g1",
+            status: "complete",
+            winner: "u1",
+            player1Uid: "u1",
+            player2Uid: "u2",
+            ageMs: 1,
+            turnHistory: [
+              { landed: true, matcherUid: "u1" },
+              { landed: false, matcherUid: "u1" },
+              { landed: true, matcherUid: "u2" }, // doesn't credit u1
+            ],
+          }),
+          // Loss — streak resets; tricksLanded credit only counts u1's
+          // matched-and-landed turns, of which there is one here.
+          gameDoc({
+            id: "g2",
+            status: "complete",
+            winner: "u2",
+            player1Uid: "u1",
+            player2Uid: "u2",
+            ageMs: 2,
+            turnHistory: [{ landed: true, matcherUid: "u1" }],
+          }),
+        ],
+      });
+      mockGetDocs.mockResolvedValueOnce({
+        docs: [
+          // Forfeit win (opponent forfeited) — streak picks back up.
+          gameDoc({
+            id: "g3",
+            status: "forfeit",
+            winner: "u1",
+            player1Uid: "u2",
+            player2Uid: "u1",
+            ageMs: 3,
+          }),
+          // Forfeit loss (u1 forfeited) — gamesForfeited++, streak resets.
+          gameDoc({
+            id: "g4",
+            status: "forfeit",
+            winner: "u2",
+            player1Uid: "u1",
+            player2Uid: "u2",
+            ageMs: 4,
+          }),
+          // Last entry is a win — current streak = 1 at the end.
+          gameDoc({
+            id: "g5",
+            status: "complete",
+            winner: "u1",
+            player1Uid: "u1",
+            player2Uid: "u2",
+            ageMs: 5,
+            // turnHistory missing → exercises the array-guard branch.
+          }),
+        ],
+      });
+      const updateSpy = vi.fn();
+      mockRunTransaction.mockImplementationOnce(
+        async (_db: unknown, fn: (tx: { update: typeof updateSpy }) => Promise<void>) => {
+          await fn({ update: updateSpy });
+        },
+      );
+
+      const result = await backfillStatsIfNeeded("u1");
+
+      expect(result).toEqual({ backfilled: true, partial: false });
+      expect(updateSpy).toHaveBeenCalledTimes(1);
+      const writePayload = updateSpy.mock.calls[0][1] as Record<string, unknown>;
+      // 3 wins (g1, g3, g5), 1 loss (g2), 1 forfeit (g4), 2 tricks for u1.
+      expect(writePayload).toMatchObject({
+        gamesWon: 3,
+        gamesLost: 1,
+        gamesForfeited: 1,
+        tricksLanded: 2,
+        // After chronological walk: g1 win(1), g2 loss(0), g3 win(1), g4 forfeit(0), g5 win(1).
+        currentWinStreak: 1,
+        longestWinStreak: 1,
+        cleanJudgments: 0,
+      });
+      expect(mockStatsBackfillCompleted).toHaveBeenCalledTimes(1);
+    });
+
+    it("flags partial when 1000-game safety cap is hit", async () => {
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", statsBackfilledAt: null }),
+      });
+      mockGetDocs.mockResolvedValueOnce({ docs: buildWinDocs(1000) });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] });
+      stubTx();
+
+      const result = await backfillStatsIfNeeded("u1");
+
+      expect(result).toEqual({ backfilled: true, partial: true });
+      expect(mockStatsBackfillCompleted).toHaveBeenCalledWith(
+        "u1",
+        1000, // gamesWon
+        0,
+        0,
+        0,
+        1000, // gamesSeen
+        expect.any(Number),
+        true,
+      );
+    });
+
+    it("emits suspicious-delta breadcrumbs when gamesWon > 100", async () => {
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", statsBackfilledAt: null }),
+      });
+      // 101 wins → triggers both the gamesWon and the level-proxy
+      // breadcrumbs (101/4 = 25.25 > 15).
+      mockGetDocs.mockResolvedValueOnce({ docs: buildWinDocs(101) });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] });
+      stubTx();
+
+      const result = await backfillStatsIfNeeded("u1");
+
+      expect(result.backfilled).toBe(true);
+      const suspiciousCalls = mockAddBreadcrumb.mock.calls
+        .map((c) => c[0] as { message?: string })
+        .filter((c) => c.message === "stats_backfill_suspicious");
+      expect(suspiciousCalls.length).toBe(2); // gamesWon reason + level-proxy reason
+    });
+
+    it("tolerates legacy game shapes with missing/non-string fields", async () => {
+      // Coverage closer for the defensive branches in the compute
+      // helper: non-string status, missing updatedAt sort key, missing
+      // turnHistory, and turnHistory entries with non-conforming
+      // shapes (no landed flag, wrong matcherUid, primitive entries).
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", statsBackfilledAt: null }),
+      });
+      const legacyDocs = [
+        // status missing entirely → typeof !== "string" branch.
+        // updatedAt missing → exercises the ?. fallback in the sort
+        // comparator. Pairing this with legacy-2 (which has updatedAt)
+        // forces the comparator to actually run on two distinct shapes.
+        {
+          id: "legacy-1",
+          data: () => ({
+            winner: "u1",
+            player1Uid: "u1",
+            player2Uid: "u2",
+          }),
+        },
+        // turnHistory present but with garbage entries → inner-`if` branches.
+        {
+          id: "legacy-2",
+          data: () => ({
+            status: "complete",
+            winner: "u2",
+            player1Uid: "u1",
+            player2Uid: "u2",
+            updatedAt: { toMillis: () => 7 },
+            turnHistory: [
+              null,
+              "not-an-object",
+              { landed: false, matcherUid: "u1" },
+              { landed: true, matcherUid: "u2" }, // wrong matcher
+              { landed: true, matcherUid: "u1" },
+            ],
+          }),
+        },
+        // updatedAt present but as a plain object missing toMillis —
+        // exercises the inner `?.` short-circuit on the function call.
+        {
+          id: "legacy-3",
+          data: () => ({
+            status: "complete",
+            winner: "u1",
+            player1Uid: "u1",
+            player2Uid: "u2",
+            updatedAt: {} as { toMillis?: () => number },
+          }),
+        },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: legacyDocs });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] });
+      const updateSpy = vi.fn();
+      mockRunTransaction.mockImplementationOnce(
+        async (_db: unknown, fn: (tx: { update: typeof updateSpy }) => Promise<void>) => {
+          await fn({ update: updateSpy });
+        },
+      );
+
+      await backfillStatsIfNeeded("u1");
+
+      const writePayload = updateSpy.mock.calls[0][1] as Record<string, number>;
+      // legacy-1 → status missing → won (winner == u1) → +1 win.
+      // legacy-2 → loss; one valid matched-and-landed entry → +1 trick.
+      // legacy-3 → won (winner == u1) → +1 win.
+      expect(writePayload.gamesWon).toBe(2);
+      expect(writePayload.gamesLost).toBe(1);
+      expect(writePayload.gamesForfeited).toBe(0);
+      expect(writePayload.tricksLanded).toBe(1);
+    });
+
+    it("dedupes games returned by both player1Uid and player2Uid queries", async () => {
+      // Edge case: a single game is matched on both queries when the
+      // user appears in either field (Firestore can return a duplicate
+      // doc once per query). The Map-based dedup keeps only one copy.
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", statsBackfilledAt: null }),
+      });
+      const sameGame = gameDoc({
+        id: "g-dup",
+        status: "complete",
+        winner: "u1",
+        player1Uid: "u1",
+        player2Uid: "u2",
+        ageMs: 1,
+      });
+      mockGetDocs.mockResolvedValueOnce({ docs: [sameGame] });
+      mockGetDocs.mockResolvedValueOnce({ docs: [sameGame] });
+      const updateSpy = vi.fn();
+      mockRunTransaction.mockImplementationOnce(
+        async (_db: unknown, fn: (tx: { update: typeof updateSpy }) => Promise<void>) => {
+          await fn({ update: updateSpy });
+        },
+      );
+
+      await backfillStatsIfNeeded("u1");
+
+      // gamesWon must be exactly 1 — if dedup were broken it would be 2.
+      expect((updateSpy.mock.calls[0][1] as { gamesWon: number }).gamesWon).toBe(1);
+    });
+
+    it("propagates errors with a Sentry breadcrumb", async () => {
+      mockGetDoc.mockRejectedValueOnce(new Error("boom"));
+      await expect(backfillStatsIfNeeded("u1")).rejects.toThrow("boom");
+      const errorCrumb = mockAddBreadcrumb.mock.calls
+        .map((c) => c[0] as { message?: string; level?: string })
+        .find((c) => c.message === "backfillStatsIfNeeded.error");
+      expect(errorCrumb?.level).toBe("error");
+    });
+
+    it("non-Error throws are coerced to a string in the breadcrumb (post-getDoc path)", async () => {
+      // Mirrors the defensive String() fallback in applyGameOutcome's
+      // catch block. We trigger a non-Error throw from runTransaction so
+      // we bypass withRetry's optimistic-retry branch on the initial
+      // getDoc call (string throws are otherwise retried 3× by retry.ts).
+      mockGetDoc.mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({ uid: "u1", statsBackfilledAt: null }),
+      });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] });
+      mockRunTransaction.mockImplementationOnce(() => Promise.reject("non-error-throw"));
+      await expect(backfillStatsIfNeeded("u1")).rejects.toBe("non-error-throw");
+      const errorCrumb = mockAddBreadcrumb.mock.calls
+        .map((c) => c[0] as { message?: string; data?: { error?: string } })
+        .find((c) => c.message === "backfillStatsIfNeeded.error");
+      expect(errorCrumb?.data?.error).toBe("non-error-throw");
     });
   });
 });

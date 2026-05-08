@@ -263,5 +263,20 @@ describe("analytics service", () => {
       analytics.avatarDeleted("u1");
       expect(vaSpy).toHaveBeenCalledWith("event", { name: "avatar_deleted", uid: "u1" });
     });
+
+    it("statsBackfillCompleted sends stats_backfill_completed with the full shape", () => {
+      analytics.statsBackfillCompleted("u1", 7, 4, 1, 11, 12, 250, false);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "stats_backfill_completed",
+        uid: "u1",
+        gamesWon: 7,
+        gamesLost: 4,
+        gamesForfeited: 1,
+        tricksLanded: 11,
+        gamesSeen: 12,
+        durationMs: 250,
+        partial: false,
+      });
+    });
   });
 });

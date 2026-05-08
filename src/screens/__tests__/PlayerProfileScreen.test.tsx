@@ -21,6 +21,18 @@ vi.mock("../../services/blocking", () => ({
   getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
 }));
 
+// PR-A2: usePlayerProfileController calls backfillStatsIfNeeded on
+// own-profile mount. Stub it out so the screen test doesn't hit the
+// Firestore-imports-from-`../../services/users` code path; coverage
+// for the function itself lives in users.test.ts.
+vi.mock("../../services/users", async () => {
+  const actual = await vi.importActual<typeof import("../../services/users")>("../../services/users");
+  return {
+    ...actual,
+    backfillStatsIfNeeded: vi.fn().mockResolvedValue({ backfilled: false, partial: false }),
+  };
+});
+
 const mockUsePlayerProfile = vi.fn();
 
 vi.mock("../../hooks/usePlayerProfile", () => ({
