@@ -49,6 +49,7 @@
     "firebase": "^12.11.0",
     "lucide-react": "^1.8.0",
     "mapbox-gl": "^3.21.0",
+    "nsfwjs": "^4.3.0",
     "posthog-js": "^1.369.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
@@ -61,7 +62,8 @@
     "uuid": "^14.0.0",
     "ip-address": "^10.1.1",
     "hono": "^4.12.16",
-    "basic-ftp": "^5.3.1"
+    "basic-ftp": "^5.3.1",
+    "fast-uri": "^3.1.2"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
