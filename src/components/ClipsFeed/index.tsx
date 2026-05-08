@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlreadyUpvotedError,
   fetchClipUpvoteState,
@@ -12,8 +12,15 @@ import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
 import { parseFirebaseError } from "../../utils/helpers";
 import { useBlockedUsers } from "../../hooks/useBlockedUsers";
-import { ReportModal } from "../ReportModal";
 import type { UserProfile } from "../../services/users";
+
+// ReportModal pulls in submitReport + REPORT_REASON_LABELS + useFocusTrap +
+// the modal's own UI primitives. It only ever renders when a viewer taps
+// REPORT — a rare interaction. Lazy-load it so the lobby's critical
+// bundle skips the form code entirely. Suspense fallback is null because
+// the modal is already state-gated; the brief import delay (~50ms on
+// warm cache) happens AFTER the user has tapped, so it's invisible.
+const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
 import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
 import { NextClipPrefetcher } from "./NextClipPrefetcher";
@@ -276,25 +283,28 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         </>
       )}
 
-      {/* Report modal */}
+      {/* Report modal — lazy-loaded; null fallback is fine because this
+          subtree only mounts after the viewer has explicitly tapped REPORT. */}
       {reportTarget && (
-        <ReportModal
-          reporterUid={profile.uid}
-          reportedUid={reportTarget.playerUid}
-          reportedUsername={reportTarget.playerUsername}
-          gameId={reportTarget.gameId}
-          clipId={reportTarget.id}
-          onClose={() => setReportTarget(null)}
-          onSubmitted={() => {
-            const reportedId = reportTarget.id;
-            setReportedClipIds((prev) => {
-              const next = new Set(prev);
-              next.add(reportedId);
-              return next;
-            });
-            setReportTarget(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <ReportModal
+            reporterUid={profile.uid}
+            reportedUid={reportTarget.playerUid}
+            reportedUsername={reportTarget.playerUsername}
+            gameId={reportTarget.gameId}
+            clipId={reportTarget.id}
+            onClose={() => setReportTarget(null)}
+            onSubmitted={() => {
+              const reportedId = reportTarget.id;
+              setReportedClipIds((prev) => {
+                const next = new Set(prev);
+                next.add(reportedId);
+                return next;
+              });
+              setReportTarget(null);
+            }}
+          />
+        </Suspense>
       )}
     </section>
   );
