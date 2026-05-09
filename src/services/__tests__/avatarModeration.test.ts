@@ -4,12 +4,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
  * Mock NSFWjs at the module boundary. The real package weighs ~10 MB
  * (TensorFlow.js + model weights) — under no circumstances should the
  * unit-test runner attempt to load the actual SDK.
+ *
+ * The source imports from `nsfwjs/core` + `nsfwjs/models/mobilenet_v2`
+ * (rather than the `nsfwjs` default entrypoint) to keep the model bundle
+ * lean — see `avatarModeration.ts` for the full rationale. The test mock
+ * mirrors those subpaths exactly.
  */
 const mockClassify = vi.fn();
 const mockLoadModel = vi.fn();
+const SENTINEL_MODEL_DEFINITION = { name: "MobileNetV2" };
 
-vi.mock("nsfwjs", () => ({
+vi.mock("nsfwjs/core", () => ({
   load: (...args: unknown[]) => mockLoadModel(...args),
+}));
+
+vi.mock("nsfwjs/models/mobilenet_v2", () => ({
+  MobileNetV2Model: SENTINEL_MODEL_DEFINITION,
 }));
 
 import { isAvatarSafe, __resetAvatarModerationForTests } from "../avatarModeration";
@@ -83,6 +93,22 @@ describe("avatarModeration service", () => {
     // Model loads exactly once even across multiple calls.
     expect(mockLoadModel).toHaveBeenCalledTimes(1);
     expect(mockClassify).toHaveBeenCalledTimes(2);
+  });
+
+  it("registers only the MobileNetV2 model definition (bundle-size guard)", async () => {
+    // Regression guard: switching back to the `nsfwjs` default entrypoint
+    // would statically import all three model definitions and re-introduce
+    // ~25 MB of unused weight shards into the production bundle. Pinning
+    // the call signature here surfaces that regression on a green test
+    // before it ships.
+    mockLoadModel.mockResolvedValue({ classify: mockClassify });
+    mockClassify.mockResolvedValue(SAFE_PREDICTIONS);
+
+    await isAvatarSafe(makeBlob());
+
+    expect(mockLoadModel).toHaveBeenCalledWith("MobileNetV2", {
+      modelDefinitions: [SENTINEL_MODEL_DEFINITION],
+    });
   });
 
   it("rejects when the unsafe-class score is greater than 0.85", async () => {

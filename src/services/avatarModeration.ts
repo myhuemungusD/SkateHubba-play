@@ -35,12 +35,14 @@ interface NsfwPrediction {
   probability: number;
 }
 
+/**
+ * Local subset of the `NSFWJS` class surface — narrowed to the methods +
+ * input types we actually exercise from `isAvatarSafe`. Keeping this thin
+ * avoids leaking a `@tensorflow/tfjs` type dependency through the service
+ * boundary (the real signature accepts a `Tensor3D` we never construct).
+ */
 interface NsfwModel {
-  classify(image: HTMLImageElement | HTMLCanvasElement | ImageBitmap): Promise<NsfwPrediction[]>;
-}
-
-interface NsfwModule {
-  load(modelUrl?: string): Promise<NsfwModel>;
+  classify(image: HTMLImageElement | HTMLCanvasElement): Promise<NsfwPrediction[]>;
 }
 
 /** Reject above this score. Tuned conservatively — false positives are
@@ -59,11 +61,20 @@ let modelPromise: Promise<NsfwModel | null> | null = null;
  * Lazy-load the NSFWjs model. The dynamic import keeps `nsfwjs` and its
  * TensorFlow.js dependency out of the main bundle entirely — chunk only
  * lands when an avatar upload code path runs `isAvatarSafe`.
+ *
+ * We deliberately import from `nsfwjs/core` + the single MobileNetV2 model
+ * rather than the package's default entrypoint. The default entrypoint
+ * statically references all three bundled model definitions
+ * (MobileNetV2, MobileNetV2Mid, InceptionV3), which causes Vite to emit
+ * ~25 MB of unused weight shards into `dist/`. Loading via core with one
+ * registered definition keeps only the ~3 MB MobileNetV2 weights.
  */
 async function loadModel(): Promise<NsfwModel | null> {
   try {
-    const mod = (await import("nsfwjs")) as unknown as NsfwModule;
-    return await mod.load();
+    const [coreMod, mobileNetMod] = await Promise.all([import("nsfwjs/core"), import("nsfwjs/models/mobilenet_v2")]);
+    return await coreMod.load("MobileNetV2", {
+      modelDefinitions: [mobileNetMod.MobileNetV2Model],
+    });
   } catch (err) {
     // Fail-open: storage rules + the size/MIME pre-checks are the real
     // boundary. Surface the failure to ops without breaking the user.
