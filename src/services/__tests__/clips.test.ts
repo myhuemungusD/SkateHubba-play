@@ -575,6 +575,40 @@ describe("fetchClipsFeed (failed-precondition fallback)", () => {
     expect(mockGetDocs).toHaveBeenCalledTimes(1);
   });
 
+  it("does not fall back when the rejection isn't an object (string / undefined throws rethrow as-is)", async () => {
+    // Defensive: some intermediaries strip error objects to bare strings.
+    // A non-object rejection can't carry a 'failed-precondition' code, so
+    // the fallback path correctly leaves it alone. withRetry treats
+    // non-Error rejections as retryable, so persist the rejection across
+    // attempts; the final throw should be the original string verbatim.
+    mockGetDocs.mockRejectedValue("network died");
+    await expect(fetchClipsFeed(null, 20, "top")).rejects.toBe("network died");
+  }, 30_000);
+
+  it("treats failed-precondition with no readable message as a missing index (triggers fallback)", async () => {
+    // Tolerant matcher: when an error envelope has the right code but the
+    // message has been stripped by a proxy/SDK wrapper, fall back rather
+    // than surfacing "Feed temporarily unavailable" to the viewer. The
+    // worst case is we serve 'new'-sorted clips when the failure was
+    // actually some other failed-precondition variant — acceptable for a
+    // read-only feed.
+    //
+    // Use an Error instance so withRetry's isRetryable() classifies the
+    // permanent code immediately and rethrows on the first attempt — that
+    // routes through fetchClipsFeed's catch block (where isMissingIndexError
+    // is consulted) instead of the SDK-level retry path.
+    const err = new Error();
+    (err as unknown as { message: unknown }).message = undefined;
+    (err as Error & { code: string }).code = "failed-precondition";
+    mockGetDocs.mockRejectedValueOnce(err);
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    const page = await fetchClipsFeed(null, 20, "top");
+    expect(page.clips).toEqual([]);
+    // Two calls total: the failing top attempt + the fallback new attempt.
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+  });
+
   it("latches the breaker after one failure so subsequent top calls skip the failing query", async () => {
     // First call: top fails, fallback to new succeeds — costs 2 reads.
     mockGetDocs.mockRejectedValueOnce(missingIndexError());
@@ -700,7 +734,10 @@ describe("upvoteClip", () => {
    * clip doc (drives the post-tx return count). The mock differentiates by
    * the ref's `__path` prefix produced by the firestore mockDoc helper.
    */
-  function captureTxOnce(voteExists: boolean, currentUpvoteCount = 0): { observed: () => ObservedTx } {
+  function captureTxOnce(
+    voteExists: boolean,
+    currentUpvoteCount: number | "no-clip-doc" | "non-numeric" = 0,
+  ): { observed: () => ObservedTx } {
     let captured: ObservedTx | undefined;
     mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
       const tx: ObservedTx = {
@@ -710,6 +747,18 @@ describe("upvoteClip", () => {
             return { exists: () => voteExists };
           }
           if (path.startsWith("clips/")) {
+            // 'no-clip-doc' covers the legacy / pre-backfill branch where
+            // the clip doc didn't exist when the vote was placed (defensive;
+            // shouldn't happen in practice because clip docs are written
+            // first inside the parent game transaction).
+            if (currentUpvoteCount === "no-clip-doc") {
+              return { exists: () => false };
+            }
+            // 'non-numeric' covers a corrupted clip doc — upvoteCount field
+            // present but not a finite number. The service must coerce to 0.
+            if (currentUpvoteCount === "non-numeric") {
+              return { exists: () => true, data: () => ({ upvoteCount: "broken" }) };
+            }
             return { exists: () => true, data: () => ({ upvoteCount: currentUpvoteCount }) };
           }
           throw new Error(`Unexpected ref path in tx.get: ${path}`);
@@ -771,6 +820,30 @@ describe("upvoteClip", () => {
     const cap = captureTxOnce(false, 0);
     let count = 0;
     count = await upvoteClip("me", "g1_2_set");
+    expect(count).toBe(1);
+    const [, clipPayload] = cap.observed().update.mock.calls[0];
+    expect(clipPayload).toEqual({ upvoteCount: 1 });
+  });
+
+  it("coerces a non-numeric upvoteCount on the clip doc to 0 (defense against corrupted writes)", async () => {
+    // A clip doc with upvoteCount = "broken" (or NaN, or undefined) must
+    // not be allowed to write NaN+1 = NaN as the new aggregate; the rule
+    // requires `upvoteCount is int`, so a NaN write would be rejected at
+    // the server. Coerce to 0 in code so the literal write is always int.
+    const cap = captureTxOnce(false, "non-numeric");
+    const count = await upvoteClip("me", "g1_2_set");
+    expect(count).toBe(1);
+    const [, clipPayload] = cap.observed().update.mock.calls[0];
+    expect(clipPayload).toEqual({ upvoteCount: 1 });
+  });
+
+  it("seeds count from 0 when the clip doc doesn't exist at tx-time (defensive legacy path)", async () => {
+    // Belt-and-braces: rules read upvoteCount via get('upvoteCount', 0)
+    // so a clip-doc-missing case must still write 1, not NaN. This is a
+    // defensive branch — clip docs are written inside the parent game's
+    // transaction so they should always exist by the time anyone votes.
+    const cap = captureTxOnce(false, "no-clip-doc");
+    const count = await upvoteClip("me", "g1_2_set");
     expect(count).toBe(1);
     const [, clipPayload] = cap.observed().update.mock.calls[0];
     expect(clipPayload).toEqual({ upvoteCount: 1 });
@@ -881,6 +954,31 @@ describe("fetchClipUpvoteState", () => {
 
     expect(map.get("c1")).toEqual({ count: 4, alreadyUpvoted: false });
     expect(map.get("c2")).toEqual({ count: 7, alreadyUpvoted: false });
+  });
+
+  it("ignores vote docs whose data.clipId is missing or non-string (defensive against malformed writes)", async () => {
+    // A vote doc whose body lacks a string clipId is treated as if the
+    // viewer hasn't voted that clip — we don't want to either crash or
+    // silently mark a different clip as upvoted because the doc id parser
+    // confused a malformed payload. Same path also covers a vote doc whose
+    // clipId references something not in the requested set (legacy or
+    // cross-call), which shouldn't poison the result map.
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: "me_c1", data: () => ({ uid: "me", clipId: 42 }) }, // non-string clipId
+        { id: "me_c2", data: () => ({ uid: "me" }) }, // missing clipId entirely
+        { id: "me_unknown", data: () => ({ uid: "me", clipId: "unknown" }) }, // not in our request set
+      ],
+    });
+
+    const map = await fetchClipUpvoteState("me", [clip("c1", 5), clip("c2", 8)]);
+
+    // Both requested clips fall through to the seeded not-upvoted state
+    // because the malformed vote docs above can't be safely attributed.
+    expect(map.get("c1")).toEqual({ count: 5, alreadyUpvoted: false });
+    expect(map.get("c2")).toEqual({ count: 8, alreadyUpvoted: false });
+    // The unknown clip never gets injected into the result map.
+    expect(map.has("unknown")).toBe(false);
   });
 
   it("chunks the in-query into batches of 30 to respect the Firestore in-cap", async () => {
