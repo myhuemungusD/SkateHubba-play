@@ -116,7 +116,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         analytics.signInFailure("google", code || "redirect_error");
         metrics.signInFailure("google", code || "redirect_error");
         captureException(err, { extra: { context: "resolveGoogleRedirect" } });
-        setGoogleError("Google sign-in failed. Please try again.");
+        // Surface the same actionable copy as the popup-error path so a Safari /
+        // mobile user who completed the OAuth redirect but landed back in a
+        // failure state gets a hint at what's wrong (storage partition, expired
+        // nonce, account disabled) instead of "try again" on a permanent issue.
+        if (code === "auth/user-disabled") {
+          setGoogleError("This account has been disabled. Please contact support if you think this is a mistake.");
+        } else if (code === "auth/web-storage-unsupported") {
+          setGoogleError(
+            "Your browser is blocking sign-in storage. Disable private browsing or try a different browser.",
+          );
+        } else if (code === "auth/missing-or-invalid-nonce") {
+          setGoogleError("Sign-in token expired. Please reload the page and try again.");
+        } else if (code === "auth/account-exists-with-different-credential") {
+          setGoogleError("This email is linked to a password account. Sign in with email/password instead.");
+        } else {
+          setGoogleError("Google sign-in failed. Please try again.");
+        }
       });
   }, []);
 
@@ -145,9 +161,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logger.warn("google_sign_in_credential_conflict", { code });
         captureException(err, { extra: { context: "handleGoogleSignIn", code } });
         setGoogleError("This email is linked to a password account. Sign in with email/password instead.");
-      } else if (code === "auth/too-many-requests") {
+      } else if (code === "auth/too-many-requests" || code === "auth/quota-exceeded") {
         logger.warn("google_sign_in_rate_limited", { code });
         setGoogleError("Too many attempts. Please wait a few minutes and try again.");
+      } else if (code === "auth/user-disabled") {
+        logger.warn("google_sign_in_user_disabled", { code });
+        setGoogleError("This account has been disabled. Please contact support if you think this is a mistake.");
+      } else if (code === "auth/web-storage-unsupported") {
+        // Safari Private Browsing, locked-down WKWebViews, and storage-partitioned
+        // 3p contexts surface here. Without explicit messaging the user thinks
+        // sign-in just silently failed.
+        logger.warn("google_sign_in_web_storage_unsupported", { code });
+        setGoogleError(
+          "Your browser is blocking sign-in storage. Disable private browsing or try a different browser.",
+        );
+      } else if (code === "auth/missing-or-invalid-nonce") {
+        // Identity-token nonce mismatch — usually a stale tab or replay of an
+        // expired OAuth response. Reloading clears the cached state.
+        logger.warn("google_sign_in_nonce_invalid", { code });
+        setGoogleError("Sign-in token expired. Please reload the page and try again.");
+      } else if (code === "auth/timeout" || code === "auth/network-request-failed") {
+        logger.warn("google_sign_in_network_error", { code });
+        setGoogleError("Network error — check your connection and try again.");
       } else if (code === "auth/unauthorized-domain") {
         logger.error("google_sign_in_unauthorized_domain", { code, origin: window.location.origin });
         captureException(err, { extra: { context: "handleGoogleSignIn", code, origin: window.location.origin } });

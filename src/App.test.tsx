@@ -142,12 +142,12 @@ describe("App", () => {
     renderApp();
     await waitFor(() => {
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
-      expect(screen.getByText("Use email")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
       expect(screen.getByText("Account")).toBeInTheDocument();
     });
   });
 
-  it("navigates directly to the signup card when 'Use email' is clicked", async () => {
+  it("navigates directly to the signup card when 'Create account' is clicked", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: null,
@@ -156,7 +156,7 @@ describe("App", () => {
     });
     renderApp();
 
-    await userEvent.click(screen.getByText("Use email"));
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
     });

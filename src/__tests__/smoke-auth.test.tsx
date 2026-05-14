@@ -40,10 +40,10 @@ describe("Smoke: Auth", () => {
     await renderApp();
 
     expect(await screen.findByText("QUIT SCROLLING.")).toBeInTheDocument();
-    expect(screen.getByText("Use email")).toBeInTheDocument();
+    expect(screen.getByText("Create account")).toBeInTheDocument();
     expect(screen.getByText("Account")).toBeInTheDocument();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     expect(await screen.findByRole("heading", { name: "Create Account" })).toBeInTheDocument();
     // DOB inputs render inline on the same card — no age-gate detour.
     expect(screen.getByLabelText("Birth month")).toBeInTheDocument();
@@ -61,7 +61,7 @@ describe("Smoke: Auth", () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -162,7 +162,7 @@ describe("Smoke: Auth", () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -180,7 +180,7 @@ describe("Smoke: Auth", () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -199,7 +199,7 @@ describe("Smoke: Auth", () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -212,7 +212,7 @@ describe("Smoke: Auth", () => {
     await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Email already in use. Try signing in, or use Google below.")).toBeInTheDocument();
+      expect(screen.getByText(/Looks like you already have an account/)).toBeInTheDocument();
     });
   });
 
@@ -220,7 +220,7 @@ describe("Smoke: Auth", () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     expect(await screen.findByRole("heading", { name: "Create Account" })).toBeInTheDocument();
 
     // Toggle to sign-in — DOB fields disappear because there's no age gate on signin.
@@ -321,7 +321,7 @@ describe("Smoke: Auth", () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -342,7 +342,7 @@ describe("Smoke: Auth", () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -365,7 +365,7 @@ describe("Smoke: Auth", () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
 
     const emailInput = screen.getByPlaceholderText("you@email.com");
@@ -419,7 +419,7 @@ describe("Smoke: Auth", () => {
     auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "google@test.com");

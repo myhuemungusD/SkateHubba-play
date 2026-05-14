@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
 import { EMAIL_RE, pwStrength, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
 import { isMinorDob, parseDob } from "../utils/age";
@@ -48,6 +48,10 @@ export function AuthScreen({
   const [parentConsent, setParentConsent] = useState(false);
   const [ageBlocked, setAgeBlocked] = useState(false);
   const [error, setError] = useState("");
+  // Last Firebase error code — drives inline recovery affordances (e.g. "Sign in
+  // instead" when signup hits email-already-in-use, "Forgot password?" when
+  // sign-in hits invalid-credential). Cleared whenever the surface error clears.
+  const [lastErrorCode, setLastErrorCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [verifyWarning, setVerifyWarning] = useState(false);
@@ -55,6 +59,18 @@ export function AuthScreen({
   const showDob = isSignup && showAgeFields;
   const anyLoading = loading || googleLoading;
   const isMinor = showDob && isMinorDob(month, day, year);
+
+  // When the parent toggles `mode` (sign-in <-> sign-up) the screen no longer
+  // remounts (App.tsx dropped the `key={authMode}` that was wiping typed input).
+  // Clear transient one-shot states that don't apply to the new mode — but
+  // intentionally preserve email/password/DOB so the user doesn't have to retype.
+  useEffect(() => {
+    setError("");
+    setLastErrorCode("");
+    setResetSent(false);
+    setVerifyWarning(false);
+    setAgeBlocked(false);
+  }, [mode]);
 
   const updateDob = (field: "month" | "day" | "year", value: string) => {
     if (field === "month") setMonth(value);
@@ -64,6 +80,7 @@ export function AuthScreen({
 
   const submit = async () => {
     setError("");
+    setLastErrorCode("");
     if (!EMAIL_RE.test(email.trim())) {
       setError("Enter a valid email");
       return;
@@ -146,16 +163,28 @@ export function AuthScreen({
           extra: { context: "AuthScreen.submit", mode: isSignup ? "signup" : "signin", code },
         });
       }
-      if (code === "auth/email-already-in-use") setError("Email already in use. Try signing in, or use Google below.");
+      setLastErrorCode(code);
+      if (code === "auth/email-already-in-use") setError("Looks like you already have an account with this email.");
       else if (code === "auth/account-exists-with-different-credential")
         setError("This email is linked to Google. Tap 'Continue with Google' below.");
       else if (code === "auth/invalid-credential" || code === "auth/wrong-password")
         setError("Invalid email or password");
       else if (code === "auth/user-not-found") setError("No account with that email. Need to sign up?");
       else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
-      else if (code === "auth/too-many-requests")
+      else if (code === "auth/user-disabled")
+        setError("This account has been disabled. Please contact support if you think this is a mistake.");
+      else if (code === "auth/user-token-expired" || code === "auth/requires-recent-login")
+        setError("Your session expired. Please sign in again.");
+      else if (code === "auth/operation-not-allowed")
+        setError("Email sign-in is temporarily disabled. Try Continue with Google above.");
+      else if (code === "auth/missing-password" || code === "auth/missing-email")
+        setError("Please fill in both email and password.");
+      else if (code === "auth/web-storage-unsupported")
+        setError("Your browser is blocking storage. Disable private browsing or try a different browser.");
+      else if (code === "auth/too-many-requests" || code === "auth/quota-exceeded")
         setError("Too many attempts. Please wait a few minutes and try again.");
-      else if (code === "auth/network-request-failed") setError("Network error — check your connection and try again.");
+      else if (code === "auth/network-request-failed" || code === "auth/timeout")
+        setError("Network error — check your connection and try again.");
       // auth/internal-error = App Check rejection, reCAPTCHA failure, or transient Identity Toolkit 500.
       else if (code === "auth/internal-error")
         setError("Sign-in is temporarily unavailable. Please try again in a moment.");
@@ -171,6 +200,10 @@ export function AuthScreen({
       return;
     }
     logger.info("auth_screen_password_reset", { email: email.trim() });
+    // Clear the prior credential failure so the inline "Forgot password?"
+    // recovery button collapses now that we've acted on it.
+    setError("");
+    setLastErrorCode("");
     try {
       await resetPassword(email);
       setResetSent(true);
@@ -341,9 +374,42 @@ export function AuthScreen({
             message={displayError}
             onDismiss={() => {
               setError("");
+              setLastErrorCode("");
               onGoogleErrorDismiss();
             }}
           />
+
+          {/* Inline recovery action: returning user hit "email-already-in-use"
+              during signup. Tapping switches mode to sign-in WITHOUT remounting
+              the form (App.tsx dropped the `key={authMode}`), so their email
+              and password persist into the sign-in attempt. */}
+          {isSignup && lastErrorCode === "auth/email-already-in-use" && (
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                setLastErrorCode("");
+                onToggle();
+              }}
+              className="w-full -mt-2 mb-4 px-4 py-2 rounded-xl font-body text-sm text-brand-orange bg-brand-orange/[0.08] border border-brand-orange/30 hover:bg-brand-orange/[0.14] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              Sign in with this email instead →
+            </button>
+          )}
+
+          {/* Inline recovery action: invalid-credential failure on sign-in is
+              the moment a "Forgot password?" prompt is most useful. The discreet
+              link further down is also still present for users who land here
+              without a prior failure. */}
+          {!isSignup && (lastErrorCode === "auth/invalid-credential" || lastErrorCode === "auth/wrong-password") && (
+            <button
+              type="button"
+              onClick={handleReset}
+              className="w-full -mt-2 mb-4 px-4 py-2 rounded-xl font-body text-sm text-brand-orange bg-brand-orange/[0.08] border border-brand-orange/30 hover:bg-brand-orange/[0.14] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              Forgot password? Send reset email →
+            </button>
+          )}
 
           {verifyWarning && (
             <div className="w-full p-3 rounded-xl bg-[rgba(255,168,0,0.08)] border border-yellow-500/40 mb-4">

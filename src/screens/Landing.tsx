@@ -158,14 +158,24 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           {/* Auth Buttons */}
           <div className="w-full max-w-sm flex flex-col gap-4">
             <GoogleButton onClick={handleGoogle} loading={googleLoading} />
-            <button
-              type="button"
-              onClick={handleAuth("signup")}
-              disabled={googleLoading}
-              className="self-center px-4 py-3 font-body text-sm text-dim hover:text-white underline-offset-4 hover:underline transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-            >
-              Use email
-            </button>
+            <div className="grid grid-cols-2 gap-3" aria-label="Email sign-in options">
+              <button
+                type="button"
+                onClick={handleAuth("signin")}
+                disabled={googleLoading}
+                className="px-4 py-3 rounded-xl font-body text-sm text-white bg-white/[0.04] border border-white/15 hover:bg-white/[0.08] hover:border-white/25 transition-all duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={handleAuth("signup")}
+                disabled={googleLoading}
+                className="px-4 py-3 rounded-xl font-body text-sm text-white bg-white/[0.04] border border-white/15 hover:bg-white/[0.08] hover:border-white/25 transition-all duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                Create account
+              </button>
+            </div>
           </div>
         </div>
 

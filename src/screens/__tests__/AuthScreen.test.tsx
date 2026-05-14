@@ -244,6 +244,126 @@ describe("AuthScreen", () => {
     });
   });
 
+  it("shows clear copy for auth/user-disabled (existing account, can't sign in)", async () => {
+    // Bryan's failure-mode neighbour: existing user whose account was disabled
+    // — used to fall through the generic else branch and surface the raw
+    // "Firebase: Error (auth/user-disabled)." message.
+    mockSignIn.mockRejectedValueOnce({ code: "auth/user-disabled" });
+    render(<AuthScreen {...defaultProps} />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/This account has been disabled/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows session-expired copy for auth/user-token-expired", async () => {
+    mockSignIn.mockRejectedValueOnce({ code: "auth/user-token-expired" });
+    render(<AuthScreen {...defaultProps} />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Your session expired/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows actionable copy for auth/web-storage-unsupported (Safari private mode)", async () => {
+    mockSignIn.mockRejectedValueOnce({ code: "auth/web-storage-unsupported" });
+    render(<AuthScreen {...defaultProps} />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/browser is blocking storage/i)).toBeInTheDocument();
+    });
+  });
+
+  it("surfaces inline 'Sign in instead' action when signup hits auth/email-already-in-use", async () => {
+    // The single highest-leverage UX fix: returning users (Bryan) who got
+    // pushed into signup hit "email already in use" and previously had to
+    // find a small text-link toggle at the bottom of the form to switch to
+    // sign-in — which used to remount the form and wipe their typed email.
+    // Now we surface a prominent inline button that switches mode without
+    // clearing input.
+    mockSignUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
+    const onToggle = vi.fn();
+    render(<AuthScreen {...defaultProps} mode="signup" onToggle={onToggle} />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "bryan@test.com");
+    const pws = screen.getAllByPlaceholderText(/•/);
+    await userEvent.type(pws[0], "password123");
+    await userEvent.type(pws[1], "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Looks like you already have an account/)).toBeInTheDocument();
+    });
+    const recover = screen.getByRole("button", { name: /Sign in with this email instead/ });
+    expect(recover).toBeInTheDocument();
+    await userEvent.click(recover);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces inline 'Forgot password?' action on auth/invalid-credential during sign-in", async () => {
+    mockSignIn.mockRejectedValueOnce({ code: "auth/invalid-credential" });
+    mockResetPassword.mockResolvedValueOnce(undefined);
+    render(<AuthScreen {...defaultProps} />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "wrongpass");
+    await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    const recover = await screen.findByRole("button", { name: /Forgot password\? Send reset email/ });
+    await userEvent.click(recover);
+
+    await waitFor(() => {
+      expect(mockResetPassword).toHaveBeenCalledWith("user@test.com");
+      expect(screen.getByText(/Reset email sent/)).toBeInTheDocument();
+    });
+  });
+
+  it("clears the inline recovery button when the surfaced error is dismissed", async () => {
+    mockSignUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
+    render(<AuthScreen {...defaultProps} mode="signup" />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "bryan@test.com");
+    const pws = screen.getAllByPlaceholderText(/•/);
+    await userEvent.type(pws[0], "password123");
+    await userEvent.type(pws[1], "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+    await screen.findByRole("button", { name: /Sign in with this email instead/ });
+    await userEvent.click(screen.getByRole("button", { name: "Dismiss error" }));
+
+    expect(screen.queryByRole("button", { name: /Sign in with this email instead/ })).not.toBeInTheDocument();
+  });
+
+  it("preserves typed email + password when the parent toggles mode", async () => {
+    // App.tsx no longer remounts the screen via `key={authMode}` when the
+    // user toggles sign-in <-> sign-up — the screen must reset only the
+    // transient one-shot state (errors, verification warnings) while keeping
+    // the user's typed credentials so they don't have to retype on switch.
+    const { rerender } = render(<AuthScreen {...defaultProps} mode="signin" />);
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "bryan@test.com");
+    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+
+    rerender(<AuthScreen {...defaultProps} mode="signup" />);
+
+    expect((screen.getByPlaceholderText("you@email.com") as HTMLInputElement).value).toBe("bryan@test.com");
+    // Both password fields (Password + Confirm) appear in signup mode — only
+    // the first (Password) should still carry the value the user typed.
+    const pws = screen.getAllByPlaceholderText(/•/) as HTMLInputElement[];
+    expect(pws[0].value).toBe("password123");
+  });
+
   describe("auth telemetry (outage detection)", () => {
     it("fires sign_in_attempt + sign_in success on successful email sign-in", async () => {
       mockSignIn.mockResolvedValueOnce({ uid: "uid-success" });
