@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ClipsFeedSort } from "../../services/clips";
 
 export interface TopNewToggleProps {
@@ -13,7 +14,7 @@ export interface TopNewToggleProps {
  * brand-orange treatment as the upvote button in ClipActions, so the active
  * affordance is consistent across the spotlight.
  */
-export function TopNewToggle({ sort, onChange, disabled }: TopNewToggleProps) {
+export const TopNewToggle = memo(function TopNewToggle({ sort, onChange, disabled }: TopNewToggleProps) {
   return (
     <div
       role="group"
@@ -24,7 +25,7 @@ export function TopNewToggle({ sort, onChange, disabled }: TopNewToggleProps) {
       <ToggleButton label="New" pressed={sort === "new"} disabled={disabled} onClick={() => onChange("new")} />
     </div>
   );
-}
+});
 
 function ToggleButton({
   label,

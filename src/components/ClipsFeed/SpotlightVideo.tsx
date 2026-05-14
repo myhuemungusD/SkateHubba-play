@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRightIcon } from "../icons";
 
 /**
@@ -8,8 +8,12 @@ import { ChevronRightIcon } from "../icons";
  * the viewport — but only AFTER the first play() has resolved, because mobile
  * Safari revokes the muted-autoplay grant if pause() runs too early, which
  * surfaces as "feed loaded but clip won't play".
+ *
+ * memo: this is the most expensive child in the spotlight subtree (video
+ * element + IntersectionObserver). The parent SpotlightCard is also memoised
+ * — between them every unrelated lobby state mutation skips the video JS.
  */
-export function SpotlightVideo({ src, onNext }: { src: string; onNext: () => void }) {
+function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }) {
   const [muted, setMuted] = useState(true);
   const [ended, setEnded] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -87,7 +91,14 @@ export function SpotlightVideo({ src, onNext }: { src: string; onNext: () => voi
         autoPlay
         muted
         playsInline
-        preload="metadata"
+        // preload="auto" — this video IS the LCP element; we always intend
+        // to play it immediately. "metadata" stalls between the moov-atom
+        // fetch and the first media chunk, costing a round-trip that
+        // becomes wasted latency before first frame. The bytes are
+        // immutable (storage upload sets `cacheControl: max-age=1y,
+        // immutable`) so an aggressive preload also primes browser cache
+        // for the inevitable REPLAY.
+        preload="auto"
         onPlay={handlePlay}
         onEnded={handleEnded}
         className="w-full aspect-[9/16] max-h-[560px] bg-black object-cover"
@@ -141,3 +152,5 @@ export function SpotlightVideo({ src, onNext }: { src: string; onNext: () => voi
     </div>
   );
 }
+
+export const SpotlightVideo = memo(SpotlightVideoImpl);
