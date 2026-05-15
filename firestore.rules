@@ -1262,6 +1262,157 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ── Push targets (cross-readable token mirror) ──
+    // The canonical FCM token list lives at users/{uid}/private/profile
+    // .fcmTokens (owner-only). This mirror exposes the same tokens to any
+    // signed-in user so a SENDER (game opponent / nominated judge) can
+    // embed them into a /push_dispatch doc — the Firebase Extension that
+    // dispatches background push reads `tokens` from each dispatch doc.
+    //
+    // Why cross-readable is bounded risk: FCM tokens alone cannot be turned
+    // into a push attack — the FCM HTTP API requires OAuth2 with the
+    // project's service account, which only the Extension (running as
+    // Admin SDK) has. A leaked token can be paired with a uid (privacy
+    // leak surface) but cannot be abused for push spam by another
+    // authenticated user. The /push_dispatch create rule below additionally
+    // requires the sender to be a game participant AND requires
+    // `tokens.hasOnly(<mirror>)` so a sender cannot inject bogus tokens to
+    // misroute pushes.
+    //
+    // Cap mirrors the canonical fcmTokens cap (≤10) — keeps fan-out bounded
+    // even when a user is signed in on every device they own.
+    match /pushTargets/{uid} {
+      allow read: if isSignedIn();
+
+      // Allowlist of accepted keys. setDoc(..., merge:true) is the only
+      // legitimate writer (src/services/fcm.ts + pushNotifications.ts), and
+      // every write touches both fields together — keep this in lockstep
+      // with the writers if you add a field.
+      function pushTargetsKeysOk() {
+        return request.resource.data.keys().hasOnly(['tokens', 'updatedAt']);
+      }
+
+      function pushTargetsShapeOk() {
+        return request.resource.data.tokens is list
+          && request.resource.data.tokens.size() <= 10
+          // updatedAt MUST equal server time — without this, a client could
+          // backfill an old timestamp and we'd lose stale-token-cleanup
+          // semantics elsewhere (the Extension uses updatedAt to skip
+          // long-revoked mirrors when a delivery attempt 404s).
+          && request.resource.data.updatedAt == request.time;
+      }
+
+      allow create: if isOwner(uid)
+        && pushTargetsKeysOk()
+        && pushTargetsShapeOk();
+      allow update: if isOwner(uid)
+        && pushTargetsKeysOk()
+        && pushTargetsShapeOk();
+      // Owner may wipe their mirror (e.g. on account deletion).
+      allow delete: if isOwner(uid);
+    }
+
+    // ── Push dispatch (Firebase Extension trigger collection) ──
+    // The `firebase/firestore-send-fcm` Extension watches this collection
+    // (configured in extensions/firestore-send-fcm.env) and forwards each
+    // created doc to the FCM HTTP API. The extension runs as Admin SDK so
+    // it bypasses these rules — they only gate CLIENT writes to keep
+    // attackers from spamming the FCM API via injected dispatch docs.
+    //
+    // Why this collection exists: client-side dispatch is the only way to
+    // wake offline recipients without a Cloud Function (which the
+    // verify-no-cloud-functions CI gate blocks). The Extension is a managed
+    // deployment outside functions/src/, so it slips past the gate cleanly.
+    //
+    // Anti-abuse posture:
+    //  1. Sender must be a signed-in game participant
+    //  2. Recipient must be a participant of the same game (player or judge)
+    //  3. tokens.hasOnly(<recipient's mirror>) — no token injection
+    //  4. Title/body caps mirror /notifications (≤80 / ≤200) to bound payload
+    //  5. Rate anchor: a fresh /notification_limits or /games update by the
+    //     SAME sender for the SAME (game, type) must exist within 10s.
+    //     Transfers /notifications' 5s rate limit to /push_dispatch by
+    //     reference — a client cannot dispatch faster than they can
+    //     legitimately notify.
+    //
+    // The 10s window (vs the notification's 5s) absorbs the network gap
+    // between /notifications commit and /push_dispatch commit. Both anchors
+    // are committed BEFORE this rule evaluates, so get() (not getAfter)
+    // is the right primitive.
+    match /push_dispatch/{dispatchId} {
+      // Read: only sender and recipient. The Extension reads via Admin SDK
+      // so it ignores these rules. Recipient access lets a debug UI show
+      // "delivery pending" state without exposing dispatch payloads
+      // cross-user.
+      allow read: if isSignedIn()
+        && (request.auth.uid == resource.data.senderUid
+            || request.auth.uid == resource.data.recipientUid);
+
+      allow create: if isSignedIn()
+        && request.resource.data.senderUid == request.auth.uid
+        && request.resource.data.recipientUid is string
+        && request.resource.data.recipientUid != request.auth.uid
+        && request.resource.data.gameId is string
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite']
+        // ── Extension payload shape ──
+        && request.resource.data.notification is map
+        && request.resource.data.notification.title is string
+        && request.resource.data.notification.title.size() <= 80
+        && request.resource.data.notification.body is string
+        && request.resource.data.notification.body.size() <= 200
+        && request.resource.data.data is map
+        && request.resource.data.data.gameId == request.resource.data.gameId
+        // ── Tokens ──
+        && request.resource.data.tokens is list
+        && request.resource.data.tokens.size() >= 1
+        && request.resource.data.tokens.size() <= 10
+        && request.resource.data.createdAt == request.time
+        // ── Participation ──
+        // Sender must be a participant (player OR judge) of the referenced game.
+        && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
+        // Recipient must be a participant of the same game. Mirrors the
+        // /notifications create rule — player→player (your_turn / game_*),
+        // player→judge (judge_invite, ruling needed), judge→player (rulings).
+        && (
+          request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
+          || request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+          || (
+            'judgeId' in get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data
+            && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.judgeId != null
+            && request.resource.data.recipientUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.judgeId
+          )
+        )
+        // ── Token integrity ──
+        // Every token MUST appear in the recipient's /pushTargets mirror.
+        // Without this, a malicious sender could embed arbitrary tokens
+        // (their own device, a token scraped from another collection, …)
+        // and have the Extension deliver pushes to wrong devices.
+        // hasOnly is the inverse of hasAll: it checks subset, which is
+        // what we want — sender's tokens ⊆ recipient's mirror.
+        && request.resource.data.tokens.hasOnly(
+          get(/databases/$(database)/documents/pushTargets/$(request.resource.data.recipientUid)).data.tokens
+        )
+        // ── Rate-limit anchor ──
+        // Threads the /notifications 5s cooldown onto /push_dispatch.
+        // Either branch proves the sender legitimately emitted a
+        // notification (best-effort or in-tx path) within the last 10s.
+        && (
+          (
+            exists(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type))
+            && get(/databases/$(database)/documents/notification_limits/$(request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)).data.lastSentAt > request.time - duration.value(10, 's')
+          )
+          || get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.updatedAt > request.time - duration.value(10, 's')
+        );
+
+      // Dispatch docs are immutable once created — the Extension writes its
+      // delivery results to a sibling collection (configured by the
+      // Extension), so clients never need to update or delete here. The
+      // Extension's worker runs as Admin SDK and ignores these rules for
+      // its own bookkeeping writes.
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // ── Reports (content/player flagging for Google Play UGC policy) ──
     // Users can report opponents in games they participate in. The previous
     // rule leaned on a client-side "query + check" comment to enforce

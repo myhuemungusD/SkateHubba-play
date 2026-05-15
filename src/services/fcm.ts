@@ -1,9 +1,10 @@
 import { getMessaging, getToken, onMessage, type MessagePayload } from "firebase/messaging";
-import { doc, setDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import app, { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID } from "./users";
+import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 
 /**
  * The FCM token issued for this tab/device during the current session.
@@ -86,17 +87,29 @@ export async function requestPushPermission(uid: string): Promise<string | null>
     const token = await getToken(messaging, { vapidKey: String(vapidKey), serviceWorkerRegistration });
     if (!token) return null;
 
-    // Store token on the user's PRIVATE profile doc. Push-registration
-    // tokens must never leak cross-user (they could be used to target
-    // the device with impersonated push traffic), so they live at
-    // users/{uid}/private/profile which is owner-only readable.
+    // Store token on the user's PRIVATE profile doc (canonical) AND mirror
+    // to /pushTargets/{uid} (cross-readable). The private doc preserves
+    // the existing owner-only semantics for ALL sensitive profile fields
+    // (email, dob, parentalConsent…). The mirror exists because
+    // /push_dispatch creates require the sender to embed the recipient's
+    // tokens in the dispatch doc — and the sender can't read the
+    // recipient's private doc.
     //
-    // setDoc with merge:true also creates the private doc for
-    // pre-existing accounts that signed up before the public/private
-    // split — legacy clients won't have a private doc yet.
+    // The two writes are intentionally separate setDoc calls, not a
+    // single writeBatch: each path has its own rules surface, and a
+    // partial commit (private write succeeds, mirror fails) self-heals on
+    // the next requestPushPermission while still keeping the canonical
+    // list consistent. A batch with mixed-permission docs would fail-all
+    // on rules rejection — worse than the current best-effort write.
+    const db = requireDb();
     await setDoc(
-      doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+      doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
       { fcmTokens: arrayUnion(token) },
+      { merge: true },
+    );
+    await setDoc(
+      doc(db, PUSH_TARGETS_COLLECTION, uid),
+      { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
       { merge: true },
     );
 
@@ -120,9 +133,17 @@ export async function requestPushPermission(uid: string): Promise<string | null>
  */
 export async function removeFcmToken(uid: string, token: string): Promise<void> {
   try {
+    const db = requireDb();
     await setDoc(
-      doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+      doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
       { fcmTokens: arrayRemove(token) },
+      { merge: true },
+    );
+    // Scrub the cross-readable mirror in lockstep — a stale entry here
+    // would route pushes to a revoked device after sign-out.
+    await setDoc(
+      doc(db, PUSH_TARGETS_COLLECTION, uid),
+      { tokens: arrayRemove(token), updatedAt: serverTimestamp() },
       { merge: true },
     );
     if (activeFcmToken === token) {
