@@ -42,10 +42,14 @@ Invoke `tech-lead-reviewer` (`model: "opus"`) again with the diff
 (`git diff --staged` or `git diff main...HEAD`). It returns
 `APPROVE` / `REQUEST CHANGES` / `BLOCK`.
 
-- `APPROVE` → run the `/ship` verify gate, then commit on the current
-  branch with a conventional-commit message. Push with
-  `git push -u origin <branch>`. Do not open a PR unless the user
-  asked.
+- `APPROVE` → run the `/ship` verify gate. On green, **prepare** a
+  conventional-commit message and stage the diff, then **ask the user
+  to confirm** before running `git commit` and
+  `git push -u origin <branch>`. These two verbs are intentionally
+  **not** auto-allowed in `.claude/settings.json` — commits and pushes
+  mutate shared state and require an explicit human go-ahead per
+  CLAUDE.md's "execute actions with care" rule. Do not open a PR
+  unless the user asked.
 - `REQUEST CHANGES` → loop back to step 2 with only the affected
   agents.
 - `BLOCK` → stop, report the blocker to the user, ask for direction.

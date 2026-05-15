@@ -17,9 +17,7 @@ Slash commands:
   /team <spec>          fan a feature to the team (reviewer → parallel impl → reviewer → ship)
   /ship                 run the verify gate (tsc, lint, coverage, build, test-dup)
 
-Current priorities (see docs/STATUS_REPORT.md for the full board):
-  Phase 3 finisher:     referee system (in review), vote-driven ranking (next)
-  Hardening:            coverage, perf, Lighthouse, accessibility
+Current priorities: see docs/STATUS_REPORT.md for the live board.
 
 Guardrails: CLAUDE.md is the source of truth. No `as any`, no TODO/FIXME, no Cloud
 Functions, no Firebase imports outside src/services/**, all game writes via runTransaction.
