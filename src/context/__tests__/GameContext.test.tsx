@@ -7,10 +7,9 @@ import { AuthProvider } from "../AuthContext";
 import { NavigationProvider } from "../NavigationContext";
 import { NotificationProvider } from "../NotificationContext";
 import type { GameDoc } from "../../services/games";
+import { verifiedUser, testProfile } from "../../__tests__/harness/mockFactories";
 
 const mockUseAuth = vi.fn();
-// Inline single-line vi.mock for hooks/useAuth so the mock-setup block stays
-// distinct from AuthContext.test.tsx's longer multi-mock block.
 vi.mock("../../hooks/useAuth", () => ({ useAuth: () => mockUseAuth() }));
 vi.mock("../../services/auth", () => ({
   signOut: vi.fn(),
@@ -131,8 +130,8 @@ describe("GameProvider auto-forfeit sweep", () => {
     vi.useFakeTimers();
     mockUseAuth.mockReturnValue({
       loading: false,
-      user: { uid: "u1", emailVerified: true } as { uid: string; emailVerified: boolean },
-      profile: { uid: "u1", username: "sk8r", isVerifiedPro: false },
+      user: verifiedUser,
+      profile: testProfile,
       refreshProfile: vi.fn(),
     });
     snapshotCb = null;
