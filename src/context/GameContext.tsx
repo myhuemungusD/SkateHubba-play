@@ -5,6 +5,7 @@ import { useNotifications } from "./NotificationContext";
 import { updatePlayerStats, getUserProfile } from "../services/users";
 import { isUserBlocked } from "../services/blocking";
 import { createGame, forfeitExpiredTurn, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
+import { getOpponent } from "../services/games.turns";
 import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger } from "../services/logger";
@@ -45,7 +46,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [games, setGames] = useState<GameDoc[]>([]);
   const [activeGame, setActiveGame] = useState<GameDoc | null>(null);
 
-  // Track which games have already had stats recorded this session
+  // Track which games have already had stats recorded this session.
+  // Keys are `${gameId}:self` and `${gameId}:opp` so a self-write failure
+  // does not block the opponent retry (and vice versa). The two writes
+  // fire in parallel; each catch() rolls back its own key independently.
   const processedStatsRef = useRef(new Set<string>());
 
   // Track which expired games have already had forfeit attempted this session,
@@ -84,17 +88,36 @@ export function GameProvider({ children }: { children: ReactNode }) {
         setGamesLoading(false);
         const now = Date.now();
         for (const g of updatedGames) {
-          // Catch up on stats for games that completed while user was away
-          if ((g.status === "complete" || g.status === "forfeit") && g.winner && !processedStatsRef.current.has(g.id)) {
-            processedStatsRef.current.add(g.id);
+          // Catch up on stats for games that completed while user was away.
+          // Fan out two writes in parallel — local user (always permitted by
+          // isOwner) and opponent (gated by canPeerCloseStats in
+          // firestore.rules). Without the opponent write, an absent loser's
+          // `losses` counter never increments and the leaderboard skews.
+          if ((g.status === "complete" || g.status === "forfeit") && g.winner) {
+            const selfKey = `${g.id}:self`;
+            const oppKey = `${g.id}:opp`;
             const won = g.winner === user.uid;
-            updatePlayerStats(user.uid, g.id, won).catch((err) => {
-              logger.warn("stats_catchup_failed", {
-                gameId: g.id,
-                error: parseFirebaseError(err),
+            const opponentUid = getOpponent(g, user.uid);
+            if (!processedStatsRef.current.has(selfKey)) {
+              processedStatsRef.current.add(selfKey);
+              updatePlayerStats(user.uid, g.id, won).catch((err) => {
+                logger.warn("stats_catchup_failed", {
+                  gameId: g.id,
+                  error: parseFirebaseError(err),
+                });
+                processedStatsRef.current.delete(selfKey);
               });
-              processedStatsRef.current.delete(g.id);
-            });
+            }
+            if (!processedStatsRef.current.has(oppKey)) {
+              processedStatsRef.current.add(oppKey);
+              updatePlayerStats(opponentUid, g.id, !won).catch((err) => {
+                logger.warn("opponent_stats_catchup_failed", {
+                  gameId: g.id,
+                  error: parseFirebaseError(err),
+                });
+                processedStatsRef.current.delete(oppKey);
+              });
+            }
           }
 
           // Auto-resolve games whose turn deadline passed while nobody was
@@ -141,23 +164,37 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
         setScreen("gameover");
       }
-      // Update leaderboard stats when a game completes
+      // Update leaderboard stats when a game completes. Mirrors the
+      // catch-up loop above — fan out self + opponent in parallel so the
+      // loser's `losses` counter increments even if they never reopen
+      // the app. Each write is guarded by an independent `:self`/`:opp`
+      // key so a single-side failure doesn't block the other retry.
       const currentUser = userRef.current;
-      if (
-        (updated.status === "complete" || updated.status === "forfeit") &&
-        currentUser &&
-        updated.winner &&
-        !processedStatsRef.current.has(updated.id)
-      ) {
-        processedStatsRef.current.add(updated.id);
+      if ((updated.status === "complete" || updated.status === "forfeit") && currentUser && updated.winner) {
+        const selfKey = `${updated.id}:self`;
+        const oppKey = `${updated.id}:opp`;
         const won = updated.winner === currentUser.uid;
-        updatePlayerStats(currentUser.uid, updated.id, won).catch((err) => {
-          logger.warn("stats_update_failed", {
-            gameId: updated.id,
-            error: parseFirebaseError(err),
+        const opponentUid = getOpponent(updated, currentUser.uid);
+        if (!processedStatsRef.current.has(selfKey)) {
+          processedStatsRef.current.add(selfKey);
+          updatePlayerStats(currentUser.uid, updated.id, won).catch((err) => {
+            logger.warn("stats_update_failed", {
+              gameId: updated.id,
+              error: parseFirebaseError(err),
+            });
+            processedStatsRef.current.delete(selfKey); // allow retry on next update
           });
-          processedStatsRef.current.delete(updated.id); // allow retry on next update
-        });
+        }
+        if (!processedStatsRef.current.has(oppKey)) {
+          processedStatsRef.current.add(oppKey);
+          updatePlayerStats(opponentUid, updated.id, !won).catch((err) => {
+            logger.warn("opponent_stats_catchup_failed", {
+              gameId: updated.id,
+              error: parseFirebaseError(err),
+            });
+            processedStatsRef.current.delete(oppKey);
+          });
+        }
       }
     });
     return unsub;

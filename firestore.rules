@@ -42,6 +42,62 @@ service cloud.firestore {
         && 'judgeStatus' in game && game.judgeStatus == 'accepted';
     }
 
+    // ── Peer stats close-out ──
+    // Either participant of a complete/forfeit game may atomically increment
+    // the OTHER participant's wins/losses counter, gated by a relational
+    // check against the game doc and the existing lastStatsGameId
+    // idempotency key. Mirrors the cross-doc get() pattern used by /nudges
+    // (lines ~1093) and /notifications (lines ~1145). Without this, the
+    // catch-up loop in src/context/GameContext.tsx could only update the
+    // local user's stats, leaving the absent opponent's counters stale
+    // until they themselves reopened the app (P0 bug — leaderboard skew).
+    //
+    // The peer write is restricted to wins/losses/lastStatsGameId/updatedAt
+    // via affectedKeys().hasOnly(...), so a malicious caller cannot
+    // piggyback edits to username, isVerifiedPro, cooldown anchors, or
+    // any other field on the public profile doc. Increment direction is
+    // pinned to the game's recorded `winner`, and the
+    // `lastStatsGameId != resource.data.lastStatsGameId` guard forces
+    // forward progress (idempotency at the rules layer in addition to
+    // the in-transaction re-read in updatePlayerStats).
+    function canPeerCloseStats(uid) {
+      let gid = request.resource.data.lastStatsGameId;
+      let game = get(/databases/$(database)/documents/games/$(gid)).data;
+      return isSignedIn()
+        && gid is string
+        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
+        && (game.status == 'complete' || game.status == 'forfeit')
+        && game.winner != null
+        && (request.auth.uid == game.player1Uid || request.auth.uid == game.player2Uid)
+        && request.auth.uid != uid
+        && (uid == game.player1Uid || uid == game.player2Uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['wins','losses','lastStatsGameId','updatedAt'])
+        && (
+          (game.winner == uid
+            && (
+              (!('wins' in resource.data) && request.resource.data.wins == 1)
+              || ('wins' in resource.data && request.resource.data.wins == resource.data.wins + 1)
+            )
+            && (
+              !('losses' in request.resource.data) && !('losses' in resource.data)
+              || ('losses' in request.resource.data && 'losses' in resource.data && request.resource.data.losses == resource.data.losses)
+              || (!('losses' in resource.data) && !('losses' in request.resource.data))
+            )
+          )
+          || (game.winner != uid
+            && (
+              (!('losses' in resource.data) && request.resource.data.losses == 1)
+              || ('losses' in resource.data && request.resource.data.losses == resource.data.losses + 1)
+            )
+            && (
+              !('wins' in request.resource.data) && !('wins' in resource.data)
+              || ('wins' in request.resource.data && 'wins' in resource.data && request.resource.data.wins == resource.data.wins)
+              || (!('wins' in resource.data) && !('wins' in request.resource.data))
+            )
+          )
+        );
+    }
+
     // ── turnHistory growth bounds ──
     // Every write path that legitimately appends to `games.turnHistory`
     // (match resolution, dispute resolution, Call BS resolution, expired
@@ -229,6 +285,17 @@ service cloud.firestore {
               && request.resource.data.lastSpotCreatedAt == resource.data.lastSpotCreatedAt)
           || request.resource.data.lastSpotCreatedAt == request.time
         );
+      // Peer-write branch: either participant of a complete/forfeit game
+      // may close out the OTHER participant's wins/losses counter. Firestore
+      // rules are additive across `allow` statements of the same type — if
+      // either branch matches, the write is permitted. The owner branch
+      // above keeps every existing invariant; this branch is locked down
+      // by canPeerCloseStats(uid) (see helper near top of file): correct
+      // game outcome, correct increment direction, and an affectedKeys()
+      // hasOnly([wins,losses,lastStatsGameId,updatedAt]) guard so a peer
+      // cannot piggyback edits to username, isVerifiedPro, or any other
+      // public-profile field.
+      allow update: if canPeerCloseStats(uid);
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
 
