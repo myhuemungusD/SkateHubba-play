@@ -74,6 +74,12 @@ export function clipsRef() {
   return collection(requireDb(), "clips");
 }
 
+/**
+ * Deterministic clip doc id. Format is `${gameId}_${turnNumber}_${role}` so
+ * that a transaction retry inside `runTransaction` re-writes the same id
+ * rather than producing a duplicate row. Pair with the `set + match` cap of
+ * two clips per turn to keep the collection collision-free by construction.
+ */
 export function clipId(gameId: string, turnNumber: number, role: ClipRole): string {
   return `${gameId}_${turnNumber}_${role}`;
 }
