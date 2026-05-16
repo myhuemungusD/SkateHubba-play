@@ -249,7 +249,7 @@ SkateHubba-play/
 ├── public/                    # PWA manifest, firebase-messaging-sw.js, static assets
 ├── infra/                     # backup + lifecycle shell scripts
 ├── scripts/                   # check-test-duplication.mjs, check-file-length.mjs, ...
-├── docs/                      # 14 docs (see §4.13)
+├── docs/                      # 15 docs (see §4.13)
 ├── fastlane/
 ├── firestore.rules            # ~1546 LOC — the real backend
 ├── storage.rules
@@ -287,8 +287,8 @@ New production deps require written justification and Chief Engineer approval.
 ### 4.13 Documentation index (`docs/`)
 
 ```
-API.md, ARCHITECTURE.md, DATABASE.md, DECISIONS.md, DEPLOYMENT.md,
-DEVELOPMENT.md, GAME_MECHANICS.md, GAME_STATE_MACHINE.md,
+API.md, ARCHITECTURE.md, CHARTER.md (this file), DATABASE.md, DECISIONS.md,
+DEPLOYMENT.md, DEVELOPMENT.md, GAME_MECHANICS.md, GAME_STATE_MACHINE.md,
 NOTIFICATION_AUDIT.md, P0-SECURITY-AUDIT.md, PERMISSION_DENIED_RUNBOOK.md,
 SENTRY_ALERTS.md, STATUS_REPORT.md, TESTING.md
 archive/   — superseded audits (COMPREHENSIVE_GAP_ANALYSIS, etc.)
