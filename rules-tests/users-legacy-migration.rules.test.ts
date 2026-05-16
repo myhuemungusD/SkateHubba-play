@@ -161,6 +161,12 @@ describe("users/{uid} — strict post-backfill behaviour against legacy-shaped d
     await assertFails(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { dob: "1999-01-01" }));
   });
 
+  it("attack: revoking parentalConsent on a legacy doc is DENIED", async () => {
+    await seedLegacyPublicUser();
+    // Legacy value is true — flip to false.
+    await assertFails(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { parentalConsent: false }));
+  });
+
   it("attack: replacing fcmTokens on a legacy doc is DENIED", async () => {
     await seedLegacyPublicUser();
     await assertFails(
