@@ -11,8 +11,10 @@
  *   2. Sender + recipient must both be game participants (player OR judge)
  *   3. Tokens MUST be a subset of recipient's /pushTargets mirror
  *   4. Title ≤ 80, body ≤ 200 (matches /notifications caps)
- *   5. Rate anchor: a fresh /notification_limits or /games update by the
- *      same sender for the same (game, type) must exist within 10s
+ *   5. Companion-write rate limit: every dispatch MUST commit a same-batch
+ *      /push_dispatch_limits/{senderUid_recipientUid_gameId_type} doc with
+ *      lastSentAt pinned to serverTimestamp(). The limits-doc rules enforce
+ *      a 5s update cooldown so one dispatch cannot fan out to many.
  *   6. Dispatch docs are immutable (update + delete denied)
  *
  * Run via:  npm run test:rules
