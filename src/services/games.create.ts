@@ -1,6 +1,5 @@
 import { doc, setDoc, runTransaction, serverTimestamp, Timestamp } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
-import { addBreadcrumb } from "../lib/sentry";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger, metrics } from "./logger";
@@ -30,6 +29,11 @@ import { TURN_DURATION_MS, gamesRef, checkGameCreationRate, recordGameCreation }
  *     `judgeUid` MUST differ from both players
  *
  * The challenger is assigned as `player1` and sets first.
+ *
+ * Before the write, the signed-in user's ID token is force-refreshed so a
+ * freshly-verified email is reflected in the JWT (rules read `email_verified`
+ * from the token, not the local User). The refresh is best-effort: on failure
+ * the server-side rule still fires and surfaces a clean error path.
  */
 export async function createGame(
   challengerUid: string,
@@ -94,21 +98,18 @@ export async function createGame(
     ...(safeSpotId && { spotId: safeSpotId }),
   };
 
-  // F10: Force-refresh the ID token before the create write. Firestore rules
-  // gate game creation on `request.auth.token.email_verified == true`, but the
-  // cached JWT may not yet reflect a freshly-verified email — without this the
-  // user hits a rules rejection in the brief staleness window after clicking
-  // the verification link. Best-effort: a refresh failure must NOT block the
-  // create. The server-side rule still fires and surfaces a clean error path.
+  // F10: close the JWT-staleness window — the rules `email_verified` claim
+  // is read from the token, so a freshly-verified user can be rejected if
+  // the cached JWT hasn't rotated yet. Best-effort: a refresh failure must
+  // not block the create; the server-side rule remains the source of truth.
   const currentUser = requireAuth().currentUser;
   if (currentUser) {
     try {
       await currentUser.getIdToken(/* forceRefresh= */ true);
-    } catch {
-      addBreadcrumb({
-        category: "auth",
-        message: "forced ID token refresh failed before createGame",
-        level: "warning",
+    } catch (err) {
+      logger.warn("idtoken_refresh_failed", {
+        stage: "createGame",
+        error: parseFirebaseError(err),
       });
     }
   }

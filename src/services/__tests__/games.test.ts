@@ -62,8 +62,8 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
-// Spy on Sentry breadcrumbs so the F10 force-refresh test can assert the
-// failure path leaves a breadcrumb without coupling to the lazy SDK loader.
+// Capture the breadcrumb pipe (logger.warn → sentry) so the F10 force-refresh
+// failure path can be asserted without coupling to the lazy Sentry loader.
 const mockAddBreadcrumb = vi.hoisted(() => vi.fn());
 vi.mock("../../lib/sentry", () => ({
   addBreadcrumb: mockAddBreadcrumb,
@@ -603,11 +603,17 @@ describe("games service", () => {
           // Game doc + user-profile merge must still land — refresh failure
           // is non-fatal; the Firestore rule remains the source of truth.
           expect(mockSetDoc).toHaveBeenCalledTimes(2);
+          // logger.warn → addBreadcrumb pipeline. Assert the structured event
+          // name and that the underlying error was captured for triage.
           expect(mockAddBreadcrumb).toHaveBeenCalledWith(
             expect.objectContaining({
-              category: "auth",
+              category: "app",
               level: "warning",
-              message: expect.stringContaining("forced ID token refresh failed"),
+              message: "idtoken_refresh_failed",
+              data: expect.objectContaining({
+                stage: "createGame",
+                error: "network blip",
+              }),
             }),
           );
         } finally {
