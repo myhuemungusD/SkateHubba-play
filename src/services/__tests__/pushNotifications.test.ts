@@ -141,7 +141,7 @@ describe("registerPushToken", () => {
     expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
-  it("writes the token into users/{uid}/private/profile on successful registration", async () => {
+  it("writes the token into both private profile and pushTargets mirror on successful registration", async () => {
     mockRequestPermissions.mockResolvedValue({ receive: "granted" });
 
     await registerPushToken("u1");
@@ -155,9 +155,19 @@ describe("registerPushToken", () => {
     capturedRegistrationHandler?.({ value: "native-token-abc" });
     await flush();
 
-    expect(mockSetDoc).toHaveBeenCalledWith(
+    // Canonical write — owner-only private profile doc.
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      1,
       "users/u1/private/profile",
       { fcmTokens: { _op: "arrayUnion", value: "native-token-abc" } },
+      { merge: true },
+    );
+    // Mirror write — cross-readable pushTargets/{uid} doc that senders embed
+    // in /push_dispatch (see src/services/pushDispatch.ts).
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      2,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayUnion", value: "native-token-abc" }, updatedAt: "SERVER_TS" },
       { merge: true },
     );
   });
@@ -199,7 +209,8 @@ describe("registerPushToken", () => {
     await registerPushToken("u1");
     capturedRegistrationHandler?.({ value: "native-token-abc" });
     await flush();
-    // No throw bubbled up; the event is still consumed cleanly.
+    // No throw bubbled up; the catch block exits before the mirror write,
+    // so only the private-profile call landed.
     expect(mockSetDoc).toHaveBeenCalledTimes(1);
   });
 
@@ -230,19 +241,29 @@ describe("unregisterPushToken", () => {
   });
 
   it("scrubs only the current device's token and clears the cache", async () => {
-    // 1. Register to populate the active-token cache.
+    // 1. Register to populate the active-token cache. Each register writes
+    //    twice now (private profile + pushTargets mirror).
     mockRequestPermissions.mockResolvedValue({ receive: "granted" });
     await registerPushToken("u1");
     capturedRegistrationHandler?.({ value: "device-xyz" });
     await flush();
-    expect(mockSetDoc).toHaveBeenCalledTimes(1);
-
-    // 2. Sign-out scrub writes arrayRemove for that exact token.
-    await unregisterPushToken("u1");
     expect(mockSetDoc).toHaveBeenCalledTimes(2);
-    expect(mockSetDoc).toHaveBeenLastCalledWith(
+
+    // 2. Sign-out scrub writes arrayRemove on both surfaces. Without the
+    //    mirror scrub a revoked token would linger and route pushes to a
+    //    signed-out device.
+    await unregisterPushToken("u1");
+    expect(mockSetDoc).toHaveBeenCalledTimes(4);
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      3,
       "users/u1/private/profile",
       { fcmTokens: { _op: "arrayRemove", value: "device-xyz" } },
+      { merge: true },
+    );
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      4,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayRemove", value: "device-xyz" }, updatedAt: "SERVER_TS" },
       { merge: true },
     );
     expect(mockRemoveAllListeners).toHaveBeenCalledOnce();

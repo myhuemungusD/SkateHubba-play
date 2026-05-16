@@ -89,7 +89,7 @@ describe("requestPushPermission", () => {
     spy.mockRestore();
   });
 
-  it("returns token and stores in the private profile doc on success", async () => {
+  it("returns token and writes to BOTH the private profile and pushTargets mirror", async () => {
     mockRequestPermission.mockResolvedValue("granted");
     mockGetToken.mockResolvedValue("fcm-token-123");
 
@@ -100,12 +100,21 @@ describe("requestPushPermission", () => {
       vapidKey: "test-vapid-key",
       serviceWorkerRegistration: expect.any(Object),
     });
-    // fcmTokens live on the owner-only private subcollection doc
-    // (users/{uid}/private/profile) rather than the public user doc
-    // — prevents cross-user scraping of push-registration tokens.
-    expect(mockSetDoc).toHaveBeenCalledWith(
+    // Canonical: fcmTokens live on the owner-only private subcollection
+    // (users/{uid}/private/profile) — prevents cross-user scraping of
+    // push-registration tokens.
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      1,
       "users/u1/private/profile",
       { fcmTokens: { _op: "arrayUnion", value: "fcm-token-123" } },
+      { merge: true },
+    );
+    // Mirror: pushTargets/{uid} is the cross-readable copy a sender embeds
+    // in /push_dispatch docs (the Firebase Extension forwards them to FCM).
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      2,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayUnion", value: "fcm-token-123" }, updatedAt: "SERVER_TS" },
       { merge: true },
     );
   });
@@ -140,11 +149,21 @@ describe("requestPushPermission", () => {
 });
 
 describe("removeFcmToken", () => {
-  it("removes token from the private profile doc", async () => {
+  it("scrubs the token from both the private profile and pushTargets mirror", async () => {
     await removeFcmToken("u1", "token-abc");
-    expect(mockSetDoc).toHaveBeenCalledWith(
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      1,
       "users/u1/private/profile",
       { fcmTokens: { _op: "arrayRemove", value: "token-abc" } },
+      { merge: true },
+    );
+    // Without the mirror scrub a revoked token would linger on
+    // pushTargets/{uid} and route pushes to a signed-out device until
+    // the next requestPushPermission() rewrote the list.
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      2,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayRemove", value: "token-abc" }, updatedAt: "SERVER_TS" },
       { merge: true },
     );
   });
@@ -162,25 +181,32 @@ describe("removeCurrentFcmToken", () => {
   });
 
   it("removes the token captured by requestPushPermission and clears the cache", async () => {
-    // 1. Register a token so the cache is populated.
+    // 1. Register a token so the cache is populated. Each register writes
+    //    twice now (private profile + pushTargets mirror).
     mockRequestPermission.mockResolvedValue("granted");
     mockGetToken.mockResolvedValue("device-token-xyz");
     await requestPushPermission("u1");
-    // arrayUnion write from requestPushPermission
-    expect(mockSetDoc).toHaveBeenCalledTimes(1);
-
-    // 2. Sign-out scrub removes exactly that token on the subcollection.
-    await removeCurrentFcmToken("u1");
     expect(mockSetDoc).toHaveBeenCalledTimes(2);
-    expect(mockSetDoc).toHaveBeenLastCalledWith(
+
+    // 2. Sign-out scrub removes exactly that token on both surfaces.
+    await removeCurrentFcmToken("u1");
+    expect(mockSetDoc).toHaveBeenCalledTimes(4);
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      3,
       "users/u1/private/profile",
       { fcmTokens: { _op: "arrayRemove", value: "device-token-xyz" } },
+      { merge: true },
+    );
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      4,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayRemove", value: "device-token-xyz" }, updatedAt: "SERVER_TS" },
       { merge: true },
     );
 
     // 3. Second call is a no-op — cache was cleared by the successful remove.
     await removeCurrentFcmToken("u1");
-    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+    expect(mockSetDoc).toHaveBeenCalledTimes(4);
   });
 
   it("does not throw when the remove write fails", async () => {
