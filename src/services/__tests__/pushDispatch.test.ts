@@ -4,24 +4,36 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 type AnyMock = (...args: unknown[]) => unknown;
 const mockGetDoc = vi.fn<AnyMock>();
-const mockAddDoc = vi.fn<AnyMock>(() => Promise.resolve({ id: "dispatch-id" }));
-// doc(db, "pushTargets", uid)  → joined path so getDoc-call args are introspectable
-const mockDoc = vi.fn((...args: unknown[]) => (args.slice(1) as string[]).join("/"));
-// collection(db, "push_dispatch")  → join args[1:] so addDoc-call args are introspectable
+// doc(db, "pushTargets", uid)  → joined path so getDoc-call args are introspectable.
+// doc(collection)  (1-arg form, used for autoId on /push_dispatch) returns a
+// stub the batch.set assertion can detect.
+const mockDoc = vi.fn((...args: unknown[]) => {
+  if (args.length === 1) return { autoId: true, parent: args[0] };
+  return (args.slice(1) as string[]).join("/");
+});
 const mockCollection = vi.fn((...args: unknown[]) => (args.slice(1) as string[]).join("/"));
+
+type BatchSetCall = { ref: unknown; data: unknown };
+const batchSetCalls: BatchSetCall[] = [];
+const mockBatchCommit = vi.fn<AnyMock>(() => Promise.resolve(undefined));
+const mockBatchSet = vi.fn<AnyMock>((ref: unknown, data: unknown) => {
+  batchSetCalls.push({ ref, data });
+});
+const mockWriteBatch = vi.fn<AnyMock>(() => ({ set: mockBatchSet, commit: mockBatchCommit }));
 
 vi.mock("firebase/firestore", () => ({
   doc: (...args: unknown[]) => mockDoc(...args),
   collection: (...args: unknown[]) => mockCollection(...args),
   getDoc: (...args: unknown[]) => mockGetDoc(...args),
-  addDoc: (...args: unknown[]) => mockAddDoc(...args),
   serverTimestamp: () => "SERVER_TS",
+  writeBatch: (...args: unknown[]) => mockWriteBatch(...args),
 }));
 
 vi.mock("../../firebase");
 
 import {
   PUSH_DISPATCH_COLLECTION,
+  PUSH_DISPATCH_LIMITS_COLLECTION,
   PUSH_TARGETS_COLLECTION,
   createPushDispatchOutbox,
   dispatchPushNotification,
@@ -32,7 +44,20 @@ import {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  batchSetCalls.length = 0;
 });
+
+function findDispatchSet(): BatchSetCall | undefined {
+  return batchSetCalls.find(
+    (c) => typeof c.ref === "object" && c.ref !== null && (c.ref as { autoId?: boolean }).autoId,
+  );
+}
+
+function findLimitSet(): BatchSetCall | undefined {
+  return batchSetCalls.find(
+    (c) => typeof c.ref === "string" && (c.ref as string).startsWith(PUSH_DISPATCH_LIMITS_COLLECTION),
+  );
+}
 
 function snapshot(exists: boolean, data?: Record<string, unknown>) {
   return {
@@ -92,17 +117,22 @@ describe("dispatchPushNotification", () => {
   it("no-ops without writing when the recipient has no registered tokens", async () => {
     mockGetDoc.mockResolvedValue(snapshot(false));
     await dispatchPushNotification(baseParams);
-    expect(mockAddDoc).not.toHaveBeenCalled();
+    expect(mockWriteBatch).not.toHaveBeenCalled();
   });
 
-  it("writes a /push_dispatch doc in the extension's schema when tokens exist", async () => {
+  it("commits /push_dispatch + /push_dispatch_limits atomically in a single writeBatch", async () => {
     mockGetDoc.mockResolvedValue(snapshot(true, { tokens: ["t1", "t2"] }));
     await dispatchPushNotification(baseParams);
 
-    expect(mockCollection).toHaveBeenCalledWith(expect.anything(), PUSH_DISPATCH_COLLECTION);
-    expect(mockAddDoc).toHaveBeenCalledTimes(1);
-    const [, payload] = mockAddDoc.mock.calls[0] as unknown[];
-    expect(payload).toMatchObject({
+    // Atomicity is the Codex P1 fix: without same-batch commit, the rules'
+    // companion-write check can't bind dispatch to the limits cooldown.
+    expect(mockWriteBatch).toHaveBeenCalledTimes(1);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+    expect(mockBatchSet).toHaveBeenCalledTimes(2);
+
+    const dispatchSet = findDispatchSet();
+    expect(dispatchSet).toBeDefined();
+    expect(dispatchSet!.data).toMatchObject({
       tokens: ["t1", "t2"],
       notification: { title: "Your Turn!", body: "Match the trick" },
       data: { gameId: "game-1", type: "your_turn", click_action: "/?game=game-1" },
@@ -114,13 +144,42 @@ describe("dispatchPushNotification", () => {
     });
   });
 
+  it("writes the deterministic /push_dispatch_limits companion with server-pinned lastSentAt", async () => {
+    mockGetDoc.mockResolvedValue(snapshot(true, { tokens: ["t1"] }));
+    await dispatchPushNotification(baseParams);
+
+    // Doc id MUST be `${sender}_${recipient}_${gameId}_${type}` so the
+    // /push_dispatch create rule's getAfter() lookup hits the right doc.
+    expect(mockDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      PUSH_DISPATCH_LIMITS_COLLECTION,
+      "alice_bob_game-1_your_turn",
+    );
+    const limitSet = findLimitSet();
+    expect(limitSet).toBeDefined();
+    expect(limitSet!.data).toEqual({
+      senderUid: "alice",
+      recipientUid: "bob",
+      gameId: "game-1",
+      type: "your_turn",
+      lastSentAt: "SERVER_TS",
+    });
+  });
+
+  it("targets the extension's collection for the dispatch doc", async () => {
+    mockGetDoc.mockResolvedValue(snapshot(true, { tokens: ["t1"] }));
+    await dispatchPushNotification(baseParams);
+    expect(mockCollection).toHaveBeenCalledWith(expect.anything(), PUSH_DISPATCH_COLLECTION);
+  });
+
   it("dedupes tokens and caps the dispatch at ≤10 entries to bound FCM fan-out", async () => {
     // 12 distinct tokens + duplicates: dispatch should carry exactly 10 unique entries.
     const tokens = Array.from({ length: 12 }, (_, i) => `t${i}`).concat("t0", "t1");
     mockGetDoc.mockResolvedValue(snapshot(true, { tokens }));
     await dispatchPushNotification(baseParams);
 
-    const [, payload] = mockAddDoc.mock.calls[0] as [unknown, Record<string, unknown>];
+    const dispatchSet = findDispatchSet();
+    const payload = dispatchSet!.data as Record<string, unknown>;
     expect((payload.tokens as string[]).length).toBe(10);
     expect(new Set(payload.tokens as string[]).size).toBe(10);
   });
@@ -131,15 +190,15 @@ describe("dispatchPushNotification", () => {
     const longBody = "B".repeat(500);
     await dispatchPushNotification({ ...baseParams, title: longTitle, body: longBody });
 
-    const [, payload] = mockAddDoc.mock.calls[0] as [unknown, Record<string, unknown>];
-    const notif = payload.notification as { title: string; body: string };
+    const dispatchSet = findDispatchSet();
+    const notif = (dispatchSet!.data as Record<string, unknown>).notification as { title: string; body: string };
     expect(notif.title.length).toBe(80);
     expect(notif.body.length).toBe(200);
   });
 
-  it("swallows addDoc failures so the originating game action is never blocked", async () => {
+  it("swallows batch-commit failures so the originating game action is never blocked", async () => {
     mockGetDoc.mockResolvedValue(snapshot(true, { tokens: ["t1"] }));
-    mockAddDoc.mockRejectedValueOnce(new Error("permission-denied"));
+    mockBatchCommit.mockRejectedValueOnce(new Error("permission-denied"));
     await expect(dispatchPushNotification(baseParams)).resolves.toBeUndefined();
   });
 });
@@ -177,13 +236,16 @@ describe("push dispatch outbox", () => {
     const outbox = createPushDispatchOutbox();
     outbox.staged.push(stub("b"), stub("c"));
     await drainPushDispatchOutbox(outbox);
-    expect(mockAddDoc).toHaveBeenCalledTimes(2);
+    // Two dispatches → two batches (each batch holds the dispatch + its
+    // companion limit doc).
+    expect(mockWriteBatch).toHaveBeenCalledTimes(2);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(2);
     expect(outbox.staged).toEqual([]);
   });
 
   it("drainPushDispatchOutbox is a no-op when nothing is staged", async () => {
     const outbox = createPushDispatchOutbox();
     await drainPushDispatchOutbox(outbox);
-    expect(mockAddDoc).not.toHaveBeenCalled();
+    expect(mockWriteBatch).not.toHaveBeenCalled();
   });
 });

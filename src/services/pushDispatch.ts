@@ -36,7 +36,7 @@
  * /notifications onSnapshot the next time they open the tab.
  */
 
-import { addDoc, collection, doc, getDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -69,6 +69,17 @@ export const PUSH_TARGETS_COLLECTION = "pushTargets" as const;
  * one, rename the other in lockstep.
  */
 export const PUSH_DISPATCH_COLLECTION = "push_dispatch" as const;
+
+/**
+ * Cooldown-anchor collection. The /push_dispatch create rule REQUIRES a
+ * companion-write to /push_dispatch_limits/{senderUid_recipientUid_gameId_type}
+ * in the same writeBatch, with lastSentAt pinned to serverTimestamp().
+ * The limits-doc rules then enforce a 5s cooldown on update — which is
+ * what actually rate-limits dispatch fan-out (closes the Codex P1 burst
+ * window where one legit notification authorized unbounded dispatches in
+ * a 10s sliding gate).
+ */
+export const PUSH_DISPATCH_LIMITS_COLLECTION = "push_dispatch_limits" as const;
 
 interface PushTargetsDoc {
   tokens: string[];
@@ -154,9 +165,24 @@ function buildDispatchDoc(params: PushDispatchParams, tokens: string[]): Record<
 }
 
 /**
+ * Build the deterministic /push_dispatch_limits doc id. Mirrors the
+ * /push_dispatch create rule's lookup key — keep these in lockstep.
+ */
+function dispatchLimitKey(params: PushDispatchParams): string {
+  return `${params.senderUid}_${params.recipientUid}_${params.gameId}_${params.type}`;
+}
+
+/**
  * Dispatch a single push notification to the recipient's registered devices.
  * No-ops (without error) when the recipient has no tokens — common during
  * the rollout window before users have granted notification permission.
+ *
+ * Atomic writeBatch: /push_dispatch + /push_dispatch_limits commit together.
+ * The limits doc is the rate-anchor companion the create rule requires
+ * (server-side 5s cooldown). Without the batch, a malicious client could
+ * write the dispatch doc alone and the rule's getAfter() check would fail
+ * — but writing them as a batch is also what makes the legit path work,
+ * so we always co-commit.
  *
  * Best-effort: any failure is logged and swallowed so the caller's game
  * action stays uncoupled from push delivery health.
@@ -171,8 +197,24 @@ export async function dispatchPushNotification(params: PushDispatchParams): Prom
   const tokens = unique.slice(0, MAX_TOKENS_PER_DISPATCH);
 
   try {
-    await addDoc(collection(requireDb(), PUSH_DISPATCH_COLLECTION), buildDispatchDoc(params, tokens));
+    const db = requireDb();
+    const dispatchRef = doc(collection(db, PUSH_DISPATCH_COLLECTION));
+    const limitRef = doc(db, PUSH_DISPATCH_LIMITS_COLLECTION, dispatchLimitKey(params));
+
+    const batch = writeBatch(db);
+    batch.set(dispatchRef, buildDispatchDoc(params, tokens));
+    batch.set(limitRef, {
+      senderUid: params.senderUid,
+      recipientUid: params.recipientUid,
+      gameId: params.gameId,
+      type: params.type,
+      lastSentAt: serverTimestamp(),
+    });
+    await batch.commit();
   } catch (err) {
+    // Expected on burst/duplicate dispatches: the limits-doc 5s cooldown
+    // rejects the second write within the window. Logged at warn (not
+    // error) because it's the rate-limit working as designed.
     logger.warn("push_dispatch_write_failed", {
       recipientUid: params.recipientUid,
       type: params.type,
