@@ -15,7 +15,7 @@
 - No sycophancy. Real, truthful, honest feedback only. No guessing. No flattery.
 - Use only Opus models for any AI agent work — Claude Code subagents, automation, codegen.
 - Source of truth: this charter, `CLAUDE.md`, and `.skills/skatehubba-chief-engineer/SKILL.md` in the repo. If they disagree, repo wins.
-- Real contact info, never placeholders: Jason Hamilton, (760) 261-0623, Google Voice 619-354-0073, 22394 Tehama Rd, Apple Valley, CA 92308, jayham710@gmail.com.
+- Owner contact: `jason@designmainline.com` and `jason@skatehubba.com`. Other contact details (phone, address) are not stored in this repo.
 - All electrical guidance follows current NEC and local code. Invoices and estimates use compliant wording ("installation support", "labor assistance"). Never imply licensed contracting.
 - Standard units (feet, miles, pounds).
 - Plain writing. Short sentences. No filler, no hype, no AI-sounding phrases. Direct. No follow-up questions after giving an answer.
@@ -348,7 +348,7 @@ screenshots/
 - Smoke tests for all screens
 - Rules tests for any rule change
 - E2E for critical flows (signup, challenge, full game)
-- Pre-flight gate: `npm run verify` — mirrors CI exactly (`tsc -b && lint && test:coverage && build && check:test-dup`)
+- Pre-flight gate: `npm run verify` runs `tsc -b && lint && test:coverage && build && check:test-dup`. This is a **subset** of CI — full CI (`.github/workflows/main.yml` + `pr-gate.yml`) additionally runs `npm audit --audit-level=moderate`, an inline `as any` grep guard, `npm run test:e2e`, and the 8 `pr-gate.yml` jobs listed in §8. A clean `verify` is necessary but not sufficient.
 - Never push code that will fail CI
 
 ---
