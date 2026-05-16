@@ -368,7 +368,15 @@ export async function getUidByUsername(username: string): Promise<string | null>
  * same game. The re-read inside the tx makes the loser of a contention
  * race see the winner's updated lastStatsGameId and bail cleanly.
  *
- * Each player's client calls this for their OWN profile only.
+ * Called by the local client for both its OWN profile and the
+ * opponent's profile during the catch-up fan-out in
+ * src/context/GameContext.tsx. The opponent-targeted write is gated
+ * by the `canPeerCloseStats` rule in firestore.rules — only the two
+ * game participants may close out each other's wins/losses, the
+ * increment direction must match the recorded `game.winner`, and the
+ * affectedKeys() guard restricts the peer write to
+ * wins/losses/lastStatsGameId. Without the fan-out, an
+ * absent player's stats never advance until they reopen the app.
  */
 export async function updatePlayerStats(uid: string, gameId: string, won: boolean): Promise<void> {
   const db = requireDb();
