@@ -375,7 +375,7 @@ export async function getUidByUsername(username: string): Promise<string | null>
  * game participants may close out each other's wins/losses, the
  * increment direction must match the recorded `game.winner`, and the
  * affectedKeys() guard restricts the peer write to
- * wins/losses/lastStatsGameId/updatedAt. Without the fan-out, an
+ * wins/losses/lastStatsGameId. Without the fan-out, an
  * absent player's stats never advance until they reopen the app.
  */
 export async function updatePlayerStats(uid: string, gameId: string, won: boolean): Promise<void> {

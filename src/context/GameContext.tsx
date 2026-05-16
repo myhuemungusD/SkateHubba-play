@@ -77,6 +77,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  // Sweep all expired turns in a games list. Extracted so the snapshot
+  // handler and the deadline timer (below) share one code path. Safe to call
+  // speculatively — forfeitExpiredTurn re-checks the deadline server-side.
+  const sweepExpiredTurns = useCallback((list: GameDoc[]) => {
+    const now = Date.now();
+    for (const g of list) {
+      if (g.status !== "active" || forfeitAttemptedRef.current.has(g.id)) continue;
+      const deadline = g.turnDeadline?.toMillis?.() ?? 0;
+      if (deadline > 0 && deadline <= now) {
+        forfeitAttemptedRef.current.add(g.id);
+        forfeitExpiredTurn(g.id).catch((err) => {
+          logger.warn("forfeit_expired_failed", {
+            gameId: g.id,
+            error: parseFirebaseError(err),
+          });
+          forfeitAttemptedRef.current.delete(g.id);
+        });
+      }
+    }
+  }, []);
+
   // Subscribe to games list with pagination
   useEffect(() => {
     if (!user || !activeProfile) return;
@@ -86,7 +107,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       (updatedGames) => {
         setGames(updatedGames);
         setGamesLoading(false);
-        const now = Date.now();
         for (const g of updatedGames) {
           // Catch up on stats for games that completed while user was away.
           // Fan out two writes in parallel — local user (always permitted by
@@ -119,31 +139,41 @@ export function GameProvider({ children }: { children: ReactNode }) {
               });
             }
           }
-
-          // Auto-resolve games whose turn deadline passed while nobody was
-          // watching. Mirrors the per-game check in GamePlayScreen but runs
-          // against the full list so stale "active" games don't linger in
-          // the lobby counter. The transaction re-checks the deadline
-          // server-side, so this is safe to fire for every expired game.
-          if (g.status === "active" && !forfeitAttemptedRef.current.has(g.id)) {
-            const deadline = g.turnDeadline?.toMillis?.() ?? 0;
-            if (deadline > 0 && deadline <= now) {
-              forfeitAttemptedRef.current.add(g.id);
-              forfeitExpiredTurn(g.id).catch((err) => {
-                logger.warn("forfeit_expired_failed", {
-                  gameId: g.id,
-                  error: parseFirebaseError(err),
-                });
-                forfeitAttemptedRef.current.delete(g.id);
-              });
-            }
-          }
         }
+        // Auto-resolve games whose turn deadline passed while nobody was
+        // watching. Mirrors the per-game check in GamePlayScreen but runs
+        // against the full list so stale "active" games don't linger in
+        // the lobby counter. The transaction re-checks the deadline
+        // server-side, so this is safe to fire for every expired game.
+        sweepExpiredTurns(updatedGames);
       },
       gamesLimit,
     );
     return unsub;
-  }, [user, activeProfile, gamesLimit]);
+  }, [user, activeProfile, gamesLimit, sweepExpiredTurns]);
+
+  // Schedule a sweep when the next visible deadline elapses. Without this,
+  // a user who keeps the app open across an expiring deadline never sees
+  // the forfeit fire — onSnapshot only triggers when a game DOC changes,
+  // and an expiring deadline alone doesn't write to the doc. The transaction
+  // in forfeitExpiredTurn re-checks the deadline server-side, so firing
+  // slightly early (clock skew) is harmless.
+  useEffect(() => {
+    if (!user || !activeProfile) return;
+    const now = Date.now();
+    let earliest = Infinity;
+    for (const g of games) {
+      if (g.status !== "active" || forfeitAttemptedRef.current.has(g.id)) continue;
+      const deadline = g.turnDeadline?.toMillis?.() ?? 0;
+      if (deadline > now && deadline < earliest) earliest = deadline;
+    }
+    if (!Number.isFinite(earliest)) return;
+    // Cap delay at 2³¹−1 ms (setTimeout limit); add a 1s buffer so the
+    // server-side deadline check has comfortably elapsed when the sweep runs.
+    const delay = Math.min(earliest - now + 1000, 2_147_483_647);
+    const handle = setTimeout(() => sweepExpiredTurns(games), delay);
+    return () => clearTimeout(handle);
+  }, [games, user, activeProfile, sweepExpiredTurns]);
 
   // Track whether there are more games to load
   useEffect(() => {

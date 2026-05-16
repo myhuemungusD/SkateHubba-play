@@ -18,7 +18,7 @@
  *   - `lastStatsGameId` differs from the resource's current value
  *     (forces forward progress, blocks rule-layer idempotency replays)
  *   - the increment direction matches the recorded winner
- *   - no fields outside {wins, losses, lastStatsGameId, updatedAt} change
+ *   - no fields outside {wins, losses, lastStatsGameId} change
  *
  * These tests verify both the legitimate (✅) and attack (❌) cases listed
  * in the implementation plan.
