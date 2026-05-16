@@ -42,9 +42,11 @@ test("invite panel toggles open with social share tiles", async ({ page }) => {
     await expect(link).toHaveAttribute("rel", /noopener/);
   }
 
-  // Toggle closes again — the button text flips to "Close".
-  const closeToggle = page.getByRole("button", { name: /Close/i }).first();
-  await closeToggle.click();
+  // The same toggle button stays mounted — only its accessible name flips
+  // from "Invite a Friend" to exactly "Close" while the panel is open. Use
+  // an exact-name match instead of /Close/i so we don't accidentally pick
+  // up any unrelated close affordance the landing page may grow later.
+  await page.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByRole("region", { name: /Invite a friend options/i })).toHaveCount(0);
 });
 

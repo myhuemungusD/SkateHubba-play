@@ -12,7 +12,7 @@
  * mirrors what `writeLandedClipsInTransaction` would have written.
  */
 import { test, expect } from "@playwright/test";
-import { clearAll, createUser, createProfile, createClip } from "./helpers/emulator";
+import { clearAll, createUser, createProfile, createClip, verifyEmail, forceTokenRefresh } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
 
 const VIEWER = { email: "viewer@test.com", password: "password123", username: "viewer1" };
@@ -31,7 +31,13 @@ test("viewer upvotes another player's clip → button flips to pressed and count
   await createClip("seeded-game-id", 1, "set", author.uid, AUTHOR.username);
 
   // Viewer signs up through the UI and lands on the lobby (which mounts ClipsFeed).
+  // Both `clipVotes` create and the `clips.upvoteCount` increment require
+  // `email_verified == true` in firestore.rules — without verifyEmail +
+  // forceTokenRefresh the upvote transaction would be permission-denied.
   await signUpAndSetupProfile(page, VIEWER.email, VIEWER.password, VIEWER.username);
+  await verifyEmail(VIEWER.email);
+  await page.reload();
+  await forceTokenRefresh(page);
 
   // Wait for the spotlight card to hydrate. The upvote button's aria-label
   // is `Upvote clip by @<username> · current count <n>` when not yet voted.
@@ -41,10 +47,13 @@ test("viewer upvotes another player's clip → button flips to pressed and count
 
   await upvoteBtn.click();
 
-  // After upvoting the button's accessible name flips to "Upvoted · <count>",
-  // so requery by aria-pressed=true on the same flame button.
-  const upvotedBtn = page.locator('button[aria-pressed="true"]').filter({ hasText: "1" });
+  // After upvoting the same button's aria-label flips to `Upvoted · <count>`.
+  // Querying by that accessible name keeps us on the public contract — no
+  // CSS / DOM-structure coupling — and disambiguates from any other
+  // aria-pressed toggle that might happen to render the count "1".
+  const upvotedBtn = page.getByRole("button", { name: "Upvoted · 1" });
   await expect(upvotedBtn).toBeVisible({ timeout: 10_000 });
+  await expect(upvotedBtn).toHaveAttribute("aria-pressed", "true");
   // The same button is now disabled so a double-tap can't re-bump the count.
   await expect(upvotedBtn).toBeDisabled();
 });
