@@ -144,6 +144,19 @@ describe("SpotDetailPage", () => {
     });
   });
 
+  it("header back arrow routes to the map via NavigationContext", async () => {
+    renderPage();
+    await userEvent.click(await screen.findByLabelText("Back to map"));
+    expect(mockSetScreen).toHaveBeenCalledWith("map");
+  });
+
+  it("'Back to Map' error-fallback button routes via NavigationContext", async () => {
+    mockGetSpot.mockResolvedValueOnce(null);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /Back to Map/i }));
+    expect(mockSetScreen).toHaveBeenCalledWith("map");
+  });
+
   it("blocks comment submit when the user is signed out", async () => {
     mockUseAuthContext.mockReturnValue({ user: null });
     renderPage();
