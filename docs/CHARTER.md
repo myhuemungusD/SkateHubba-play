@@ -24,7 +24,7 @@
 
 ## CHANGELOG FROM v6
 
-- **Repo tree corrected.** Removed `tailwind.config.js` (Tailwind 4 config is CSS-based in `src/index.css`). Added `src/components/onboarding/`, `OnboardingContext`. Doc count updated from 13 → 14.
+- **Repo tree corrected.** Removed `tailwind.config.js` (Tailwind 4 config is CSS-based in `src/index.css`). Added `src/components/onboarding/`, `OnboardingContext`. Doc index regenerated against actual repo: 15 docs including this charter.
 - **`src/services/games.ts` description corrected.** Game CRUD is decomposed across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, `games.subscriptions.ts`, `games.mappers.ts`. `games.ts` is now a barrel re-export.
 - **PR-gate job list corrected.** Eight jobs, not seven. Added `check-test-duplication` and `check-file-length`; removed nonexistent `build-and-test`.
 - **`firestore.rules` LOC corrected** from ~1378 to ~1546.
@@ -66,7 +66,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - Persistent bottom tab bar (Home / Map / Me)
 - Verified pro profiles with gold treatment
 - Public player profiles with game history
-- Setter dispute / referee flow (in-review for v1.x.0 release)
+- Setter dispute flow for matcher "landed" claims (v1.1.0)
 - User blocking + content reporting (App Store UGC compliance)
 - GDPR Article 20 "Download My Data" from lobby account menu
 - Settings screen (notifications, haptics, blocked players, help)
