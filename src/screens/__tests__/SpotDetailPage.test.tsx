@@ -19,6 +19,11 @@ vi.mock("../../context/AuthContext", () => ({
   useAuthContext: () => mockUseAuthContext(),
 }));
 
+const mockSetScreen = vi.fn();
+vi.mock("../../context/NavigationContext", () => ({
+  useNavigationContext: () => ({ setScreen: mockSetScreen }),
+}));
+
 import { SpotDetailPage } from "../SpotDetailPage";
 
 const FIXTURE_SPOT: Spot = {
