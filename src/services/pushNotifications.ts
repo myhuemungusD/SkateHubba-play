@@ -32,11 +32,12 @@
 
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications, type Token } from "@capacitor/push-notifications";
-import { doc, setDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { doc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { PRIVATE_PROFILE_DOC_ID } from "./users";
+import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 
 /**
  * Token captured on the most recent successful registration. Cached so
@@ -137,9 +138,20 @@ export async function registerPushToken(uid: string): Promise<void> {
 async function persistToken(uid: string, token: string): Promise<void> {
   if (!token) return;
   try {
+    const db = requireDb();
     await setDoc(
-      doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+      doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
       { fcmTokens: arrayUnion(token) },
+      { merge: true },
+    );
+    // Mirror to the cross-readable /pushTargets/{uid} doc so the dispatch
+    // path (src/services/pushDispatch.ts) can embed this device's token in
+    // a push_dispatch doc when an opponent triggers a notifiable event.
+    // Same rationale as the web path in src/services/fcm.ts — the canonical
+    // list stays owner-only, the mirror unlocks cross-user delivery.
+    await setDoc(
+      doc(db, PUSH_TARGETS_COLLECTION, uid),
+      { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
       { merge: true },
     );
     activePushToken = token;
@@ -164,9 +176,17 @@ export async function unregisterPushToken(uid: string): Promise<void> {
   const token = activePushToken;
   if (token) {
     try {
+      const db = requireDb();
       await setDoc(
-        doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+        doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
         { fcmTokens: arrayRemove(token) },
+        { merge: true },
+      );
+      // Scrub the mirror in lockstep — a stale entry here would route
+      // pushes to the device after sign-out / account swap.
+      await setDoc(
+        doc(db, PUSH_TARGETS_COLLECTION, uid),
+        { tokens: arrayRemove(token), updatedAt: serverTimestamp() },
         { merge: true },
       );
       activePushToken = null;

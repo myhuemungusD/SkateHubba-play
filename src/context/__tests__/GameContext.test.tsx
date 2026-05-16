@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, act } from "@testing-library/react";
+import { render, waitFor, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Component, type ReactNode } from "react";
 import { useGameContext } from "../GameContext";
 import { AuthProvider } from "../AuthContext";
 import { NavigationProvider } from "../NavigationContext";
 import { NotificationProvider } from "../NotificationContext";
+import * as usersService from "../../services/users";
 import type { GameDoc } from "../../services/games";
 
 const mockUseAuth = vi.fn();
@@ -119,6 +120,111 @@ describe("useGameContext", () => {
     );
 
     expect(getByTestId("games").textContent).toBe("0");
+  });
+});
+
+describe("GameProvider — opponent stats catch-up fan-out", () => {
+  type SubscribeCallback = (games: GameDoc[]) => void;
+
+  // Hold onto the callback subscribeToMyGames was invoked with so each test
+  // can drive its own emissions.
+  let subscribeCallback: SubscribeCallback | null = null;
+
+  beforeEach(() => {
+    resetMocks();
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "alice-uid" },
+      profile: { uid: "alice-uid", username: "alice", stance: "Regular" },
+      refreshProfile: vi.fn(),
+    });
+    vi.mocked(usersService.updatePlayerStats).mockReset().mockResolvedValue(undefined);
+    subscribeCallback = null;
+    mockSubscribeToMyGames.mockImplementation((_uid: string, cb: SubscribeCallback) => {
+      subscribeCallback = cb;
+      return () => {};
+    });
+  });
+
+  async function renderProvider(): Promise<void> {
+    // Mirror the dynamic import used in the existing test above so the
+    // module-level vi.mocks are honoured before GameProvider resolves.
+    const { GameProvider } = await import("../GameContext");
+    function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <MemoryRouter initialEntries={["/"]}>
+          <AuthProvider>
+            <NavigationProvider>
+              <NotificationProvider uid="alice-uid">{children}</NotificationProvider>
+            </NavigationProvider>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+    }
+    render(
+      <Wrapper>
+        <GameProvider>
+          <span data-testid="ok">ok</span>
+        </GameProvider>
+      </Wrapper>,
+    );
+  }
+
+  function makeFinishedGame(overrides: Partial<GameDoc> = {}): GameDoc {
+    // Cast through unknown — we don't need every GameDoc field for this
+    // catch-up code path; it touches id/status/winner/playerNUid only.
+    return {
+      id: "game-1",
+      player1Uid: "alice-uid",
+      player2Uid: "bob-uid",
+      status: "complete",
+      winner: "alice-uid",
+      ...overrides,
+    } as unknown as GameDoc;
+  }
+
+  it("fan-out: fires updatePlayerStats for BOTH self and opponent on a finished game", async () => {
+    await renderProvider();
+    expect(subscribeCallback).not.toBeNull();
+    subscribeCallback!([makeFinishedGame()]);
+
+    await waitFor(() => {
+      expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
+    });
+    expect(usersService.updatePlayerStats).toHaveBeenCalledWith("alice-uid", "game-1", true);
+    expect(usersService.updatePlayerStats).toHaveBeenCalledWith("bob-uid", "game-1", false);
+  });
+
+  it("isolation: self-write failure does not suppress the opponent-write attempt", async () => {
+    vi.mocked(usersService.updatePlayerStats).mockImplementation(async (uid: string) => {
+      if (uid === "alice-uid") throw new Error("self write rejected");
+    });
+    await renderProvider();
+    subscribeCallback!([makeFinishedGame()]);
+
+    await waitFor(() => {
+      expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
+    });
+    // Both calls must have been issued — independent .catch() handlers
+    // mean the rejection on the self call does not block the opp call.
+    expect(usersService.updatePlayerStats).toHaveBeenCalledWith("alice-uid", "game-1", true);
+    expect(usersService.updatePlayerStats).toHaveBeenCalledWith("bob-uid", "game-1", false);
+  });
+
+  it("idempotency: re-emission of the same finished game does not double-fire either write", async () => {
+    await renderProvider();
+    const game = makeFinishedGame();
+    subscribeCallback!([game]);
+    await waitFor(() => {
+      expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
+    });
+    // Re-emit the same game (e.g. another snapshot ticked while still
+    // mounted). processedStatsRef must keep the count at two.
+    subscribeCallback!([game]);
+    subscribeCallback!([game]);
+    // Give microtasks a chance to flush.
+    await Promise.resolve();
+    expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
   });
 });
 

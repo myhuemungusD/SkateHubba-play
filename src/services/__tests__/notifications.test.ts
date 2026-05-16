@@ -49,10 +49,19 @@ vi.mock("firebase/firestore", () => ({
   writeBatch: (...args: unknown[]) => mockWriteBatch(...args),
 }));
 
+// Mock the push dispatch surface so notifications.test.ts can assert the
+// fire-and-forget call into pushDispatch.ts without exercising its
+// firestore reads/writes (those have their own test file).
+const mockDispatchPushNotification = vi.fn<AnyMock>(() => Promise.resolve(undefined));
+vi.mock("../pushDispatch", () => ({
+  dispatchPushNotification: (...args: unknown[]) => mockDispatchPushNotification(...args),
+}));
+
 vi.mock("../../firebase");
 
 import {
   writeNotification,
+  writeNotificationInTx,
   _resetNotificationRateLimit,
   markNotificationRead,
   deleteNotification,
@@ -103,6 +112,37 @@ describe("writeNotification", () => {
     expect(docData.gameId).toBe("game456");
     expect(docData.read).toBe(false);
     expect(docData.createdAt).toBe("SERVER_TS");
+  });
+
+  it("fires the push dispatcher after the batch commits (best-effort, no await)", async () => {
+    const params = {
+      senderUid: "sender456",
+      recipientUid: "user123",
+      type: "your_turn" as const,
+      title: "Your Turn!",
+      body: "Match @alice's kickflip",
+      gameId: "game456",
+    };
+    await writeNotification(params);
+    // Fired exactly once with the same params — the dispatcher is what wakes
+    // an offline recipient's device via the firestore-send-fcm extension.
+    expect(mockDispatchPushNotification).toHaveBeenCalledTimes(1);
+    expect(mockDispatchPushNotification).toHaveBeenCalledWith(params);
+  });
+
+  it("does NOT fire push dispatch when the batch commit fails (best-effort, gated on commit)", async () => {
+    mockBatchCommit.mockRejectedValueOnce(new Error("Firestore unavailable"));
+    await writeNotification({
+      senderUid: "s1",
+      recipientUid: "r1",
+      type: "your_turn",
+      title: "Turn",
+      body: "x",
+      gameId: "g1",
+    });
+    // Dispatch is downstream of the commit; if /notifications never landed,
+    // we must not send a push for a state transition that didn't happen.
+    expect(mockDispatchPushNotification).not.toHaveBeenCalled();
   });
 
   it("includes the matching notification_limits doc in the same batch", async () => {
@@ -215,6 +255,57 @@ describe("writeNotification", () => {
     _resetNotificationRateLimit();
     await writeNotification(params);
     expect(mockBatchCommit).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("writeNotificationInTx", () => {
+  // Minimal Transaction stub — we just need tx.set to be observable.
+  function makeTx(): { set: ReturnType<typeof vi.fn>; calls: BatchSetCall[] } {
+    const calls: BatchSetCall[] = [];
+    return {
+      set: vi.fn((ref: unknown, data: unknown) => {
+        calls.push({ ref, data });
+      }),
+      calls,
+    };
+  }
+
+  const baseParams = {
+    senderUid: "alice",
+    recipientUid: "bob",
+    type: "your_turn" as const,
+    title: "Your Turn!",
+    body: "Match",
+    gameId: "g1",
+  };
+
+  it("stages a notification doc on the transaction", () => {
+    const tx = makeTx();
+    writeNotificationInTx(tx as never, baseParams);
+    expect(tx.set).toHaveBeenCalledTimes(1);
+    const data = tx.calls[0].data as Record<string, unknown>;
+    expect(data.senderUid).toBe("alice");
+    expect(data.recipientUid).toBe("bob");
+    expect(data.type).toBe("your_turn");
+    expect(data.read).toBe(false);
+    expect(data.createdAt).toBe("SERVER_TS");
+  });
+
+  it("stages params into the optional push outbox when provided", () => {
+    const tx = makeTx();
+    const outbox = { staged: [] as (typeof baseParams)[] };
+    writeNotificationInTx(tx as never, baseParams, outbox);
+    expect(outbox.staged).toEqual([baseParams]);
+  });
+
+  it("skips outbox staging when no outbox is passed (zero-overhead default)", () => {
+    // Defends line 185 of notifications.ts: callers that don't need OS-level
+    // push (e.g. tests, transient writes) pay nothing for the push surface.
+    const tx = makeTx();
+    writeNotificationInTx(tx as never, baseParams);
+    expect(tx.set).toHaveBeenCalledTimes(1); // notification doc still written
+    // No outbox argument — nothing to assert on it; the test exists to cover
+    // the false branch of `if (pushOutbox)`.
   });
 });
 

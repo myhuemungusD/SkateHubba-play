@@ -10,6 +10,7 @@ team. The user's spec is in `$ARGUMENTS`.
 ### 1. Scope (sequential, blocking)
 
 Invoke `tech-lead-reviewer` with `model: "opus"`. Ask it to:
+
 - Identify the change surface (which files, which layers).
 - List blast-radius callers/dependents.
 - Flag any CLAUDE.md guardrails the spec risks.

@@ -17,6 +17,7 @@ import {
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { dispatchPushNotification, type PushDispatchOutbox } from "./pushDispatch";
 
 export type NotificationDocType = "your_turn" | "new_challenge" | "game_won" | "game_lost" | "judge_invite";
 
@@ -93,6 +94,20 @@ export async function writeNotification(params: WriteNotificationParams): Promis
     });
     await batch.commit();
 
+    // Background push fan-out. Fire-and-forget after the batch commits so
+    // a dispatch failure (recipient has no tokens, push extension throttling,
+    // …) can never undo the in-app notification or wedge the caller.
+    // No await — the original writeNotification contract is "best-effort,
+    // never blocks the game action", and adding latency here would break it.
+    void dispatchPushNotification({
+      senderUid: params.senderUid,
+      recipientUid: params.recipientUid,
+      type: params.type,
+      title: params.title,
+      body: params.body,
+      gameId: params.gameId,
+    });
+
     const now = Date.now();
     lastNotificationAt.set(key, now);
 
@@ -141,7 +156,11 @@ export async function writeNotification(params: WriteNotificationParams): Promis
  *    hot path are enforced by checkTurnActionRate + the game's turn-order
  *    rules instead.
  */
-export function writeNotificationInTx(tx: Transaction, params: WriteNotificationParams): void {
+export function writeNotificationInTx(
+  tx: Transaction,
+  params: WriteNotificationParams,
+  pushOutbox?: PushDispatchOutbox,
+): void {
   // Client-generated deterministic ID. Safe inside a transaction — if the
   // transaction is retried by the SDK the same ID is reused, keeping the
   // notification create idempotent with the game update.
@@ -157,6 +176,15 @@ export function writeNotificationInTx(tx: Transaction, params: WriteNotification
     read: false,
     createdAt: serverTimestamp(),
   });
+  // Stage the push dispatch for after the tx commits. Callers that pass an
+  // outbox are responsible for calling drainPushDispatchOutbox(outbox) AFTER
+  // runTransaction returns — staging in-tx is wrong (would fire on retried
+  // or aborted transactions); firing in-tx is wrong (would do non-tx reads
+  // and creates inside a transaction body). Optional so callers that don't
+  // need OS-level push (tests, transient writes) stay zero-overhead.
+  if (pushOutbox) {
+    pushOutbox.staged.push(params);
+  }
 }
 
 // ── Notification read/delete ──────────────────────────────
