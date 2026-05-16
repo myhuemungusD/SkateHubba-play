@@ -78,10 +78,12 @@ service cloud.firestore {
               (!('wins' in resource.data) && request.resource.data.wins == 1)
               || ('wins' in resource.data && request.resource.data.wins == resource.data.wins + 1)
             )
+            // OFF-side (losses on a winner write) must be unchanged: either
+            // absent from both states, or present in both and equal.
             && (
-              !('losses' in request.resource.data) && !('losses' in resource.data)
-              || ('losses' in request.resource.data && 'losses' in resource.data && request.resource.data.losses == resource.data.losses)
-              || (!('losses' in resource.data) && !('losses' in request.resource.data))
+              (!('losses' in request.resource.data) && !('losses' in resource.data))
+              || ('losses' in request.resource.data && 'losses' in resource.data
+                  && request.resource.data.losses == resource.data.losses)
             )
           )
           || (game.winner != uid
@@ -89,10 +91,12 @@ service cloud.firestore {
               (!('losses' in resource.data) && request.resource.data.losses == 1)
               || ('losses' in resource.data && request.resource.data.losses == resource.data.losses + 1)
             )
+            // OFF-side (wins on a loser write) must be unchanged: either
+            // absent from both states, or present in both and equal.
             && (
-              !('wins' in request.resource.data) && !('wins' in resource.data)
-              || ('wins' in request.resource.data && 'wins' in resource.data && request.resource.data.wins == resource.data.wins)
-              || (!('wins' in resource.data) && !('wins' in request.resource.data))
+              (!('wins' in request.resource.data) && !('wins' in resource.data))
+              || ('wins' in request.resource.data && 'wins' in resource.data
+                  && request.resource.data.wins == resource.data.wins)
             )
           )
         );

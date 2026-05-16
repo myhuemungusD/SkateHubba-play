@@ -188,7 +188,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (!processedStatsRef.current.has(oppKey)) {
           processedStatsRef.current.add(oppKey);
           updatePlayerStats(opponentUid, updated.id, !won).catch((err) => {
-            logger.warn("opponent_stats_catchup_failed", {
+            logger.warn("opponent_stats_update_failed", {
               gameId: updated.id,
               error: parseFirebaseError(err),
             });

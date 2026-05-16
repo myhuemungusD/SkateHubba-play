@@ -63,16 +63,22 @@ function asStranger(): RulesTestContext {
  * Seed both /users docs and a /games doc under rules-disabled. The game
  * defaults to a complete game won by Alice (so Bob is the loser whose
  * `losses` need to be peer-closed).
+ *
+ * Pass `null` for a `wins`/`losses` slot to OMIT the field from the seeded
+ * doc (UserProfile.wins/losses are optional — fresh users don't carry them).
+ * Pass `omitWinner: true` to seed a game doc with no `winner` field at all,
+ * which exercises the rule's `game.winner != null` short-circuit.
  */
 async function seed(
   opts: {
     gameStatus?: "active" | "complete" | "forfeit";
     winner?: string | null;
-    aliceWins?: number;
-    aliceLosses?: number;
+    omitWinner?: boolean;
+    aliceWins?: number | null;
+    aliceLosses?: number | null;
     aliceLastStatsGameId?: string | null;
-    bobWins?: number;
-    bobLosses?: number;
+    bobWins?: number | null;
+    bobLosses?: number | null;
     bobLastStatsGameId?: string | null;
     aliceUsername?: string;
   } = {},
@@ -80,6 +86,7 @@ async function seed(
   const {
     gameStatus = "complete",
     winner = ALICE_UID,
+    omitWinner = false,
     aliceWins = 0,
     aliceLosses = 0,
     aliceLastStatsGameId = null,
@@ -95,9 +102,9 @@ async function seed(
       uid: ALICE_UID,
       username: aliceUsername,
       stance: "Regular",
-      wins: aliceWins,
-      losses: aliceLosses,
     };
+    if (aliceWins !== null) aliceDoc.wins = aliceWins;
+    if (aliceLosses !== null) aliceDoc.losses = aliceLosses;
     if (aliceLastStatsGameId !== null) aliceDoc.lastStatsGameId = aliceLastStatsGameId;
     await setDoc(doc(db, "users", ALICE_UID), aliceDoc);
 
@@ -105,18 +112,19 @@ async function seed(
       uid: BOB_UID,
       username: "bob",
       stance: "Regular",
-      wins: bobWins,
-      losses: bobLosses,
     };
+    if (bobWins !== null) bobDoc.wins = bobWins;
+    if (bobLosses !== null) bobDoc.losses = bobLosses;
     if (bobLastStatsGameId !== null) bobDoc.lastStatsGameId = bobLastStatsGameId;
     await setDoc(doc(db, "users", BOB_UID), bobDoc);
 
-    await setDoc(doc(db, "games", GAME_ID), {
+    const gameDoc: Record<string, unknown> = {
       player1Uid: ALICE_UID,
       player2Uid: BOB_UID,
       status: gameStatus,
-      winner,
-    });
+    };
+    if (!omitWinner) gameDoc.winner = winner;
+    await setDoc(doc(db, "games", GAME_ID), gameDoc);
   });
 }
 
@@ -180,6 +188,36 @@ describe("users/{uid} peer stats — legitimate writes", () => {
       }),
     );
   });
+
+  it("legitimate: peer can initialise wins/losses on a fresh doc (no field yet)", async () => {
+    // UserProfile.wins/losses are optional — players who have never finished
+    // a game don't carry the fields at all. Exercises the
+    // `!('wins' in resource.data) && request.resource.data.wins == 1` and
+    // matching losses branches of canPeerCloseStats.
+    await seed({
+      winner: ALICE_UID,
+      aliceWins: null,
+      aliceLosses: null,
+      bobWins: null,
+      bobLosses: null,
+    });
+    // Winner (Alice) closes out loser (Bob) — Bob's losses field doesn't
+    // exist yet, request writes `losses: 1`.
+    await assertSucceeds(
+      updateDoc(doc(asAlice().firestore(), "users", BOB_UID), {
+        losses: 1,
+        lastStatsGameId: GAME_ID,
+      }),
+    );
+    // Loser (Bob) closes out winner (Alice) — Alice's wins field doesn't
+    // exist yet, request writes `wins: 1`.
+    await assertSucceeds(
+      updateDoc(doc(asBob().firestore(), "users", ALICE_UID), {
+        wins: 1,
+        lastStatsGameId: GAME_ID,
+      }),
+    );
+  });
 });
 
 describe("users/{uid} peer stats — attack rejections", () => {
@@ -225,24 +263,6 @@ describe("users/{uid} peer stats — attack rejections", () => {
     await assertFails(
       updateDoc(doc(asAlice().firestore(), "users", BOB_UID), {
         losses: 1,
-        lastStatsGameId: GAME_ID,
-      }),
-    );
-  });
-
-  it("attack: peer CANNOT increment own stats via the peer rule (uid == caller)", async () => {
-    // Alice trying to write her own doc with the peer-shaped payload.
-    // The peer rule's `request.auth.uid != uid` check rejects this branch.
-    // (The owner branch would still permit it, but only if it satisfies the
-    // full owner invariants — including unchanged username. This payload does.)
-    // So this case actually SUCCEEDS via the owner branch — it's not an attack
-    // against the peer rule itself. We confirm the peer rule alone does not
-    // grant self-writes by reading the assertion correctly below.
-    await seed({ winner: ALICE_UID });
-    // Owner-branch path — wins +1 with lastStatsGameId is a legit owner write.
-    await assertSucceeds(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        wins: 1,
         lastStatsGameId: GAME_ID,
       }),
     );
@@ -309,29 +329,7 @@ describe("users/{uid} peer stats — attack rejections", () => {
   it("attack: peer CANNOT close stats when winner field is missing entirely", async () => {
     // Seed the game with no `winner` key at all — the rule's `game.winner != null`
     // check would short-circuit on the missing key access. Confirm rejection.
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      const db = ctx.firestore();
-      await setDoc(doc(db, "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        wins: 0,
-        losses: 0,
-      });
-      await setDoc(doc(db, "users", BOB_UID), {
-        uid: BOB_UID,
-        username: "bob",
-        stance: "Regular",
-        wins: 0,
-        losses: 0,
-      });
-      await setDoc(doc(db, "games", GAME_ID), {
-        player1Uid: ALICE_UID,
-        player2Uid: BOB_UID,
-        status: "complete",
-        // winner intentionally omitted
-      });
-    });
+    await seed({ omitWinner: true });
     await assertFails(
       updateDoc(doc(asAlice().firestore(), "users", BOB_UID), {
         losses: 1,
@@ -346,6 +344,21 @@ describe("users/{uid} peer stats — attack rejections", () => {
       updateDoc(doc(asBob().firestore(), "users", ALICE_UID), {
         wins: 4,
         lastStatsGameId: GAME_ID,
+      }),
+    );
+  });
+
+  it("attack: peer CANNOT close stats with lastStatsGameId pointing at a non-existent game", async () => {
+    // The rule resolves the game doc via `get(/.../games/$(gid)).data` —
+    // if the referenced doc doesn't exist, evaluation must reject the
+    // write rather than crashing through to grant. Guards against a
+    // crafted client passing a bogus gid to bypass the participant /
+    // winner / status checks.
+    await seed({ winner: ALICE_UID, bobLosses: 0 });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", BOB_UID), {
+        losses: 1,
+        lastStatsGameId: "ghost-game-does-not-exist",
       }),
     );
   });
