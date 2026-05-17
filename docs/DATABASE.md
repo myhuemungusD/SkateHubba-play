@@ -78,30 +78,19 @@ out of cross-user reach while keeping the public fields (`username`,
 
 **Access:** Only the owning user can read, write, or delete.
 
-**Migration transition (April 2026):** Legacy `users/{uid}` documents
-created before the public/private split still carry `email`,
+**Migration history (April–May 2026):** Legacy `users/{uid}` documents
+created before the public/private split carried `email`,
 `emailVerified`, `dob`, `parentalConsent`, and `fcmTokens` inline at
-the top level. The Firestore rules currently run in a **transitional
-mode** (see `firestore.rules` update block for `users/{uid}`): those
-field names are allowed on the public doc at update-time IFF the value
-is unchanged from the stored value, which lets legitimate partial
-writes (`wins++`, stance changes, etc.) continue to work against
-legacy docs before the backfill lands. Creates remain strict — no new
-doc may introduce these fields.
-
-**Deploy runbook:**
-
-1. Ship this PR (rules + code + transitional guards) to production.
-2. Operators run `scripts/migrate-users-private.mjs` (Admin SDK) to
-   move the five sensitive fields from every legacy public user doc
-   into its `users/{uid}/private/profile` companion and remove them
-   from the public doc. The script is idempotent and resumable so it
-   can be rerun safely.
-3. After the backfill is verified (no public user doc still carries
-   any of the five sensitive field names), land a follow-up PR that
-   tightens the `users/{uid}` update rule back to the strict
-   `!('X' in request.resource.data)` form, closing the residual
-   transitional-tolerance window.
+the top level. From the split rollout in April 2026 until the backfill
+completed in May 2026, the Firestore rules ran in a transitional mode
+that accepted those field names on update IFF their values were
+unchanged. `scripts/migrate-users-private.mjs` (Admin SDK, idempotent
+and resumable) moved the five sensitive fields from every legacy
+public user doc into its `users/{uid}/private/profile` companion and
+removed them from the public doc. With the backfill verified complete
+in production, the `users/{uid}` update rule has been tightened back
+to the strict `!('X' in request.resource.data)` form, matching the
+create rule.
 
 ---
 
