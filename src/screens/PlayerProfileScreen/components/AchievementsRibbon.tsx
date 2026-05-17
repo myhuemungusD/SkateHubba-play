@@ -32,14 +32,8 @@ export function AchievementsRibbon(_props: Props = {}) {
   // so PR-F can flip a single boolean without a component split.
   void _props;
   return (
-    <section
-      aria-label="Achievements"
-      data-testid="achievements-ribbon"
-      className="mb-8 animate-fade-in"
-    >
-      <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-3">
-        ACHIEVEMENTS
-      </h2>
+    <section aria-label="Achievements" data-testid="achievements-ribbon" className="mb-8 animate-fade-in">
+      <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-3">ACHIEVEMENTS</h2>
       <ul className="grid grid-cols-4 md:grid-cols-6 gap-2">
         {placeholderIndices.map((i) => (
           <li key={i}>
@@ -60,6 +54,7 @@ export function AchievementsRibbon(_props: Props = {}) {
 function PlaceholderTile({ index }: { index: number }) {
   return (
     <div
+      role="img"
       data-testid={`achievement-tile-${index}`}
       aria-label="Locked achievement"
       className="aspect-square rounded-2xl bg-surface/60 border border-border flex flex-col items-center justify-center gap-1 grayscale select-none"

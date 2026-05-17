@@ -1,13 +1,17 @@
 /**
  * Firestore rules tests for the `profileImageUrl` validator on
- * `users/{uid}` updates (PR-B, plan §4.5).
+ * `users/{uid}` updates (PR-B, plan §4.5) AND creates (PR-C, Codex P1 +
+ * chief BLOCKER #1 — the anti-phishing guard previously only existed on
+ * the update path).
  *
  * Verifies:
- *  - own UID URL allowed
+ *  - own UID URL allowed (update)
  *  - other user's UID URL denied (audit S12, anti-phishing)
  *  - malformed URL denied
  *  - null allowed
  *  - non-bucket URL denied (audit S5, bucket pinning)
+ *  - CREATE: own UID URL allowed
+ *  - CREATE: arbitrary external URL denied
  */
 import { describe, it } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
@@ -17,10 +21,12 @@ import { setupRulesTestEnv } from "./_fixtures";
 const PROD_BUCKET = "sk8hub-d7806.firebasestorage.app";
 const OWNER_UID = "owner-uid";
 const OTHER_UID = "other-uid";
+const NEW_OWNER_UID = "new-owner-uid";
 
 const getEnv = setupRulesTestEnv("demo-skatehubba-rules-avatar-firestore", async (env) => {
   // Seed both profiles via security-disabled context so the update-rule
-  // tests have something to mutate.
+  // tests have something to mutate. The CREATE tests below use a fresh
+  // uid (`NEW_OWNER_UID`) so seeding doesn't collide with them.
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
     await setDoc(doc(db, "users", OWNER_UID), {
@@ -40,6 +46,10 @@ const getEnv = setupRulesTestEnv("demo-skatehubba-rules-avatar-firestore", async
 
 function asOwner(): RulesTestContext {
   return getEnv().authenticatedContext(OWNER_UID, { email_verified: true });
+}
+
+function asNewOwner(): RulesTestContext {
+  return getEnv().authenticatedContext(NEW_OWNER_UID, { email_verified: true });
 }
 
 function buildUrl(uid: string, ext = "webp", bucket = PROD_BUCKET): string {
@@ -103,5 +113,31 @@ describe("avatar Firestore rule — profileImageUrl pinning", () => {
         }),
       );
     }
+  });
+
+  describe("CREATE path (Codex P1 + chief BLOCKER #1)", () => {
+    it("allows creating a user doc with a bucket+UID-pinned profileImageUrl", async () => {
+      await assertSucceeds(
+        setDoc(doc(asNewOwner().firestore(), "users", NEW_OWNER_UID), {
+          uid: NEW_OWNER_UID,
+          username: "new_owner",
+          stance: "Regular",
+          createdAt: serverTimestamp(),
+          profileImageUrl: buildUrl(NEW_OWNER_UID, "webp"),
+        }),
+      );
+    });
+
+    it("denies creating a user doc with an arbitrary external profileImageUrl", async () => {
+      await assertFails(
+        setDoc(doc(asNewOwner().firestore(), "users", NEW_OWNER_UID), {
+          uid: NEW_OWNER_UID,
+          username: "new_owner",
+          stance: "Regular",
+          createdAt: serverTimestamp(),
+          profileImageUrl: "https://evil.example.com/avatar.webp",
+        }),
+      );
+    });
   });
 });

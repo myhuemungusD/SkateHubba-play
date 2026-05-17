@@ -247,22 +247,31 @@ describe("uploadAvatar", () => {
 });
 
 describe("deleteAvatar", () => {
-  it("attempts to delete all three extension variants", async () => {
-    await deleteAvatar("user-1");
+  it("attempts to delete all three extension variants and reports removed=true", async () => {
+    const result = await deleteAvatar("user-1");
     expect(mockDeleteObject).toHaveBeenCalledTimes(3);
     expect(mockRef).toHaveBeenCalledWith(expect.anything(), "users/user-1/avatar.webp");
     expect(mockRef).toHaveBeenCalledWith(expect.anything(), "users/user-1/avatar.jpeg");
     expect(mockRef).toHaveBeenCalledWith(expect.anything(), "users/user-1/avatar.png");
+    expect(result).toEqual({ removed: true });
   });
 
-  it("tolerates not-found on every variant", async () => {
+  it("reports removed=false when every variant is not-found", async () => {
     mockDeleteObject.mockRejectedValue(Object.assign(new Error("nf"), { code: "storage/object-not-found" }));
-    await expect(deleteAvatar("user-1")).resolves.toBeUndefined();
+    await expect(deleteAvatar("user-1")).resolves.toEqual({ removed: false });
   });
 
-  it("logs a warning on non-not-found errors but does not throw", async () => {
+  it("logs a warning on non-not-found errors but does not throw, removed=false", async () => {
     mockDeleteObject.mockRejectedValue(Object.assign(new Error("perm"), { code: "storage/unauthorized" }));
-    await expect(deleteAvatar("user-1")).resolves.toBeUndefined();
+    await expect(deleteAvatar("user-1")).resolves.toEqual({ removed: false });
+  });
+
+  it("reports removed=true when at least one variant succeeded amid not-founds", async () => {
+    mockDeleteObject
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error("nf"), { code: "storage/object-not-found" }))
+      .mockRejectedValueOnce(Object.assign(new Error("nf"), { code: "storage/object-not-found" }));
+    await expect(deleteAvatar("user-1")).resolves.toEqual({ removed: true });
   });
 
   it("tolerates non-Error rejections per variant (defensive coercion)", async () => {
@@ -272,7 +281,7 @@ describe("deleteAvatar", () => {
       .mockRejectedValueOnce("opaque")
       .mockRejectedValueOnce({ message: "no-code" })
       .mockRejectedValueOnce(Object.assign(new Error("boom"), { code: "storage/unauthorized" }));
-    await expect(deleteAvatar("user-1")).resolves.toBeUndefined();
+    await expect(deleteAvatar("user-1")).resolves.toEqual({ removed: false });
   });
 });
 

@@ -17,8 +17,12 @@
  * Telemetry: we emit `feature_flag_evaluated` on a 1% sample so the
  * dashboard has signal on which flags are actually being read without
  * burying PostHog ingest in noise.
+ *
+ * The React hook variant (`useFeatureFlag`) lives in
+ * `src/hooks/useFeatureFlag.ts` — per CLAUDE.md, hooks belong under
+ * `src/hooks/`. The hook composes the `subscribeFeatureFlags` /
+ * `getFeatureFlagSnapshot` primitives exported below.
  */
-import { useSyncExternalStore } from "react";
 import { getPostHogClient } from "../lib/posthog";
 import { isAnalyticsAllowed, subscribeConsent } from "../lib/consent";
 import { analytics } from "./analytics";
@@ -69,32 +73,26 @@ export function isFeatureEnabled(flag: string, defaultValue = false): boolean {
 }
 
 /**
- * React hook variant. Re-renders when PostHog flushes new flag values
- * (`onFeatureFlags`) or when the user updates analytics consent. The
- * latter matters because flipping consent from declined → accepted
- * unblocks flag reads, and the gated surface should pick that up
- * without a full page reload.
- *
- * Implemented via `useSyncExternalStore` — the same primitive
- * `useAnalyticsConsent` uses — so the eslint-react-hooks plugin's
- * setState-in-effect rule never fires and tearing is impossible.
+ * Subscribe to PostHog flag-flush and consent-flip events. The returned
+ * unsubscribe callback tears down both inner subscriptions. Exposed for
+ * the `useFeatureFlag` hook in `src/hooks/` so it can drive
+ * `useSyncExternalStore` without owning Firebase/PostHog plumbing.
  */
-export function useFeatureFlag(flag: string, defaultValue = false): boolean {
-  const subscribe = (notify: () => void): (() => void) => {
-    const ph = getPostHogClient();
-    const phUnsub = ph?.onFeatureFlags(notify);
-    const consentUnsub = subscribeConsent(notify);
-    return () => {
-      phUnsub?.();
-      consentUnsub();
-    };
+export function subscribeFeatureFlags(notify: () => void): () => void {
+  const ph = getPostHogClient();
+  const phUnsub = ph?.onFeatureFlags(notify);
+  const consentUnsub = subscribeConsent(notify);
+  return () => {
+    phUnsub?.();
+    consentUnsub();
   };
-  const getSnapshot = (): boolean => isFeatureEnabled(flag, defaultValue);
-  // Server snapshot mirrors the synchronous default — PostHog is browser-
-  // only, so server-side renders should never differ from the fallback.
-  // Vitest runs in jsdom, never invoking the server-snapshot path; the
-  // ignore avoids forcing a bespoke SSR-environment test for one line.
-  /* v8 ignore next */
-  const getServerSnapshot = (): boolean => defaultValue;
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+/**
+ * Snapshot accessor for {@link useFeatureFlag}. Identical to
+ * {@link isFeatureEnabled} — re-exported under the snapshot name to make
+ * the hook's `useSyncExternalStore` wiring read top-to-bottom.
+ */
+export function getFeatureFlagSnapshot(flag: string, defaultValue = false): boolean {
+  return isFeatureEnabled(flag, defaultValue);
 }

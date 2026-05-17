@@ -14,6 +14,13 @@ import { logger } from "./logger";
  * rules accept (rules also allow `.jpeg` / `.png` so legacy variants
  * uploaded by older clients can still be deleted on account teardown).
  *
+ * Size bounds (mirrored by `storage.rules` for defence in depth): the
+ * resized blob must land between 1 KB (`MIN_UPLOAD_BYTES`) and 2 MB
+ * (`MAX_UPLOAD_BYTES`). The cap is intentionally small — avatars are
+ * served on every profile/leaderboard render and the bandwidth budget
+ * is much tighter than for game video clips (which carry the separate
+ * 50 MB cap enforced in `storage.ts`).
+ *
  * Pre-upload we run the blob through {@link isAvatarSafe} (NSFWjs on-device
  * model). Score >0.85 → reject with {@link AvatarRejectedError}. Score
  * 0.5–0.85 returns to the caller so `AvatarPicker` can prompt the user;
@@ -288,15 +295,22 @@ export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOp
  * deletion, profile reset) shouldn't break on a transient Storage
  * outage.
  *
+ * Returns `{ removed }` — true iff at least one variant was successfully
+ * deleted. `users.deleteUserData` consumes this for the
+ * `accountDeleted` telemetry's `avatarRemoved` field so the dashboard
+ * can tell apart "no avatar was ever set" from "we wiped one".
+ *
  * Does NOT touch the Firestore profile doc; the caller must still
  * `setProfileImageUrl(uid, null)` after this resolves.
  */
-export async function deleteAvatar(uid: string): Promise<void> {
+export async function deleteAvatar(uid: string): Promise<{ removed: boolean }> {
   const storage = requireStorage();
+  let removed = false;
   await Promise.all(
     AVATAR_EXTENSIONS.map(async (ext) => {
       try {
         await deleteObject(storageRef(storage, avatarPath(uid, ext)));
+        removed = true;
       } catch (err) {
         const code = (err as { code?: string })?.code ?? "";
         if (code === "storage/object-not-found") return;
@@ -308,6 +322,7 @@ export async function deleteAvatar(uid: string): Promise<void> {
       }
     }),
   );
+  return { removed };
 }
 
 /**
