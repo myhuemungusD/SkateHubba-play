@@ -44,6 +44,45 @@ service firebase.storage {
         && resource.metadata.uploaderUid == request.auth.uid;
     }
 
+    // ── Avatar uploads (PR-B) ──
+    // Owner-only create + delete. ≤2 MB. Content-type pinning.
+    // `update: if false` forces delete-then-create on re-upload (audit S11)
+    // so a prior moderation pass cannot be silently overwritten with new
+    // bytes behind the same URL.
+    //
+    // Anyone-auth read so /profile/{uid} pages on either own- or opponent-
+    // view can render the avatar without a per-user grant. The Firestore
+    // rule separately pins `users/{uid}.profileImageUrl` to this
+    // bucket + the writer's UID, so a malicious profile cannot point at
+    // another user's avatar (audit S5+S12).
+    // NOTE: the Storage rules grammar does NOT support `{var}` segments
+    // mid-path-segment (only whole path segments). The working equivalent
+    // uses a single wildcard `{filename}` and a regex match on the filename
+    // — same effect (uid pinning + ext allowlist), syntactically valid.
+    match /users/{uid}/{filename} {
+      allow read: if request.auth != null && filename.matches('avatar\\.(webp|jpeg|png)');
+
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        // Per-extension content-type pinning (audit B-ISSUE-3): the
+        // extension and the contentType MUST agree. Previously the
+        // bare `matches(...)` allowlist permitted `avatar.webp` with
+        // `content-type: image/png`, letting a client lie about the
+        // payload format.
+        && (
+          (filename == 'avatar.webp' && request.resource.contentType == 'image/webp')
+          || (filename == 'avatar.jpeg' && request.resource.contentType == 'image/jpeg')
+          || (filename == 'avatar.png' && request.resource.contentType == 'image/png')
+        )
+        && request.resource.size > 1024
+        && request.resource.size <= 2 * 1024 * 1024;
+
+      allow update: if false;
+      allow delete: if request.auth != null
+        && request.auth.uid == uid
+        && filename.matches('avatar\\.(webp|jpeg|png)');
+    }
+
     // Default: deny everything else
     match /{allPaths=**} {
       allow read, write: if false;

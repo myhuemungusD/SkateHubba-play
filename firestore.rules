@@ -3,6 +3,17 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── Project bucket name (audit S5+S12, PR-B) ──
+    // Hardcoded production bucket. Used by the avatar URL pinning
+    // rule below — the regex must contain the exact bucket so user A
+    // cannot point `profileImageUrl` at user B's avatar in another
+    // project's bucket. If the project is ever migrated to a new
+    // bucket, update this constant in lockstep with .firebaserc and
+    // VITE_FIREBASE_STORAGE_BUCKET.
+    function FIREBASE_BUCKET() {
+      return 'sk8hub-d7806.firebasestorage.app';
+    }
+
     // ── Helper functions ──
 
     function isSignedIn() {
@@ -265,6 +276,33 @@ service cloud.firestore {
               && 'lastSpotCreatedAt' in request.resource.data
               && request.resource.data.lastSpotCreatedAt == resource.data.lastSpotCreatedAt)
           || request.resource.data.lastSpotCreatedAt == request.time
+        )
+        // ── profileImageUrl bucket + UID pinning (PR-B, audit S5+S12) ──
+        // The avatar download URL stored on the profile MUST point at this
+        // project's bucket (FIREBASE_BUCKET above) AND at the calling
+        // user's own UID — otherwise user A could phish opponents by
+        // pointing their public profile at a doppelgänger image hosted on
+        // another user's storage path or another project entirely.
+        //
+        // Three accepted shapes (gated on 'in keys()' so writes that don't
+        // touch the field pay nothing here):
+        //   (A) field absent on the post-write state → unchanged
+        //   (B) field explicitly null → fallback initial-circle / SVG path
+        //   (C) field is a string that matches the bucket+uid+ext regex
+        //
+        // The `(\\?.*)?$` tail accepts the standard `?alt=media&token=…`
+        // query the Firebase Storage CDN appends; without it, valid URLs
+        // would be rejected the moment the SDK fetched a download URL.
+        && (
+          !('profileImageUrl' in request.resource.data.keys())
+          || request.resource.data.profileImageUrl == null
+          || (
+            request.resource.data.profileImageUrl is string
+            && request.resource.data.profileImageUrl.matches(
+              '^https://firebasestorage\\.googleapis\\.com/v0/b/' + FIREBASE_BUCKET() +
+              '/o/users%2F' + uid + '%2Favatar\\.(webp|jpeg|png)(\\?.*)?$'
+            )
+          )
         );
       // Peer-write branch: either participant of a complete/forfeit game
       // may close out the OTHER participant's wins/losses counter. Firestore

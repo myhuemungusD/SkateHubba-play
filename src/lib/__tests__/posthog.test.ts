@@ -89,4 +89,11 @@ describe("posthog wrapper", () => {
     resetIdentity();
     expect(posthogInstance.reset).toHaveBeenCalledTimes(1);
   });
+
+  it("getPostHogClient returns null before init and the SDK after", async () => {
+    const { getPostHogClient, initPosthog } = await import("../posthog");
+    expect(getPostHogClient()).toBeNull();
+    await initPosthog({ apiKey: "phc_test" });
+    expect(getPostHogClient()).toBe(posthogInstance);
+  });
 });

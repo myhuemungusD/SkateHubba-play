@@ -178,5 +178,91 @@ describe("analytics service", () => {
         spotId: "11111111-2222-3333-4444-555555555555",
       });
     });
+
+    it("featureFlagEvaluated sends feature_flag_evaluated event with all three fields", () => {
+      analytics.featureFlagEvaluated("flag.x", true, false);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "feature_flag_evaluated",
+        flag: "flag.x",
+        value: true,
+        defaultUsed: false,
+      });
+    });
+
+    it("accountDeleted sends account_deleted event with achievement + avatar tally", () => {
+      analytics.accountDeleted("u1", 3, true);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "account_deleted",
+        uid: "u1",
+        achievementsRemoved: 3,
+        avatarRemoved: true,
+      });
+    });
+
+    it("avatarUploadStarted fires with source + size + score", () => {
+      analytics.avatarUploadStarted("camera", 12345, 0.1);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "avatar_upload_started",
+        source: "camera",
+        originalSizeBytes: 12345,
+        nsfwScore: 0.1,
+      });
+    });
+
+    it("avatarUploadCompleted fires with uid + size + duration", () => {
+      analytics.avatarUploadCompleted("u1", 50_000, 1234);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "avatar_upload_completed",
+        uid: "u1",
+        finalSizeBytes: 50_000,
+        durationMs: 1234,
+      });
+    });
+
+    it("avatarUploadFailed fires with code + source + optional score", () => {
+      analytics.avatarUploadFailed("nsfw", "gallery", 0.92);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "avatar_upload_failed",
+        errorCode: "nsfw",
+        source: "gallery",
+        nsfwScore: 0.92,
+      });
+    });
+
+    it("avatarDeleted fires with uid", () => {
+      analytics.avatarDeleted("u1");
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "avatar_deleted", uid: "u1" });
+    });
+
+    it("profileViewed sends profile_viewed with viewer/profile/isOwn/firstPaint", () => {
+      analytics.profileViewed("v1", "p1", false, 42);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "profile_viewed",
+        viewerUid: "v1",
+        profileUid: "p1",
+        isOwn: false,
+        msToFirstPaint: 42,
+      });
+    });
+
+    it("profileViewed flags isOwn:true when viewer matches profile", () => {
+      analytics.profileViewed("u1", "u1", true, 17);
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "profile_viewed",
+        viewerUid: "u1",
+        profileUid: "u1",
+        isOwn: true,
+        msToFirstPaint: 17,
+      });
+    });
+
+    it("profileStatTileTapped sends profile_stat_tile_tapped with stat name + profileUid", () => {
+      analytics.profileStatTileTapped("wins", "p1");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "profile_stat_tile_tapped",
+        statName: "wins",
+        profileUid: "p1",
+      });
+    });
   });
 });
