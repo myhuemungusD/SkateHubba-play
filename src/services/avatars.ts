@@ -26,8 +26,9 @@ import { logger } from "./logger";
 
 /** Storage extensions the rules allow. WebP is canonical; jpeg/png are
  *  legacy variants from older clients that the deletion path still has
- *  to clean up on account teardown. */
-const AVATAR_EXTENSIONS = ["webp", "jpeg", "png"] as const;
+ *  to clean up on account teardown. Exported so the account-teardown
+ *  flow in `users.ts` can iterate the same set without duplicating it. */
+export const AVATAR_EXTENSIONS = ["webp", "jpeg", "png"] as const;
 type AvatarExt = (typeof AVATAR_EXTENSIONS)[number];
 
 /** Maximum side length of the encoded avatar in pixels. */

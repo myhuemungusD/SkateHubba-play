@@ -19,6 +19,7 @@ import { requireAuth, requireDb, requireStorage } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips } from "./clips";
+import { AVATAR_EXTENSIONS } from "./avatars";
 import { analytics } from "./analytics";
 import { logger } from "./logger";
 
@@ -360,10 +361,9 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // failure is logged but does not throw because the auth + Firestore
   // teardown is already complete.
   const storage = requireStorage();
-  const avatarExtensions = ["webp", "jpeg", "png"] as const;
   let avatarRemoved = false;
   await Promise.all(
-    avatarExtensions.map(async (ext) => {
+    AVATAR_EXTENSIONS.map(async (ext) => {
       try {
         await deleteObject(storageRef(storage, `users/${uid}/avatar.${ext}`));
         avatarRemoved = true;

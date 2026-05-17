@@ -294,7 +294,7 @@ service cloud.firestore {
         // query the Firebase Storage CDN appends; without it, valid URLs
         // would be rejected the moment the SDK fetched a download URL.
         && (
-          !('profileImageUrl' in request.resource.data.keys())
+          !('profileImageUrl' in request.resource.data)
           || request.resource.data.profileImageUrl == null
           || (
             request.resource.data.profileImageUrl is string
