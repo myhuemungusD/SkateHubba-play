@@ -286,16 +286,18 @@ describe("AuthScreen", () => {
     });
   });
 
-  it("surfaces inline 'Sign in instead' action when signup hits auth/email-already-in-use", async () => {
+  it("surfaces inline 'Sign in instead' action when signup hits auth/email-already-in-use AND preserves typed email on toggle", async () => {
     // The single highest-leverage UX fix: returning users (Bryan) who got
-    // pushed into signup hit "email already in use" and previously had to
-    // find a small text-link toggle at the bottom of the form to switch to
-    // sign-in — which used to remount the form and wipe their typed email.
-    // Now we surface a prominent inline button that switches mode without
-    // clearing input.
+    // pushed into signup hit "email already in use". The full chain must
+    // hold — the recovery button fires onToggle AND the parent's mode-flip
+    // does not wipe the typed email. Asserting only onToggle would let a
+    // future re-introduction of `key={authMode}` in App.tsx pass silently.
     mockSignUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
-    const onToggle = vi.fn();
-    render(<AuthScreen {...defaultProps} mode="signup" onToggle={onToggle} />);
+    let mode: "signup" | "signin" = "signup";
+    const onToggle = vi.fn(() => {
+      mode = mode === "signup" ? "signin" : "signup";
+    });
+    const { rerender } = render(<AuthScreen {...defaultProps} mode={mode} onToggle={onToggle} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "bryan@test.com");
     const pws = screen.getAllByPlaceholderText(/•/);
@@ -306,10 +308,42 @@ describe("AuthScreen", () => {
     await waitFor(() => {
       expect(screen.getByText(/Looks like you already have an account/)).toBeInTheDocument();
     });
-    const recover = screen.getByRole("button", { name: /Sign in with this email instead/ });
-    expect(recover).toBeInTheDocument();
-    await userEvent.click(recover);
+    await userEvent.click(screen.getByRole("button", { name: /Sign in with this email instead/ }));
     expect(onToggle).toHaveBeenCalledTimes(1);
+
+    rerender(<AuthScreen {...defaultProps} mode={mode} onToggle={onToggle} />);
+
+    expect(screen.getByRole("heading", { name: "Welcome Back" })).toBeInTheDocument();
+    expect((screen.getByPlaceholderText("you@email.com") as HTMLInputElement).value).toBe("bryan@test.com");
+    // The recovery button collapses once mode flips — error state was cleared.
+    expect(screen.queryByRole("button", { name: /Sign in with this email instead/ })).not.toBeInTheDocument();
+  });
+
+  it("surfaces inline 'Create an account' action when sign-in hits auth/user-not-found AND preserves typed email", async () => {
+    // Symmetric to the email-already-in-use case: a brand-new user who tried
+    // to sign in with their fresh email shouldn't have to retype it to flip
+    // to the signup form.
+    mockSignIn.mockRejectedValueOnce({ code: "auth/user-not-found" });
+    let mode: "signup" | "signin" = "signin";
+    const onToggle = vi.fn(() => {
+      mode = mode === "signup" ? "signin" : "signup";
+    });
+    const { rerender } = render(<AuthScreen {...defaultProps} mode={mode} onToggle={onToggle} />);
+
+    await userEvent.type(screen.getByPlaceholderText("you@email.com"), "newbie@test.com");
+    await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+    await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/No account with that email/)).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Create an account with this email/ }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+
+    rerender(<AuthScreen {...defaultProps} mode={mode} onToggle={onToggle} />);
+
+    expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+    expect((screen.getByPlaceholderText("you@email.com") as HTMLInputElement).value).toBe("newbie@test.com");
   });
 
   it("surfaces inline 'Forgot password?' action on auth/invalid-credential during sign-in", async () => {

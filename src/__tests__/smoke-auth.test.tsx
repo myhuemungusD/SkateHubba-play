@@ -270,7 +270,7 @@ describe("Smoke: Auth", () => {
     await userEvent.click(screen.getByText("Sign In"));
 
     await waitFor(() => {
-      expect(screen.getByText("No account with that email. Need to sign up?")).toBeInTheDocument();
+      expect(screen.getByText("No account with that email. Create one?")).toBeInTheDocument();
     });
   });
 

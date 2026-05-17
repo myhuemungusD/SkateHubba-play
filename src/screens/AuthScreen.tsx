@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
 import { EMAIL_RE, pwStrength, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
 import { isMinorDob, parseDob } from "../utils/age";
@@ -11,7 +11,7 @@ import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
 import { logger, metrics } from "../services/logger";
 import { analytics } from "../services/analytics";
 import { captureException } from "../lib/sentry";
-import { isBenignAuthCode } from "../utils/authCodes";
+import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 
 export function AuthScreen({
   mode,
@@ -48,9 +48,7 @@ export function AuthScreen({
   const [parentConsent, setParentConsent] = useState(false);
   const [ageBlocked, setAgeBlocked] = useState(false);
   const [error, setError] = useState("");
-  // Last Firebase error code — drives inline recovery affordances (e.g. "Sign in
-  // instead" when signup hits email-already-in-use, "Forgot password?" when
-  // sign-in hits invalid-credential). Cleared whenever the surface error clears.
+  // Cleared alongside `error`; drives the inline recovery affordances below.
   const [lastErrorCode, setLastErrorCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
@@ -60,11 +58,15 @@ export function AuthScreen({
   const anyLoading = loading || googleLoading;
   const isMinor = showDob && isMinorDob(month, day, year);
 
-  // When the parent toggles `mode` (sign-in <-> sign-up) the screen no longer
-  // remounts (App.tsx dropped the `key={authMode}` that was wiping typed input).
-  // Clear transient one-shot states that don't apply to the new mode — but
-  // intentionally preserve email/password/DOB so the user doesn't have to retype.
+  // Reset one-shot UI state when the parent toggles mode, but preserve typed
+  // email/password/DOB so the user doesn't have to retype. Skip on first mount
+  // so a parent passing initial state isn't silently wiped.
+  const didMount = useRef(false);
   useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
     setError("");
     setLastErrorCode("");
     setResetSent(false);
@@ -164,31 +166,15 @@ export function AuthScreen({
         });
       }
       setLastErrorCode(code);
-      if (code === "auth/email-already-in-use") setError("Looks like you already have an account with this email.");
-      else if (code === "auth/account-exists-with-different-credential")
-        setError("This email is linked to Google. Tap 'Continue with Google' below.");
-      else if (code === "auth/invalid-credential" || code === "auth/wrong-password")
-        setError("Invalid email or password");
-      else if (code === "auth/user-not-found") setError("No account with that email. Need to sign up?");
-      else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
-      else if (code === "auth/user-disabled")
-        setError("This account has been disabled. Please contact support if you think this is a mistake.");
-      else if (code === "auth/user-token-expired" || code === "auth/requires-recent-login")
-        setError("Your session expired. Please sign in again.");
-      else if (code === "auth/operation-not-allowed")
-        setError("Email sign-in is temporarily disabled. Try Continue with Google above.");
-      else if (code === "auth/missing-password" || code === "auth/missing-email")
-        setError("Please fill in both email and password.");
-      else if (code === "auth/web-storage-unsupported")
-        setError("Your browser is blocking storage. Disable private browsing or try a different browser.");
-      else if (code === "auth/too-many-requests" || code === "auth/quota-exceeded")
-        setError("Too many attempts. Please wait a few minutes and try again.");
-      else if (code === "auth/network-request-failed" || code === "auth/timeout")
-        setError("Network error — check your connection and try again.");
-      // auth/internal-error = App Check rejection, reCAPTCHA failure, or transient Identity Toolkit 500.
-      else if (code === "auth/internal-error")
-        setError("Sign-in is temporarily unavailable. Please try again in a moment.");
-      else setError(getUserMessage(err, "Something went wrong"));
+      // Context-sensitive cases first — these pair with an inline recovery
+      // action below that the generic mapper can't express.
+      if (code === "auth/email-already-in-use") {
+        setError("Looks like you already have an account with this email.");
+      } else if (code === "auth/user-not-found") {
+        setError("No account with that email. Create one?");
+      } else {
+        setError(getAuthErrorMessage(code) ?? getUserMessage(err, "Something went wrong"));
+      }
     } finally {
       setLoading(false);
     }
@@ -214,6 +200,36 @@ export function AuthScreen({
   };
 
   const displayError = error || googleError;
+
+  // Single source of truth for the inline recovery button rendered under the
+  // ErrorBanner. Prevents two buttons stacking and keeps the action paired
+  // with the exact error code that surfaced.
+  const recovery: { label: string; action: () => void } | null = (() => {
+    if (isSignup && lastErrorCode === "auth/email-already-in-use") {
+      return {
+        label: "Sign in with this email instead →",
+        action: () => {
+          setError("");
+          setLastErrorCode("");
+          onToggle();
+        },
+      };
+    }
+    if (!isSignup && lastErrorCode === "auth/user-not-found") {
+      return {
+        label: "Create an account with this email →",
+        action: () => {
+          setError("");
+          setLastErrorCode("");
+          onToggle();
+        },
+      };
+    }
+    if (!isSignup && (lastErrorCode === "auth/invalid-credential" || lastErrorCode === "auth/wrong-password")) {
+      return { label: "Forgot password? Send reset email →", action: handleReset };
+    }
+    return null;
+  })();
 
   if (ageBlocked) {
     return (
@@ -379,35 +395,13 @@ export function AuthScreen({
             }}
           />
 
-          {/* Inline recovery action: returning user hit "email-already-in-use"
-              during signup. Tapping switches mode to sign-in WITHOUT remounting
-              the form (App.tsx dropped the `key={authMode}`), so their email
-              and password persist into the sign-in attempt. */}
-          {isSignup && lastErrorCode === "auth/email-already-in-use" && (
+          {recovery && (
             <button
               type="button"
-              onClick={() => {
-                setError("");
-                setLastErrorCode("");
-                onToggle();
-              }}
+              onClick={recovery.action}
               className="w-full -mt-2 mb-4 px-4 py-2 rounded-xl font-body text-sm text-brand-orange bg-brand-orange/[0.08] border border-brand-orange/30 hover:bg-brand-orange/[0.14] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
-              Sign in with this email instead →
-            </button>
-          )}
-
-          {/* Inline recovery action: invalid-credential failure on sign-in is
-              the moment a "Forgot password?" prompt is most useful. The discreet
-              link further down is also still present for users who land here
-              without a prior failure. */}
-          {!isSignup && (lastErrorCode === "auth/invalid-credential" || lastErrorCode === "auth/wrong-password") && (
-            <button
-              type="button"
-              onClick={handleReset}
-              className="w-full -mt-2 mb-4 px-4 py-2 rounded-xl font-body text-sm text-brand-orange bg-brand-orange/[0.08] border border-brand-orange/30 hover:bg-brand-orange/[0.14] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-            >
-              Forgot password? Send reset email →
+              {recovery.label}
             </button>
           )}
 
