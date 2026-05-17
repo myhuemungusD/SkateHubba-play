@@ -144,22 +144,15 @@ service cloud.firestore {
     // owning user. Firestore rules cannot filter fields on reads, so the
     // split at the document boundary is the enforcement mechanism.
     //
-    // ⚠️ TRANSITIONAL RULES (April 2026 public/private split) ⚠️
-    // Legacy production `users/{uid}` docs still carry the five sensitive
-    // fields inline. `request.resource.data` is the MERGED post-write state,
-    // so an `updateDoc({ wins: 3 })` against a legacy doc would include
-    // every untouched legacy field in `request.resource.data` — a strict
-    // `!('email' in request.resource.data)` guard would reject every
-    // legitimate partial update (wins++, profile edits, etc.) until the
-    // backfill migration (see scripts/migrate-users-private.mjs) completes.
-    //
-    // The relaxed form below accepts a sensitive field on `update` IFF it
-    // is unchanged from `resource.data` (i.e. an untouched legacy value
-    // riding along with a legitimate write). New creates remain strict,
-    // so no post-deploy client can introduce these fields on a fresh doc.
-    // After the backfill script removes every legacy inline occurrence,
-    // tighten the `update` rule back to a strict `!('X' in request.resource.data)`
-    // check — tracked as a follow-up TODO in docs/DATABASE.md.
+    // Historical note: between the April 2026 public/private split rollout
+    // and the May 2026 backfill completion, the update rule ran in a
+    // transitional form that accepted each sensitive field IFF its value
+    // was unchanged from `resource.data` — necessary because legacy docs
+    // still carried those fields inline and `request.resource.data` is the
+    // merged post-write state. `scripts/migrate-users-private.mjs`
+    // completed in production in May 2026, removing every legacy inline
+    // occurrence, so the strict `!('X' in request.resource.data)` form has
+    // been restored on `update` (matching the long-standing `create` form).
     //
     // Username constraints MUST match `USERNAME_MIN`, `USERNAME_MAX`, and
     // `USERNAME_RE` in src/services/users.ts. Rules are the source of truth
@@ -210,24 +203,14 @@ service cloud.firestore {
         && (!('isVerifiedPro' in request.resource.data) || request.resource.data.isVerifiedPro == resource.data.isVerifiedPro)
         && (!('verifiedBy' in request.resource.data) || request.resource.data.verifiedBy == resource.data.verifiedBy)
         && (!('verifiedAt' in request.resource.data) || request.resource.data.verifiedAt == resource.data.verifiedAt)
-        // Sensitive fields — transitional form. A legacy doc that still
-        // carries e.g. `email` inline will have `email` in
-        // `request.resource.data` on every partial update (merged state).
-        // Accept it IFF the value is unchanged from resource.data — this
-        // lets legitimate non-sensitive writes (wins++, stance change)
-        // ride alongside untouched legacy fields while still rejecting
-        // any attempt to re-introduce or modify the field. The strict
-        // form will be restored once backfill completes.
-        && (!('email' in request.resource.data)
-            || ('email' in resource.data && request.resource.data.email == resource.data.email))
-        && (!('emailVerified' in request.resource.data)
-            || ('emailVerified' in resource.data && request.resource.data.emailVerified == resource.data.emailVerified))
-        && (!('dob' in request.resource.data)
-            || ('dob' in resource.data && request.resource.data.dob == resource.data.dob))
-        && (!('parentalConsent' in request.resource.data)
-            || ('parentalConsent' in resource.data && request.resource.data.parentalConsent == resource.data.parentalConsent))
-        && (!('fcmTokens' in request.resource.data)
-            || ('fcmTokens' in resource.data && request.resource.data.fcmTokens == resource.data.fcmTokens))
+        // Sensitive fields live in `users/{uid}/private/*` per the public/
+        // private split and are forbidden on the public doc — strict on
+        // update, mirroring the create rule above.
+        && !('email' in request.resource.data)
+        && !('emailVerified' in request.resource.data)
+        && !('dob' in request.resource.data)
+        && !('parentalConsent' in request.resource.data)
+        && !('fcmTokens' in request.resource.data)
         // Wins/losses can only increment by 0 or 1 per write.
         // When the field doesn't exist yet, only 0 or 1 is allowed
         // (the old rule's !('wins' in resource.data) branch accepted any value).
