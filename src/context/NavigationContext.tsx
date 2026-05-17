@@ -84,6 +84,15 @@ export interface NavigationContextValue {
   setScreen: (s: Screen) => void;
   /** Navigate to a player's public profile page. */
   navigateToPlayer: (uid: string) => void;
+  /**
+   * Navigate to the challenge screen with a spot pre-attached via the
+   * `?spot=<uuid>` query param — the contract ChallengeScreen reads, and
+   * what the auth router stashes/restores across sign-in. Exists because
+   * `setScreen('challenge')` only routes to `/challenge` and strips the
+   * query string, so spot-detail → challenge needs a typed helper instead
+   * of a raw `navigate()` call.
+   */
+  navigateToChallengeWithSpot: (spotId: string) => void;
   authMode: "signup" | "signin";
   setAuthMode: (m: "signup" | "signin") => void;
   ageGateDob: string | null;
@@ -124,6 +133,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const navigateToPlayer = useCallback(
     (uid: string) => {
       navigate(`/player/${uid}`);
+    },
+    [navigate],
+  );
+
+  const navigateToChallengeWithSpot = useCallback(
+    (spotId: string) => {
+      navigate(`/challenge?spot=${spotId}`);
     },
     [navigate],
   );
@@ -226,6 +242,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     screen,
     setScreen,
     navigateToPlayer,
+    navigateToChallengeWithSpot,
     authMode,
     setAuthMode,
     ageGateDob,
