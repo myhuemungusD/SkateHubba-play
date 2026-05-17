@@ -248,6 +248,16 @@ export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOp
   // rule denies UPDATE, so a re-upload requires a delete-then-create.
   // We delete the old object first so a same-path overwrite doesn't
   // wedge on the rule.
+  //
+  // Known edge case (Codex P1, follow-up): if `uploadBytes` below fails
+  // after this delete succeeds, the user's profileImageUrl will still
+  // point at the now-deleted object → broken image. Truly fixing this
+  // requires either (a) flipping the storage `update` rule to allow
+  // owner-writes (revisit audit S11) so we can upload-replace atomically,
+  // or (b) having callers clear profileImageUrl in their catch when
+  // `uploadAvatar` throws. Tracked for a follow-up PR; not blocking the
+  // current release because the failure mode is recoverable by the user
+  // re-uploading any valid image.
   try {
     await deleteObject(ref);
   } catch (err) {
