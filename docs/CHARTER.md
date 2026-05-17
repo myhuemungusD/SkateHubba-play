@@ -27,7 +27,7 @@
 - **Repo tree corrected.** Removed `tailwind.config.js` (Tailwind 4 config is CSS-based in `src/index.css`). Added `src/components/onboarding/`, `OnboardingContext`. Doc index regenerated against actual repo: 15 docs including this charter.
 - **`src/services/games.ts` description corrected.** Game CRUD is decomposed across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, `games.subscriptions.ts`, `games.mappers.ts`. `games.ts` is now a barrel re-export.
 - **PR-gate job list corrected.** Eight jobs, not seven. Added `check-test-duplication` and `check-file-length`; removed nonexistent `build-and-test`.
-- **`firestore.rules` LOC corrected** from ~1378 to ~1546.
+- **`firestore.rules` LOC corrected** from ~1546 to ~1805.
 - **Pre-flight gate corrected** to use the `verify` script (which includes `check:test-dup`).
 - **Tech-debt source corrected.** `docs/COMPREHENSIVE_GAP_ANALYSIS.md` was archived to `docs/archive/`. Active debt now lives in `docs/DECISIONS.md` and `docs/STATUS_REPORT.md`, with security debt in `docs/P0-SECURITY-AUDIT.md`.
 
@@ -61,7 +61,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - Auto-forfeit on expired turns (client-triggered — see known gaps)
 - Nudge system with rate limiting
 - Spot map (Mapbox GL + Firestore `spots` collection, challenge flow integration)
-- Clip feed (`/clips`) with per-clip upvote and top-clip autoplay
+- Clip feed embedded in lobby (Featured Clip card + scrollable feed with per-clip upvote and top-clip autoplay)
 - Featured Clip card on lobby
 - Persistent bottom tab bar (Home / Map / Me)
 - Verified pro profiles with gold treatment
@@ -153,7 +153,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - **Cloud Firestore** — primary datastore, named database `"skatehubba"` (not default), offline persistence via `persistentLocalCache` + `persistentMultipleTabManager`
 - **Firebase Storage** — `set.webm` / `match.webm` (web) and `set.mp4` / `match.mp4` (native), 1KB–50MB
 - **Firebase App Check** — reCAPTCHA v3 (web), DeviceCheck/Play Integrity (native)
-- **All game writes use `runTransaction`** — non-negotiable. Enforced across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, plus `spots.ts`, `users.ts`, and `clips.ts` vote writes.
+- **All game writes use `runTransaction`** — non-negotiable. Enforced across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, plus `spots.ts`, `users.ts`, and `clips.upvotes.ts` / `clips.writes.ts` (the vote and write paths for the clip feed).
 - **Dual `onSnapshot` for OR queries** in `games.subscriptions.ts` (player1Uid + player2Uid merged in memory)
 
 ### 4.4 Push & background work — DECISION PENDING
@@ -164,7 +164,7 @@ Cloud Functions were removed. CI gate (`verify-no-cloud-functions`) forbids rein
 
 Until decided, background push is disabled and auto-forfeit is client-triggered. ADR required at `docs/DECISIONS.md` before next push-dependent feature.
 
-### 4.5 Security rules (the real backend, ~1546 LOC)
+### 4.5 Security rules (the real backend, ~1805 LOC)
 Firestore rules enforce:
 - Authentication on all reads/writes
 - Game state machine: turn order, valid actions, instant-forfeit attack prevention
@@ -185,7 +185,6 @@ Storage rules enforce:
 ### 4.6 Hosting & deployment
 - Vercel (static SPA, auto-deploy from `main`)
 - `vercel.json` handles SPA rewrites, CSP, HSTS, security headers, domain redirects
-- Firebase project: `sk8hub-d7806`
 
 ### 4.7 Monitoring & analytics
 - `@sentry/react` + `@sentry/capacitor` for error tracking with PII scrubbing
