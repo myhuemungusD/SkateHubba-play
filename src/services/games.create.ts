@@ -1,5 +1,6 @@
 import { doc, setDoc, runTransaction, serverTimestamp, Timestamp } from "firebase/firestore";
-import { requireDb } from "../firebase";
+import { requireAuth, requireDb } from "../firebase";
+import { addBreadcrumb } from "../lib/sentry";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
 import { logger, metrics } from "./logger";
@@ -92,6 +93,25 @@ export async function createGame(
     ...(opponentIsVerifiedPro && { player2IsVerifiedPro: true }),
     ...(safeSpotId && { spotId: safeSpotId }),
   };
+
+  // F10: Force-refresh the ID token before the create write. Firestore rules
+  // gate game creation on `request.auth.token.email_verified == true`, but the
+  // cached JWT may not yet reflect a freshly-verified email — without this the
+  // user hits a rules rejection in the brief staleness window after clicking
+  // the verification link. Best-effort: a refresh failure must NOT block the
+  // create. The server-side rule still fires and surfaces a clean error path.
+  const currentUser = requireAuth().currentUser;
+  if (currentUser) {
+    try {
+      await currentUser.getIdToken(/* forceRefresh= */ true);
+    } catch {
+      addBreadcrumb({
+        category: "auth",
+        message: "forced ID token refresh failed before createGame",
+        level: "warning",
+      });
+    }
+  }
 
   // Generate the game ID client-side so a retry after a perceived network
   // failure re-sends the exact same write (idempotent at a fixed ID) instead

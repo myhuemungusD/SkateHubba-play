@@ -62,6 +62,17 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
+// Spy on Sentry breadcrumbs so the F10 force-refresh test can assert the
+// failure path leaves a breadcrumb without coupling to the lazy SDK loader.
+const mockAddBreadcrumb = vi.hoisted(() => vi.fn());
+vi.mock("../../lib/sentry", () => ({
+  addBreadcrumb: mockAddBreadcrumb,
+  captureException: vi.fn(),
+  captureMessage: vi.fn(),
+}));
+
+import { auth } from "../../firebase";
+
 import {
   createGame,
   _resetCreateGameRateLimit,
@@ -547,6 +558,62 @@ describe("games service", () => {
       const docData = gameSetDocCall();
       expect(docData.judgeId).toBeNull();
       expect(docData.judgeStatus).toBeNull();
+    });
+
+    // F10: Firestore rules gate game creation on
+    // `request.auth.token.email_verified == true`. Right after a user clicks
+    // the verification link the local Auth state may flip to verified before
+    // the cached JWT does — so we force-refresh the ID token before the
+    // create write to close that staleness window.
+    describe("F10 — force ID token refresh before create", () => {
+      const setCurrentUser = (user: { getIdToken: ReturnType<typeof vi.fn> } | null): void => {
+        (auth as unknown as { currentUser: typeof user }).currentUser = user;
+      };
+
+      it("force-refreshes the ID token before writing the game doc", async () => {
+        const getIdToken = vi.fn().mockResolvedValue("fresh-token");
+        setCurrentUser({ getIdToken });
+        try {
+          // Capture call order: getIdToken must complete before setDoc fires.
+          const order: string[] = [];
+          getIdToken.mockImplementationOnce(async () => {
+            order.push("getIdToken");
+            return "fresh-token";
+          });
+          mockSetDoc.mockImplementationOnce(async () => {
+            order.push("setDoc");
+          });
+
+          await createGame("p1", "alice", "p2", "bob");
+
+          expect(getIdToken).toHaveBeenCalledTimes(1);
+          expect(getIdToken).toHaveBeenCalledWith(true);
+          expect(order).toEqual(["getIdToken", "setDoc"]);
+        } finally {
+          setCurrentUser(null);
+        }
+      });
+
+      it("still creates the game when getIdToken rejects (best-effort refresh)", async () => {
+        const getIdToken = vi.fn().mockRejectedValue(new Error("network blip"));
+        setCurrentUser({ getIdToken });
+        try {
+          const id = await createGame("p1", "alice", "p2", "bob");
+          expect(id).toBe("auto-id");
+          // Game doc + user-profile merge must still land — refresh failure
+          // is non-fatal; the Firestore rule remains the source of truth.
+          expect(mockSetDoc).toHaveBeenCalledTimes(2);
+          expect(mockAddBreadcrumb).toHaveBeenCalledWith(
+            expect.objectContaining({
+              category: "auth",
+              level: "warning",
+              message: expect.stringContaining("forced ID token refresh failed"),
+            }),
+          );
+        } finally {
+          setCurrentUser(null);
+        }
+      });
     });
   });
 
