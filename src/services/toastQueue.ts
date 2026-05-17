@@ -105,10 +105,15 @@ function drain(force = false): void {
     drainTimer = null;
   }
   while (visible.length < MAX_VISIBLE && pending.length > 0) {
-    // Non-null asserted because the loop guard checked `pending.length > 0`
-    // — the alternative `if (!next) break` line is structurally unreachable
-    // and was costing branch coverage.
-    visible.push(pending.shift() as QueuedToast);
+    // `pending.shift()` is typed `T | undefined`; the explicit nullish
+    // guard replaces a previous unsafe `as QueuedToast` cast. The loop
+    // condition guarantees `pending.length > 0` here, so `next` is
+    // structurally always defined — the `break` is defensive and gives
+    // TypeScript the narrowing it needs without the cast.
+    const next = pending.shift();
+    /* v8 ignore next */
+    if (!next) break;
+    visible.push(next);
   }
   notify();
   if (pending.length > 0 && drainTimer === null) {

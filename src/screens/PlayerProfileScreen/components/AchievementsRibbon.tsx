@@ -54,6 +54,7 @@ export function AchievementsRibbon(_props: Props = {}) {
 function PlaceholderTile({ index }: { index: number }) {
   return (
     <div
+      role="img"
       data-testid={`achievement-tile-${index}`}
       aria-label="Locked achievement"
       className="aspect-square rounded-2xl bg-surface/60 border border-border flex flex-col items-center justify-center gap-1 grayscale select-none"

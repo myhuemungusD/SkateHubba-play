@@ -14,11 +14,11 @@ import {
   serverTimestamp,
   type FieldValue,
 } from "firebase/firestore";
-import { ref as storageRef, deleteObject } from "firebase/storage";
-import { requireAuth, requireDb, requireStorage } from "../firebase";
+import { requireAuth, requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips } from "./clips";
+import { deleteAvatar } from "./avatars";
 import { analytics } from "./analytics";
 import { logger } from "./logger";
 
@@ -352,32 +352,22 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   batch.delete(doc(db, "usernames", username.toLowerCase().trim()));
   await batch.commit();
 
-  // Phase 5: Best-effort scrub of avatar binaries from Storage. Three
-  // candidate extensions cover the upload code path (`.webp` is the
-  // canonical encoding, `.jpeg` and `.png` are fallbacks for browsers
-  // that can't encode WebP). `not-found` is the expected case for users
-  // who never uploaded a custom avatar — silently ignored. Any other
-  // failure is logged but does not throw because the auth + Firestore
-  // teardown is already complete.
-  const storage = requireStorage();
-  const avatarExtensions = ["webp", "jpeg", "png"] as const;
+  // Phase 5: Best-effort scrub of avatar binaries from Storage. Delegates
+  // to `deleteAvatar` so the three-extension cleanup lives in one place
+  // (the avatar service). Failures inside `deleteAvatar` are already
+  // best-effort + logged; the outer `.catch` guards against the helper
+  // itself throwing (e.g. `requireStorage` boot error) so account
+  // deletion doesn't fail at the very last step.
   let avatarRemoved = false;
-  await Promise.all(
-    avatarExtensions.map(async (ext) => {
-      try {
-        await deleteObject(storageRef(storage, `users/${uid}/avatar.${ext}`));
-        avatarRemoved = true;
-      } catch (err) {
-        const code = (err as { code?: string })?.code ?? "";
-        if (code === "storage/object-not-found") return;
-        logger.warn("avatar_delete_failed", {
-          uid,
-          ext,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }),
-  );
+  try {
+    const result = await deleteAvatar(uid);
+    avatarRemoved = result.removed;
+  } catch (err) {
+    logger.warn("avatar_delete_failed", {
+      uid,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   analytics.accountDeleted(uid, achievementsSnap.docs.length, avatarRemoved);
 }

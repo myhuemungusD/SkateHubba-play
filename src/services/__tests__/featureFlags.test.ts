@@ -1,10 +1,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
 
 const mockGetPostHogClient = vi.fn();
 vi.mock("../../lib/posthog", () => ({
   getPostHogClient: () => mockGetPostHogClient(),
 }));
+
+const mockSubscribeConsent = vi.fn();
+vi.mock("../../lib/consent", async () => {
+  const actual = await vi.importActual<typeof import("../../lib/consent")>("../../lib/consent");
+  return {
+    ...actual,
+    subscribeConsent: (cb: () => void) => mockSubscribeConsent(cb),
+  };
+});
 
 const mockTrackEvent = vi.fn();
 vi.mock("../analytics", () => ({
@@ -13,7 +21,7 @@ vi.mock("../analytics", () => ({
   },
 }));
 
-import { isFeatureEnabled, useFeatureFlag } from "../featureFlags";
+import { isFeatureEnabled, subscribeFeatureFlags, getFeatureFlagSnapshot } from "../featureFlags";
 import { CONSENT_KEY } from "../../lib/consent";
 
 interface FakePostHog {
@@ -27,11 +35,7 @@ interface FakePostHog {
  * default parameters fire on both, which would otherwise clobber the
  * "PostHog returns undefined for an unknown flag" code path.
  */
-function makePostHog(...args: [] | [boolean | undefined]): FakePostHog & {
-  /** Trigger every registered onFeatureFlags callback. */
-  fireFlags: () => void;
-} {
-  const callbacks: Array<() => void> = [];
+function makePostHog(...args: [] | [boolean | undefined]): FakePostHog {
   let returnValue: boolean | undefined = args.length === 0 ? false : args[0];
   const spy = vi.fn(() => returnValue);
   // Allow tests to override post-construction (used by the multivariate
@@ -41,16 +45,7 @@ function makePostHog(...args: [] | [boolean | undefined]): FakePostHog & {
   };
   return {
     isFeatureEnabled: spy,
-    onFeatureFlags: vi.fn((cb: () => void) => {
-      callbacks.push(cb);
-      return () => {
-        const i = callbacks.indexOf(cb);
-        if (i >= 0) callbacks.splice(i, 1);
-      };
-    }),
-    fireFlags: () => {
-      for (const cb of callbacks) cb();
-    },
+    onFeatureFlags: vi.fn(),
   };
 }
 
@@ -58,6 +53,8 @@ describe("featureFlags service", () => {
   beforeEach(() => {
     mockGetPostHogClient.mockReset();
     mockTrackEvent.mockReset();
+    mockSubscribeConsent.mockReset();
+    mockSubscribeConsent.mockImplementation(() => () => {});
     localStorage.setItem(CONSENT_KEY, "accepted");
     // Force-disable telemetry sampling by default — tests opt back in
     // when they care about the event.
@@ -164,66 +161,49 @@ describe("featureFlags service", () => {
     });
   });
 
-  describe("useFeatureFlag", () => {
-    it("returns the initial PostHog value", () => {
+  describe("getFeatureFlagSnapshot", () => {
+    it("delegates to isFeatureEnabled", () => {
       const ph = makePostHog(true);
       mockGetPostHogClient.mockReturnValue(ph);
-      const { result } = renderHook(() => useFeatureFlag("foo", false));
-      expect(result.current).toBe(true);
+      expect(getFeatureFlagSnapshot("foo", false)).toBe(true);
     });
 
-    it("returns the default when PostHog is absent", () => {
+    it("respects the default when SDK is missing", () => {
       mockGetPostHogClient.mockReturnValue(null);
-      const { result } = renderHook(() => useFeatureFlag("foo", true));
-      expect(result.current).toBe(true);
+      expect(getFeatureFlagSnapshot("foo", true)).toBe(true);
     });
+  });
 
-    it("re-renders when PostHog flushes new flag values", () => {
-      const ph = makePostHog(false);
-      mockGetPostHogClient.mockReturnValue(ph);
-      const { result } = renderHook(() => useFeatureFlag("foo", false));
-      expect(result.current).toBe(false);
-
-      // Flip the flag and fire the PostHog onFeatureFlags callback.
-      ph.isFeatureEnabled.mockReturnValue(true);
-      act(() => {
-        ph.fireFlags();
-      });
-      expect(result.current).toBe(true);
-    });
-
-    it("re-renders when consent flips from declined to accepted", () => {
-      localStorage.setItem(CONSENT_KEY, "declined");
-      const ph = makePostHog(true);
-      mockGetPostHogClient.mockReturnValue(ph);
-      const { result } = renderHook(() => useFeatureFlag("foo", false));
-      // Consent denied → default returned even though PostHog says true.
-      expect(result.current).toBe(false);
-
-      act(() => {
-        // writeConsent would notify; emulate via storage event / setter.
-        localStorage.setItem(CONSENT_KEY, "accepted");
-        window.dispatchEvent(new StorageEvent("storage", { key: CONSENT_KEY }));
-      });
-      expect(result.current).toBe(true);
-    });
-
-    it("unsubscribes both PostHog and consent listeners on unmount", () => {
-      const ph = makePostHog(false);
+  describe("subscribeFeatureFlags", () => {
+    it("wires both PostHog and consent subscriptions and tears both down on unsubscribe", () => {
       const phUnsub = vi.fn();
+      const consentUnsub = vi.fn();
+      const ph = makePostHog(false);
       ph.onFeatureFlags.mockReturnValue(phUnsub);
       mockGetPostHogClient.mockReturnValue(ph);
-      const { unmount } = renderHook(() => useFeatureFlag("foo", false));
-      unmount();
+      mockSubscribeConsent.mockImplementation(() => consentUnsub);
+
+      const notify = vi.fn();
+      const unsub = subscribeFeatureFlags(notify);
+
+      expect(ph.onFeatureFlags).toHaveBeenCalledWith(notify);
+      expect(mockSubscribeConsent).toHaveBeenCalledWith(notify);
+      unsub();
       expect(phUnsub).toHaveBeenCalled();
+      expect(consentUnsub).toHaveBeenCalled();
     });
 
-    it("handles the case where PostHog is absent at mount (no onFeatureFlags subscription)", () => {
+    it("still subscribes to consent when PostHog is absent at subscribe time", () => {
       mockGetPostHogClient.mockReturnValue(null);
-      const { result, unmount } = renderHook(() => useFeatureFlag("foo", false));
-      expect(result.current).toBe(false);
-      // Unmount must not throw even though no PostHog unsub was registered.
-      expect(() => unmount()).not.toThrow();
+      const consentUnsub = vi.fn();
+      mockSubscribeConsent.mockImplementation(() => consentUnsub);
+
+      const notify = vi.fn();
+      const unsub = subscribeFeatureFlags(notify);
+
+      expect(mockSubscribeConsent).toHaveBeenCalledWith(notify);
+      expect(() => unsub()).not.toThrow();
+      expect(consentUnsub).toHaveBeenCalled();
     });
   });
 });

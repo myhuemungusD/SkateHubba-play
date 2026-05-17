@@ -77,12 +77,10 @@ vi.mock("../../firebase", () => ({
   requireStorage: () => ({}),
 }));
 
-/* ── mock firebase/storage (used by deleteUserData avatar cleanup) ─── */
-const mockDeleteObject = vi.fn().mockResolvedValue(undefined);
-const mockStorageRef = vi.fn((_storage: unknown, path: string) => ({ fullPath: path }));
-vi.mock("firebase/storage", () => ({
-  ref: (...args: unknown[]) => mockStorageRef(...(args as [unknown, string])),
-  deleteObject: (...args: unknown[]) => mockDeleteObject(...args),
+/* ── mock the avatar service (deleteUserData delegates to deleteAvatar) ─ */
+const mockDeleteAvatar = vi.fn().mockResolvedValue({ removed: true });
+vi.mock("../avatars", () => ({
+  deleteAvatar: (...args: unknown[]) => mockDeleteAvatar(...args),
 }));
 
 const mockDeleteGameVideos = vi.fn().mockResolvedValue(0);
@@ -528,83 +526,59 @@ describe("users service", () => {
       expect(batch.commit).toHaveBeenCalled();
     });
 
-    it("attempts to delete all three avatar extensions from Storage", async () => {
+    it("delegates avatar cleanup to deleteAvatar(uid)", async () => {
       mockGetDocs
         .mockResolvedValueOnce({ docs: [] })
         .mockResolvedValueOnce({ docs: [] })
         .mockResolvedValueOnce({ docs: [] });
-      mockDeleteObject.mockResolvedValue(undefined);
+      mockDeleteAvatar.mockResolvedValueOnce({ removed: true });
 
       await deleteUserData("u1", "sk8r");
 
-      expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "users/u1/avatar.webp");
-      expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "users/u1/avatar.jpeg");
-      expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "users/u1/avatar.png");
-      expect(mockDeleteObject).toHaveBeenCalledTimes(3);
+      expect(mockDeleteAvatar).toHaveBeenCalledWith("u1");
     });
 
-    it("ignores 'object-not-found' avatar errors silently and still completes", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] });
-      mockDeleteObject.mockReset();
-      const notFound = Object.assign(new Error("not found"), { code: "storage/object-not-found" });
-      mockDeleteObject.mockRejectedValue(notFound);
-
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-      // 'not-found' is the expected case for users with no avatar — must not log.
-      expect(mockLoggerWarn).not.toHaveBeenCalled();
-    });
-
-    it("logs (but does not throw) on unexpected avatar delete failures", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] });
-      mockDeleteObject.mockReset();
-      mockDeleteObject.mockRejectedValue(Object.assign(new Error("boom"), { code: "storage/unauthenticated" }));
-
-      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
-      expect(mockLoggerWarn).toHaveBeenCalledWith("avatar_delete_failed", expect.objectContaining({ uid: "u1" }));
-    });
-
-    it("emits account_deleted telemetry with the achievements + avatar tally", async () => {
+    it("emits account_deleted telemetry with avatarRemoved=true when deleteAvatar removed at least one variant", async () => {
       mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
       const achievementRefs = [{ fullPath: "users/u1/achievements/a1" }];
       mockGetDocs.mockResolvedValueOnce({ docs: achievementRefs.map((ref) => ({ ref })) });
-      mockDeleteObject.mockReset();
-      // Two extensions present, one missing.
-      mockDeleteObject.mockResolvedValueOnce(undefined);
-      mockDeleteObject.mockRejectedValueOnce(Object.assign(new Error("nf"), { code: "storage/object-not-found" }));
-      mockDeleteObject.mockResolvedValueOnce(undefined);
+      mockDeleteAvatar.mockResolvedValueOnce({ removed: true });
 
       await deleteUserData("u1", "sk8r");
 
       expect(mockAccountDeleted).toHaveBeenCalledWith("u1", 1, true);
     });
 
-    it("reports avatarRemoved=false in telemetry when no avatar object existed", async () => {
+    it("reports avatarRemoved=false in telemetry when deleteAvatar found nothing to remove", async () => {
       mockGetDocs
         .mockResolvedValueOnce({ docs: [] })
         .mockResolvedValueOnce({ docs: [] })
         .mockResolvedValueOnce({ docs: [] });
-      mockDeleteObject.mockReset();
-      mockDeleteObject.mockRejectedValue(Object.assign(new Error("nf"), { code: "storage/object-not-found" }));
+      mockDeleteAvatar.mockResolvedValueOnce({ removed: false });
 
       await deleteUserData("u1", "sk8r");
 
       expect(mockAccountDeleted).toHaveBeenCalledWith("u1", 0, false);
     });
 
-    it("treats a non-Error avatar rejection as loggable (string error path)", async () => {
+    it("logs and continues when deleteAvatar itself throws", async () => {
       mockGetDocs
         .mockResolvedValueOnce({ docs: [] })
         .mockResolvedValueOnce({ docs: [] })
         .mockResolvedValueOnce({ docs: [] });
-      mockDeleteObject.mockReset();
-      // Reject with a plain string — the logger fallback path stringifies it.
-      mockDeleteObject.mockRejectedValue("string-error");
+      mockDeleteAvatar.mockRejectedValueOnce(new Error("storage boot failure"));
+
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+      expect(mockLoggerWarn).toHaveBeenCalledWith("avatar_delete_failed", expect.objectContaining({ uid: "u1" }));
+      expect(mockAccountDeleted).toHaveBeenCalledWith("u1", 0, false);
+    });
+
+    it("stringifies non-Error rejections from deleteAvatar before logging", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+      mockDeleteAvatar.mockRejectedValueOnce("string-error");
 
       await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
       expect(mockLoggerWarn).toHaveBeenCalledWith(
