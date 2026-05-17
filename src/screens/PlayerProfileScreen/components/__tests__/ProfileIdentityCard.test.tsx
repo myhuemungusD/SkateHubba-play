@@ -55,15 +55,11 @@ function renderWithAvatarUrl(profileImageUrl: string) {
 }
 
 describe("ProfileIdentityCard", () => {
-  it("renders username, stance, and level chip", () => {
-    // LevelChip is a placeholder that always renders L1 regardless of the
-    // caller-supplied level — see LevelChip.tsx docstring. The prop is still
-    // accepted to keep the call-site shape stable for the eventual real
-    // level system.
+  it("renders username, stance, and level chip honoring the caller-supplied level", () => {
     render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" level={7} />);
     expect(screen.getByText("@rider")).toBeInTheDocument();
     expect(screen.getByText("regular")).toBeInTheDocument();
-    expect(screen.getByLabelText("Level 1")).toBeInTheDocument();
+    expect(screen.getByLabelText("Level 7")).toBeInTheDocument();
   });
 
   it("defaults level to 1 when undefined", () => {

@@ -200,16 +200,17 @@ function avatarPath(uid: string, ext: AvatarExt): string {
  * Upload a user's avatar.
  *
  * Pipeline (in order):
- *   1. Resize source blob to ≤400×400 WebP via canvas.
- *   2. NSFWjs gate via {@link isAvatarSafe}.
+ *   1. Auth check — fast-fail before any expensive work.
+ *   2. Resize source blob to ≤400×400 WebP via canvas.
+ *   3. NSFWjs gate via {@link isAvatarSafe}.
  *      - score > 0.85 → throw {@link AvatarRejectedError}
  *      - score 0.5..0.85 → throw {@link AvatarBorderlineError} unless
  *        `opts.acceptBorderlineNsfw === true`.
  *      - score < 0.5 → silent pass.
- *   3. Size validation (>1 KB, ≤2 MB).
- *   4. Upload to `users/{uid}/avatar.webp`. Storage rules verify size,
+ *   4. Size validation (>1 KB, ≤2 MB).
+ *   5. Upload to `users/{uid}/avatar.webp`. Storage rules verify size,
  *      content-type, and uid binding.
- *   5. Return the resulting `getDownloadURL()` URL.
+ *   6. Return the resulting `getDownloadURL()` URL.
  *
  * The Firestore `profileImageUrl` write is the caller's responsibility
  * (see `setProfileImageUrl` in `users.ts`). Splitting it lets the
@@ -217,10 +218,19 @@ function avatarPath(uid: string, ext: AvatarExt): string {
  * on the users service.
  */
 export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOptions = {}): Promise<string> {
-  // 1. Resize / re-encode.
+  // 1. Auth gate first — refuse early so a misconfigured caller doesn't burn
+  //    a ~10 MB NSFW model load + canvas resize before we discover the upload
+  //    will be rejected. The storage rule re-validates uid binding server-
+  //    side; this check is the cheap fast-fail.
+  const auth = requireAuth();
+  if (!auth.currentUser || auth.currentUser.uid !== uid) {
+    throw new Error("avatar_upload_unauthenticated");
+  }
+
+  // 2. Resize / re-encode.
   const resized = await resizeToWebp(blob);
 
-  // 2. Moderation gate.
+  // 3. Moderation gate.
   const safety = await isAvatarSafe(resized);
   if (!safety.ok) {
     throw new AvatarRejectedError(safety.score, safety.category);
@@ -229,7 +239,7 @@ export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOp
     throw new AvatarBorderlineError(safety.score, safety.category);
   }
 
-  // 3. Size validation — defence in depth against extreme inputs.
+  // 4. Size validation — defence in depth against extreme inputs.
   if (resized.size > MAX_UPLOAD_BYTES) {
     throw new AvatarTooLargeError(resized.size);
   }
@@ -237,12 +247,7 @@ export async function uploadAvatar(uid: string, blob: Blob, opts: UploadAvatarOp
     throw new AvatarTooSmallError(resized.size);
   }
 
-  // 4. Upload. Storage rules pin path + size + content-type + uid.
-  const auth = requireAuth();
-  if (!auth.currentUser || auth.currentUser.uid !== uid) {
-    throw new Error("avatar_upload_unauthenticated");
-  }
-
+  // 5. Upload. Storage rules pin path + size + content-type + uid.
   const ref = storageRef(requireStorage(), avatarPath(uid, "webp"));
   // Avatars are immutable from the client's perspective — the storage
   // rule denies UPDATE, so a re-upload requires a delete-then-create.

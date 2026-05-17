@@ -21,16 +21,7 @@ const PLACEHOLDER_TILE_COUNT = 12;
 /** Stable indices so React keys don't churn between renders. */
 const placeholderIndices = Array.from({ length: PLACEHOLDER_TILE_COUNT }, (_, i) => i);
 
-interface Props {
-  /** Reserved for PR-F — pass `false` to keep placeholders even when the flag
-   *  is on (e.g. for testing). PR-C only renders placeholders. */
-  forcePlaceholder?: boolean;
-}
-
-export function AchievementsRibbon(_props: Props = {}) {
-  // In PR-C the only state is "all placeholder" — the prop slot is reserved
-  // so PR-F can flip a single boolean without a component split.
-  void _props;
+export function AchievementsRibbon() {
   return (
     <section aria-label="Achievements" data-testid="achievements-ribbon" className="mb-8 animate-fade-in">
       <h2 className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-3">ACHIEVEMENTS</h2>

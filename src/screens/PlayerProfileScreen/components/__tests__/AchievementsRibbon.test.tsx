@@ -35,9 +35,4 @@ describe("AchievementsRibbon", () => {
     const grid = screen.getByTestId("achievements-ribbon").querySelector("ul");
     expect(grid?.className).toMatch(/md:grid-cols-6/);
   });
-
-  it("forcePlaceholder is accepted (PR-F handoff prop)", () => {
-    const { container } = render(<AchievementsRibbon forcePlaceholder />);
-    expect(container.querySelectorAll('[data-testid^="achievement-tile-"]')).toHaveLength(12);
-  });
 });

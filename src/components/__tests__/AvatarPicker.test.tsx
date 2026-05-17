@@ -209,7 +209,7 @@ describe("AvatarPicker — native capture failure surfaces user-visible error (a
 });
 
 describe("AvatarPicker — URL scheme validation (audit B-ISSUE-1)", () => {
-  it("rejects a non-http(s) URL before fetching", async () => {
+  it("rejects a non-https URL before fetching", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response());
     try {
       renderPicker();
@@ -217,9 +217,22 @@ describe("AvatarPicker — URL scheme validation (audit B-ISSUE-1)", () => {
       const input = screen.getByPlaceholderText("https://…/avatar.png");
       await userEvent.type(input, "javascript:alert(1)");
       await userEvent.click(screen.getByText("Continue"));
-      await waitFor(() =>
-        expect(screen.getByText("Only http:// and https:// URLs are supported.")).toBeInTheDocument(),
-      );
+      await waitFor(() => expect(screen.getByText("Only https:// URLs are supported.")).toBeInTheDocument());
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it("rejects a plain http:// URL — production CSP blocks mixed content anyway", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response());
+    try {
+      renderPicker();
+      await userEvent.click(screen.getByText("Paste Image URL"));
+      const input = screen.getByPlaceholderText("https://…/avatar.png");
+      await userEvent.type(input, "http://example.com/avatar.png");
+      await userEvent.click(screen.getByText("Continue"));
+      await waitFor(() => expect(screen.getByText("Only https:// URLs are supported.")).toBeInTheDocument());
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();

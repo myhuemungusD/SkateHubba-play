@@ -198,10 +198,12 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
 
   const handleUrlSubmit = useCallback(async () => {
     setErrorMsg(null);
-    // Reject non-http(s) schemes up-front so we never hand `file://`,
-    // `data:`, or `javascript:` URLs to fetch (audit B-ISSUE-1).
-    if (!/^https?:\/\//i.test(urlInput.trim())) {
-      setErrorMsg("Only http:// and https:// URLs are supported.");
+    // Reject non-https schemes up-front. `file://`, `data:`, `javascript:`
+    // never reach fetch (audit B-ISSUE-1); plain `http://` is rejected too
+    // because production CSP forbids mixed content and the request would
+    // fail at the network layer with a confusing error.
+    if (!/^https:\/\//i.test(urlInput.trim())) {
+      setErrorMsg("Only https:// URLs are supported.");
       return;
     }
     setBusy(true);

@@ -18,7 +18,7 @@
  * dashboard has signal on which flags are actually being read without
  * burying PostHog ingest in noise.
  */
-import { useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { getPostHogClient } from "../lib/posthog";
 import { isAnalyticsAllowed, subscribeConsent } from "../lib/consent";
 import { analytics } from "./analytics";
@@ -69,6 +69,22 @@ export function isFeatureEnabled(flag: string, defaultValue = false): boolean {
 }
 
 /**
+ * Subscribe to flag-store change events. Stable across renders — neither
+ * the PostHog `onFeatureFlags` registration nor the consent observer
+ * depends on the flag name or default value. Hoisted out of the hook so
+ * `useSyncExternalStore` doesn't re-subscribe on every parent render.
+ */
+function subscribeFlags(notify: () => void): () => void {
+  const ph = getPostHogClient();
+  const phUnsub = ph?.onFeatureFlags(notify);
+  const consentUnsub = subscribeConsent(notify);
+  return () => {
+    phUnsub?.();
+    consentUnsub();
+  };
+}
+
+/**
  * React hook variant. Re-renders when PostHog flushes new flag values
  * (`onFeatureFlags`) or when the user updates analytics consent. The
  * latter matters because flipping consent from declined → accepted
@@ -80,21 +96,15 @@ export function isFeatureEnabled(flag: string, defaultValue = false): boolean {
  * setState-in-effect rule never fires and tearing is impossible.
  */
 export function useFeatureFlag(flag: string, defaultValue = false): boolean {
-  const subscribe = (notify: () => void): (() => void) => {
-    const ph = getPostHogClient();
-    const phUnsub = ph?.onFeatureFlags(notify);
-    const consentUnsub = subscribeConsent(notify);
-    return () => {
-      phUnsub?.();
-      consentUnsub();
-    };
-  };
-  const getSnapshot = (): boolean => isFeatureEnabled(flag, defaultValue);
+  // `getSnapshot` must be referentially stable per (flag, defaultValue) so
+  // useSyncExternalStore doesn't think the store changed on every parent
+  // render. `subscribeFlags` is hoisted above for the same reason.
+  const getSnapshot = useCallback((): boolean => isFeatureEnabled(flag, defaultValue), [flag, defaultValue]);
   // Server snapshot mirrors the synchronous default — PostHog is browser-
   // only, so server-side renders should never differ from the fallback.
   // Vitest runs in jsdom, never invoking the server-snapshot path; the
   // ignore avoids forcing a bespoke SSR-environment test for one line.
-  /* v8 ignore next */
-  const getServerSnapshot = (): boolean => defaultValue;
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  /* v8 ignore next 2 */
+  const getServerSnapshot = useCallback((): boolean => defaultValue, [defaultValue]);
+  return useSyncExternalStore(subscribeFlags, getSnapshot, getServerSnapshot);
 }

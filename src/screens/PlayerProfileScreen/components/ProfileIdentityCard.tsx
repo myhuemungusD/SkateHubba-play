@@ -57,19 +57,19 @@ export function ProfileIdentityCard({
   // and sets up brand recognition; the SVG only fires when the circle
   // can't render (e.g. empty username, which the rules already prevent).
   const initial = username[0]?.toUpperCase() ?? "";
-  const showCustom = typeof effectiveUrl === "string" && effectiveUrl.length > 0;
-  const showInitial = !showCustom && initial !== "";
-  const showFallbackSvg = !showCustom && !showInitial;
+  const customSrc = typeof effectiveUrl === "string" && effectiveUrl.length > 0 ? effectiveUrl : null;
+  const showInitial = customSrc === null && initial !== "";
+  const showFallbackSvg = customSrc === null && !showInitial;
 
   return (
     <div className="flex items-center gap-4 mb-6 animate-fade-in">
       <div className="relative">
         <div className="w-24 h-24 rounded-full bg-brand-orange/[0.12] border-2 border-brand-orange/30 flex items-center justify-center shrink-0 shadow-glow-sm overflow-hidden">
-          {showCustom && (
+          {customSrc !== null && (
             // Hero avatar is above-the-fold — `loading="lazy"` (audit
             // C-ISSUE-1) would defer the request unnecessarily and
             // delay paint on the most prominent element.
-            <img src={effectiveUrl as string} alt="" decoding="async" className="w-full h-full object-cover" />
+            <img src={customSrc} alt="" decoding="async" className="w-full h-full object-cover" />
           )}
           {showInitial && <span className="font-display text-4xl text-brand-orange leading-none">{initial}</span>}
           {showFallbackSvg && (
