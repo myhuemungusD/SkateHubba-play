@@ -7,6 +7,10 @@ import type { UserProfile } from "../../services/users";
 
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
+  analytics: {
+    profileViewed: vi.fn(),
+    profileStatTileTapped: vi.fn(),
+  },
 }));
 
 vi.mock("../../utils/helpers", () => ({
@@ -113,9 +117,9 @@ describe("PlayerProfileScreen", () => {
 
   it("shows 0 stats when no games", () => {
     render(<PlayerProfileScreen {...baseProps} />);
-    expect(screen.getByText("Wins")).toBeInTheDocument();
-    expect(screen.getByText("Losses")).toBeInTheDocument();
-    expect(screen.getByText("Win Rate")).toBeInTheDocument();
+    expect(screen.getByText("Lifetime Wins")).toBeInTheDocument();
+    expect(screen.getByText("Lifetime Losses")).toBeInTheDocument();
+    expect(screen.getByText("Win Rate %")).toBeInTheDocument();
   });
 
   it("shows empty game history message for own profile", () => {
@@ -132,15 +136,6 @@ describe("PlayerProfileScreen", () => {
     expect(screen.getByText("GAME HISTORY")).toBeInTheDocument();
     // Should show opponent record
     expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
-  });
-
-  it("shows win streak callout when streak >= 2", () => {
-    const games = [
-      makeGame({ id: "g1", winner: "me", updatedAt: { toMillis: () => 1000 } as GameDoc["updatedAt"] }),
-      makeGame({ id: "g2", winner: "me", updatedAt: { toMillis: () => 2000 } as GameDoc["updatedAt"] }),
-    ];
-    render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
-    expect(screen.getByText("2 WIN STREAK")).toBeInTheDocument();
   });
 
   it("calls onBack when Back button is clicked", async () => {

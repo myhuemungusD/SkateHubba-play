@@ -74,6 +74,15 @@ vi.mock("../../firebase", () => ({
       return mockCurrentUser;
     },
   }),
+  requireStorage: () => ({}),
+}));
+
+/* ── mock firebase/storage (used by deleteUserData avatar cleanup) ─── */
+const mockDeleteObject = vi.fn().mockResolvedValue(undefined);
+const mockStorageRef = vi.fn((_storage: unknown, path: string) => ({ fullPath: path }));
+vi.mock("firebase/storage", () => ({
+  ref: (...args: unknown[]) => mockStorageRef(...(args as [unknown, string])),
+  deleteObject: (...args: unknown[]) => mockDeleteObject(...args),
 }));
 
 const mockDeleteGameVideos = vi.fn().mockResolvedValue(0);
@@ -86,6 +95,20 @@ vi.mock("../clips", () => ({
   deleteUserClips: (...args: unknown[]) => mockDeleteUserClips(...args),
 }));
 
+const mockAccountDeleted = vi.fn();
+vi.mock("../analytics", () => ({
+  analytics: {
+    accountDeleted: (...args: unknown[]) => mockAccountDeleted(...args),
+  },
+}));
+
+const mockLoggerWarn = vi.fn();
+vi.mock("../logger", () => ({
+  logger: {
+    warn: (...args: unknown[]) => mockLoggerWarn(...args),
+  },
+}));
+
 import {
   getUserProfile,
   getUserProfileOnAuth,
@@ -96,6 +119,8 @@ import {
   updatePlayerStats,
   getLeaderboard,
   getPlayerDirectory,
+  setProfileImageUrl,
+  InvalidAvatarUrlError,
 } from "../users";
 
 beforeEach(() => vi.clearAllMocks());
@@ -404,12 +429,24 @@ describe("users service", () => {
   });
 
   describe("deleteUserData", () => {
+    /**
+     * deleteUserData calls getDocs three times per invocation:
+     *   1. games where player1Uid == uid
+     *   2. games where player2Uid == uid
+     *   3. users/{uid}/achievements subcollection
+     * Tests that don't care about achievements stub it out as empty.
+     */
+    function stubEmptyAchievements(): void {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // achievements
+    }
+
     it("deletes videos and game docs then profile and username via batch", async () => {
       const gameDoc1 = { id: "g1", data: () => ({ status: "complete" }) };
       const gameDoc2 = { id: "g2", data: () => ({ status: "forfeit" }) };
       mockGetDocs
         .mockResolvedValueOnce({ docs: [gameDoc1] }) // player1Uid query
         .mockResolvedValueOnce({ docs: [gameDoc2] }); // player2Uid query
+      stubEmptyAchievements();
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -436,6 +473,7 @@ describe("users service", () => {
       const activeGame = { id: "g1", data: () => ({ status: "active" }) };
       const completeGame = { id: "g2", data: () => ({ status: "complete" }) };
       mockGetDocs.mockResolvedValueOnce({ docs: [activeGame, completeGame] }).mockResolvedValueOnce({ docs: [] });
+      stubEmptyAchievements();
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -449,6 +487,7 @@ describe("users service", () => {
     it("deduplicates game docs appearing in both queries", async () => {
       const gameDoc = { id: "g1", data: () => ({ status: "complete" }) };
       mockGetDocs.mockResolvedValueOnce({ docs: [gameDoc] }).mockResolvedValueOnce({ docs: [gameDoc] }); // same game in both
+      stubEmptyAchievements();
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -459,13 +498,119 @@ describe("users service", () => {
     });
 
     it("re-throws batch commit errors", async () => {
-      // Phase 1 succeeds
-      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
+      // Phase 1 succeeds (games + achievements)
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] }); // achievements
 
-      // Phase 2 fails
+      // Phase 4 fails
       const batch = mockWriteBatch();
       batch.commit.mockRejectedValueOnce(new Error("Batch commit failed"));
       await expect(deleteUserData("u1", "sk8r")).rejects.toThrow("Batch commit failed");
+    });
+
+    it("folds the achievements subcollection into the profile/username batch", async () => {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
+      const achievementRefs = [{ fullPath: "users/u1/achievements/a1" }, { fullPath: "users/u1/achievements/a2" }];
+      mockGetDocs.mockResolvedValueOnce({
+        docs: achievementRefs.map((ref) => ({ ref })),
+      });
+      mockDeleteDoc.mockResolvedValue(undefined);
+
+      await deleteUserData("u1", "sk8r");
+
+      // 2 achievements + private profile + public profile + username = 5 deletes.
+      const batch = mockWriteBatch();
+      expect(batch.delete).toHaveBeenCalledTimes(5);
+      expect(batch.delete).toHaveBeenCalledWith(achievementRefs[0]);
+      expect(batch.delete).toHaveBeenCalledWith(achievementRefs[1]);
+      expect(batch.commit).toHaveBeenCalled();
+    });
+
+    it("attempts to delete all three avatar extensions from Storage", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+      mockDeleteObject.mockResolvedValue(undefined);
+
+      await deleteUserData("u1", "sk8r");
+
+      expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "users/u1/avatar.webp");
+      expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "users/u1/avatar.jpeg");
+      expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "users/u1/avatar.png");
+      expect(mockDeleteObject).toHaveBeenCalledTimes(3);
+    });
+
+    it("ignores 'object-not-found' avatar errors silently and still completes", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+      mockDeleteObject.mockReset();
+      const notFound = Object.assign(new Error("not found"), { code: "storage/object-not-found" });
+      mockDeleteObject.mockRejectedValue(notFound);
+
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+      // 'not-found' is the expected case for users with no avatar — must not log.
+      expect(mockLoggerWarn).not.toHaveBeenCalled();
+    });
+
+    it("logs (but does not throw) on unexpected avatar delete failures", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+      mockDeleteObject.mockReset();
+      mockDeleteObject.mockRejectedValue(Object.assign(new Error("boom"), { code: "storage/unauthenticated" }));
+
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+      expect(mockLoggerWarn).toHaveBeenCalledWith("avatar_delete_failed", expect.objectContaining({ uid: "u1" }));
+    });
+
+    it("emits account_deleted telemetry with the achievements + avatar tally", async () => {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
+      const achievementRefs = [{ fullPath: "users/u1/achievements/a1" }];
+      mockGetDocs.mockResolvedValueOnce({ docs: achievementRefs.map((ref) => ({ ref })) });
+      mockDeleteObject.mockReset();
+      // Two extensions present, one missing.
+      mockDeleteObject.mockResolvedValueOnce(undefined);
+      mockDeleteObject.mockRejectedValueOnce(Object.assign(new Error("nf"), { code: "storage/object-not-found" }));
+      mockDeleteObject.mockResolvedValueOnce(undefined);
+
+      await deleteUserData("u1", "sk8r");
+
+      expect(mockAccountDeleted).toHaveBeenCalledWith("u1", 1, true);
+    });
+
+    it("reports avatarRemoved=false in telemetry when no avatar object existed", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+      mockDeleteObject.mockReset();
+      mockDeleteObject.mockRejectedValue(Object.assign(new Error("nf"), { code: "storage/object-not-found" }));
+
+      await deleteUserData("u1", "sk8r");
+
+      expect(mockAccountDeleted).toHaveBeenCalledWith("u1", 0, false);
+    });
+
+    it("treats a non-Error avatar rejection as loggable (string error path)", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+      mockDeleteObject.mockReset();
+      // Reject with a plain string — the logger fallback path stringifies it.
+      mockDeleteObject.mockRejectedValue("string-error");
+
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        "avatar_delete_failed",
+        expect.objectContaining({ error: "string-error" }),
+      );
     });
   });
 
@@ -643,6 +788,71 @@ describe("users service", () => {
       // Both have 0 wins, 0 losses, 0% rate — alphabetical
       expect(result[0].username).toBe("alice");
       expect(result[1].username).toBe("zorro");
+    });
+  });
+
+  /* ── setProfileImageUrl ─────────────────────── */
+  describe("setProfileImageUrl", () => {
+    const BUCKET = "test-bucket.firebasestorage.app";
+    const validUrl = (uid: string, ext = "webp"): string =>
+      `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/users%2F${uid}%2Favatar.${ext}?alt=media&token=abc`;
+
+    beforeEach(() => {
+      vi.stubEnv("VITE_FIREBASE_STORAGE_BUCKET", BUCKET);
+      // Default tx implementation: profile exists, update applies cleanly.
+      mockRunTransaction.mockImplementation(
+        async (_db: unknown, fn: (tx: { get: typeof vi.fn; update: typeof vi.fn }) => unknown) => {
+          const tx = {
+            get: vi.fn().mockResolvedValue({ exists: () => true }),
+            update: vi.fn(),
+          };
+          return await fn(tx as never);
+        },
+      );
+    });
+
+    it("writes the URL when it matches the bucket+UID pattern", async () => {
+      await expect(setProfileImageUrl("u1", validUrl("u1"))).resolves.toBeUndefined();
+      expect(mockRunTransaction).toHaveBeenCalled();
+    });
+
+    it("accepts null to clear the avatar", async () => {
+      await expect(setProfileImageUrl("u1", null)).resolves.toBeUndefined();
+    });
+
+    it("rejects URLs targeting another user's UID (audit S12)", async () => {
+      await expect(setProfileImageUrl("u1", validUrl("u2"))).rejects.toBeInstanceOf(InvalidAvatarUrlError);
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+    });
+
+    it("rejects URLs pointing at a non-project bucket (audit S5)", async () => {
+      await expect(
+        setProfileImageUrl(
+          "u1",
+          `https://firebasestorage.googleapis.com/v0/b/evil.firebasestorage.app/o/users%2Fu1%2Favatar.webp`,
+        ),
+      ).rejects.toBeInstanceOf(InvalidAvatarUrlError);
+    });
+
+    it("rejects malformed URLs", async () => {
+      await expect(setProfileImageUrl("u1", "not-a-url")).rejects.toBeInstanceOf(InvalidAvatarUrlError);
+    });
+
+    it("rejects extensions outside the allowlist", async () => {
+      await expect(setProfileImageUrl("u1", validUrl("u1", "gif"))).rejects.toBeInstanceOf(InvalidAvatarUrlError);
+    });
+
+    it("throws when the profile does not exist", async () => {
+      mockRunTransaction.mockImplementation(
+        async (_db: unknown, fn: (tx: { get: typeof vi.fn; update: typeof vi.fn }) => unknown) => {
+          const tx = {
+            get: vi.fn().mockResolvedValue({ exists: () => false }),
+            update: vi.fn(),
+          };
+          return await fn(tx as never);
+        },
+      );
+      await expect(setProfileImageUrl("u1", validUrl("u1"))).rejects.toThrow("avatar_profile_not_found");
     });
   });
 });

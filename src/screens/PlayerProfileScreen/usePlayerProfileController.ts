@@ -13,16 +13,18 @@ export interface OpponentRecord {
   isVerifiedPro?: boolean;
 }
 
+/**
+ * Stats shape the profile screen renders. Counter fields read straight off
+ * the profile doc (wins/losses) — main's stats-counter peer-write feature
+ * keeps them up to date without the client recomputing from history. The
+ * H2H (vsYou*) record is still derived from local games because it is
+ * inherently per-viewer and isn't stored on the profile doc.
+ */
 export interface ProfileStats {
   wins: number;
   losses: number;
   total: number;
   winRate: number;
-  totalTricks: number;
-  tricksLanded: number;
-  landRate: number;
-  longestStreak: number;
-  currentStreak: number;
   vsYouWins: number;
   vsYouLosses: number;
   vsYouTotal: number;
@@ -91,74 +93,44 @@ export function usePlayerProfileController({
     [games],
   );
 
+  /**
+   * Stats: counter fields read directly off the profile doc (main's stats
+   * peer-write feature keeps `wins` / `losses` in sync). The plan's
+   * original §3 schema with derived `tricks*`/`level`/`streak` counters
+   * is not on main yet, so we surface only what exists today.
+   *
+   * H2H (`vsYou*`) is still computed from `completedGames` because the
+   * per-opponent record is inherently per-viewer and not stored on the
+   * profile doc.
+   */
   const stats = useMemo<ProfileStats>(() => {
-    const empty: ProfileStats = {
-      wins: 0,
-      losses: 0,
-      total: 0,
-      winRate: 0,
-      totalTricks: 0,
-      tricksLanded: 0,
-      landRate: 0,
-      longestStreak: 0,
-      currentStreak: 0,
-      vsYouWins: 0,
-      vsYouLosses: 0,
-      vsYouTotal: 0,
-    };
-    if (!profile) return empty;
+    const wins = profile?.wins ?? 0;
+    const losses = profile?.losses ?? 0;
+    const total = wins + losses;
+    const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
 
-    let wins = 0;
-    let losses = 0;
-    let totalTricks = 0;
-    let tricksLanded = 0;
-    let longestStreak = 0;
-    let currentStreak = 0;
-
-    const chronological = [...completedGames].reverse();
-
-    for (const g of chronological) {
-      const won = g.winner === profile.uid;
-      if (won) {
-        wins++;
-        currentStreak++;
-        if (currentStreak > longestStreak) longestStreak = currentStreak;
-      } else {
-        losses++;
-        currentStreak = 0;
-      }
-
-      for (const t of g.turnHistory ?? []) {
-        totalTricks++;
-        if (t.landed) tricksLanded++;
+    let vsYouWins = 0;
+    let vsYouLosses = 0;
+    if (profile) {
+      for (const g of completedGames) {
+        // From the viewer's perspective: a profile-side WIN against the
+        // viewer is a viewer-side LOSS (and vice versa). The viewer's uid
+        // is currentUserProfile.uid; the profile being viewed is profile.uid.
+        if (g.winner === profile.uid) vsYouLosses++;
+        else if (g.winner === currentUserProfile.uid) vsYouWins++;
       }
     }
 
-    const finalWins = isOwnProfile ? wins : (profile.wins ?? 0);
-    const finalLosses = isOwnProfile ? losses : (profile.losses ?? 0);
-    const total = finalWins + finalLosses;
-    const winRate = total > 0 ? Math.round((finalWins / total) * 100) : 0;
-
-    const landRate = totalTricks > 0 ? Math.round((tricksLanded / totalTricks) * 100) : 0;
-
-    const vsYouWins = losses;
-    const vsYouLosses = wins;
-
     return {
-      wins: finalWins,
-      losses: finalLosses,
+      wins,
+      losses,
       total,
       winRate,
-      totalTricks,
-      tricksLanded,
-      landRate,
-      longestStreak,
-      currentStreak,
       vsYouWins,
       vsYouLosses,
       vsYouTotal: vsYouWins + vsYouLosses,
     };
-  }, [completedGames, profile, isOwnProfile]);
+  }, [profile, completedGames, currentUserProfile.uid]);
 
   const opponents = useMemo<OpponentRecord[]>(() => {
     if (!profile) return [];

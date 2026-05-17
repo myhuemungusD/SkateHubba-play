@@ -61,6 +61,16 @@ export function captureEvent(name: string, properties?: Record<string, unknown>)
 }
 
 /**
+ * Return the underlying PostHog client if it has been initialised, or null
+ * otherwise. Service code (e.g. `featureFlags.ts`) uses this to call APIs
+ * we don't proxy here — `isFeatureEnabled`, `onFeatureFlags` — without
+ * having to bake a duplicate guard into every call site.
+ */
+export function getPostHogClient(): PostHog | null {
+  return sdk;
+}
+
+/**
  * Associate subsequent events with a specific user. Call on sign-in; call
  * {@link resetIdentity} on sign-out so the next user doesn't inherit events.
  */
