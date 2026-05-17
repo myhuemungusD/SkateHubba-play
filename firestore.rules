@@ -203,6 +203,40 @@ service cloud.firestore {
         && !('lastGameCreatedAt' in request.resource.data)
         && !('lastSpotCreatedAt' in request.resource.data);
       allow update: if isOwner(uid)
+        // ── Privileged-field self-modify guard (F2 — defense in depth) ──
+        // `affectedKeys()` is the set of fields whose VALUE actually
+        // changed between resource.data and request.resource.data. By
+        // gating on `.hasAny([...])` (not `.hasOnly`) we deny any owner
+        // update that mutates one of the immutable / admin-only fields
+        // below, regardless of which other fields the same write touches.
+        //
+        // Critically, this works alongside the transitional legacy-field
+        // relaxation a few lines down: a legacy doc carrying e.g. `email`
+        // inline contributes that field to request.resource.data on every
+        // partial update, but it is NOT in affectedKeys() so this guard
+        // ignores it. The per-field guards below remain the canonical
+        // value-equality check; this clause is the comprehensive backstop
+        // that closes self-modify attempts on fields the owner must never
+        // touch (createdAt rewrite, isVerifiedPro grant, lastStatsGameId
+        // idempotency-key forge, etc.).
+        //
+        // Field rationale:
+        //   uid, username, createdAt — identity, immutable post-create.
+        //   isVerifiedPro, verifiedBy, verifiedAt — admin/console only.
+        //   email, emailVerified, dob, parentalConsent, fcmTokens —
+        //     legacy sensitive fields; once moved to /private they must
+        //     never reappear or be re-written on the public doc.
+        //
+        // NOTE: `lastStatsGameId` is deliberately NOT in this list. The
+        // owner legitimately advances it on every `updatePlayerStats`
+        // run (src/services/users.ts) as the local-side idempotency
+        // key for the wins/losses catch-up loop. The peer-write branch
+        // has its own forward-progress check in canPeerCloseStats().
+        && !(request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['uid', 'username', 'createdAt',
+                     'isVerifiedPro', 'verifiedBy', 'verifiedAt',
+                     'email', 'emailVerified', 'dob', 'parentalConsent',
+                     'fcmTokens']))
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
