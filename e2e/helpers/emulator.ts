@@ -238,6 +238,46 @@ export async function createSpot(
 }
 
 /**
+ * Seed a landed-trick clip document directly into Firestore.
+ *
+ * Mirrors the payload written by `writeLandedClipsInTransaction` in
+ * `src/services/clips.ts` so the embedded ClipsFeed treats it as a real
+ * landed clip. The doc id is forced to the deterministic
+ * `${gameId}_${turnNumber}_${role}` format that `firestore.rules` requires
+ * on production-path creates — keeping the same shape here means the seed
+ * survives any future rule tightening without a helper change.
+ *
+ * `videoUrl` is a tiny inline data URL by default: the spotlight video
+ * element won't decode meaningful frames, but upvote / report controls do
+ * not require playback to be exercised.
+ */
+export async function createClip(
+  gameId: string,
+  turnNumber: number,
+  role: "set" | "match",
+  playerUid: string,
+  playerUsername: string,
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
+  const id = `${gameId}_${turnNumber}_${role}`;
+  await writeDoc("clips", id, {
+    gameId,
+    turnNumber,
+    role,
+    playerUid,
+    playerUsername,
+    trickName: "Kickflip",
+    videoUrl: "data:video/webm;base64,AAAA",
+    spotId: null,
+    createdAt: new Date(),
+    moderationStatus: "active",
+    upvoteCount: 0,
+    ...overrides,
+  });
+  return id;
+}
+
+/**
  * Patch the `turnDeadline` of an existing game to a timestamp in the past
  * so that the forfeit check in GamePlayScreen triggers immediately.
  */

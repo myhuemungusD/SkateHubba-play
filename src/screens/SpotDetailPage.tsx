@@ -4,12 +4,14 @@ import { ChevronLeft, MapPin, Send } from "lucide-react";
 import type { Spot, SpotComment } from "../types/spot";
 import { getSpot, getSpotComments, addSpotComment } from "../services/spots";
 import { useAuthContext } from "../context/AuthContext";
+import { useNavigationContext } from "../context/NavigationContext";
 import { GnarRating } from "../components/map/GnarRating";
 import { BustRisk } from "../components/map/BustRisk";
 
 export function SpotDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { setScreen } = useNavigationContext();
   const { user } = useAuthContext();
 
   const [spot, setSpot] = useState<Spot | null>(null);
@@ -99,7 +101,7 @@ export function SpotDetailPage() {
         <p className="text-muted text-sm mb-4">{error ?? "Spot not found"}</p>
         <button
           type="button"
-          onClick={() => navigate("/map")}
+          onClick={() => setScreen("map")}
           className="px-4 py-2 bg-[#F97316] text-white rounded-lg text-sm"
         >
           Back to Map
@@ -114,7 +116,7 @@ export function SpotDetailPage() {
       <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-[#222] px-4 pt-safe pb-3 flex items-center gap-3">
         <button
           type="button"
-          onClick={() => navigate("/map")}
+          onClick={() => setScreen("map")}
           className="text-muted hover:text-white"
           aria-label="Back to map"
         >

@@ -19,6 +19,11 @@ vi.mock("../../context/AuthContext", () => ({
   useAuthContext: () => mockUseAuthContext(),
 }));
 
+const mockSetScreen = vi.fn();
+vi.mock("../../context/NavigationContext", () => ({
+  useNavigationContext: () => ({ setScreen: mockSetScreen }),
+}));
+
 import { SpotDetailPage } from "../SpotDetailPage";
 
 const FIXTURE_SPOT: Spot = {
@@ -137,6 +142,19 @@ describe("SpotDetailPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("dest").textContent).toBe(`/challenge?spot=${FIXTURE_SPOT.id}`);
     });
+  });
+
+  it("header back arrow routes to the map via NavigationContext", async () => {
+    renderPage();
+    await userEvent.click(await screen.findByLabelText("Back to map"));
+    expect(mockSetScreen).toHaveBeenCalledWith("map");
+  });
+
+  it("'Back to Map' error-fallback button routes via NavigationContext", async () => {
+    mockGetSpot.mockResolvedValueOnce(null);
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /Back to Map/i }));
+    expect(mockSetScreen).toHaveBeenCalledWith("map");
   });
 
   it("blocks comment submit when the user is signed out", async () => {
