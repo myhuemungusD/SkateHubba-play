@@ -1,28 +1,10 @@
 /**
- * Users — privileged-field self-modify red-team tests (F2).
+ * Users — privileged-field self-modify red-team tests (F2 backstop).
  *
- * The `users/{uid}` update rule layers two independent guards on
- * sensitive / immutable fields:
- *
- *   1. Per-field value-equality guards (legacy form), which accept a
- *      field in request.resource.data IFF the value is unchanged from
- *      resource.data. Needed during the public/private backfill so that
- *      legitimate writes (wins++, stance edits) against legacy docs
- *      still pass while old inline values ride along.
- *
- *   2. A comprehensive `affectedKeys().hasAny([...])` guard that DENIES
- *      any update whose diff includes one of the privileged fields. This
- *      is the F2 backstop — it closes two gaps the per-field clauses
- *      left open (createdAt rewrite and lastStatsGameId forge by the
- *      owner branch), and provides defense-in-depth against a future
- *      typo in the per-field list.
- *
- * Trust-no-client: every privileged field gets a negative test that
- * proves the owner cannot self-mutate it, plus a positive test that
- * proves legitimate non-privileged updates (stance change, wins++) still
- * succeed.
- *
- * Run via:  npm run test:rules
+ * Negative: every privileged field is verifiably immutable by the owner.
+ * Positive: legitimate non-privileged writes (stance, wins++, lastStatsGameId
+ * advance, lastGameCreatedAt) still succeed, including against legacy-shaped
+ * docs that carry inline sensitive fields.
  */
 import { describe, it, beforeAll, afterAll, beforeEach } from "vitest";
 import {
@@ -47,13 +29,9 @@ function asOwner(): RulesTestContext {
 }
 
 /**
- * Seed a CLEAN post-backfill public user doc — no sensitive fields
- * inline. This is the steady-state shape after the public/private
- * split. The privileged-field guard must reject every self-modify
- * attempt against this baseline.
- *
- * Includes `createdAt` and `isVerifiedPro` so the negative tests can
- * attempt to mutate values that genuinely exist on the stored doc.
+ * Seed a clean post-backfill public user doc. `createdAt` and
+ * `isVerifiedPro` are included so negative tests have real values to
+ * attempt to overwrite.
  */
 async function seedCleanPublicUser(overrides: Record<string, unknown> = {}): Promise<void> {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
