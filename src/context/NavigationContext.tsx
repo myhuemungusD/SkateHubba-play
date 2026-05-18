@@ -85,12 +85,9 @@ export interface NavigationContextValue {
   /** Navigate to a player's public profile page. */
   navigateToPlayer: (uid: string) => void;
   /**
-   * Navigate to the challenge screen with a spot pre-attached via the
-   * `?spot=<uuid>` query param — the contract ChallengeScreen reads, and
-   * what the auth router stashes/restores across sign-in. Exists because
-   * `setScreen('challenge')` only routes to `/challenge` and strips the
-   * query string, so spot-detail → challenge needs a typed helper instead
-   * of a raw `navigate()` call.
+   * Navigate to `/challenge?spot=<id>`. `setScreen('challenge')` strips
+   * the query string, so spot-detail / spot-preview must go through this
+   * helper instead of a raw `navigate()` call.
    */
   navigateToChallengeWithSpot: (spotId: string) => void;
   authMode: "signup" | "signin";
@@ -106,6 +103,12 @@ export function useNavigationContext(): NavigationContextValue {
   const ctx = useContext(NavigationContext);
   if (!ctx) throw new Error("useNavigationContext must be used within NavigationProvider");
   return ctx;
+}
+
+/** Build the `/challenge?spot=<id>` path. Centralised so the
+ *  spot-param contract lives in one place. */
+function challengeSpotPath(spotId: string): string {
+  return `/challenge?spot=${encodeURIComponent(spotId)}`;
 }
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
@@ -139,7 +142,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   const navigateToChallengeWithSpot = useCallback(
     (spotId: string) => {
-      navigate(`/challenge?spot=${spotId}`);
+      navigate(challengeSpotPath(spotId));
     },
     [navigate],
   );
@@ -214,7 +217,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       }
       if (pending && SPOT_ID_SHAPE.test(pending)) {
         logger.debug("auth_router_restored_pending_spot", { uid: user.uid, spot: pending });
-        navigate(`/challenge?spot=${pending}`, { replace: true });
+        navigate(challengeSpotPath(pending), { replace: true });
         return;
       }
     }

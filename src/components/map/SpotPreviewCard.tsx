@@ -2,6 +2,7 @@ import { useRef, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Navigation, BadgeCheck, ImageOff, Flag } from "lucide-react";
 import type { Spot } from "../../types/spot";
+import { useNavigationContext } from "../../context/NavigationContext";
 import { GnarRating } from "./GnarRating";
 import { BustRisk } from "./BustRisk";
 
@@ -27,6 +28,7 @@ function directionsUrl(lat: number, lng: number): string {
 
 export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreviewCardProps) {
   const navigate = useNavigate();
+  const { navigateToChallengeWithSpot } = useNavigationContext();
   const touchStartY = useRef<number | null>(null);
   const [photoFailed, setPhotoFailed] = useState(false);
 
@@ -161,7 +163,7 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
             a challenge is the dominant affordance on a spot preview. */}
         <button
           type="button"
-          onClick={() => navigate(`/challenge?spot=${spot.id}`)}
+          onClick={() => navigateToChallengeWithSpot(spot.id)}
           className="mt-4 w-full py-2.5 rounded-xl bg-[#F97316] text-white font-semibold text-sm
                      hover:bg-[#EA580C] transition-colors"
         >

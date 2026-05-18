@@ -1,10 +1,19 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
 import type { ReactElement } from "react";
-import { SpotPreviewCard } from "../SpotPreviewCard";
 import type { Spot } from "../../../types/spot";
+
+const mockNavigateToChallengeWithSpot = vi.fn();
+
+vi.mock("../../../context/NavigationContext", () => ({
+  useNavigationContext: () => ({
+    navigateToChallengeWithSpot: mockNavigateToChallengeWithSpot,
+  }),
+}));
+
+import { SpotPreviewCard } from "../SpotPreviewCard";
 
 /** Echoes the current router location.search so the test can assert it. */
 function LocationProbe({ tag }: { tag: string }) {
@@ -42,12 +51,15 @@ function renderCard(spot: Spot, onClose: () => void = vi.fn(), activeGameSpotId?
           path="/"
           element={<SpotPreviewCard spot={spot} onClose={onClose} activeGameSpotId={activeGameSpotId} />}
         />
-        <Route path="/challenge" element={<LocationProbe tag="challenge" />} />
         <Route path="/spots/:id" element={<LocationProbe tag="spots" />} />
       </Routes>
     </MemoryRouter>
   );
 }
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("SpotPreviewCard", () => {
   it("renders the spot name + ratings + obstacles", () => {
@@ -71,10 +83,10 @@ describe("SpotPreviewCard", () => {
     expect(screen.queryByText("+1 more")).not.toBeInTheDocument();
   });
 
-  it("'Challenge from here' navigates to /challenge?spot=<id>", async () => {
+  it("'Challenge from here' routes through NavigationContext with the spot id", async () => {
     render(renderCard(FIXTURE_SPOT));
     await userEvent.click(screen.getByRole("button", { name: "Challenge from here" }));
-    expect(screen.getByTestId("dest").textContent).toContain(`spot=${FIXTURE_SPOT.id}`);
+    expect(mockNavigateToChallengeWithSpot).toHaveBeenCalledWith(FIXTURE_SPOT.id);
   });
 
   it("'View Spot' navigates to /spots/:id", async () => {
