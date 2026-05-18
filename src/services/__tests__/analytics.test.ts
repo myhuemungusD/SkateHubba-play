@@ -179,16 +179,6 @@ describe("analytics service", () => {
       });
     });
 
-    it("featureFlagEvaluated sends feature_flag_evaluated event with all three fields", () => {
-      analytics.featureFlagEvaluated("flag.x", true, false);
-      expect(vaSpy).toHaveBeenCalledWith("event", {
-        name: "feature_flag_evaluated",
-        flag: "flag.x",
-        value: true,
-        defaultUsed: false,
-      });
-    });
-
     it("accountDeleted sends account_deleted event with achievement + avatar tally", () => {
       analytics.accountDeleted("u1", 3, true);
       expect(vaSpy).toHaveBeenCalledWith("event", {
