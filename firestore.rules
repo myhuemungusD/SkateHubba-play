@@ -210,8 +210,8 @@ service cloud.firestore {
         // ignores it. The per-field guards below remain the canonical
         // value-equality check; this clause is the comprehensive backstop
         // that closes self-modify attempts on fields the owner must never
-        // touch (createdAt rewrite, isVerifiedPro grant, lastStatsGameId
-        // idempotency-key forge, etc.).
+        // touch (createdAt rewrite, isVerifiedPro grant, etc.).
+        // `lastStatsGameId` is intentionally excluded — see NOTE below.
         //
         // Field rationale:
         //   uid, username, createdAt — identity, immutable post-create.

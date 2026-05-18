@@ -139,6 +139,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   const navigateToChallengeWithSpot = useCallback(
     (spotId: string) => {
+      if (!SPOT_ID_SHAPE.test(spotId)) return;
       navigate(`/challenge?spot=${spotId}`);
     },
     [navigate],

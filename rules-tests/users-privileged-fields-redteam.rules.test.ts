@@ -240,11 +240,17 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
     );
   });
 
-  it("legitimate: partial wins++ update against a legacy-shaped doc still succeeds", async () => {
-    // Re-seed with the legacy inline sensitive fields present, so the
-    // merged request.resource.data carries email/dob/etc through the
-    // write. The privileged-field guard must not affectedKeys()-flag
-    // them because their VALUES are unchanged.
+  it("legacy-shaped doc with inline PII cannot be partially updated until migrated", async () => {
+    // A doc carrying legacy inline sensitive fields (email/dob/etc on the
+    // public document instead of in /users/{uid}/private/*) is effectively
+    // read-only from the client until it is migrated. The strict presence
+    // checks further down in the owner-update clause
+    //   && !('email' in request.resource.data) && !('dob' in ...)
+    // operate on the post-merge document state, so a partial `wins++`
+    // update on a doc that still has `email` stored produces
+    // `'email' in request.resource.data == true` → deny. This locks in the
+    // migration invariant: callers must move PII into the /private
+    // subcollection before they can resume writing the public doc.
     await testEnv.clearFirestore();
     await seedCleanPublicUser({
       email: "alice@example.com",
@@ -254,7 +260,7 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
       fcmTokens: ["legacy-token"],
     });
 
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
         wins: 4,
       }),
