@@ -62,7 +62,6 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - Nudge system with rate limiting
 - Spot map (Mapbox GL + Firestore `spots` collection, challenge flow integration)
 - Clip feed embedded in lobby (Featured Clip card + scrollable feed with per-clip upvote and top-clip autoplay)
-- Featured Clip card on lobby
 - Persistent bottom tab bar (Home / Map / Me)
 - Verified pro profiles with gold treatment
 - Public player profiles with game history
