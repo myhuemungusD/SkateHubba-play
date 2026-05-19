@@ -89,6 +89,7 @@ The audit is 100% static. Two dynamic checks would raise confidence materially:
 - 🔴 **correctness** — one source actively contradicts another; a reader following the wrong source will make a wrong decision
 - 🟡 **staleness** — one source has fallen behind reality but does not mislead about contracts
 - 🟢 **cosmetic** — wording, line numbers, or counts that drift but do not affect correctness
+- ❓ **unvalidated** — a claim that could not be verified in this environment; see §0d
 
 ## Method
 
@@ -110,7 +111,7 @@ A Plan agent designed the 12-pairing matrix below. No code was modified; only th
 - ✓ **No `as any`** — zero hits in `src/**/*.{ts,tsx}` (excluding tests).
 - ✓ **No TODO/FIXME/HACK** — zero hits in `src/`.
 - ✓ **No `console.log`** — zero hits outside tests.
-- ✓ **No Firebase imports outside `src/services/**` or `src/firebase.ts`** — zero leaks.
+- ✓ **No Firebase imports outside `src/services/**` or `src/firebase.ts`** — zero **runtime** leaks. Three `import type` declarations exist (`src/types/clip.ts`, `src/hooks/useAuth.ts`, `src/__mocks__/firebase.ts`) and are elided at compile time; see §0c.
 - ✓ **No Cloud Functions code** — `functions/` directory does not exist.
 - ✓ **No state-management libraries** — no redux, zustand, jotai, recoil, mobx, valtio, or xstate in `package.json`.
 - ✓ **No UI component libraries** — no @mui, @chakra-ui, antd, @mantine, react-bootstrap, @radix-ui.
@@ -124,7 +125,7 @@ A Plan agent designed the 12-pairing matrix below. No code was modified; only th
 - ✓ `src/services/games.turns.ts:90` — `runTransaction`
 - ✓ `src/services/clips.upvotes.ts:159` — `runTransaction`
 
-No raw `setDoc`/`updateDoc`/`addDoc`/`deleteDoc` calls outside transactions in any game-state mutation path.
+No raw `setDoc`/`updateDoc`/`addDoc`/`deleteDoc` calls outside transactions in any game-state **mutation** path. The initial-create `setDoc` at `games.create.ts:120` is a deterministic-id create (not a mutation), and a fire-and-forget user-doc touch at `games.create.ts:124` writes to `users/`, not `games/` — both detailed in §0b alongside the non-transactional clip cascade-delete.
 
 ### File LOC budgets — 10 soft overages
 
@@ -418,19 +419,22 @@ These four guardrails have held via code review alone. They are not contractual 
 
 ## Summary
 
+Final tally — includes §0 self-correction. The pre-self-correction figures (4 / 18 / 6 / 0) are preserved inside the §0 table for diff auditability.
+
 | Severity | Count |
 | -------- | ----: |
 | 🔴 correctness | **4** |
-| 🟡 staleness | **18** |
-| 🟢 cosmetic | **6** |
-| **Total** | **28** |
+| 🟡 staleness | **20** |
+| 🟢 cosmetic | **7** |
+| ❓ unvalidated | **1** |
+| **Total** | **32** |
 
 ### 🔴 Correctness drifts (read these first)
 
-1. `docs/DATABASE.md:176,185` — Cloud Function nudge delivery claim contradicts `CLAUDE.md:96` and reality (no `functions/` dir; client-side via `pushDispatch.ts`).
-2. `docs/DATABASE.md:364–365` — "No composite indexes are currently required" is false; 7 composite indexes are live and 2 are required by `games.subscriptions.ts`.
-3. `docs/ARCHITECTURE.md:34` — "No compound queries" is contradicted by `games.subscriptions.ts:29–44`.
-4. _(grouped with #1)_ `docs/DATABASE.md:185` — `delivered: false` update path attributed to a Cloud Function that does not exist.
+1. `docs/DATABASE.md:176` — Cloud Function nudge delivery claim contradicts `CLAUDE.md:96` and reality (no `functions/` dir; nudges deliver client-side via `src/services/pushDispatch.ts`).
+2. `docs/DATABASE.md:185` — `delivered: false` update path attributed to a Cloud Function that does not exist. Same root cause as #1; the rule comment at `firestore.rules:1167` echoes the same stale expectation.
+3. `docs/DATABASE.md:364–365` — "No composite indexes are currently required" is false; 7 composite indexes are live and 2 are required by `games.subscriptions.ts:29–44`.
+4. `docs/ARCHITECTURE.md:34` — "No compound queries" is contradicted by `games.subscriptions.ts:29–44`.
 
 ### Recommended remediation order
 
@@ -454,6 +458,7 @@ The report records this order; **no work is performed here**.
 
 | Pairing | Sections | Drift found |
 | ------- | -------- | ----------- |
+| 0. Self-correction (gaps in this audit) | §0a–0d | 2 🟡 + 1 🟢 + 1 ❓ |
 | 1. CLAUDE.md ↔ code | §1 | 10 🟡 (LOC) |
 | 2. rules ↔ games/clips services | §2 | 0 |
 | 3. rules ↔ users/spots/reports/blocks/votes/storage services | §3, §5 | 0 |
@@ -466,5 +471,6 @@ The report records this order; **no work is performed here**.
 | 10. GAME_STATE_MACHINE.md ↔ services + rules | §10 | 1 🟢 |
 | 11. AUDIT_2026-05.md ↔ HEAD | §11 | 4 🟡 |
 | 12. workflows ↔ CLAUDE.md | §12 | 4 🟡 |
+| 13. Other docs (README, GAME_MECHANICS, NOTIFICATION_AUDIT, P0-SECURITY-AUDIT) | "Other docs cross-checked" | 2 🟢 |
 
 **Conclusion:** The code-side sources of truth (CLAUDE.md guardrails, firestore.rules, service layer, TS types, indexes, storage rules, CI) are tightly aligned. The documentation tree is where almost all drift lives — three of the four 🔴 drifts are in `docs/DATABASE.md`, one is in `docs/ARCHITECTURE.md`. A single doc-only PR can clear every 🔴 finding.
