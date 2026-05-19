@@ -152,8 +152,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
         logger.info("google_sign_in_dismissed", { code });
       } else if (code === "auth/account-exists-with-different-credential") {
+        // Classified benign in BENIGN_AUTH_CODES — the user simply has two
+        // accounts. Don't capture (it'd drown real outage signals); kept in
+        // lockstep with resolveGoogleRedirect's gating above.
         logger.warn("google_sign_in_credential_conflict", { code });
-        captureException(err, { extra: { context: "handleGoogleSignIn", code } });
         setGoogleError("This email is linked to a password account. Sign in with email/password instead.");
       } else if (code === "auth/unauthorized-domain") {
         // Ops fix, not user fix — surface the runbook hint and page Sentry.

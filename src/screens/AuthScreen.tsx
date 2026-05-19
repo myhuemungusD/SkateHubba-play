@@ -74,6 +74,15 @@ export function AuthScreen({
     setAgeBlocked(false);
   }, [mode]);
 
+  // `error` and `lastErrorCode` are paired: clearing one without the other
+  // leaves a stale recovery affordance pointing at an invisible error. Every
+  // dismissal path (banner dismiss, recovery action, reset request, fresh
+  // submit) routes through this helper to keep them in lockstep.
+  const clearAuthError = () => {
+    setError("");
+    setLastErrorCode("");
+  };
+
   const updateDob = (field: "month" | "day" | "year", value: string) => {
     if (field === "month") setMonth(value);
     else if (field === "day") setDay(value);
@@ -81,8 +90,7 @@ export function AuthScreen({
   };
 
   const submit = async () => {
-    setError("");
-    setLastErrorCode("");
+    clearAuthError();
     if (!EMAIL_RE.test(email.trim())) {
       setError("Enter a valid email");
       return;
@@ -188,8 +196,7 @@ export function AuthScreen({
     logger.info("auth_screen_password_reset", { email: email.trim() });
     // Clear the prior credential failure so the inline "Forgot password?"
     // recovery button collapses now that we've acted on it.
-    setError("");
-    setLastErrorCode("");
+    clearAuthError();
     try {
       await resetPassword(email);
       setResetSent(true);
@@ -204,26 +211,16 @@ export function AuthScreen({
   // Single source of truth for the inline recovery button rendered under the
   // ErrorBanner. Prevents two buttons stacking and keeps the action paired
   // with the exact error code that surfaced.
+  const toggleAndClearError = () => {
+    clearAuthError();
+    onToggle();
+  };
   const recovery: { label: string; action: () => void } | null = (() => {
     if (isSignup && lastErrorCode === "auth/email-already-in-use") {
-      return {
-        label: "Sign in with this email instead →",
-        action: () => {
-          setError("");
-          setLastErrorCode("");
-          onToggle();
-        },
-      };
+      return { label: "Sign in with this email instead →", action: toggleAndClearError };
     }
     if (!isSignup && lastErrorCode === "auth/user-not-found") {
-      return {
-        label: "Create an account with this email →",
-        action: () => {
-          setError("");
-          setLastErrorCode("");
-          onToggle();
-        },
-      };
+      return { label: "Create an account with this email →", action: toggleAndClearError };
     }
     if (!isSignup && (lastErrorCode === "auth/invalid-credential" || lastErrorCode === "auth/wrong-password")) {
       return { label: "Forgot password? Send reset email →", action: handleReset };
@@ -389,8 +386,7 @@ export function AuthScreen({
           <ErrorBanner
             message={displayError}
             onDismiss={() => {
-              setError("");
-              setLastErrorCode("");
+              clearAuthError();
               onGoogleErrorDismiss();
             }}
           />
