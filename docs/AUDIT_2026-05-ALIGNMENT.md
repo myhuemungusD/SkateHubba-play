@@ -2,7 +2,87 @@
 
 **Date:** 2026-05-18
 **Scope:** Read-only, line-by-line, exhaustive
-**Pairings covered:** 12
+**Pairings covered:** 12 (see also Self-correction §0 below)
+
+---
+
+## 0. Self-correction (added 2026-05-18, post-publish)
+
+A spot-check after the initial publish found three gaps in the original audit. Recording them here rather than rewriting the body, so the diff is auditable.
+
+### 0a. 🟡 Entire `rules-tests/**` surface was not audited
+
+`rules-tests/` contains **28 spec files** covering clips, games (six red-team specs alone), notifications, nudges, onboarding, push targets, reports, spots, storage, and users. The original audit cross-checked `firestore.rules` against services and types statically but never asked "does the test suite cover every branch of the rules I just confirmed?" That is the surface that will catch the next regression. Files present:
+
+```
+clips.rules.test.ts                       judge-redteam.rules.test.ts
+clipvotes-redteam.rules.test.ts           notification-limits.rules.test.ts
+games-hardening-redteam.rules.test.ts     notifications-companion-write-redteam.rules.test.ts
+games-setter-turnhandoff-redteam.rules.test.ts   notifications-redteam.rules.test.ts
+games-spotId.rules.test.ts                nudges-redteam.rules.test.ts
+games-turndeadline-redteam.rules.test.ts  onboarding.rules.test.ts
+games-turnhistory-redteam.rules.test.ts   push-dispatch.rules.test.ts
+games-turnorder-redteam.rules.test.ts     push-targets.rules.test.ts
+games-updatedat-redteam.rules.test.ts     rate-limit-bypass-redteam.rules.test.ts
+                                          reports-redteam.rules.test.ts
+                                          spots-auth-redteam.rules.test.ts
+                                          spots-update-redteam.rules.test.ts
+                                          spots.rules.test.ts
+                                          storage-overwrite-redteam.rules.test.ts
+                                          storage-redteam.rules.test.ts
+                                          users-legacy-migration.rules.test.ts
+                                          users-peer-stats.rules.test.ts
+                                          users-private-redteam.rules.test.ts
+                                          users.rules.test.ts
+```
+
+**Action**: a follow-up pass should pair each `match /…` block in `firestore.rules` with its red-team spec and flag rule branches with no corresponding test. Not done here.
+
+### 0b. 🟡 §1 "all game writes via runTransaction" was overstated
+
+The original §1 reported every game-state mutation lives inside `runTransaction`. Spot-check reveals two unwrapped writes that the audit missed:
+
+- `src/services/games.create.ts:120` — `withRetry(() => setDoc(doc(gamesRef(), newGameId), gameData))`. This is the **initial create**, deterministic id (comment at L118 explains addDoc would be non-deterministic). Defensible — "create" isn't a "mutation" — but the §1 wording should have said "all game-state *mutations*" matching CLAUDE.md L63 exactly, and called this out.
+- `src/services/games.create.ts:124` — fire-and-forget `setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true })`. Writes to the user doc, not the game; arguably out of scope for the runTransaction guardrail.
+- `src/services/clips.cascade.ts:32` — `deleteDoc(doc(db, "clips", d.id))` inside `Promise.allSettled` during the account-deletion cascade. Not a game mutation; deletes are not transactional today. Worth surfacing for review.
+
+**Severity**: 🟡 staleness in the audit wording, not 🔴 in the code. Verified independently:
+
+```
+$ grep -rn "setDoc\|updateDoc\|addDoc\|deleteDoc" src/services/games.create.ts | grep -v runTransaction
+src/services/games.create.ts:120: ... setDoc(doc(gamesRef(), newGameId), gameData)
+src/services/games.create.ts:124: ... setDoc(doc(requireDb(), "users", ...), { lastGameCreatedAt: ... })
+```
+
+### 0c. 🟢 §1 "zero Firebase imports outside services" was imprecise
+
+Three `import type` declarations exist outside `src/services/**`:
+
+- `src/types/clip.ts:9` — `import type { Timestamp } from "firebase/firestore"`
+- `src/hooks/useAuth.ts:2` — `import type { User } from "firebase/auth"`
+- `src/__mocks__/firebase.ts:18–21` — type-only imports in the test mock (clearly OK)
+
+Type-only imports are elided at compile time and have no runtime effect — they don't violate the architectural intent of CLAUDE.md L57 ("Don't import Firebase SDK in components — go through `src/services/`"). But the audit's blanket "zero leaks" claim should have called them out as the documented exception, the way `src/firebase.ts` is.
+
+### 0d. ❓ Dynamic validation not performed in this environment
+
+The audit is 100% static. Two dynamic checks would raise confidence materially:
+
+- `npm run test:rules` — blocked: Firebase CLI not installed in this container, and `node_modules/` is not present (so the rules-tests vitest config can't run either).
+- `npx tsc -b` clean — cannot validate: `node_modules/` is not present, so any tsc errors here are environment noise (e.g., "Cannot find module 'firebase/firestore'") and not real drift.
+
+**Action**: any reader running this audit in a configured dev environment should execute both, and add a note here if either fails. The audit's claim of alignment is provisional until those run green.
+
+### Revised severity tally (after self-correction)
+
+| Severity | Original | +Self-correction | Net |
+| -------- | -------: | ---------------: | --: |
+| 🔴 correctness | 4 | 0 | **4** |
+| 🟡 staleness | 18 | +2 (§0a, §0b) | **20** |
+| 🟢 cosmetic | 6 | +1 (§0c) | **7** |
+| ❓ unvalidated | 0 | +1 (§0d) | **1** |
+
+---
 
 ## Severity legend
 
