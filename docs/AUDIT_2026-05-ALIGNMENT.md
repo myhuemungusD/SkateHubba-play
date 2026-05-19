@@ -73,12 +73,21 @@ The audit is 100% static. Two dynamic checks would raise confidence materially:
 
 **Action**: any reader running this audit in a configured dev environment should execute both, and add a note here if either fails. The audit's claim of alignment is provisional until those run green.
 
+### 0e. 🟡 §1 "zero inline styles" and §3 "cooldown writes are transactional" — both wrong (added post-review)
+
+External review (Codex on PR #351) caught two assertions the original audit got wrong:
+
+- **§1 inline-style line** said "zero `style={{}}` usage in `src/components/**` or `src/screens/**`." Reality: `grep -rn "style={{" src/components src/screens --include="*.tsx"` returns 18 hits. Most are runtime-computed values Tailwind can't express, but several are static-string cases (`SpotlightOverlay.tsx:138,150`, `Landing.tsx:248,282`) that should be tracked. The §1 row has been rewritten to a 🟡 finding.
+- **§3 users row** said cooldown timestamps (`lastGameCreatedAt`, `lastSpotCreatedAt`) are "server-managed via the same transaction that creates the game/spot." Reality: both are fire-and-forget `setDoc({...}, { merge: true })` writes that fire *after* the create commits (`games.create.ts:120→124`, `spots.ts:264→268`). This contradicts §0b which already noted the games path. The §3 row has been split: `wins`/`losses` (truly transactional, `users.ts:381–395`) stay aligned; cooldown anchors are now 🟡.
+
+Both findings are now patched in their original sections — this entry exists to make the diff auditable.
+
 ### Revised severity tally (after self-correction)
 
 | Severity | Original | +Self-correction | Net |
 | -------- | -------: | ---------------: | --: |
 | 🔴 correctness | 4 | 0 | **4** |
-| 🟡 staleness | 18 | +2 (§0a, §0b) | **20** |
+| 🟡 staleness | 18 | +4 (§0a, §0b, §0e×2) | **22** |
 | 🟢 cosmetic | 6 | +1 (§0c) | **7** |
 | ❓ unvalidated | 0 | +1 (§0d) | **1** |
 
@@ -110,11 +119,12 @@ A Plan agent designed the 12-pairing matrix below. No code was modified; only th
 - ✓ **No `as any`** — zero hits in `src/**/*.{ts,tsx}` (excluding tests).
 - ✓ **No TODO/FIXME/HACK** — zero hits in `src/`.
 - ✓ **No `console.log`** — zero hits outside tests.
-- ✓ **No Firebase imports outside `src/services/**` or `src/firebase.ts`** — zero leaks.
+- ✓ **No Firebase imports outside `src/services/**` or `src/firebase.ts`** — zero runtime leaks (three `import type` declarations exist; see §0c).
 - ✓ **No Cloud Functions code** — `functions/` directory does not exist.
 - ✓ **No state-management libraries** — no redux, zustand, jotai, recoil, mobx, valtio, or xstate in `package.json`.
 - ✓ **No UI component libraries** — no @mui, @chakra-ui, antd, @mantine, react-bootstrap, @radix-ui.
-- ✓ **No CSS modules / inline styles** — zero `.module.css` imports; zero `style={{}}` usage in `src/components/**` or `src/screens/**`.
+- ✓ **No CSS modules** — zero `.module.css` imports.
+- 🟡 **Inline styles — 18 occurrences across `src/components/**` and `src/screens/**`** (corrected post-publish; see §0e). The original audit reported "zero" — that was wrong. Most hits are runtime-computed values Tailwind cannot express (progress bars, pull-to-refresh transforms, `100dvh` viewport heights, animation delays, z-index tokens). Static-string cases that could move to Tailwind exist at `src/components/onboarding/SpotlightOverlay.tsx:138,150`, `src/screens/Landing.tsx:248,282`, and similar. Track as drift, not a hard violation: CLAUDE.md L59 says "Tailwind utility classes only — no CSS modules, no inline styles," which the runtime-value cases functionally require.
 
 ### Transactional game writes — all clean
 
@@ -199,7 +209,9 @@ Every rule-enforced field on `clips` aligns with `clips.writes.ts` and `src/type
 - ✓ Username length 3–20 — `firestore.rules:168–169` ↔ `users.ts:166–167`.
 - ✓ Sensitive fields (`email`, `emailVerified`, `dob`, `parentalConsent`, `fcmTokens`) forbidden at top level — `firestore.rules:177,203` ↔ private subcollection path enforced in service.
 - ✓ `fcmTokens ≤ 10` — `firestore.rules:305–306` ↔ `users.ts:83`.
-- ✓ `wins` / `losses` / `lastGameCreatedAt` / `lastSpotCreatedAt` / `onboardingTutorialVersion` — server-managed via the same transaction that creates the game/spot; no visible direct write. Not a drift — call out explicitly in the report so readers don't read "rules require X" + "service has no `set(X)` call" as a contradiction.
+- ✓ `wins` / `losses` — written inside `runTransaction` in `users.ts:381–395` (`updatePlayerStats`), with `lastStatsGameId` idempotency key. Aligned.
+- 🟡 `lastGameCreatedAt` / `lastSpotCreatedAt` — **not** transactional with the game/spot create as the original audit asserted (corrected post-publish; see §0e). Implemented as fire-and-forget `setDoc(..., { merge: true })` *after* the create commits: `games.create.ts:124` runs after `setDoc(games/<id>)` at L120; `spots.ts:268` runs after `addDoc(spots, ...)` at L264. The cooldown anchor and the game/spot create can therefore diverge if the second write fails (the `.catch` in both call sites logs but does not retry). Severity 🟡 because the rate-limit rule degrades to "permissive on failure" rather than corrupts state, but the audit's "same transaction" claim was wrong.
+- ✓ `onboardingTutorialVersion` — server-default; rules enforce shape on update.
 
 ### Spots
 
@@ -418,12 +430,15 @@ These four guardrails have held via code review alone. They are not contractual 
 
 ## Summary
 
-| Severity | Count |
-| -------- | ----: |
-| 🔴 correctness | **4** |
-| 🟡 staleness | **18** |
-| 🟢 cosmetic | **6** |
-| **Total** | **28** |
+Counts below include the post-publish self-correction in §0 (see §0e for the most recent additions from external review).
+
+| Severity | Original (pre-§0) | Final (with §0 additions) |
+| -------- | ----------------: | -------------------------: |
+| 🔴 correctness | 4 | **4** |
+| 🟡 staleness | 18 | **22** |
+| 🟢 cosmetic | 6 | **7** |
+| ❓ unvalidated | 0 | **1** |
+| **Total** | 28 | **34** |
 
 ### 🔴 Correctness drifts (read these first)
 
