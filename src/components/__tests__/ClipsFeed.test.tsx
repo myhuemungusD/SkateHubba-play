@@ -420,25 +420,31 @@ describe("ClipsFeed", () => {
     expect(screen.queryByText(/MUTED · TAP/i)).not.toBeInTheDocument();
   });
 
-  it("does not fetch upvote state for the viewer's own clips (wasted read)", async () => {
-    mockFetchClipsFeed.mockResolvedValueOnce([
-      makeClip({ id: "own", playerUid: profile.uid, playerUsername: profile.username }),
-      makeClip({ id: "other", playerUid: "p2", playerUsername: "bob" }),
-    ]);
+  it("hands the full clip pool to the upvote-state service so it can read counts off the denormalized aggregate", async () => {
+    // The service filters self-clips internally and reads `upvoteCount`
+    // straight off each clip doc — the component no longer pre-extracts
+    // ids. Passing the whole pool also lets the service use a single
+    // batched `where(__name__, in, [...])` query (1 read, not 2*N).
+    const own = makeClip({ id: "own", playerUid: profile.uid, playerUsername: profile.username });
+    const other = makeClip({ id: "other", playerUid: "p2", playerUsername: "bob" });
+    mockFetchClipsFeed.mockResolvedValueOnce([own, other]);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(mockFetchClipUpvoteState).toHaveBeenCalled());
 
-    expect(mockFetchClipUpvoteState).toHaveBeenCalledWith(profile.uid, ["other"]);
+    expect(mockFetchClipUpvoteState).toHaveBeenCalledWith(profile.uid, [own, other]);
   });
 
-  it("doesn't run upvote hydration at all when every visible clip is the viewer's own", async () => {
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ playerUid: profile.uid, playerUsername: profile.username })]);
+  it("still calls upvote hydration when every clip is the viewer's own — service short-circuits without a read", async () => {
+    // The service does the self-filter; an own-only pool is a 0-read
+    // call inside the service, not a never-call from the component.
+    const own = makeClip({ playerUid: profile.uid, playerUsername: profile.username });
+    mockFetchClipsFeed.mockResolvedValueOnce([own]);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
-    expect(mockFetchClipUpvoteState).not.toHaveBeenCalled();
+    expect(mockFetchClipUpvoteState).toHaveBeenCalledWith(profile.uid, [own]);
   });
 
   it("preserves an optimistic upvote when a slow hydration resolves after the user's tap (race guard)", async () => {

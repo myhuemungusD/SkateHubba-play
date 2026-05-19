@@ -92,6 +92,8 @@ export default defineConfig({
       exclude: [
         "src/**/*.test.{ts,tsx}",
         "src/__tests__/**",
+        // Shared test helpers — not production code, never imported outside tests
+        "src/**/__tests__/**/*test-helpers*.ts",
         "src/vite-env.d.ts",
         // Entry point — not unit-testable in isolation
         "src/main.tsx",

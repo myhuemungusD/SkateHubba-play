@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ClipDoc } from "../../services/clips";
 import type { ClipUpvoteState } from "../../services/clips";
 import { ProUsername } from "../ProUsername";
@@ -24,7 +25,13 @@ export interface SpotlightCardProps {
  * Pure presentation: data + handlers in, JSX out. Lives next to ClipsFeed
  * so the parent stays inside the 250 LOC component budget.
  */
-export function SpotlightCard({
+// memo: ClipsFeed re-renders on every state mutation (upvote map, hydration,
+// cursor index). Without memoization those would all re-render the spotlight
+// subtree — including the video element, which is the most expensive child
+// in the tree. All props are primitives, immutable Maps/Sets, or stable
+// callbacks (see the ref-backed handler in ClipsFeed/index.tsx), so the
+// default shallow comparator is sufficient.
+export const SpotlightCard = memo(function SpotlightCard({
   clip,
   isOwnClip,
   upvote,
@@ -89,4 +96,4 @@ export function SpotlightCard({
       />
     </article>
   );
-}
+});

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ClipsFeedSort } from "../../services/clips";
 import { TopNewToggle } from "./TopNewToggle";
 
@@ -17,7 +18,12 @@ export interface ClipsFeedHeaderProps {
  * Lives next to ClipsFeed/index.tsx so the parent stays close to the 250 LOC
  * component budget after the toggle was added.
  */
-export function ClipsFeedHeader({ sort, onSortChange, disabled, position }: ClipsFeedHeaderProps) {
+export const ClipsFeedHeader = memo(function ClipsFeedHeader({
+  sort,
+  onSortChange,
+  disabled,
+  position,
+}: ClipsFeedHeaderProps) {
   return (
     <div className="flex items-center justify-between gap-2 mb-3">
       <div className="flex items-center gap-2">
@@ -31,4 +37,4 @@ export function ClipsFeedHeader({ sort, onSortChange, disabled, position }: Clip
       <TopNewToggle sort={sort} onChange={onSortChange} disabled={disabled} />
     </div>
   );
-}
+});

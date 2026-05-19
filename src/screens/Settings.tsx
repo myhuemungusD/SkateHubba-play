@@ -12,6 +12,7 @@ import { Btn } from "../components/ui/Btn";
 import { ProUsername } from "../components/ProUsername";
 import { ChevronLeftIcon } from "../components/icons";
 import { useOnboardingContext } from "../context/OnboardingContext";
+import { AvatarPicker } from "../components/AvatarPicker";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
 
@@ -342,6 +343,11 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
   const feedbackSubject = encodeURIComponent("SkateHubba feedback");
   const bugSubject = encodeURIComponent(`SkateHubba bug report — @${profile.username}`);
 
+  // AvatarPicker is opened from the "Edit Avatar" entry below.
+  // Local state keeps the sheet self-contained so we don't have to
+  // thread a context through every Settings sub-section.
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+
   return (
     <div className="min-h-dvh pb-24 overflow-y-auto bg-[#0A0A0A]/80">
       {/* Header */}
@@ -368,6 +374,21 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
       <div className="px-5 pt-7 max-w-lg mx-auto">
         <h1 className="font-display text-fluid-4xl text-white mb-2 tracking-wide">Settings</h1>
         <p className="font-body text-sm text-muted mb-6">Notifications, sound, haptics, and blocked players.</p>
+
+        {/* Profile picture */}
+        <SectionHeader title="PROFILE PICTURE" />
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setAvatarPickerOpen(true)}
+            className="block w-full text-left p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <p className="font-display text-sm text-white tracking-wide">Edit Avatar</p>
+            <p className="font-body text-xs text-faint mt-1">
+              Replace your default avatar with a custom photo. Image is screened on-device before upload.
+            </p>
+          </button>
+        </div>
 
         {/* Notifications */}
         <SectionHeader title="NOTIFICATIONS" />
@@ -506,6 +527,14 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
           <div className="brand-divider flex-1 max-w-16" />
         </div>
       </div>
+
+      {avatarPickerOpen && (
+        <AvatarPicker
+          uid={profile.uid}
+          onUploaded={() => setAvatarPickerOpen(false)}
+          onClose={() => setAvatarPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

@@ -165,6 +165,14 @@ export async function uploadVideo(
       const url = await new Promise<string>((resolve, reject) => {
         const task = uploadBytesResumable(storageRef, uploadBlob, {
           contentType,
+          // Clip storage paths are deterministic (`games/{gameId}/turn-N/{role}.{ext}`)
+          // and the corresponding firestore.rules block forbids clip mutation
+          // once the doc is written, so the bytes at this URL never change.
+          // Marking the response immutable lets browsers (and any CDN that
+          // honours Cache-Control) keep replays + prefetched next clips off
+          // the network for a year — a viewer-perceived 0-RTT REPLAY and a
+          // free win on cross-session view of the same clip.
+          cacheControl: "public, max-age=31536000, immutable",
           customMetadata: {
             // Storage rules require uploaderUid == request.auth.uid on create
             // and resource.metadata.uploaderUid == request.auth.uid on update/
