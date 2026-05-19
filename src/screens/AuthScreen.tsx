@@ -399,7 +399,7 @@ export function AuthScreen({
             <button
               type="button"
               onClick={recovery.action}
-              className="w-full -mt-2 mb-4 px-4 py-2 rounded-xl font-body text-sm text-brand-orange bg-brand-orange/[0.08] border border-brand-orange/30 hover:bg-brand-orange/[0.14] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="w-full -mt-2 mb-4 px-4 py-2 min-h-[44px] rounded-xl font-body text-sm text-brand-orange bg-brand-orange/[0.08] border border-brand-orange/30 hover:bg-brand-orange/[0.14] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
             >
               {recovery.label}
             </button>

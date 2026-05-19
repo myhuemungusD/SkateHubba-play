@@ -370,9 +370,9 @@ export async function resolveGoogleRedirect(): Promise<User | null> {
   } catch (err) {
     const code = getErrorCode(err);
     logger.error("resolve_google_redirect_error", { code, message: parseFirebaseError(err) });
-    // Log redirect errors so they're visible in production — previously these
-    // were silently swallowed, making Google-redirect failures impossible to debug.
-    captureException(err, { extra: { context: "resolveGoogleRedirect" } });
-    return null;
+    // Rethrow so the caller's Sentry/benign filter and UI handling can run.
+    // Capturing here would bypass that filter (auth/missing-or-invalid-nonce,
+    // auth/timeout etc. would always reach Sentry as outage noise).
+    throw err;
   }
 }

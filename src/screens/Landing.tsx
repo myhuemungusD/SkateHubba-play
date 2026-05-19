@@ -160,12 +160,16 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               an explicit "Sign in" entry without competing with the brand CTA. */}
           <div className="w-full max-w-sm flex flex-col gap-3">
             <GoogleButton onClick={handleGoogle} loading={googleLoading} />
-            <div className="flex items-center justify-center gap-2 text-faint" aria-label="Email sign-in options">
+            <div
+              className="flex items-center justify-center gap-2 text-faint"
+              role="group"
+              aria-label="Email sign-in options"
+            >
               <button
                 type="button"
                 onClick={handleAuth("signin")}
                 disabled={googleLoading}
-                className="font-body text-sm text-dim hover:text-white px-3 py-2 rounded-md transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                className="font-body text-sm text-dim hover:text-white px-3 py-2 min-h-[44px] rounded-md transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 Sign in
               </button>
@@ -176,7 +180,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
                 type="button"
                 onClick={handleAuth("signup")}
                 disabled={googleLoading}
-                className="font-body text-sm text-dim hover:text-white px-3 py-2 rounded-md transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+                className="font-body text-sm text-dim hover:text-white px-3 py-2 min-h-[44px] rounded-md transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               >
                 Create account
               </button>
