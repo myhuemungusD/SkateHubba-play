@@ -65,7 +65,16 @@
     "hono": "^4.12.16",
     "basic-ftp": "^5.3.1",
     "fast-uri": "^3.1.2",
-    "protobufjs": "^7.5.8"
+    "protobufjs": "^7.5.8",
+    "@capacitor/cli": {
+      "brace-expansion": "^5.0.6"
+    },
+    "@typescript-eslint/typescript-estree": {
+      "brace-expansion": "^5.0.6"
+    },
+    "cacache": {
+      "brace-expansion": "^5.0.6"
+    }
   },
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
