@@ -51,9 +51,9 @@ test("dispatching skatehubba:open-game routes recipient into the referenced game
   // Wait for the recipient's lobby to surface the game (the listener in
   // App.tsx only fires when `game.games.find(...)` resolves — so we must
   // wait for the games snapshot before dispatching).
-  await expect(
-    page.getByRole("button", { name: new RegExp(`vs @${CHALLENGER.username}`, "i") }).first(),
-  ).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: new RegExp(`vs @${CHALLENGER.username}`, "i") }).first()).toBeVisible({
+    timeout: 15_000,
+  });
 
   // Dispatch the deep-link CustomEvent exactly as <GameNotificationWatcher>
   // would after the SW posts OPEN_GAME. The App.tsx listener calls

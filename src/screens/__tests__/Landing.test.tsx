@@ -21,14 +21,25 @@ describe("Landing", () => {
   it("renders hero content", () => {
     render(<Landing {...defaultProps} />);
     expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
-    expect(screen.getByText("Use email")).toBeInTheDocument();
+    // Hero offers explicit "Sign in" and "Create account" peers so returning
+    // users (Bryan's failure mode: had an account, got pushed into signup,
+    // hit email-already-in-use) have a first-class path that isn't buried.
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
   });
 
-  it("calls onGo with signup when Use email is clicked", async () => {
+  it("calls onGo with signup when Create account is clicked", async () => {
     const onGo = vi.fn();
     render(<Landing {...defaultProps} onGo={onGo} />);
-    await userEvent.click(screen.getByText("Use email"));
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(onGo).toHaveBeenCalledWith("signup");
+  });
+
+  it("calls onGo with signin from the hero Sign in button", async () => {
+    const onGo = vi.fn();
+    render(<Landing {...defaultProps} onGo={onGo} />);
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(onGo).toHaveBeenCalledWith("signin");
   });
 
   it("calls onGo with signin via Account nav button", async () => {
