@@ -25,11 +25,11 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>SkateHubba needs camera access to record your tricks and capture skate spots.</string>
+	<string>SkateHubba needs camera access to record your tricks, capture skate spots, and take a profile picture.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SkateHubba records audio along with your tricks.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>SkateHubba saves your recorded clips to your library.</string>
+	<string>SkateHubba saves your recorded clips to your library and lets you choose a profile picture from your photos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>SkateHubba saves your recorded clips to your library.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
