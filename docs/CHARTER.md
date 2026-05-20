@@ -76,7 +76,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - App Check via reCAPTCHA v3 when key is set
 - Sentry with PII scrubbing, ErrorBoundary, `withRetry` across reads
 - PostHog with consent gating; Vercel Analytics + Speed Insights
-- Service worker for FCM background messages (handler ready, no sender)
+- Service worker for FCM background messages, with the `firestore-send-fcm` extension as the managed sender (see §4.4)
 - Onboarding tutorial overlays (`HubzMascot`, `MascotBubble`, `SpotlightOverlay`, `TutorialOverlay`)
 - Capacitor Android project initialized; iOS scaffolded; Fastlane scaffolded
 
@@ -92,7 +92,6 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ### 2.4 Known critical gaps
 
-- **No push dispatcher.** Tokens collected (web + native), SW listening, no server piece sends FCM/APNS. For an async game, this is the #1 retention risk.
 - **Auto-forfeit is speculative.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. Stale active games accumulate when nobody opens.
 - **No Firestore backups.** Workflow file exists (`firebase-infra-setup.yml`); not run.
 - **No video lifecycle purge.** Storage costs grow unbounded.
@@ -134,7 +133,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ---
 
-## 4. OFFICIAL TECHNICAL STACK (LOCKED)
+## 4. OFFICIAL TECHNICAL STACK (APPROVED MAJORS)
 
 ### 4.1 Web platform
 
@@ -163,15 +162,19 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - **All game writes use `runTransaction`** — non-negotiable. Enforced across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, plus `spots.ts`, `users.ts`, and `clips.upvotes.ts` / `clips.writes.ts` (the vote and write paths for the clip feed).
 - **Dual `onSnapshot` for OR queries** in `games.subscriptions.ts` (player1Uid + player2Uid merged in memory)
 
-### 4.4 Push & background work — DECISION PENDING
+### 4.4 Push & background work
 
-Cloud Functions were removed. CI gate (`verify-no-cloud-functions`) forbids reintroduction without maintainer approval. Three options on the table for the push dispatcher:
+Push dispatch is shipped via the `firestore-send-fcm` Firebase Extension. The extension provisions a managed Cloud Run worker we configure but do not author; it listens to the `/push_dispatch` Firestore collection and sends FCM/APNS on the team's behalf. Three collections cooperate:
 
-1. Reintroduce Cloud Functions narrowly scoped to `functions/dispatch/` only; tighten the CI gate from "no Functions" to "Functions only inside dispatch namespace"
-2. External managed service (Knock, OneSignal) reading Firestore changes
-3. Vercel cron route polling Firestore for pending sends
+- **`/push_dispatch/{id}`** — the extension's trigger. Each create carries `tokens`, `notification.{title,body}`, `data.{gameId,type,click_action}`, plus rules metadata (`senderUid`, `recipientUid`, `gameId`, `type`). Authored by `src/services/pushDispatch.ts:buildDispatchDoc`.
+- **`/push_dispatch_limits/{senderUid_recipientUid_gameId_type}`** — server-side 5s cooldown anchor. The `/push_dispatch` create rule requires this companion doc to commit in the same `writeBatch` with `lastSentAt == request.time`, and the limits-doc update rule enforces the cooldown. Without the batch, the create rule's `getAfter()` check fails.
+- **`/pushTargets/{uid}`** — cross-readable mirror of the recipient's FCM tokens. Owner-only on write, signed-in-readable so a sender can embed tokens in the dispatch doc. Cap of 10 tokens, mirrored by `MAX_TOKENS_PER_DISPATCH` in `pushDispatch.ts` so worst-case fan-out is bounded.
 
-Until decided, background push is disabled and auto-forfeit is client-triggered. ADR required at `docs/DECISIONS.md` before next push-dependent feature.
+Dispatches fire from a post-transaction outbox (`createPushDispatchOutbox` / `drainPushDispatchOutbox`) — never from inside a `runTransaction` callback, so retries don't re-stage and a failed push never rolls back the game write. The extension config lives in `extensions/firestore-send-fcm.env` (collection name, TTL, named database, region must all stay in lockstep with `pushDispatch.ts` and `firestore.rules`).
+
+The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — extensions do not touch that path, so the gate remains in force against application-authored Cloud Functions. Reintroducing authored functions still requires maintainer sign-off.
+
+Auto-forfeit (`forfeitExpiredTurn`) remains client-triggered; closing that gap is tracked in §9.2.
 
 ### 4.5 Security rules (the real backend, ~1805 LOC)
 
@@ -293,11 +296,11 @@ blocks/{id}                          — user blocks
 billingAlerts/{id}
 ```
 
-### 4.12 Production dependencies (locked unless approved)
+### 4.12 Production dependencies (approved majors)
 
 React 19.2, react-dom 19.2, react-router-dom 7, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 3, @vercel/analytics 2, @vercel/speed-insights 2, @capacitor/core 8 (+ android/ios/camera/haptics/splash-screen/push-notifications), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
 
-New production deps require written justification and Chief Engineer approval.
+These are the approved majors. Minors and patches track upstream via the caret ranges in `package.json`; `package-lock.json` is the deterministic record installed in CI and in production. New production deps require written justification and Chief Engineer approval.
 
 ### 4.13 Documentation index (`docs/`)
 
@@ -313,7 +316,7 @@ screenshots/
 ### 4.14 Prohibited
 
 - Custom backend / API server (no Express, no Next.js routes, no Vercel serverless functions for app logic)
-- Cloud Functions in PRs (CI rejects; reintroduction requires maintainer sign-off and a tightened gate)
+- Application-authored Cloud Functions in PRs (CI rejects new code under `functions/src/`; reintroduction requires maintainer sign-off and a tightened gate). The `firestore-send-fcm` Firebase Extension is the one managed exception: it provisions a Cloud Run dispatcher we configure but do not author, and its files live under `extensions/`, outside the `functions/src/` gate.
 - PostgreSQL / Neon / Drizzle (Firestore is the datastore — final)
 - React Native / Expo (Capacitor wraps the PWA — final)
 - Redux / Zustand / MobX / TanStack Query (Context + hooks is sufficient)
@@ -434,17 +437,17 @@ CI failures override deadlines.
 ### 9.1 Active monitoring
 
 - Security exposure (auth, rules, App Check, authorized domains)
-- Dependency surface (audit-clean preferred; production deps locked)
+- Dependency surface (audit-clean preferred; approved majors per §4.12, `package-lock.json` as the deterministic record)
 - Build determinism
 - Scope creep
 - Client-side mutation safety (rules are the only server-side enforcement)
 
 ### 9.2 Known tech debt (May 2026)
 
-1. **P0 — Push dispatcher missing.** Background push disabled until decision in §4.4 is made and shipped.
-2. **P0 — Auto-forfeit is client-triggered only.** Same fix path as the dispatcher (cron sweep on the same job).
-3. **P1 — Firestore backups not running.** Run `firebase-infra-setup.yml` on `workflow_dispatch`.
-4. **P1 — Storage video lifecycle not enforced.** Same workflow.
+1. **P0 — Auto-forfeit is client-triggered only.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. Needs a server-side sweep; the `firestore-send-fcm` extension (§4.4) only handles push delivery and does not cover this path.
+2. **P1 — Firestore backups not running.** Run `firebase-infra-setup.yml` on `workflow_dispatch`.
+3. **P1 — Storage video lifecycle not enforced.** Same workflow.
+4. **P2 — Stale FCM token pruning.** `/pushTargets/{uid}.tokens` is capped at 10 but never pruned. The extension issues up to 10 calls per dispatch, most landing on `messaging/registration-token-not-registered` for revoked devices. Tracked as `PERF-2` in `docs/NOTIFICATION_AUDIT.md`.
 5. **P2 — Username reservation TTL.** Deleted account's username locked forever.
 6. **P2 — `subscribeToMyGames` 50-game cap with no cursor** (DEC-003). Fine until ~50 concurrent games per user.
 7. **P3 — Captions on user-uploaded videos** (a11y A2).

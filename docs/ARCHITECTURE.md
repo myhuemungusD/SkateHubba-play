@@ -2,7 +2,7 @@
 
 ## Overview
 
-SkateHubba S.K.A.T.E. is a zero-backend web application. There is no Express server, no REST API, and no serverless functions. The React SPA talks directly to Firebase services, with Firestore security rules serving as the sole authorization layer.
+SkateHubba S.K.A.T.E. is a zero-backend web application. There is no Express server, no REST API, and no application-authored Cloud Functions. The React SPA talks directly to Firebase services, with Firestore security rules serving as the sole authorization layer. The one managed exception is the `firestore-send-fcm` Firebase Extension, which provisions a Cloud Run push dispatcher we configure but do not author; the `verify-no-cloud-functions` CI gate scopes to `functions/src/`, which extensions do not touch.
 
 This means:
 
@@ -43,7 +43,7 @@ This means:
 - Framework set to `vite`. Build output is `dist/`. All paths rewrite to `index.html` for SPA navigation.
 - `X-Robots-Tag: noindex, nofollow` is injected on all non-production hosts (any host that is not `skatehubba.com`) via `vercel.json`. This prevents Vercel preview deployment URLs from appearing in search engines.
 - 301 redirects are configured for `skatehubba.xyz`, `www.skatehubba.xyz`, and `www.skatehubba.com` → `skatehubba.com` to complete the domain migration and preserve SEO equity.
-- No Vercel serverless functions are used.
+- No Vercel serverless functions are used. The only server-side worker in the stack is the managed Cloud Run dispatcher provisioned by the `firestore-send-fcm` Firebase Extension (see Overview).
 
 ---
 

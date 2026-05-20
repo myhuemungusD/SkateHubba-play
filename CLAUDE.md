@@ -93,7 +93,7 @@ These are load-bearing decisions. Do not violate them without explicit discussio
 | No state management libraries         | Local state + hooks + context is sufficient for this app's complexity                                                                                      |
 | No UI component libraries             | Tailwind + custom components keeps the bundle lean and the design consistent                                                                               |
 | URL routing via react-router-dom only | `App.tsx` defines all `<Route>` elements. Screen transitions go through `NavigationContext.setScreen`. No nested routers or lazy routes without discussion |
-| No Cloud Functions in PRs             | CI gate (`pr-gate.yml`) rejects new code in `functions/src/`. Discuss first                                                                                |
+| No application-authored Cloud Functions in PRs | CI gate (`pr-gate.yml`) rejects new code in `functions/src/`. Discuss first. The `firestore-send-fcm` Firebase Extension (managed Cloud Run dispatcher under `extensions/`) is the one exception — see `docs/CHARTER.md §4.14` |
 | Transactions for game writes          | Race conditions in multiplayer are silent data corruption. Always `runTransaction`                                                                         |
 
 ---

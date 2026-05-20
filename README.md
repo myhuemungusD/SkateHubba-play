@@ -83,7 +83,7 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 | Testing   | Vitest, @testing-library/react, Playwright (E2E)             |
 | CI        | GitHub Actions                                               |
 
-No custom backend. No serverless functions. The client talks directly to Firebase with security enforced by Firestore rules.
+No custom backend. No application-authored Cloud Functions. The client talks directly to Firebase with security enforced by Firestore rules. The one managed exception is the `firestore-send-fcm` Firebase Extension, which provisions a Cloud Run push dispatcher we configure but do not author.
 
 ---
 
