@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Routes, Route, useLocation } from "react-router-dom";
+import { MemoryRouter, Routes, Route } from "react-router-dom";
 import type { Spot, SpotComment } from "../../types/spot";
 
 const mockGetSpot = vi.fn();
 const mockGetSpotComments = vi.fn();
 const mockAddSpotComment = vi.fn();
 const mockUseAuthContext = vi.fn();
+const mockSetScreen = vi.fn();
+const mockNavigateToChallengeWithSpot = vi.fn();
 
 vi.mock("../../services/spots", () => ({
   getSpot: (...args: unknown[]) => mockGetSpot(...args),
@@ -19,9 +21,11 @@ vi.mock("../../context/AuthContext", () => ({
   useAuthContext: () => mockUseAuthContext(),
 }));
 
-const mockSetScreen = vi.fn();
 vi.mock("../../context/NavigationContext", () => ({
-  useNavigationContext: () => ({ setScreen: mockSetScreen }),
+  useNavigationContext: () => ({
+    setScreen: mockSetScreen,
+    navigateToChallengeWithSpot: mockNavigateToChallengeWithSpot,
+  }),
 }));
 
 import { SpotDetailPage } from "../SpotDetailPage";
@@ -51,22 +55,11 @@ const FIXTURE_COMMENT: SpotComment = {
   createdAt: "2026-04-10T00:00:00.000Z",
 };
 
-function LocationProbe() {
-  const location = useLocation();
-  return (
-    <div data-testid="dest">
-      {location.pathname}
-      {location.search}
-    </div>
-  );
-}
-
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={[`/spots/${FIXTURE_SPOT.id}`]}>
       <Routes>
         <Route path="/spots/:id" element={<SpotDetailPage />} />
-        <Route path="/challenge" element={<LocationProbe />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -133,27 +126,31 @@ describe("SpotDetailPage", () => {
     });
   });
 
-  it("'Challenge to S.K.A.T.E. here' navigates to /challenge?spot=<id>", async () => {
+  it("'Challenge to S.K.A.T.E. here' routes through NavigationContext with the spot id", async () => {
     renderPage();
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Challenge to S\.K\.A\.T\.E\. here/i })).toBeInTheDocument();
     });
     await userEvent.click(screen.getByRole("button", { name: /Challenge to S\.K\.A\.T\.E\. here/i }));
-    await waitFor(() => {
-      expect(screen.getByTestId("dest").textContent).toBe(`/challenge?spot=${FIXTURE_SPOT.id}`);
-    });
+    expect(mockNavigateToChallengeWithSpot).toHaveBeenCalledWith(FIXTURE_SPOT.id);
   });
 
-  it("header back arrow routes to the map via NavigationContext", async () => {
+  it("'Back to map' header button routes through setScreen('map')", async () => {
     renderPage();
-    await userEvent.click(await screen.findByLabelText("Back to map"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Back to map")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByLabelText("Back to map"));
     expect(mockSetScreen).toHaveBeenCalledWith("map");
   });
 
-  it("'Back to Map' error-fallback button routes via NavigationContext", async () => {
+  it("'Back to Map' error fallback button routes through setScreen('map')", async () => {
     mockGetSpot.mockResolvedValueOnce(null);
     renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: /Back to Map/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Back to Map/i })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole("button", { name: /Back to Map/i }));
     expect(mockSetScreen).toHaveBeenCalledWith("map");
   });
 
