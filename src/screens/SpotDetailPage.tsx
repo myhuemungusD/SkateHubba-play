@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { ChevronLeft, MapPin, Send } from "lucide-react";
 import type { Spot, SpotComment } from "../types/spot";
 import { getSpot, getSpotComments, addSpotComment } from "../services/spots";
@@ -10,8 +10,7 @@ import { BustRisk } from "../components/map/BustRisk";
 
 export function SpotDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { setScreen } = useNavigationContext();
+  const { setScreen, navigateToChallengeWithSpot } = useNavigationContext();
   const { user } = useAuthContext();
 
   const [spot, setSpot] = useState<Spot | null>(null);
@@ -84,8 +83,8 @@ export function SpotDetailPage() {
   // shared links survive sign-in. Mirrors SpotPreviewCard "Challenge from here".
   const handleChallenge = useCallback(() => {
     if (!id) return;
-    navigate(`/challenge?spot=${id}`);
-  }, [id, navigate]);
+    navigateToChallengeWithSpot(id);
+  }, [id, navigateToChallengeWithSpot]);
 
   if (loading) {
     return (
