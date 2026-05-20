@@ -1,7 +1,7 @@
 {
   "ci": {
     "collect": {
-      "numberOfRuns": 1,
+      "numberOfRuns": 3,
       "startServerCommand": "npx vite preview --port 4173",
       "url": ["http://localhost:4173"]
     },
