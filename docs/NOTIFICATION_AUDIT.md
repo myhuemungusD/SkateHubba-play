@@ -1,6 +1,7 @@
 # Notification System Audit
 
 **Date:** 2026-04-16
+**Last updated:** 2026-05-20 (reconciled with shipped `firestore-send-fcm` dispatcher)
 **Scope:** All notification paths — Firestore rules, the `firestore-send-fcm` extension dispatcher, client services, UI components, push (FCM), test coverage
 
 ---
