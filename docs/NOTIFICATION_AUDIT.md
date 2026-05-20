@@ -175,23 +175,15 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 ---
 
-### ROBUST-3 (Low): `judge_invite` notification has no watcher-side handling
+### ROBUST-3 (Resolved): `judge_invite` notification dispatch
 
-**Status:** Resolved (chime mapping). `fcmChimeMap` now includes `judge_invite: "general"` (`src/components/GameNotificationWatcher.tsx:19`), and `judge_invite` is in `FIRESTORE_HANDLED_TYPES` to avoid double-toasting when the `firestore-send-fcm` extension delivers the background push.
+**Status:** Resolved. `judge_invite` is on the same dispatch path as every other notification type:
 
-**Files:**
+- `src/services/games.create.ts:151` writes the `judge_invite` notification via `writeNotification`.
+- `src/services/notifications.ts:102` — `writeNotification` unconditionally calls `dispatchPushNotification`, which writes to `/push_dispatch` for **every** type. The `firestore-send-fcm` extension consumes that collection and delivers FCM/APNS background push to the judge.
+- `src/components/GameNotificationWatcher.tsx:19` — `fcmChimeMap` includes `judge_invite: "general"`, and `judge_invite` is in `FIRESTORE_HANDLED_TYPES` so the foreground watcher does not double-toast when the extension delivers the background push.
 
-- `src/services/games.ts:319-327` (writes `judge_invite` notification)
-- `src/components/GameNotificationWatcher.tsx` (no handler for judge invite events)
-
-**Problem:** When a game is created with a judge, `writeNotification` sends a `judge_invite` type notification. The `subscribeToNotifications` listener in `GameNotificationWatcher` does receive this (it listens to all unread notifications), but there's no specific detection logic or chime mapping for `judge_invite` in the watcher.
-
-**Impact:** The notification arrives and displays correctly via the generic `subscribeToNotifications` path with a "general" chime. This is functional but inconsistent — all other notification types have dedicated chime mappings in `fcmChimeMap`. (Historically, the removed Cloud Functions also didn't send an FCM push for judge invites — only `onGameCreated` pushed to player2, not the judge. A `/push_dispatch` write for judge invites would extend background coverage to that role.)
-
-**Recommended fix:**
-
-- Add `judge_invite: "general"` (or a dedicated chime) to `fcmChimeMap`
-- Consider adding a `/push_dispatch` write for judge invites so judges receive background push via the extension even when the app is closed
+No further action required for the judge-invite path. Do not add a separate `/push_dispatch` write for `judge_invite` — the write already happens inside `writeNotification` and a duplicate would cause double background pushes.
 
 ---
 
