@@ -176,7 +176,7 @@ export function ChallengeScreen({
   };
 
   return (
-    <div className="min-h-dvh bg-background/80">
+    <div className="min-h-dvh bg-background">
       {/* Header */}
       <div className="px-5 pt-safe pb-4 border-b border-white/[0.04] glass flex justify-between items-center mb-6">
         <button

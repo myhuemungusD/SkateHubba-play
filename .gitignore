@@ -1,6 +1,11 @@
 node_modules
 dist
-.claude
+.claude/*
+!.claude/agents/
+!.claude/commands/
+!.claude/hooks/
+!.claude/settings.json
+.claude/settings.local.json
 .env
 .env.local
 .env*.local

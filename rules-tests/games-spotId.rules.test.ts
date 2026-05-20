@@ -180,7 +180,7 @@ describe("games rules — spotId invariants", () => {
           // setting→matching requires a real trick video URL (April 2026
           // hardening against the setter-turn-handoff exploit — see
           // games-setter-turnhandoff-redteam.rules.test.ts).
-          currentTrickVideoUrl: "https://example.com/set.webm",
+          currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
           currentTurn: P2_UID,
           turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
           updatedAt: serverTimestamp(),

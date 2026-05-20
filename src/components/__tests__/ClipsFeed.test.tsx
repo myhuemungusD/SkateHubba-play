@@ -92,6 +92,35 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
+/**
+ * Shared preamble for the upvote tests: render the feed with one hydrated
+ * clip at `initialCount` and the named upvote outcome staged on the mock,
+ * then return the upvote button so the test can drive the click + assert.
+ */
+async function mountWithUpvoteSetup(
+  outcome: { kind: "success"; resolved: number } | { kind: "alreadyUpvoted" } | { kind: "error"; error: Error },
+) {
+  const initialCount = 2;
+  const user = userEvent.setup();
+  mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+  mockFetchClipUpvoteState.mockResolvedValueOnce(
+    new Map([["g1_2_set", { count: initialCount, alreadyUpvoted: false }]]),
+  );
+  if (outcome.kind === "success") {
+    mockUpvoteClip.mockResolvedValueOnce(outcome.resolved);
+  } else if (outcome.kind === "alreadyUpvoted") {
+    mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
+  } else {
+    mockUpvoteClip.mockRejectedValueOnce(outcome.error);
+  }
+  render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+  await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+  const upvoteBtn = await screen.findByRole("button", {
+    name: /Upvote clip by @alice · current count 2/i,
+  });
+  return { user, upvoteBtn };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchClipUpvoteState.mockResolvedValue(new Map());
@@ -205,14 +234,7 @@ describe("ClipsFeed", () => {
   });
 
   it("fires clip_upvoted with fromSort and newCount on a successful upvote", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockResolvedValueOnce(3);
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "success", resolved: 3 });
 
     await user.click(upvoteBtn);
 
@@ -225,14 +247,7 @@ describe("ClipsFeed", () => {
   });
 
   it("does NOT fire clip_upvoted when upvoteClip throws AlreadyUpvotedError", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "alreadyUpvoted" });
 
     await user.click(upvoteBtn);
 
@@ -346,14 +361,7 @@ describe("ClipsFeed", () => {
   });
 
   it("optimistically increments and locks the upvote button on tap", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockResolvedValueOnce(3);
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "success", resolved: 3 });
 
     await user.click(upvoteBtn);
 
@@ -363,14 +371,7 @@ describe("ClipsFeed", () => {
   });
 
   it("rolls back the optimistic upvote on a non-AlreadyUpvotedError failure", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockRejectedValueOnce(new Error("network down"));
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "error", error: new Error("network down") });
 
     await user.click(upvoteBtn);
 
@@ -380,14 +381,7 @@ describe("ClipsFeed", () => {
   });
 
   it("keeps the optimistic upvoted state when the server already had our vote", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
-    mockUpvoteClip.mockRejectedValueOnce(new MockAlreadyUpvotedError("g1_2_set"));
-
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "alreadyUpvoted" });
 
     await user.click(upvoteBtn);
 
@@ -426,25 +420,31 @@ describe("ClipsFeed", () => {
     expect(screen.queryByText(/MUTED · TAP/i)).not.toBeInTheDocument();
   });
 
-  it("does not fetch upvote state for the viewer's own clips (wasted read)", async () => {
-    mockFetchClipsFeed.mockResolvedValueOnce([
-      makeClip({ id: "own", playerUid: profile.uid, playerUsername: profile.username }),
-      makeClip({ id: "other", playerUid: "p2", playerUsername: "bob" }),
-    ]);
+  it("hands the full clip pool to the upvote-state service so it can read counts off the denormalized aggregate", async () => {
+    // The service filters self-clips internally and reads `upvoteCount`
+    // straight off each clip doc — the component no longer pre-extracts
+    // ids. Passing the whole pool also lets the service use a single
+    // batched `where(__name__, in, [...])` query (1 read, not 2*N).
+    const own = makeClip({ id: "own", playerUid: profile.uid, playerUsername: profile.username });
+    const other = makeClip({ id: "other", playerUid: "p2", playerUsername: "bob" });
+    mockFetchClipsFeed.mockResolvedValueOnce([own, other]);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(mockFetchClipUpvoteState).toHaveBeenCalled());
 
-    expect(mockFetchClipUpvoteState).toHaveBeenCalledWith(profile.uid, ["other"]);
+    expect(mockFetchClipUpvoteState).toHaveBeenCalledWith(profile.uid, [own, other]);
   });
 
-  it("doesn't run upvote hydration at all when every visible clip is the viewer's own", async () => {
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ playerUid: profile.uid, playerUsername: profile.username })]);
+  it("still calls upvote hydration when every clip is the viewer's own — service short-circuits without a read", async () => {
+    // The service does the self-filter; an own-only pool is a 0-read
+    // call inside the service, not a never-call from the component.
+    const own = makeClip({ playerUid: profile.uid, playerUsername: profile.username });
+    mockFetchClipsFeed.mockResolvedValueOnce([own]);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
-    expect(mockFetchClipUpvoteState).not.toHaveBeenCalled();
+    expect(mockFetchClipUpvoteState).toHaveBeenCalledWith(profile.uid, [own]);
   });
 
   it("preserves an optimistic upvote when a slow hydration resolves after the user's tap (race guard)", async () => {

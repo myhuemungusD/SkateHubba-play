@@ -493,6 +493,74 @@ export function createBlockingServiceMocks(): BlockingServiceMocks {
 }
 
 /* ──────────────────────────────────────────
+ * services/onboarding
+ * ────────────────────────────────────────── */
+
+export interface OnboardingServiceRefs {
+  getOnboardingState: Mock;
+  subscribeToOnboardingState: Mock;
+  markOnboardingCompleted: Mock;
+  markOnboardingSkipped: Mock;
+  resetOnboarding: Mock;
+  getLocalProgress: Mock;
+  setLocalProgress: Mock;
+  clearLocalProgress: Mock;
+  getLocalDismissed: Mock;
+  setLocalDismissed: Mock;
+  clearLocalDismissed: Mock;
+}
+
+export interface OnboardingServiceMocks {
+  refs: OnboardingServiceRefs;
+  module: Record<keyof OnboardingServiceRefs, (...args: unknown[]) => unknown> & { TUTORIAL_VERSION: number };
+}
+
+export function createOnboardingServiceMocks(): OnboardingServiceMocks {
+  // Default seed: subscribeToOnboardingState fires once with a "completed"
+  // state so smoke tests that don't care about onboarding never see the
+  // tour overlay. Tests that DO care override via the refs.
+  const refs: OnboardingServiceRefs = {
+    getOnboardingState: vi.fn().mockResolvedValue({
+      tutorialVersion: 2,
+      completedAt: { seconds: 0, nanoseconds: 0 },
+      skippedAt: null,
+    }),
+    subscribeToOnboardingState: vi.fn(
+      (_uid: string, cb: (state: { tutorialVersion: number; completedAt: unknown; skippedAt: null }) => void) => {
+        cb({ tutorialVersion: 2, completedAt: { seconds: 0, nanoseconds: 0 }, skippedAt: null });
+        return () => undefined;
+      },
+    ),
+    markOnboardingCompleted: vi.fn().mockResolvedValue(undefined),
+    markOnboardingSkipped: vi.fn().mockResolvedValue(undefined),
+    resetOnboarding: vi.fn().mockResolvedValue(undefined),
+    getLocalProgress: vi.fn().mockReturnValue(null),
+    setLocalProgress: vi.fn(),
+    clearLocalProgress: vi.fn(),
+    getLocalDismissed: vi.fn().mockReturnValue(false),
+    setLocalDismissed: vi.fn(),
+    clearLocalDismissed: vi.fn(),
+  };
+  return {
+    refs,
+    module: {
+      TUTORIAL_VERSION: 2,
+      getOnboardingState: (...args: unknown[]) => refs.getOnboardingState(...args),
+      subscribeToOnboardingState: (...args: unknown[]) => refs.subscribeToOnboardingState(...args),
+      markOnboardingCompleted: (...args: unknown[]) => refs.markOnboardingCompleted(...args),
+      markOnboardingSkipped: (...args: unknown[]) => refs.markOnboardingSkipped(...args),
+      resetOnboarding: (...args: unknown[]) => refs.resetOnboarding(...args),
+      getLocalProgress: (...args: unknown[]) => refs.getLocalProgress(...args),
+      setLocalProgress: (...args: unknown[]) => refs.setLocalProgress(...args),
+      clearLocalProgress: (...args: unknown[]) => refs.clearLocalProgress(...args),
+      getLocalDismissed: (...args: unknown[]) => refs.getLocalDismissed(...args),
+      setLocalDismissed: (...args: unknown[]) => refs.setLocalDismissed(...args),
+      clearLocalDismissed: (...args: unknown[]) => refs.clearLocalDismissed(...args),
+    },
+  };
+}
+
+/* ──────────────────────────────────────────
  * @sentry/react
  * ────────────────────────────────────────── */
 
@@ -549,6 +617,7 @@ export interface AllSmokeMocks {
   firebase: FirebaseMocks;
   analytics: AnalyticsMocks;
   blocking: BlockingServiceMocks;
+  onboarding: OnboardingServiceMocks;
   sentry: SentryMocks;
 }
 
@@ -564,6 +633,7 @@ export function createAllSmokeMocks(): AllSmokeMocks {
     firebase: createFirebaseMocks(),
     analytics: createAnalyticsMocks(),
     blocking: createBlockingServiceMocks(),
+    onboarding: createOnboardingServiceMocks(),
     sentry: createSentryMocks(),
   };
 }

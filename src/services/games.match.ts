@@ -3,6 +3,7 @@ import { requireDb } from "../firebase";
 import { analytics } from "./analytics";
 import { metrics } from "./logger";
 import { writeNotificationInTx } from "./notifications";
+import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 import { writeLandedClipsInTransaction } from "./clips";
 import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
 import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
@@ -22,10 +23,14 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
 
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
 
   // Firestore transactions have built-in retry for transient conflicts;
   // withRetry is not needed here and would incorrectly retry app-logic errors.
   await runTransaction(requireDb(), async (tx) => {
+    // Reset on every tx body invocation so a retry doesn't accumulate
+    // duplicate push dispatches.
+    resetPushDispatchOutbox(pushOutbox);
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -36,26 +41,35 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
     const matcherUid = getOpponent(game, game.currentSetter);
     const setterUsername = game.currentSetter === game.player1Uid ? game.player1Username : game.player2Username;
 
+    // matchVideoUrl is intentionally NOT written here — the setting-phase
+    // rule (firestore.rules) pins it immutable, so writing null after a
+    // prior turn left a real URL on the doc would be permission-denied.
+    // Nothing reads game.matchVideoUrl during the next turn's setting/
+    // matching phases (UI sources from currentTrickVideoUrl + turnHistory).
     tx.update(gameRef, {
       phase: "matching",
       currentTrickName: safeTrickName,
       currentTrickVideoUrl: videoUrl,
-      matchVideoUrl: null,
       currentTurn: matcherUid,
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
       updatedAt: serverTimestamp(),
     });
 
     // Notify matcher it's their turn — atomically with the game update.
-    writeNotificationInTx(tx, {
-      senderUid: game.currentSetter,
-      recipientUid: matcherUid,
-      type: "your_turn",
-      title: "Your Turn!",
-      body: `Match @${setterUsername}'s ${safeTrickName}`,
-      gameId,
-    });
+    writeNotificationInTx(
+      tx,
+      {
+        senderUid: game.currentSetter,
+        recipientUid: matcherUid,
+        type: "your_turn",
+        title: "Your Turn!",
+        body: `Match @${setterUsername}'s ${safeTrickName}`,
+        gameId,
+      },
+      pushOutbox,
+    );
   });
+  void drainPushDispatchOutbox(pushOutbox);
   recordTurnAction(gameId);
   metrics.trickSet(gameId, safeTrickName, videoUrl !== null);
   analytics.trickSet(gameId, safeTrickName);
@@ -68,8 +82,10 @@ export async function setTrick(gameId: string, trickName: string, videoUrl: stri
 export async function failSetTrick(gameId: string): Promise<void> {
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
 
   await runTransaction(requireDb(), async (tx) => {
+    resetPushDispatchOutbox(pushOutbox);
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -80,28 +96,33 @@ export async function failSetTrick(gameId: string): Promise<void> {
     const nextSetter = getOpponent(game, game.currentSetter);
     const prevSetterUsername = game.currentSetter === game.player1Uid ? game.player1Username : game.player2Username;
 
+    // matchVideoUrl intentionally omitted — see setTrick above.
     tx.update(gameRef, {
       phase: "setting",
       currentSetter: nextSetter,
       currentTurn: nextSetter,
       currentTrickName: null,
       currentTrickVideoUrl: null,
-      matchVideoUrl: null,
       turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
       turnNumber: game.turnNumber + 1,
       updatedAt: serverTimestamp(),
     });
 
     // Notify next setter it's their turn — atomically with the game update.
-    writeNotificationInTx(tx, {
-      senderUid: game.currentSetter,
-      recipientUid: nextSetter,
-      type: "your_turn",
-      title: "Your Turn to Set!",
-      body: `@${prevSetterUsername} couldn't land their trick. Set a trick!`,
-      gameId,
-    });
+    writeNotificationInTx(
+      tx,
+      {
+        senderUid: game.currentSetter,
+        recipientUid: nextSetter,
+        type: "your_turn",
+        title: "Your Turn to Set!",
+        body: `@${prevSetterUsername} couldn't land their trick. Set a trick!`,
+        gameId,
+      },
+      pushOutbox,
+    );
   });
+  void drainPushDispatchOutbox(pushOutbox);
   recordTurnAction(gameId);
 }
 
@@ -125,8 +146,10 @@ export async function submitMatchAttempt(
 ): Promise<{ gameOver: boolean; winner: string | null }> {
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
 
   const result = await runTransaction(requireDb(), async (tx) => {
+    resetPushDispatchOutbox(pushOutbox);
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -153,14 +176,18 @@ export async function submitMatchAttempt(
         });
 
         // Notify the judge — atomically with the game update.
-        writeNotificationInTx(tx, {
-          senderUid: matcherUid,
-          recipientUid: game.judgeId,
-          type: "your_turn",
-          title: "Ruling Needed",
-          body: `@${matcherUsernameVal} claims they landed @${setterUsername}'s trick. Rule landed or missed?`,
-          gameId,
-        });
+        writeNotificationInTx(
+          tx,
+          {
+            senderUid: matcherUid,
+            recipientUid: game.judgeId,
+            type: "your_turn",
+            title: "Ruling Needed",
+            body: `@${matcherUsernameVal} claims they landed @${setterUsername}'s trick. Rule landed or missed?`,
+            gameId,
+          },
+          pushOutbox,
+        );
 
         return {
           outcome: "disputable" as const,
@@ -222,14 +249,18 @@ export async function submitMatchAttempt(
       });
 
       // Honor-system landed: previous setter is next matcher — let them know.
-      writeNotificationInTx(tx, {
-        senderUid: matcherUid,
-        recipientUid: game.currentSetter,
-        type: "your_turn",
-        title: "Trick Landed!",
-        body: `@${matcherUsernameVal} landed your trick. Your turn to match.`,
-        gameId,
-      });
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: matcherUid,
+          recipientUid: game.currentSetter,
+          type: "your_turn",
+          title: "Trick Landed!",
+          body: `@${matcherUsernameVal} landed your trick. Your turn to match.`,
+          gameId,
+        },
+        pushOutbox,
+      );
 
       return {
         outcome: "landed_honor" as const,
@@ -311,23 +342,31 @@ export async function submitMatchAttempt(
     // Notify the setter atomically. In the missed path, only the matcher
     // gains a letter, so the setter always wins when the game ends here.
     if (gameOver) {
-      writeNotificationInTx(tx, {
-        senderUid: matcherUid,
-        recipientUid: game.currentSetter,
-        type: "game_won",
-        title: "You Won!",
-        body: `vs @${matcherUsernameVal}`,
-        gameId,
-      });
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: matcherUid,
+          recipientUid: game.currentSetter,
+          type: "game_won",
+          title: "You Won!",
+          body: `vs @${matcherUsernameVal}`,
+          gameId,
+        },
+        pushOutbox,
+      );
     } else {
-      writeNotificationInTx(tx, {
-        senderUid: matcherUid,
-        recipientUid: nextSetter,
-        type: "your_turn",
-        title: "Your Turn to Set!",
-        body: `Set a trick for @${matcherUsernameVal}`,
-        gameId,
-      });
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: matcherUid,
+          recipientUid: nextSetter,
+          type: "your_turn",
+          title: "Your Turn to Set!",
+          body: `Set a trick for @${matcherUsernameVal}`,
+          gameId,
+        },
+        pushOutbox,
+      );
     }
 
     return {
@@ -342,6 +381,7 @@ export async function submitMatchAttempt(
       turnNumber: game.turnNumber,
     };
   });
+  void drainPushDispatchOutbox(pushOutbox);
   recordTurnAction(gameId);
   metrics.matchSubmitted(gameId, landed);
   analytics.matchSubmitted(gameId, landed);

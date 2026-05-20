@@ -61,7 +61,7 @@ Quick summary:
 - **Required for any local run:** the six `VITE_FIREBASE_*` keys from Firebase Console → Project Settings → General → Your Apps → Web App.
 - **Required for the `/map` page:** `VITE_MAPBOX_TOKEN`. The map silently fails to render without it.
 - **Local-only:** `VITE_USE_EMULATORS=true` to point the app at the Firebase emulator suite (see below). Only takes effect in `npm run dev`.
-- **Optional / production-recommended:** FCM push (`VITE_FIREBASE_VAPID_KEY`), Analytics (`VITE_FIREBASE_MEASUREMENT_ID`), App Check (`VITE_RECAPTCHA_SITE_KEY` + `VITE_APPCHECK_ENABLED`), Sentry (`VITE_SENTRY_DSN`), PostHog (`VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST`), and `VITE_APP_URL` for Firebase email action links.
+- **Optional / production-recommended:** FCM push (`VITE_FIREBASE_VAPID_KEY`), Analytics (`VITE_FIREBASE_MEASUREMENT_ID`), App Check (`VITE_RECAPTCHA_SITE_KEY` + `VITE_APPCHECK_ENABLED`), Sentry (`VITE_SENTRY_DSN`), PostHog (`VITE_POSTHOG_KEY` / `VITE_POSTHOG_HOST`), `VITE_APP_URL` for Firebase email action links, and `VITE_MAPBOX_STYLE_URL` to point `/map` at a custom Mapbox Studio style (defaults to `mapbox://styles/mapbox/dark-v11`; invalid values fall back to that default with a console warning).
 
 For Vercel preview/production setup, see [DEPLOYMENT.md](DEPLOYMENT.md).
 

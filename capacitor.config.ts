@@ -8,8 +8,6 @@ import type { CapacitorConfig } from "@capacitor/cli";
  * Required keys for the plugins this app uses:
  *   - NSCameraUsageDescription              (camera preview + video recording)
  *   - NSMicrophoneUsageDescription          (audio track for recorded clips)
- *   - NSPhotoLibraryUsageDescription        (@capacitor/camera fallback flows)
- *   - NSPhotoLibraryAddUsageDescription     (save-to-camera-roll, if ever used)
  *   - NSLocationWhenInUseUsageDescription   (spot geolocation)
  *
  * The `@capacitor-community/video-recorder` plugin (AVFoundation-backed) uses

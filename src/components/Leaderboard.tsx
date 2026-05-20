@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { getLeaderboard, type UserProfile } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { ProUsername } from "./ProUsername";
@@ -18,11 +18,20 @@ export function Leaderboard({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  // Single loader used by both initial mount and the error-state retry. The
+  // retry MUST apply the blocked-user filter — otherwise a transient error
+  // on first load causes the retry to surface players the viewer has
+  // explicitly blocked, a privacy regression.
+  const loadLeaderboard = useCallback(async () => {
+    const [all, blockedIds] = await Promise.all([getLeaderboard(), getBlockedUserIds(currentUserUid)]);
+    return all.filter((p) => !blockedIds.has(p.uid));
+  }, [currentUserUid]);
+
   useEffect(() => {
     let stale = false;
-    Promise.all([getLeaderboard(), getBlockedUserIds(currentUserUid)])
-      .then(([all, blockedIds]) => {
-        if (!stale) setPlayers(all.filter((p) => !blockedIds.has(p.uid)));
+    loadLeaderboard()
+      .then((filtered) => {
+        if (!stale) setPlayers(filtered);
       })
       .catch(() => {
         if (!stale) setError("Could not load leaderboard");
@@ -33,7 +42,7 @@ export function Leaderboard({
     return () => {
       stale = true;
     };
-  }, [currentUserUid]);
+  }, [loadLeaderboard]);
 
   if (loading) {
     return <p className="font-body text-xs text-brand-orange text-center my-6">Loading leaderboard...</p>;
@@ -48,7 +57,7 @@ export function Leaderboard({
           onClick={() => {
             setError("");
             setLoading(true);
-            getLeaderboard()
+            loadLeaderboard()
               .then(setPlayers)
               .catch(() => setError("Could not load leaderboard"))
               .finally(() => setLoading(false));

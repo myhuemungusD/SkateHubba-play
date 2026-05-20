@@ -52,6 +52,34 @@ vi.mock("./services/blocking", () => ({
   subscribeToBlockedUsers: vi.fn(() => vi.fn()),
 }));
 
+vi.mock("./services/onboarding", () => ({
+  TUTORIAL_VERSION: 2,
+  // Default to "completed" so the OnboardingProvider does not render the tour
+  // overlay across App-level integration tests. The dedicated coverage for
+  // the tutorial flow lives under src/__tests__/smoke-onboarding.test.tsx
+  // and src/components/onboarding/__tests__/.
+  getOnboardingState: vi.fn().mockResolvedValue({
+    tutorialVersion: 2,
+    completedAt: { seconds: 0, nanoseconds: 0 },
+    skippedAt: null,
+  }),
+  subscribeToOnboardingState: vi.fn(
+    (_uid: string, cb: (state: { tutorialVersion: number; completedAt: unknown; skippedAt: null }) => void) => {
+      cb({ tutorialVersion: 2, completedAt: { seconds: 0, nanoseconds: 0 }, skippedAt: null });
+      return () => undefined;
+    },
+  ),
+  markOnboardingCompleted: vi.fn().mockResolvedValue(undefined),
+  markOnboardingSkipped: vi.fn().mockResolvedValue(undefined),
+  resetOnboarding: vi.fn().mockResolvedValue(undefined),
+  getLocalProgress: vi.fn().mockReturnValue(null),
+  setLocalProgress: vi.fn(),
+  clearLocalProgress: vi.fn(),
+  getLocalDismissed: vi.fn().mockReturnValue(false),
+  setLocalDismissed: vi.fn(),
+  clearLocalDismissed: vi.fn(),
+}));
+
 vi.mock("./services/analytics", () => ({
   trackEvent: vi.fn(),
   analytics: {
@@ -114,12 +142,12 @@ describe("App", () => {
     renderApp();
     await waitFor(() => {
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
-      expect(screen.getByText("Use email")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
       expect(screen.getByText("Account")).toBeInTheDocument();
     });
   });
 
-  it("navigates directly to the signup card when 'Use email' is clicked", async () => {
+  it("navigates directly to the signup card when 'Create account' is clicked", async () => {
     mockUseAuth.mockReturnValue({
       loading: false,
       user: null,
@@ -128,7 +156,7 @@ describe("App", () => {
     });
     renderApp();
 
-    await userEvent.click(screen.getByText("Use email"));
+    await userEvent.click(screen.getByRole("button", { name: "Create account" }));
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
     });

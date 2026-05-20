@@ -1,28 +1,33 @@
 /**
- * Users — legacy-migration transitional-rules tests.
+ * Users — post-backfill strict-rules regression tests.
  *
- * Production `users/{uid}` docs written BEFORE the public/private
- * split carry five sensitive fields inline: email, emailVerified,
- * dob, parentalConsent, fcmTokens. Firestore's `request.resource.data`
- * is the MERGED post-write state, so any untouched legacy field
- * remains in `request.resource.data` on every partial update.
+ * Production `users/{uid}` docs written BEFORE the April 2026 public/
+ * private split carried five sensitive fields inline: email,
+ * emailVerified, dob, parentalConsent, fcmTokens. From rollout until
+ * the May 2026 backfill (scripts/migrate-users-private.mjs) completed,
+ * the rules ran in a TRANSITIONAL form that accepted a sensitive field
+ * on update IFF its value was unchanged from `resource.data` — needed
+ * because `request.resource.data` is the MERGED post-write state and
+ * legacy docs still carried those fields inline on every partial
+ * update (wins++, stance change, etc.).
  *
- * The strict `!('X' in request.resource.data)` form of the rule would
- * therefore reject every legitimate partial write against a legacy
- * doc (wins++, stance change, etc.) until the backfill script
- * (scripts/migrate-users-private.mjs) runs. That's the deploy blocker
- * the prior audit flagged.
+ * The backfill is now complete in production. The rules have been
+ * restored to the strict `!('X' in request.resource.data)` form on
+ * update, matching the long-standing create rule. These tests prove
+ * the strict regime correctly handles the legacy-doc shape:
  *
- * The transitional form allows a sensitive field in
- * `request.resource.data` IFF the value is unchanged from
- * `resource.data`. These tests prove:
- *
- *   1. Legitimate wins++ against a legacy doc (with every sensitive
- *      field still inline) SUCCEEDS — the deploy blocker is lifted.
- *   2. Legitimate stance change against a legacy doc SUCCEEDS.
- *   3. Any attempt to MUTATE a sensitive field value (or ADD a new
- *      one) on the public doc is still DENIED.
- *   4. A post-backfill clean doc still accepts strict writes.
+ *   1. A partial update against a (no-longer-realistic, but
+ *      defence-in-depth) legacy-shaped doc — even one that ONLY
+ *      touches a non-sensitive field — is now DENIED, because the
+ *      merged request.resource.data carries the inline sensitive
+ *      fields through and the strict guard rejects them. This is
+ *      the intentional inverse of the transitional behaviour: any
+ *      doc still carrying inline sensitive fields is broken until
+ *      it's re-migrated.
+ *   2. Any attempt to mutate or re-introduce a sensitive field is
+ *      still DENIED (this branch was always denied, including under
+ *      the transitional form).
+ *   3. A post-backfill clean doc accepts strict writes.
  *
  * Run via:  npm run test:rules
  */
@@ -113,17 +118,21 @@ beforeEach(async () => {
   await testEnv.clearFirestore();
 });
 
-describe("users/{uid} — legacy-doc transitional behaviour (deploy-blocker regression)", () => {
-  // These tests confirm the behaviour the prior audit predicted AND
-  // the transitional rules then fix.
+describe("users/{uid} — strict post-backfill behaviour against legacy-shaped docs", () => {
+  // These tests assert the strict rule's intentional behaviour: any
+  // doc that still carries inline sensitive fields is rejected on
+  // every partial update, because request.resource.data carries the
+  // legacy fields through. After the May 2026 backfill, no such doc
+  // should exist in production; this is defence-in-depth.
 
-  it("legitimate: wins++ against a legacy doc with inline sensitive fields SUCCEEDS", async () => {
+  it("post-backfill strict: wins++ against a legacy-shaped doc is DENIED (sensitive fields ride through)", async () => {
     await seedLegacyPublicUser();
     // Exact shape of updatePlayerStats (src/services/users.ts:305) on
     // a win: { wins: increment(1), lastStatsGameId: "g-123" }. When
     // Firestore merges that into the legacy doc,
-    // request.resource.data carries every inline sensitive field.
-    await assertSucceeds(
+    // request.resource.data carries every inline sensitive field,
+    // and the strict guard rejects them.
+    await assertFails(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
         wins: 4,
         lastStatsGameId: "g-123",
@@ -131,9 +140,9 @@ describe("users/{uid} — legacy-doc transitional behaviour (deploy-blocker regr
     );
   });
 
-  it("legitimate: stance change against a legacy doc with inline sensitive fields SUCCEEDS", async () => {
+  it("post-backfill strict: stance change against a legacy-shaped doc is DENIED", async () => {
     await seedLegacyPublicUser();
-    await assertSucceeds(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { stance: "Goofy" }));
+    await assertFails(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { stance: "Goofy" }));
   });
 
   it("attack: changing email on a legacy doc is DENIED", async () => {

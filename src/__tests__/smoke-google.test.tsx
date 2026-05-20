@@ -7,9 +7,8 @@ import { renderApp, passAgeGate, createMockHelpers } from "./smoke-helpers";
 // The aggregate factory lives in ./harness/mockServices. Dynamic-importing it
 // inside vi.hoisted() keeps the ref objects available before vi.mock() factory
 // callbacks run.
-const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, sentry } = await vi.hoisted(
-  async () => (await import("./harness/mockServices")).createAllSmokeMocks(),
-);
+const { auth, authSvc, users, games, storage, fcm, firebase, analytics, blocking, onboarding, sentry } =
+  await vi.hoisted(async () => (await import("./harness/mockServices")).createAllSmokeMocks());
 
 vi.mock("../hooks/useAuth", () => auth.module);
 vi.mock("../services/auth", () => authSvc.module);
@@ -21,6 +20,7 @@ vi.mock("../firebase", () => firebase.module);
 vi.mock("../services/analytics", () => analytics.module);
 vi.mock("@sentry/react", () => sentry.module);
 vi.mock("../services/blocking", () => blocking.module);
+vi.mock("../services/onboarding", () => onboarding.module);
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -161,7 +161,7 @@ describe("Smoke: Google Auth", () => {
     await renderApp();
 
     // Navigate to auth screen via age gate
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
     await waitFor(() => expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument());
 
@@ -181,7 +181,7 @@ describe("Smoke: Google Auth", () => {
     authSvc.refs.signInWithGoogle.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
     await renderApp();
 
-    await userEvent.click(await screen.findByText("Use email"));
+    await userEvent.click(await screen.findByText("Create account"));
     await passAgeGate();
     await waitFor(() => expect(screen.getByRole("button", { name: "Create Account" })).toBeInTheDocument());
 

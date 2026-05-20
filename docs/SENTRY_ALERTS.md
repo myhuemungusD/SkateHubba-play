@@ -70,6 +70,16 @@ Fires on the first page view where `VITE_MAPBOX_TOKEN` is unset in production �
 - **Action interval:** Once per issue (not every occurrence — the event fires on every page view when the token is missing, so high volume is expected)
 - **Remediation:** Add `VITE_MAPBOX_TOKEN` in Vercel → Project Settings → Environment Variables and redeploy (env var changes do not auto-rebuild). See `docs/DEPLOYMENT.md#map-is-temporarily-unavailable-on-map`.
 
+#### Map Style Misconfig (`map_style_invalid`)
+
+Fires once per page view of `/map` when `VITE_MAPBOX_STYLE_URL` is set to a value that is neither a `mapbox://styles/` URI nor an https URL. The map still renders against the default `mapbox://styles/mapbox/dark-v11` fallback, so this is a soft alert — not a user-facing outage. Emitted from `src/lib/mapbox.ts` with the offending value attached as `extra.styleUrl`.
+
+- **When:** A new issue is created
+- **Filter:** `event.environment:production AND message:"map_style_invalid"`
+- **Then:** Send notification to **Slack** `#skatehubba-alerts`
+- **Action interval:** Once per issue (the event fires on every /map page view while the misconfig is live)
+- **Remediation:** Open the Sentry event, copy `extra.styleUrl`, and check Vercel → Project Settings → Environment Variables. Either correct the value (must start with `mapbox://styles/` or be a valid `https://` URL) and redeploy, or unset the var to use the default. If self-hosting on a non-Mapbox domain, also extend the `connect-src` directive in `vercel.json` to whitelist that origin.
+
 ### 3. Slack Integration
 
 1. Sentry → **Settings** → **Integrations** → **Slack**

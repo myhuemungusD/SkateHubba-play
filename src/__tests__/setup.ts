@@ -49,3 +49,15 @@ Object.defineProperty(window.HTMLMediaElement.prototype, "pause", {
   writable: true,
   value: vi.fn(),
 });
+
+// jsdom lacks IntersectionObserver — provide a no-op stub so any component
+// (notably the onboarding SpotlightOverlay) that observes anchor elements
+// mounts without throwing. Tests that need to drive intersection events
+// install their own controllable stub on top of this default.
+class MockIntersectionObserver {
+  observe = vi.fn();
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+  takeRecords = vi.fn(() => []);
+}
+(globalThis as unknown as Record<string, unknown>).IntersectionObserver = MockIntersectionObserver;

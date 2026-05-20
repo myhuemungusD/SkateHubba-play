@@ -20,60 +20,12 @@ import {
   forceTokenRefresh,
 } from "./helpers/emulator";
 import { MEDIA_MOCK_SCRIPT } from "./helpers/media-mock";
+import { signUpAndSetupProfile, signInViaUI } from "./helpers/auth-flow";
 
 // ─── Fixed test data ──────────────────────────────────────────────────────────
 
 const P1 = { email: "p1@test.com", password: "password123", username: "p1skater" };
 const P2 = { email: "p2@test.com", password: "password123", username: "p2skater" };
-
-// ─── Shared UI helpers ────────────────────────────────────────────────────────
-
-async function fillAgeFields(page: Page) {
-  await expect(page.getByLabel("Birth month")).toBeVisible({ timeout: 5_000 });
-  await page.getByLabel("Birth month").fill("01");
-  await page.getByLabel("Birth day").fill("15");
-  await page.getByLabel("Birth year").fill("2000");
-}
-
-async function signUpAndSetupProfile(page: Page, email: string, pw: string, username: string) {
-  await page.goto("/");
-  // Prime emulator connections from the browser to prevent SDK hangs in CI
-  await page.evaluate(async () => {
-    await fetch("http://localhost:9099/", { mode: "no-cors" }).catch(() => {});
-    await fetch("http://localhost:8080/", { mode: "no-cors" }).catch(() => {});
-  });
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
-  // Wait for auth form to render
-  await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
-  await page.getByPlaceholder("you@email.com").fill(email);
-  const pwFields = page.getByPlaceholder("••••••••");
-  await pwFields.nth(0).fill(pw);
-  await pwFields.nth(1).fill(pw);
-  // DOB is collected inline on the same card (COPPA).
-  await fillAgeFields(page);
-  await page.getByRole("button", { name: "Create Account" }).click();
-  // Wait for navigation away from auth screen
-  await page.waitForURL(/\/(profile|lobby)/, { timeout: 15_000 });
-
-  // Single-card profile setup: username + stance + submit in one step.
-  await expect(page.getByText("Pick your handle")).toBeVisible({ timeout: 10_000 });
-  await page.getByPlaceholder("sk8legend").fill(username);
-  await expect(page.getByText(`@${username} is available ✓`)).toBeVisible({ timeout: 5_000 });
-  await page.getByRole("button", { name: "Lock It In" }).click();
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 10_000 });
-}
-
-async function signInViaUI(page: Page, email: string, pw: string) {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Account" }).click();
-  // Wait for auth form to render
-  await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
-  await page.getByPlaceholder("you@email.com").fill(email);
-  await page.getByPlaceholder("••••••••").fill(pw);
-  await page.getByRole("button", { name: "Sign In" }).click();
-  await page.waitForURL("**/lobby**", { timeout: 15_000 });
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
-}
 
 /**
  * Enable the fake camera/MediaRecorder for the given page.

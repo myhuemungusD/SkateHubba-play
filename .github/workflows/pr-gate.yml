@@ -38,6 +38,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Need full history so `git diff origin/main...HEAD` resolves the
+          # merge-base correctly. With the default shallow clone, the diff
+          # can return empty and silently let new functions/src/ slip past.
+          fetch-depth: 0
 
       - name: Reject new Cloud Functions code
         run: |
@@ -71,6 +76,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Same merge-base requirement as verify-no-cloud-functions — without
+          # full history, the diff returns empty and the warning never fires.
+          fetch-depth: 0
 
       - name: Flag workflow file modifications
         run: |

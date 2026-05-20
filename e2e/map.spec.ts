@@ -63,7 +63,7 @@ async function relaxCspForEmulators(page: Page): Promise<void> {
   );
 }
 
-async function stubMapbox(page: Page): Promise<void> {
+async function stubMapbox(page: Page, capturedStyleUrls?: string[]): Promise<void> {
   // The sprite/glyph URLs MUST point at api.mapbox.com because the CSP
   // (vercel.json) only allows api.mapbox.com / *.tiles.mapbox.com /
   // events.mapbox.com for connect-src. Anything else is blocked at the
@@ -76,9 +76,10 @@ async function stubMapbox(page: Page): Promise<void> {
     sprite: "https://api.mapbox.com/sprite",
     glyphs: "https://api.mapbox.com/fonts/{fontstack}/{range}.pbf",
   };
-  await page.route(/api\.mapbox\.com\/styles\//, (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyStyle) }),
-  );
+  await page.route(/api\.mapbox\.com\/styles\//, (route) => {
+    capturedStyleUrls?.push(route.request().url());
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(emptyStyle) });
+  });
   // Catch the sprite + glyph URLs the empty style references plus any
   // ancillary GET to api.mapbox.com that GL JS makes during init.
   await page.route(/api\.mapbox\.com\/(events|v4|fonts|sprites|sprite)/, (route) =>
@@ -93,7 +94,11 @@ async function stubMapbox(page: Page): Promise<void> {
 test.describe("Map → challenge wiring", () => {
   test("Challenge from here forwards the spot id and stashes it across auth", async ({ page }) => {
     await relaxCspForEmulators(page);
-    await stubMapbox(page);
+    // Capture the style URL mapbox-gl actually requests so we can assert
+    // the env-var → lib/mapbox → SpotMap → mapbox-gl wiring at the network
+    // boundary, not just at the JS module level.
+    const capturedStyleUrls: string[] = [];
+    await stubMapbox(page, capturedStyleUrls);
 
     // Surface page errors / browser console for actionable CI failures —
     // the MapErrorBoundary otherwise swallows mapbox-gl crashes silently.
@@ -148,5 +153,13 @@ test.describe("Map → challenge wiring", () => {
     // logged-out recipients.
     const stashed = await page.evaluate(() => window.sessionStorage.getItem("skate.pendingChallengeSpot"));
     expect(stashed).toBe(SPOT_ID);
+
+    // Wiring guard: with VITE_MAPBOX_STYLE_URL unset (the e2e default),
+    // mapbox-gl must request the dark-v11 style. This is the network-level
+    // proof of the env-var → lib/mapbox → SpotMap → mapbox-gl path. If
+    // someone breaks the import chain or the resolver default, the
+    // captured request URL will diverge and this assertion will fire.
+    expect(capturedStyleUrls.length).toBeGreaterThan(0);
+    expect(capturedStyleUrls.some((u) => u.includes("/styles/v1/mapbox/dark-v11"))).toBe(true);
   });
 });

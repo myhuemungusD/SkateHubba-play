@@ -6,6 +6,7 @@ import { isPushSupported, registerPushToken, unregisterPushToken } from "../serv
 import type { UserProfile } from "../services/users";
 import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
+import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException, setUser as setSentryUser } from "../lib/sentry";
@@ -77,7 +78,21 @@ export function useAuthContext(): AuthContextValue {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { loading, user, profile, refreshProfile } = useAuth();
 
-  const [activeProfile, setActiveProfile] = useState<UserProfile | null>(null);
+  // Sync activeProfile from `profile` during render rather than via useEffect.
+  // The previous useEffect-mirror introduced a one-render lag because effects
+  // run bottom-up (NavigationContext's routing effect fired before the
+  // AuthContext mirror), so direct deep-links (/map, /record, /player/:uid)
+  // saw activeProfile=null in the gap between profile resolving and the
+  // mirror committing — and got bounced through /profile → /lobby. Adjusting
+  // state during render is the recommended React pattern for this case;
+  // setActiveProfile is still exposed so ProfileSetup / sign-out / delete
+  // flows can override the derived value imperatively.
+  const [activeProfile, setActiveProfile] = useState<UserProfile | null>(profile);
+  const [prevProfile, setPrevProfile] = useState<UserProfile | null>(profile);
+  if (profile !== prevProfile) {
+    setPrevProfile(profile);
+    if (profile) setActiveProfile(profile);
+  }
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
   // Mirror of PENDING_DELETE_KEY in React state so the banner component can
@@ -101,8 +116,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const code = getErrorCode(err);
         analytics.signInFailure("google", code || "redirect_error");
         metrics.signInFailure("google", code || "redirect_error");
-        captureException(err, { extra: { context: "resolveGoogleRedirect" } });
-        setGoogleError("Google sign-in failed. Please try again.");
+        // Skip Sentry for benign user-environment failures (Safari private
+        // mode, stale OAuth nonce) — they'd drown real outage signals.
+        if (!isBenignAuthCode(code)) {
+          captureException(err, { extra: { context: "resolveGoogleRedirect", code } });
+        }
+        if (code === "auth/account-exists-with-different-credential") {
+          setGoogleError("This email is linked to a password account. Sign in with email/password instead.");
+        } else {
+          setGoogleError(getAuthErrorMessage(code) ?? "Google sign-in failed. Please try again.");
+        }
       });
   }, []);
 
@@ -125,41 +148,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const code = getErrorCode(err);
       analytics.signInFailure("google", code || "unknown");
       metrics.signInFailure("google", code || "unknown");
+      // User-driven dismissals don't warrant any UI — just breadcrumb.
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
         logger.info("google_sign_in_dismissed", { code });
       } else if (code === "auth/account-exists-with-different-credential") {
         logger.warn("google_sign_in_credential_conflict", { code });
         captureException(err, { extra: { context: "handleGoogleSignIn", code } });
         setGoogleError("This email is linked to a password account. Sign in with email/password instead.");
-      } else if (code === "auth/too-many-requests") {
-        logger.warn("google_sign_in_rate_limited", { code });
-        setGoogleError("Too many attempts. Please wait a few minutes and try again.");
       } else if (code === "auth/unauthorized-domain") {
+        // Ops fix, not user fix — surface the runbook hint and page Sentry.
         logger.error("google_sign_in_unauthorized_domain", { code, origin: window.location.origin });
         captureException(err, { extra: { context: "handleGoogleSignIn", code, origin: window.location.origin } });
         setGoogleError(
           "This domain isn't authorized for Google sign-in. " +
             "Add it in Firebase Console → Authentication → Settings → Authorized domains.",
         );
-      } else if (code === "auth/internal-error") {
-        // App Check rejection, reCAPTCHA failure, or transient Identity Toolkit 500.
-        logger.error("google_sign_in_internal_error", { code, origin: window.location.origin });
-        captureException(err, { extra: { context: "handleGoogleSignIn", code, origin: window.location.origin } });
-        setGoogleError("Sign-in is temporarily unavailable. Please try again in a moment.");
       } else {
-        logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
-        captureException(err, { extra: { context: "handleGoogleSignIn", code } });
-        setGoogleError(err instanceof Error ? parseFirebaseError(err) : "Google sign-in failed");
+        const mapped = getAuthErrorMessage(code);
+        if (mapped) {
+          logger.warn("google_sign_in_known_error", { code });
+        } else {
+          logger.error("google_sign_in_error", { code, message: parseFirebaseError(err) });
+        }
+        if (!isBenignAuthCode(code)) {
+          captureException(err, { extra: { context: "handleGoogleSignIn", code, origin: window.location.origin } });
+        }
+        setGoogleError(mapped ?? (err instanceof Error ? parseFirebaseError(err) : "Google sign-in failed"));
       }
     } finally {
       setGoogleLoading(false);
     }
   }, []);
-
-  // Sync profile
-  useEffect(() => {
-    if (profile) setActiveProfile(profile);
-  }, [profile]);
 
   // Keep analytics + error-tracking identity in sync with Firebase auth
   // state. PostHog.reset() must fire on sign-out so the next anonymous

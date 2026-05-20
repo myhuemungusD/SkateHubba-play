@@ -10,11 +10,6 @@
  *
  * On the web this module is not used — `VideoRecorder.tsx` falls back
  * to the browser MediaRecorder API directly. See `isNativePlatform()`.
- *
- * NOTE: the underlying plugin previously shipped here was
- * `@capacitor/camera`'s `Camera.getPhoto`, which is a *still-photo* API
- * and therefore never produced a video — breaking the core gameplay
- * loop on native builds. This module is the fix.
  */
 
 import { Capacitor } from "@capacitor/core";

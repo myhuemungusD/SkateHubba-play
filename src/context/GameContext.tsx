@@ -5,6 +5,7 @@ import { useNotifications } from "./NotificationContext";
 import { updatePlayerStats, getUserProfile } from "../services/users";
 import { isUserBlocked } from "../services/blocking";
 import { createGame, forfeitExpiredTurn, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
+import { getOpponent } from "../services/games.turns";
 import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
 import { logger } from "../services/logger";
@@ -45,7 +46,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [games, setGames] = useState<GameDoc[]>([]);
   const [activeGame, setActiveGame] = useState<GameDoc | null>(null);
 
-  // Track which games have already had stats recorded this session
+  // Track which games have already had stats recorded this session.
+  // Keys are `${gameId}:self` and `${gameId}:opp` so a self-write failure
+  // does not block the opponent retry (and vice versa). The two writes
+  // fire in parallel; each catch() rolls back its own key independently.
   const processedStatsRef = useRef(new Set<string>());
 
   // Track which expired games have already had forfeit attempted this session,
@@ -73,6 +77,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
+  // Sweep all expired turns in a games list. Extracted so the snapshot
+  // handler and the deadline timer (below) share one code path. Safe to call
+  // speculatively — forfeitExpiredTurn re-checks the deadline server-side.
+  const sweepExpiredTurns = useCallback((list: GameDoc[]) => {
+    const now = Date.now();
+    for (const g of list) {
+      if (g.status !== "active" || forfeitAttemptedRef.current.has(g.id)) continue;
+      const deadline = g.turnDeadline?.toMillis?.() ?? 0;
+      if (deadline > 0 && deadline <= now) {
+        forfeitAttemptedRef.current.add(g.id);
+        forfeitExpiredTurn(g.id).catch((err) => {
+          logger.warn("forfeit_expired_failed", {
+            gameId: g.id,
+            error: parseFirebaseError(err),
+          });
+          forfeitAttemptedRef.current.delete(g.id);
+        });
+      }
+    }
+  }, []);
+
   // Subscribe to games list with pagination
   useEffect(() => {
     if (!user || !activeProfile) return;
@@ -82,45 +107,73 @@ export function GameProvider({ children }: { children: ReactNode }) {
       (updatedGames) => {
         setGames(updatedGames);
         setGamesLoading(false);
-        const now = Date.now();
         for (const g of updatedGames) {
-          // Catch up on stats for games that completed while user was away
-          if ((g.status === "complete" || g.status === "forfeit") && g.winner && !processedStatsRef.current.has(g.id)) {
-            processedStatsRef.current.add(g.id);
+          // Catch up on stats for games that completed while user was away.
+          // Fan out two writes in parallel — local user (always permitted by
+          // isOwner) and opponent (gated by canPeerCloseStats in
+          // firestore.rules). Without the opponent write, an absent loser's
+          // `losses` counter never increments and the leaderboard skews.
+          if ((g.status === "complete" || g.status === "forfeit") && g.winner) {
+            const selfKey = `${g.id}:self`;
+            const oppKey = `${g.id}:opp`;
             const won = g.winner === user.uid;
-            updatePlayerStats(user.uid, g.id, won).catch((err) => {
-              logger.warn("stats_catchup_failed", {
-                gameId: g.id,
-                error: parseFirebaseError(err),
-              });
-              processedStatsRef.current.delete(g.id);
-            });
-          }
-
-          // Auto-resolve games whose turn deadline passed while nobody was
-          // watching. Mirrors the per-game check in GamePlayScreen but runs
-          // against the full list so stale "active" games don't linger in
-          // the lobby counter. The transaction re-checks the deadline
-          // server-side, so this is safe to fire for every expired game.
-          if (g.status === "active" && !forfeitAttemptedRef.current.has(g.id)) {
-            const deadline = g.turnDeadline?.toMillis?.() ?? 0;
-            if (deadline > 0 && deadline <= now) {
-              forfeitAttemptedRef.current.add(g.id);
-              forfeitExpiredTurn(g.id).catch((err) => {
-                logger.warn("forfeit_expired_failed", {
+            const opponentUid = getOpponent(g, user.uid);
+            if (!processedStatsRef.current.has(selfKey)) {
+              processedStatsRef.current.add(selfKey);
+              updatePlayerStats(user.uid, g.id, won).catch((err) => {
+                logger.warn("stats_catchup_failed", {
                   gameId: g.id,
                   error: parseFirebaseError(err),
                 });
-                forfeitAttemptedRef.current.delete(g.id);
+                processedStatsRef.current.delete(selfKey);
+              });
+            }
+            if (!processedStatsRef.current.has(oppKey)) {
+              processedStatsRef.current.add(oppKey);
+              updatePlayerStats(opponentUid, g.id, !won).catch((err) => {
+                logger.warn("opponent_stats_catchup_failed", {
+                  gameId: g.id,
+                  error: parseFirebaseError(err),
+                });
+                processedStatsRef.current.delete(oppKey);
               });
             }
           }
         }
+        // Auto-resolve games whose turn deadline passed while nobody was
+        // watching. Mirrors the per-game check in GamePlayScreen but runs
+        // against the full list so stale "active" games don't linger in
+        // the lobby counter. The transaction re-checks the deadline
+        // server-side, so this is safe to fire for every expired game.
+        sweepExpiredTurns(updatedGames);
       },
       gamesLimit,
     );
     return unsub;
-  }, [user, activeProfile, gamesLimit]);
+  }, [user, activeProfile, gamesLimit, sweepExpiredTurns]);
+
+  // Schedule a sweep when the next visible deadline elapses. Without this,
+  // a user who keeps the app open across an expiring deadline never sees
+  // the forfeit fire — onSnapshot only triggers when a game DOC changes,
+  // and an expiring deadline alone doesn't write to the doc. The transaction
+  // in forfeitExpiredTurn re-checks the deadline server-side, so firing
+  // slightly early (clock skew) is harmless.
+  useEffect(() => {
+    if (!user || !activeProfile) return;
+    const now = Date.now();
+    let earliest = Infinity;
+    for (const g of games) {
+      if (g.status !== "active" || forfeitAttemptedRef.current.has(g.id)) continue;
+      const deadline = g.turnDeadline?.toMillis?.() ?? 0;
+      if (deadline > now && deadline < earliest) earliest = deadline;
+    }
+    if (!Number.isFinite(earliest)) return;
+    // Cap delay at 2³¹−1 ms (setTimeout limit); add a 1s buffer so the
+    // server-side deadline check has comfortably elapsed when the sweep runs.
+    const delay = Math.min(earliest - now + 1000, 2_147_483_647);
+    const handle = setTimeout(() => sweepExpiredTurns(games), delay);
+    return () => clearTimeout(handle);
+  }, [games, user, activeProfile, sweepExpiredTurns]);
 
   // Track whether there are more games to load
   useEffect(() => {
@@ -141,23 +194,37 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
         setScreen("gameover");
       }
-      // Update leaderboard stats when a game completes
+      // Update leaderboard stats when a game completes. Mirrors the
+      // catch-up loop above — fan out self + opponent in parallel so the
+      // loser's `losses` counter increments even if they never reopen
+      // the app. Each write is guarded by an independent `:self`/`:opp`
+      // key so a single-side failure doesn't block the other retry.
       const currentUser = userRef.current;
-      if (
-        (updated.status === "complete" || updated.status === "forfeit") &&
-        currentUser &&
-        updated.winner &&
-        !processedStatsRef.current.has(updated.id)
-      ) {
-        processedStatsRef.current.add(updated.id);
+      if ((updated.status === "complete" || updated.status === "forfeit") && currentUser && updated.winner) {
+        const selfKey = `${updated.id}:self`;
+        const oppKey = `${updated.id}:opp`;
         const won = updated.winner === currentUser.uid;
-        updatePlayerStats(currentUser.uid, updated.id, won).catch((err) => {
-          logger.warn("stats_update_failed", {
-            gameId: updated.id,
-            error: parseFirebaseError(err),
+        const opponentUid = getOpponent(updated, currentUser.uid);
+        if (!processedStatsRef.current.has(selfKey)) {
+          processedStatsRef.current.add(selfKey);
+          updatePlayerStats(currentUser.uid, updated.id, won).catch((err) => {
+            logger.warn("stats_update_failed", {
+              gameId: updated.id,
+              error: parseFirebaseError(err),
+            });
+            processedStatsRef.current.delete(selfKey); // allow retry on next update
           });
-          processedStatsRef.current.delete(updated.id); // allow retry on next update
-        });
+        }
+        if (!processedStatsRef.current.has(oppKey)) {
+          processedStatsRef.current.add(oppKey);
+          updatePlayerStats(opponentUid, updated.id, !won).catch((err) => {
+            logger.warn("opponent_stats_catchup_failed", {
+              gameId: updated.id,
+              error: parseFirebaseError(err),
+            });
+            processedStatsRef.current.delete(oppKey);
+          });
+        }
       }
     });
     return unsub;

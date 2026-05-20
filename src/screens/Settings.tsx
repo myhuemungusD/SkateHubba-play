@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import type { UserProfile } from "../services/users";
 import { getUserProfile } from "../services/users";
 import { unblockUser } from "../services/blocking";
@@ -10,6 +11,8 @@ import { logger } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
 import { ProUsername } from "../components/ProUsername";
 import { ChevronLeftIcon } from "../components/icons";
+import { useOnboardingContext } from "../context/OnboardingContext";
+import { AvatarPicker } from "../components/AvatarPicker";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
 
@@ -273,6 +276,18 @@ function BlockedPlayersList({
 
 export function Settings({ profile, onBack }: { profile: UserProfile; onBack: () => void }) {
   const { soundEnabled, toggleSound } = useNotifications();
+  const { replay: replayTutorial } = useOnboardingContext();
+  const [replayingTutorial, setReplayingTutorial] = useState(false);
+
+  const handleReplayTutorial = useCallback(async () => {
+    setReplayingTutorial(true);
+    try {
+      await replayTutorial();
+      onBack();
+    } finally {
+      setReplayingTutorial(false);
+    }
+  }, [replayTutorial, onBack]);
 
   // Haptic preference — local state mirrors the localStorage-backed service
   // flag so the switch renders synchronously without a read-through on every
@@ -328,6 +343,11 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
   const feedbackSubject = encodeURIComponent("SkateHubba feedback");
   const bugSubject = encodeURIComponent(`SkateHubba bug report — @${profile.username}`);
 
+  // AvatarPicker is opened from the "Edit Avatar" entry below.
+  // Local state keeps the sheet self-contained so we don't have to
+  // thread a context through every Settings sub-section.
+  const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
+
   return (
     <div className="min-h-dvh pb-24 overflow-y-auto bg-[#0A0A0A]/80">
       {/* Header */}
@@ -354,6 +374,21 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
       <div className="px-5 pt-7 max-w-lg mx-auto">
         <h1 className="font-display text-fluid-4xl text-white mb-2 tracking-wide">Settings</h1>
         <p className="font-body text-sm text-muted mb-6">Notifications, sound, haptics, and blocked players.</p>
+
+        {/* Profile picture */}
+        <SectionHeader title="PROFILE PICTURE" />
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={() => setAvatarPickerOpen(true)}
+            className="block w-full text-left p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <p className="font-display text-sm text-white tracking-wide">Edit Avatar</p>
+            <p className="font-body text-xs text-faint mt-1">
+              Replace your default avatar with a custom photo. Image is screened on-device before upload.
+            </p>
+          </button>
+        </div>
 
         {/* Notifications */}
         <SectionHeader title="NOTIFICATIONS" />
@@ -448,27 +483,41 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
           </a>
         </div>
 
+        {/* Tutorial replay — re-arms Hubz's onboarding tour */}
+        <SectionHeader title="TUTORIAL" />
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={handleReplayTutorial}
+            disabled={replayingTutorial}
+            className="block w-full text-left p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            <p className="font-display text-sm text-white tracking-wide">Replay onboarding</p>
+            <p className="font-body text-xs text-faint mt-1">Run Hubz&apos;s welcome tour again from the top.</p>
+          </button>
+        </div>
+
         {/* Legal */}
         <SectionHeader title="LEGAL" />
         <div className="space-y-2">
-          <a
-            href="/privacy"
+          <Link
+            to="/privacy"
             className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             <p className="font-display text-sm text-white tracking-wide">Privacy Policy</p>
-          </a>
-          <a
-            href="/terms"
+          </Link>
+          <Link
+            to="/terms"
             className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             <p className="font-display text-sm text-white tracking-wide">Terms of Service</p>
-          </a>
-          <a
-            href="/data-deletion"
+          </Link>
+          <Link
+            to="/data-deletion"
             className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
           >
             <p className="font-display text-sm text-white tracking-wide">Data Deletion</p>
-          </a>
+          </Link>
         </div>
 
         {/* Brand watermark */}
@@ -478,6 +527,14 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
           <div className="brand-divider flex-1 max-w-16" />
         </div>
       </div>
+
+      {avatarPickerOpen && (
+        <AvatarPicker
+          uid={profile.uid}
+          onUploaded={() => setAvatarPickerOpen(false)}
+          onClose={() => setAvatarPickerOpen(false)}
+        />
+      )}
     </div>
   );
 }

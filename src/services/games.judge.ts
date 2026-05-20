@@ -3,6 +3,7 @@ import { requireDb } from "../firebase";
 import { analytics } from "./analytics";
 import { metrics } from "./logger";
 import { writeNotificationInTx } from "./notifications";
+import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 import { writeLandedClipsInTransaction } from "./clips";
 import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
 import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
@@ -23,8 +24,10 @@ import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } 
 export async function callBSOnSetTrick(gameId: string): Promise<void> {
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
 
   await runTransaction(requireDb(), async (tx) => {
+    resetPushDispatchOutbox(pushOutbox);
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -48,15 +51,20 @@ export async function callBSOnSetTrick(gameId: string): Promise<void> {
     });
 
     // Notify the judge atomically with the game update.
-    writeNotificationInTx(tx, {
-      senderUid: matcherUid,
-      recipientUid: game.judgeId,
-      type: "your_turn",
-      title: "Ruling Needed",
-      body: `@${matcherUsernameVal} called BS on @${setterUsername}'s set. Rule clean or sketchy?`,
-      gameId,
-    });
+    writeNotificationInTx(
+      tx,
+      {
+        senderUid: matcherUid,
+        recipientUid: game.judgeId,
+        type: "your_turn",
+        title: "Ruling Needed",
+        body: `@${matcherUsernameVal} called BS on @${setterUsername}'s set. Rule clean or sketchy?`,
+        gameId,
+      },
+      pushOutbox,
+    );
   });
+  void drainPushDispatchOutbox(pushOutbox);
   recordTurnAction(gameId);
 }
 
@@ -70,8 +78,10 @@ export async function callBSOnSetTrick(gameId: string): Promise<void> {
 export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise<void> {
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
 
   await runTransaction(requireDb(), async (tx) => {
+    resetPushDispatchOutbox(pushOutbox);
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -95,14 +105,18 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
       });
 
       // Matcher must now attempt the (judged-clean) trick.
-      writeNotificationInTx(tx, {
-        senderUid: game.currentSetter,
-        recipientUid: matcherUid,
-        type: "your_turn",
-        title: "Referee ruled: Clean",
-        body: `The set stands. Match @${setterUsername}'s trick.`,
-        gameId,
-      });
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: game.currentSetter,
+          recipientUid: matcherUid,
+          type: "your_turn",
+          title: "Referee ruled: Clean",
+          body: `The set stands. Match @${setterUsername}'s trick.`,
+          gameId,
+        },
+        pushOutbox,
+      );
     } else {
       // Setter must re-set. Clear the trick fields and stay on the same setter.
       tx.update(gameRef, {
@@ -117,16 +131,21 @@ export async function judgeRuleSetTrick(gameId: string, clean: boolean): Promise
       });
 
       // Setter has to re-set.
-      writeNotificationInTx(tx, {
-        senderUid: matcherUid,
-        recipientUid: game.currentSetter,
-        type: "your_turn",
-        title: "Referee ruled: Sketchy",
-        body: `Set a new trick for @${matcherUsernameVal}.`,
-        gameId,
-      });
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: matcherUid,
+          recipientUid: game.currentSetter,
+          type: "your_turn",
+          title: "Referee ruled: Sketchy",
+          body: `Set a new trick for @${matcherUsernameVal}.`,
+          gameId,
+        },
+        pushOutbox,
+      );
     }
   });
+  void drainPushDispatchOutbox(pushOutbox);
   recordTurnAction(gameId);
 }
 
@@ -146,8 +165,10 @@ export async function resolveDispute(
 ): Promise<{ gameOver: boolean; winner: string | null }> {
   checkTurnActionRate(gameId);
   const gameRef = doc(requireDb(), "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
 
   const result = await runTransaction(requireDb(), async (tx) => {
+    resetPushDispatchOutbox(pushOutbox);
     const snap = await tx.get(gameRef);
     if (!snap.exists()) throw new Error("Game not found");
 
@@ -230,32 +251,44 @@ export async function resolveDispute(
     // In dispute resolution, only the matcher can gain a letter, so the
     // setter is always the winner when the game ends.
     if (gameOver) {
-      writeNotificationInTx(tx, {
-        senderUid: game.judgeId,
-        recipientUid: matcherUid,
-        type: "game_lost",
-        title: "Game Over",
-        body: `vs @${setterUsername}`,
-        gameId,
-      });
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: game.judgeId,
+          recipientUid: matcherUid,
+          type: "game_lost",
+          title: "Game Over",
+          body: `vs @${setterUsername}`,
+          gameId,
+        },
+        pushOutbox,
+      );
     } else if (landed) {
-      writeNotificationInTx(tx, {
-        senderUid: game.judgeId,
-        recipientUid: matcherUid,
-        type: "your_turn",
-        title: "Referee ruled: Landed",
-        body: `You landed! Set a trick for @${setterUsername}`,
-        gameId,
-      });
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: game.judgeId,
+          recipientUid: matcherUid,
+          type: "your_turn",
+          title: "Referee ruled: Landed",
+          body: `You landed! Set a trick for @${setterUsername}`,
+          gameId,
+        },
+        pushOutbox,
+      );
     } else {
-      writeNotificationInTx(tx, {
-        senderUid: game.judgeId,
-        recipientUid: matcherUid,
-        type: "your_turn",
-        title: "Referee ruled: Missed",
-        body: `Set a trick for @${matcherUsernameVal}`,
-        gameId,
-      });
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: game.judgeId,
+          recipientUid: matcherUid,
+          type: "your_turn",
+          title: "Referee ruled: Missed",
+          body: `Set a trick for @${matcherUsernameVal}`,
+          gameId,
+        },
+        pushOutbox,
+      );
     }
 
     return {
@@ -266,6 +299,7 @@ export async function resolveDispute(
       turnNumber: game.turnNumber,
     };
   });
+  void drainPushDispatchOutbox(pushOutbox);
   recordTurnAction(gameId);
 
   if (result.gameOver && result.winner) {

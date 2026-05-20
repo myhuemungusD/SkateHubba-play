@@ -58,7 +58,43 @@ const P2_UID = "p2-bob";
 const GAME_ID = "g-setter";
 
 const VALID_DEADLINE = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
-const VALID_VIDEO_URL = "https://example.com/set.webm";
+const VALID_VIDEO_URL = "https://firebasestorage.googleapis.com/test/set.webm";
+// Sentinel value the matching-phase rule writes; any prior turn leaves this on
+// the doc, so every turn-2+ setting-phase write must coexist with it. Used by
+// the matchVideoUrl-immutability tests below.
+const PREV_MATCH_URL = "https://firebasestorage.googleapis.com/test/prev-turn-match.webm";
+
+// Canonical setting→matching payload (setter records a trick). Spread `extra`
+// to override/add fields — e.g. `setTrickPayload({ matchVideoUrl: null })` for
+// the attack tests that try to clobber the matchVideoUrl pin.
+function setTrickPayload(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    phase: "matching",
+    currentTrickName: "kickflip",
+    currentTrickVideoUrl: VALID_VIDEO_URL,
+    currentTurn: P2_UID,
+    turnDeadline: VALID_DEADLINE(),
+    updatedAt: serverTimestamp(),
+    ...extra,
+  };
+}
+
+// Canonical setting→setting payload (failSetTrick — role and turn flip from P1
+// to P2, trick fields cleared). `turnNumber` defaults to 4 (matches the legit
+// turn-3→4 happy path); override for regression tests.
+function failSetPayload(extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    phase: "setting",
+    currentSetter: P2_UID,
+    currentTurn: P2_UID,
+    currentTrickName: null,
+    currentTrickVideoUrl: null,
+    turnNumber: 4,
+    turnDeadline: VALID_DEADLINE(),
+    updatedAt: serverTimestamp(),
+    ...extra,
+  };
+}
 
 let testEnv: RulesTestEnvironment;
 
@@ -104,6 +140,18 @@ function makeActiveGame(overrides: Record<string, unknown> = {}): Record<string,
 async function seedGame(overrides: Record<string, unknown> = {}): Promise<void> {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), "games", GAME_ID), makeActiveGame(overrides));
+  });
+}
+
+// Seed a P1-setter, setting-phase game with a non-null prior matchVideoUrl —
+// the shape every turn-2+ game has. Used by tests #7, #8, #11, #12.
+async function seedP1SettingWithPriorMatch(turnNumber: number): Promise<void> {
+  return seedGame({
+    currentTurn: P1_UID,
+    currentSetter: P1_UID,
+    phase: "setting",
+    turnNumber,
+    matchVideoUrl: PREV_MATCH_URL,
   });
 }
 
@@ -179,16 +227,11 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   it("attack: setter CANNOT set matchVideoUrl during a setting-phase update", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", matchVideoUrl: null });
     await assertFails(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        // Illegal: match video URL only comes from the matching-phase rule.
-        matchVideoUrl: "https://example.com/fake-match.webm",
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
+      // Illegal: match video URL only comes from the matching-phase rule.
+      updateDoc(
+        gameRef(asP1()),
+        setTrickPayload({ matchVideoUrl: "https://firebasestorage.googleapis.com/test/fake-match.webm" }),
+      ),
     );
   });
 
@@ -216,39 +259,18 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   // Same attack, setting→setting variant — the rule requires strict +1.
   it("attack: setter CANNOT regress turnNumber during a setting→setting (fail-set) update", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", turnNumber: 5 });
-    await assertFails(
-      updateDoc(gameRef(asP1()), {
-        phase: "setting",
-        // Legit fail-set swaps setter and currentTurn…
-        currentSetter: P2_UID,
-        currentTurn: P2_UID,
-        currentTrickName: null,
-        currentTrickVideoUrl: null,
-        // …but regresses turnNumber from 5 to 4.
-        turnNumber: 4,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
-    );
+    // Legit fail-set swaps setter and currentTurn, but here turnNumber regresses 5→4.
+    await assertFails(updateDoc(gameRef(asP1()), failSetPayload({ turnNumber: 4 })));
   });
 
   // (5) Happy path: legitimate failSetTrick write from src/services/games.ts
   // (setter couldn't land → role passes to opponent, turn+1, trick cleared).
+  // Mirrors the production payload exactly — matchVideoUrl is NOT written
+  // (the setting-phase rule pins it immutable; see test (9) for the
+  // turn-2+ regression that locks this contract in).
   it("legitimate: setter CAN fail-set (setting→setting, role flips, turn+1)", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", turnNumber: 3 });
-    await assertSucceeds(
-      updateDoc(gameRef(asP1()), {
-        phase: "setting",
-        currentSetter: P2_UID,
-        currentTurn: P2_UID,
-        currentTrickName: null,
-        currentTrickVideoUrl: null,
-        matchVideoUrl: null,
-        turnNumber: 4,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
-    );
+    await assertSucceeds(updateDoc(gameRef(asP1()), failSetPayload()));
   });
 
   // (6) Happy path: legitimate setTrick write from src/services/games.ts
@@ -256,16 +278,86 @@ describe("games — setter turn-handoff forfeit exploit guards", () => {
   // turnNumber unchanged, currentSetter unchanged).
   it("legitimate: setter CAN set a trick (setting→matching, role stays, turn unchanged)", async () => {
     await seedGame({ currentTurn: P1_UID, currentSetter: P1_UID, phase: "setting", turnNumber: 3 });
+    await assertSucceeds(updateDoc(gameRef(asP1()), setTrickPayload()));
+  });
+
+  // (7) Regression: turn-2+ setTrick must succeed when the game doc still
+  // carries the previous turn's matchVideoUrl. The matchVideoUrl-immutable
+  // pin (anti-stash hardening) was correct in spirit but the production
+  // setTrick used to also write `matchVideoUrl: null` on every set, which
+  // is permission-denied once any prior turn left a real URL on the doc.
+  // The fix dropped the field from setTrick's update; this test guards it.
+  it("legitimate: setter CAN set a trick when previous turn's matchVideoUrl is non-null", async () => {
+    // The previous matcher landed and the matching-phase rule wrote a real URL
+    // into the doc — this is what every turn-2+ game looks like. The payload
+    // intentionally omits matchVideoUrl: the rule pins it immutable.
+    await seedP1SettingWithPriorMatch(2);
+    await assertSucceeds(updateDoc(gameRef(asP1()), setTrickPayload()));
+  });
+
+  // (8) Regression sibling: the SAME write WITH `matchVideoUrl: null` must
+  // be rejected. This locks in the contract — if a future refactor reintroduces
+  // the field on setTrick, this test will fail and surface the regression
+  // before it reaches users mid-game.
+  it("attack: setter CANNOT clear a non-null matchVideoUrl during setting→matching", async () => {
+    await seedP1SettingWithPriorMatch(2);
+    // Illegal: the setter must not be able to wipe the previous turn's
+    // match URL — only the matching-phase rule writes this field.
+    await assertFails(updateDoc(gameRef(asP1()), setTrickPayload({ matchVideoUrl: null })));
+  });
+
+  // (9) Regression: failSetTrick (setting→setting role swap) must also work
+  // when the doc carries a previous turn's matchVideoUrl. Same root cause
+  // as (7): the production code used to write `matchVideoUrl: null` here too.
+  it("legitimate: setter CAN fail-set when previous turn's matchVideoUrl is non-null", async () => {
+    // matchVideoUrl intentionally omitted — pinned immutable across setting phase.
+    await seedP1SettingWithPriorMatch(3);
+    await assertSucceeds(updateDoc(gameRef(asP1()), failSetPayload()));
+  });
+
+  // (10) Mirror of (7): P2 setter on an even-numbered turn with non-null
+  // matchVideoUrl. Both setters drive `setTrick`, so both sides need
+  // explicit coverage — without it a future rule that branched on uid
+  // could break one side silently.
+  it("legitimate: P2 setter CAN set a trick when prior matchVideoUrl is non-null", async () => {
+    await seedGame({
+      currentTurn: P2_UID,
+      currentSetter: P2_UID,
+      phase: "setting",
+      turnNumber: 4,
+      matchVideoUrl: PREV_MATCH_URL,
+    });
     await assertSucceeds(
-      updateDoc(gameRef(asP1()), {
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_VIDEO_URL,
-        currentTurn: P2_UID,
-        turnDeadline: VALID_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      }),
+      updateDoc(
+        gameRef(asP2()),
+        // P2-side mirror: drives setTrick from the other setter, with a
+        // distinct trick name so this block doesn't twin the P1 payload.
+        setTrickPayload({ currentTurn: P1_UID, currentTrickName: "heelflip" }),
+      ),
     );
+  });
+
+  // (11) Anti-stash variant: setter writes matchVideoUrl to a DIFFERENT
+  // non-null URL. The `==` pin must reject any change, not just null-clearing
+  // — this is the original exploit shape the rule was added to block.
+  it("attack: setter CANNOT swap a non-null matchVideoUrl for a different non-null URL", async () => {
+    await seedP1SettingWithPriorMatch(2);
+    // Illegal: a forged URL must be rejected the same as null-clearing.
+    await assertFails(
+      updateDoc(
+        gameRef(asP1()),
+        setTrickPayload({ matchVideoUrl: "https://firebasestorage.googleapis.com/test/forged-match.webm" }),
+      ),
+    );
+  });
+
+  // (12) Idempotency: writing the EXACT same non-null URL must pass the
+  // `==` pin. Guards against a future strict rewrite (e.g. !('matchVideoUrl'
+  // in request.resource.data)) that would break legitimate retries on
+  // resumable transactions.
+  it("legitimate: setter MAY explicitly re-write the same non-null matchVideoUrl", async () => {
+    await seedP1SettingWithPriorMatch(2);
+    await assertSucceeds(updateDoc(gameRef(asP1()), setTrickPayload({ matchVideoUrl: PREV_MATCH_URL })));
   });
 
   // Also prove the attack path is really about the MISSING invariants, not

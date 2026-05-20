@@ -18,6 +18,9 @@ import { requireAuth, requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips } from "./clips";
+import { deleteAvatar } from "./avatars";
+import { analytics } from "./analytics";
+import { logger } from "./logger";
 
 /**
  * Public profile doc at `users/{uid}`. Every signed-in user can read
@@ -48,6 +51,14 @@ export interface UserProfile {
   verifiedBy?: string;
   /** Timestamp when pro status was granted (serverTimestamp on write, Firestore Timestamp on read). */
   verifiedAt?: FieldValue | null;
+  /**
+   * Custom avatar URL — Firebase Storage download URL pinned to this
+   * project's bucket and the calling UID by both client-side guard
+   * ({@link setProfileImageUrl}) and the Firestore rule. Set `null` to
+   * clear the avatar (caller must delete the underlying Storage object
+   * first via `deleteAvatar`).
+   */
+  profileImageUrl?: string | null;
 }
 
 /**
@@ -252,13 +263,20 @@ export async function createProfile(
     // Private profile — owner-only. Holds emailVerified + dob +
     // optional parentalConsent today; future sensitive fields
     // (email, fcmTokens) get written here via dedicated updates.
+    //
+    // merge:true is defense-in-depth: the OnboardingProvider gate on
+    // activeProfile prevents onboarding writes from landing here before
+    // createProfile runs, but a future caller (or a races we haven't
+    // anticipated) could write a sibling field — e.g. an FCM token via
+    // requestPushPermission — to this doc before profile creation. Without
+    // merge, those untouched fields would be silently dropped here.
     const privateRef = doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID);
     const privateData: UserPrivateProfile = {
       emailVerified,
       dob,
       ...(parentalConsent !== undefined ? { parentalConsent } : {}),
     };
-    tx.set(privateRef, privateData);
+    tx.set(privateRef, privateData, { merge: true });
 
     return profileData;
   });
@@ -319,11 +337,39 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // deleted BEFORE the parent users/{uid} doc goes, so the owner's
   // auth context still resolves isOwner(uid) cleanly against the
   // private-subcollection rule.
+  //
+  // Achievements subcollection is folded into the same batch so a single
+  // commit either wipes the whole identity surface or none of it. Without
+  // this, a partial failure could leave orphan achievement docs after the
+  // parent user doc was gone — the GDPR/CCPA gap audit B10/S15 calls out.
+  const achievementsSnap = await getDocs(collection(db, "users", uid, "achievements"));
   const batch = writeBatch(db);
+  for (const achievementDoc of achievementsSnap.docs) {
+    batch.delete(achievementDoc.ref);
+  }
   batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
   batch.delete(doc(db, "users", uid));
   batch.delete(doc(db, "usernames", username.toLowerCase().trim()));
   await batch.commit();
+
+  // Phase 5: Best-effort scrub of avatar binaries from Storage. Delegates
+  // to `deleteAvatar` so the three-extension cleanup lives in one place
+  // (the avatar service). Failures inside `deleteAvatar` are already
+  // best-effort + logged; the outer `.catch` guards against the helper
+  // itself throwing (e.g. `requireStorage` boot error) so account
+  // deletion doesn't fail at the very last step.
+  let avatarRemoved = false;
+  try {
+    const result = await deleteAvatar(uid);
+    avatarRemoved = result.removed;
+  } catch (err) {
+    logger.warn("avatar_delete_failed", {
+      uid,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  analytics.accountDeleted(uid, achievementsSnap.docs.length, avatarRemoved);
 }
 
 /**
@@ -361,7 +407,15 @@ export async function getUidByUsername(username: string): Promise<string | null>
  * same game. The re-read inside the tx makes the loser of a contention
  * race see the winner's updated lastStatsGameId and bail cleanly.
  *
- * Each player's client calls this for their OWN profile only.
+ * Called by the local client for both its OWN profile and the
+ * opponent's profile during the catch-up fan-out in
+ * src/context/GameContext.tsx. The opponent-targeted write is gated
+ * by the `canPeerCloseStats` rule in firestore.rules — only the two
+ * game participants may close out each other's wins/losses, the
+ * increment direction must match the recorded `game.winner`, and the
+ * affectedKeys() guard restricts the peer write to
+ * wins/losses/lastStatsGameId. Without the fan-out, an
+ * absent player's stats never advance until they reopen the app.
  */
 export async function updatePlayerStats(uid: string, gameId: string, won: boolean): Promise<void> {
   const db = requireDb();
@@ -400,5 +454,73 @@ export async function getLeaderboard(): Promise<UserProfile[]> {
     const bRate = bTotal > 0 ? bWins / bTotal : 0;
     if (bRate !== aRate) return bRate - aRate;
     return a.username.localeCompare(b.username);
+  });
+}
+
+/**
+ * Build the regex used to validate a Firebase Storage download URL points
+ * at the calling user's own avatar. Mirrors the Firestore rule word-for-
+ * word so a payload that passes the client-side guard also passes the
+ * rule — defence in depth, not a duplicated source of truth.
+ *
+ * Bucket is read from the build-time env so unit tests can exercise the
+ * default-emulator bucket and prod can pin `sk8hub-d7806.firebasestorage.app`.
+ */
+function buildAvatarUrlRegex(uid: string): RegExp {
+  // Build env reads as a string; the `?? ""` fallback only fires in
+  // misconfigured envs where the entire `import.meta.env` is missing,
+  // which the env zod schema guards against at boot. Coverage-skip the
+  // fallback because the schema prevents the path in production.
+  /* v8 ignore next */
+  const bucket = (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined) ?? "";
+  // Escape regex metachars in the bucket name (dots most importantly —
+  // `sk8hub-d7806.firebasestorage.app` has them and an unescaped dot would
+  // accept any char). The uid contains only [A-Za-z0-9] from Firebase Auth
+  // but we still escape it for completeness.
+  const esc = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `^https://firebasestorage\\.googleapis\\.com/v0/b/${esc(bucket)}/o/users%2F${esc(uid)}%2Favatar\\.(webp|jpeg|png)(\\?.*)?$`,
+  );
+}
+
+/** Thrown when {@link setProfileImageUrl} is handed a URL that does not
+ *  match the project's bucket + the calling user's UID. The Firestore
+ *  rule rejects the same payload — this client-side check exists to
+ *  surface a clear error before the network round-trip. */
+export class InvalidAvatarUrlError extends Error {
+  constructor(url: string) {
+    super(`Avatar URL is not pinned to this project's bucket and the calling UID: ${url}`);
+    this.name = "InvalidAvatarUrlError";
+  }
+}
+
+/**
+ * Persist a user's `profileImageUrl` field. Pass `null` to clear (caller
+ * is expected to have already deleted the storage object via
+ * `deleteAvatar`). The Firestore rule enforces the same predicate
+ * server-side; this guard short-circuits the network round-trip and gives
+ * the UI a clear typed error to surface.
+ *
+ * Only the calling user's own profile may be written — the rule pins
+ * the URL's UID segment to `request.auth.uid`, so a write against another
+ * uid would be rejected even if this function were called with one.
+ */
+export async function setProfileImageUrl(uid: string, url: string | null): Promise<void> {
+  if (url !== null) {
+    if (!buildAvatarUrlRegex(uid).test(url)) {
+      throw new InvalidAvatarUrlError(url);
+    }
+  }
+  const db = requireDb();
+  const ref = doc(db, "users", uid);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) {
+      // Profile must exist before an avatar can be attached to it. The
+      // ProfileSetup screen creates the profile first; uploading from
+      // there pre-creation is not a supported flow.
+      throw new Error("avatar_profile_not_found");
+    }
+    tx.update(ref, { profileImageUrl: url });
   });
 }

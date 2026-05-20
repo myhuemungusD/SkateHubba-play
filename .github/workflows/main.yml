@@ -43,6 +43,12 @@ jobs:
       - name: Run tests with coverage
         run: npm run test:coverage
 
+      - name: Scan test files for duplicated blocks
+        # Mirrors the pr-gate.yml job. Without this, a PR that slips past the
+        # gate (e.g. via merge ordering) leaves main green while every later PR
+        # inherits the failure on its first sync from main.
+        run: node scripts/check-test-duplication.mjs
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4

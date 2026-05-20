@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { collection, doc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { requireDb } from "../firebase";
 
 const COOLDOWN_MS = 1 * 60 * 60 * 1000; // 1 hour
@@ -15,6 +15,12 @@ interface SendNudgeParams {
  * a Cloud Function to send a push notification.
  *
  * Rate-limited both client-side (localStorage) and server-side (Firestore rules).
+ *
+ * The nudge doc and the nudge_limits cooldown doc are committed in a single
+ * writeBatch so the rules-side getAfter() companion-write check sees both —
+ * a partial commit (e.g. nudge without limit) is impossible, which closes the
+ * H1 bypass where a client could spam /nudges by simply not writing the
+ * cooldown doc.
  */
 export async function sendNudge({ gameId, senderUid, senderUsername, recipientUid }: SendNudgeParams): Promise<void> {
   // Client-side cooldown check (keyed by user+game to avoid cross-user interference)
@@ -26,10 +32,11 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
 
   const db = requireDb();
 
-  // Create the nudge document first (triggers Cloud Function).
-  // Written before the rate-limit doc so a failed nudge write doesn't
-  // poison the cooldown and block future attempts.
-  await addDoc(collection(db, "nudges"), {
+  const nudgeRef = doc(collection(db, "nudges"));
+  const limitRef = doc(db, "nudge_limits", `${senderUid}_${gameId}`);
+
+  const batch = writeBatch(db);
+  batch.set(nudgeRef, {
     senderUid,
     senderUsername,
     recipientUid,
@@ -37,10 +44,8 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
     createdAt: serverTimestamp(),
     delivered: false,
   });
-
-  // Upsert the rate-limit doc (Firestore rules enforce 1h cooldown server-side)
-  const limitId = `${senderUid}_${gameId}`;
-  await setDoc(doc(db, "nudge_limits", limitId), { senderUid, gameId, lastNudgedAt: serverTimestamp() });
+  batch.set(limitRef, { senderUid, gameId, lastNudgedAt: serverTimestamp() });
+  await batch.commit();
 
   // Record locally for client-side cooldown
   localStorage.setItem(key, String(Date.now()));

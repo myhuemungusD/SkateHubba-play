@@ -1,5 +1,4 @@
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
@@ -9,15 +8,16 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc,
   updateDoc,
   where,
+  writeBatch,
   type Transaction,
   type Unsubscribe,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
+import { dispatchPushNotification, type PushDispatchOutbox } from "./pushDispatch";
 
 export type NotificationDocType = "your_turn" | "new_challenge" | "game_won" | "game_lost" | "judge_invite";
 
@@ -52,6 +52,12 @@ export function _resetNotificationRateLimit(): void {
  * surfaces it as an in-app toast. This is the no-Cloud-Functions path
  * for alerting opponents about game events.
  *
+ * The notification doc and the notification_limits cooldown doc are
+ * committed in a single writeBatch so the rules-side getAfter() companion-
+ * write check sees both. A partial commit (e.g. notification without limit)
+ * is impossible, closing the H2 bypass where a client could skip the
+ * cooldown bookkeeping and spam an opponent's feed.
+ *
  * Best-effort — failures are silently swallowed so they never block
  * the primary game action.
  */
@@ -65,7 +71,12 @@ export async function writeNotification(params: WriteNotificationParams): Promis
   }
 
   try {
-    await addDoc(collection(requireDb(), "notifications"), {
+    const db = requireDb();
+    const notificationRef = doc(collection(db, "notifications"));
+    const limitRef = doc(db, "notification_limits", key);
+
+    const batch = writeBatch(db);
+    batch.set(notificationRef, {
       senderUid: params.senderUid,
       recipientUid: params.recipientUid,
       type: params.type,
@@ -74,6 +85,27 @@ export async function writeNotification(params: WriteNotificationParams): Promis
       gameId: params.gameId,
       read: false,
       createdAt: serverTimestamp(),
+    });
+    batch.set(limitRef, {
+      senderUid: params.senderUid,
+      gameId: params.gameId,
+      type: params.type,
+      lastSentAt: serverTimestamp(),
+    });
+    await batch.commit();
+
+    // Background push fan-out. Fire-and-forget after the batch commits so
+    // a dispatch failure (recipient has no tokens, push extension throttling,
+    // …) can never undo the in-app notification or wedge the caller.
+    // No await — the original writeNotification contract is "best-effort,
+    // never blocks the game action", and adding latency here would break it.
+    void dispatchPushNotification({
+      senderUid: params.senderUid,
+      recipientUid: params.recipientUid,
+      type: params.type,
+      title: params.title,
+      body: params.body,
+      gameId: params.gameId,
     });
 
     const now = Date.now();
@@ -87,24 +119,6 @@ export async function writeNotification(params: WriteNotificationParams): Promis
       /* v8 ignore next */
       if (ts < cutoff) lastNotificationAt.delete(k);
     }
-
-    // Record rate-limit timestamp for server-side enforcement (fire-and-forget).
-    // Written AFTER the notification so a failed notification doesn't create
-    // a phantom cooldown that blocks the next legitimate attempt.
-    const limitId = rateLimitKey(params.senderUid, params.gameId, params.type);
-    setDoc(doc(requireDb(), "notification_limits", limitId), {
-      senderUid: params.senderUid,
-      gameId: params.gameId,
-      type: params.type,
-      lastSentAt: serverTimestamp(),
-    }).catch((err) => {
-      logger.warn("notification_rate_limit_write_failed", {
-        senderUid: params.senderUid,
-        gameId: params.gameId,
-        type: params.type,
-        error: parseFirebaseError(err),
-      });
-    });
   } catch (err) {
     // Best-effort — don't block the game action if notification write fails
     logger.warn("notification_write_failed", {
@@ -124,16 +138,29 @@ export async function writeNotification(params: WriteNotificationParams): Promis
  * never get toasted. Inside a transaction there is no "between": either both
  * the game update and the notification commit, or neither does.
  *
+ * Server-side companion-write requirement: the /notifications create rule
+ * accepts EITHER a fresh notification_limits doc in the same batch, OR a
+ * fresh /games/{gameId} update (updatedAt == request.time). Every caller of
+ * this function is inside a runTransaction that also writes
+ * games.updatedAt = serverTimestamp(), so the games-anchor branch is what
+ * gates this path — no notification_limits write needed in-tx.
+ *
  * Notes:
  *  • No client-side rate limit (in-tx writes happen inside game actions that
  *    already have their own cooldowns via `checkTurnActionRate`).
- *  • `notification_limits` is written AFTER the transaction commits (via
- *    `recordNotificationLimit`) — writing to two docs inside a transaction
- *    would require gets-before-writes we don't want to pay for here, and the
- *    Firestore rule fallback (`!exists(limit) || time > limit+5s`) tolerates
- *    a missing limit doc.
+ *  • notification_limits is intentionally NOT written here: the games-anchor
+ *    rule branch covers the companion-write requirement, and writing two
+ *    docs inside a transaction (notification + limit) would tighten the 5s
+ *    update cooldown on the limit doc against rapid back-to-back game
+ *    actions of the same (sender, gameId, type). Rate limits on the in-tx
+ *    hot path are enforced by checkTurnActionRate + the game's turn-order
+ *    rules instead.
  */
-export function writeNotificationInTx(tx: Transaction, params: WriteNotificationParams): void {
+export function writeNotificationInTx(
+  tx: Transaction,
+  params: WriteNotificationParams,
+  pushOutbox?: PushDispatchOutbox,
+): void {
   // Client-generated deterministic ID. Safe inside a transaction — if the
   // transaction is retried by the SDK the same ID is reused, keeping the
   // notification create idempotent with the game update.
@@ -149,6 +176,15 @@ export function writeNotificationInTx(tx: Transaction, params: WriteNotification
     read: false,
     createdAt: serverTimestamp(),
   });
+  // Stage the push dispatch for after the tx commits. Callers that pass an
+  // outbox are responsible for calling drainPushDispatchOutbox(outbox) AFTER
+  // runTransaction returns — staging in-tx is wrong (would fire on retried
+  // or aborted transactions); firing in-tx is wrong (would do non-tx reads
+  // and creates inside a transaction body). Optional so callers that don't
+  // need OS-level push (tests, transient writes) stay zero-overhead.
+  if (pushOutbox) {
+    pushOutbox.staged.push(params);
+  }
 }
 
 // ── Notification read/delete ──────────────────────────────

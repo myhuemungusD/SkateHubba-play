@@ -214,7 +214,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
                         e.stopPropagation();
                         dismissNotification(n.id);
                       }}
-                      className="shrink-0 p-0.5 text-[#444] hover:text-brand-red transition-colors opacity-0 group-hover:opacity-100"
+                      className="shrink-0 p-1 text-[#444] hover:text-brand-red transition-colors opacity-60 hover:opacity-100 focus-visible:opacity-100"
                     >
                       <svg
                         width="12"

@@ -2,9 +2,9 @@
  * Shared firestore mock surface for FCM + push-notification service tests.
  *
  * Both services exercise the same minimal slice of `firebase/firestore`
- * (setDoc, doc, arrayUnion, arrayRemove). Centralizing the surface keeps
- * the test files aligned and prevents the duplicate-block check from
- * flagging two near-identical mock declarations as a regression.
+ * (setDoc, doc, arrayUnion, arrayRemove, serverTimestamp). Centralizing
+ * the surface keeps the test files aligned and prevents the duplicate-block
+ * check from flagging two near-identical mock declarations as a regression.
  *
  * Usage (per test file):
  *
@@ -27,6 +27,11 @@ export const firestoreNotifMocks = {
   doc: vi.fn<(...args: unknown[]) => unknown>((..._args: unknown[]) => (_args.slice(1) as string[]).join("/")),
   arrayUnion: vi.fn((v: string) => ({ _op: "arrayUnion", value: v })),
   arrayRemove: vi.fn((v: string) => ({ _op: "arrayRemove", value: v })),
+  // serverTimestamp() — fcm.ts and pushNotifications.ts call it when writing
+  // the /pushTargets mirror. A string sentinel is fine for assertions; the
+  // real Firestore SDK returns a FieldValue marker that's only resolved on
+  // the server, so neither value is comparable beyond identity.
+  serverTimestamp: vi.fn<() => unknown>(() => "SERVER_TS"),
 };
 
 export const notifFirestoreModule = {
@@ -34,4 +39,5 @@ export const notifFirestoreModule = {
   doc: (...args: unknown[]) => firestoreNotifMocks.doc(...args),
   arrayUnion: (v: string) => firestoreNotifMocks.arrayUnion(v),
   arrayRemove: (v: string) => firestoreNotifMocks.arrayRemove(v),
+  serverTimestamp: () => firestoreNotifMocks.serverTimestamp(),
 };

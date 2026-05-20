@@ -13,8 +13,6 @@ const {
   mockGetDocs,
   mockDeleteDoc,
   mockServerTimestamp,
-  mockGetCountFromServer,
-  mockGetDoc,
   mockRunTransaction,
   mockIncrement,
   FakeTimestamp,
@@ -40,8 +38,6 @@ const {
     mockGetDocs: vi.fn(),
     mockDeleteDoc: vi.fn().mockResolvedValue(undefined),
     mockServerTimestamp: vi.fn(() => "SERVER_TS"),
-    mockGetCountFromServer: vi.fn(),
-    mockGetDoc: vi.fn(),
     mockRunTransaction: vi.fn(),
     mockIncrement: vi.fn((n: number) => ({ __increment: n })),
     FakeTimestamp,
@@ -60,8 +56,6 @@ vi.mock("firebase/firestore", () => ({
   getDocs: mockGetDocs,
   deleteDoc: mockDeleteDoc,
   serverTimestamp: mockServerTimestamp,
-  getCountFromServer: mockGetCountFromServer,
-  getDoc: mockGetDoc,
   runTransaction: mockRunTransaction,
   increment: mockIncrement,
   Timestamp: FakeTimestamp,
@@ -76,6 +70,7 @@ import {
   upvoteClip,
   fetchClipUpvoteState,
   AlreadyUpvotedError,
+  _resetTopIndexCircuitBreaker,
   type LandedClipContext,
   type ClipsFeedCursor,
 } from "../clips";
@@ -138,6 +133,7 @@ describe("writeLandedClipsInTransaction", () => {
       spotId: "spot-abc",
       createdAt: "SERVER_TS",
       moderationStatus: "active",
+      upvoteCount: 0,
     });
 
     const [, matchPayload] = tx.set.mock.calls[1];
@@ -148,6 +144,7 @@ describe("writeLandedClipsInTransaction", () => {
       videoUrl: "https://example.com/match.webm",
       createdAt: "SERVER_TS",
       moderationStatus: "active",
+      upvoteCount: 0,
     });
   });
 
@@ -392,6 +389,32 @@ describe("fetchClipsFeed (sort='new')", () => {
     const page = await fetchClipsFeed(null, 20, "new");
     expect(page.clips[0].createdAt).toBe(duck);
   });
+
+  it("propagates a numeric upvoteCount on the persisted doc through to the mapped clip", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_2_set", validClipData({ upvoteCount: 42 }))],
+    });
+    const page = await fetchClipsFeed();
+    expect(page.clips[0].upvoteCount).toBe(42);
+  });
+
+  it("defaults upvoteCount to 0 on legacy docs that predate the aggregate", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("legacy", validClipData({ upvoteCount: undefined }))],
+    });
+    const page = await fetchClipsFeed();
+    expect(page.clips[0].upvoteCount).toBe(0);
+  });
+
+  it("treats a negative upvoteCount as a corrupt value and defaults to 0", async () => {
+    // Defense-in-depth: rules forbid negative deltas, but a malformed write
+    // via Admin SDK shouldn't be able to surface a nonsensical UI state.
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_2_set", validClipData({ upvoteCount: -3 }))],
+    });
+    const page = await fetchClipsFeed();
+    expect(page.clips[0].upvoteCount).toBe(0);
+  });
 });
 
 describe("fetchClipsFeed (sort='top', the default)", () => {
@@ -492,6 +515,179 @@ describe("fetchClipsFeed (sort='top', the default)", () => {
   });
 });
 
+describe("fetchClipsFeed (failed-precondition fallback)", () => {
+  beforeEach(() => {
+    // Each case starts with a fresh breaker so they can independently
+    // exercise the first-failure path without leaking state.
+    _resetTopIndexCircuitBreaker();
+  });
+
+  function missingIndexError(message = "The query requires an index. You can create it here: ..."): Error {
+    const err = new Error(message);
+    (err as Error & { code?: string }).code = "failed-precondition";
+    return err;
+  }
+
+  it("falls back from sort='top' to sort='new' when the top-index isn't available yet", async () => {
+    // The 4-field top index can be still-building or undeployed in
+    // production. The lobby would otherwise show "Feed temporarily
+    // unavailable" — instead we degrade silently to the new-sort feed so
+    // viewers see clips while ops resolves the missing index.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_2_set", validClipData({ upvoteCount: 0 }))],
+    });
+
+    const page = await fetchClipsFeed(null, 20, "top");
+
+    expect(page.clips).toHaveLength(1);
+    expect(page.clips[0].id).toBe("g1_2_set");
+    // On fallback we drop the upvoteCount orderBy so the cursor must
+    // resemble a 'new'-sort cursor (no upvoteCount field).
+    expect(page.cursor).toEqual({ createdAt: expect.any(FakeTimestamp), id: "g1_2_set" });
+    // Sanity: the fallback issued the new-sort orderBy on its second
+    // attempt rather than the upvoteCount-ranked one.
+    const orderByFields = mockOrderBy.mock.calls.map((c) => c[0]);
+    expect(orderByFields).toContain("createdAt");
+  });
+
+  it("drops the cursor on fallback so an incompatible top-cursor doesn't crash startAfter", async () => {
+    // top-cursor threads upvoteCount through startAfter. Re-using it in a
+    // 'new' query would hand startAfter the wrong number of values.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    const ts = new FakeTimestamp(1_700_000_000_000) as unknown as ClipsFeedCursor["createdAt"];
+    const cursor: ClipsFeedCursor = { createdAt: ts, id: "g1_5_match", upvoteCount: 5 };
+
+    await fetchClipsFeed(cursor, 20, "top");
+
+    // First (failing) call wired the cursor with upvoteCount; the
+    // fallback call must *not* call startAfter at all.
+    expect(mockStartAfter).toHaveBeenCalledTimes(1);
+    expect(mockStartAfter).toHaveBeenCalledWith(5, ts, "g1_5_match");
+  });
+
+  it("does not fall back when sort='new' itself hits failed-precondition (rethrows)", async () => {
+    // No safer fallback exists once the new-sort index is also missing —
+    // surface the error so the lobby still renders its retry CTA.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+
+    await expect(fetchClipsFeed(null, 20, "new")).rejects.toMatchObject({ code: "failed-precondition" });
+    // Single attempt — no fallback was triggered.
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back on permission-denied (rethrows verbatim)", async () => {
+    // permission-denied is an auth/rules problem, not an index problem.
+    // Falling back to 'new' would mask the real failure, so let it surface.
+    const err = new Error("Missing or insufficient permissions.");
+    (err as Error & { code?: string }).code = "permission-denied";
+    mockGetDocs.mockRejectedValueOnce(err);
+
+    await expect(fetchClipsFeed(null, 20, "top")).rejects.toMatchObject({ code: "permission-denied" });
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back when the rejection isn't an object (string / undefined throws rethrow as-is)", async () => {
+    // Defensive: some intermediaries strip error objects to bare strings.
+    // A non-object rejection can't carry a 'failed-precondition' code, so
+    // the fallback path correctly leaves it alone. withRetry treats
+    // non-Error rejections as retryable, so persist the rejection across
+    // attempts; the final throw should be the original string verbatim.
+    mockGetDocs.mockRejectedValue("network died");
+    await expect(fetchClipsFeed(null, 20, "top")).rejects.toBe("network died");
+  }, 30_000);
+
+  it("treats failed-precondition with no readable message as a missing index (triggers fallback)", async () => {
+    // Tolerant matcher: when an error envelope has the right code but the
+    // message has been stripped by a proxy/SDK wrapper, fall back rather
+    // than surfacing "Feed temporarily unavailable" to the viewer. The
+    // worst case is we serve 'new'-sorted clips when the failure was
+    // actually some other failed-precondition variant — acceptable for a
+    // read-only feed.
+    //
+    // Use an Error instance so withRetry's isRetryable() classifies the
+    // permanent code immediately and rethrows on the first attempt — that
+    // routes through fetchClipsFeed's catch block (where isMissingIndexError
+    // is consulted) instead of the SDK-level retry path.
+    const err = new Error();
+    (err as unknown as { message: unknown }).message = undefined;
+    (err as Error & { code: string }).code = "failed-precondition";
+    mockGetDocs.mockRejectedValueOnce(err);
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    const page = await fetchClipsFeed(null, 20, "top");
+    expect(page.clips).toEqual([]);
+    // Two calls total: the failing top attempt + the fallback new attempt.
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+  });
+
+  it("latches the breaker after one failure so subsequent top calls skip the failing query", async () => {
+    // First call: top fails, fallback to new succeeds — costs 2 reads.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_2_set", validClipData())],
+    });
+    await fetchClipsFeed(null, 20, "top");
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+
+    // Second call: breaker latched, route directly to new — 1 read only.
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("g1_3_set", validClipData())],
+    });
+    const page = await fetchClipsFeed(null, 20, "top");
+    expect(mockGetDocs).toHaveBeenCalledTimes(3);
+    expect(page.clips[0].id).toBe("g1_3_set");
+
+    // Same on a third call — no further failing-top attempts ever issued.
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    await fetchClipsFeed(null, 20, "top");
+    expect(mockGetDocs).toHaveBeenCalledTimes(4);
+
+    // Verify the post-latch calls used the new-sort orderBy chain (no
+    // upvoteCount), not the failing top chain.
+    const orderByFieldsAfterLatch = mockOrderBy.mock.calls.map((c) => c[0]);
+    // upvoteCount only appears in the very first (failing) attempt.
+    const upvoteCountInvocations = orderByFieldsAfterLatch.filter((f) => f === "upvoteCount").length;
+    expect(upvoteCountInvocations).toBe(1);
+  });
+
+  it("drops a top-shaped cursor when the breaker is already latched", async () => {
+    // Latch the breaker via a first failed call.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    await fetchClipsFeed(null, 20, "top");
+
+    // Now hand fetchClipsFeed a top-shaped cursor (with upvoteCount). The
+    // post-latch path must drop it — feeding upvoteCount into a new-sort
+    // startAfter would mismatch the orderBy chain length and crash.
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    const ts = new FakeTimestamp(1_700_000_000_000) as unknown as ClipsFeedCursor["createdAt"];
+    const topCursor: ClipsFeedCursor = { createdAt: ts, id: "g1_5_match", upvoteCount: 5 };
+    await fetchClipsFeed(topCursor, 20, "top");
+
+    // The post-latch call goes straight to runFeedQuery(null, ...) — no
+    // startAfter at all on that invocation.
+    expect(mockStartAfter).not.toHaveBeenCalled();
+  });
+
+  it("breaker only affects sort='top'; explicit sort='new' is unaffected", async () => {
+    // Latch via a top failure.
+    mockGetDocs.mockRejectedValueOnce(missingIndexError());
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    await fetchClipsFeed(null, 20, "top");
+
+    // Caller explicitly asks for sort='new' — runs directly, with cursor.
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    const ts = new FakeTimestamp(1_700_000_000_000) as unknown as ClipsFeedCursor["createdAt"];
+    const newCursor: ClipsFeedCursor = { createdAt: ts, id: "g1_5_match" };
+    await fetchClipsFeed(newCursor, 20, "new");
+
+    expect(mockStartAfter).toHaveBeenCalledWith(ts, "g1_5_match");
+  });
+});
+
 /* ── deleteUserClips (account-deletion cascade) ──────────────── */
 
 describe("deleteUserClips", () => {
@@ -538,27 +734,142 @@ describe("deleteUserClips", () => {
 
 /* ── upvoteClip ────────────────────────────────── */
 
-function countSnap(count: number) {
-  return { data: () => ({ count }) };
-}
-
 describe("upvoteClip", () => {
-  it("writes the vote inside a transaction and returns the refreshed count", async () => {
+  type ObservedTx = {
+    set: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+    get: ReturnType<typeof vi.fn>;
+  };
+
+  /**
+   * Wires `mockRunTransaction` to capture and return the Transaction stub
+   * the service body sees. The service issues two `tx.get` calls — one for
+   * the vote doc (drives the AlreadyUpvotedError branch) and one for the
+   * clip doc (drives the post-tx return count). The mock differentiates by
+   * the ref's `__path` prefix produced by the firestore mockDoc helper.
+   */
+  function captureTxOnce(
+    voteExists: boolean,
+    currentUpvoteCount: number | "no-clip-doc" | "non-numeric" = 0,
+  ): { observed: () => ObservedTx } {
+    let captured: ObservedTx | undefined;
     mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
-      const tx = {
-        get: vi.fn().mockResolvedValue({ exists: () => false }),
+      const tx: ObservedTx = {
+        get: vi.fn().mockImplementation(async (ref: { __path?: string }) => {
+          const path = ref.__path ?? "";
+          if (path.startsWith("clipVotes/")) {
+            return { exists: () => voteExists };
+          }
+          if (path.startsWith("clips/")) {
+            // 'no-clip-doc' covers the legacy / pre-backfill branch where
+            // the clip doc didn't exist when the vote was placed (defensive;
+            // shouldn't happen in practice because clip docs are written
+            // first inside the parent game transaction).
+            if (currentUpvoteCount === "no-clip-doc") {
+              return { exists: () => false };
+            }
+            // 'non-numeric' covers a corrupted clip doc — upvoteCount field
+            // present but not a finite number. The service must coerce to 0.
+            if (currentUpvoteCount === "non-numeric") {
+              return { exists: () => true, data: () => ({ upvoteCount: "broken" }) };
+            }
+            return { exists: () => true, data: () => ({ upvoteCount: currentUpvoteCount }) };
+          }
+          throw new Error(`Unexpected ref path in tx.get: ${path}`);
+        }),
         set: vi.fn(),
         update: vi.fn(),
       };
+      captured = tx;
       await cb(tx);
-      return tx;
     });
-    mockGetCountFromServer.mockResolvedValueOnce(countSnap(7));
+    return {
+      observed: () => {
+        if (!captured) throw new Error("transaction was never invoked");
+        return captured;
+      },
+    };
+  }
+
+  it("writes the vote inside a transaction and returns the post-increment count from the in-tx clip read", async () => {
+    captureTxOnce(false, 6);
 
     const count = await upvoteClip("me", "g1_2_set");
 
+    // Returned count is current+1, derived from the in-transaction read —
+    // no follow-up aggregate query was needed.
     expect(count).toBe(7);
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clipVotes", "me_g1_2_set");
+    expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clips", "g1_2_set");
+  });
+
+  it("writes the literal post-increment count to the clip aggregate (not increment(1))", async () => {
+    const cap = captureTxOnce(false, 1);
+
+    await upvoteClip("me", "g1_2_set");
+
+    // Both writes must land on the same Transaction object — that's what
+    // makes the aggregate consistent with the votes underneath.
+    const tx = cap.observed();
+    expect(tx.set).toHaveBeenCalledTimes(1);
+    expect(tx.update).toHaveBeenCalledTimes(1);
+
+    const [voteRef, votePayload] = tx.set.mock.calls[0];
+    expect((voteRef as { __path: string }).__path).toBe("clipVotes/me_g1_2_set");
+    expect(votePayload).toMatchObject({ uid: "me", clipId: "g1_2_set" });
+
+    const [clipRef, clipPayload] = tx.update.mock.calls[0];
+    expect((clipRef as { __path: string }).__path).toBe("clips/g1_2_set");
+    // Literal write — current(1) + 1 = 2. The rule explicitly accepts
+    // `upvoteCount == prev + 1` paired with a vote-doc create-after, so a
+    // literal write is rule-equivalent to increment(1) but lets us return
+    // the authoritative count without a second round-trip.
+    expect(clipPayload).toEqual({ upvoteCount: 2 });
+  });
+
+  it("treats a missing or non-numeric upvoteCount on the clip as 0 (legacy / pre-backfill path)", async () => {
+    // captureTxOnce defaults clip data to { upvoteCount: 0 }; verify that
+    // legacy clips with no field at all still take the 0 → 1 path rather
+    // than crashing or writing NaN.
+    const cap = captureTxOnce(false, 0);
+    let count = 0;
+    count = await upvoteClip("me", "g1_2_set");
+    expect(count).toBe(1);
+    const [, clipPayload] = cap.observed().update.mock.calls[0];
+    expect(clipPayload).toEqual({ upvoteCount: 1 });
+  });
+
+  it("coerces a non-numeric upvoteCount on the clip doc to 0 (defense against corrupted writes)", async () => {
+    // A clip doc with upvoteCount = "broken" (or NaN, or undefined) must
+    // not be allowed to write NaN+1 = NaN as the new aggregate; the rule
+    // requires `upvoteCount is int`, so a NaN write would be rejected at
+    // the server. Coerce to 0 in code so the literal write is always int.
+    const cap = captureTxOnce(false, "non-numeric");
+    const count = await upvoteClip("me", "g1_2_set");
+    expect(count).toBe(1);
+    const [, clipPayload] = cap.observed().update.mock.calls[0];
+    expect(clipPayload).toEqual({ upvoteCount: 1 });
+  });
+
+  it("seeds count from 0 when the clip doc doesn't exist at tx-time (defensive legacy path)", async () => {
+    // Belt-and-braces: rules read upvoteCount via get('upvoteCount', 0)
+    // so a clip-doc-missing case must still write 1, not NaN. This is a
+    // defensive branch — clip docs are written inside the parent game's
+    // transaction so they should always exist by the time anyone votes.
+    const cap = captureTxOnce(false, "no-clip-doc");
+    const count = await upvoteClip("me", "g1_2_set");
+    expect(count).toBe(1);
+    const [, clipPayload] = cap.observed().update.mock.calls[0];
+    expect(clipPayload).toEqual({ upvoteCount: 1 });
+  });
+
+  it("does not bump upvoteCount when the user has already upvoted (error path)", async () => {
+    const cap = captureTxOnce(true);
+
+    await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
+    const tx = cap.observed();
+    expect(tx.set).not.toHaveBeenCalled();
+    expect(tx.update).not.toHaveBeenCalled();
   });
 
   it("queues an increment(1) on the target clip's upvoteCount inside the same transaction", async () => {
@@ -610,15 +921,7 @@ describe("upvoteClip", () => {
   });
 
   it("throws AlreadyUpvotedError when the vote doc already exists", async () => {
-    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
-      const tx = {
-        get: vi.fn().mockResolvedValue({ exists: () => true }),
-        set: vi.fn(),
-        update: vi.fn(),
-      };
-      await cb(tx);
-    });
-
+    captureTxOnce(true);
     await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
   });
 
@@ -637,52 +940,119 @@ describe("upvoteClip", () => {
 /* ── fetchClipUpvoteState ──────────────────────── */
 
 describe("fetchClipUpvoteState", () => {
-  it("returns an empty Map when no clip ids are passed (no Firestore reads)", async () => {
+  function clip(
+    id: string,
+    upvoteCount: number,
+    playerUid = "other",
+  ): {
+    id: string;
+    upvoteCount: number;
+    playerUid: string;
+  } {
+    return { id, upvoteCount, playerUid };
+  }
+
+  function voteSnap(voteIds: string[]) {
+    return {
+      docs: voteIds.map((vid) => ({
+        id: vid,
+        data: () => {
+          // vote id is `${uid}_${clipId}` — strip the uid prefix to recover
+          // the clip id stored on the doc body (mirrors upvoteClip's write).
+          const sep = vid.indexOf("_");
+          return { uid: vid.slice(0, sep), clipId: vid.slice(sep + 1) };
+        },
+      })),
+    };
+  }
+
+  it("returns an empty Map when no clips are passed (no Firestore reads)", async () => {
     const map = await fetchClipUpvoteState("me", []);
     expect(map.size).toBe(0);
-    expect(mockGetCountFromServer).not.toHaveBeenCalled();
-    expect(mockGetDoc).not.toHaveBeenCalled();
+    expect(mockGetDocs).not.toHaveBeenCalled();
   });
 
-  it("stitches per-clip count + alreadyUpvoted into a Map keyed by clip id", async () => {
-    // Mocks resolve in definition order — match the (count, alreadyUpvoted)
-    // pair structure for each id by interleaving the two mock streams.
-    mockGetCountFromServer
-      .mockResolvedValueOnce(countSnap(3))
-      .mockResolvedValueOnce(countSnap(0))
-      .mockResolvedValueOnce(countSnap(11));
-    mockGetDoc
-      .mockResolvedValueOnce({ exists: () => true })
-      .mockResolvedValueOnce({ exists: () => false })
-      .mockResolvedValueOnce({ exists: () => false });
+  it("seeds count from the denormalized clip aggregate and marks already-upvoted clips via a single batched query", async () => {
+    // Single round-trip: one getDocs call with `where(__name__, in, [...])`
+    // returning only the vote docs that exist for this viewer.
+    mockGetDocs.mockResolvedValueOnce(voteSnap(["me_c1"])); // viewer upvoted c1, not c2/c3
 
-    const map = await fetchClipUpvoteState("me", ["c1", "c2", "c3"]);
+    const map = await fetchClipUpvoteState("me", [clip("c1", 3), clip("c2", 0), clip("c3", 11)]);
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(1);
+    expect(mockWhere).toHaveBeenCalledWith({ __documentId: true }, "in", ["me_c1", "me_c2", "me_c3"]);
 
     expect(map.get("c1")).toEqual({ count: 3, alreadyUpvoted: true });
     expect(map.get("c2")).toEqual({ count: 0, alreadyUpvoted: false });
     expect(map.get("c3")).toEqual({ count: 11, alreadyUpvoted: false });
   });
 
-  it("defaults a clip's state to {0,false} when its count read fails (other clips unaffected)", async () => {
-    // First clip's count fails (with a permanent code so withRetry doesn't loop);
-    // second clip succeeds. countClipUpvotes already swallows internally and
-    // returns 0, so the failing clip should still appear with default state.
-    mockGetCountFromServer
-      .mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }))
-      .mockResolvedValueOnce(countSnap(5));
-    mockGetDoc.mockResolvedValueOnce({ exists: () => false }).mockResolvedValueOnce({ exists: () => true });
+  it("filters out the viewer's own clips before issuing any read (rule disallows self-upvote)", async () => {
+    mockGetDocs.mockResolvedValueOnce(voteSnap([]));
 
-    const map = await fetchClipUpvoteState("me", ["broken", "ok"]);
+    const map = await fetchClipUpvoteState("me", [clip("own", 5, "me"), clip("other", 9, "you")]);
 
-    expect(map.get("broken")).toEqual({ count: 0, alreadyUpvoted: false });
-    expect(map.get("ok")).toEqual({ count: 5, alreadyUpvoted: true });
+    // Own clip never enters the result map — its count would be misleading
+    // because the viewer can never upvote it. Hydration is skipped entirely.
+    expect(map.has("own")).toBe(false);
+    expect(map.get("other")).toEqual({ count: 9, alreadyUpvoted: false });
+    // Only the non-self clip's vote id should be batched.
+    expect(mockWhere).toHaveBeenCalledWith({ __documentId: true }, "in", ["me_other"]);
   });
 
-  it("defaults to {0,false} when the vote-doc check fails", async () => {
-    mockGetCountFromServer.mockResolvedValueOnce(countSnap(2));
-    mockGetDoc.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+  it("issues no reads when every supplied clip is owned by the viewer", async () => {
+    const map = await fetchClipUpvoteState("me", [clip("a", 1, "me"), clip("b", 2, "me")]);
+    expect(map.size).toBe(0);
+    expect(mockGetDocs).not.toHaveBeenCalled();
+  });
 
-    const map = await fetchClipUpvoteState("me", ["c1"]);
-    expect(map.get("c1")).toEqual({ count: 2, alreadyUpvoted: false });
+  it("falls back to seeded {count, alreadyUpvoted=false} when the batched read fails (no per-clip blanking)", async () => {
+    // Whole-batch failure: counts still come from the denormalized field
+    // on the clip docs, so the UI continues to render accurate vote totals
+    // even when the viewer's vote-doc lookup is rejected.
+    mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+
+    const map = await fetchClipUpvoteState("me", [clip("c1", 4), clip("c2", 7)]);
+
+    expect(map.get("c1")).toEqual({ count: 4, alreadyUpvoted: false });
+    expect(map.get("c2")).toEqual({ count: 7, alreadyUpvoted: false });
+  });
+
+  it("ignores vote docs whose data.clipId is missing or non-string (defensive against malformed writes)", async () => {
+    // A vote doc whose body lacks a string clipId is treated as if the
+    // viewer hasn't voted that clip — we don't want to either crash or
+    // silently mark a different clip as upvoted because the doc id parser
+    // confused a malformed payload. Same path also covers a vote doc whose
+    // clipId references something not in the requested set (legacy or
+    // cross-call), which shouldn't poison the result map.
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: "me_c1", data: () => ({ uid: "me", clipId: 42 }) }, // non-string clipId
+        { id: "me_c2", data: () => ({ uid: "me" }) }, // missing clipId entirely
+        { id: "me_unknown", data: () => ({ uid: "me", clipId: "unknown" }) }, // not in our request set
+      ],
+    });
+
+    const map = await fetchClipUpvoteState("me", [clip("c1", 5), clip("c2", 8)]);
+
+    // Both requested clips fall through to the seeded not-upvoted state
+    // because the malformed vote docs above can't be safely attributed.
+    expect(map.get("c1")).toEqual({ count: 5, alreadyUpvoted: false });
+    expect(map.get("c2")).toEqual({ count: 8, alreadyUpvoted: false });
+    // The unknown clip never gets injected into the result map.
+    expect(map.has("unknown")).toBe(false);
+  });
+
+  it("chunks the in-query into batches of 30 to respect the Firestore in-cap", async () => {
+    // 35 clips → 2 chunks (30 + 5). Each chunk fires its own getDocs.
+    const clips = Array.from({ length: 35 }, (_, i) => clip(`c${i}`, i));
+    mockGetDocs.mockResolvedValueOnce(voteSnap([])).mockResolvedValueOnce(voteSnap([]));
+
+    const map = await fetchClipUpvoteState("me", clips);
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+    // Spot-check: every clip got an entry, all default to not-upvoted.
+    expect(map.size).toBe(35);
+    expect(map.get("c34")).toEqual({ count: 34, alreadyUpvoted: false });
   });
 });

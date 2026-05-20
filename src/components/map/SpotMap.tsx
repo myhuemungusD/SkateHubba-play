@@ -5,7 +5,7 @@ import { Crosshair, Plus } from "lucide-react";
 import type { Spot } from "../../types/spot";
 import { logger } from "../../services/logger";
 import { captureMessage } from "../../lib/sentry";
-import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS } from "../../lib/mapbox";
+import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS, reportMapStyleConfig } from "../../lib/mapbox";
 import { SpotPreviewCard } from "./SpotPreviewCard";
 import { AddSpotSheet } from "./AddSpotSheet";
 import { SpotFilterBar, applySpotFilters, DEFAULT_SPOT_FILTERS, type SpotFilters } from "./SpotFilterBar";
@@ -82,6 +82,10 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProp
       logger.warn("map_token_missing", {});
       captureMessage("map_token_missing", "warning");
     }
+    // Report a misconfigured VITE_MAPBOX_STYLE_URL through the same
+    // post-paint window so Sentry's async init has had a chance to resolve.
+    // The helper is idempotent, so StrictMode double-invoke is a no-op.
+    reportMapStyleConfig();
   }, []);
 
   // Show toast briefly with proper cleanup

@@ -20,6 +20,7 @@ export function LobbyHeader({ profile, games, onViewRecord, onOpenGame, onOpenSe
         <button
           type="button"
           onClick={onViewRecord}
+          data-tutorial="handle-display"
           className="flex items-center gap-2 transition-all duration-300 group rounded-xl px-2 py-1.5 touch-target hover:bg-white/[0.03]"
           title="View my record"
         >

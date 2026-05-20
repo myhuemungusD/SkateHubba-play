@@ -12,6 +12,7 @@ export function ChallengeCTA({ emailVerified, username, onChallenge, onChallenge
     <>
       <button
         type="button"
+        data-tutorial="challenge-cta"
         onClick={emailVerified ? onChallenge : undefined}
         disabled={!emailVerified}
         className={`w-full flex items-center justify-center gap-2.5 rounded-2xl py-4 mb-1 font-display tracking-wider text-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${emailVerified ? "bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 shadow-[0_2px_12px_rgba(255,107,0,0.2),0_1px_2px_rgba(0,0,0,0.1)] hover:shadow-[0_6px_28px_rgba(255,107,0,0.28),0_2px_6px_rgba(0,0,0,0.12)] ring-1 ring-white/[0.08]" : "bg-brand-orange/25 text-white/75 cursor-not-allowed border border-brand-orange/20"}`}

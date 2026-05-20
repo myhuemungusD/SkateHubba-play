@@ -1,3 +1,4 @@
+import { memo } from "react";
 import type { ClipDoc, ClipUpvoteState } from "../../services/clips";
 import { ChevronRightIcon, FlagIcon, FlameIcon } from "../icons";
 
@@ -11,7 +12,7 @@ export interface ClipActionsProps {
   onReport: (clip: ClipDoc) => void;
 }
 
-export function ClipActions({
+export const ClipActions = memo(function ClipActions({
   clip,
   isOwnClip,
   upvote,
@@ -66,4 +67,4 @@ export function ClipActions({
       </button>
     </div>
   );
-}
+});

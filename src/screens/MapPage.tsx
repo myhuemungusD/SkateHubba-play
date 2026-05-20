@@ -1,7 +1,9 @@
-import { Component, useCallback, useEffect, useState, type ReactNode } from "react";
+import { Component, useCallback, useEffect, useState, type ReactNode, type ErrorInfo } from "react";
 import { SpotMap } from "../components/map/SpotMap";
 import { useGameContext } from "../context/GameContext";
 import { analytics } from "../services/analytics";
+import { captureException } from "../lib/sentry";
+import { logger } from "../services/logger";
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -20,8 +22,15 @@ class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => 
     return { hasError: true };
   }
 
-  componentDidCatch(error: Error): void {
-    console.warn("MapErrorBoundary caught:", error.message);
+  componentDidCatch(error: Error, info: ErrorInfo): void {
+    // Surface to Sentry so map crashes don't go silent — the root
+    // ErrorBoundary already does this for the rest of the app, but a
+    // localized boundary swallowing into console.warn meant Mapbox
+    // regressions never made it into our error budget.
+    logger.warn("map_error_boundary_caught", { message: error.message });
+    captureException(error, {
+      extra: { context: "MapErrorBoundary", componentStack: info.componentStack ?? null },
+    });
   }
 
   handleReset = (): void => {

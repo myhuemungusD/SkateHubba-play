@@ -19,6 +19,11 @@ export function useAuth(): AuthState {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  // Bumped after `reloadUser()` mutates the live User in place — Firebase
+  // mutates the same instance, so `setUser(u)` is a no-op under React's
+  // Object.is check and won't trigger a re-render for the new
+  // `emailVerified` claim. A version counter forces consumers to re-read.
+  const [, setReloadTick] = useState(0);
   const userRef = useRef<User | null>(null);
 
   // Keep a ref in sync so refreshProfile always uses latest user
@@ -130,10 +135,11 @@ export function useAuth(): AuthState {
         const verified = await reloadUser();
         if (verified) {
           logger.debug("visibility_reload_verified", { uid: u.uid });
-          // Trigger a re-render with the refreshed user object.  Firebase
-          // mutates the User in place on reload(), so we clone via the
-          // getter to force React state to update.
-          setUser(Object.assign(Object.create(Object.getPrototypeOf(u)), u));
+          // Bump the reload tick to force a re-render. Don't clone the User
+          // — the live SDK instance carries methods + private state
+          // (`getIdToken`, `delete`, internal token cache) that a shallow
+          // prototype-copy can't safely reproduce across SDK versions.
+          setReloadTick((t) => t + 1);
         }
       } catch {
         // Network error while reloading — non-critical, will retry on next focus.
