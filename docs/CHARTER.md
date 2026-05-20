@@ -164,7 +164,13 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ### 4.4 Push & background work
 
-Push dispatch is shipped via the `firestore-send-fcm` Firebase Extension. The extension provisions a managed Cloud Run worker we configure but do not author; it listens to the `/push_dispatch` Firestore collection and sends FCM/APNS on the team's behalf. The client write contract lives in `src/services/pushDispatch.ts` (collection name `push_dispatch`, `writeBatch` writes), the extension config lives in `extensions/firestore-send-fcm.env`, and `firestore.rules` enforces the create contract for `/push_dispatch` documents.
+Push dispatch is shipped via the `firestore-send-fcm` Firebase Extension. The extension provisions a managed Cloud Run worker we configure but do not author; it listens to the `/push_dispatch` Firestore collection and sends FCM/APNS on the team's behalf. Three collections cooperate:
+
+- **`/push_dispatch/{id}`** — the extension's trigger. Each create carries `tokens`, `notification.{title,body}`, `data.{gameId,type,click_action}`, plus rules metadata (`senderUid`, `recipientUid`, `gameId`, `type`). Authored by `src/services/pushDispatch.ts:buildDispatchDoc`.
+- **`/push_dispatch_limits/{senderUid_recipientUid_gameId_type}`** — server-side 5s cooldown anchor. The `/push_dispatch` create rule requires this companion doc to commit in the same `writeBatch` with `lastSentAt == request.time`, and the limits-doc update rule enforces the cooldown. Without the batch, the create rule's `getAfter()` check fails.
+- **`/pushTargets/{uid}`** — cross-readable mirror of the recipient's FCM tokens. Owner-only on write, signed-in-readable so a sender can embed tokens in the dispatch doc. Cap of 10 tokens, mirrored by `MAX_TOKENS_PER_DISPATCH` in `pushDispatch.ts` so worst-case fan-out is bounded.
+
+Dispatches fire from a post-transaction outbox (`createPushDispatchOutbox` / `drainPushDispatchOutbox`) — never from inside a `runTransaction` callback, so retries don't re-stage and a failed push never rolls back the game write. The extension config lives in `extensions/firestore-send-fcm.env` (collection name, TTL, named database, region must all stay in lockstep with `pushDispatch.ts` and `firestore.rules`).
 
 The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — extensions do not touch that path, so the gate remains in force against application-authored Cloud Functions. Reintroducing authored functions still requires maintainer sign-off.
 
@@ -438,10 +444,10 @@ CI failures override deadlines.
 
 ### 9.2 Known tech debt (May 2026)
 
-1. **Recently shipped — Push dispatcher.** `firestore-send-fcm` extension + `src/services/pushDispatch.ts` + `/push_dispatch` collection. See §4.4.
-2. **P0 — Auto-forfeit is client-triggered only.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. Needs a server-side sweep; the push extension does not cover this path.
-3. **P1 — Firestore backups not running.** Run `firebase-infra-setup.yml` on `workflow_dispatch`.
-4. **P1 — Storage video lifecycle not enforced.** Same workflow.
+1. **P0 — Auto-forfeit is client-triggered only.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. Needs a server-side sweep; the `firestore-send-fcm` extension (§4.4) only handles push delivery and does not cover this path.
+2. **P1 — Firestore backups not running.** Run `firebase-infra-setup.yml` on `workflow_dispatch`.
+3. **P1 — Storage video lifecycle not enforced.** Same workflow.
+4. **P2 — Stale FCM token pruning.** `/pushTargets/{uid}.tokens` is capped at 10 but never pruned. The extension issues up to 10 calls per dispatch, most landing on `messaging/registration-token-not-registered` for revoked devices. Tracked as `PERF-2` in `docs/NOTIFICATION_AUDIT.md`.
 5. **P2 — Username reservation TTL.** Deleted account's username locked forever.
 6. **P2 — `subscribeToMyGames` 50-game cap with no cursor** (DEC-003). Fine until ~50 concurrent games per user.
 7. **P3 — Captions on user-uploaded videos** (a11y A2).

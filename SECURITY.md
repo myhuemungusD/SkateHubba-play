@@ -37,6 +37,8 @@ Understanding how the app is built helps clarify what the attack surface looks l
 
 There is no Express server, no REST API, and no application-authored Cloud Functions. The client (React SPA) talks directly to Firebase services. This eliminates a large class of server-side vulnerabilities (injection, RCE, SSRF, etc.) at the architecture level. The one managed exception is the `firestore-send-fcm` Firebase Extension, which provisions a Cloud Run push dispatcher we configure but do not author; the `verify-no-cloud-functions` CI gate scopes to `functions/src/`, which extensions do not touch.
 
+Push delivery introduces one deliberate privacy trade-off documented inline at `src/services/pushDispatch.ts`: FCM registration tokens are mirrored to `/pushTargets/{uid}`, which is readable by any signed-in user so a sender can embed the recipient's tokens in the dispatch doc the extension consumes. The trade-off is bounded — FCM tokens alone cannot be abused without server credentials, the `/push_dispatch` create rule restricts senders to game participants, and a per-dispatch 5s cooldown is anchored by a companion `/push_dispatch_limits` write that must commit atomically in the same `writeBatch`. Caps of 10 tokens per user (rules-enforced) and 10 tokens per dispatch (`MAX_TOKENS_PER_DISPATCH`) keep worst-case fan-out bounded.
+
 ### Firestore Security Rules as the Authorization Layer
 
 All access control is enforced by Firestore security rules (`firestore.rules`), not by client-side code. Key guarantees:

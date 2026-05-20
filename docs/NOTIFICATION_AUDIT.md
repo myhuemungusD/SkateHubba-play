@@ -134,14 +134,16 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 **Files:**
 
-- `src/services/fcm.ts:75` (tokens added via `arrayUnion`)
+- `src/services/fcm.ts:107` (private `fcmTokens` add via `arrayUnion`) and `:112` (cross-readable `/pushTargets/{uid}.tokens` mirror)
+- `firestore.rules` `/pushTargets/{uid}` (cap of 10 tokens enforced server-side)
+- `src/services/pushDispatch.ts` `MAX_TOKENS_PER_DISPATCH = 10` (per-dispatch fan-out cap, mirrored against the rule)
 - (historical) Cloud Function `onNudgeCreated` previously cleaned tokens reactively on send failure — removed along with the rest of the `functions/` package; the `firestore-send-fcm` extension is the current sender but no token-pruning cleaner runs against its delivery results.
 
-**Problem:** FCM tokens accumulate indefinitely. Background push is now dispatched by the `firestore-send-fcm` extension via `/push_dispatch`, but no companion cleaner prunes tokens that the extension reports as invalid.
+**Problem:** FCM tokens accumulate up to the per-user cap. Background push is now dispatched by the `firestore-send-fcm` extension via `/push_dispatch`, but no companion cleaner prunes tokens from `/pushTargets/{uid}` that the extension reports as invalid — the array sits at the cap and revoked devices stay in the rotation until the user clears their browser data or signs out.
 
-**Impact:** A power user accumulates stale tokens → the extension issues unnecessary FCM API calls → increased latency and cost on every notification send.
+**Impact:** A power user keeps the array full of stale tokens → the extension issues up to 10 FCM API calls per dispatch, most landing on `messaging/registration-token-not-registered` → increased latency and cost on every notification send (bounded but non-zero).
 
-**Recommended fix:** Cap the stored token array at a reasonable size (e.g., 5 tokens per user) and/or add a scheduled cleaner that prunes tokens the extension reports as `messaging/registration-token-not-registered`.
+**Recommended fix:** Either (a) lower `MAX_TOKENS_PER_DISPATCH` and the matching `/pushTargets` rule cap (currently 10/10) once analytics confirm the typical active-device count, or (b) add a scheduled cleaner — triggered off the extension's delivery-result writes back to the dispatch doc — that prunes tokens reporting `messaging/registration-token-not-registered` from `/pushTargets/{uid}`. The two writers (`src/services/fcm.ts:107` for the private doc and `:112` for the mirror) must stay in lockstep with whatever pruner ships.
 
 ---
 
