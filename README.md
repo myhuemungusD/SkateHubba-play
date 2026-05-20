@@ -178,9 +178,9 @@ skatehubba-play/
 │   ├── components/            # Reusable UI (VideoRecorder, Leaderboard, ClipsFeed, …)
 │   │   └── map/               # Spots map UI (SpotMap, AddSpotSheet, BustRisk, …)
 │   ├── screens/               # Full-page components (Lobby, GamePlay, MapPage, …)
-│   ├── context/               # AuthContext, GameContext, NavigationContext, NotificationContext
-│   ├── hooks/                 # useAuth, useOnlineStatus, usePlayerProfile, useBlockedUsers
-│   ├── services/              # Single entry point for all Firebase calls
+│   ├── context/               # AuthContext, GameContext, NavigationContext, NotificationContext, OnboardingContext
+│   ├── hooks/                 # Key hooks — useAuth, useOnlineStatus, usePlayerProfile, useBlockedUsers, …
+│   ├── services/              # Single entry point for all Firebase calls (split into domain modules below)
 │   │   ├── auth.ts            #   sign up / sign in / Google OAuth / password reset
 │   │   ├── users.ts           #   profiles + atomic username reservation
 │   │   ├── games.ts           #   game CRUD + transactions + real-time subscriptions
@@ -229,7 +229,10 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 | `VITE_FIREBASE_MEASUREMENT_ID` | Firebase Analytics                                                           |
 | `VITE_FIREBASE_VAPID_KEY`      | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)    |
 | `VITE_RECAPTCHA_SITE_KEY`      | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                    |
+| `VITE_APPCHECK_ENABLED`        | App Check master switch; set to `true` to activate alongside the site key    |
 | `VITE_SENTRY_DSN`              | Sentry error tracking; without it, errors only appear in the browser console |
+| `VITE_POSTHOG_KEY`             | PostHog product analytics; consent-gated, omit to disable                    |
+| `VITE_POSTHOG_HOST`            | PostHog ingestion host; defaults to the US cloud when unset                  |
 | `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs              |
 | `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`  |
 | `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                 |

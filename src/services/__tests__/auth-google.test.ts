@@ -165,10 +165,10 @@ describe("resolveGoogleRedirect", () => {
     expect(result).toBeNull();
   });
 
-  it("returns null on error (safe fallback)", async () => {
-    mockGetRedirectResult.mockRejectedValueOnce(new Error("redirect error"));
+  it("rethrows on error so the caller can apply its Sentry/UI policy", async () => {
+    const err = new Error("redirect error");
+    mockGetRedirectResult.mockRejectedValueOnce(err);
 
-    const result = await resolveGoogleRedirect();
-    expect(result).toBeNull();
+    await expect(resolveGoogleRedirect()).rejects.toBe(err);
   });
 });
