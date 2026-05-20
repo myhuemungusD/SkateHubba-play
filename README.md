@@ -7,7 +7,7 @@
   <img src="docs/screenshots/logo-black.png" alt="SkateHubba" width="200">
 </picture>
 
-### Play S.K.A.T.E. For the love of the game
+### Play S.K.A.T.E. For the love of the game.
 
 An async multiplayer trick battle game for skateboarders.
 Challenge friends, set tricks on video, and see if they can match you — one letter at a time.
@@ -58,7 +58,7 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 <td align="center"><strong>Forfeit Screen</strong></td>
 </tr>
 <tr>
-<td><img src="docs/screenshots/landing.webp" alt="SkateHubba landing page — hero with 'Own The Spot' tagline" width="320"></td>
+<td><img src="docs/screenshots/landing.webp" alt="SkateHubba landing page — hero with 'For the Love of the Game' tagline" width="320"></td>
 <td><img src="docs/screenshots/home-screen.webp" alt="Your Games dashboard showing active and completed matches" width="320"></td>
 <td><img src="docs/screenshots/forfeit-screen.webp" alt="Forfeit screen with skull icon and rematch button" width="320"></td>
 </tr>
