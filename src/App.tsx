@@ -222,7 +222,6 @@ function AppRoutes() {
               path="/auth"
               element={
                 <AuthScreen
-                  key={nav.authMode}
                   mode={nav.authMode}
                   onDone={() => {
                     /* auth state change triggers auto-navigate */

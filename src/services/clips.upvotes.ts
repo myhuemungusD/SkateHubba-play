@@ -7,15 +7,7 @@
  * vote docs.
  */
 
-import {
-  doc,
-  documentId,
-  getDocs,
-  query,
-  runTransaction,
-  serverTimestamp,
-  where,
-} from "firebase/firestore";
+import { doc, documentId, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";

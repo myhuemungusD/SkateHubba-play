@@ -155,17 +155,36 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
             The first async S.K.A.T.E. game. No edits. No excuses.
           </p>
 
-          {/* Auth Buttons */}
-          <div className="w-full max-w-sm flex flex-col gap-4">
+          {/* Auth Buttons — Google is the primary path; email options sit
+              below as a quieter secondary row so returning users still have
+              an explicit "Sign in" entry without competing with the brand CTA. */}
+          <div className="w-full max-w-sm flex flex-col gap-3">
             <GoogleButton onClick={handleGoogle} loading={googleLoading} />
-            <button
-              type="button"
-              onClick={handleAuth("signup")}
-              disabled={googleLoading}
-              className="self-center px-4 py-3 font-body text-sm text-dim hover:text-white underline-offset-4 hover:underline transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            <div
+              className="flex items-center justify-center gap-2 text-faint"
+              role="group"
+              aria-label="Email sign-in options"
             >
-              Use email
-            </button>
+              <button
+                type="button"
+                onClick={handleAuth("signin")}
+                disabled={googleLoading}
+                className="font-body text-sm text-dim hover:text-white px-3 py-2 min-h-[44px] rounded-md transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                Sign in
+              </button>
+              <span aria-hidden="true" className="text-xs">
+                ·
+              </span>
+              <button
+                type="button"
+                onClick={handleAuth("signup")}
+                disabled={googleLoading}
+                className="font-body text-sm text-dim hover:text-white px-3 py-2 min-h-[44px] rounded-md transition-colors duration-200 disabled:opacity-40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                Create account
+              </button>
+            </div>
           </div>
         </div>
 

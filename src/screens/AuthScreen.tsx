@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
 import { EMAIL_RE, pwStrength, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
 import { isMinorDob, parseDob } from "../utils/age";
@@ -11,7 +11,7 @@ import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
 import { logger, metrics } from "../services/logger";
 import { analytics } from "../services/analytics";
 import { captureException } from "../lib/sentry";
-import { isBenignAuthCode } from "../utils/authCodes";
+import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
 
 export function AuthScreen({
   mode,
@@ -48,6 +48,8 @@ export function AuthScreen({
   const [parentConsent, setParentConsent] = useState(false);
   const [ageBlocked, setAgeBlocked] = useState(false);
   const [error, setError] = useState("");
+  // Cleared alongside `error`; drives the inline recovery affordances below.
+  const [lastErrorCode, setLastErrorCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
   const [verifyWarning, setVerifyWarning] = useState(false);
@@ -55,6 +57,22 @@ export function AuthScreen({
   const showDob = isSignup && showAgeFields;
   const anyLoading = loading || googleLoading;
   const isMinor = showDob && isMinorDob(month, day, year);
+
+  // Reset one-shot UI state when the parent toggles mode, but preserve typed
+  // email/password/DOB so the user doesn't have to retype. Skip on first mount
+  // so a parent passing initial state isn't silently wiped.
+  const didMount = useRef(false);
+  useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
+    setError("");
+    setLastErrorCode("");
+    setResetSent(false);
+    setVerifyWarning(false);
+    setAgeBlocked(false);
+  }, [mode]);
 
   const updateDob = (field: "month" | "day" | "year", value: string) => {
     if (field === "month") setMonth(value);
@@ -64,6 +82,7 @@ export function AuthScreen({
 
   const submit = async () => {
     setError("");
+    setLastErrorCode("");
     if (!EMAIL_RE.test(email.trim())) {
       setError("Enter a valid email");
       return;
@@ -146,20 +165,16 @@ export function AuthScreen({
           extra: { context: "AuthScreen.submit", mode: isSignup ? "signup" : "signin", code },
         });
       }
-      if (code === "auth/email-already-in-use") setError("Email already in use. Try signing in, or use Google below.");
-      else if (code === "auth/account-exists-with-different-credential")
-        setError("This email is linked to Google. Tap 'Continue with Google' below.");
-      else if (code === "auth/invalid-credential" || code === "auth/wrong-password")
-        setError("Invalid email or password");
-      else if (code === "auth/user-not-found") setError("No account with that email. Need to sign up?");
-      else if (code === "auth/weak-password") setError("Password too weak (6+ chars)");
-      else if (code === "auth/too-many-requests")
-        setError("Too many attempts. Please wait a few minutes and try again.");
-      else if (code === "auth/network-request-failed") setError("Network error — check your connection and try again.");
-      // auth/internal-error = App Check rejection, reCAPTCHA failure, or transient Identity Toolkit 500.
-      else if (code === "auth/internal-error")
-        setError("Sign-in is temporarily unavailable. Please try again in a moment.");
-      else setError(getUserMessage(err, "Something went wrong"));
+      setLastErrorCode(code);
+      // Context-sensitive cases first — these pair with an inline recovery
+      // action below that the generic mapper can't express.
+      if (code === "auth/email-already-in-use") {
+        setError("Looks like you already have an account with this email.");
+      } else if (code === "auth/user-not-found") {
+        setError("No account with that email. Create one?");
+      } else {
+        setError(getAuthErrorMessage(code) ?? getUserMessage(err, "Something went wrong"));
+      }
     } finally {
       setLoading(false);
     }
@@ -171,6 +186,10 @@ export function AuthScreen({
       return;
     }
     logger.info("auth_screen_password_reset", { email: email.trim() });
+    // Clear the prior credential failure so the inline "Forgot password?"
+    // recovery button collapses now that we've acted on it.
+    setError("");
+    setLastErrorCode("");
     try {
       await resetPassword(email);
       setResetSent(true);
@@ -181,6 +200,36 @@ export function AuthScreen({
   };
 
   const displayError = error || googleError;
+
+  // Single source of truth for the inline recovery button rendered under the
+  // ErrorBanner. Prevents two buttons stacking and keeps the action paired
+  // with the exact error code that surfaced.
+  const recovery: { label: string; action: () => void } | null = (() => {
+    if (isSignup && lastErrorCode === "auth/email-already-in-use") {
+      return {
+        label: "Sign in with this email instead →",
+        action: () => {
+          setError("");
+          setLastErrorCode("");
+          onToggle();
+        },
+      };
+    }
+    if (!isSignup && lastErrorCode === "auth/user-not-found") {
+      return {
+        label: "Create an account with this email →",
+        action: () => {
+          setError("");
+          setLastErrorCode("");
+          onToggle();
+        },
+      };
+    }
+    if (!isSignup && (lastErrorCode === "auth/invalid-credential" || lastErrorCode === "auth/wrong-password")) {
+      return { label: "Forgot password? Send reset email →", action: handleReset };
+    }
+    return null;
+  })();
 
   if (ageBlocked) {
     return (
@@ -341,9 +390,20 @@ export function AuthScreen({
             message={displayError}
             onDismiss={() => {
               setError("");
+              setLastErrorCode("");
               onGoogleErrorDismiss();
             }}
           />
+
+          {recovery && (
+            <button
+              type="button"
+              onClick={recovery.action}
+              className="w-full -mt-2 mb-4 px-4 py-2 min-h-[44px] rounded-xl font-body text-sm text-brand-orange bg-brand-orange/[0.08] border border-brand-orange/30 hover:bg-brand-orange/[0.14] transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              {recovery.label}
+            </button>
+          )}
 
           {verifyWarning && (
             <div className="w-full p-3 rounded-xl bg-[rgba(255,168,0,0.08)] border border-yellow-500/40 mb-4">

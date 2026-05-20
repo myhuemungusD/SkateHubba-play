@@ -75,4 +75,51 @@ export const analytics = {
   spotPreviewed: (spotId: string) => trackEvent("spot_previewed", { spotId }),
   /** Fired when ChallengeScreen mounts with a valid ?spot= URL param. */
   challengeFromSpot: (spotId: string) => trackEvent("challenge_from_spot", { spotId }),
+  // ── Profile / stats / achievements rollout ────────────────────────────
+  /**
+   * Fires once per successful `deleteUserData` cascade. Not sampled —
+   * account deletions are rare and we need every one for the GDPR audit
+   * trail. `achievementsRemoved` is the count of subcollection docs the
+   * batch wiped; `avatarRemoved` is true when at least one avatar object
+   * was found and deleted from Storage.
+   */
+  accountDeleted: (uid: string, achievementsRemoved: number, avatarRemoved: boolean) =>
+    trackEvent("account_deleted", { uid, achievementsRemoved, avatarRemoved }),
+  // ── Avatar upload (PR-B, plan §6.3) ────────────────────────────────────
+  /** Fires when the AvatarPicker hands a blob to the upload pipeline. */
+  avatarUploadStarted: (source: "camera" | "gallery" | "url", originalSizeBytes: number, nsfwScore?: number) =>
+    trackEvent("avatar_upload_started", { source, originalSizeBytes, nsfwScore }),
+  /** Fires after `setProfileImageUrl` resolves. */
+  avatarUploadCompleted: (uid: string, finalSizeBytes: number, durationMs: number) =>
+    trackEvent("avatar_upload_completed", { uid, finalSizeBytes, durationMs }),
+  /** Fires on every rejection — NSFW, oversize, transport, rule. */
+  avatarUploadFailed: (errorCode: string, source: "camera" | "gallery" | "url", nsfwScore?: number) =>
+    trackEvent("avatar_upload_failed", { errorCode, source, nsfwScore }),
+  /** Fires after `deleteAvatar` resolves. */
+  avatarDeleted: (uid: string) => trackEvent("avatar_deleted", { uid }),
+  // ── PR-C profile UX telemetry (plan §6.4 + §7.2) ──────────────────────
+  /**
+   * Fires once per `PlayerProfileScreen` mount. `viewerUid` is always the
+   * current authenticated user; `profileUid` is whose profile is being
+   * viewed; `isOwn` is the precomputed `viewerUid === profileUid`. The
+   * `msToFirstPaint` proxy is the elapsed time between mount start and
+   * the first effect firing — see PlayerProfileScreen wiring for the
+   * measurement boundary.
+   */
+  profileViewed: (viewerUid: string, profileUid: string, isOwn: boolean, msToFirstPaint: number) =>
+    trackEvent("profile_viewed", {
+      viewerUid,
+      profileUid,
+      isOwn,
+      msToFirstPaint,
+    }),
+  /**
+   * Fires when a stat tile is tapped. `statName` is the StatTileName from
+   * `ProfileStatsGrid` (e.g. "wins", "losses", "games", "winRate").
+   * Engagement signal is captured even before the per-tile delta popover
+   * (audit C7) ships — the popover is deferred but the event is wired
+   * now so the dashboard accumulates baseline data.
+   */
+  profileStatTileTapped: (statName: string, profileUid: string) =>
+    trackEvent("profile_stat_tile_tapped", { statName, profileUid }),
 } as const;

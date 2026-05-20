@@ -362,10 +362,10 @@ describe("auth service", () => {
       expect(user).toBeNull();
     });
 
-    it("returns null on error (e.g. cross-origin iframe restriction)", async () => {
-      mockGetRedirectResult.mockRejectedValueOnce(new Error("cross-origin"));
-      const user = await resolveGoogleRedirect();
-      expect(user).toBeNull();
+    it("rethrows on error so the caller can apply its Sentry/UI policy", async () => {
+      const err = new Error("cross-origin");
+      mockGetRedirectResult.mockRejectedValueOnce(err);
+      await expect(resolveGoogleRedirect()).rejects.toBe(err);
     });
 
     it("skips getRedirectResult in emulator mode", async () => {
