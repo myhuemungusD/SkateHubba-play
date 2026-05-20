@@ -147,7 +147,7 @@ See [docs/TESTING.md](docs/TESTING.md) for patterns and examples.
 
 To keep this repo focused:
 
-- No backend / API servers — this is a serverless Firebase app by design
+- No backend / API servers — this is a Firebase-first app with no application-authored Cloud Functions. The `firestore-send-fcm` Firebase Extension is the one managed exception (Cloud Run dispatcher we configure but do not author); its files live under `extensions/`, outside the `functions/src/` CI gate.
 - No new database engines (PostgreSQL, Redis, etc.)
 - No state management libraries (Redux, Zustand, etc.) — local state + hooks are sufficient
 - No UI component libraries — we use Tailwind with custom components

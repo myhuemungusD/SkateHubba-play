@@ -35,7 +35,7 @@ Understanding how the app is built helps clarify what the attack surface looks l
 
 ### No Custom Backend
 
-There is no Express server, no REST API, no serverless functions. The client (React SPA) talks directly to Firebase services. This eliminates a large class of server-side vulnerabilities (injection, RCE, SSRF, etc.) at the architecture level.
+There is no Express server, no REST API, and no application-authored Cloud Functions. The client (React SPA) talks directly to Firebase services. This eliminates a large class of server-side vulnerabilities (injection, RCE, SSRF, etc.) at the architecture level. The one managed exception is the `firestore-send-fcm` Firebase Extension, which provisions a Cloud Run push dispatcher we configure but do not author; the `verify-no-cloud-functions` CI gate scopes to `functions/src/`, which extensions do not touch.
 
 ### Firestore Security Rules as the Authorization Layer
 

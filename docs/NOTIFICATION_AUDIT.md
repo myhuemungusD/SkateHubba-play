@@ -1,7 +1,7 @@
 # Notification System Audit
 
 **Date:** 2026-04-16
-**Scope:** All notification paths — Firestore rules, Cloud Functions, client services, UI components, push (FCM), test coverage
+**Scope:** All notification paths — Firestore rules, the `firestore-send-fcm` extension dispatcher, client services, UI components, push (FCM), test coverage
 
 ---
 
@@ -10,10 +10,10 @@
 The notification system has three delivery channels:
 
 1. **Firestore real-time** — Client writes to `/notifications`, recipient's `onSnapshot` listener surfaces in-app toasts
-2. **FCM push** — Historically served by Cloud Functions (`onGameUpdated`, `onGameCreated`, `onNudgeCreated`); those were removed with the `functions/` package. FCM tokens are still collected client-side (`src/services/fcm.ts`), but no sender exists in this repo — background push is effectively disabled until an external sender is wired up.
+2. **FCM push** — Historically served by application-authored Cloud Functions (`onGameUpdated`, `onGameCreated`, `onNudgeCreated`); those were removed with the `functions/` package. Background push is now dispatched by the `firestore-send-fcm` Firebase Extension (managed Cloud Run worker, not authored Cloud Functions). Clients collect FCM tokens via `src/services/fcm.ts` and write dispatch jobs to `/push_dispatch` via `src/services/pushDispatch.ts`; the extension consumes that collection and sends FCM/APNS. See `extensions/firestore-send-fcm.env` for configuration and `firestore.rules` for the create contract.
 3. **Client-side game watchers** — `GameNotificationWatcher` detects game state changes from the existing games `onSnapshot` and fires local toasts
 
-Deduplication logic in `GameNotificationWatcher` suppresses FCM foreground messages for types already covered by Firestore watchers (retained for when push is re-enabled).
+Deduplication logic in `GameNotificationWatcher` suppresses FCM foreground messages for types already covered by Firestore watchers.
 
 ---
 
@@ -134,13 +134,13 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 **Files:**
 
 - `src/services/fcm.ts:75` (tokens added via `arrayUnion`)
-- (historical) Cloud Function `onNudgeCreated` previously cleaned tokens reactively on send failure — removed along with the rest of the `functions/` package; no replacement cleaner currently runs.
+- (historical) Cloud Function `onNudgeCreated` previously cleaned tokens reactively on send failure — removed along with the rest of the `functions/` package; the `firestore-send-fcm` extension is the current sender but no token-pruning cleaner runs against its delivery results.
 
-**Problem:** FCM tokens accumulate indefinitely. With the Cloud Functions removed, no server-side cleanup runs on send failure either — push is effectively disabled until a replacement backend exists.
+**Problem:** FCM tokens accumulate indefinitely. Background push is now dispatched by the `firestore-send-fcm` extension via `/push_dispatch`, but no companion cleaner prunes tokens that the extension reports as invalid.
 
-**Impact:** A power user accumulates stale tokens → `sendEachForMulticast` makes unnecessary FCM API calls → increased latency and cost on every notification send.
+**Impact:** A power user accumulates stale tokens → the extension issues unnecessary FCM API calls → increased latency and cost on every notification send.
 
-**Recommended fix:** Add a periodic Cloud Function (e.g., weekly) that validates stored tokens via the FCM API and removes invalid ones, or cap the array at a reasonable size (e.g., 5 tokens per user).
+**Recommended fix:** Cap the stored token array at a reasonable size (e.g., 5 tokens per user) and/or add a scheduled cleaner that prunes tokens the extension reports as `messaging/registration-token-not-registered`.
 
 ---
 
@@ -176,7 +176,7 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 ### ROBUST-3 (Low): `judge_invite` notification has no watcher-side handling
 
-**Status:** Resolved (chime mapping). `fcmChimeMap` now includes `judge_invite: "general"` (`src/components/GameNotificationWatcher.tsx:19`), and `judge_invite` is in `FIRESTORE_HANDLED_TYPES` to avoid double-toasting if FCM is ever re-enabled. The dedicated FCM push path is moot until an external sender exists.
+**Status:** Resolved (chime mapping). `fcmChimeMap` now includes `judge_invite: "general"` (`src/components/GameNotificationWatcher.tsx:19`), and `judge_invite` is in `FIRESTORE_HANDLED_TYPES` to avoid double-toasting when the `firestore-send-fcm` extension delivers the background push.
 
 **Files:**
 
@@ -185,12 +185,12 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 **Problem:** When a game is created with a judge, `writeNotification` sends a `judge_invite` type notification. The `subscribeToNotifications` listener in `GameNotificationWatcher` does receive this (it listens to all unread notifications), but there's no specific detection logic or chime mapping for `judge_invite` in the watcher.
 
-**Impact:** The notification arrives and displays correctly via the generic `subscribeToNotifications` path with a "general" chime. This is functional but inconsistent — all other notification types have dedicated chime mappings in `fcmChimeMap`. (Historically, the removed Cloud Functions also didn't send an FCM push for judge invites — only `onGameCreated` pushed to player2, not the judge. With FCM senders gone entirely, this is moot until push is re-enabled.)
+**Impact:** The notification arrives and displays correctly via the generic `subscribeToNotifications` path with a "general" chime. This is functional but inconsistent — all other notification types have dedicated chime mappings in `fcmChimeMap`. (Historically, the removed Cloud Functions also didn't send an FCM push for judge invites — only `onGameCreated` pushed to player2, not the judge. A `/push_dispatch` write for judge invites would extend background coverage to that role.)
 
 **Recommended fix:**
 
 - Add `judge_invite: "general"` (or a dedicated chime) to `fcmChimeMap`
-- Consider adding an FCM push path for judge invites in the Cloud Function so judges get notified even when the app is closed
+- Consider adding a `/push_dispatch` write for judge invites so judges receive background push via the extension even when the app is closed
 
 ---
 
@@ -217,7 +217,7 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 1. ~~**No Firestore rules tests for `/notifications`**~~ — covered by `rules-tests/notifications-redteam.rules.test.ts` and `notification-limits.rules.test.ts` (added after this audit).
 2. **No Firestore rules tests for `/nudges` or `/nudge_limits`** — game-participant validation, active-game check, and cooldown enforcement are still untested at the rules level.
-3. **No Cloud Functions at all** — the `functions/` package was removed from this repo. Push notifications (FCM), scheduled forfeit enforcement, and billing alerts previously implemented there are no longer deployed. Client-side `forfeitExpiredTurn` and `updatePlayerStats` continue to run on game completion.
+3. **No application-authored Cloud Functions** — the `functions/` package was removed from this repo. Background push (FCM) is now delivered by the `firestore-send-fcm` Firebase Extension's managed Cloud Run worker consuming `/push_dispatch`. Scheduled forfeit enforcement and billing alerts previously implemented in `functions/` are no longer deployed; client-side `forfeitExpiredTurn` and `updatePlayerStats` continue to run on game completion (auto-forfeit gap tracked in `docs/CHARTER.md` §9.2).
 
 ---
 
@@ -245,9 +245,9 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 | SEC-1    | **Medium** | Rate-limit collection reads open to all authenticated users                | Security    | Resolved (reads scoped to `senderUid`)                        |
 | SEC-2    | **Low**    | Nudge localStorage key not scoped to user                                  | Security    | Resolved                                                      |
 | PERF-1   | **Medium** | No TTL or GC for notification documents + missing composite index          | Performance | Partially resolved (index added; no scheduled GC)             |
-| PERF-2   | **Low**    | FCM token array grows without proactive cleanup                            | Performance | Open (no Cloud Functions to run cleanup)                      |
+| PERF-2   | **Low**    | FCM token array grows without proactive cleanup                            | Performance | Open (extension delivers push; no token-pruning cleaner runs) |
 | ROBUST-1 | **Medium** | Notifications marked read before user sees them                            | Robustness  | Resolved (read-marking is user-driven)                        |
 | ROBUST-2 | **Low**    | Service worker Firebase SDK version manually synced                        | Robustness  | Open                                                          |
-| ROBUST-3 | **Low**    | `judge_invite` has no dedicated chime or FCM push path                     | Robustness  | Resolved (chime mapping); FCM push moot until sender re-added |
+| ROBUST-3 | **Low**    | `judge_invite` has no dedicated chime or FCM push path                     | Robustness  | Resolved (chime mapping); judge-role `/push_dispatch` write still TODO |
 | TEST-1   | **Medium** | No Firestore rules tests for `/notifications`, `/nudges`, `/nudge_limits`  | Coverage    | Partially resolved (`/notifications` covered)                 |
-| TEST-2   | **Medium** | No Cloud Function unit tests                                               | Coverage    | N/A (no `functions/` package in repo)                         |
+| TEST-2   | **Medium** | No Cloud Function unit tests                                               | Coverage    | N/A (no `functions/` package; extension is managed)           |
