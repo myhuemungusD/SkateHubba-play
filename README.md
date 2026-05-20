@@ -7,7 +7,7 @@
   <img src="docs/screenshots/logo-black.png" alt="SkateHubba" width="200">
 </picture>
 
-### Own the spot. Play S.K.A.T.E. anywhere.
+### Play S.K.A.T.E. For the love of the game.
 
 An async multiplayer trick battle game for skateboarders.
 Challenge friends, set tricks on video, and see if they can match you — one letter at a time.
