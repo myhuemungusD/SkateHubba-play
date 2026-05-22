@@ -66,6 +66,60 @@ export function _resetSwRegistration(): void {
 }
 
 /**
+ * Mint a fresh web FCM token and persist it to both the canonical private
+ * profile doc and the cross-readable pushTargets mirror.
+ *
+ * The caller owns the permission gate — this helper assumes the Notification
+ * API is available and permission has already been resolved. It throws on
+ * Firebase failures, so every caller must wrap it in try/catch.
+ *
+ * Returns the token, or null when no VAPID key is configured or FCM declines
+ * to mint one.
+ */
+async function acquireAndStoreWebPushToken(uid: string): Promise<string | null> {
+  const messaging = getMessagingInstance();
+  const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+  if (!vapidKey) {
+    logger.warn("vapid_key_missing", { hint: "set VITE_FIREBASE_VAPID_KEY to enable push notifications" });
+    return null;
+  }
+
+  const serviceWorkerRegistration = await getSwRegistration();
+  const token = await getToken(messaging, { vapidKey: String(vapidKey), serviceWorkerRegistration });
+  if (!token) return null;
+
+  // Store token on the user's PRIVATE profile doc (canonical) AND mirror
+  // to /pushTargets/{uid} (cross-readable). The private doc preserves
+  // the existing owner-only semantics for ALL sensitive profile fields
+  // (email, dob, parentalConsent…). The mirror exists because
+  // /push_dispatch creates require the sender to embed the recipient's
+  // tokens in the dispatch doc — and the sender can't read the
+  // recipient's private doc.
+  //
+  // The two writes are intentionally separate setDoc calls, not a
+  // single writeBatch: each path has its own rules surface, and a
+  // partial commit (private write succeeds, mirror fails) self-heals on
+  // the next registration while still keeping the canonical list
+  // consistent. A batch with mixed-permission docs would fail-all on
+  // rules rejection — worse than the current best-effort write.
+  const db = requireDb();
+  await setDoc(
+    doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+    { fcmTokens: arrayUnion(token) },
+    { merge: true },
+  );
+  await setDoc(
+    doc(db, PUSH_TARGETS_COLLECTION, uid),
+    { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+
+  // Cache so sign-out can scrub exactly this device's token.
+  activeFcmToken = token;
+  return token;
+}
+
+/**
  * Request push notification permission and store the FCM token in Firestore.
  * Returns the token if successful, or null if denied/unsupported.
  */
@@ -76,46 +130,7 @@ export async function requestPushPermission(uid: string): Promise<string | null>
   if (permission !== "granted") return null;
 
   try {
-    const messaging = getMessagingInstance();
-    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
-    if (!vapidKey) {
-      logger.warn("vapid_key_missing", { hint: "set VITE_FIREBASE_VAPID_KEY to enable push notifications" });
-      return null;
-    }
-
-    const serviceWorkerRegistration = await getSwRegistration();
-    const token = await getToken(messaging, { vapidKey: String(vapidKey), serviceWorkerRegistration });
-    if (!token) return null;
-
-    // Store token on the user's PRIVATE profile doc (canonical) AND mirror
-    // to /pushTargets/{uid} (cross-readable). The private doc preserves
-    // the existing owner-only semantics for ALL sensitive profile fields
-    // (email, dob, parentalConsent…). The mirror exists because
-    // /push_dispatch creates require the sender to embed the recipient's
-    // tokens in the dispatch doc — and the sender can't read the
-    // recipient's private doc.
-    //
-    // The two writes are intentionally separate setDoc calls, not a
-    // single writeBatch: each path has its own rules surface, and a
-    // partial commit (private write succeeds, mirror fails) self-heals on
-    // the next requestPushPermission while still keeping the canonical
-    // list consistent. A batch with mixed-permission docs would fail-all
-    // on rules rejection — worse than the current best-effort write.
-    const db = requireDb();
-    await setDoc(
-      doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
-      { fcmTokens: arrayUnion(token) },
-      { merge: true },
-    );
-    await setDoc(
-      doc(db, PUSH_TARGETS_COLLECTION, uid),
-      { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
-      { merge: true },
-    );
-
-    // Cache so sign-out can scrub exactly this device's token.
-    activeFcmToken = token;
-    return token;
+    return await acquireAndStoreWebPushToken(uid);
   } catch (err) {
     logger.warn("fcm_token_failed", { error: parseFirebaseError(err) });
     return null;
@@ -135,31 +150,7 @@ export async function refreshWebPushTokenIfGranted(uid: string): Promise<string 
   if (Notification.permission !== "granted") return null;
 
   try {
-    const messaging = getMessagingInstance();
-    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
-    if (!vapidKey) {
-      logger.warn("vapid_key_missing", { hint: "set VITE_FIREBASE_VAPID_KEY to enable push notifications" });
-      return null;
-    }
-
-    const serviceWorkerRegistration = await getSwRegistration();
-    const token = await getToken(messaging, { vapidKey: String(vapidKey), serviceWorkerRegistration });
-    if (!token) return null;
-
-    const db = requireDb();
-    await setDoc(
-      doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
-      { fcmTokens: arrayUnion(token) },
-      { merge: true },
-    );
-    await setDoc(
-      doc(db, PUSH_TARGETS_COLLECTION, uid),
-      { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
-      { merge: true },
-    );
-
-    activeFcmToken = token;
-    return token;
+    return await acquireAndStoreWebPushToken(uid);
   } catch (err) {
     logger.warn("fcm_token_refresh_failed", { uid, error: parseFirebaseError(err) });
     return null;
