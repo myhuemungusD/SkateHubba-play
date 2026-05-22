@@ -30,6 +30,7 @@ vi.mock("../../firebase");
 
 import {
   requestPushPermission,
+  refreshWebPushTokenIfGranted,
   removeFcmToken,
   removeCurrentFcmToken,
   onForegroundMessage,
@@ -143,6 +144,85 @@ describe("requestPushPermission", () => {
 
     const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
     const result = await requestPushPermission("u1");
+    expect(result).toBeNull();
+    spy.mockRestore();
+  });
+});
+
+describe("refreshWebPushTokenIfGranted", () => {
+  it("returns null when Notification API is missing", async () => {
+    delete (globalThis as Record<string, unknown>).Notification;
+    const result = await refreshWebPushTokenIfGranted("u1");
+    expect(result).toBeNull();
+    expect(mockGetToken).not.toHaveBeenCalled();
+  });
+
+  it("returns null when permission is not granted", async () => {
+    globalThis.Notification = {
+      requestPermission: mockRequestPermission,
+      permission: "default",
+    } as unknown as typeof Notification;
+    const result = await refreshWebPushTokenIfGranted("u1");
+    expect(result).toBeNull();
+    expect(mockRequestPermission).not.toHaveBeenCalled();
+    expect(mockGetToken).not.toHaveBeenCalled();
+  });
+
+  it("refreshes token without prompting permission and writes both token surfaces", async () => {
+    globalThis.Notification = {
+      requestPermission: mockRequestPermission,
+      permission: "granted",
+    } as unknown as typeof Notification;
+    mockGetToken.mockResolvedValue("fcm-token-refresh-123");
+
+    const result = await refreshWebPushTokenIfGranted("u1");
+
+    expect(result).toBe("fcm-token-refresh-123");
+    expect(mockRequestPermission).not.toHaveBeenCalled();
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      1,
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayUnion", value: "fcm-token-refresh-123" } },
+      { merge: true },
+    );
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      2,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayUnion", value: "fcm-token-refresh-123" }, updatedAt: "SERVER_TS" },
+      { merge: true },
+    );
+  });
+
+  it("returns null when VAPID key is not set", async () => {
+    vi.stubEnv("VITE_FIREBASE_VAPID_KEY", "");
+    globalThis.Notification = {
+      requestPermission: mockRequestPermission,
+      permission: "granted",
+    } as unknown as typeof Notification;
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await refreshWebPushTokenIfGranted("u1");
+    expect(result).toBeNull();
+    spy.mockRestore();
+  });
+
+  it("returns null when getToken returns empty", async () => {
+    globalThis.Notification = {
+      requestPermission: mockRequestPermission,
+      permission: "granted",
+    } as unknown as typeof Notification;
+    mockGetToken.mockResolvedValue("");
+    const result = await refreshWebPushTokenIfGranted("u1");
+    expect(result).toBeNull();
+  });
+
+  it("returns null on error", async () => {
+    globalThis.Notification = {
+      requestPermission: mockRequestPermission,
+      permission: "granted",
+    } as unknown as typeof Notification;
+    mockGetToken.mockRejectedValue(new Error("network error"));
+    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const result = await refreshWebPushTokenIfGranted("u1");
     expect(result).toBeNull();
     spy.mockRestore();
   });

@@ -123,6 +123,50 @@ export async function requestPushPermission(uid: string): Promise<string | null>
 }
 
 /**
+ * Refresh/register the web FCM token only when browser notification
+ * permission is already granted.
+ *
+ * Unlike requestPushPermission(), this function never calls
+ * Notification.requestPermission(), so it's safe to run from auth lifecycle
+ * hooks without triggering permission UX.
+ */
+export async function refreshWebPushTokenIfGranted(uid: string): Promise<string | null> {
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return null;
+  if (Notification.permission !== "granted") return null;
+
+  try {
+    const messaging = getMessagingInstance();
+    const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
+    if (!vapidKey) {
+      logger.warn("vapid_key_missing", { hint: "set VITE_FIREBASE_VAPID_KEY to enable push notifications" });
+      return null;
+    }
+
+    const serviceWorkerRegistration = await getSwRegistration();
+    const token = await getToken(messaging, { vapidKey: String(vapidKey), serviceWorkerRegistration });
+    if (!token) return null;
+
+    const db = requireDb();
+    await setDoc(
+      doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+      { fcmTokens: arrayUnion(token) },
+      { merge: true },
+    );
+    await setDoc(
+      doc(db, PUSH_TARGETS_COLLECTION, uid),
+      { tokens: arrayUnion(token), updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+
+    activeFcmToken = token;
+    return token;
+  } catch (err) {
+    logger.warn("fcm_token_refresh_failed", { uid, error: parseFirebaseError(err) });
+    return null;
+  }
+}
+
+/**
  * Remove a specific FCM token from the user's private profile doc
  * (call on sign-out). Best-effort — swallow errors so sign-out is
  * never blocked by a transient Firestore failure.
