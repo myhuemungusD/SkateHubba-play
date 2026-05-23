@@ -219,7 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
     if (isPushSupported()) return; // native handled by registerPushToken
-    if (typeof window === "undefined" || typeof Notification === "undefined") return;
+    if (typeof Notification === "undefined") return;
     if (Notification.permission !== "granted") return;
     const uid = user.uid;
     void refreshWebPushTokenIfGranted(uid).catch((err: unknown) => {
