@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
-import { removeCurrentFcmToken } from "../services/fcm";
+import { removeCurrentFcmToken, refreshWebPushTokenIfGranted } from "../services/fcm";
 import { isPushSupported, registerPushToken, unregisterPushToken } from "../services/pushNotifications";
 import type { UserProfile } from "../services/users";
 import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
@@ -206,6 +206,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const uid = user.uid;
     void registerPushToken(uid).catch((err: unknown) => {
       logger.warn("push_register_unhandled", { uid, message: parseFirebaseError(err) });
+    });
+  }, [user]);
+
+  // Web push token refresh-on-login. Native registration is handled by the
+  // Capacitor plugin branch above; this effect is web-only and runs when the
+  // browser permission is already granted. Without this, users who granted
+  // notifications in a prior session but later lost/rotated their FCM token
+  // (new browser profile, cleared SW state, token invalidated server-side)
+  // never re-register unless they manually revisit the push settings flow.
+  // Best-effort only: failure to refresh the token must not block auth.
+  useEffect(() => {
+    if (!user) return;
+    if (isPushSupported()) return; // native handled by registerPushToken
+    if (globalThis.Notification?.permission !== "granted") return;
+    const uid = user.uid;
+    void refreshWebPushTokenIfGranted(uid).catch((err: unknown) => {
+      logger.warn("web_push_register_unhandled", { uid, message: parseFirebaseError(err) });
     });
   }, [user]);
 
