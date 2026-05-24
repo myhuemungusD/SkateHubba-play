@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
+import type * as mapboxgl from "mapbox-gl";
 import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS, reportMapStyleConfig } from "../../lib/mapbox";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
-import { LANDING_SPOTS } from "./landingSpots";
+import { LANDING_SPOTS, type LandingSpot } from "./landingSpots";
 
 /**
  * Public, read-only "spot map teaser" for the marketing landing page.
@@ -132,9 +133,31 @@ function CtaModal({ onClose, onSignUpPrompt }: CtaModalProps) {
   );
 }
 
+// Pin marker DOM is created imperatively (mapbox-gl manages the lifecycle of
+// `Marker` elements outside React's reconciler). Kept in module scope so the
+// effect closure stays readable and the markup matches `LockedPinSvg`.
+const PIN_CLASSNAME =
+  "relative flex h-5 w-5 items-center justify-center rounded-full bg-[#FF6B00] ring-2 ring-[#FF6B00]/40 shadow-[0_0_8px_rgba(255,107,0,0.5)] cursor-pointer focus:outline-2 focus:outline-offset-2 focus:outline-white";
+const PIN_INNER_SVG =
+  '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="white" stroke-width="2.5" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+
+function createPinElement(spot: LandingSpot, onClick: () => void): HTMLButtonElement {
+  const el = document.createElement("button");
+  el.type = "button";
+  el.setAttribute("aria-label", `${spot.name} (locked — sign up to view)`);
+  el.dataset.testid = `landing-pin-${spot.id}`;
+  el.className = PIN_CLASSNAME;
+  el.innerHTML = PIN_INNER_SVG;
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onClick();
+  });
+  return el;
+}
+
 export function LandingMap({ onSignUpPrompt }: LandingMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<unknown>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
   const [ctaOpen, setCtaOpen] = useState(false);
 
   const openCta = useCallback(() => setCtaOpen(true), []);
@@ -145,7 +168,12 @@ export function LandingMap({ onSignUpPrompt }: LandingMapProps) {
   }, []);
 
   useEffect(() => {
-    if (!MAPBOX_TOKEN) return;
+    // Narrow once so the closure below doesn't need a non-null assertion when
+    // assigning `mapboxgl.accessToken`. The capture is intentional — even if
+    // the env var changed mid-session (it can't), this effect's cleanup +
+    // re-run would still see the new value via the module re-export.
+    const token = MAPBOX_TOKEN;
+    if (!token) return;
     if (!containerRef.current) return;
     if (mapRef.current) return;
 
@@ -159,7 +187,7 @@ export function LandingMap({ onSignUpPrompt }: LandingMapProps) {
       const [{ default: mapboxgl }] = await Promise.all([import("mapbox-gl"), import("mapbox-gl/dist/mapbox-gl.css")]);
       if (cancelled || !containerRef.current) return;
 
-      mapboxgl.accessToken = MAPBOX_TOKEN as string;
+      mapboxgl.accessToken = token;
 
       const map = new mapboxgl.Map({
         container: containerRef.current,
@@ -181,23 +209,12 @@ export function LandingMap({ onSignUpPrompt }: LandingMapProps) {
 
       mapRef.current = map;
 
-      const markers: Array<{ remove: () => void }> = [];
+      const markers: mapboxgl.Marker[] = [];
 
       map.on("load", () => {
         if (cancelled) return;
         for (const spot of LANDING_SPOTS) {
-          const el = document.createElement("button");
-          el.type = "button";
-          el.setAttribute("aria-label", `${spot.name} (locked — sign up to view)`);
-          el.dataset.testid = `landing-pin-${spot.id}`;
-          el.className =
-            "relative flex h-5 w-5 items-center justify-center rounded-full bg-[#FF6B00] ring-2 ring-[#FF6B00]/40 shadow-[0_0_8px_rgba(255,107,0,0.5)] cursor-pointer focus:outline-2 focus:outline-offset-2 focus:outline-white";
-          el.innerHTML =
-            '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="white" stroke-width="2.5" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
-          el.addEventListener("click", (e) => {
-            e.stopPropagation();
-            openCta();
-          });
+          const el = createPinElement(spot, openCta);
           const marker = new mapboxgl.Marker({ element: el }).setLngLat([spot.longitude, spot.latitude]).addTo(map);
           markers.push(marker);
         }

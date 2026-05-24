@@ -226,6 +226,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
         <Suspense
           fallback={
             <div
+              role="status"
               aria-label="Loading map"
               className="w-full h-[320px] md:h-[480px] rounded-2xl border border-white/10 bg-surface-alt animate-pulse"
             />

@@ -4,27 +4,17 @@ import userEvent from "@testing-library/user-event";
 
 // Mock the mapbox lib config: leave MAP_STYLE/MAP_DEFAULTS real but allow
 // per-test overrides of MAPBOX_TOKEN so the missing-token fallback branch is
-// reachable without rebuilding Vite.
-const { setMapboxToken } = vi.hoisted(() => {
-  const state = { token: "pk.test-token" as string | undefined };
-  return {
-    setMapboxToken: (next: string | undefined) => {
-      state.token = next;
-    },
-    __state: state,
-    getMapboxToken: () => state.token,
-  };
-});
-
+// reachable without rebuilding Vite. The current value lives on `globalThis`
+// so the hoisted `vi.mock` getter (which runs before any test code) can read
+// it without a circular module-init dance.
 vi.mock("../../../lib/mapbox", async () => {
   const actual = await vi.importActual<typeof import("../../../lib/mapbox")>("../../../lib/mapbox");
   return {
     ...actual,
     get MAPBOX_TOKEN(): string | undefined {
-      // Re-reads the hoisted state on every access so per-test overrides win.
-      // The key is always present after setToken() runs, so we can return its
-      // value directly (including undefined) instead of `??` which would mask
-      // the "missing token" branch under test.
+      // Re-reads on every access so per-test overrides win. We check for the
+      // KEY rather than truthiness so `setToken(undefined)` exercises the
+      // missing-token branch instead of silently falling back to the default.
       const g = globalThis as { __landingMapToken?: string };
       return "__landingMapToken" in g ? g.__landingMapToken : "pk.test-token";
     },
@@ -83,7 +73,6 @@ import { LandingMap } from "../LandingMap";
 
 function setToken(token: string | undefined) {
   (globalThis as { __landingMapToken?: string }).__landingMapToken = token;
-  setMapboxToken(token);
 }
 
 // Shared setup for tests that need to open the locked-pin CTA modal:
