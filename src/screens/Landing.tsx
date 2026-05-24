@@ -1,9 +1,12 @@
-import { useCallback } from "react";
+import { useCallback, lazy, Suspense } from "react";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
 import { SkateButton } from "../components/SkateButton";
 import { playOlliePop } from "../utils/ollieSound";
 import { VideoIcon, ClockIcon, FlameIcon, ShieldIcon, TrophyIcon, UsersIcon } from "../components/icons";
+
+// Lazy: keeps mapbox-gl + LandingMap out of the initial landing bundle.
+const LandingMap = lazy(() => import("../components/map/LandingMap"));
 
 /* ── Types ───────────────────────────────────────────────── */
 
@@ -206,6 +209,37 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
             <polyline points="6 9 12 15 18 9" />
           </svg>
         </a>
+      </section>
+
+      {/* ─── Spot Map Teaser ────────────────────────────── */}
+      <section
+        id="spots"
+        aria-labelledby="spots-heading"
+        className="max-w-5xl mx-auto px-6 py-12 md:py-16 scroll-mt-20"
+      >
+        <div className="text-center mb-6 md:mb-8">
+          <h2 id="spots-heading" className="font-display text-fluid-2xl text-white tracking-wider mb-2">
+            Spots in your city
+          </h2>
+          <p className="font-body text-sm text-dim">Sign up to log a spot, claim a session, or scope the gnar.</p>
+        </div>
+        <Suspense
+          fallback={
+            <div
+              aria-label="Loading map"
+              className="w-full h-[320px] md:h-[480px] rounded-2xl border border-white/10 bg-surface-alt animate-pulse"
+            />
+          }
+        >
+          <LandingMap onSignUpPrompt={handleAuth("signup")} />
+        </Suspense>
+        <div className="mt-6 flex justify-center">
+          <div className="w-full max-w-sm">
+            <SkateButton onClick={handleAuth("signup")} disabled={googleLoading}>
+              Unlock the Map
+            </SkateButton>
+          </div>
+        </div>
       </section>
 
       {/* ─── Demo Video ──────────────────────────────────── */}
