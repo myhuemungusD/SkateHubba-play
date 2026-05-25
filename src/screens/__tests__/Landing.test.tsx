@@ -8,6 +8,16 @@ vi.mock("../../utils/ollieSound", () => ({
   playOlliePop: vi.fn(),
 }));
 
+// Stub the lazy LandingMap so these tests don't pull mapbox-gl through the
+// dynamic import. The marker test surface lives in LandingMap.test.tsx.
+vi.mock("../../components/map/LandingMap", () => ({
+  default: ({ onSignUpPrompt }: { onSignUpPrompt: () => void }) => (
+    <button type="button" data-testid="landing-map-stub" onClick={onSignUpPrompt}>
+      landing-map-stub
+    </button>
+  ),
+}));
+
 describe("Landing", () => {
   const defaultProps = {
     onGo: vi.fn(),
