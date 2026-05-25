@@ -179,6 +179,19 @@ describe("analytics service", () => {
       });
     });
 
+    it("landingMapViewed sends landing_map_viewed event", () => {
+      analytics.landingMapViewed();
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "landing_map_viewed" });
+    });
+
+    it("landingPinClicked sends landing_pin_clicked event with the spot id", () => {
+      analytics.landingPinClicked("venice-skate-park");
+      expect(vaSpy).toHaveBeenCalledWith("event", {
+        name: "landing_pin_clicked",
+        spotId: "venice-skate-park",
+      });
+    });
+
     it("accountDeleted sends account_deleted event with achievement + avatar tally", () => {
       analytics.accountDeleted("u1", 3, true);
       expect(vaSpy).toHaveBeenCalledWith("event", {

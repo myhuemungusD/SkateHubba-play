@@ -1,4 +1,4 @@
-import { useCallback, lazy, Suspense } from "react";
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
 import { SkateButton } from "../components/SkateButton";
@@ -88,6 +88,32 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
     },
     [onGo],
   );
+
+  // Gate the LandingMap mount on scroll-into-view so mapbox-gl (~500 KB) only
+  // loads when the user is actually about to see it. Initial-true when the
+  // platform lacks IntersectionObserver (jsdom tests, ancient browsers) so
+  // those paths still render the map.
+  const mapSentinelRef = useRef<HTMLDivElement>(null);
+  const [shouldLoadMap, setShouldLoadMap] = useState<boolean>(() => typeof IntersectionObserver === "undefined");
+
+  useEffect(() => {
+    if (shouldLoadMap) return;
+    const node = mapSentinelRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setShouldLoadMap(true);
+          observer.disconnect();
+        }
+      },
+      // Pre-fetch the chunk before the section enters the viewport so the
+      // map feels instant on slower connections.
+      { rootMargin: "200px" },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [shouldLoadMap]);
 
   const handleGoogle = useCallback(() => {
     playOlliePop();
@@ -219,20 +245,29 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
       >
         <div className="text-center mb-6 md:mb-8">
           <h2 id="spots-heading" className="font-display text-fluid-2xl text-white tracking-wider mb-2">
-            Spots in your city
+            30+ spots, live in LA — your city next
           </h2>
           <p className="font-body text-sm text-dim">Sign up to log a spot, claim a session, or scope the gnar.</p>
         </div>
-        <Suspense
-          fallback={
-            <div
-              aria-label="Loading map"
-              className="w-full h-[320px] md:h-[480px] rounded-2xl border border-white/10 bg-surface-alt animate-pulse"
-            />
-          }
-        >
-          <LandingMap onSignUpPrompt={handleAuth("signup")} />
-        </Suspense>
+        {shouldLoadMap ? (
+          <Suspense
+            fallback={
+              <div
+                aria-label="Loading map"
+                className="w-full h-[320px] md:h-[480px] rounded-2xl border border-white/10 bg-surface-alt animate-pulse"
+              />
+            }
+          >
+            <LandingMap onSignUpPrompt={handleAuth("signup")} />
+          </Suspense>
+        ) : (
+          <div
+            ref={mapSentinelRef}
+            data-testid="landing-map-sentinel"
+            aria-label="Map loads when in view"
+            className="w-full h-[320px] md:h-[480px] rounded-2xl border border-white/10 bg-surface-alt"
+          />
+        )}
         <div className="mt-6 flex justify-center">
           <div className="w-full max-w-sm">
             <SkateButton onClick={handleAuth("signup")} disabled={googleLoading}>

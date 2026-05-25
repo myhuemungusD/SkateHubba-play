@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS, reportMapStyleConfig } from "../../lib/mapbox";
 import { useFocusTrap } from "../../hooks/useFocusTrap";
+import { analytics } from "../../services/analytics";
 import { LANDING_SPOTS } from "./landingSpots";
 
 /**
@@ -137,11 +138,19 @@ export function LandingMap({ onSignUpPrompt }: LandingMapProps) {
   const mapRef = useRef<unknown>(null);
   const [ctaOpen, setCtaOpen] = useState(false);
 
-  const openCta = useCallback(() => setCtaOpen(true), []);
+  const openCta = useCallback((spotId: string) => {
+    analytics.landingPinClicked(spotId);
+    setCtaOpen(true);
+  }, []);
   const closeCta = useCallback(() => setCtaOpen(false), []);
 
   useEffect(() => {
     reportMapStyleConfig();
+    // Marketing top-of-funnel: fires once per mount. The IntersectionObserver
+    // gate in Landing.tsx ensures this only fires when the section is
+    // actually visible — no phantom "views" from users who bounce above the
+    // fold.
+    analytics.landingMapViewed();
   }, []);
 
   useEffect(() => {
@@ -196,7 +205,7 @@ export function LandingMap({ onSignUpPrompt }: LandingMapProps) {
             '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="white" stroke-width="2.5" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
           el.addEventListener("click", (e) => {
             e.stopPropagation();
-            openCta();
+            openCta(spot.id);
           });
           const marker = new mapboxgl.Marker({ element: el }).setLngLat([spot.longitude, spot.latitude]).addTo(map);
           markers.push(marker);
