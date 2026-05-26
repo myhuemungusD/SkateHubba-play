@@ -178,9 +178,6 @@ describe("Landing", () => {
 
   it("uses honest LA-scoped copy for the spot map teaser", () => {
     render(<Landing {...defaultProps} />);
-    // Investor-facing honesty: pins are LA-only today, so the heading must
-    // not claim "your city" universally. Regressing this would re-introduce
-    // the misleading copy at Landing.tsx:222.
     expect(screen.getByRole("heading", { name: /30\+ spots, live in LA — your city next/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^Spots in your city$/ })).not.toBeInTheDocument();
   });
