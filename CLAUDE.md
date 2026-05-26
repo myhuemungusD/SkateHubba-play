@@ -1,5 +1,7 @@
 # CLAUDE.md — Senior Dev Workflow
 
+## The Four Rules
+
 1. Ask before assuming.
 2. Use the simplest solution first.
 3. Don't touch unrelated code.
