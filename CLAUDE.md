@@ -1,5 +1,12 @@
 # CLAUDE.md — Senior Dev Workflow
 
+1. Ask before assuming.
+2. Use the simplest solution first.
+3. Don't touch unrelated code.
+4. Flag uncertainty immediately.
+
+---
+
 This file establishes the production-level problem-solving mindset for working on SkateHubba. Every change follows a disciplined process: understand first, verify assumptions, make targeted changes, prove correctness.
 
 ---
