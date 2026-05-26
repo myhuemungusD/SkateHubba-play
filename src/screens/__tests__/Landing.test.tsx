@@ -175,4 +175,55 @@ describe("Landing", () => {
     expect(video).toHaveAttribute("disablepictureinpicture");
     expect(video.getAttribute("controlslist")).toContain("nodownload");
   });
+
+  it("uses honest LA-scoped copy for the spot map teaser", () => {
+    render(<Landing {...defaultProps} />);
+    // Investor-facing honesty: pins are LA-only today, so the heading must
+    // not claim "your city" universally. Regressing this would re-introduce
+    // the misleading copy at Landing.tsx:222.
+    expect(screen.getByRole("heading", { name: /30\+ spots, live in LA — your city next/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^Spots in your city$/ })).not.toBeInTheDocument();
+  });
+
+  it("defers the LandingMap mount behind a sentinel until IntersectionObserver fires", async () => {
+    // Stand up a minimal IntersectionObserver shim so the gate stays closed
+    // until we deliberately fire an intersecting entry.
+    type ObserverCb = (entries: Array<{ isIntersecting: boolean }>) => void;
+    const observers: Array<{ cb: ObserverCb; disconnect: () => void }> = [];
+    class FakeIO {
+      cb: ObserverCb;
+      constructor(cb: ObserverCb) {
+        this.cb = cb;
+      }
+      observe() {
+        observers.push({ cb: this.cb, disconnect: () => {} });
+      }
+      disconnect() {}
+      unobserve() {}
+      takeRecords() {
+        return [];
+      }
+    }
+    const original = (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver;
+    (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = FakeIO;
+
+    try {
+      render(<Landing {...defaultProps} />);
+      // Map starts UN-mounted: sentinel present, stub absent.
+      expect(screen.getByTestId("landing-map-sentinel")).toBeInTheDocument();
+      expect(screen.queryByTestId("landing-map-stub")).not.toBeInTheDocument();
+
+      // Trigger the intersection — the gate should flip and the map mounts.
+      expect(observers.length).toBe(1);
+      observers[0].cb([{ isIntersecting: true }]);
+      expect(await screen.findByTestId("landing-map-stub")).toBeInTheDocument();
+      expect(screen.queryByTestId("landing-map-sentinel")).not.toBeInTheDocument();
+    } finally {
+      if (original === undefined) {
+        delete (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver;
+      } else {
+        (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = original;
+      }
+    }
+  });
 });

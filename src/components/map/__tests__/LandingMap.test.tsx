@@ -79,7 +79,19 @@ vi.mock("mapbox-gl", () => {
 // Skip the CSS import — jsdom can't parse it and we don't need styles for unit tests.
 vi.mock("mapbox-gl/dist/mapbox-gl.css", () => ({}));
 
+// Spy on analytics so we can assert the marketing funnel events fire without
+// pulling in PostHog or Vercel Analytics during the unit run.
+const landingMapViewed = vi.fn();
+const landingPinClicked = vi.fn();
+vi.mock("../../../services/analytics", () => ({
+  analytics: {
+    landingMapViewed: (...args: unknown[]) => landingMapViewed(...args),
+    landingPinClicked: (...args: unknown[]) => landingPinClicked(...args),
+  },
+}));
+
 import { LandingMap } from "../LandingMap";
+import { LANDING_SPOTS } from "../landingSpots";
 
 function setToken(token: string | undefined) {
   (globalThis as { __landingMapToken?: string }).__landingMapToken = token;
@@ -108,6 +120,8 @@ describe("LandingMap", () => {
     fakeMapCtorCalls = 0;
     mapLoadHandlers.length = 0;
     markerInstances.length = 0;
+    landingMapViewed.mockClear();
+    landingPinClicked.mockClear();
     setToken("pk.test-token");
   });
 
@@ -153,5 +167,22 @@ describe("LandingMap", () => {
     await userEvent.click(screen.getByRole("button", { name: "Keep looking" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(onSignUpPrompt).not.toHaveBeenCalled();
+  });
+
+  it("fires landingMapViewed once on mount (token present)", () => {
+    render(<LandingMap onSignUpPrompt={vi.fn()} />);
+    expect(landingMapViewed).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires landingMapViewed once on mount (fallback path)", () => {
+    setToken(undefined);
+    render(<LandingMap onSignUpPrompt={vi.fn()} />);
+    expect(landingMapViewed).toHaveBeenCalledTimes(1);
+  });
+
+  it("emits landing_pin_clicked with the spot id when a pin is clicked", async () => {
+    await mountAndOpenCta();
+    expect(landingPinClicked).toHaveBeenCalledTimes(1);
+    expect(landingPinClicked).toHaveBeenCalledWith(LANDING_SPOTS[0].id);
   });
 });
