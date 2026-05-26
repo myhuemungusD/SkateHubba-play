@@ -1,6 +1,11 @@
 name: Build Android AAB
 on:
   workflow_dispatch: # Manual trigger - you control when this runs
+    inputs:
+      verbose:
+        description: 'Run gradle with --info (verbose logs for debugging)'
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -72,10 +77,15 @@ jobs:
           if [ -n "${{ steps.version.outputs.name }}" ]; then
             GRADLE_ARGS+=(-PversionName=${{ steps.version.outputs.name }})
           fi
-          # --stacktrace --info surfaces the failing task + cause in the
-          # GitHub Actions log. The build is signed and produces a single
-          # AAB; the extra log volume is acceptable for a release pipeline.
-          ./gradlew "${GRADLE_ARGS[@]}" --stacktrace --info
+          # --stacktrace is cheap and surfaces the failing task + cause
+          # on any failure. --info is opt-in via workflow_dispatch because
+          # it produces tens of thousands of lines per build — useful for
+          # debugging, harmful as default noise on every push to main.
+          GRADLE_ARGS+=(--stacktrace)
+          if [ "${{ inputs.verbose }}" = "true" ]; then
+            GRADLE_ARGS+=(--info)
+          fi
+          ./gradlew "${GRADLE_ARGS[@]}"
       - name: Upload AAB
         uses: actions/upload-artifact@v4
         with:
