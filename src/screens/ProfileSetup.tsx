@@ -228,7 +228,20 @@ export function ProfileSetup({
         setLocalError("Please enter your date of birth to continue.");
         return;
       }
-      setLocalError(err instanceof Error ? err.message : "Could not create profile");
+      const code = (err as { code?: string })?.code ?? "";
+      captureException(err, {
+        extra: { context: "ProfileSetup.createProfile", uid, username: normalized, stance, code },
+      });
+      logger.warn("profile_setup_create_failed", {
+        uid,
+        code,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      if (code) {
+        setLocalError(`${err instanceof Error ? err.message : "Could not create profile"} [${code}]`);
+      } else {
+        setLocalError(err instanceof Error ? err.message : "Could not create profile");
+      }
     } finally {
       setLoading(false);
     }
