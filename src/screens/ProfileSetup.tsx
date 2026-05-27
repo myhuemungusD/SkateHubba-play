@@ -229,6 +229,7 @@ export function ProfileSetup({
         return;
       }
       const code = (err as { code?: string })?.code ?? "";
+      const msg = err instanceof Error ? err.message : "Could not create profile";
       captureException(err, {
         extra: { context: "ProfileSetup.createProfile", uid, username: normalized, stance, code },
       });
@@ -237,11 +238,7 @@ export function ProfileSetup({
         code,
         message: err instanceof Error ? err.message : String(err),
       });
-      if (code) {
-        setLocalError(`${err instanceof Error ? err.message : "Could not create profile"} [${code}]`);
-      } else {
-        setLocalError(err instanceof Error ? err.message : "Could not create profile");
-      }
+      setLocalError(code ? `${msg} [${code}]` : msg);
     } finally {
       setLoading(false);
     }
