@@ -13,6 +13,7 @@ import { logger, metrics } from "../services/logger";
 import { captureException } from "../lib/sentry";
 import { useUsernameAvailability } from "../hooks/useUsernameAvailability";
 import { isMinorDob, parseDob } from "../utils/age";
+import { getErrorCode, getUserMessage, parseFirebaseError } from "../utils/helpers";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
@@ -228,20 +229,10 @@ export function ProfileSetup({
         setLocalError("Please enter your date of birth to continue.");
         return;
       }
-      const code = (err as { code?: string })?.code ?? "";
-      captureException(err, {
-        extra: { context: "ProfileSetup.createProfile", uid, username: normalized, stance, code },
-      });
-      logger.warn("profile_setup_create_failed", {
-        uid,
-        code,
-        message: err instanceof Error ? err.message : String(err),
-      });
-      if (code) {
-        setLocalError(`${err instanceof Error ? err.message : "Could not create profile"} [${code}]`);
-      } else {
-        setLocalError(err instanceof Error ? err.message : "Could not create profile");
-      }
+      const code = getErrorCode(err);
+      captureException(err, { extra: { context: "ProfileSetup.createProfile", code } });
+      logger.warn("profile_setup_create_failed", { uid, code, error: parseFirebaseError(err) });
+      setLocalError(getUserMessage(err, "Could not create profile"));
     } finally {
       setLoading(false);
     }
