@@ -190,17 +190,20 @@ firebase deploy --only firestore:rules,firestore:indexes,storage:rules --project
 The rules-deploy workflow was historically silent on failure, which let
 production rules drift for ~3 months unnoticed. Two guards now prevent a repeat:
 
-- **Loud failure alerting.** The `deploy` job has an `if: failure()` step
-  (`actions/github-script@v7`) that opens — or updates — a single GitHub issue
-  labelled `firebase-rules-deploy-failure` with the failed run URL. It is
-  idempotent: repeat failures comment on the existing open issue rather than
-  spamming new ones. This requires `issues: write` permission on the workflow.
+- **Loud failure alerting.** A dedicated `notify-failure` job
+  (`needs: [validate-rules, deploy]`, `if: failure()`,
+  `actions/github-script@v7`) opens — or updates — a single GitHub issue
+  labelled `firebase-rules-deploy-failure` with the failed run URL. Because it
+  depends on both jobs, it fires whether the failure is in rules validation or
+  the deploy itself. It is idempotent: repeat failures comment on the existing
+  open issue rather than spamming new ones. The job carries the only
+  `issues: write` grant in the workflow.
 - **Daily freshness guard.** A `schedule` cron (`0 7 * * *`) re-runs the full
   deploy every day. firebase-tools v15 has no reliable "fetch live deployed
   rules" command to diff against `HEAD`, so re-deploying daily is the simplest
   implementable guarantee — the deploy is idempotent, so drift between `main`
   and production can never exceed 24h, and a failed scheduled deploy trips the
-  same alert step above.
+  same `notify-failure` job above.
 
 `firebase-tools` in the deploy step is pinned to `@15` to match the version in
 `package.json` (`firebase-tools@^15`). The deploy runs with `set -euo pipefail`
