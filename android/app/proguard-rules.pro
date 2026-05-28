@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# @capacitor-firebase/authentication ships a Facebook auth handler but only
+# declares the Facebook SDK as an optional dependency. We don't use Facebook
+# login, so silence R8's missing-class errors instead of pulling in the SDK.
+-dontwarn com.facebook.**

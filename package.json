@@ -66,6 +66,7 @@
     "basic-ftp": "^5.3.1",
     "fast-uri": "^3.1.2",
     "protobufjs": "^7.5.8",
+    "tmp": "^0.2.6",
     "@capacitor/cli": {
       "brace-expansion": "^5.0.6"
     },
