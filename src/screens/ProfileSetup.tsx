@@ -11,6 +11,7 @@ import {
 import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException } from "../lib/sentry";
+import { hashUid } from "../utils/pii";
 import { useUsernameAvailability } from "../hooks/useUsernameAvailability";
 import { isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
@@ -230,8 +231,17 @@ export function ProfileSetup({
       }
       const code = (err as { code?: string })?.code ?? "";
       const msg = err instanceof Error ? err.message : "Could not create profile";
+      // "Username is already taken" is the canonical uniqueness rejection from
+      // createProfile's transaction (see services/users.ts). On the fallback
+      // path where the availability probe errored, this is an expected user-
+      // flow outcome — not an operational exception — so skip Sentry + warn
+      // logging and surface it inline like any other validation message.
+      if (err instanceof Error && err.message === "Username is already taken") {
+        setLocalError(err.message);
+        return;
+      }
       captureException(err, {
-        extra: { context: "ProfileSetup.createProfile", uid, username: normalized, stance, code },
+        extra: { context: "ProfileSetup.createProfile", uid: hashUid(uid), username: normalized, stance, code },
       });
       logger.warn("profile_setup_create_failed", {
         uid,
