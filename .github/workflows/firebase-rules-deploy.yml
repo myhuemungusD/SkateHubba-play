@@ -12,6 +12,11 @@ name: Deploy Firebase Rules
 #   `google-github-actions/auth@v2` when both `FIREBASE_WIF_PROVIDER` and
 #   `FIREBASE_WIF_SERVICE_ACCOUNT` secrets are set. Falls back to the legacy
 #   `FIREBASE_TOKEN` secret so existing projects keep working.
+#
+#   NOTE: `FIREBASE_TOKEN` (from `firebase login:ci`) is DEPRECATED in
+#   firebase-tools and is the most likely cause of a deploy that worked for
+#   months then began failing. Migrate to WIF and verify/rotate the secret in
+#   GitHub → Settings → Secrets and variables → Actions.
 
 on:
   push:
@@ -33,6 +38,14 @@ on:
         options:
           - "false"
           - "true"
+  # Freshness guard. firebase-tools v15 has no reliable "fetch live deployed
+  # rules" command to diff against HEAD, so instead we re-run the full deploy
+  # daily. The deploy is idempotent (re-uploading identical rules is a no-op),
+  # and any drift between `main` and production can therefore never exceed 24h.
+  # If this scheduled deploy fails, the `Alert on deploy failure` step files an
+  # issue exactly as it does for push-triggered deploys.
+  schedule:
+    - cron: "0 7 * * *" # 07:00 UTC daily
 
 concurrency:
   group: firebase-rules-deploy
@@ -41,6 +54,9 @@ concurrency:
 permissions:
   contents: read
   id-token: write
+  # `issues: write` lets the failure-notification step open/update the alert
+  # issue so a broken deploy can never again pass unnoticed.
+  issues: write
 
 jobs:
   validate-rules:
@@ -123,7 +139,12 @@ jobs:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_WIF_PROVIDER == '' && secrets.FIREBASE_TOKEN || '' }}
           PROJECT_ID: ${{ steps.project.outputs.project_id }}
         run: |
-          npx firebase-tools@14 deploy \
+          # firebase-tools is pinned to the same major the repo depends on
+          # (package.json: firebase-tools@^15). The deploy must hard-fail on
+          # any error — no `|| true`, no `continue-on-error` — so an auth or
+          # permission failure surfaces as a red job, not a silent pass.
+          set -euo pipefail
+          npx --yes firebase-tools@15 deploy \
             --project "$PROJECT_ID" \
             --only firestore:rules,firestore:indexes,storage:rules \
             --non-interactive \
@@ -134,3 +155,73 @@ jobs:
         run: |
           echo "### Dry run" >> "$GITHUB_STEP_SUMMARY"
           echo "Rules validated against the emulator; deploy step skipped." >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------------------------------------------------------------------
+      # Loud failure alerting. If ANY step in this job fails (auth, project
+      # resolution, or the deploy itself) open — or update — a single tracking
+      # issue so a broken rules deploy can never sit unnoticed again. Idempotent:
+      # reuses the one open issue carrying the `firebase-rules-deploy-failure`
+      # label instead of spamming a new issue per run.
+      # ---------------------------------------------------------------------
+      - name: Alert on deploy failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = 'firebase-rules-deploy-failure';
+            const title = '🚨 Firebase rules deploy FAILED';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              'The **Deploy Firebase Rules** workflow failed.',
+              '',
+              `- Failed run: ${runUrl}`,
+              `- Commit: \`${context.sha}\``,
+              `- Triggered by: \`${context.eventName}\``,
+              '',
+              'Production Firestore/Storage rules and indexes may now be **stale**.',
+              'Investigate the run logs above, then re-run the workflow once fixed.',
+              '',
+              '_This issue is auto-managed; it will be updated (not duplicated) on repeat failures._',
+            ].join('\n');
+
+            // Ensure the label exists (idempotent).
+            try {
+              await github.rest.issues.getLabel({ ...context.repo, name: label });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  ...context.repo,
+                  name: label,
+                  color: 'b60205',
+                  description: 'Automated alert: Firebase rules deploy failed',
+                });
+              } else {
+                throw e;
+              }
+            }
+
+            // Find an existing open alert issue to update instead of spamming.
+            const existing = await github.rest.issues.listForRepo({
+              ...context.repo,
+              state: 'open',
+              labels: label,
+              per_page: 1,
+            });
+
+            if (existing.data.length > 0) {
+              const number = existing.data[0].number;
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: number,
+                body,
+              });
+              core.notice(`Updated existing alert issue #${number}.`);
+            } else {
+              const created = await github.rest.issues.create({
+                ...context.repo,
+                title,
+                body,
+                labels: [label],
+              });
+              core.notice(`Opened alert issue #${created.data.number}.`);
+            }
