@@ -113,6 +113,30 @@ describe("VerifyEmailBanner", () => {
     vi.useRealTimers();
   });
 
+  it("shows success message after successful resend", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mockResendVerification.mockResolvedValueOnce(undefined);
+    render(<VerifyEmailBanner emailVerified={false} />);
+
+    // Before resend, shows default copy with spam/junk mention
+    expect(screen.getByText("Check your inbox and spam/junk folder for the verification link.")).toBeInTheDocument();
+
+    await act(async () => {
+      await userEvent.click(screen.getByText("Resend"));
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sent! Check your inbox and spam/junk folder.")).toBeInTheDocument();
+    });
+
+    // Default copy is no longer shown
+    expect(
+      screen.queryByText("Check your inbox and spam/junk folder for the verification link."),
+    ).not.toBeInTheDocument();
+
+    vi.useRealTimers();
+  });
+
   it("cooldown counts down", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockResendVerification.mockResolvedValueOnce(undefined);

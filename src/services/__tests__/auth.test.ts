@@ -140,6 +140,19 @@ describe("auth service", () => {
         handleCodeInApp: false,
       });
     });
+
+    it("falls back to no actionCodeSettings on unauthorized-continue-uri", async () => {
+      const uriError = Object.assign(new Error("unauthorized"), { code: "auth/unauthorized-continue-uri" });
+      mockSendReset.mockRejectedValueOnce(uriError).mockResolvedValueOnce(undefined);
+      await resetPassword("a@b.com");
+      expect(mockSendReset).toHaveBeenCalledTimes(2);
+      expect(mockSendReset.mock.calls[1]).toEqual([auth, "a@b.com"]);
+    });
+
+    it("rethrows non-URI errors", async () => {
+      mockSendReset.mockRejectedValueOnce(Object.assign(new Error("rate"), { code: "auth/too-many-requests" }));
+      await expect(resetPassword("a@b.com")).rejects.toThrow("rate");
+    });
   });
 
   describe("resendVerification", () => {

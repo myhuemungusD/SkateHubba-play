@@ -135,7 +135,17 @@ export async function signOut(): Promise<void> {
  */
 export async function resetPassword(email: string): Promise<void> {
   logger.info("password_reset_attempt", { email });
-  await sendPasswordResetEmail(requireAuth(), email, getActionCodeSettings());
+  try {
+    await sendPasswordResetEmail(requireAuth(), email, getActionCodeSettings());
+  } catch (err) {
+    const code = getErrorCode(err);
+    if (code === "auth/unauthorized-continue-uri" || code === "auth/invalid-continue-uri") {
+      await sendPasswordResetEmail(requireAuth(), email);
+      logger.info("password_reset_sent_fallback", { email });
+      return;
+    }
+    throw err;
+  }
   logger.info("password_reset_sent", { email });
 }
 
