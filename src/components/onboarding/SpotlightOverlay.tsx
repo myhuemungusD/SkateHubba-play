@@ -119,9 +119,11 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, onAnchorMissin
         earlyCleanup();
         if (intersected) return;
         io?.disconnect();
-        const el = document.querySelector(targetSelector);
-        if (el instanceof HTMLElement) return;
-        logger.warn("tutorial_step_anchor_missing", { reason: "no-element", selector: targetSelector });
+        const found = document.querySelector(targetSelector) instanceof HTMLElement;
+        logger.warn("tutorial_step_anchor_missing", {
+          reason: found ? "no-intersect" : "no-element",
+          selector: targetSelector,
+        });
         onAnchorMissing();
       }, ANCHOR_TIMEOUT_MS);
       return () => {
