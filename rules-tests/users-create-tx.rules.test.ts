@@ -22,10 +22,9 @@
  *
  * Predicates exercised (firestore.rules):
  *   - users/{uid} create: uid == path, username regex, no sensitive fields,
- *     !exists() pre-condition (lines 200-253)
+ *     !exists() pre-condition
  *   - users/{uid}/private/{docId} create: owner-only, allowlisted keys
- *     (lines 521-544)
- *   - usernames/{username} create: uid == auth.uid, username regex (lines 573-580)
+ *   - usernames/{username} create: uid == auth.uid, username regex
  *
  * Run via:  npm run test:rules
  */
@@ -58,8 +57,8 @@ function asBob(): RulesTestContext {
 
 /**
  * Run the EXACT three-write transaction that `createProfile` performs in
- * src/services/users.ts:214-285. Per-call overrides let each negative test
- * mutate ONE field at a time so the failure can be attributed to a single
+ * src/services/users.ts. Per-call overrides let each negative test mutate
+ * ONE field at a time so the failure can be attributed to a single
  * predicate.
  */
 interface CreateProfileTxOpts {
@@ -151,8 +150,8 @@ describe("createProfile 3-write transaction — happy path", () => {
 
   it("authenticated user CAN include optional parentalConsent on the private doc", async () => {
     // Mirrors the COPPA path: a minor's signup writes parentalConsent=true
-    // alongside the standard fields. The private-doc keys allowlist must
-    // accept it (firestore.rules lines 527-537).
+    // alongside the standard fields. The private-doc keys().hasOnly([...])
+    // allowlist in firestore.rules must accept it.
     await assertSucceeds(
       runCreateProfileTx({
         ctx: asAlice(),
@@ -166,9 +165,9 @@ describe("createProfile 3-write transaction — happy path", () => {
 
 describe("createProfile 3-write transaction — predicate isolation (negatives)", () => {
   it("DENIED: uid in users doc body differs from path uid", async () => {
-    // firestore.rules line 205: `request.resource.data.uid == uid`.
-    // Alice is authenticated and writing to users/{ALICE_UID}, but the
-    // body's uid claims to be Bob — must fail.
+    // Predicate: `request.resource.data.uid == uid` on the users/{uid}
+    // create rule. Alice is authenticated and writing to users/{ALICE_UID},
+    // but the body's uid claims to be Bob — must fail.
     await assertFails(
       runCreateProfileTx({
         ctx: asAlice(),
@@ -180,10 +179,10 @@ describe("createProfile 3-write transaction — predicate isolation (negatives)"
   });
 
   it("DENIED: username contains a hyphen (invalid char per USERNAME_RE)", async () => {
-    // firestore.rules line 210: `username.matches('[a-z0-9_]+')`.
-    // A hyphen is the canonical invalid-char case (people try "first-last"
-    // handles all the time). Both the usernames/{key} matcher and the
-    // users body username field must reject it.
+    // Predicate: `username.matches('[a-z0-9_]+')`. A hyphen is the canonical
+    // invalid-char case (people try "first-last" handles all the time).
+    // Both the usernames/{key} matcher and the users body username field
+    // must reject it.
     await assertFails(
       runCreateProfileTx({
         ctx: asAlice(),
@@ -194,10 +193,10 @@ describe("createProfile 3-write transaction — predicate isolation (negatives)"
   });
 
   it("DENIED: usernames doc body uid != auth.uid (Alice tries to reserve a name FOR Bob)", async () => {
-    // firestore.rules line 576: `request.resource.data.uid == request.auth.uid`.
-    // Alice is signed in but the usernames doc body claims the reservation
-    // belongs to Bob — must fail. Without this, Alice could squat handles
-    // on other users' behalf.
+    // Predicate: `request.resource.data.uid == request.auth.uid` on the
+    // usernames/{username} create rule. Alice is signed in but the usernames
+    // doc body claims the reservation belongs to Bob — must fail. Without
+    // this, Alice could squat handles on other users' behalf.
     await assertFails(
       runCreateProfileTx({
         ctx: asAlice(),
@@ -209,10 +208,10 @@ describe("createProfile 3-write transaction — predicate isolation (negatives)"
   });
 
   it("DENIED: private profile carries a forbidden key (role: 'admin')", async () => {
-    // firestore.rules lines 527-537: `keys().hasOnly([...])` — any unknown
-    // key fails the create. `role` is a classic privilege-escalation
-    // attempt; the allowlist is the only thing standing between a hostile
-    // client and a server-side admin flag.
+    // Predicate: `keys().hasOnly([...])` on the users/{uid}/private/{docId}
+    // create rule — any unknown key fails the create. `role` is a classic
+    // privilege-escalation attempt; the allowlist is the only thing
+    // standing between a hostile client and a server-side admin flag.
     await assertFails(
       runCreateProfileTx({
         ctx: asAlice(),
@@ -251,8 +250,9 @@ describe("createProfile 3-write transaction — predicate isolation (negatives)"
   });
 
   it("DENIED: unauthenticated caller cannot run the transaction", async () => {
-    // firestore.rules lines 202 + 539 + 575 all require isSignedIn() /
-    // isOwner(uid). With no auth.uid, every branch of every write fails.
+    // All three target rules (users/{uid}, users/{uid}/private/{docId},
+    // usernames/{username}) require isSignedIn() / isOwner(uid). With no
+    // auth.uid, every branch of every write fails.
     await assertFails(
       runCreateProfileTx({
         ctx: testEnv.unauthenticatedContext(),
@@ -266,10 +266,11 @@ describe("createProfile 3-write transaction — predicate isolation (negatives)"
   });
 
   it("DENIED: returning user with an existing users/{uid} doc cannot re-create", async () => {
-    // firestore.rules line 204: `!exists(/databases/$(database)/documents/users/$(uid))`.
-    // Seed a pre-existing public doc, then attempt the canonical
-    // createProfile flow — must fail. Without this, a logged-in user could
-    // wipe their own wins/losses by re-running createProfile.
+    // Predicate: `!exists(/databases/$(database)/documents/users/$(uid))`
+    // on the users/{uid} create rule. Seed a pre-existing public doc, then
+    // attempt the canonical createProfile flow — must fail. Without this,
+    // a logged-in user could wipe their own wins/losses by re-running
+    // createProfile.
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
         uid: ALICE_UID,

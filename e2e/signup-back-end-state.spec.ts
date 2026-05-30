@@ -33,9 +33,7 @@ test.beforeEach(async () => {
   await clearAll();
 });
 
-test("first-time signup writes users/{uid}, users/{uid}/private/profile, and usernames/{handle}", async ({
-  page,
-}) => {
+test("first-time signup writes users/{uid}, users/{uid}/private/profile, and usernames/{handle}", async ({ page }) => {
   const email = "backend-state@test.com";
   const password = "password123";
   const username = "sk8backend";
@@ -43,13 +41,11 @@ test("first-time signup writes users/{uid}, users/{uid}/private/profile, and use
   // Drive the canonical signup flow through the UI. `signUpAndSetupProfile`
   // walks the signup card → profile setup → lobby exactly as a real user
   // would; the underlying createProfile runs as the 3-write transaction
-  // that the May 2026 regression broke.
+  // that the May 2026 regression broke. The helper already asserts the
+  // "Your Games" lobby heading on success — the UI passing is the
+  // PRECONDITION for this spec, not its claim. The claim is the back-end
+  // shape verified below.
   await signUpAndSetupProfile(page, email, password, username);
-
-  // Lobby header is the UI's confirmation the flow completed without an
-  // error toast. The whole point of this spec is that the UI succeeding
-  // is NOT sufficient — we now verify the back-end shape.
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 10_000 });
 
   const uid = await uidForEmail(email);
 
@@ -58,11 +54,8 @@ test("first-time signup writes users/{uid}, users/{uid}/private/profile, and use
   // serverTimestamp so we assert presence, not value.
   const userDoc = await readDocByPath(`users/${uid}`);
   expect(userDoc, "users/{uid} must exist after signup").not.toBeNull();
-  expect(userDoc).toMatchObject({
-    uid,
-    username,
-    stance: expect.any(String) as unknown as string,
-  });
+  expect(userDoc).toMatchObject({ uid, username });
+  expect(userDoc?.stance).toEqual(expect.any(String));
   expect(userDoc).toHaveProperty("createdAt");
 
   // 2. users/{uid}/private/profile — owner-only sensitive fields.
