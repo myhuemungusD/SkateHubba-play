@@ -355,6 +355,19 @@ describe("deleteUserNotifications", () => {
   });
 });
 
+// Shared snapshot-handler capture used by the subscribe* describe blocks.
+// Extracted so the two new "delivers a second snapshot..." regression tests
+// don't trip the test-duplication gate against existing tests that already
+// open with this same boilerplate.
+function captureSnapshotHandler(): { getHandler: () => (snap: unknown) => void } {
+  let snapshotHandler: (snap: unknown) => void = () => {};
+  mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
+    snapshotHandler = cb;
+    return vi.fn();
+  });
+  return { getHandler: () => snapshotHandler };
+}
+
 describe("subscribeToNudges", () => {
   it("returns an unsubscribe function", () => {
     const mockUnsub = vi.fn();
@@ -393,7 +406,7 @@ describe("subscribeToNudges", () => {
     expect(onNudge).not.toHaveBeenCalled();
   });
 
-  it("fires onNudge for newly added docs after seeding", async () => {
+  it("fires onNudge for newly added docs after seeding", () => {
     const onNudge = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -409,10 +422,8 @@ describe("subscribeToNudges", () => {
       docChanges: () => [],
     });
 
-    // Wait for ready flag
-    await new Promise((r) => setTimeout(r, 10));
-
-    // Second snapshot with new doc
+    // Second snapshot with new doc — no setTimeout(0) gate, dedupe runs via
+    // initialIds membership check which is populated synchronously above.
     snapshotHandler({
       docs: [{ id: "existing1" }, { id: "new1" }],
       docChanges: () => [
@@ -426,7 +437,7 @@ describe("subscribeToNudges", () => {
     expect(onNudge).toHaveBeenCalledWith({ senderUsername: "bob", gameId: "g1" });
   });
 
-  it("caps tracked IDs at 50 to prevent unbounded growth", async () => {
+  it("caps tracked IDs at 50 to prevent unbounded growth", () => {
     const onNudge = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -439,7 +450,6 @@ describe("subscribeToNudges", () => {
     // Seed with 49 existing IDs
     const seedDocs = Array.from({ length: 49 }, (_, i) => ({ id: `seed${i}` }));
     snapshotHandler({ docs: seedDocs, docChanges: () => [] });
-    await new Promise((r) => setTimeout(r, 10));
 
     // Add 3 new docs to push past 50
     const changes = Array.from({ length: 3 }, (_, i) => ({
@@ -451,7 +461,7 @@ describe("subscribeToNudges", () => {
     expect(onNudge).toHaveBeenCalledTimes(3);
   });
 
-  it("skips docs that are not of type 'added'", async () => {
+  it("skips docs that are not of type 'added'", () => {
     const onNudge = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -461,7 +471,6 @@ describe("subscribeToNudges", () => {
 
     subscribeToNudges("u1", onNudge);
     snapshotHandler({ docs: [], docChanges: () => [] });
-    await new Promise((r) => setTimeout(r, 10));
 
     snapshotHandler({
       docs: [],
@@ -471,27 +480,25 @@ describe("subscribeToNudges", () => {
     expect(onNudge).not.toHaveBeenCalled();
   });
 
-  it("does not fire callback before ready flag is set", () => {
+  it("delivers a second snapshot that arrives in the same microtask as the seed", () => {
+    // Regression: the old setTimeout(0) `ready` gate dropped snapshots that
+    // arrived before the next macrotask. After the gate removal, a server-
+    // reconcile snapshot that fires synchronously right after the cache-hit
+    // seed must still surface new docs via the initialIds dedupe.
     const onNudge = vi.fn();
-    let snapshotHandler: (snap: unknown) => void = () => {};
-    mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
-      snapshotHandler = cb;
-      return vi.fn();
-    });
-
+    const handler = captureSnapshotHandler();
     subscribeToNudges("u1", onNudge);
-    snapshotHandler({ docs: [], docChanges: () => [] });
-
-    // Immediately fire second snapshot (before setTimeout tick sets ready=true)
-    snapshotHandler({
+    handler.getHandler()({ docs: [], docChanges: () => [] });
+    // Fire the second snapshot synchronously (no awaited tick) — must be
+    // delivered now that the timing-based gate is gone.
+    handler.getHandler()({
       docs: [{ id: "n1" }],
       docChanges: () => [{ type: "added", doc: { id: "n1", data: () => ({ senderUsername: "bob", gameId: "g1" }) } }],
     });
-
-    expect(onNudge).not.toHaveBeenCalled();
+    expect(onNudge).toHaveBeenCalledWith({ senderUsername: "bob", gameId: "g1" });
   });
 
-  it("skips docs already in the initial set", async () => {
+  it("skips docs already in the initial set", () => {
     const onNudge = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -501,7 +508,6 @@ describe("subscribeToNudges", () => {
 
     subscribeToNudges("u1", onNudge);
     snapshotHandler({ docs: [{ id: "existing1" }], docChanges: () => [] });
-    await new Promise((r) => setTimeout(r, 10));
 
     snapshotHandler({
       docs: [{ id: "existing1" }],
@@ -545,7 +551,7 @@ describe("subscribeToNotifications", () => {
     expect(mockLimit).toHaveBeenCalledWith(10);
   });
 
-  it("fires onNotification for newly added docs with firestoreId", async () => {
+  it("fires onNotification for newly added docs with firestoreId", () => {
     const onNotification = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -561,9 +567,8 @@ describe("subscribeToNotifications", () => {
       docChanges: () => [],
     });
 
-    await new Promise((r) => setTimeout(r, 10));
-
-    // Second snapshot with new notification
+    // Second snapshot with new notification — no setTimeout(0) `ready` gate;
+    // dedupe runs via initialIds membership populated synchronously above.
     snapshotHandler({
       docs: [{ id: "n1" }],
       docChanges: () => [
@@ -589,7 +594,7 @@ describe("subscribeToNotifications", () => {
     expect(mockUpdateDoc).not.toHaveBeenCalled();
   });
 
-  it("caps tracked IDs at 50 to prevent unbounded growth", async () => {
+  it("caps tracked IDs at 50 to prevent unbounded growth", () => {
     const onNotification = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -602,7 +607,6 @@ describe("subscribeToNotifications", () => {
     // Seed with 49 existing IDs
     const seedDocs = Array.from({ length: 49 }, (_, i) => ({ id: `seed${i}` }));
     snapshotHandler({ docs: seedDocs, docChanges: () => [] });
-    await new Promise((r) => setTimeout(r, 10));
 
     // Add 3 new docs to push past 50
     const changes = Array.from({ length: 3 }, (_, i) => ({
@@ -614,7 +618,7 @@ describe("subscribeToNotifications", () => {
     expect(onNotification).toHaveBeenCalledTimes(3);
   });
 
-  it("skips already-seen and non-added docs", async () => {
+  it("skips already-seen and non-added docs", () => {
     const onNotification = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -624,7 +628,6 @@ describe("subscribeToNotifications", () => {
 
     subscribeToNotifications("u1", onNotification);
     snapshotHandler({ docs: [{ id: "existing1" }], docChanges: () => [] });
-    await new Promise((r) => setTimeout(r, 10));
 
     snapshotHandler({
       docs: [],
@@ -637,7 +640,7 @@ describe("subscribeToNotifications", () => {
     expect(onNotification).not.toHaveBeenCalled();
   });
 
-  it("uses fallback values when notification fields are null", async () => {
+  it("uses fallback values when notification fields are null", () => {
     const onNotification = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -647,7 +650,6 @@ describe("subscribeToNotifications", () => {
 
     subscribeToNotifications("u1", onNotification);
     snapshotHandler({ docs: [], docChanges: () => [] });
-    await new Promise((r) => setTimeout(r, 10));
 
     snapshotHandler({
       docs: [{ id: "n1" }],
@@ -668,26 +670,30 @@ describe("subscribeToNotifications", () => {
     });
   });
 
-  it("does not fire callback before ready flag is set", () => {
+  it("delivers a second snapshot that arrives in the same microtask as the seed", () => {
+    // Regression: the old setTimeout(0) `ready` gate dropped snapshots that
+    // arrived before the next macrotask. A server-reconcile snapshot that
+    // fires synchronously after the cache-hit seed must still surface new
+    // docs via the initialIds dedupe.
     const onNotification = vi.fn();
-    let snapshotHandler: (snap: unknown) => void = () => {};
-    mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
-      snapshotHandler = cb;
-      return vi.fn();
-    });
-
+    const handler = captureSnapshotHandler();
     subscribeToNotifications("u1", onNotification);
-    snapshotHandler({ docs: [], docChanges: () => [] });
-
-    // Immediately fire second snapshot (before setTimeout tick sets ready=true)
-    snapshotHandler({
+    handler.getHandler()({ docs: [], docChanges: () => [] });
+    // Fire the second snapshot synchronously (no awaited tick) — must be
+    // delivered now that the timing-based gate is gone.
+    handler.getHandler()({
       docs: [{ id: "n1" }],
       docChanges: () => [
         { type: "added", doc: { id: "n1", data: () => ({ type: "t", title: "T", body: "B", gameId: "g" }) } },
       ],
     });
-
-    expect(onNotification).not.toHaveBeenCalled();
+    expect(onNotification).toHaveBeenCalledWith({
+      firestoreId: "n1",
+      type: "t",
+      title: "T",
+      body: "B",
+      gameId: "g",
+    });
   });
 
   it("logs a warning when the snapshot listener errors", () => {

@@ -243,20 +243,20 @@ export function subscribeToNudges(uid: string, onNudge: (nudge: NudgeEvent) => v
   const q = query(collection(db, "nudges"), where("recipientUid", "==", uid), orderBy("createdAt", "desc"), limit(5));
 
   let initialIds: Set<string> | null = null;
-  let ready = false;
 
   return onSnapshot(
     q,
     (snap) => {
       if (initialIds === null) {
         initialIds = new Set(snap.docs.map((d) => d.id));
-        setTimeout(() => {
-          ready = true;
-        }, 0);
         return;
       }
-      if (!ready) return;
 
+      // Dedupe via initialIds alone — no setTimeout(0) `ready` gate. The
+      // previous gate dropped snapshots that arrived in the same microtask
+      // as the initial seed (server reconcile after a cache hit), silently
+      // swallowing nudges. initialIds is populated synchronously on the
+      // first snapshot, so the membership check is sufficient.
       for (const change of snap.docChanges()) {
         if (change.type === "added" && !initialIds.has(change.doc.id)) {
           const data = change.doc.data();
@@ -305,20 +305,20 @@ export function subscribeToNotifications(uid: string, onNotification: (notif: No
   );
 
   let initialIds: Set<string> | null = null;
-  let ready = false;
 
   return onSnapshot(
     q,
     (snap) => {
       if (initialIds === null) {
         initialIds = new Set(snap.docs.map((d) => d.id));
-        setTimeout(() => {
-          ready = true;
-        }, 0);
         return;
       }
-      if (!ready) return;
 
+      // Dedupe via initialIds alone — no setTimeout(0) `ready` gate. The
+      // previous gate dropped snapshots that arrived in the same microtask
+      // as the initial seed (server reconcile after a cache hit), silently
+      // swallowing notifications. initialIds is populated synchronously on
+      // the first snapshot, so the membership check is sufficient.
       for (const change of snap.docChanges()) {
         if (change.type === "added" && !initialIds.has(change.doc.id)) {
           const data = change.doc.data();
