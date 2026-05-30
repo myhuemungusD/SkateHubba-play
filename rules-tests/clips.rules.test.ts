@@ -60,6 +60,12 @@ function makeValidGame(overrides: Record<string, unknown> = {}): Record<string, 
   };
 }
 
+// Bucket-pinned per the audit-P2 host pin on clips.videoUrl. Anything else
+// is rejected on create. Tests that want to exercise the negative path can
+// override via `makeValidClip({ videoUrl: <attacker URL> })`.
+const VALID_VIDEO_URL =
+  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/clip.webm";
+
 function makeValidClip(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     gameId: GAME_ID,
@@ -68,7 +74,7 @@ function makeValidClip(overrides: Record<string, unknown> = {}): Record<string, 
     playerUid: P1_UID,
     playerUsername: "alice",
     trickName: "tre flip",
-    videoUrl: "https://example.com/clip.webm",
+    videoUrl: VALID_VIDEO_URL,
     spotId: null,
     createdAt: serverTimestamp(),
     moderationStatus: "active",
@@ -220,6 +226,53 @@ describe("clips — create", () => {
 
   it("rejects a videoUrl longer than 2048 characters", async () => {
     await assertFails(setDoc(clipRef(asP1(), deterministicId()), makeValidClip({ videoUrl: "x".repeat(2049) })));
+  });
+
+  // ── videoUrl bucket-pin red-team (audit P2) ──
+  // The clip feed is app-wide readable and renders videoUrl verbatim.
+  // Without a host pin, any participant could stamp an attacker-hosted URL
+  // (or another project's bucket) into the public feed — referrer/exfil
+  // and content-spoof vector. Rules pin to this project's bucket only.
+  it("rejects a videoUrl pointing at an arbitrary attacker host", async () => {
+    await assertFails(
+      setDoc(clipRef(asP1(), deterministicId()), makeValidClip({ videoUrl: "https://attacker.com/payload.html" })),
+    );
+  });
+
+  it("rejects a videoUrl pointing at ANOTHER project's Firebase Storage bucket", async () => {
+    await assertFails(
+      setDoc(
+        clipRef(asP1(), deterministicId()),
+        makeValidClip({
+          videoUrl:
+            "https://firebasestorage.googleapis.com/v0/b/attacker-project.firebasestorage.app/o/clip.webm",
+        }),
+      ),
+    );
+  });
+
+  it("rejects a videoUrl on the bucket-as-host CDN form pointing at ANOTHER project's bucket", async () => {
+    await assertFails(
+      setDoc(
+        clipRef(asP1(), deterministicId()),
+        makeValidClip({ videoUrl: "https://attacker-project.firebasestorage.app/o/clip.webm" }),
+      ),
+    );
+  });
+
+  it("permits a videoUrl pinned to this project's bucket (positive control)", async () => {
+    await assertSucceeds(setDoc(clipRef(asP1(), deterministicId()), makeValidClip()));
+  });
+
+  it("rejects http:// even on the project bucket host", async () => {
+    await assertFails(
+      setDoc(
+        clipRef(asP1(), deterministicId()),
+        makeValidClip({
+          videoUrl: "http://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/clip.webm",
+        }),
+      ),
+    );
   });
 
   it("rejects a non-integer turnNumber", async () => {

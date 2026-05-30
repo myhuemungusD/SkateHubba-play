@@ -39,6 +39,15 @@ const P2_UID = "p2-bob";
 const GAME_ID = "g-turnhistory";
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+// Bucket-pinned video URLs — required by the audit-P2 host pin on
+// currentTrickVideoUrl + matchVideoUrl writes. Strings inside turnHistory
+// TurnRecords don't currently go through a rule-level URL check (the
+// growth-cap rule only validates list size + shape), so the values stored
+// via makeTurnRecord stay legacy until/unless that changes.
+const VALID_TRICK_URL =
+  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
+const VALID_MATCH_URL =
+  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
 
 let testEnv: RulesTestEnvironment;
 
@@ -62,8 +71,8 @@ function makeTurnRecord(turnNumber: number, overrides: Record<string, unknown> =
     setterUsername: "alice",
     matcherUid: P2_UID,
     matcherUsername: "bob",
-    setVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
-    matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+    setVideoUrl: VALID_TRICK_URL,
+    matchVideoUrl: VALID_MATCH_URL,
     landed: false,
     letterTo: P2_UID,
     judgedBy: null,
@@ -131,7 +140,7 @@ describe("games.turnHistory — growth caps", () => {
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         turnHistory: existingHistory,
       });
     }
@@ -238,12 +247,12 @@ describe("games.turnHistory — growth caps", () => {
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         turnHistory: [],
       });
       await assertSucceeds(
         updateDoc(gameRef(asP2()), {
-          matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+          matchVideoUrl: VALID_MATCH_URL,
           phase: "setting",
           currentSetter: P2_UID,
           currentTurn: P2_UID,
@@ -261,12 +270,12 @@ describe("games.turnHistory — growth caps", () => {
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         turnHistory: [],
       });
       await assertFails(
         updateDoc(gameRef(asP2()), {
-          matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+          matchVideoUrl: VALID_MATCH_URL,
           phase: "setting",
           currentSetter: P2_UID,
           currentTurn: P2_UID,
@@ -295,7 +304,7 @@ describe("games.turnHistory — growth caps", () => {
         updateDoc(gameRef(asP1()), {
           phase: "matching",
           currentTrickName: "kickflip",
-          currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+          currentTrickVideoUrl: VALID_TRICK_URL,
           currentTurn: P2_UID,
           turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
           turnHistory: arrayUnion(makeTurnRecord(999)),
