@@ -15,11 +15,12 @@ export type PullToRefreshState = "idle" | "pulling" | "ready" | "refreshing";
 
 export interface PullToRefreshBindings {
   /** Spread onto the scroll container so the hook can observe touch events.
-   *  `style.touchAction: "pan-y"` constrains the browser's native gesture
-   *  handling to vertical pans only — on iOS Safari this prevents the native
-   *  rubber-band pull-to-refresh from firing alongside our in-app indicator.
-   *  Horizontal pans / pinch-zoom remain unaffected; desktop is unchanged
-   *  because mouse gestures don't consult touch-action. */
+   *  `style.touchAction: "pan-y"` is the belt to `preventDefault`'s braces:
+   *  it constrains the browser's native gesture handling to vertical pans
+   *  only (no horizontal swipe-back, no pinch-zoom takeover) so the pointer
+   *  events keep flowing to us without the browser claiming the gesture
+   *  first. Desktop is unaffected — mouse gestures don't consult
+   *  `touch-action`. */
   containerProps: {
     onPointerDown: (e: React.PointerEvent) => void;
     onPointerMove: (e: React.PointerEvent) => void;
@@ -101,23 +102,25 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): PullToR
     const dy = e.clientY - startYRef.current;
     if (dy <= 0) {
       // Dragging up cancels the gesture entirely — user's trying to scroll.
+      // Don't preventDefault here so the page can scroll normally.
       setOffset(0);
       setState("idle");
       crossedRef.current = false;
       return;
     }
+    // We own this gesture (scrollTop was 0 on pointerDown and the user is
+    // now dragging down). Suppress the browser default from the *first*
+    // downward move — iOS Safari commits its native rubber-band PTR well
+    // before our 72px trigger crosses, so deferring preventDefault until
+    // commit lets both rubber-bands fight for the first ~160px of finger
+    // travel. `cancelable` guards passive listeners and synthetic test
+    // events that can't be preventDefault-ed.
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     // Apply resistance so the indicator feels weighted, cap at MAX_DRAG.
     const next = Math.min(MAX_DRAG, dy * RESISTANCE);
     const crossing = next >= TRIGGER_DISTANCE;
-    // Once the gesture is committed (past the trigger), suppress the
-    // browser's default behavior so iOS Safari's native rubber-band PTR
-    // doesn't fire alongside our indicator. Guarded by `cancelable`
-    // because passive listeners and synthetic test events can't be
-    // preventDefault-ed. Only fires after commit so a brief downward
-    // nudge the user converts into a scroll still works normally.
-    if (crossing && e.cancelable) {
-      e.preventDefault();
-    }
     setOffset(next);
     // Latch the committed visual state once the user has crossed on this
     // pull. The commit (crossedRef) is sticky until release or cancel, so
