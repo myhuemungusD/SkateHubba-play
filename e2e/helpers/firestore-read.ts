@@ -64,10 +64,24 @@ export async function readDocByPath(path: string): Promise<Record<string, unknow
  * Resolve the Auth emulator uid for a given email. Returns the localId
  * (Firebase's term for uid) so back-end-state specs can read the user's
  * docs without having to scrape the URL or page state.
+ *
+ * Uses the Identity Toolkit `accounts:query` POST endpoint exposed by the
+ * Auth emulator — the `/emulator/v1/.../accounts` path only supports DELETE
+ * (account wipe), not GET (list). Admin scope is granted by the
+ * `Bearer owner` header, matching the same admin shortcut used by the
+ * write helpers in `emulator.ts` (writeDoc, expireGameDeadline).
  */
 export async function uidForEmail(email: string): Promise<string> {
-  const res = await fetch(`${AUTH}/emulator/v1/projects/${PROJECT_ID}/accounts`);
-  if (!res.ok) throw new Error(`accounts lookup failed: ${res.status}`);
+  const url = `${AUTH}/identitytoolkit.googleapis.com/v1/projects/${PROJECT_ID}/accounts:query`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer owner",
+    },
+    body: JSON.stringify({ returnUserInfo: true, limit: 500 }),
+  });
+  if (!res.ok) throw new Error(`accounts lookup failed: ${res.status} ${await res.text()}`);
   const body = (await res.json()) as { userInfo?: Array<{ localId: string; email: string }> };
   const found = (body.userInfo ?? []).find((u) => u.email === email);
   if (!found) throw new Error(`No emulator user found for ${email}`);
