@@ -246,3 +246,72 @@ describe("users/{uid} owner stats — legitimate writes still succeed", () => {
     );
   });
 });
+
+/**
+ * Codex P1 follow-up: toggle-bypass replay.
+ *
+ * The previous fix only validated the +1 sub-branches; the "unchanged stat"
+ * sub-branch silently permitted mutating `lastStatsGameId` alone. That broke
+ * the forward-progress invariant — an attacker could toggle the idempotency
+ * key to a junk value between two replays of the same legitimate win, so
+ * ownerCanCloseWins's `resource.data.lastStatsGameId != gid` check stayed
+ * green every time. These tests pin the new top-level guard that forbids
+ * any `lastStatsGameId` change unless it rides along with a stat advance
+ * that ownerCanCloseWins/Losses validates against the game doc.
+ */
+describe("users/{uid} owner stats — lastStatsGameId toggle-bypass guard", () => {
+  it("attack: owner CANNOT toggle lastStatsGameId alone with no wins/losses change", async () => {
+    // Stage Alice as if she has already legitimately closed WIN_GAME_ID.
+    // The toggle write attempts to advance the key to an arbitrary string
+    // without touching wins/losses — must fail.
+    await seed({ aliceWins: 1, aliceLastStatsGameId: WIN_GAME_ID });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        lastStatsGameId: "G2-arbitrary",
+      }),
+    );
+  });
+
+  it("attack: full 3-step replay is severed at step 2 (the toggle)", async () => {
+    // Step 1 is the legitimate close — succeeds and establishes the stored
+    // lastStatsGameId == WIN_GAME_ID. Step 2 (the toggle) must now fail,
+    // which prevents step 3 from ever satisfying the forward-progress check.
+    await seed({ aliceWins: 0 });
+    const aliceDb = asAlice().firestore();
+    // Step 1: legitimate close.
+    await assertSucceeds(
+      updateDoc(doc(aliceDb, "users", ALICE_UID), {
+        wins: 1,
+        lastStatsGameId: WIN_GAME_ID,
+      }),
+    );
+    // Step 2: toggle alone to bypass forward-progress on a future replay.
+    await assertFails(
+      updateDoc(doc(aliceDb, "users", ALICE_UID), {
+        lastStatsGameId: "anything-else",
+      }),
+    );
+  });
+
+  it("legitimate: paired wins +1 with new lastStatsGameId still succeeds", async () => {
+    // Sanity: the guard must not regress the legitimate close-out path.
+    await seed({ aliceWins: 0 });
+    await assertSucceeds(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        wins: 1,
+        lastStatsGameId: WIN_GAME_ID,
+      }),
+    );
+  });
+
+  it("legitimate: benign edit with no lastStatsGameId in payload still succeeds", async () => {
+    // Sanity: the guard is gated on `'lastStatsGameId' in request.resource.data`,
+    // so writes that don't touch the field must pay nothing.
+    await seed({ aliceWins: 2, aliceLastStatsGameId: WIN_GAME_ID });
+    await assertSucceeds(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+      }),
+    );
+  });
+});

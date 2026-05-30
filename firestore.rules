@@ -348,6 +348,33 @@ service cloud.firestore {
               && request.resource.data.losses == resource.data.losses + 1
               && ownerCanCloseLosses(uid))
         )
+        // ── lastStatsGameId toggle-bypass guard ──
+        // Without this, the wins/losses sub-branches above allow the
+        // "unchanged stat" path (`request.resource.data.wins == resource.data.wins`)
+        // to coexist with an arbitrary mutation to `lastStatsGameId`, because
+        // the unchanged path never calls ownerCanCloseWins/Losses. Attack:
+        //   (1) legitimately close G1: {wins: stored+1, lastStatsGameId: G1} — OK
+        //   (2) toggle alone:          {lastStatsGameId: "anything"}         — OK (BUG)
+        //   (3) replay G1:             {wins: stored+1, lastStatsGameId: G1} — OK again,
+        //       because ownerCanCloseWins's forward-progress check sees
+        //       resource.data.lastStatsGameId ("anything") != gid (G1).
+        // Looping (2)+(3) inflates wins indefinitely off ONE real game.
+        //
+        // Fix: any change to `lastStatsGameId` on the owner branch must be
+        // paired with a corresponding +1 stat advance that the matching
+        // ownerCanCloseWins/Losses helper validates against the game doc.
+        && (
+          !('lastStatsGameId' in request.resource.data)
+          || request.resource.data.lastStatsGameId == resource.data.get('lastStatsGameId', '')
+          || (
+            request.resource.data.wins == resource.data.get('wins', 0) + 1
+            && ownerCanCloseWins(uid)
+          )
+          || (
+            request.resource.data.losses == resource.data.get('losses', 0) + 1
+            && ownerCanCloseLosses(uid)
+          )
+        )
         // lastGameCreatedAt is the server-side 30s game-creation cooldown
         // anchor (see /games create rule). Without this guard, a client
         // could write a stale Timestamp (e.g. epoch 0) to instantly satisfy
