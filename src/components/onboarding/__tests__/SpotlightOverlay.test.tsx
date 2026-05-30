@@ -156,6 +156,31 @@ describe("SpotlightOverlay", () => {
     vi.useRealTimers();
   });
 
+  it("observes the target if it mounts between render and the rAF retry", () => {
+    vi.useFakeTimers();
+    const observed: Element[] = [];
+    installIO(() => ({
+      observe: (el) => {
+        observed.push(el);
+      },
+      unobserve: () => undefined,
+      disconnect: () => undefined,
+    }));
+    const onAnchorMissing = vi.fn();
+    renderOverlay({ targetSelector: '[data-tutorial="late"]', onAnchorMissing });
+    // Element absent at render → first startObserving() returns false.
+    expect(observed).toHaveLength(0);
+    // Mount the target before the rAF retry fires.
+    mountTarget("late", { top: 0, left: 0, width: 10, height: 10 });
+    // Advance just past one frame — rAF fires, retry succeeds, IO observes.
+    vi.advanceTimersByTime(16);
+    expect(observed).toHaveLength(1);
+    // Watchdog still disarmed since no intersection event fired.
+    vi.advanceTimersByTime(1500);
+    expect(onAnchorMissing).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("does NOT fire onAnchorMissing when the target intersects within the window", async () => {
     vi.useFakeTimers();
     mountTarget("visible", { top: 0, left: 0, width: 10, height: 10 });
