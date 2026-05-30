@@ -71,7 +71,6 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
       writeStoredCooldown(RESEND_COOLDOWN_S);
       setCooldown(RESEND_COOLDOWN_S);
       setSent(true);
-      setSendError(null);
     } catch (err) {
       const code = getErrorCode(err);
       captureException(err, { extra: { context: "VerifyEmailBanner resend" } });
@@ -98,7 +97,9 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
     <div className="mx-5 mt-4 p-3.5 rounded-2xl bg-[rgba(255,107,0,0.06)] border border-brand-orange/40 flex items-center justify-between gap-3 shadow-[0_0_16px_rgba(255,107,0,0.06)] animate-fade-in">
       <div>
         <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
-        <span className="font-body text-xs text-muted">{statusMessage}</span>
+        <span className="font-body text-xs text-muted" aria-live="polite">
+          {statusMessage}
+        </span>
       </div>
       <button
         type="button"
