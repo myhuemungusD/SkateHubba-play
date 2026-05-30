@@ -315,3 +315,52 @@ describe("users/{uid} owner stats — lastStatsGameId toggle-bypass guard", () =
     );
   });
 });
+
+describe("users/{uid} owner stats — game-doc relational guards", () => {
+  const ACTIVE_GAME_ID = "game-active-alice-vs-bob";
+  const NON_PARTICIPANT_GAME_ID = "game-bob-vs-charlie";
+  const CHARLIE_UID = "charlie-uid";
+
+  it("attack: owner CANNOT close stats against an active (non-terminal) game", async () => {
+    // The helper requires `game.status == 'complete' || 'forfeit'`. An
+    // in-progress game with Alice listed as `winner` (which shouldn't
+    // happen in real play, but the rule must defend against a hypothetical
+    // server bug or race) must still be rejected.
+    await seed({ aliceWins: 0 });
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "games", ACTIVE_GAME_ID), {
+        player1Uid: ALICE_UID,
+        player2Uid: BOB_UID,
+        status: "active",
+        winner: ALICE_UID,
+      });
+    });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        wins: 1,
+        lastStatsGameId: ACTIVE_GAME_ID,
+      }),
+    );
+  });
+
+  it("attack: owner CANNOT cite a game they are not a participant in", async () => {
+    // Alice tries to claim a win using Bob-vs-Charlie's game id even
+    // though `winner == ALICE_UID` is forged in the seed. The participant
+    // check (`uid == player1Uid || uid == player2Uid`) must reject this.
+    await seed({ aliceWins: 0 });
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "games", NON_PARTICIPANT_GAME_ID), {
+        player1Uid: BOB_UID,
+        player2Uid: CHARLIE_UID,
+        status: "complete",
+        winner: ALICE_UID,
+      });
+    });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        wins: 1,
+        lastStatsGameId: NON_PARTICIPANT_GAME_ID,
+      }),
+    );
+  });
+});
