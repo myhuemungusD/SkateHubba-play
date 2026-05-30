@@ -231,6 +231,14 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
 
   const submittedRef = useRef(false);
   const uploadAbortRef = useRef<AbortController | null>(null);
+  // Abort any in-flight upload on unmount — back-navigating mid-upload would
+  // otherwise leak the transfer and risk setState-after-unmount in the upload
+  // progress / error callbacks.
+  useEffect(() => {
+    return () => {
+      uploadAbortRef.current?.abort();
+    };
+  }, []);
   const submitSetterTrick = useCallback(
     async (blob: Blob | null) => {
       /* v8 ignore start -- double-submit guard; ref always false on first call in tests */
