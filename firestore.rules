@@ -1011,11 +1011,12 @@ service cloud.firestore {
         )
         // Winner must be the opponent of the current-turn player (who timed out)
         && request.resource.data.winner == opponentUid(resource.data, resource.data.currentTurn)
-        // turnHistory must not change during a forfeit (and cannot be injected if absent)
-        && (
-          (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
-          || request.resource.data.turnHistory == resource.data.turnHistory
-        );
+        // turnHistory may append exactly ONE closing TurnRecord so consumers
+        // walking history can render the "how it ended" frame on a forfeit.
+        // Same +1 / ≤200 ceiling every other growth-capable branch uses; the
+        // helper also accepts the "unchanged" shape for callers that don't
+        // append (forward-compat).
+        && turnHistoryGrowthOk();
 
       // ── Expired dispute auto-accept ──
       // When the judge's review window expires (24 h), any participant
