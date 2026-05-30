@@ -718,6 +718,36 @@ describe("users service", () => {
 
       expect(txUpdate).not.toHaveBeenCalled();
     });
+
+    it("swallows permission-denied (peer-write loses canPeerCloseStats) and warns", async () => {
+      // Peer fan-out from GameContext writes the opponent's stats too.
+      // canPeerCloseStats can reject in legitimate states (owner already
+      // committed, winner/direction mismatch) — best-effort denorm, must
+      // not produce an uncaught rejection in fire-and-forget callers.
+      const permErr = Object.assign(new Error("permission-denied"), { code: "permission-denied" });
+      mockRunTransaction.mockRejectedValueOnce(permErr);
+
+      await expect(updatePlayerStats("opponent-uid", "game-123", false)).resolves.toBeUndefined();
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        "update_player_stats_peer_failed",
+        expect.objectContaining({ uid: "opponent-uid", code: "permission-denied" }),
+      );
+    });
+
+    it("rethrows non-permission errors so the caller's retry path engages", async () => {
+      // Network / internal failures are recoverable — surfacing them lets
+      // GameContext's catch-block clear processedStatsRef so the next
+      // snapshot re-attempts the write.
+      const netErr = Object.assign(new Error("unavailable"), { code: "unavailable" });
+      mockRunTransaction.mockRejectedValueOnce(netErr);
+
+      await expect(updatePlayerStats("u1", "game-123", true)).rejects.toThrow("unavailable");
+    });
+
+    it("rethrows errors without a code (defensive — non-Firestore throws)", async () => {
+      mockRunTransaction.mockRejectedValueOnce(new Error("boom"));
+      await expect(updatePlayerStats("u1", "game-123", true)).rejects.toThrow("boom");
+    });
   });
 
   describe("getPlayerDirectory", () => {

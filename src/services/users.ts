@@ -421,17 +421,36 @@ export async function updatePlayerStats(uid: string, gameId: string, won: boolea
   const db = requireDb();
   const userRef = doc(db, "users", uid);
 
-  await runTransaction(db, async (tx) => {
-    const snap = await tx.get(userRef);
-    if (!snap.exists()) return; // profile deleted
-    // Idempotency re-checked inside the tx — a parallel writer that
-    // won the race will have already committed the new lastStatsGameId.
-    if (snap.data().lastStatsGameId === gameId) return;
-    tx.update(userRef, {
-      [won ? "wins" : "losses"]: increment(1),
-      lastStatsGameId: gameId,
+  try {
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(userRef);
+      if (!snap.exists()) return; // profile deleted
+      // Idempotency re-checked inside the tx — a parallel writer that
+      // won the race will have already committed the new lastStatsGameId.
+      if (snap.data().lastStatsGameId === gameId) return;
+      tx.update(userRef, {
+        [won ? "wins" : "losses"]: increment(1),
+        lastStatsGameId: gameId,
+      });
     });
-  });
+  } catch (err) {
+    // Peer-write path (GameContext fan-out updates BOTH the local user and
+    // the opponent's stats) is gated by `canPeerCloseStats` in
+    // firestore.rules. When a peer write loses the rules check — e.g. the
+    // owner already incremented their own stats, or the rule's preconditions
+    // (winner / direction match) aren't met — Firestore returns
+    // permission-denied. That's a best-effort denormalization failure, not
+    // a real error: swallow it with a warn so fire-and-forget callers don't
+    // produce uncaught rejections. Owner-side writes still throw because
+    // the user expects their own stats to commit; any non-permission error
+    // (network / internal) rethrows so the catch-up retry path engages.
+    const code = (err as { code?: string })?.code;
+    if (code === "permission-denied") {
+      logger.warn("update_player_stats_peer_failed", { uid, code });
+      return;
+    }
+    throw err;
+  }
 }
 
 /**
