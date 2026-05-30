@@ -109,6 +109,9 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
       pinLng < -180 ||
       pinLng > 180
     ) {
+      // Bounce back to step 1 so the user lands on the offending input
+      // instead of seeing a generic banner two steps away from it.
+      setStep(1);
       setError("Invalid coordinates");
       return;
     }
@@ -177,6 +180,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
         role="dialog"
         aria-modal="true"
         aria-label="Add a spot"
+        tabIndex={-1}
         onKeyDown={(e) => {
           if (e.key === "Escape") onClose();
         }}
@@ -206,6 +210,18 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
         </div>
 
         <div className="p-4">
+          {/* Submission error — rendered above the step content so it stays
+              visible after a guard like "Invalid coordinates" bounces the
+              user back to step 1, and after a Firestore rejection on step 3. */}
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm"
+            >
+              {error}
+            </div>
+          )}
+
           {/* Step 1: Pin location */}
           {step === 1 && (
             <div>
@@ -405,13 +421,6 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
               {/* Photo URL validation error */}
               {photoError && <p className="text-red-400 text-xs">{photoError}</p>}
-
-              {/* Submission error */}
-              {error && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
-                  {error}
-                </div>
-              )}
 
               <button
                 type="button"

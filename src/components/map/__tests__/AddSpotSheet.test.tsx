@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mockCreateSpot = vi.fn();
@@ -126,6 +126,29 @@ describe("AddSpotSheet", () => {
     dialog.focus();
     await userEvent.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounces back to step 1 and shows an error when coords are out of WGS84 range", async () => {
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    // Drive the latitude out of range directly — userEvent.type on a number
+    // input with an existing value would append digits instead of replacing,
+    // which wouldn't actually exceed the [-90, 90] band.
+    const latInput = screen.getByDisplayValue("34.0522");
+    fireEvent.change(latInput, { target: { value: "120" } });
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(screen.getByPlaceholderText(/Hollywood High/i), "Hubba");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+
+    // The guard should land the user back on step 1 with a visible alert,
+    // not leave them on step 3 staring at an opaque banner.
+    await waitFor(() => {
+      expect(screen.getByText("Pin Location")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Invalid coordinates");
+    expect(mockCreateSpot).not.toHaveBeenCalled();
   });
 
   it("does not zero the pin when latitude input is cleared mid-edit", async () => {
