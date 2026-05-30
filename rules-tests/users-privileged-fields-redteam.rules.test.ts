@@ -220,7 +220,11 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
   });
 
   it("legitimate: owner CAN increment losses by exactly 1", async () => {
-    await seedTerminatedGame(testEnv, "g-loss", { player1Uid: OWNER_UID, player2Uid: "opponent-uid" });
+    await seedTerminatedGame(testEnv, "g-loss", {
+      player1Uid: OWNER_UID,
+      player2Uid: "opponent-uid",
+      winner: "opponent-uid",
+    });
     await assertSucceeds(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { losses: 3, lastStatsGameId: "g-loss" }),
     );

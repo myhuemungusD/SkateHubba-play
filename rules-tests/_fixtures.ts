@@ -76,8 +76,9 @@ export function makeValidGame(
  * the per-test shape down to a single helper call so the test-duplication
  * detector stays clean.
  *
- * When `winner` is omitted, the seeded game records the OPPONENT as the
- * winner — convenient for tests that need a "losing" backing game.
+ * `winner` is required — every caller must declare who won the seeded game so
+ * the test reads end-to-end without consulting this helper to discover an
+ * implicit default.
  */
 export async function seedTerminatedGame(
   env: RulesTestEnvironment,
@@ -85,12 +86,11 @@ export async function seedTerminatedGame(
   opts: {
     player1Uid: string;
     player2Uid: string;
-    winner?: string;
+    winner: string;
     status?: "complete" | "forfeit";
   },
 ): Promise<void> {
-  const { player1Uid, player2Uid, status = "complete" } = opts;
-  const winner = opts.winner ?? player2Uid;
+  const { player1Uid, player2Uid, winner, status = "complete" } = opts;
   await env.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), "games", gameId), {
       player1Uid,

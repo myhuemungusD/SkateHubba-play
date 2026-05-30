@@ -118,16 +118,19 @@ service cloud.firestore {
     function ownerCanCloseWins(uid) {
       let gid = request.resource.data.lastStatsGameId;
       let game = get(/databases/$(database)/documents/games/$(gid)).data;
-      return gid is string
+      return isSignedIn()
+        && gid is string
         && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
         && (game.status == 'complete' || game.status == 'forfeit')
+        && game.winner != null
         && game.winner == uid
         && (uid == game.player1Uid || uid == game.player2Uid);
     }
     function ownerCanCloseLosses(uid) {
       let gid = request.resource.data.lastStatsGameId;
       let game = get(/databases/$(database)/documents/games/$(gid)).data;
-      return gid is string
+      return isSignedIn()
+        && gid is string
         && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
         && (game.status == 'complete' || game.status == 'forfeit')
         && game.winner != null
