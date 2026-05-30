@@ -21,13 +21,14 @@ function isValidPhotoUrl(url: string): boolean {
 }
 
 /**
- * Parse a coordinate input string, returning the prior value when the parse
- * yields a non-finite number (e.g. mid-typing "-" or ""). Prevents the input
- * from silently zeroing the pin into the Atlantic on a bad parse.
+ * Parse a coordinate input string into a number, or NaN when the parse
+ * fails (empty, "-", etc.). NaN is intentional — callers keep it in
+ * state so the submit guard's Number.isFinite check rejects empty input
+ * rather than silently zeroing the pin into the Atlantic.
  */
-function parseCoord(raw: string, prev: number): number {
+function parseCoord(raw: string): number {
   const next = Number.parseFloat(raw);
-  return Number.isFinite(next) ? next : prev;
+  return Number.isFinite(next) ? next : NaN;
 }
 
 interface AddSpotSheetProps {
@@ -61,9 +62,17 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
   useFocusTrap(panelRef);
   const [step, setStep] = useState<Step>(1);
 
-  // Step 1: Location
-  const [pinLat, setPinLat] = useState(userLocation?.lat ?? 34.0522);
-  const [pinLng, setPinLng] = useState(userLocation?.lng ?? -118.2437);
+  // Step 1: Location.
+  // Text state is the source of truth for the inputs so users can clear
+  // or partially type ("-", "12."). pinLat/pinLng are derived numbers,
+  // intentionally NaN while the text is invalid — the submit guard
+  // (Number.isFinite) catches NaN and surfaces "Invalid coordinates".
+  const initialLat = userLocation?.lat ?? 34.0522;
+  const initialLng = userLocation?.lng ?? -118.2437;
+  const [pinLatText, setPinLatText] = useState(String(initialLat));
+  const [pinLngText, setPinLngText] = useState(String(initialLng));
+  const [pinLat, setPinLat] = useState<number>(initialLat);
+  const [pinLng, setPinLng] = useState<number>(initialLng);
 
   // Step 2: Details
   const [name, setName] = useState("");
@@ -240,8 +249,11 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       step="0.0001"
                       min={-90}
                       max={90}
-                      value={pinLat}
-                      onChange={(e) => setPinLat((prev) => parseCoord(e.target.value, prev))}
+                      value={pinLatText}
+                      onChange={(e) => {
+                        setPinLatText(e.target.value);
+                        setPinLat(parseCoord(e.target.value));
+                      }}
                       className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
                     />
                   </div>
@@ -252,8 +264,11 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       step="0.0001"
                       min={-180}
                       max={180}
-                      value={pinLng}
-                      onChange={(e) => setPinLng((prev) => parseCoord(e.target.value, prev))}
+                      value={pinLngText}
+                      onChange={(e) => {
+                        setPinLngText(e.target.value);
+                        setPinLng(parseCoord(e.target.value));
+                      }}
                       className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
                     />
                   </div>
@@ -264,6 +279,8 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                     onClick={() => {
                       setPinLat(userLocation.lat);
                       setPinLng(userLocation.lng);
+                      setPinLatText(String(userLocation.lat));
+                      setPinLngText(String(userLocation.lng));
                     }}
                     className="mt-3 text-xs text-[#F97316] hover:underline"
                   >

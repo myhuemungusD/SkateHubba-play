@@ -151,18 +151,20 @@ describe("AddSpotSheet", () => {
     expect(mockCreateSpot).not.toHaveBeenCalled();
   });
 
-  it("does not zero the pin when latitude input is cleared mid-edit", async () => {
+  it("allows the latitude input to be cleared and re-typed without zeroing the pin", async () => {
     mockCreateSpot.mockResolvedValueOnce(FIXTURE_SPOT);
     render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={vi.fn()} onSuccess={vi.fn()} />);
 
-    // Clearing the field used to flip the pin to lat=0 (Atlantic Ocean) via
-    // `parseFloat("") || 0`. parseCoord now keeps the prior value when the
-    // parse is non-finite.
+    // The original bug: `parseFloat("") || 0` silently flipped the pin to
+    // lat=0 (Atlantic Ocean). After the fix the input text is independent
+    // of the parsed number — clearing leaves the field empty (NaN under
+    // the hood), and typing a new value updates the parsed coord on the
+    // fly so the next submit uses the new coord, never 0.
     const latInput = screen.getByDisplayValue("34.0522");
     await userEvent.clear(latInput);
-    expect(screen.getByDisplayValue("34.0522")).toBeInTheDocument();
+    expect((latInput as HTMLInputElement).value).toBe("");
+    await userEvent.type(latInput, "37.7749");
 
-    // Walk through the flow and submit — latitude must NOT be 0.
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
     await userEvent.type(screen.getByPlaceholderText(/Hollywood High/i), "Hubba");
     await userEvent.click(screen.getByRole("button", { name: "Next" }));
@@ -172,7 +174,27 @@ describe("AddSpotSheet", () => {
       expect(mockCreateSpot).toHaveBeenCalledTimes(1);
     });
     const [req] = mockCreateSpot.mock.calls[0];
-    expect(req.latitude).toBeCloseTo(34.0522);
+    expect(req.latitude).toBeCloseTo(37.7749);
     expect(req.longitude).toBeCloseTo(-118.2437);
+  });
+
+  it("blocks submit and surfaces an error when a coordinate input is left empty", async () => {
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    // Clear latitude and try to walk through the flow without re-typing —
+    // the submit guard's Number.isFinite check must reject NaN rather
+    // than letting the spot create with stale or zeroed coords.
+    const latInput = screen.getByDisplayValue("34.0522");
+    await userEvent.clear(latInput);
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(screen.getByPlaceholderText(/Hollywood High/i), "Hubba");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Invalid coordinates/i)).toBeInTheDocument();
+    });
+    expect(mockCreateSpot).not.toHaveBeenCalled();
   });
 });
