@@ -14,12 +14,18 @@ const RESISTANCE = 0.45;
 export type PullToRefreshState = "idle" | "pulling" | "ready" | "refreshing";
 
 export interface PullToRefreshBindings {
-  /** Spread onto the scroll container so the hook can observe touch events. */
+  /** Spread onto the scroll container so the hook can observe touch events.
+   *  `style.touchAction: "pan-y"` constrains the browser's native gesture
+   *  handling to vertical pans only — on iOS Safari this prevents the native
+   *  rubber-band pull-to-refresh from firing alongside our in-app indicator.
+   *  Horizontal pans / pinch-zoom remain unaffected; desktop is unchanged
+   *  because mouse gestures don't consult touch-action. */
   containerProps: {
     onPointerDown: (e: React.PointerEvent) => void;
     onPointerMove: (e: React.PointerEvent) => void;
     onPointerUp: (e: React.PointerEvent) => void;
     onPointerCancel: (e: React.PointerEvent) => void;
+    style: { touchAction: "pan-y" };
   };
   /** Current drag offset in pixels (0 when idle). Drive the indicator with this. */
   offset: number;
@@ -103,6 +109,15 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): PullToR
     // Apply resistance so the indicator feels weighted, cap at MAX_DRAG.
     const next = Math.min(MAX_DRAG, dy * RESISTANCE);
     const crossing = next >= TRIGGER_DISTANCE;
+    // Once the gesture is committed (past the trigger), suppress the
+    // browser's default behavior so iOS Safari's native rubber-band PTR
+    // doesn't fire alongside our indicator. Guarded by `cancelable`
+    // because passive listeners and synthetic test events can't be
+    // preventDefault-ed. Only fires after commit so a brief downward
+    // nudge the user converts into a scroll still works normally.
+    if (crossing && e.cancelable) {
+      e.preventDefault();
+    }
     setOffset(next);
     // Latch the committed visual state once the user has crossed on this
     // pull. The commit (crossedRef) is sticky until release or cancel, so
@@ -155,6 +170,7 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): PullToR
       onPointerMove: handlePointerMove,
       onPointerUp: handlePointerUp,
       onPointerCancel: handlePointerCancel,
+      style: { touchAction: "pan-y" as const },
     }),
     [handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel],
   );
