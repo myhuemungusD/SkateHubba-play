@@ -284,6 +284,40 @@ describe("games service", () => {
       warnSpy.mockRestore();
     });
 
+    it("emits a second update on an already-seeded slice even before other slices have seeded", () => {
+      // Regression: handleSnapshot used to suppress every emit while the
+      // first-load gate was still waiting. If slice p1 seeded, then took a
+      // turn (second snapshot on p1) before the judge slice ever delivered,
+      // the second p1 snapshot was captured into slices.p1 but silently
+      // dropped — the UI never saw the user's own turn land.
+      const onUpdate = vi.fn();
+      const listeners: Array<(snap: unknown) => void> = [];
+      mockOnSnapshot.mockImplementation((_query: unknown, cb: Function) => {
+        listeners.push(cb as (snap: unknown) => void);
+        return vi.fn();
+      });
+
+      subscribeToMyGames("u1", onUpdate);
+
+      // Seed slice p1 with one game — gate still closed (p2, judge unseeded).
+      listeners[0]({
+        docs: [{ id: "g1", data: () => ({ ...baseGame, status: "active", turnNumber: 1 }) }],
+      });
+      expect(onUpdate).not.toHaveBeenCalled();
+
+      // Second snapshot on p1 (e.g. user took a turn) — must NOT be silently
+      // dropped just because judge hasn't seeded yet. Slice has already
+      // contributed its initial data, so emitting now is safe.
+      listeners[0]({
+        docs: [{ id: "g1", data: () => ({ ...baseGame, status: "active", turnNumber: 2 }) }],
+      });
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      const games = onUpdate.mock.calls[0][0];
+      expect(games).toHaveLength(1);
+      expect(games[0].id).toBe("g1");
+      expect(games[0].turnNumber).toBe(2);
+    });
+
     it("preserves the slice's prior state when an already-seeded listener errors", () => {
       // After first-load completes, a transient error on a seeded listener
       // must NOT zero out that slice. The Firestore SDK auto-reconnects on

@@ -136,11 +136,19 @@ export function subscribeToMyGames(
       const game = toGameDoc(d);
       next.set(game.id, game);
     }
+    // Was this slice already seeded BEFORE this snapshot? If yes, this is a
+    // genuine update (e.g. user took a turn) — must be emitted even if the
+    // first-load gate is still waiting on a different slice. Without this,
+    // a slice-A update that arrives between slice-A's initial seed and a
+    // sibling slice's initial seed is captured into `slices[slice]` but
+    // silently dropped, so the UI never sees the second-or-later change.
+    const wasAlreadySeeded = seeded.has(slice);
     slices[slice] = next;
     markSeeded(slice);
-    // Only emit once the first load is complete. After that every snapshot
-    // update is a legit diff and consumers should see it immediately.
-    if (firstLoadComplete) rebuildAndEmit();
+    // Emit when the first-load gate is open, OR when this is a follow-up
+    // update on an already-seeded slice (no flash risk — the slice already
+    // contributed its initial data on a prior snapshot).
+    if (firstLoadComplete || wasAlreadySeeded) rebuildAndEmit();
   };
 
   const handleError = (slice: Slice) => (err: Error) => {
