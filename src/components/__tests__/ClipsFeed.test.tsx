@@ -380,6 +380,55 @@ describe("ClipsFeed", () => {
     );
   });
 
+  it("still rolls back cleanly when a sort-toggle re-fetch interleaves with an in-flight upvote rejection", async () => {
+    // Race scenario: viewer taps upvote → flips Top/New → upvote network
+    // call rejects. The hydration race-guard skips the in-flight clip (its
+    // id is in upvotingIds), so the catch sees the optimistic value still
+    // in place and is safe to roll back. The defensive equality check in
+    // the catch ensures the rollback only fires when the state still
+    // matches our optimistic write — protecting against future hydration
+    // logic that might write through under different conditions.
+    const user = userEvent.setup();
+    const upvote = deferred<number>();
+    const hydrationAfterToggle = deferred<Map<string, { count: number; alreadyUpvoted: boolean }>>();
+
+    mockFetchClipsFeed
+      .mockResolvedValueOnce([makeClip()])
+      .mockResolvedValueOnce([makeClip()]);
+    mockFetchClipUpvoteState
+      .mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]))
+      .mockReturnValueOnce(hydrationAfterToggle.promise);
+    mockUpvoteClip.mockReturnValueOnce(upvote.promise);
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+
+    await user.click(screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeInTheDocument());
+
+    // Flip sort — triggers a new pool load + a new hydration that is
+    // intentionally left pending so the upvote rejection lands first.
+    await user.click(screen.getByRole("button", { name: "New" }));
+
+    // Reject the upvote — catch must restore the pre-tap state (count=2).
+    await act(async () => {
+      upvote.reject(new Error("network down"));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i })).toBeEnabled(),
+    );
+
+    // Hydration finally resolves — it should not crash the test and the
+    // displayed count remains the post-rollback authoritative value.
+    await act(async () => {
+      hydrationAfterToggle.resolve(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
+    });
+    expect(
+      screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i }),
+    ).toBeInTheDocument();
+  });
+
   it("keeps the optimistic upvoted state when the server already had our vote", async () => {
     const { user, upvoteBtn } = await mountWithUpvoteSetup({ kind: "alreadyUpvoted" });
 
