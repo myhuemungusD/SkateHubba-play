@@ -188,9 +188,10 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         next.add(clip.id);
         return next;
       });
+      const optimistic: ClipUpvoteState = { count: current.count + 1, alreadyUpvoted: true };
       setUpvoteState((prev) => {
         const next = new Map(prev);
-        next.set(clip.id, { count: current.count + 1, alreadyUpvoted: true });
+        next.set(clip.id, optimistic);
         return next;
       });
 
@@ -210,7 +211,16 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         if (err instanceof AlreadyUpvotedError) return;
         logger.warn("clips_feed_upvote_failed", { clipId: clip.id, error: parseFirebaseError(err) });
         if (!mountedRef.current) return;
+        // Only restore the pre-tap snapshot if state still matches what we
+        // optimistically set. If a sort-toggle re-hydration replaced our entry
+        // with an authoritative server snapshot mid-flight, leave it alone —
+        // rolling back would regress the UI to a value the server has since
+        // moved past.
         setUpvoteState((prev) => {
+          const cur = prev.get(clip.id);
+          if (!cur || cur.count !== optimistic.count || cur.alreadyUpvoted !== optimistic.alreadyUpvoted) {
+            return prev;
+          }
           const next = new Map(prev);
           next.set(clip.id, current);
           return next;
