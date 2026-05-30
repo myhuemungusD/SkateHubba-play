@@ -327,9 +327,7 @@ describe("VideoRecorder", () => {
     (globalThis as any).MediaRecorder = originalMR;
   });
 
-  it("startRec uses no-stream fallback path when camera returned null", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-
+  it("startRec surfaces camera error and stays in preview when stream is null", async () => {
     // Override getUserMedia to return null so streamRef.current stays null
     Object.defineProperty(navigator, "mediaDevices", {
       writable: true,
@@ -344,19 +342,20 @@ describe("VideoRecorder", () => {
       await userEvent.click(screen.getByText(/Open Camera/));
     });
 
-    // With null stream, component enters preview state but streamRef.current is null
+    // With null stream, component still enters preview state (openCamera succeeded)
     await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
 
-    // Clicking record hits the !streamRef.current path (lines 58-61) and sets a setInterval
+    // Clicking record must NOT transition to "recording" — it should surface a
+    // camera error and never invoke onRecorded.
     await act(async () => {
       await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     });
-    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
 
-    // Advance the setInterval callback to cover the (s) => s + 1 updater at line 62
-    act(() => {
-      vi.advanceTimersByTime(1000);
+    await waitFor(() => {
+      expect(screen.getByText(/Camera unavailable: no active stream/)).toBeInTheDocument();
     });
+    expect(screen.queryByRole("button", { name: /Stop Recording/ })).not.toBeInTheDocument();
+    expect(onRecorded).not.toHaveBeenCalled();
   });
 
   it("shows recording timer and auto-stop warning near end", async () => {
