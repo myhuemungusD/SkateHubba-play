@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { Capacitor } from "@capacitor/core";
 import { useOnboardingContext } from "../../context/OnboardingContext";
 import { TUTORIAL_STEPS } from "./tutorialSteps";
@@ -6,8 +6,6 @@ import { MascotBubble } from "./MascotBubble";
 import { SpotlightOverlay } from "./SpotlightOverlay";
 import { Z_TUTORIAL_OVERLAY } from "./constants";
 import type { HubzState } from "./HubzMascot";
-
-const CONFETTI = ["🤘", "🛹", "✨"] as const;
 
 function mascotStateForStep(stepIndex: number, isFinal: boolean): HubzState {
   if (isFinal) return "cheer";
@@ -51,9 +49,29 @@ export function TutorialOverlay() {
   const step = inRange ? TUTORIAL_STEPS[currentStep] : undefined;
   const isFinal = step?.isFinal === true;
 
+  // Settling guard: stray keyboard events from the prior interaction (e.g.
+  // Enter on the sign-in button) can reach the listener before the user has
+  // seen the step. Delay interactivity by one rAF so the overlay paints first.
+  const settledRef = useRef(false);
+  useEffect(() => {
+    if (loading || !shouldShow) {
+      settledRef.current = false;
+      return;
+    }
+    settledRef.current = false;
+    const raf = requestAnimationFrame(() => {
+      settledRef.current = true;
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      settledRef.current = false;
+    };
+  }, [loading, shouldShow]);
+
   useEffect(() => {
     if (loading || !shouldShow || !step) return;
     const handleKey = (e: KeyboardEvent) => {
+      if (!settledRef.current) return;
       if (isTypingTarget(e.target ?? document.activeElement)) return;
       if (e.key === "Escape") {
         e.preventDefault();
@@ -126,7 +144,6 @@ export function TutorialOverlay() {
 
   const stepLabel = `Step ${currentStep + 1} of ${totalSteps}`;
   const showBack = currentStep > 0;
-  const showConfetti = isFinal && !reducedMotion;
   const showGhostLetter = isFinal && !reducedMotion;
   const stencilWipe = reducedMotion ? "" : "animate-stencil-wipe";
 
@@ -161,21 +178,6 @@ export function TutorialOverlay() {
           />
         </div>
       </SpotlightOverlay>
-
-      {showConfetti && (
-        <div
-          aria-hidden="true"
-          data-testid="tutorial-confetti"
-          className="pointer-events-none fixed inset-x-0 bottom-44 flex justify-center gap-6"
-          style={{ zIndex: Z_TUTORIAL_OVERLAY }}
-        >
-          {CONFETTI.map((emoji, i) => (
-            <span key={emoji} className="text-3xl motion-safe:animate-float" style={{ animationDelay: `${i * 120}ms` }}>
-              {emoji}
-            </span>
-          ))}
-        </div>
-      )}
 
       {showGhostLetter && (
         <div
