@@ -113,6 +113,19 @@ export function useUserGeolocation({ map }: UseUserGeolocationParams): UseUserGe
     }
   }, [map, userLocation, isTrackingUser]);
 
+  // Detach the marker on unmount. Kept in a one-shot effect (empty deps) so
+  // cleanup doesn't fire on every GPS tick — that would defeat the
+  // setLngLat-vs-recreate optimization in the effect above. Without this,
+  // the marker DOM stays attached after the map remounts (e.g. style reload,
+  // failed-tile retry) and leaks across the page lifetime.
+  useEffect(
+    () => () => {
+      userMarker.current?.remove();
+      userMarker.current = null;
+    },
+    [],
+  );
+
   const handleRecenter = (onWaiting: () => void) => {
     const loc = userLocationRef.current;
     if (!loc) {
