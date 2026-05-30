@@ -117,4 +117,39 @@ describe("AddSpotSheet", () => {
     await userEvent.click(ledge);
     expect(ledge.className).not.toContain("F97316");
   });
+
+  it("closes when Escape is pressed inside the dialog", async () => {
+    const onClose = vi.fn();
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={onClose} onSuccess={vi.fn()} />);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    dialog.focus();
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not zero the pin when latitude input is cleared mid-edit", async () => {
+    mockCreateSpot.mockResolvedValueOnce(FIXTURE_SPOT);
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    // Clearing the field used to flip the pin to lat=0 (Atlantic Ocean) via
+    // `parseFloat("") || 0`. parseCoord now keeps the prior value when the
+    // parse is non-finite.
+    const latInput = screen.getByDisplayValue("34.0522");
+    await userEvent.clear(latInput);
+    expect(screen.getByDisplayValue("34.0522")).toBeInTheDocument();
+
+    // Walk through the flow and submit — latitude must NOT be 0.
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(screen.getByPlaceholderText(/Hollywood High/i), "Hubba");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+
+    await waitFor(() => {
+      expect(mockCreateSpot).toHaveBeenCalledTimes(1);
+    });
+    const [req] = mockCreateSpot.mock.calls[0];
+    expect(req.latitude).toBeCloseTo(34.0522);
+    expect(req.longitude).toBeCloseTo(-118.2437);
+  });
 });
