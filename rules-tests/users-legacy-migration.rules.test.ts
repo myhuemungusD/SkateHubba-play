@@ -186,6 +186,16 @@ describe("users/{uid} — strict post-backfill behaviour against legacy-shaped d
 
   it("legitimate: wins++ against a clean (post-backfill) doc SUCCEEDS", async () => {
     await seedCleanPublicUser();
+    // Stats writes now require a backing game doc via lastStatsGameId
+    // (see firestore.rules ownerCanCloseWins helper).
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "games", "g-123"), {
+        player1Uid: OWNER_UID,
+        player2Uid: "opponent-uid",
+        status: "complete",
+        winner: OWNER_UID,
+      });
+    });
     await assertSucceeds(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
         wins: 4,

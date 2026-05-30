@@ -107,6 +107,34 @@ service cloud.firestore {
         );
     }
 
+    // ── Owner stats close-out ──
+    // Owner-side counterpart to canPeerCloseStats above. The owner-update
+    // branch on /users/{uid} invokes these to gate every wins/losses +1:
+    // without them, a signed-in user could bump their own counter in a
+    // loop and inflate the leaderboard. Same shape as the peer helper
+    // (game-doc get, forward-progress on lastStatsGameId, terminal status,
+    // participant + winner check) but the participant being checked is
+    // the owner themselves rather than the "other" player.
+    function ownerCanCloseWins(uid) {
+      let gid = request.resource.data.lastStatsGameId;
+      let game = get(/databases/$(database)/documents/games/$(gid)).data;
+      return gid is string
+        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
+        && (game.status == 'complete' || game.status == 'forfeit')
+        && game.winner == uid
+        && (uid == game.player1Uid || uid == game.player2Uid);
+    }
+    function ownerCanCloseLosses(uid) {
+      let gid = request.resource.data.lastStatsGameId;
+      let game = get(/databases/$(database)/documents/games/$(gid)).data;
+      return gid is string
+        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
+        && (game.status == 'complete' || game.status == 'forfeit')
+        && game.winner != null
+        && game.winner != uid
+        && (uid == game.player1Uid || uid == game.player2Uid);
+    }
+
     // ── turnHistory growth bounds ──
     // Every write path that legitimately appends to `games.turnHistory`
     // (match resolution, dispute resolution, Call BS resolution, expired
@@ -273,26 +301,52 @@ service cloud.firestore {
         && !('dob' in request.resource.data)
         && !('parentalConsent' in request.resource.data)
         && !('fcmTokens' in request.resource.data)
-        // Wins/losses can only increment by 0 or 1 per write.
-        // When the field doesn't exist yet, only 0 or 1 is allowed
-        // (the old rule's !('wins' in resource.data) branch accepted any value).
+        // Wins/losses can only increment by 0 or 1 per write, AND any +1
+        // increment must be backed by an idempotency-checked game outcome.
+        //
+        // History: the prior form allowed an unconditional +1 on the owner
+        // branch — a signed-in user could call updateDoc({wins: stored + 1})
+        // in a tight loop and inflate their leaderboard rank arbitrarily.
+        // The peer branch (canPeerCloseStats) already required a game-doc
+        // relational check plus forward progress on `lastStatsGameId`; the
+        // owner branch must enforce the same shape, otherwise the peer-side
+        // hardening is useless.
+        //
+        // The +1 path now requires (via ownerCanCloseWins/Losses below):
+        //   (a) `lastStatsGameId` is a string and is the freshly written value
+        //   (b) `lastStatsGameId` actually advances (forward progress —
+        //       blocks rule-layer replays of the same gid)
+        //   (c) the referenced game doc exists, is complete/forfeit, and the
+        //       caller is one of the two players
+        //   (d) winner == uid for the wins side, winner != uid for losses
+        //
+        // The "unchanged" path stays free of game-doc checks so benign
+        // profile edits (stance, avatar URL, etc.) don't require a game ref.
         && (
           !('wins' in request.resource.data)
           || (!('wins' in resource.data)
-              && request.resource.data.wins >= 0 && request.resource.data.wins <= 1)
-          || ('wins' in resource.data && (
-            request.resource.data.wins == resource.data.wins
-            || request.resource.data.wins == resource.data.wins + 1
-          ))
+              && request.resource.data.wins == 0)
+          || (!('wins' in resource.data)
+              && request.resource.data.wins == 1
+              && ownerCanCloseWins(uid))
+          || ('wins' in resource.data
+              && request.resource.data.wins == resource.data.wins)
+          || ('wins' in resource.data
+              && request.resource.data.wins == resource.data.wins + 1
+              && ownerCanCloseWins(uid))
         )
         && (
           !('losses' in request.resource.data)
           || (!('losses' in resource.data)
-              && request.resource.data.losses >= 0 && request.resource.data.losses <= 1)
-          || ('losses' in resource.data && (
-            request.resource.data.losses == resource.data.losses
-            || request.resource.data.losses == resource.data.losses + 1
-          ))
+              && request.resource.data.losses == 0)
+          || (!('losses' in resource.data)
+              && request.resource.data.losses == 1
+              && ownerCanCloseLosses(uid))
+          || ('losses' in resource.data
+              && request.resource.data.losses == resource.data.losses)
+          || ('losses' in resource.data
+              && request.resource.data.losses == resource.data.losses + 1
+              && ownerCanCloseLosses(uid))
         )
         // lastGameCreatedAt is the server-side 30s game-creation cooldown
         // anchor (see /games create rule). Without this guard, a client

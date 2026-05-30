@@ -205,17 +205,38 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
   });
 
   it("legitimate: owner CAN increment wins by exactly 1", async () => {
+    // Stats writes now require a backing game doc via lastStatsGameId
+    // (see firestore.rules ownerCanCloseWins helper). Seed a game the
+    // owner won so the wins++ path is satisfied.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "games", "g-win"), {
+        player1Uid: OWNER_UID,
+        player2Uid: "opponent-uid",
+        status: "complete",
+        winner: OWNER_UID,
+      });
+    });
     await assertSucceeds(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
         wins: 4,
+        lastStatsGameId: "g-win",
       }),
     );
   });
 
   it("legitimate: owner CAN increment losses by exactly 1", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "games", "g-loss"), {
+        player1Uid: OWNER_UID,
+        player2Uid: "opponent-uid",
+        status: "complete",
+        winner: "opponent-uid",
+      });
+    });
     await assertSucceeds(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
         losses: 3,
+        lastStatsGameId: "g-loss",
       }),
     );
   });
@@ -226,6 +247,14 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
     // doc as the local-side idempotency key. The privileged-field
     // guard intentionally excludes lastStatsGameId so this path keeps
     // working — guarded by this regression test.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "games", "game-just-finished"), {
+        player1Uid: OWNER_UID,
+        player2Uid: "opponent-uid",
+        status: "complete",
+        winner: OWNER_UID,
+      });
+    });
     await assertSucceeds(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
         wins: 4,
