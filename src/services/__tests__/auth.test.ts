@@ -157,9 +157,10 @@ describe("auth service", () => {
       expect(mockSendReset.mock.calls[1]).toEqual([auth, "a@b.com"]);
     });
 
-    it("rethrows non-URI errors", async () => {
+    it("rethrows non-URI errors without falling back", async () => {
       mockSendReset.mockRejectedValueOnce(Object.assign(new Error("rate"), { code: "auth/too-many-requests" }));
       await expect(resetPassword("a@b.com")).rejects.toThrow("rate");
+      expect(mockSendReset).toHaveBeenCalledTimes(1);
     });
   });
 
