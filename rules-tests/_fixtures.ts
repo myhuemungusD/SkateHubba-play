@@ -70,6 +70,38 @@ export function makeValidGame(
 }
 
 /**
+ * Seed a terminated /games doc whose `winner` field is pre-populated. Used by
+ * the wins/losses-update tests that need a backing game for the owner-side
+ * `ownerCanCloseWins` / `ownerCanCloseLosses` checks in firestore.rules. Keeps
+ * the per-test shape down to a single helper call so the test-duplication
+ * detector stays clean.
+ *
+ * When `winner` is omitted, the seeded game records the OPPONENT as the
+ * winner — convenient for tests that need a "losing" backing game.
+ */
+export async function seedTerminatedGame(
+  env: RulesTestEnvironment,
+  gameId: string,
+  opts: {
+    player1Uid: string;
+    player2Uid: string;
+    winner?: string;
+    status?: "complete" | "forfeit";
+  },
+): Promise<void> {
+  const { player1Uid, player2Uid, status = "complete" } = opts;
+  const winner = opts.winner ?? player2Uid;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "games", gameId), {
+      player1Uid,
+      player2Uid,
+      status,
+      winner,
+    });
+  });
+}
+
+/**
  * Boot a Firestore rules test env against the local emulator on port 8080,
  * loading the repo's firestore.rules. Mirrors the shape every red-team
  * `beforeAll` was reproducing by hand.
