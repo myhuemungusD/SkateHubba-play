@@ -50,8 +50,9 @@ export function TutorialOverlay() {
   const isFinal = step?.isFinal === true;
 
   // Settling guard: stray keyboard events from the prior interaction (e.g.
-  // Enter on the sign-in button) can reach the listener before the user has
-  // seen the step. Delay interactivity by one rAF so the overlay paints first.
+  // Enter on the sign-in button) or a held key repeating across step
+  // transitions can reach the listener before the user has seen the step.
+  // Resets on every step change so each bubble paints before accepting input.
   const settledRef = useRef(false);
   useEffect(() => {
     if (loading || !shouldShow) {
@@ -66,7 +67,7 @@ export function TutorialOverlay() {
       cancelAnimationFrame(raf);
       settledRef.current = false;
     };
-  }, [loading, shouldShow]);
+  }, [loading, shouldShow, currentStep]);
 
   useEffect(() => {
     if (loading || !shouldShow || !step) return;
