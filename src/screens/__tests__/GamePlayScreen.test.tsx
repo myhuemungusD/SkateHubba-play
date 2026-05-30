@@ -32,6 +32,15 @@ vi.mock("../../services/storage", () => ({
   uploadVideo: (...args: unknown[]) => mockUploadVideo(...args),
 }));
 
+const mockCaptureException = vi.fn();
+vi.mock("../../lib/sentry", async () => {
+  const actual = await vi.importActual<typeof import("../../lib/sentry")>("../../lib/sentry");
+  return {
+    ...actual,
+    captureException: (...args: unknown[]) => mockCaptureException(...args),
+  };
+});
+
 const mockPlayHaptic = vi.fn();
 
 // Stub `playHaptic` (the side-effect) but defer to the real `hapticForVariant`
@@ -318,6 +327,45 @@ describe("GamePlayScreen", () => {
         expect.any(AbortSignal),
       );
     });
+  });
+
+  it("unmount aborts the in-flight setter upload and skips setTrick", async () => {
+    (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
+    let capturedSignal: AbortSignal | undefined;
+    mockUploadVideo.mockImplementationOnce((...args: unknown[]) => {
+      capturedSignal = args[6] as AbortSignal;
+      return new Promise((_, reject) => {
+        capturedSignal!.addEventListener("abort", () => reject(new DOMException("Upload cancelled", "AbortError")), {
+          once: true,
+        });
+      });
+    });
+
+    const { unmount } = render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
+    await userEvent.click(screen.getByText(/Landed/));
+
+    await waitFor(() => expect(capturedSignal).toBeDefined());
+    expect(capturedSignal!.aborted).toBe(false);
+
+    unmount();
+
+    expect(capturedSignal!.aborted).toBe(true);
+    // The upload rejects with AbortError, so the post-upload setTrick call
+    // must never fire and the cancel must not be reported as a write attempt.
+    expect(mockSetTrick).not.toHaveBeenCalled();
+    // Allow the rejected upload promise to flush through the controller's
+    // catch block before asserting on the AbortError suppression — without
+    // this, the assertion races the microtask queue.
+    await waitFor(() => expect(mockUploadVideo).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(mockCaptureException).not.toHaveBeenCalled();
   });
 
   it("matcher records, reviews, and self-judges landed (uploads video and submits)", async () => {

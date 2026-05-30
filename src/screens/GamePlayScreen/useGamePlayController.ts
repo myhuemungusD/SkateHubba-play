@@ -231,9 +231,10 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
 
   const submittedRef = useRef(false);
   const uploadAbortRef = useRef<AbortController | null>(null);
-  // Abort any in-flight upload on unmount — back-navigating mid-upload would
-  // otherwise leak the transfer and risk setState-after-unmount in the upload
-  // progress / error callbacks.
+  // Cancel any in-flight upload on unmount so a back-navigation mid-upload
+  // releases the network slot instead of finishing a transfer no one is
+  // waiting on. The resulting AbortError is filtered in the catch blocks
+  // below so it never reaches Sentry or the user.
   useEffect(() => {
     return () => {
       uploadAbortRef.current?.abort();
@@ -267,8 +268,16 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
         setUploadProgress(null);
         await setTrick(game.id, trickNameRef.current.trim(), videoUrl);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to send trick");
-        captureException(err, { extra: { context: "submitSetterTrick", gameId: game.id } });
+        // The unmount cleanup aborts the upload; that path lands here with a
+        // DOMException("AbortError") from storage.ts. Don't surface a
+        // user-facing error and don't ship a self-inflicted cancellation to
+        // Sentry. Checking `instanceof DOMException` (not `Error`) because
+        // JSDOM's DOMException doesn't extend Error.
+        const isAbort = err instanceof DOMException && err.name === "AbortError";
+        if (!isAbort) {
+          setError(err instanceof Error ? err.message : "Failed to send trick");
+          captureException(err, { extra: { context: "submitSetterTrick", gameId: game.id } });
+        }
         setUploadProgress(null);
         submittedRef.current = false;
       } finally {
@@ -330,8 +339,14 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
         setUploadProgress(null);
         await submitMatchAttempt(game.id, videoUrl, landed);
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : "Failed to submit attempt");
-        captureException(err, { extra: { context: "submitMatchAttempt", gameId: game.id } });
+        // See submitSetterTrick for the rationale — the unmount cleanup
+        // aborts the upload with a DOMException("AbortError") that must not
+        // be surfaced or reported.
+        const isAbort = err instanceof DOMException && err.name === "AbortError";
+        if (!isAbort) {
+          setError(err instanceof Error ? err.message : "Failed to submit attempt");
+          captureException(err, { extra: { context: "submitMatchAttempt", gameId: game.id } });
+        }
         setUploadProgress(null);
         matchSubmittedRef.current = false;
       } finally {
