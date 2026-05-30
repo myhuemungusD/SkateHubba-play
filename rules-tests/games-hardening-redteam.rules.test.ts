@@ -253,6 +253,23 @@ describe("games update — currentTrickVideoUrl host pin (setting→matching bra
       updateDoc(gameRef(asP1()), setTrickUpdate("https://attacker-project.firebasestorage.app/o/set.webm")),
     );
   });
+
+  // Dot-escape regression guard. The bucket constant is concatenated into a
+  // `matches(...)` predicate, where unescaped `.` characters become regex
+  // wildcards. Pre-escape, an attacker could register
+  // `sk8hub-d7806xfirebasestoragexapp` (any-char in the dot slots) and the
+  // regex would accept that bucket name as the project's own.
+  it("rejects a dot-wildcard bypass bucket (xfirebasestoragexapp shape)", async () => {
+    await seedSettingGameOwnedByP1();
+    await assertFails(
+      updateDoc(
+        gameRef(asP1()),
+        setTrickUpdate(
+          "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806xfirebasestoragexapp/o/set.webm",
+        ),
+      ),
+    );
+  });
 });
 
 // ── matchVideoUrl bucket pin (audit P2) ──

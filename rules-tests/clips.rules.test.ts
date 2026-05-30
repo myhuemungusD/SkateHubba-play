@@ -275,6 +275,30 @@ describe("clips — create", () => {
     );
   });
 
+  // Dot-escape regression guard. The bucket constant is concatenated into a
+  // `matches(...)` predicate — without escaping, the `.` characters become
+  // regex wildcards and a similarly-shaped attacker bucket
+  // (`sk8hub-d7806xfirebasestoragexapp`) would satisfy the pin.
+  it("rejects a dot-wildcard bypass bucket on clip videoUrl", async () => {
+    const dotBypassUrl = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806xfirebasestoragexapp/o/clip.webm";
+    await assertFails(setDoc(clipRef(asP1(), deterministicId()), makeValidClip({ videoUrl: dotBypassUrl })));
+  });
+
+  // Bucket-as-host form alignment with the games rule. The setter writes
+  // `currentTrickVideoUrl` (games rule accepts both
+  // `firebasestorage.googleapis.com/v0/b/<bucket>/...` AND the newer
+  // `<bucket>/...` CDN form). `writeLandedClipsInTransaction` later copies
+  // that value into clips.videoUrl verbatim — if this rule rejected the
+  // bucket-as-host form, the resolution transaction would fail.
+  it("permits the bucket-as-host CDN form on clip videoUrl (mirrors games rule)", async () => {
+    await assertSucceeds(
+      setDoc(
+        clipRef(asP1(), deterministicId()),
+        makeValidClip({ videoUrl: "https://sk8hub-d7806.firebasestorage.app/o/clip.webm" }),
+      ),
+    );
+  });
+
   it("rejects a non-integer turnNumber", async () => {
     await assertFails(setDoc(clipRef(asP1(), `${GAME_ID}_3.5_set`), makeValidClip({ turnNumber: 3.5 })));
   });
