@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SpotlightVideo } from "../SpotlightVideo";
 
@@ -14,10 +14,11 @@ type IOCallback = ConstructorParameters<typeof IntersectionObserver>[0];
 let ioCallback: IOCallback | null = null;
 const originalIO = globalThis.IntersectionObserver;
 
-// The global HTMLMediaElement.play mock from setup.ts resolves to a promise;
-// reference it directly rather than spying so we don't tear down the shared
-// stub other suites rely on. clearAllMocks resets call history per-test.
+// The global HTMLMediaElement.play / pause mocks from setup.ts; reference them
+// directly rather than spying so we don't tear down the shared stub other
+// suites rely on. clearAllMocks resets call history per-test.
 const play = window.HTMLMediaElement.prototype.play as unknown as ReturnType<typeof vi.fn>;
+const pause = window.HTMLMediaElement.prototype.pause as unknown as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -68,5 +69,22 @@ describe("SpotlightVideo reduced motion", () => {
     render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} />);
     await userEvent.click(screen.getByLabelText(/unmute clip/i));
     expect(play).toHaveBeenCalled();
+  });
+
+  it("pauses the video when prefers-reduced-motion is enabled mid-watch", () => {
+    // User starts with reduced-motion off; clip auto-plays on scroll-in.
+    reducedMotion.value = false;
+    const { container, rerender } = render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    fireIntersect(video, true);
+    // Simulate the playing state so the component sees a live playback session.
+    fireEvent.play(video);
+    expect(play).toHaveBeenCalled();
+    pause.mockClear();
+
+    // Mid-watch, the user toggles the OS reduced-motion preference ON.
+    reducedMotion.value = true;
+    rerender(<SpotlightVideo src="clip.webm" onNext={vi.fn()} />);
+    expect(pause).toHaveBeenCalled();
   });
 });

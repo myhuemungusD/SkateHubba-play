@@ -68,6 +68,15 @@ function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }
     hasPlayedRef.current = false;
   }, [src]);
 
+  // Honour prefers-reduced-motion mid-watch: if the user toggles the OS
+  // preference ON while a clip is already playing, pause immediately rather
+  // than waiting for them to scroll away. Kept as a separate effect from the
+  // IntersectionObserver below so the two concerns (observer lifecycle vs.
+  // immediate pause) don't entangle.
+  useEffect(() => {
+    if (reducedMotion) videoRef.current?.pause();
+  }, [reducedMotion]);
+
   useEffect(() => {
     const video = videoRef.current;
     const container = containerRef.current;
