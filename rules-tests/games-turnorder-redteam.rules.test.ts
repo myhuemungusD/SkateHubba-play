@@ -221,6 +221,59 @@ describe("games — P0 match-resolution turn-order seize guard", () => {
     );
   });
 
+  it("attack: matcher MISSED (continues) seizes currentTurn to self while pinning setter", async () => {
+    // The seize hole the prior commit missed: missed-continues pins
+    // currentSetter (P1) + turnNumber, but currentTurn was only required to be
+    // one of the two players. P2 keeps currentSetter = P1 (so the setter pin
+    // passes) yet writes currentTurn = P2 — because the setting-phase rule
+    // authorizes the next update by resource.data.currentTurn, P2 would then
+    // be able to perform the legitimate setter's next setting write. The fix
+    // pins currentTurn == currentSetter on the missed-continues arm, so this
+    // write must be rejected BECAUSE of the currentTurn seize — every other
+    // field is the valid missed-continues baseline.
+    await seedGame({ currentTurn: P2_UID, phase: "matching", currentSetter: P1_UID });
+    await assertFails(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "setting",
+        p2Letters: 1,
+        currentSetter: P1_UID, // setter pin satisfied…
+        currentTurn: P2_UID, // …but currentTurn seized to the matcher
+        turnNumber: 2,
+        turnHistory: [{ turnNumber: 1, landed: false, letterTo: P2_UID }],
+        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("legitimate: matcher MISSED ends game (gameOver) with currentTurn unchanged", async () => {
+    // submitMatchAttempt missed-gameOver (games.match.ts 312-314): writes only
+    // status:"complete", winner, letters, turnHistory, matchVideoUrl,
+    // updatedAt — it does NOT touch phase/currentSetter/currentTurn/turnNumber,
+    // so all stay unchanged. Seed p2Letters at 4 so the +1 hits 5 and the
+    // opponent (P1) wins. currentTurn stays P2 (matcher) — valid because the
+    // game is over and no further setting write follows.
+    await seedGame({
+      currentTurn: P2_UID,
+      phase: "matching",
+      currentSetter: P1_UID,
+      p2Letters: 4,
+      turnNumber: 7,
+    });
+    await assertSucceeds(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        status: "complete",
+        winner: P1_UID,
+        p2Letters: 5,
+        turnHistory: [{ turnNumber: 7, landed: false, letterTo: P2_UID }],
+        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
   it("legitimate: matcher MISSED keeps setter, advances turnNumber by 1", async () => {
     // submitMatchAttempt missed-continues (games.match.ts 315-321):
     // currentSetter unchanged, currentTurn = currentSetter, turnNumber + 1.

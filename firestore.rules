@@ -885,22 +885,27 @@ service cloud.firestore {
         //       currentTurn routes to the judge
         && (
           // Missed — setter keeps the role (same player re-sets), turnNumber +1.
+          // currentTurn MUST equal the (unchanged) currentSetter: the service
+          // writes currentTurn = currentSetter here (games.match.ts 318). The
+          // old `in [player1Uid, player2Uid]` check let a matcher pin the
+          // setter but write currentTurn = their own UID, then ride the
+          // setting-phase rule (authorized by resource.data.currentTurn) to
+          // seize the next set out of rotation. Pinning to currentSetter closes it.
           (request.resource.data.status == 'active'
            && request.resource.data.phase == 'setting'
            && request.resource.data.winner == null
            && request.resource.data.currentSetter == resource.data.currentSetter
            && request.resource.data.turnNumber == resource.data.turnNumber + 1
-           && (
-             request.resource.data.currentTurn == resource.data.player1Uid
-             || request.resource.data.currentTurn == resource.data.player2Uid
-           ))
+           && request.resource.data.currentTurn == resource.data.currentSetter)
           // Completion: pin winner to the opponent of the player who just hit
           // 5 letters, so a losing matcher can't write themselves as winner.
-          // The service writes only status+winner, so currentSetter and
-          // turnNumber stay UNCHANGED (no role seize on the final write).
+          // The service writes only status+winner, so currentSetter,
+          // currentTurn, and turnNumber stay UNCHANGED (no role seize on the
+          // final write — and the game is over, so currentTurn is inert).
           || (request.resource.data.status == 'complete'
               && request.resource.data.winner != null
               && request.resource.data.currentSetter == resource.data.currentSetter
+              && request.resource.data.currentTurn == resource.data.currentTurn
               && request.resource.data.turnNumber == resource.data.turnNumber
               && (
                 (request.resource.data.p1Letters >= 5
