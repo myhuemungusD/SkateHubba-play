@@ -350,6 +350,7 @@ export function ProfileSetup({
             inputMode="text"
             enterKeyHint="next"
             note={usernameNote(username, available, availabilityError)}
+            noteLive
           />
 
           {username.length >= USERNAME_MIN && available !== null && (
