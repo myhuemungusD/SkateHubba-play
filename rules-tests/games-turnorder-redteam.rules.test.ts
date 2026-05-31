@@ -185,6 +185,32 @@ describe("games — P0 match-resolution turn-order seize guard", () => {
     );
   });
 
+  it("attack: matcher submits MISSED but misdirects currentTurn to themselves", async () => {
+    // Subtler seize variant: P2 submits an otherwise-valid missed-continues
+    // write — correct letter increment on themselves, currentSetter unchanged
+    // (P1), turnNumber +1, status=active, phase=setting — but writes
+    // currentTurn = P2 (the matcher) instead of currentTurn = currentSetter
+    // (P1). The service-layer write (games.match.ts:288, 315-321) always sets
+    // currentTurn = nextSetter = game.currentSetter, so the rule must pin
+    // currentTurn to currentSetter on the missed-continues branch. Without
+    // that pin, the matcher misdirects the "whose turn" UI state without
+    // outright seizing the setter role.
+    await seedGame({ currentTurn: P2_UID, phase: "matching", currentSetter: P1_UID });
+    await assertFails(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "setting",
+        p2Letters: 1,
+        currentSetter: P1_UID, // unchanged — legit
+        currentTurn: P2_UID, // MISDIRECT — must equal currentSetter (P1)
+        turnNumber: 2,
+        turnHistory: [{ turnNumber: 1, landed: false, letterTo: P2_UID }],
+        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
   it("attack: matcher submits MISSED but freezes turnNumber (no advance)", async () => {
     // turnNumber MUST advance by exactly 1 on a missed-continues resolution.
     // Leaving it pinned (or jumping it) is rejected by the new constraint.
