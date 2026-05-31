@@ -193,7 +193,10 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
   }, [game.id]);
 
   const [judgeActionSubmitting, setJudgeActionSubmitting] = useState(false);
+  const judgeActionSubmittedRef = useRef(false);
   const handleJudgeAccept = useCallback(async () => {
+    if (judgeActionSubmittedRef.current) return;
+    judgeActionSubmittedRef.current = true;
     setJudgeActionSubmitting(true);
     setError("");
     try {
@@ -201,11 +204,14 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to accept referee invite");
       captureException(err, { extra: { context: "acceptJudgeInvite", gameId: game.id } });
+      judgeActionSubmittedRef.current = false;
     } finally {
       setJudgeActionSubmitting(false);
     }
   }, [game.id]);
   const handleJudgeDecline = useCallback(async () => {
+    if (judgeActionSubmittedRef.current) return;
+    judgeActionSubmittedRef.current = true;
     setJudgeActionSubmitting(true);
     setError("");
     try {
@@ -213,6 +219,7 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to decline referee invite");
       captureException(err, { extra: { context: "declineJudgeInvite", gameId: game.id } });
+      judgeActionSubmittedRef.current = false;
     } finally {
       setJudgeActionSubmitting(false);
     }
