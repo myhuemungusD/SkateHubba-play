@@ -26,6 +26,22 @@ export class AlreadyUpvotedError extends Error {
   }
 }
 
+/**
+ * Thrown by `upvoteClip` when the caller tries to upvote their own clip.
+ * The clipVotes create rule does NOT block self-votes (it only verifies the
+ * `{uid}_{clipId}` doc id and target existence), so this guard is the
+ * authoritative enforcement point — defence on the client AND the canonical
+ * rejection, not mere belt-and-suspenders. The UI treats this like
+ * AlreadyUpvotedError: the owner's upvote affordance is disabled, never an
+ * error toast.
+ */
+export class SelfUpvoteError extends Error {
+  constructor(public readonly clipId: string) {
+    super(`self_upvote:${clipId}`);
+    this.name = "SelfUpvoteError";
+  }
+}
+
 /** Per-clip upvote state for the lobby feed: live count + whether the
  *  current viewer has already upvoted (controls the filled/disabled UI). */
 export interface ClipUpvoteState {
@@ -38,7 +54,7 @@ const VOTE_DOC_IN_BATCH_LIMIT = 30;
 
 /** Minimal clip shape required to hydrate upvote state: id, denormalized
  *  upvoteCount aggregate, and the owner uid (used to skip self-upvote
- *  hydration since the rule disallows it anyway). */
+ *  hydration since `upvoteClip` rejects self-votes). */
 export interface ClipForUpvoteHydration {
   id: string;
   upvoteCount: number;
@@ -75,8 +91,9 @@ export async function fetchClipUpvoteState(
   const result = new Map<string, ClipUpvoteState>();
   if (clips.length === 0) return result;
 
-  // Self-upvote is disallowed by rules + by upvoteClip; never burn a read
-  // hydrating it. The owner's display always reads as not-upvoted.
+  // Self-upvote is rejected by upvoteClip (the clipVotes rule does not block
+  // it, so the service is the canonical guard); never burn a read hydrating
+  // it. The owner's display always reads as not-upvoted.
   const targetClips = clips.filter((c) => c.playerUid !== uid);
 
   // Seed every target with the denormalized count up front so a network
@@ -155,6 +172,14 @@ export async function upvoteClip(uid: string, clipId: string): Promise<number> {
       const [existing, clipSnap] = await Promise.all([tx.get(voteRef), tx.get(clipRef)]);
       if (existing.exists()) throw new AlreadyUpvotedError(clipId);
 
+      // Self-upvote guard. The clipVotes create rule does not reject a vote
+      // on your own clip, so this is the canonical block — a user must not
+      // inflate their own clip's count. Reuses the clip doc already read for
+      // the count computation (no extra round-trip).
+      if (clipSnap.exists() && (clipSnap.data() as { playerUid?: unknown }).playerUid === uid) {
+        throw new SelfUpvoteError(clipId);
+      }
+
       // Legacy clips lack `upvoteCount` on disk; the rule treats missing as
       // 0 via `get('upvoteCount', 0)` and the mapper does the same on read.
       // Mirror both here so the literal we write matches the rule's check.
@@ -174,7 +199,7 @@ export async function upvoteClip(uid: string, clipId: string): Promise<number> {
       tx.update(clipRef, { upvoteCount: nextCount });
     });
   } catch (err) {
-    if (err instanceof AlreadyUpvotedError) throw err;
+    if (err instanceof AlreadyUpvotedError || err instanceof SelfUpvoteError) throw err;
     // permission-denied here means the security rules blocked a clean
     // create — most likely because the vote doc already exists and the
     // `allow update: if false` rule rejected an implicit overwrite

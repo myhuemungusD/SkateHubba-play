@@ -68,6 +68,7 @@ import {
   upvoteClip,
   fetchClipUpvoteState,
   AlreadyUpvotedError,
+  SelfUpvoteError,
   _resetTopIndexCircuitBreaker,
   type LandedClipContext,
   type ClipsFeedCursor,
@@ -782,6 +783,7 @@ describe("upvoteClip", () => {
   function captureTxOnce(
     voteExists: boolean,
     currentUpvoteCount: number | "no-clip-doc" | "non-numeric" = 0,
+    clipOwnerUid?: string,
   ): { observed: () => ObservedTx } {
     let captured: ObservedTx | undefined;
     mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
@@ -802,9 +804,12 @@ describe("upvoteClip", () => {
             // 'non-numeric' covers a corrupted clip doc — upvoteCount field
             // present but not a finite number. The service must coerce to 0.
             if (currentUpvoteCount === "non-numeric") {
-              return { exists: () => true, data: () => ({ upvoteCount: "broken" }) };
+              return { exists: () => true, data: () => ({ upvoteCount: "broken", playerUid: clipOwnerUid }) };
             }
-            return { exists: () => true, data: () => ({ upvoteCount: currentUpvoteCount }) };
+            return {
+              exists: () => true,
+              data: () => ({ upvoteCount: currentUpvoteCount, playerUid: clipOwnerUid }),
+            };
           }
           throw new Error(`Unexpected ref path in tx.get: ${path}`);
         }),
@@ -912,6 +917,27 @@ describe("upvoteClip", () => {
     mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
 
     await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
+  });
+
+  it("throws SelfUpvoteError without writing when the caller owns the clip", async () => {
+    // The clipVotes create rule does NOT reject a vote on your own clip, so
+    // this service guard is the canonical block against inflating your own
+    // count. The clip doc's playerUid matches the upvoter here.
+    const cap = captureTxOnce(false, 3, "me");
+
+    await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(SelfUpvoteError);
+
+    // No vote doc, no count bump — the guard fires before either write.
+    const tx = cap.observed();
+    expect(tx.set).not.toHaveBeenCalled();
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it("re-throws SelfUpvoteError verbatim rather than masking it as AlreadyUpvotedError", async () => {
+    // The catch block must let SelfUpvoteError pass through untouched — a
+    // self-upvote is a distinct business state from a duplicate upvote.
+    captureTxOnce(false, 0, "me");
+    await expect(upvoteClip("me", "g1_2_set")).rejects.toThrow(/^self_upvote:g1_2_set$/);
   });
 
   it("propagates unexpected transaction errors", async () => {
