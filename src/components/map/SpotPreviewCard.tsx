@@ -2,6 +2,7 @@ import { useRef, useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { X, Navigation, BadgeCheck, ImageOff, Flag } from "lucide-react";
 import type { Spot } from "../../types/spot";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { GnarRating } from "./GnarRating";
 import { BustRisk } from "./BustRisk";
 
@@ -28,7 +29,9 @@ function directionsUrl(lat: number, lng: number): string {
 export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreviewCardProps) {
   const navigate = useNavigate();
   const touchStartY = useRef<number | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const [photoFailed, setPhotoFailed] = useState(false);
+  useFocusTrap(cardRef);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStartY.current = e.touches[0].clientY;
@@ -58,11 +61,16 @@ export function SpotPreviewCard({ spot, onClose, activeGameSpotId }: SpotPreview
 
       {/* Card */}
       <div
+        ref={cardRef}
         className="fixed bottom-0 left-0 right-0 z-50 bg-surface-alt rounded-t-2xl p-4 pb-6 shadow-2xl
                    transform transition-transform duration-250 ease-out translate-y-0"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
         role="dialog"
+        aria-modal="true"
         aria-label={`Spot: ${spot.name}`}
       >
         {/* Drag handle */}
