@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { Btn } from "./ui/Btn";
 import { PlayIcon, ReplayIcon } from "./icons";
 
@@ -18,6 +19,9 @@ export function GameReplay({ turns }: GameReplayProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [finished, setFinished] = useState(false);
+  // When the user prefers reduced motion, load each clip but don't auto-start
+  // playback — the native <video controls> is the explicit play affordance.
+  const reducedMotion = useReducedMotion();
 
   // Build a flat list of playable clips
   const clips = turns.flatMap((turn, i) => {
@@ -59,10 +63,13 @@ export function GameReplay({ turns }: GameReplayProps) {
     if (!playing || !currentClip || !videoRef.current) return;
     videoRef.current.src = currentClip.url;
     videoRef.current.load();
+    // Respect prefers-reduced-motion: leave the clip paused and let the user
+    // start it via the native controls instead of auto-playing the reel.
+    if (reducedMotion) return;
     videoRef.current.play().catch(() => {
       // Autoplay may be blocked; user can tap play
     });
-  }, [clipIndex, playing, currentClip]);
+  }, [clipIndex, playing, currentClip, reducedMotion]);
 
   const handleClipEnded = useCallback(() => {
     const nextIndex = clipIndex + 1;
