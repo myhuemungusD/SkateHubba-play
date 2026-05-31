@@ -62,12 +62,6 @@ const config: CapacitorConfig = {
       splashImmersive: true,
       useDialog: false,
     },
-    StatusBar: {
-      // Match the dark chrome so the notch bezel blends into the app background.
-      style: "DARK",
-      backgroundColor: "#0A0A0A",
-      overlaysWebView: false,
-    },
   },
 };
 
