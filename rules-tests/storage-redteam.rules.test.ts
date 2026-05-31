@@ -176,6 +176,44 @@ describe("storage red-team — spoof uploaderUid at create", () => {
 });
 
 /* ────────────────────────────────────────────
+ * ATTACK 3b — lie about the payload format (extension ≠ content-type)
+ * ──────────────────────────────────────────── */
+
+describe("storage red-team — content-type pinning (extension must agree)", () => {
+  it("attack: user A CANNOT upload set.webm with content-type video/mp4", async () => {
+    // The bare allowlist used to accept any video/* with any (set|match)
+    // extension. The hardened rule cross-validates: .webm ⇒ video/webm.
+    const ref = asUserA().storage().ref(videoPath("set", "webm"));
+    await assertFails(
+      ref.put(videoPayload(), {
+        contentType: "video/mp4",
+        customMetadata: { uploaderUid: UID_A },
+      }),
+    );
+  });
+
+  it("attack: user A CANNOT upload match.mp4 with content-type video/webm", async () => {
+    const ref = asUserA().storage().ref(videoPath("match", "mp4"));
+    await assertFails(
+      ref.put(videoPayload(), {
+        contentType: "video/webm",
+        customMetadata: { uploaderUid: UID_A },
+      }),
+    );
+  });
+
+  it("legitimate: user A CAN upload match.mp4 with content-type video/mp4 (native path)", async () => {
+    const ref = asUserA().storage().ref(videoPath("match", "mp4"));
+    await assertSucceeds(
+      ref.put(videoPayload(), {
+        contentType: "video/mp4",
+        customMetadata: { uploaderUid: UID_A },
+      }),
+    );
+  });
+});
+
+/* ────────────────────────────────────────────
  * ATTACK 4 — upload without auth
  * ──────────────────────────────────────────── */
 
