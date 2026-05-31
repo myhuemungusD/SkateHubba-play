@@ -278,6 +278,46 @@ export async function createClip(
 }
 
 /**
+ * Read every document in the `games` collection back via the emulator REST
+ * API, returning each game's `fields` map keyed by document id.
+ *
+ * The challenge flow generates a random game id and the `/game` route does
+ * not expose it in the URL, so specs that need to inspect persisted game
+ * state (e.g. the stored video URL after an upload) can read it back here.
+ * Tests call `clearAll()` in beforeEach, so a single-challenge test sees
+ * exactly one game.
+ */
+export async function listGames(): Promise<Record<string, Record<string, FsValue>>> {
+  const url = `${FS}/v1/projects/${PROJECT_ID}/databases/${DB_NAME}/documents/games`;
+  const res = await fetch(url, { headers: { Authorization: "Bearer owner" } });
+  if (!res.ok) throw new Error(`listGames failed: ${res.status} ${await res.text()}`);
+  const { documents = [] } = (await res.json()) as {
+    documents?: Array<{ name: string; fields: Record<string, FsValue> }>;
+  };
+  return Object.fromEntries(
+    documents.map((d) => {
+      const id = d.name.split("/").pop() as string;
+      return [id, d.fields];
+    }),
+  );
+}
+
+/**
+ * Read a single game document's `currentTrickVideoUrl` field back from the
+ * emulator. Returns the raw string value, or null if unset. Used to assert
+ * that an uploaded clip's download URL was persisted to game state.
+ */
+export async function getCurrentTrickVideoUrl(gameId: string): Promise<string | null> {
+  const games = await listGames();
+  const fields = games[gameId];
+  if (!fields) throw new Error(`getCurrentTrickVideoUrl: no game ${gameId}`);
+  const field = fields.currentTrickVideoUrl;
+  if (!field || "nullValue" in field) return null;
+  if ("stringValue" in field) return field.stringValue;
+  throw new Error(`getCurrentTrickVideoUrl: unexpected field shape ${JSON.stringify(field)}`);
+}
+
+/**
  * Patch the `turnDeadline` of an existing game to a timestamp in the past
  * so that the forfeit check in GamePlayScreen triggers immediately.
  */
