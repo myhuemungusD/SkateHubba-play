@@ -149,3 +149,202 @@ describe("games — red-team regression guards on game state", () => {
     );
   });
 });
+
+/* ────────────────────────────────────────────
+ * P0 — match-resolution turn-order seize guard
+ *
+ * The matching→* resolution branch is the ONLY game-update branch that
+ * historically pinned neither currentSetter nor turnNumber. A matcher could
+ * submit a legitimate-looking "missed" resolution and in the SAME write
+ * grab currentSetter/currentTurn for themselves, jumping the setter role
+ * out of rotation. The pins added to firestore.rules close this:
+ *   • missed-continues  → currentSetter UNCHANGED, turnNumber + 1
+ *   • completion        → currentSetter + turnNumber UNCHANGED
+ *   • honor + landed    → currentSetter ROTATES to matcher, turnNumber + 1
+ *   • judge disputable  → currentSetter + turnNumber UNCHANGED
+ *
+ * Fixture: currentSetter = P1, phase = matching, currentTurn = P2. So P2 is
+ * the matcher and any attempt by P2 to seize the setter role is the attack.
+ * ──────────────────────────────────────────── */
+describe("games — P0 match-resolution turn-order seize guard", () => {
+  it("attack: matcher submits MISSED but seizes currentSetter/currentTurn", async () => {
+    // P2 (matcher) admits a miss — legitimately p2Letters + 1, currentSetter
+    // must stay P1, turnNumber → 2. Here P2 forges currentSetter = P2 (and
+    // currentTurn = P2) to grab the setter role out of rotation.
+    await seedGame({ currentTurn: P2_UID, phase: "matching", currentSetter: P1_UID });
+    await assertFails(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "setting",
+        p2Letters: 1,
+        currentSetter: P2_UID, // SEIZE — should be unchanged (P1) on a miss
+        currentTurn: P2_UID,
+        turnNumber: 2,
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("attack: matcher submits MISSED but freezes turnNumber (no advance)", async () => {
+    // turnNumber MUST advance by exactly 1 on a missed-continues resolution.
+    // Leaving it pinned (or jumping it) is rejected by the new constraint.
+    await seedGame({ currentTurn: P2_UID, phase: "matching", currentSetter: P1_UID, turnNumber: 3 });
+    await assertFails(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "setting",
+        p2Letters: 1,
+        currentSetter: P1_UID,
+        currentTurn: P1_UID,
+        turnNumber: 3, // FROZEN — must be 4
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("attack: matcher submits LANDED (honor) rotating setter but freezing turnNumber", async () => {
+    // Honor-system landed MUST advance turnNumber by 1 alongside the role
+    // rotation. Here P2 rotates currentSetter to itself (the seize) but
+    // freezes turnNumber at the stored value — neither the honor+landed
+    // branch (needs turnNumber + 1) nor the missed branch (needs
+    // currentSetter unchanged) matches, so the write must be rejected.
+    await seedGame({ currentTurn: P2_UID, phase: "matching", currentSetter: P1_UID, turnNumber: 4 });
+    await assertFails(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "setting",
+        currentSetter: P2_UID, // rotated (seize), but…
+        currentTurn: P2_UID,
+        turnNumber: 4, // …FROZEN — honor+landed requires turnNumber + 1
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("legitimate: matcher MISSED keeps setter, advances turnNumber by 1", async () => {
+    // submitMatchAttempt missed-continues (games.match.ts 315-321):
+    // currentSetter unchanged, currentTurn = currentSetter, turnNumber + 1.
+    await seedGame({ currentTurn: P2_UID, phase: "matching", currentSetter: P1_UID });
+    await assertSucceeds(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "setting",
+        p2Letters: 1,
+        currentSetter: P1_UID,
+        currentTurn: P1_UID,
+        turnNumber: 2,
+        turnHistory: [{ turnNumber: 1, landed: false, letterTo: P2_UID }],
+        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("legitimate: matcher LANDED (honor) rotates setter to matcher, advances turnNumber", async () => {
+    // submitMatchAttempt honor+landed (games.match.ts 222-233): roles swap —
+    // currentSetter → matcher (P2), currentTurn follows, turnNumber + 1,
+    // letters unchanged.
+    await seedGame({ currentTurn: P2_UID, phase: "matching", currentSetter: P1_UID });
+    await assertSucceeds(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "setting",
+        currentSetter: P2_UID,
+        currentTurn: P2_UID,
+        turnNumber: 2,
+        turnHistory: [{ turnNumber: 1, landed: true, letterTo: null }],
+        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+});
+
+/* ────────────────────────────────────────────
+ * P0 — judge-routing seize guard (NEW)
+ *
+ * The two judge-routing outcomes are now merged into one OR branch in
+ * firestore.rules (matching-phase update, ~926-935): both landed→disputable
+ * and Call BS→setReview pin currentSetter + turnNumber UNCHANGED (the judge's
+ * later ruling — not this routing write — advances them) and route
+ * currentTurn to the judge. The earlier seize tests cover only the missed and
+ * honor+landed outcomes; these close the judge branch.
+ *
+ * Fixture: an active judge (judgeId = JUDGE_UID, judgeStatus accepted),
+ * currentSetter = P1, phase = matching, currentTurn = P2. So P2 is the matcher
+ * routing to the judge, and any attempt to also touch currentSetter/turnNumber
+ * in that same routing write is the attack.
+ * ──────────────────────────────────────────── */
+describe("games — P0 judge-routing turn-order seize guard", () => {
+  const JUDGE_UID = "j-judge";
+
+  function seedJudgedMatch(extra: Record<string, unknown> = {}): Promise<void> {
+    return seedGame({
+      currentTurn: P2_UID,
+      phase: "matching",
+      currentSetter: P1_UID,
+      judgeId: JUDGE_UID,
+      judgeStatus: "accepted",
+      ...extra,
+    });
+  }
+
+  it("legitimate: matcher routes LANDED→disputable, pins currentSetter + turnNumber", async () => {
+    // submitMatchAttempt judge-active landed (games.match.ts 169-176):
+    // phase → disputable, currentTurn → judge, currentSetter + turnNumber
+    // UNCHANGED, letters unchanged, judgeReviewFor → matcher.
+    await seedJudgedMatch({ turnNumber: 3 });
+    await assertSucceeds(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "disputable",
+        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        currentTurn: JUDGE_UID,
+        currentSetter: P1_UID, // UNCHANGED
+        turnNumber: 3, // UNCHANGED
+        judgeReviewFor: P2_UID,
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("attack: matcher routes LANDED→disputable but seizes currentSetter", async () => {
+    // Same legit disputable routing write as above, but P2 also rotates
+    // currentSetter to itself. The judge branch pins currentSetter UNCHANGED
+    // (== resource.data.currentSetter), so the write must be rejected BECAUSE
+    // of the currentSetter mutation — every other field is the valid baseline.
+    await seedJudgedMatch({ turnNumber: 3 });
+    await assertFails(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "disputable",
+        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        currentTurn: JUDGE_UID,
+        currentSetter: P2_UID, // SEIZE — must stay P1 on a judge-routing write
+        turnNumber: 3,
+        judgeReviewFor: P2_UID,
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("attack: matcher routes Call BS→setReview but bumps turnNumber", async () => {
+    // callBSOnSetTrick (games.judge.ts 45-51): phase → setReview, currentTurn
+    // → judge, judgeReviewFor → setter, currentSetter + turnNumber UNCHANGED,
+    // letters unchanged. Here P2 bumps turnNumber, which the judge branch pins
+    // (== resource.data.turnNumber). The write must fail BECAUSE of the
+    // turnNumber bump — every other field matches the valid setReview baseline.
+    await seedJudgedMatch({ turnNumber: 5 });
+    await assertFails(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "setReview",
+        currentTurn: JUDGE_UID,
+        currentSetter: P1_UID,
+        turnNumber: 6, // BUMP — must stay 5 on a judge-routing write
+        judgeReviewFor: P1_UID,
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+});
