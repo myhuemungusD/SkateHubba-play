@@ -899,13 +899,13 @@ service cloud.firestore {
            && request.resource.data.currentTurn == resource.data.currentSetter)
           // Completion: pin winner to the opponent of the player who just hit
           // 5 letters, so a losing matcher can't write themselves as winner.
-          // The service writes only status+winner, so currentSetter,
-          // currentTurn, and turnNumber stay UNCHANGED (no role seize on the
-          // final write — and the game is over, so currentTurn is inert).
+          // currentSetter is pinned (the real win-declaration seize guard);
+          // currentTurn is intentionally NOT pinned — once status == 'complete'
+          // no further game updates are permitted, so currentTurn is never
+          // consumed and the legitimate completion write may freely change it.
           || (request.resource.data.status == 'complete'
               && request.resource.data.winner != null
               && request.resource.data.currentSetter == resource.data.currentSetter
-              && request.resource.data.currentTurn == resource.data.currentTurn
               && request.resource.data.turnNumber == resource.data.turnNumber
               && (
                 (request.resource.data.p1Letters >= 5
