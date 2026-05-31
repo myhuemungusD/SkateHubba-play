@@ -9,22 +9,17 @@
  *  - update-existing denied (force delete-then-create)
  *  - anyone-auth read allowed
  */
-import { describe, it, beforeAll, afterAll, beforeEach } from "vitest";
-import {
-  initializeTestEnvironment,
-  assertSucceeds,
-  assertFails,
-  type RulesTestEnvironment,
-  type RulesTestContext,
-} from "@firebase/rules-unit-testing";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { describe, it } from "vitest";
+import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
+import { setupStorageRulesTestEnv } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-avatar-storage";
 const OWNER_UID = "owner-uid";
 const STRANGER_UID = "stranger-uid";
 
-let testEnv: RulesTestEnvironment;
+// Boots the Storage emulator env + deep-clears the bucket before each test
+// AND after the file, so no test (or later file) inherits leftover objects.
+const getEnv = setupStorageRulesTestEnv(PROJECT_ID);
 
 /** A 2 KB payload — comfortably above the 1 KB minimum and under 2 MB. */
 function smallPayload(): Uint8Array {
@@ -37,35 +32,16 @@ function oversizedPayload(): Uint8Array {
 }
 
 function asOwner(): RulesTestContext {
-  return testEnv.authenticatedContext(OWNER_UID, { email_verified: true });
+  return getEnv().authenticatedContext(OWNER_UID, { email_verified: true });
 }
 
 function asStranger(): RulesTestContext {
-  return testEnv.authenticatedContext(STRANGER_UID, { email_verified: true });
+  return getEnv().authenticatedContext(STRANGER_UID, { email_verified: true });
 }
 
 function ownerAvatarPath(ext = "webp"): string {
   return `users/${OWNER_UID}/avatar.${ext}`;
 }
-
-beforeAll(async () => {
-  testEnv = await initializeTestEnvironment({
-    projectId: PROJECT_ID,
-    storage: {
-      host: "127.0.0.1",
-      port: 9199,
-      rules: readFileSync(resolve(process.cwd(), "storage.rules"), "utf8"),
-    },
-  });
-});
-
-afterAll(async () => {
-  await testEnv?.cleanup();
-});
-
-beforeEach(async () => {
-  await testEnv.clearStorage();
-});
 
 describe("avatar storage rules — owner can upload", () => {
   it("owner CAN upload a valid webp at users/{uid}/avatar.webp", async () => {
@@ -89,7 +65,7 @@ describe("avatar storage rules — strangers + anonymous denied", () => {
 
   it("anonymous CANNOT upload at any avatar path", async () => {
     await assertFails(
-      testEnv
+      getEnv()
         .unauthenticatedContext()
         .storage()
         .ref(ownerAvatarPath())
@@ -159,6 +135,6 @@ describe("avatar storage rules — anyone-auth read", () => {
 
   it("anonymous CANNOT read an avatar", async () => {
     await asOwner().storage().ref(ownerAvatarPath()).put(smallPayload(), { contentType: "image/webp" });
-    await assertFails(testEnv.unauthenticatedContext().storage().ref(ownerAvatarPath()).getDownloadURL());
+    await assertFails(getEnv().unauthenticatedContext().storage().ref(ownerAvatarPath()).getDownloadURL());
   });
 });

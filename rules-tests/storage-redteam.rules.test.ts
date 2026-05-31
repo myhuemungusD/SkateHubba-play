@@ -12,16 +12,9 @@
  *
  * Run via:  npm run test:rules
  */
-import { describe, it, beforeAll, afterAll, beforeEach } from "vitest";
-import {
-  initializeTestEnvironment,
-  assertSucceeds,
-  assertFails,
-  type RulesTestEnvironment,
-  type RulesTestContext,
-} from "@firebase/rules-unit-testing";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { describe, it } from "vitest";
+import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
+import { setupStorageRulesTestEnv } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-storage-redteam";
 
@@ -32,7 +25,9 @@ const TURN_PATH = "turn-1";
 const SET_FILE = "set.webm";
 const MATCH_FILE = "match.webm";
 
-let testEnv: RulesTestEnvironment;
+// Boots the Storage emulator env + deep-clears the bucket before each test
+// AND after the file, so no test (or later file) inherits leftover objects.
+const getEnv = setupStorageRulesTestEnv(PROJECT_ID);
 
 /**
  * Build a 2 KB payload — comfortably above the 1 KB minimum the rules
@@ -44,15 +39,15 @@ function videoPayload(): Uint8Array {
 }
 
 function asUserA(): RulesTestContext {
-  return testEnv.authenticatedContext(UID_A, { email_verified: true });
+  return getEnv().authenticatedContext(UID_A, { email_verified: true });
 }
 
 function asUserB(): RulesTestContext {
-  return testEnv.authenticatedContext(UID_B, { email_verified: true });
+  return getEnv().authenticatedContext(UID_B, { email_verified: true });
 }
 
 function asAnonymous(): RulesTestContext {
-  return testEnv.unauthenticatedContext();
+  return getEnv().unauthenticatedContext();
 }
 
 function videoPath(role: "set" | "match" = "set", ext: "webm" | "mp4" = "webm"): string {
@@ -67,32 +62,13 @@ function videoPath(role: "set" | "match" = "set", ext: "webm" | "mp4" = "webm"):
  * subsequent rule evaluation, which made the update-path tests vacuous.
  */
 async function seedFileOwnedBy(uid: string, path: string = videoPath()): Promise<void> {
-  const ctx = testEnv.authenticatedContext(uid, { email_verified: true });
+  const ctx = getEnv().authenticatedContext(uid, { email_verified: true });
   const ref = ctx.storage().ref(path);
   await ref.put(videoPayload(), {
     contentType: "video/webm",
     customMetadata: { uploaderUid: uid },
   });
 }
-
-beforeAll(async () => {
-  testEnv = await initializeTestEnvironment({
-    projectId: PROJECT_ID,
-    storage: {
-      host: "127.0.0.1",
-      port: 9199,
-      rules: readFileSync(resolve(process.cwd(), "storage.rules"), "utf8"),
-    },
-  });
-});
-
-afterAll(async () => {
-  await testEnv?.cleanup();
-});
-
-beforeEach(async () => {
-  await testEnv.clearStorage();
-});
 
 /* ────────────────────────────────────────────
  * ATTACK 1 — overwrite opponent's video
