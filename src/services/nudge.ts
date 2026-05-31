@@ -11,8 +11,18 @@ interface SendNudgeParams {
 }
 
 /**
- * Send a nudge to an opponent. Writes to Firestore which triggers
- * a Cloud Function to send a push notification.
+ * Send a nudge to an opponent. Writes a doc to the /nudges collection.
+ *
+ * IN-APP ONLY. A nudge does NOT wake an offline device. There are no
+ * application Cloud Functions, and the `firestore-send-fcm` extension only
+ * watches /push_dispatch — not /nudges. Delivery is via the in-app
+ * `subscribeToNudges` listener (see GameNotificationWatcher), which surfaces
+ * the nudge as a toast the next time the recipient has the app open. Routing
+ * nudges through the OS-push path (`dispatchPushNotification`) is not wired:
+ * the push_dispatch rules whitelist only the NotificationDocType values
+ * (your_turn/new_challenge/game_won/game_lost/judge_invite) and reject a
+ * "nudge" type, so enabling OS push for nudges is a rules + product change,
+ * not a service-only one.
  *
  * Rate-limited both client-side (localStorage) and server-side (Firestore rules).
  *

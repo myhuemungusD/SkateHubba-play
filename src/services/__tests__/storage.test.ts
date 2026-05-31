@@ -246,11 +246,39 @@ describe("storage service", () => {
       expect(mockUploadBytesResumable).not.toHaveBeenCalled();
     });
 
+    it("rejects a blob of exactly 1024 bytes (storage.rules uses `size > 1024`)", async () => {
+      // The rule enforces `request.resource.size > 1024` (strict), so a clip of
+      // exactly 1 KB is rejected by the backend. The client must mirror this
+      // (`size <= MIN_UPLOAD_BYTES`) or the upload passes the client check then
+      // fails at the rules boundary.
+      const blob = new Blob(["x"], { type: "video/webm" });
+      Object.defineProperty(blob, "size", { value: 1024 });
+      await expect(uploadVideo("game1", 1, "set", blob)).rejects.toThrow("too small");
+      expect(mockUploadBytesResumable).not.toHaveBeenCalled();
+    });
+
+    it("accepts a blob of 1025 bytes (just above the inclusive floor)", async () => {
+      const blob = new Blob(["x"], { type: "video/webm" });
+      Object.defineProperty(blob, "size", { value: 1025 });
+      await expect(uploadVideo("game1", 1, "set", blob)).resolves.toBeDefined();
+      expect(mockUploadBytesResumable).toHaveBeenCalledTimes(1);
+    });
+
     it("rejects blobs that exceed 50 MB", async () => {
       // Create a blob that reports size > 50MB via Object.defineProperty
       const bigBlob = new Blob(["x"], { type: "video/webm" });
       Object.defineProperty(bigBlob, "size", { value: 50 * 1024 * 1024 + 1 });
       await expect(uploadVideo("game1", 1, "set", bigBlob)).rejects.toThrow("50 MB limit");
+      expect(mockUploadBytesResumable).not.toHaveBeenCalled();
+    });
+
+    it("rejects a blob of exactly 50 MB (storage.rules uses `size < 50*1024*1024`)", async () => {
+      // The rule enforces `request.resource.size < 50 * 1024 * 1024` (strict),
+      // so a clip of exactly 50 MB is rejected by the backend. The client
+      // mirrors this with `size >= MAX_UPLOAD_BYTES`.
+      const blob = new Blob(["x"], { type: "video/webm" });
+      Object.defineProperty(blob, "size", { value: 50 * 1024 * 1024 });
+      await expect(uploadVideo("game1", 1, "set", blob)).rejects.toThrow("50 MB limit");
       expect(mockUploadBytesResumable).not.toHaveBeenCalled();
     });
 

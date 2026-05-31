@@ -261,7 +261,7 @@ The production domain was migrated from `skatehubba.xyz` to `skatehubba.com`. Al
 - [x] All hardcoded URLs in `index.html`, `sitemap.xml`, `robots.txt` use `skatehubba.com`
 - [x] `vercel.json` 301 redirects: `skatehubba.xyz`, `www.skatehubba.xyz`, and `www.skatehubba.com` → `skatehubba.com`
 - [x] `X-Robots-Tag: noindex` applied to all hosts except `skatehubba.com`
-- [x] `authDomain` pinned to `skatehubba.com` in production builds (prevents OAuth redirect mismatch if a user reaches the app via the old domain before the redirect fires)
+- [x] `authDomain` left as the Firebase-provided `*.firebaseapp.com` value (passed through from `VITE_FIREBASE_AUTH_DOMAIN`). It is intentionally **not** overridden to `skatehubba.com`: Firebase email-verification / password-reset links resolve to `https://{authDomain}/__/auth/action`, which is served only by Firebase Hosting — pinning it to the Vercel domain would break every outbound email link (see the note in `src/firebase.ts`)
 
 ### Manual steps (require console / DNS access)
 

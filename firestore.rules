@@ -158,13 +158,22 @@ service cloud.firestore {
           && request.resource.data.turnHistory is list
           && request.resource.data.turnHistory.size() <= 200
           && (
-            // Unchanged (e.g. judge accepts without adding a record, or the
-            // resource has the field and the request keeps it identical).
-            ('turnHistory' in resource.data
-              && request.resource.data.turnHistory == resource.data.turnHistory)
+            // Cheap size-based checks FIRST so a growing/unchanged history
+            // never reaches the O(n) full-list equality below — that compare
+            // over a ~200-element array is the dominant node cost and, summed
+            // across the OR-chain of game-update rules, can blow Firestore's
+            // 1000-node per-evaluation budget (silent deny). Semantics are
+            // unchanged: these clauses are OR'd, so order doesn't affect the
+            // accepted set, only evaluation cost.
+            //
             // Appended exactly one entry to an existing history array.
+            ('turnHistory' in resource.data
+              && request.resource.data.turnHistory.size() == resource.data.turnHistory.size() + 1)
+            // Unchanged size against an existing history — same size is the
+            // common no-append case (judge accept, setReview auto-clear, etc.).
             || ('turnHistory' in resource.data
-                && request.resource.data.turnHistory.size() == resource.data.turnHistory.size() + 1)
+                && request.resource.data.turnHistory.size() == resource.data.turnHistory.size()
+                && request.resource.data.turnHistory == resource.data.turnHistory)
             // First-ever append: resource has no turnHistory yet, request
             // introduces a single-entry list.
             || (!('turnHistory' in resource.data)
@@ -565,6 +574,20 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if isOwner(uid);
       }
+
+      // ── Achievements (subcollection) ──
+      // Earned-achievement records. Grants are server-authored (Admin SDK
+      // only) — clients never mint or mutate them, hence create/update are
+      // denied outright. The owner needs read for display and DELETE so the
+      // account-deletion batch in src/services/users.ts (~345-353) can wipe
+      // them atomically alongside /private + the parent user doc; under
+      // default-deny that batch fails closed and breaks GDPR erasure.
+      // Mirrors the owner-only shape of the sibling /private and
+      // /blocked_users blocks above.
+      match /achievements/{achievementId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if false;
+      }
     }
 
     // ── Usernames (reservation docs for uniqueness) ──
@@ -844,24 +867,46 @@ service cloud.firestore {
           || (request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters + 1)
         )
-        // Valid outcomes depend on whether a judge is active.
+        // ── Turn-order seize guard (P0) ──
+        // This is the only game-update branch that historically pinned
+        // NEITHER currentSetter NOR turnNumber, letting a matcher submit a
+        // "missed" resolution while writing currentSetter/currentTurn to
+        // itself — seizing the setter role out of rotation. Each outcome
+        // below now pins both to the exact value src/services/games.match.ts
+        // (and games.judge.ts for Call BS) writes:
+        //   • missed-continues (games.match.ts 315-321):
+        //       currentSetter UNCHANGED, turnNumber +1
+        //   • completion (312-314): currentSetter + turnNumber UNCHANGED,
+        //       winner = opponent of the player who hit 5 letters
+        //   • honor+landed (222-233): currentSetter ROTATES to the matcher
+        //       (opponentUid(currentSetter)), currentTurn follows, turnNumber +1
+        //   • judge landed→disputable (169-176) / Call BS→setReview
+        //       (games.judge.ts 45-51): currentSetter + turnNumber UNCHANGED,
+        //       currentTurn routes to the judge
         && (
-          // Missed path — immediate resolution, both branches. currentTurn
-          // stays on a player (same setter). Game may complete here.
+          // Missed — setter keeps the role (same player re-sets), turnNumber +1.
+          // currentTurn MUST equal the (unchanged) currentSetter: the service
+          // writes currentTurn = currentSetter here (games.match.ts 318). The
+          // old `in [player1Uid, player2Uid]` check let a matcher pin the
+          // setter but write currentTurn = their own UID, then ride the
+          // setting-phase rule (authorized by resource.data.currentTurn) to
+          // seize the next set out of rotation. Pinning to currentSetter closes it.
           (request.resource.data.status == 'active'
            && request.resource.data.phase == 'setting'
            && request.resource.data.winner == null
-           && (
-             request.resource.data.currentTurn == resource.data.player1Uid
-             || request.resource.data.currentTurn == resource.data.player2Uid
-           ))
-          // Completion: pin winner to the opponent of the player who just
-          // hit 5 letters. Without this pin, a losing matcher whose own
-          // counter just reached 5 could write `winner = themselves` —
-          // every read of the doc (leaderboard, clip feed, push, profile)
-          // would then surface the wrong outcome.
+           && request.resource.data.currentSetter == resource.data.currentSetter
+           && request.resource.data.turnNumber == resource.data.turnNumber + 1
+           && request.resource.data.currentTurn == resource.data.currentSetter)
+          // Completion: pin winner to the opponent of the player who just hit
+          // 5 letters, so a losing matcher can't write themselves as winner.
+          // currentSetter is pinned (the real win-declaration seize guard);
+          // currentTurn is intentionally NOT pinned — once status == 'complete'
+          // no further game updates are permitted, so currentTurn is never
+          // consumed and the legitimate completion write may freely change it.
           || (request.resource.data.status == 'complete'
               && request.resource.data.winner != null
+              && request.resource.data.currentSetter == resource.data.currentSetter
+              && request.resource.data.turnNumber == resource.data.turnNumber
               && (
                 (request.resource.data.p1Letters >= 5
                  && request.resource.data.winner == resource.data.player2Uid)
@@ -869,33 +914,30 @@ service cloud.firestore {
                     && request.resource.data.winner == resource.data.player1Uid)
               ))
           // Honor system + landed — roles swap immediately, no judge routing.
-          // Letters must stay unchanged; currentTurn becomes the matcher
-          // (opponent of resource.data.currentSetter). Only allowed when the
-          // judge is NOT active.
+          // Letters unchanged; currentSetter ROTATES to the matcher and
+          // currentTurn follows it; turnNumber +1. Judge must NOT be active.
           || (!judgeActive(resource.data)
               && request.resource.data.status == 'active'
               && request.resource.data.phase == 'setting'
               && request.resource.data.winner == null
               && request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters
-              && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter))
-          // Judge-active + landed — enter disputable, route currentTurn to judge.
+              && request.resource.data.currentSetter == opponentUid(resource.data, resource.data.currentSetter)
+              && request.resource.data.currentTurn == request.resource.data.currentSetter
+              && request.resource.data.turnNumber == resource.data.turnNumber + 1)
+          // Judge-active landed→disputable OR Call BS→setReview — letters
+          // unchanged, currentSetter + turnNumber UNCHANGED (the judge ruling,
+          // not this write, advances them), currentTurn routes to the judge.
           || (judgeActive(resource.data)
               && request.resource.data.status == 'active'
-              && request.resource.data.phase == 'disputable'
               && request.resource.data.winner == null
               && request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters
-              && request.resource.data.currentTurn == resource.data.judgeId)
-          // Judge-active + Call BS — enter setReview, route currentTurn to judge.
-          // Letters unchanged; matchVideoUrl unchanged (no attempt recorded).
-          || (judgeActive(resource.data)
-              && request.resource.data.status == 'active'
-              && request.resource.data.phase == 'setReview'
-              && request.resource.data.winner == null
-              && request.resource.data.p1Letters == resource.data.p1Letters
-              && request.resource.data.p2Letters == resource.data.p2Letters
-              && request.resource.data.currentTurn == resource.data.judgeId)
+              && request.resource.data.currentSetter == resource.data.currentSetter
+              && request.resource.data.turnNumber == resource.data.turnNumber
+              && request.resource.data.currentTurn == resource.data.judgeId
+              && (request.resource.data.phase == 'disputable'
+                  || request.resource.data.phase == 'setReview'))
         )
         // turnHistory growth bound — cap appends to 1 per write and total
         // size to 200 entries. Prevents a 1 MB TurnRecord balloon attack

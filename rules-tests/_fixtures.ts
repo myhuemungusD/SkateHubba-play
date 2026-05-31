@@ -10,6 +10,7 @@
  * baseline).
  */
 import { initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
+import type { Reference } from "@firebase/storage-types";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, serverTimestamp, setDoc, setLogLevel } from "firebase/firestore";
@@ -99,6 +100,124 @@ export async function seedTerminatedGame(
       winner,
     });
   });
+}
+
+/**
+ * Recursively delete every object under a Storage emulator bucket.
+ *
+ * `RulesTestEnvironment.clearStorage()` only calls `listAll()` on the bucket
+ * ROOT and deletes the returned `items` — i.e. top-level objects ONLY. It
+ * does NOT descend into `prefixes`. Every game-video path in this suite is
+ * nested (`games/{gameId}/{turnPath}/{role}.{ext}`), so the built-in clear
+ * deletes ZERO of them: residual objects pile up across tests and across
+ * test files (the storage emulator is a single shared process), which is
+ * exactly what made `npm run test:rules` non-deterministic — a leftover
+ * object at a create path flips the emulator onto a stale-metadata branch,
+ * surfacing as spurious `storage/unauthorized` / "uploaderUid undefined"
+ * failures on otherwise-valid uploads. Walking `prefixes` recursively clears
+ * the whole tree so each test (and each file) starts from an empty bucket.
+ */
+/** Storage-emulator codes that mean "nothing here" — safe to treat as clean. */
+function isEmptyPrefixError(err: unknown): boolean {
+  return (err as { code?: string } | null)?.code === "storage/object-not-found";
+}
+
+/**
+ * `listAll()` against the Storage emulator can answer with a transient
+ * `storage/unauthorized` (NOT a real permission failure under
+ * withSecurityRulesDisabled — the emulator just hasn't settled the prefix
+ * yet). Swallowing it would skip a prefix that still holds objects and let
+ * pollution survive, so retry a few times before surfacing it.
+ */
+async function listAllWithRetry(ref: Reference, attempts = 5): Promise<Awaited<ReturnType<Reference["listAll"]>>> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await ref.listAll();
+    } catch (err) {
+      if (isEmptyPrefixError(err)) return { items: [], prefixes: [] };
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 50 * (i + 1)));
+    }
+  }
+  throw lastErr;
+}
+
+async function deleteRefTree(ref: Reference): Promise<void> {
+  const listing = await listAllWithRetry(ref);
+  await Promise.all(listing.items.map((item) => item.delete()));
+  await Promise.all(listing.prefixes.map((prefix) => deleteRefTree(prefix)));
+}
+
+/**
+ * The top-level prefixes every storage rules-test writes under. Clearing
+ * these explicitly (rather than the bucket ROOT) sidesteps a Storage-emulator
+ * quirk where `listAll()` on `''` intermittently throws `unauthorized` when
+ * the suite runs after another storage file in the shared emulator process.
+ */
+const STORAGE_TEST_PREFIXES = ["games", "users"] as const;
+
+/**
+ * Fully clear the Storage emulator for a rules-test env, including the NESTED
+ * paths the built-in `clearStorage()` misses. `clearStorage()` only deletes
+ * the bucket ROOT's `items` — never descending into `prefixes` — so every
+ * game-video (`games/{id}/{turn}/{role}.{ext}`) and avatar
+ * (`users/{uid}/avatar.*`) object survives it. Those survivors accumulate
+ * across tests and across files (the storage emulator is one shared process),
+ * which is what made `npm run test:rules` non-deterministic. Walking each
+ * known prefix recursively clears the tree so no test (and no file) inherits
+ * another's objects. Call this in both `beforeEach` AND `afterAll`.
+ */
+export async function clearStorageDeep(env: RulesTestEnvironment): Promise<void> {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const root = ctx.storage().ref() as unknown as Reference;
+    for (const prefix of STORAGE_TEST_PREFIXES) {
+      await deleteRefTree(root.child(prefix));
+    }
+  });
+}
+
+/**
+ * Boot a Storage rules test env against the local emulator on port 9199,
+ * loading the repo's storage.rules. Mirrors the per-file boilerplate every
+ * storage suite was reproducing by hand.
+ */
+export async function bootStorageRulesTestEnv(projectId: string): Promise<RulesTestEnvironment> {
+  setLogLevel("error");
+  return initializeTestEnvironment({
+    projectId,
+    storage: {
+      host: "127.0.0.1",
+      port: 9199,
+      rules: readFileSync(resolve(process.cwd(), "storage.rules"), "utf8"),
+    },
+  });
+}
+
+/**
+ * Wires the standard Storage rules-test lifecycle so each suite starts AND
+ * ends with an empty bucket. Uses `clearStorageDeep` (not the built-in
+ * shallow `clearStorage`) in both `beforeEach` and `afterAll` so no test —
+ * and no later test FILE in the shared emulator process — inherits leftover
+ * objects. Returns a getter for the live env (beforeAll runs after import).
+ */
+export function setupStorageRulesTestEnv(projectId: string): () => RulesTestEnvironment {
+  let env: RulesTestEnvironment | undefined;
+  beforeAll(async () => {
+    env = await bootStorageRulesTestEnv(projectId);
+  });
+  afterAll(async () => {
+    if (env) await clearStorageDeep(env);
+    await env?.cleanup();
+  });
+  beforeEach(async () => {
+    if (!env) throw new Error("storage rules test env not initialized");
+    await clearStorageDeep(env);
+  });
+  return () => {
+    if (!env) throw new Error("storage rules test env not initialized");
+    return env;
+  };
 }
 
 /**
