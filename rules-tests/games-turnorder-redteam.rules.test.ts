@@ -274,6 +274,36 @@ describe("games — P0 match-resolution turn-order seize guard", () => {
     );
   });
 
+  it("attack: matcher MISSED ends game (gameOver) but seizes currentSetter", async () => {
+    // Same legitimate gameOver completion write as the positive above
+    // (games.match.ts 286-314): status:"complete", winner, +1 letter to 5,
+    // turnHistory, matchVideoUrl, updatedAt — completion does NOT touch
+    // currentSetter/turnNumber/currentTurn/phase. Here P2 ALSO forges
+    // currentSetter = P2 to grab the setter role on the way out. The
+    // completion arm pins currentSetter UNCHANGED, so the write must be
+    // rejected BECAUSE of the currentSetter mutation — every other field is
+    // the valid completion baseline.
+    await seedGame({
+      currentTurn: P2_UID,
+      phase: "matching",
+      currentSetter: P1_UID,
+      p2Letters: 4,
+      turnNumber: 7,
+    });
+    await assertFails(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        status: "complete",
+        winner: P1_UID,
+        p2Letters: 5,
+        currentSetter: P2_UID, // SEIZE — must stay P1 on completion
+        turnHistory: [{ turnNumber: 7, landed: false, letterTo: P2_UID }],
+        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
   it("legitimate: matcher MISSED keeps setter, advances turnNumber by 1", async () => {
     // submitMatchAttempt missed-continues (games.match.ts 315-321):
     // currentSetter unchanged, currentTurn = currentSetter, turnNumber + 1.
@@ -375,6 +405,26 @@ describe("games — P0 judge-routing turn-order seize guard", () => {
         currentSetter: P2_UID, // SEIZE — must stay P1 on a judge-routing write
         turnNumber: 3,
         judgeReviewFor: P2_UID,
+        turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        updatedAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("legitimate: matcher routes Call BS→setReview, pins currentSetter + turnNumber", async () => {
+    // callBSOnSetTrick (games.judge.ts 45-51): phase → setReview, currentTurn
+    // → judge, judgeReviewFor → setter (currentSetter, P1), currentSetter +
+    // turnNumber UNCHANGED, letters unchanged. This is the missing positive
+    // proving the merged judge OR branch accepts a VALID setReview routing
+    // write (the existing setReview case only tested the attack).
+    await seedJudgedMatch({ turnNumber: 5 });
+    await assertSucceeds(
+      updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
+        phase: "setReview",
+        currentTurn: JUDGE_UID,
+        currentSetter: P1_UID, // UNCHANGED
+        turnNumber: 5, // UNCHANGED
+        judgeReviewFor: P1_UID,
         turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
         updatedAt: serverTimestamp(),
       }),
