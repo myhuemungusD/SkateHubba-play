@@ -7,15 +7,27 @@ vi.mock("../../services/haptics", () => ({
 }));
 
 /** Build a pointer-event-shaped object the hook actually reads. The real
- *  React.PointerEvent type has far more fields we don't touch. */
-function pointerEvent(
-  overrides: Partial<{ clientY: number; isPrimary: boolean; currentTarget: { scrollTop: number } }> = {},
-) {
+ *  React.PointerEvent type has far more fields we don't touch. `currentTarget`
+ *  accepts any EventTarget so callers can pass either a real DOM element (the
+ *  hook now narrows via `instanceof HTMLElement` and inspects computed style)
+ *  or omit it entirely. */
+function pointerEvent(overrides: Partial<{ clientY: number; isPrimary: boolean; currentTarget: EventTarget }> = {}) {
   return {
     clientY: 0,
     isPrimary: true,
     ...overrides,
   } as unknown as React.PointerEvent;
+}
+
+/** Build a real DOM element configured to look scrollable to the hook's
+ *  `isScrollableElement` helper (overflow-y auto/scroll AND content overflows). */
+function scrollableDiv({ scrollTop }: { scrollTop: number }): HTMLElement {
+  const el = document.createElement("div");
+  el.style.overflowY = "auto";
+  Object.defineProperty(el, "scrollHeight", { configurable: true, value: 1000 });
+  Object.defineProperty(el, "clientHeight", { configurable: true, value: 500 });
+  Object.defineProperty(el, "scrollTop", { configurable: true, value: scrollTop });
+  return el;
 }
 
 beforeEach(() => {
@@ -70,7 +82,9 @@ describe("usePullToRefresh", () => {
     // the PlayerProfileScreen case: an `overflow-y-auto` container, not window.
     const { result } = renderHook(() => usePullToRefresh(vi.fn()));
     act(() => {
-      result.current.containerProps.onPointerDown(pointerEvent({ clientY: 0, currentTarget: { scrollTop: 120 } }));
+      result.current.containerProps.onPointerDown(
+        pointerEvent({ clientY: 0, currentTarget: scrollableDiv({ scrollTop: 120 }) }),
+      );
     });
     act(() => {
       result.current.containerProps.onPointerMove(pointerEvent({ clientY: 200 }));
@@ -84,12 +98,34 @@ describe("usePullToRefresh", () => {
     Object.defineProperty(window, "scrollY", { configurable: true, writable: true, value: 500 });
     const { result } = renderHook(() => usePullToRefresh(vi.fn()));
     act(() => {
-      result.current.containerProps.onPointerDown(pointerEvent({ clientY: 0, currentTarget: { scrollTop: 0 } }));
+      result.current.containerProps.onPointerDown(
+        pointerEvent({ clientY: 0, currentTarget: scrollableDiv({ scrollTop: 0 }) }),
+      );
     });
     act(() => {
       result.current.containerProps.onPointerMove(pointerEvent({ clientY: 300 }));
     });
     expect(result.current.state).toBe("ready");
+  });
+
+  it("falls back to window scroll when the bound element is non-scrollable", () => {
+    // Lobby case: handlers are spread onto a plain `min-h-dvh` div that does
+    // not itself scroll (overflow-y is the default `visible`, scrollHeight ===
+    // clientHeight). Every HTMLElement has a numeric `scrollTop` of 0, so
+    // without the scrollability gate the hook would think we're at the top
+    // and engage PTR mid-page after the user has scrolled down. The fall-back
+    // to `window.scrollY` must keep PTR disengaged here.
+    Object.defineProperty(window, "scrollY", { configurable: true, writable: true, value: 100 });
+    const nonScrollable = document.createElement("div");
+    const { result } = renderHook(() => usePullToRefresh(vi.fn()));
+    act(() => {
+      result.current.containerProps.onPointerDown(pointerEvent({ clientY: 0, currentTarget: nonScrollable }));
+    });
+    act(() => {
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 200 }));
+    });
+    expect(result.current.offset).toBe(0);
+    expect(result.current.state).toBe("idle");
   });
 
   it("enters pulling state on downward drag and advances to ready past the threshold", () => {

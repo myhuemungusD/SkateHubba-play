@@ -13,6 +13,17 @@ const RESISTANCE = 0.45;
 
 export type PullToRefreshState = "idle" | "pulling" | "ready" | "refreshing";
 
+/** True iff `target` is an HTMLElement that actually scrolls — overflow-y is
+ *  `auto`|`scroll` AND content overflows. Plain non-scrolling divs always
+ *  report `scrollTop === 0`, which would otherwise mask document scroll and
+ *  cause PTR to engage mid-page (the Lobby regression). */
+function isScrollableElement(target: EventTarget | null): target is HTMLElement {
+  if (!(target instanceof HTMLElement)) return false;
+  const overflowY = window.getComputedStyle(target).overflowY;
+  if (overflowY !== "auto" && overflowY !== "scroll") return false;
+  return target.scrollHeight > target.clientHeight;
+}
+
 export interface PullToRefreshBindings {
   /** Spread onto the scroll container so the hook can observe touch events. */
   containerProps: {
@@ -81,14 +92,16 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): PullToR
     // Only activate when the scroll container is actually at the top —
     // mid-scroll PTR would fight with normal vertical scrolling. The handlers
     // are spread directly onto the scroll container, so `e.currentTarget` is
-    // that element; read its `scrollTop` so PTR works whether the screen
-    // scrolls an inner container (PlayerProfileScreen) or the document itself.
-    // When `currentTarget` isn't an element we can measure (e.g. a window-
-    // scrolled host), fall back to the root scrolling element. No SSR guard
+    // that element; if it's actually a scrollable element, read its
+    // `scrollTop` (PlayerProfileScreen's `overflow-y-auto` case). If it's
+    // a non-scrolling host (Lobby's plain `min-h-dvh` div — every HTMLElement
+    // has a numeric `scrollTop` that's always 0), fall back to the document
+    // scroll position so we don't wrongly engage mid-page. No SSR guard
     // needed — React pointer events only fire on a mounted browser DOM.
-    const target = e.currentTarget as Element | null;
-    const containerScrollTop = target && typeof target.scrollTop === "number" ? target.scrollTop : null;
-    const scrollTop = containerScrollTop ?? (window.scrollY || document.documentElement.scrollTop || 0);
+    const target = e.currentTarget;
+    const scrollTop = isScrollableElement(target)
+      ? target.scrollTop
+      : window.scrollY || document.documentElement.scrollTop || 0;
     if (scrollTop > 0) return;
     startYRef.current = e.clientY;
   }, []);
