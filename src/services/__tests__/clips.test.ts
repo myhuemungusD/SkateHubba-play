@@ -64,6 +64,7 @@ import {
   writeLandedClipsInTransaction,
   fetchClipsFeed,
   deleteUserClips,
+  deleteUserClipVotes,
   upvoteClip,
   fetchClipUpvoteState,
   AlreadyUpvotedError,
@@ -714,6 +715,50 @@ describe("deleteUserClips", () => {
     mockDeleteDoc.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("transient"));
 
     await expect(deleteUserClips("p1")).resolves.toBeUndefined();
+    expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
+  });
+});
+
+/* ── deleteUserClipVotes (account-deletion cascade) ──────────── */
+
+describe("deleteUserClipVotes", () => {
+  it("queries clipVotes cast by the uid and deletes each one from the clipVotes collection", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: "p1_g1_2_set" }, { id: "p1_g7_4_match" }],
+    });
+
+    await deleteUserClipVotes("p1");
+
+    // Votes are filtered by the voter's `uid` field, not the clip owner.
+    expect(mockWhere).toHaveBeenCalledWith("uid", "==", "p1");
+    expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
+    const deleted = mockDeleteDoc.mock.calls.map(([ref]) => (ref as { __path: string }).__path);
+    expect(deleted).toEqual(["clipVotes/p1_g1_2_set", "clipVotes/p1_g7_4_match"]);
+  });
+
+  it("is a no-op when the user has cast no votes", async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    await deleteUserClipVotes("stranger");
+
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
+
+  it("swallows the query error and returns so account deletion can continue", async () => {
+    // Permanent error code so withRetry aborts immediately.
+    mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+
+    await expect(deleteUserClipVotes("p1")).resolves.toBeUndefined();
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
+
+  it("tolerates per-doc delete failures without throwing (partial cascade)", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: "p1_ok" }, { id: "p1_fails" }],
+    });
+    mockDeleteDoc.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("transient"));
+
+    await expect(deleteUserClipVotes("p1")).resolves.toBeUndefined();
     expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
   });
 });

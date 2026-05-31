@@ -25,4 +25,4 @@ export { fetchClipsFeed, _resetTopIndexCircuitBreaker } from "./clips.feed";
 export { AlreadyUpvotedError, fetchClipUpvoteState, upvoteClip } from "./clips.upvotes";
 export type { ClipUpvoteState, ClipForUpvoteHydration } from "./clips.upvotes";
 
-export { deleteUserClips } from "./clips.cascade";
+export { deleteUserClips, deleteUserClipVotes } from "./clips.cascade";
