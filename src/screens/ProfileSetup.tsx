@@ -17,7 +17,7 @@ import { isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
-import { DobRow } from "../components/ui/DobRow";
+import { DobConsentFields } from "../components/DobConsentFields";
 import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
 import { SkateboardIcon } from "../components/icons";
 
@@ -392,43 +392,18 @@ export function ProfileSetup({
           </div>
 
           {needsDobCollection && (
-            <>
-              <label className="block font-display text-sm tracking-[0.12em] text-dim mb-2">Date of Birth</label>
-              <DobRow month={month} day={day} year={year} onChange={updateDob} disabled={loading} />
-              <p className="font-body text-xs text-subtle mb-5">
-                Used only for age verification (COPPA &amp; CCPA) and is never shared.
-              </p>
-              {isMinor && (
-                <label className="flex items-start gap-3 mb-5 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={parentConsent}
-                    onChange={(e) => setParentConsent(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-brand-orange cursor-pointer shrink-0"
-                    aria-label="Parental consent"
-                  />
-                  <span className="font-body text-sm text-dim leading-relaxed group-hover:text-bright transition-colors">
-                    My parent or legal guardian has reviewed the{" "}
-                    <button
-                      type="button"
-                      onClick={() => onNavLegal?.("privacy")}
-                      className="text-brand-orange hover:underline"
-                    >
-                      Privacy Policy
-                    </button>{" "}
-                    and{" "}
-                    <button
-                      type="button"
-                      onClick={() => onNavLegal?.("terms")}
-                      className="text-brand-orange hover:underline"
-                    >
-                      Terms of Service
-                    </button>{" "}
-                    and consents to my use of SkateHubba.
-                  </span>
-                </label>
-              )}
-            </>
+            <DobConsentFields
+              month={month}
+              day={day}
+              year={year}
+              onDobChange={updateDob}
+              disabled={loading}
+              helpText="Used only for age verification (COPPA & CCPA) and is never shared."
+              showConsent={isMinor}
+              consent={parentConsent}
+              onConsentChange={setParentConsent}
+              onNavLegal={onNavLegal}
+            />
           )}
 
           <ErrorBanner message={error} onDismiss={clearError} />

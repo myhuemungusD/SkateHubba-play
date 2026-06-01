@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { signUp, signIn, resetPassword, type SignUpResult } from "../services/auth";
-import { EMAIL_RE, pwStrength, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
+import { EMAIL_RE, getErrorCode, parseFirebaseError, getUserMessage } from "../utils/helpers";
 import { isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
-import { DobRow } from "../components/ui/DobRow";
+import { DobConsentFields } from "../components/DobConsentFields";
+import { PasswordStrengthMeter } from "../components/PasswordStrengthMeter";
 import { GoogleButton } from "../components/GoogleButton";
 import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
 import { logger, metrics } from "../services/logger";
@@ -300,38 +301,7 @@ export function AuthScreen({
             autoComplete={isSignup ? "new-password" : "current-password"}
             enterKeyHint={isSignup ? "next" : "go"}
           />
-          {isSignup &&
-            password.length > 0 &&
-            (() => {
-              const strength = pwStrength(password);
-              const labels: Record<1 | 2 | 3, string> = { 1: "Weak", 2: "Fair", 3: "Strong" };
-              const colors: Record<1 | 2 | 3, string> = {
-                1: "bg-brand-red",
-                2: "bg-yellow-500",
-                3: "bg-brand-green",
-              };
-              return (
-                <div
-                  className="flex items-center gap-2 -mt-2 mb-4"
-                  role="status"
-                  aria-label={`Password strength: ${labels[strength]}`}
-                >
-                  <div className="flex gap-1 flex-1" aria-hidden="true">
-                    {([1, 2, 3] as const).map((lvl) => (
-                      <div
-                        key={lvl}
-                        className={`h-0.5 flex-1 rounded-full transition-colors duration-300 ${
-                          strength >= lvl ? colors[strength] : "bg-surface-alt"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <span className={`font-body text-[10px] ${colors[strength].replace("bg-", "text-")}`}>
-                    {labels[strength]}
-                  </span>
-                </div>
-              );
-            })()}
+          {isSignup && <PasswordStrengthMeter password={password} />}
           {isSignup && (
             <Field
               label="Confirm"
@@ -347,43 +317,18 @@ export function AuthScreen({
           )}
 
           {showDob && (
-            <>
-              <label className="block font-display text-sm tracking-[0.12em] text-dim mb-2">Date of Birth</label>
-              <DobRow month={month} day={day} year={year} onChange={updateDob} disabled={anyLoading} />
-              <p className="font-body text-xs text-subtle mb-5">
-                Your date of birth is used only for age verification and is never shared.
-              </p>
-              {isMinor && (
-                <label className="flex items-start gap-3 mb-5 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={parentConsent}
-                    onChange={(e) => setParentConsent(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-brand-orange cursor-pointer shrink-0"
-                    aria-label="Parental consent"
-                  />
-                  <span className="font-body text-sm text-dim leading-relaxed group-hover:text-bright transition-colors">
-                    My parent or legal guardian has reviewed the{" "}
-                    <button
-                      type="button"
-                      onClick={() => onNavLegal?.("privacy")}
-                      className="text-brand-orange hover:underline"
-                    >
-                      Privacy Policy
-                    </button>{" "}
-                    and{" "}
-                    <button
-                      type="button"
-                      onClick={() => onNavLegal?.("terms")}
-                      className="text-brand-orange hover:underline"
-                    >
-                      Terms of Service
-                    </button>{" "}
-                    and consents to my use of SkateHubba.
-                  </span>
-                </label>
-              )}
-            </>
+            <DobConsentFields
+              month={month}
+              day={day}
+              year={year}
+              onDobChange={updateDob}
+              disabled={anyLoading}
+              helpText="Your date of birth is used only for age verification and is never shared."
+              showConsent={isMinor}
+              consent={parentConsent}
+              onConsentChange={setParentConsent}
+              onNavLegal={onNavLegal}
+            />
           )}
 
           <ErrorBanner
