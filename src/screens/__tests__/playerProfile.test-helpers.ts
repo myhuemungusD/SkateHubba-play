@@ -6,11 +6,12 @@ import type { UserProfile } from "../../services/users";
 /**
  * Shared fixtures + DOM helpers for the PlayerProfileScreen test suite.
  *
- * Lives outside the `*.test.tsx` glob on purpose: the test-duplication gate
- * (`scripts/check-test-duplication.mjs`) only scans `*.test.ts(x)`, so hoisting
- * the common profile/game factories and scroll-container utilities here both
- * keeps the gate green and gives every PlayerProfileScreen spec one source of
- * truth for its fixtures.
+ * Filename follows the project `*.test-helpers.ts` convention so it stays
+ * outside Vitest's `*.test.{ts,tsx}` include glob AND matches the coverage
+ * exclude pattern in `vite.config.ts` ("not production code, never imported
+ * outside tests"). The test-duplication gate (`scripts/check-test-duplication.mjs`)
+ * also globs only `*.test.ts(x)`, so factoring duplicated fixtures here keeps
+ * that gate green while giving every spec one source of truth.
  *
  * NOTE: `vi.mock(...)` factories are intentionally NOT exported from here —
  * Vitest hoists `vi.mock` to the top of the importing module, so those calls

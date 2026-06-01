@@ -2,12 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PlayerProfileScreen } from "../PlayerProfileScreen";
-import {
-  opponentProfile as otherProfile,
-  buildCompletedGame as makeGame,
-  buildBaseProps,
-  fetchedState,
-} from "./playerProfileTestHelpers";
+import { opponentProfile, buildCompletedGame, buildBaseProps, fetchedState } from "./playerProfile.test-helpers";
 
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
@@ -63,8 +58,8 @@ describe("PlayerProfileScreen", () => {
 
   it("renders completed games with correct stats", () => {
     const games = [
-      makeGame({ id: "g1", winner: "me", p1Letters: 0, p2Letters: 5 }),
-      makeGame({ id: "g2", winner: "u2", p1Letters: 5, p2Letters: 2, status: "complete" }),
+      buildCompletedGame({ id: "g1", winner: "me", p1Letters: 0, p2Letters: 5 }),
+      buildCompletedGame({ id: "g2", winner: "u2", p1Letters: 5, p2Letters: 2, status: "complete" }),
     ];
     render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
     expect(screen.getByText("GAME HISTORY")).toBeInTheDocument();
@@ -79,14 +74,14 @@ describe("PlayerProfileScreen", () => {
   });
 
   it("expands game card on click", async () => {
-    const games = [makeGame()];
+    const games = [buildCompletedGame()];
     render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
     await userEvent.click(screen.getByText(/vs @sk8rboi/));
     expect(screen.getByText("View Full Recap")).toBeInTheDocument();
   });
 
   it("collapses expanded game card on second click", async () => {
-    const games = [makeGame()];
+    const games = [buildCompletedGame()];
     render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
 
     await userEvent.click(screen.getByText(/vs @sk8rboi/));
@@ -122,7 +117,7 @@ describe("PlayerProfileScreen", () => {
   });
 
   it("renders other player's profile with correct header", () => {
-    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile, games: [makeGame()] }));
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile, games: [buildCompletedGame()] }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
     expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
@@ -130,14 +125,14 @@ describe("PlayerProfileScreen", () => {
 
   it("shows Challenge button for other players", async () => {
     const onChallenge = vi.fn();
-    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} onChallenge={onChallenge} />);
     await userEvent.click(screen.getByText("Challenge @sk8rboi"));
     expect(onChallenge).toHaveBeenCalledWith("u2", "sk8rboi");
   });
 
   it("shows VS YOU stats when viewing other player with shared games", () => {
-    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile, games: [makeGame()] }));
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile, games: [buildCompletedGame()] }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(screen.getByText("VS YOU")).toBeInTheDocument();
     expect(screen.getByText("Your Wins")).toBeInTheDocument();
@@ -145,26 +140,26 @@ describe("PlayerProfileScreen", () => {
   });
 
   it("shows empty state message for other player with no shared games", () => {
-    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(screen.getByText("No games between you two yet")).toBeInTheDocument();
   });
 
   it("shows forfeit game card with correct label", async () => {
-    const games = [makeGame({ id: "g1", status: "forfeit", winner: "me" })];
+    const games = [buildCompletedGame({ id: "g1", status: "forfeit", winner: "me" })];
     render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
     expect(screen.getByText("forfeit")).toBeInTheDocument();
   });
 
   it("shows game with no turns displays forfeit message in expanded view", async () => {
-    const games = [makeGame({ id: "g1", status: "forfeit", winner: "me", turnHistory: [] })];
+    const games = [buildCompletedGame({ id: "g1", status: "forfeit", winner: "me", turnHistory: [] })];
     render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
     await userEvent.click(screen.getByText(/vs @sk8rboi/));
     expect(screen.getByText("Game ended by forfeit — no clips recorded")).toBeInTheDocument();
   });
 
   it("calls onOpenGame when View Full Recap is clicked", async () => {
-    const games = [makeGame()];
+    const games = [buildCompletedGame()];
     const onOpenGame = vi.fn();
     render(<PlayerProfileScreen {...baseProps} ownGames={games} onOpenGame={onOpenGame} />);
     await userEvent.click(screen.getByText(/vs @sk8rboi/));
@@ -174,8 +169,8 @@ describe("PlayerProfileScreen", () => {
 
   it("shows opponent H2H records with tappable navigation", async () => {
     const onViewPlayer = vi.fn();
-    const games = [makeGame()];
-    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile, games }));
+    const games = [buildCompletedGame()];
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile, games }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} onViewPlayer={onViewPlayer} />);
     // The H2H list should show the viewer (me) as an opponent
     expect(screen.getByText("HEAD TO HEAD")).toBeInTheDocument();
@@ -184,7 +179,7 @@ describe("PlayerProfileScreen", () => {
   // ── Block / Unblock flow ────────────────────────────
 
   it("opens block confirmation and cancels it", async () => {
-    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set()} />);
 
     await userEvent.click(screen.getByText("Block this player"));
@@ -196,7 +191,7 @@ describe("PlayerProfileScreen", () => {
 
   it("confirms block and calls blockUser", async () => {
     const { blockUser } = await import("../../services/blocking");
-    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set()} />);
 
     await userEvent.click(screen.getByText("Block this player"));
@@ -209,7 +204,7 @@ describe("PlayerProfileScreen", () => {
 
   it("shows blocked banner and unblocks via Unblock button", async () => {
     const { unblockUser } = await import("../../services/blocking");
-    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set(["u2"])} />);
 
     expect(screen.getByText("You have blocked this user")).toBeInTheDocument();
@@ -226,7 +221,7 @@ describe("PlayerProfileScreen", () => {
 
   it("calls onViewPlayer when tapping a tappable H2H opponent on own profile", async () => {
     const onViewPlayer = vi.fn();
-    const games = [makeGame()];
+    const games = [buildCompletedGame()];
     render(<PlayerProfileScreen {...baseProps} ownGames={games} onViewPlayer={onViewPlayer} />);
     // The OPPONENTS list renders sk8rboi as a tappable button — find it via
     // the unique "1 game" sibling text and walk up to the enclosing button.
@@ -247,7 +242,7 @@ describe("PlayerProfileScreen", () => {
       const shareFn = vi.fn().mockResolvedValue(undefined);
       Object.defineProperty(navigator, "share", { value: shareFn, writable: true, configurable: true });
 
-      const games = [makeGame()];
+      const games = [buildCompletedGame()];
       render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
       await userEvent.click(screen.getByText(/vs @sk8rboi/));
       await userEvent.click(screen.getByText("Share Game"));
@@ -263,7 +258,7 @@ describe("PlayerProfileScreen", () => {
       const writeText = vi.fn().mockResolvedValue(undefined);
       Object.assign(navigator, { clipboard: { writeText } });
 
-      const games = [makeGame()];
+      const games = [buildCompletedGame()];
       render(<PlayerProfileScreen {...baseProps} ownGames={games} />);
       await userEvent.click(screen.getByText(/vs @sk8rboi/));
       await userEvent.click(screen.getByText("Share Game"));
@@ -280,7 +275,7 @@ describe("PlayerProfileScreen", () => {
       Object.assign(navigator, { clipboard: { writeText } });
 
       const games = [
-        makeGame({
+        buildCompletedGame({
           id: "g1",
           status: "forfeit",
           winner: "u2",

@@ -8,7 +8,7 @@ import {
   buildCompletedGame,
   buildBaseProps,
   fetchedState,
-} from "./playerProfileTestHelpers";
+} from "./playerProfile.test-helpers";
 
 /**
  * Smoke coverage for PlayerProfileScreen (board item P3).
