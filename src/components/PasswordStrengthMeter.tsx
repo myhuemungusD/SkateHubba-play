@@ -13,6 +13,15 @@ const COLORS: Record<1 | 2 | 3, string> = {
   2: "bg-yellow-500",
   3: "bg-brand-green",
 };
+// Parallel text-color map. Spelled out as literal classes (rather than
+// deriving from COLORS via string replace) so Tailwind's static scanner
+// actually emits them, and so a bg token without a 1:1 text counterpart
+// can't silently break.
+const TEXT_COLORS: Record<1 | 2 | 3, string> = {
+  1: "text-brand-red",
+  2: "text-yellow-500",
+  3: "text-brand-green",
+};
 
 export function PasswordStrengthMeter({ password }: { password: string }) {
   if (password.length === 0) return null;
@@ -33,7 +42,7 @@ export function PasswordStrengthMeter({ password }: { password: string }) {
           />
         ))}
       </div>
-      <span className={`font-body text-[10px] ${COLORS[strength].replace("bg-", "text-")}`}>{LABELS[strength]}</span>
+      <span className={`font-body text-[10px] ${TEXT_COLORS[strength]}`}>{LABELS[strength]}</span>
     </div>
   );
 }
