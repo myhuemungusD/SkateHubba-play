@@ -2,20 +2,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PlayerProfileScreen } from "../PlayerProfileScreen";
-import type { GameDoc } from "../../services/games";
-import type { UserProfile } from "../../services/users";
+import {
+  opponentProfile as otherProfile,
+  buildCompletedGame as makeGame,
+  buildBaseProps,
+  fetchedState,
+} from "./playerProfileTestHelpers";
 
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
-  analytics: {
-    profileViewed: vi.fn(),
-    profileStatTileTapped: vi.fn(),
-  },
+  analytics: { profileViewed: vi.fn(), profileStatTileTapped: vi.fn() },
 }));
 
 vi.mock("../../utils/helpers", () => ({
-  isFirebaseStorageUrl: (url: string) => url?.startsWith("https://firebasestorage.googleapis.com"),
-  LETTERS: ["S", "K", "A", "T", "E"],
+  isFirebaseStorageUrl: (u: string) => u?.startsWith("https://firebasestorage.googleapis.com"),
+  LETTERS: ["S", "K", "A", "T", "E"] as const,
 }));
 
 vi.mock("../../services/blocking", () => ({
@@ -31,79 +32,12 @@ vi.mock("../../hooks/usePlayerProfile", () => ({
   usePlayerProfile: (...args: unknown[]) => mockUsePlayerProfile(...args),
 }));
 
-const currentUserProfile: UserProfile = {
-  uid: "me",
-  username: "viewer",
-  stance: "regular",
-  createdAt: null,
-};
-
-const otherProfile: UserProfile = {
-  uid: "u2",
-  username: "sk8rboi",
-  stance: "goofy",
-  createdAt: null,
-  wins: 10,
-  losses: 3,
-};
-
-function makeGame(overrides?: Partial<GameDoc>): GameDoc {
-  return {
-    id: "g1",
-    player1Uid: "me",
-    player2Uid: "u2",
-    player1Username: "viewer",
-    player2Username: "sk8rboi",
-    p1Letters: 0,
-    p2Letters: 5,
-    status: "complete",
-    currentTurn: "me",
-    phase: "setting",
-    currentSetter: "me",
-    currentTrickName: null,
-    currentTrickVideoUrl: null,
-    matchVideoUrl: null,
-    turnDeadline: null,
-    turnNumber: 1,
-    winner: "me",
-    createdAt: null,
-    updatedAt: { toMillis: () => Date.now() } as GameDoc["updatedAt"],
-    turnHistory: [
-      {
-        turnNumber: 1,
-        trickName: "Kickflip",
-        setterUid: "me",
-        setterUsername: "viewer",
-        matcherUid: "u2",
-        matcherUsername: "sk8rboi",
-        setVideoUrl: "",
-        matchVideoUrl: "",
-        landed: true,
-        letterTo: null,
-      },
-    ],
-    ...overrides,
-  } as GameDoc;
-}
-
-const baseProps = {
-  viewedUid: "me",
-  currentUserProfile,
-  ownGames: [] as GameDoc[],
-  isOwnProfile: true,
-  onOpenGame: vi.fn(),
-  onBack: vi.fn(),
-};
+const baseProps = buildBaseProps();
 
 describe("PlayerProfileScreen", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockUsePlayerProfile.mockReturnValue({
-      profile: null,
-      games: [],
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState());
   });
 
   // ── Own Profile ────────────────────────────────────
@@ -165,12 +99,7 @@ describe("PlayerProfileScreen", () => {
   // ── Other Player Profile ───────────────────────────
 
   it("shows loading state for other player", () => {
-    mockUsePlayerProfile.mockReturnValue({
-      profile: null,
-      games: [],
-      loading: true,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ loading: true }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     // Loading UX is a content-matching skeleton announced via role="status" +
     // aria-busy so assistive tech picks it up while sighted users see the
@@ -181,34 +110,19 @@ describe("PlayerProfileScreen", () => {
   });
 
   it("shows error state when profile fails to load", () => {
-    mockUsePlayerProfile.mockReturnValue({
-      profile: null,
-      games: [],
-      loading: false,
-      error: "Could not load player profile",
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ error: "Could not load player profile" }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(screen.getByText("Could not load player profile")).toBeInTheDocument();
   });
 
   it("shows Player not found when profile is null", () => {
-    mockUsePlayerProfile.mockReturnValue({
-      profile: null,
-      games: [],
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState());
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(screen.getByText("Player not found")).toBeInTheDocument();
   });
 
   it("renders other player's profile with correct header", () => {
-    mockUsePlayerProfile.mockReturnValue({
-      profile: otherProfile,
-      games: [makeGame()],
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile, games: [makeGame()] }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(document.querySelector('img[src="/logonew.webp"]')).toBeInTheDocument();
     expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
@@ -216,24 +130,14 @@ describe("PlayerProfileScreen", () => {
 
   it("shows Challenge button for other players", async () => {
     const onChallenge = vi.fn();
-    mockUsePlayerProfile.mockReturnValue({
-      profile: otherProfile,
-      games: [],
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} onChallenge={onChallenge} />);
     await userEvent.click(screen.getByText("Challenge @sk8rboi"));
     expect(onChallenge).toHaveBeenCalledWith("u2", "sk8rboi");
   });
 
   it("shows VS YOU stats when viewing other player with shared games", () => {
-    mockUsePlayerProfile.mockReturnValue({
-      profile: otherProfile,
-      games: [makeGame()],
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile, games: [makeGame()] }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(screen.getByText("VS YOU")).toBeInTheDocument();
     expect(screen.getByText("Your Wins")).toBeInTheDocument();
@@ -241,12 +145,7 @@ describe("PlayerProfileScreen", () => {
   });
 
   it("shows empty state message for other player with no shared games", () => {
-    mockUsePlayerProfile.mockReturnValue({
-      profile: otherProfile,
-      games: [],
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(screen.getByText("No games between you two yet")).toBeInTheDocument();
   });
@@ -276,12 +175,7 @@ describe("PlayerProfileScreen", () => {
   it("shows opponent H2H records with tappable navigation", async () => {
     const onViewPlayer = vi.fn();
     const games = [makeGame()];
-    mockUsePlayerProfile.mockReturnValue({
-      profile: otherProfile,
-      games,
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile, games }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} onViewPlayer={onViewPlayer} />);
     // The H2H list should show the viewer (me) as an opponent
     expect(screen.getByText("HEAD TO HEAD")).toBeInTheDocument();
@@ -290,12 +184,7 @@ describe("PlayerProfileScreen", () => {
   // ── Block / Unblock flow ────────────────────────────
 
   it("opens block confirmation and cancels it", async () => {
-    mockUsePlayerProfile.mockReturnValue({
-      profile: otherProfile,
-      games: [],
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set()} />);
 
     await userEvent.click(screen.getByText("Block this player"));
@@ -307,12 +196,7 @@ describe("PlayerProfileScreen", () => {
 
   it("confirms block and calls blockUser", async () => {
     const { blockUser } = await import("../../services/blocking");
-    mockUsePlayerProfile.mockReturnValue({
-      profile: otherProfile,
-      games: [],
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set()} />);
 
     await userEvent.click(screen.getByText("Block this player"));
@@ -325,12 +209,7 @@ describe("PlayerProfileScreen", () => {
 
   it("shows blocked banner and unblocks via Unblock button", async () => {
     const { unblockUser } = await import("../../services/blocking");
-    mockUsePlayerProfile.mockReturnValue({
-      profile: otherProfile,
-      games: [],
-      loading: false,
-      error: null,
-    });
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: otherProfile }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} blockedUids={new Set(["u2"])} />);
 
     expect(screen.getByText("You have blocked this user")).toBeInTheDocument();
