@@ -8,6 +8,7 @@ export function Field({
   type = "text",
   maxLength,
   note,
+  noteLive,
   error,
   icon,
   autoComplete,
@@ -25,6 +26,10 @@ export function Field({
   type?: string;
   maxLength?: number;
   note?: string;
+  /** Announce note changes to assistive tech. Use for dynamic status text
+   *  (e.g. async username-availability) that updates after the field is
+   *  already focused, where a static aria-describedby wouldn't be re-read. */
+  noteLive?: boolean;
   error?: string;
   icon?: string;
   autoComplete?: string;
@@ -89,7 +94,11 @@ export function Field({
         </span>
       )}
       {note && !error && (
-        <span id={noteId} className="text-xs text-faint mt-1.5 block font-body">
+        <span
+          id={noteId}
+          className="text-xs text-faint mt-1.5 block font-body"
+          aria-live={noteLive ? "polite" : undefined}
+        >
           {note}
         </span>
       )}

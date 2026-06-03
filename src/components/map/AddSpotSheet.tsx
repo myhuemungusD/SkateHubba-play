@@ -58,8 +58,8 @@ type Step = 1 | 2 | 3;
 
 export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetProps) {
   const { user } = useAuthContext();
-  const panelRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(panelRef);
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheetRef);
   const [step, setStep] = useState<Step>(1);
 
   // Step 1: Location.
@@ -183,7 +183,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
       {/* Sheet */}
       <div
-        ref={panelRef}
+        ref={sheetRef}
         className="fixed bottom-0 left-0 right-0 z-50 bg-surface-alt rounded-t-2xl
                    max-h-[85dvh] overflow-y-auto shadow-2xl"
         role="dialog"

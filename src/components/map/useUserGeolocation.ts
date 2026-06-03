@@ -113,6 +113,18 @@ export function useUserGeolocation({ map }: UseUserGeolocationParams): UseUserGe
     }
   }, [map, userLocation, isTrackingUser]);
 
+  // Remove the user marker from the map on unmount. Without this, the DOM
+  // marker and its Mapbox listeners leak every time the map screen unmounts —
+  // a Marker isn't owned by the map, so map.remove() doesn't reclaim it. Kept
+  // as its own effect (empty deps) so the marker isn't torn down and rebuilt
+  // on every location/tracking update — the effect above reuses it in place.
+  useEffect(() => {
+    return () => {
+      userMarker.current?.remove();
+      userMarker.current = null;
+    };
+  }, []);
+
   const handleRecenter = (onWaiting: () => void) => {
     const loc = userLocationRef.current;
     if (!loc) {

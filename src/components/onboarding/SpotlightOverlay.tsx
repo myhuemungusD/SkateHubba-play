@@ -87,31 +87,60 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, onAnchorMissin
   // ringless bubble pointing at an off-screen / DOM-detached control.
   useEffect(() => {
     if (!targetSelector || !onAnchorMissing) return;
-    const el = document.querySelector(targetSelector);
-    if (!(el instanceof HTMLElement)) {
-      logger.warn("tutorial_step_anchor_missing", { reason: "no-element", selector: targetSelector });
-      onAnchorMissing();
-      return;
-    }
     let intersected = false;
-    const io = new IntersectionObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.isIntersecting) {
-          intersected = true;
-          io.disconnect();
-          return;
+    let io: IntersectionObserver | undefined;
+
+    const tryObserve = () => {
+      const el = document.querySelector(targetSelector);
+      if (!(el instanceof HTMLElement)) return false;
+      io = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            intersected = true;
+            io?.disconnect();
+            return;
+          }
         }
-      }
-    });
-    io.observe(el);
+      });
+      io.observe(el);
+      return true;
+    };
+
+    // The element may not be in the DOM yet (React batching). Retry once after
+    // a rAF so layout has a chance to commit before falling through to the
+    // timeout-based watchdog.
+    if (!tryObserve()) {
+      const raf = requestAnimationFrame(() => {
+        if (intersected) return;
+        tryObserve();
+      });
+      const earlyCleanup = () => cancelAnimationFrame(raf);
+      const timer = window.setTimeout(() => {
+        earlyCleanup();
+        if (intersected) return;
+        io?.disconnect();
+        const found = document.querySelector(targetSelector) instanceof HTMLElement;
+        logger.warn("tutorial_step_anchor_missing", {
+          reason: found ? "no-intersect" : "no-element",
+          selector: targetSelector,
+        });
+        onAnchorMissing();
+      }, ANCHOR_TIMEOUT_MS);
+      return () => {
+        earlyCleanup();
+        io?.disconnect();
+        window.clearTimeout(timer);
+      };
+    }
+
     const timer = window.setTimeout(() => {
       if (intersected) return;
-      io.disconnect();
+      io?.disconnect();
       logger.warn("tutorial_step_anchor_missing", { reason: "no-intersect", selector: targetSelector });
       onAnchorMissing();
     }, ANCHOR_TIMEOUT_MS);
     return () => {
-      io.disconnect();
+      io?.disconnect();
       window.clearTimeout(timer);
     };
   }, [targetSelector, onAnchorMissing]);
