@@ -107,6 +107,34 @@ service cloud.firestore {
         );
     }
 
+    // ── Owner stats close-out ──
+    // Owner-side counterpart to canPeerCloseStats above. The owner-update
+    // branch on /users/{uid} invokes these to gate every wins/losses +1:
+    // without them, a signed-in user could bump their own counter in a
+    // loop and inflate the leaderboard. Same shape as the peer helper
+    // (game-doc get, forward-progress on lastStatsGameId, terminal status,
+    // participant + winner check) but the participant being checked is
+    // the owner themselves rather than the "other" player.
+    function ownerCanCloseWins(uid) {
+      let gid = request.resource.data.lastStatsGameId;
+      let game = get(/databases/$(database)/documents/games/$(gid)).data;
+      return gid is string
+        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
+        && (game.status == 'complete' || game.status == 'forfeit')
+        && game.winner == uid
+        && (uid == game.player1Uid || uid == game.player2Uid);
+    }
+    function ownerCanCloseLosses(uid) {
+      let gid = request.resource.data.lastStatsGameId;
+      let game = get(/databases/$(database)/documents/games/$(gid)).data;
+      return gid is string
+        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
+        && (game.status == 'complete' || game.status == 'forfeit')
+        && game.winner != null
+        && game.winner != uid
+        && (uid == game.player1Uid || uid == game.player2Uid);
+    }
+
     // ── turnHistory growth bounds ──
     // Every write path that legitimately appends to `games.turnHistory`
     // (match resolution, dispute resolution, Call BS resolution, expired
@@ -130,13 +158,22 @@ service cloud.firestore {
           && request.resource.data.turnHistory is list
           && request.resource.data.turnHistory.size() <= 200
           && (
-            // Unchanged (e.g. judge accepts without adding a record, or the
-            // resource has the field and the request keeps it identical).
-            ('turnHistory' in resource.data
-              && request.resource.data.turnHistory == resource.data.turnHistory)
+            // Cheap size-based checks FIRST so a growing/unchanged history
+            // never reaches the O(n) full-list equality below — that compare
+            // over a ~200-element array is the dominant node cost and, summed
+            // across the OR-chain of game-update rules, can blow Firestore's
+            // 1000-node per-evaluation budget (silent deny). Semantics are
+            // unchanged: these clauses are OR'd, so order doesn't affect the
+            // accepted set, only evaluation cost.
+            //
             // Appended exactly one entry to an existing history array.
+            ('turnHistory' in resource.data
+              && request.resource.data.turnHistory.size() == resource.data.turnHistory.size() + 1)
+            // Unchanged size against an existing history — same size is the
+            // common no-append case (judge accept, setReview auto-clear, etc.).
             || ('turnHistory' in resource.data
-                && request.resource.data.turnHistory.size() == resource.data.turnHistory.size() + 1)
+                && request.resource.data.turnHistory.size() == resource.data.turnHistory.size()
+                && request.resource.data.turnHistory == resource.data.turnHistory)
             // First-ever append: resource has no turnHistory yet, request
             // introduces a single-entry list.
             || (!('turnHistory' in resource.data)
@@ -273,26 +310,79 @@ service cloud.firestore {
         && !('dob' in request.resource.data)
         && !('parentalConsent' in request.resource.data)
         && !('fcmTokens' in request.resource.data)
-        // Wins/losses can only increment by 0 or 1 per write.
-        // When the field doesn't exist yet, only 0 or 1 is allowed
-        // (the old rule's !('wins' in resource.data) branch accepted any value).
+        // Wins/losses can only increment by 0 or 1 per write, AND any +1
+        // increment must be backed by an idempotency-checked game outcome.
+        //
+        // History: the prior form allowed an unconditional +1 on the owner
+        // branch — a signed-in user could call updateDoc({wins: stored + 1})
+        // in a tight loop and inflate their leaderboard rank arbitrarily.
+        // The peer branch (canPeerCloseStats) already required a game-doc
+        // relational check plus forward progress on `lastStatsGameId`; the
+        // owner branch must enforce the same shape, otherwise the peer-side
+        // hardening is useless.
+        //
+        // The +1 path now requires (via ownerCanCloseWins/Losses below):
+        //   (a) `lastStatsGameId` is a string and is the freshly written value
+        //   (b) `lastStatsGameId` actually advances (forward progress —
+        //       blocks rule-layer replays of the same gid)
+        //   (c) the referenced game doc exists, is complete/forfeit, and the
+        //       caller is one of the two players
+        //   (d) winner == uid for the wins side, winner != uid for losses
+        //
+        // The "unchanged" path stays free of game-doc checks so benign
+        // profile edits (stance, avatar URL, etc.) don't require a game ref.
         && (
           !('wins' in request.resource.data)
           || (!('wins' in resource.data)
-              && request.resource.data.wins >= 0 && request.resource.data.wins <= 1)
-          || ('wins' in resource.data && (
-            request.resource.data.wins == resource.data.wins
-            || request.resource.data.wins == resource.data.wins + 1
-          ))
+              && request.resource.data.wins == 0)
+          || (!('wins' in resource.data)
+              && request.resource.data.wins == 1
+              && ownerCanCloseWins(uid))
+          || ('wins' in resource.data
+              && request.resource.data.wins == resource.data.wins)
+          || ('wins' in resource.data
+              && request.resource.data.wins == resource.data.wins + 1
+              && ownerCanCloseWins(uid))
         )
         && (
           !('losses' in request.resource.data)
           || (!('losses' in resource.data)
-              && request.resource.data.losses >= 0 && request.resource.data.losses <= 1)
-          || ('losses' in resource.data && (
-            request.resource.data.losses == resource.data.losses
-            || request.resource.data.losses == resource.data.losses + 1
-          ))
+              && request.resource.data.losses == 0)
+          || (!('losses' in resource.data)
+              && request.resource.data.losses == 1
+              && ownerCanCloseLosses(uid))
+          || ('losses' in resource.data
+              && request.resource.data.losses == resource.data.losses)
+          || ('losses' in resource.data
+              && request.resource.data.losses == resource.data.losses + 1
+              && ownerCanCloseLosses(uid))
+        )
+        // ── lastStatsGameId toggle-bypass guard ──
+        // Without this, the wins/losses sub-branches above allow the
+        // "unchanged stat" path (`request.resource.data.wins == resource.data.wins`)
+        // to coexist with an arbitrary mutation to `lastStatsGameId`, because
+        // the unchanged path never calls ownerCanCloseWins/Losses. Attack:
+        //   (1) legitimately close G1: {wins: stored+1, lastStatsGameId: G1} — OK
+        //   (2) toggle alone:          {lastStatsGameId: "anything"}         — OK (BUG)
+        //   (3) replay G1:             {wins: stored+1, lastStatsGameId: G1} — OK again,
+        //       because ownerCanCloseWins's forward-progress check sees
+        //       resource.data.lastStatsGameId ("anything") != gid (G1).
+        // Looping (2)+(3) inflates wins indefinitely off ONE real game.
+        //
+        // Fix: any change to `lastStatsGameId` on the owner branch must be
+        // paired with a corresponding +1 stat advance that the matching
+        // ownerCanCloseWins/Losses helper validates against the game doc.
+        && (
+          !('lastStatsGameId' in request.resource.data)
+          || request.resource.data.lastStatsGameId == resource.data.get('lastStatsGameId', '')
+          || (
+            request.resource.data.wins == resource.data.get('wins', 0) + 1
+            && ownerCanCloseWins(uid)
+          )
+          || (
+            request.resource.data.losses == resource.data.get('losses', 0) + 1
+            && ownerCanCloseLosses(uid)
+          )
         )
         // lastGameCreatedAt is the server-side 30s game-creation cooldown
         // anchor (see /games create rule). Without this guard, a client
@@ -483,6 +573,20 @@ service cloud.firestore {
           && blockedUid != uid;
         allow update: if false;
         allow delete: if isOwner(uid);
+      }
+
+      // ── Achievements (subcollection) ──
+      // Earned-achievement records. Grants are server-authored (Admin SDK
+      // only) — clients never mint or mutate them, hence create/update are
+      // denied outright. The owner needs read for display and DELETE so the
+      // account-deletion batch in src/services/users.ts (~345-353) can wipe
+      // them atomically alongside /private + the parent user doc; under
+      // default-deny that batch fails closed and breaks GDPR erasure.
+      // Mirrors the owner-only shape of the sibling /private and
+      // /blocked_users blocks above.
+      match /achievements/{achievementId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if false;
       }
     }
 
@@ -763,24 +867,46 @@ service cloud.firestore {
           || (request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters + 1)
         )
-        // Valid outcomes depend on whether a judge is active.
+        // ── Turn-order seize guard (P0) ──
+        // This is the only game-update branch that historically pinned
+        // NEITHER currentSetter NOR turnNumber, letting a matcher submit a
+        // "missed" resolution while writing currentSetter/currentTurn to
+        // itself — seizing the setter role out of rotation. Each outcome
+        // below now pins both to the exact value src/services/games.match.ts
+        // (and games.judge.ts for Call BS) writes:
+        //   • missed-continues (games.match.ts 315-321):
+        //       currentSetter UNCHANGED, turnNumber +1
+        //   • completion (312-314): currentSetter + turnNumber UNCHANGED,
+        //       winner = opponent of the player who hit 5 letters
+        //   • honor+landed (222-233): currentSetter ROTATES to the matcher
+        //       (opponentUid(currentSetter)), currentTurn follows, turnNumber +1
+        //   • judge landed→disputable (169-176) / Call BS→setReview
+        //       (games.judge.ts 45-51): currentSetter + turnNumber UNCHANGED,
+        //       currentTurn routes to the judge
         && (
-          // Missed path — immediate resolution, both branches. currentTurn
-          // stays on a player (same setter). Game may complete here.
+          // Missed — setter keeps the role (same player re-sets), turnNumber +1.
+          // currentTurn MUST equal the (unchanged) currentSetter: the service
+          // writes currentTurn = currentSetter here (games.match.ts 318). The
+          // old `in [player1Uid, player2Uid]` check let a matcher pin the
+          // setter but write currentTurn = their own UID, then ride the
+          // setting-phase rule (authorized by resource.data.currentTurn) to
+          // seize the next set out of rotation. Pinning to currentSetter closes it.
           (request.resource.data.status == 'active'
            && request.resource.data.phase == 'setting'
            && request.resource.data.winner == null
-           && (
-             request.resource.data.currentTurn == resource.data.player1Uid
-             || request.resource.data.currentTurn == resource.data.player2Uid
-           ))
-          // Completion: pin winner to the opponent of the player who just
-          // hit 5 letters. Without this pin, a losing matcher whose own
-          // counter just reached 5 could write `winner = themselves` —
-          // every read of the doc (leaderboard, clip feed, push, profile)
-          // would then surface the wrong outcome.
+           && request.resource.data.currentSetter == resource.data.currentSetter
+           && request.resource.data.turnNumber == resource.data.turnNumber + 1
+           && request.resource.data.currentTurn == resource.data.currentSetter)
+          // Completion: pin winner to the opponent of the player who just hit
+          // 5 letters, so a losing matcher can't write themselves as winner.
+          // currentSetter is pinned (the real win-declaration seize guard);
+          // currentTurn is intentionally NOT pinned — once status == 'complete'
+          // no further game updates are permitted, so currentTurn is never
+          // consumed and the legitimate completion write may freely change it.
           || (request.resource.data.status == 'complete'
               && request.resource.data.winner != null
+              && request.resource.data.currentSetter == resource.data.currentSetter
+              && request.resource.data.turnNumber == resource.data.turnNumber
               && (
                 (request.resource.data.p1Letters >= 5
                  && request.resource.data.winner == resource.data.player2Uid)
@@ -788,33 +914,30 @@ service cloud.firestore {
                     && request.resource.data.winner == resource.data.player1Uid)
               ))
           // Honor system + landed — roles swap immediately, no judge routing.
-          // Letters must stay unchanged; currentTurn becomes the matcher
-          // (opponent of resource.data.currentSetter). Only allowed when the
-          // judge is NOT active.
+          // Letters unchanged; currentSetter ROTATES to the matcher and
+          // currentTurn follows it; turnNumber +1. Judge must NOT be active.
           || (!judgeActive(resource.data)
               && request.resource.data.status == 'active'
               && request.resource.data.phase == 'setting'
               && request.resource.data.winner == null
               && request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters
-              && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter))
-          // Judge-active + landed — enter disputable, route currentTurn to judge.
+              && request.resource.data.currentSetter == opponentUid(resource.data, resource.data.currentSetter)
+              && request.resource.data.currentTurn == request.resource.data.currentSetter
+              && request.resource.data.turnNumber == resource.data.turnNumber + 1)
+          // Judge-active landed→disputable OR Call BS→setReview — letters
+          // unchanged, currentSetter + turnNumber UNCHANGED (the judge ruling,
+          // not this write, advances them), currentTurn routes to the judge.
           || (judgeActive(resource.data)
               && request.resource.data.status == 'active'
-              && request.resource.data.phase == 'disputable'
               && request.resource.data.winner == null
               && request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters
-              && request.resource.data.currentTurn == resource.data.judgeId)
-          // Judge-active + Call BS — enter setReview, route currentTurn to judge.
-          // Letters unchanged; matchVideoUrl unchanged (no attempt recorded).
-          || (judgeActive(resource.data)
-              && request.resource.data.status == 'active'
-              && request.resource.data.phase == 'setReview'
-              && request.resource.data.winner == null
-              && request.resource.data.p1Letters == resource.data.p1Letters
-              && request.resource.data.p2Letters == resource.data.p2Letters
-              && request.resource.data.currentTurn == resource.data.judgeId)
+              && request.resource.data.currentSetter == resource.data.currentSetter
+              && request.resource.data.turnNumber == resource.data.turnNumber
+              && request.resource.data.currentTurn == resource.data.judgeId
+              && (request.resource.data.phase == 'disputable'
+                  || request.resource.data.phase == 'setReview'))
         )
         // turnHistory growth bound — cap appends to 1 per write and total
         // size to 200 entries. Prevents a 1 MB TurnRecord balloon attack

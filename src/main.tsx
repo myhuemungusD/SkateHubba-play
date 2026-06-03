@@ -40,6 +40,11 @@ if (import.meta.env.VITE_SENTRY_DSN) {
     // Capture 100% of transactions in development; 10% in production to
     // stay within the free quota. Adjust as traffic grows.
     tracesSampleRate: import.meta.env.DEV ? 1.0 : 0.1,
+    // Never let the SDK attach default PII (IP address, cookies, request
+    // headers, user-agent-derived data). This is the SDK-level switch that
+    // backs the "PII scrubbing: Done" status — beforeSend below is the
+    // belt-and-braces for anything that still slips through.
+    sendDefaultPii: false,
     // Strip PII from breadcrumbs / event data. We scrub both the request URL
     // and any breadcrumb data.url since a reported event often carries
     // navigation history (fetch, history.pushState) picked up automatically
@@ -48,6 +53,20 @@ if (import.meta.env.VITE_SENTRY_DSN) {
     beforeSend(event) {
       if (event.request?.url) {
         event.request.url = scrubUrl(event.request.url);
+      }
+      // Drop request headers/cookies wholesale — these can carry auth
+      // tokens, session cookies, and the user's IP via forwarding headers.
+      // We never need them for triage, so strip rather than scrub.
+      if (event.request) {
+        delete event.request.headers;
+        delete event.request.cookies;
+      }
+      // Scrub identifying user fields. sendDefaultPii=false already keeps the
+      // SDK from auto-populating these, but setUser() (src/lib/sentry.ts) can
+      // still attach them, so redact explicitly here.
+      if (event.user) {
+        delete event.user.email;
+        delete event.user.ip_address;
       }
       if (event.breadcrumbs) {
         for (const crumb of event.breadcrumbs) {

@@ -8,6 +8,11 @@ vi.mock("../../utils/helpers", () => ({
   isFirebaseStorageUrl: (url: string) => url.startsWith("https://firebasestorage.googleapis.com"),
 }));
 
+const reducedMotion = vi.hoisted(() => ({ value: false }));
+vi.mock("../../hooks/useReducedMotion", () => ({
+  useReducedMotion: () => reducedMotion.value,
+}));
+
 const makeTurn = (n: number, overrides?: Partial<TurnRecord>): TurnRecord => ({
   turnNumber: n,
   trickName: `Trick ${n}`,
@@ -23,7 +28,28 @@ const makeTurn = (n: number, overrides?: Partial<TurnRecord>): TurnRecord => ({
 });
 
 describe("GameReplay", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    reducedMotion.value = false;
+  });
+
+  it("does not auto-play the clip when prefers-reduced-motion is set", async () => {
+    reducedMotion.value = true;
+    // Use the global HTMLMediaElement.play mock from setup.ts (resolves to a
+    // promise). Don't spy/restore — that would tear down the global stub and
+    // leak `undefined` into sibling tests' `.play().catch(...)`.
+    const play = window.HTMLMediaElement.prototype.play as unknown as ReturnType<typeof vi.fn>;
+    render(<GameReplay turns={[makeTurn(1)]} />);
+    await userEvent.click(screen.getByText(/Watch Full Replay/));
+    expect(play).not.toHaveBeenCalled();
+  });
+
+  it("auto-plays the clip when reduced motion is not requested", async () => {
+    const play = window.HTMLMediaElement.prototype.play as unknown as ReturnType<typeof vi.fn>;
+    render(<GameReplay turns={[makeTurn(1)]} />);
+    await userEvent.click(screen.getByText(/Watch Full Replay/));
+    expect(play).toHaveBeenCalled();
+  });
 
   it("returns null when turns have no playable clips", () => {
     const turns: TurnRecord[] = [makeTurn(1, { setVideoUrl: null, matchVideoUrl: null })];

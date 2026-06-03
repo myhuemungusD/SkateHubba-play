@@ -7,6 +7,7 @@ import {
   clearLocalProgress,
   getLocalDismissed,
   setLocalDismissed,
+  clearLocalDismissed,
   markOnboardingCompleted,
   markOnboardingSkipped,
   resetOnboarding,
@@ -196,6 +197,16 @@ export function useOnboarding(uid: string | null, totalSteps: number): UseOnboar
   }, [uid]);
 
   const replay = useCallback(async () => {
+    // Synchronously clear the device-local dismissed/progress flags BEFORE the
+    // optimistic setState — mirroring how skip/complete write their flags
+    // synchronously. Without this, a Firestore snapshot (or cross-tab storage
+    // event) racing the async resetOnboarding can run reconcile() while
+    // getLocalDismissed(uid) still returns true and re-hide the just-replayed
+    // tour.
+    if (uid) {
+      clearLocalDismissed(uid);
+      clearLocalProgress(uid);
+    }
     setResolved((prev) => ({ ...prev, shouldShow: true, currentStep: 0 }));
     if (!uid) return;
     try {
