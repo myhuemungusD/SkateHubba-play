@@ -33,16 +33,9 @@
  *
  * Run via:  npm run test:rules
  */
-import { describe, it, beforeAll, afterAll, beforeEach } from "vitest";
-import {
-  initializeTestEnvironment,
-  assertSucceeds,
-  assertFails,
-  type RulesTestEnvironment,
-  type RulesTestContext,
-} from "@firebase/rules-unit-testing";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { describe, it } from "vitest";
+import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
+import { setupStorageRulesTestEnv } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-storage-overwrite-redteam";
 
@@ -51,7 +44,9 @@ const UID_B = "stranger-bob";
 const GAME_ID = "game-overwrite-redteam";
 const TURN_PATH = "turn-1";
 
-let testEnv: RulesTestEnvironment;
+// Boots the Storage emulator env + deep-clears the bucket before each test
+// AND after the file, so no test (or later file) inherits leftover objects.
+const getEnv = setupStorageRulesTestEnv(PROJECT_ID);
 
 /**
  * Build a payload of the given size. Default 2 KB is comfortably above
@@ -62,11 +57,11 @@ function videoPayload(sizeBytes: number = 2048): Uint8Array {
 }
 
 function asUserA(): RulesTestContext {
-  return testEnv.authenticatedContext(UID_A, { email_verified: true });
+  return getEnv().authenticatedContext(UID_A, { email_verified: true });
 }
 
 function asUserB(): RulesTestContext {
-  return testEnv.authenticatedContext(UID_B, { email_verified: true });
+  return getEnv().authenticatedContext(UID_B, { email_verified: true });
 }
 
 function videoPath(role: "set" | "match" = "set", ext: "webm" | "mp4" = "webm"): string {
@@ -86,32 +81,13 @@ async function seedFileOwnedBy(
   path: string = videoPath(),
   contentType: "video/webm" | "video/mp4" = "video/webm",
 ): Promise<void> {
-  const ctx = testEnv.authenticatedContext(uid, { email_verified: true });
+  const ctx = getEnv().authenticatedContext(uid, { email_verified: true });
   const ref = ctx.storage().ref(path);
   await ref.put(videoPayload(), {
     contentType,
     customMetadata: { uploaderUid: uid },
   });
 }
-
-beforeAll(async () => {
-  testEnv = await initializeTestEnvironment({
-    projectId: PROJECT_ID,
-    storage: {
-      host: "127.0.0.1",
-      port: 9199,
-      rules: readFileSync(resolve(process.cwd(), "storage.rules"), "utf8"),
-    },
-  });
-});
-
-afterAll(async () => {
-  await testEnv?.cleanup();
-});
-
-beforeEach(async () => {
-  await testEnv.clearStorage();
-});
 
 /* ────────────────────────────────────────────
  * ATTACK 1 — uploader tries to mutate their own committed video

@@ -129,10 +129,14 @@ describe("SpotlightOverlay", () => {
     expect(rings[0].className).not.toContain("animate-pulse");
   });
 
-  it("fires onAnchorMissing immediately when the target selector matches no element", () => {
+  it("fires onAnchorMissing after the timeout when the target selector matches no element", async () => {
+    vi.useFakeTimers();
     const onAnchorMissing = vi.fn();
     renderOverlay({ targetSelector: '[data-tutorial="never-mounted"]', onAnchorMissing });
+    expect(onAnchorMissing).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1500);
     expect(onAnchorMissing).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 
   it("fires onAnchorMissing after the watchdog window when the target never intersects", async () => {

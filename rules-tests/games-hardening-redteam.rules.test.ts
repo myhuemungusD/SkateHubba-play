@@ -292,16 +292,19 @@ describe("games update — matchVideoUrl bucket pin", () => {
       await seedGame(makeMatchingGame({ p2Letters: 0 }));
     }
 
-    // The matcher submits a landed call. Honor-system path: roles swap,
-    // matcher becomes the new currentTurn (== opponentUid(currentSetter)
-    // which is P2 in this seed, since currentSetter is P1), letters
-    // unchanged, matchVideoUrl carries the recorded attempt.
+    // The matcher submits a landed call. Honor-system path (#373 seize
+    // guard): roles swap — currentSetter ROTATES to the matcher (P2),
+    // currentTurn follows it, turnNumber +1, letters unchanged. matchVideoUrl
+    // carries the recorded attempt. The seed's currentSetter is P1 /
+    // turnNumber 3, so the legitimate write rotates to P2 / turnNumber 4.
     function landedPayload(matchVideoUrl: unknown): Record<string, unknown> {
       return {
         p1Letters: 0,
         p2Letters: 0,
         phase: "setting",
+        currentSetter: P2_UID,
         currentTurn: P2_UID,
+        turnNumber: 4,
         matchVideoUrl,
         turnDeadline: FUTURE_DEADLINE(),
         updatedAt: serverTimestamp(),

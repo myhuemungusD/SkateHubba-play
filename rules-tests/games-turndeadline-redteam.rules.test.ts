@@ -200,6 +200,9 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
           p2Letters: 1, // matcher admits miss → +1 letter
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber (games.match.ts 320) so the
+          // write fails ONLY on the year-9999 turnDeadline, not the P0 pin.
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
@@ -222,6 +225,8 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
           p2Letters: 1,
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber by 1 (games.match.ts 320).
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,

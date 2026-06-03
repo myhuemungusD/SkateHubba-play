@@ -1,7 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Capacitor } from "@capacitor/core";
+
+/** Flush the rAF-based settling guard so keyboard events are accepted. */
+async function settleOverlay(): Promise<void> {
+  await act(async () => {
+    await new Promise((r) => requestAnimationFrame(r));
+  });
+}
 
 // jsdom lacks IntersectionObserver — provide a no-op stub so the embedded
 // SpotlightOverlay's anchor watchdog mounts without throwing.
@@ -100,12 +107,14 @@ describe("TutorialOverlay", () => {
 
   it("Escape key triggers skip()", async () => {
     render(<TutorialOverlay />);
+    await settleOverlay();
     await userEvent.keyboard("{Escape}");
     expect(ctxValue.current.skip).toHaveBeenCalledTimes(1);
   });
 
   it("Enter key advances on non-final steps", async () => {
     render(<TutorialOverlay />);
+    await settleOverlay();
     await userEvent.keyboard("{Enter}");
     expect(ctxValue.current.advance).toHaveBeenCalledTimes(1);
   });
@@ -114,8 +123,18 @@ describe("TutorialOverlay", () => {
     const finalIdx = TUTORIAL_STEPS.findIndex((s) => s.isFinal);
     ctxValue.current.currentStep = finalIdx;
     render(<TutorialOverlay />);
+    await settleOverlay();
     await userEvent.keyboard(" ");
     expect(ctxValue.current.complete).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores keyboard events before the settling guard fires", async () => {
+    render(<TutorialOverlay />);
+    await userEvent.keyboard("{Enter}");
+    expect(ctxValue.current.advance).not.toHaveBeenCalled();
+    await settleOverlay();
+    await userEvent.keyboard("{Enter}");
+    expect(ctxValue.current.advance).toHaveBeenCalledTimes(1);
   });
 
   it("ignores Enter / Space when focus is on a text input", async () => {
@@ -125,6 +144,7 @@ describe("TutorialOverlay", () => {
         <input data-testid="form-field" />
       </>,
     );
+    await settleOverlay();
     const input = screen.getByTestId("form-field") as HTMLInputElement;
     input.focus();
     await userEvent.keyboard("{Enter}");
@@ -145,26 +165,19 @@ describe("TutorialOverlay", () => {
     expect(ctxValue.current.skip).toHaveBeenCalledTimes(1);
   });
 
-  it("renders the confetti burst on the final step when reducedMotion is false", () => {
+  it("renders the ghost-letter on the final step when reducedMotion is false", () => {
     const finalIdx = TUTORIAL_STEPS.findIndex((s) => s.isFinal);
     ctxValue.current.currentStep = finalIdx;
     render(<TutorialOverlay />);
-    expect(screen.getByTestId("tutorial-confetti")).toBeInTheDocument();
     expect(screen.getByTestId("tutorial-ghost-letter")).toBeInTheDocument();
   });
 
-  it("omits the confetti and ghost-letter on the final step when reducedMotion is true", () => {
+  it("omits the ghost-letter on the final step when reducedMotion is true", () => {
     const finalIdx = TUTORIAL_STEPS.findIndex((s) => s.isFinal);
     ctxValue.current.currentStep = finalIdx;
     ctxValue.current.reducedMotion = true;
     render(<TutorialOverlay />);
-    expect(screen.queryByTestId("tutorial-confetti")).toBeNull();
     expect(screen.queryByTestId("tutorial-ghost-letter")).toBeNull();
-  });
-
-  it("never renders confetti on non-final steps", () => {
-    render(<TutorialOverlay />);
-    expect(screen.queryByTestId("tutorial-confetti")).toBeNull();
   });
 
   it("announces step progress via the live region (Step N of total)", () => {

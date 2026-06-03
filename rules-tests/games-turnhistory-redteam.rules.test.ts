@@ -152,6 +152,9 @@ describe("games.turnHistory — growth caps", () => {
           p2Letters: 1,
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber by 1 (games.match.ts 320) —
+          // the P0 turn-order pin now requires it.
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
@@ -229,6 +232,8 @@ describe("games.turnHistory — growth caps", () => {
           p2Letters: 1,
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber (games.match.ts 320).
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
