@@ -26,6 +26,16 @@ describe("Field", () => {
     expect(screen.getByText("Helper text")).toBeInTheDocument();
   });
 
+  it("does not mark the note as a live region by default", () => {
+    render(<Field value="" onChange={vi.fn()} note="Helper text" />);
+    expect(screen.getByText("Helper text")).not.toHaveAttribute("aria-live");
+  });
+
+  it("announces note changes politely when noteLive is set", () => {
+    render(<Field value="" onChange={vi.fn()} note="@sk8 is available" noteLive />);
+    expect(screen.getByText("@sk8 is available")).toHaveAttribute("aria-live", "polite");
+  });
+
   it("renders icon when provided", () => {
     const { container } = render(<Field value="" onChange={vi.fn()} icon="@" />);
     expect(container.querySelector("[aria-hidden]")?.textContent).toBe("@");

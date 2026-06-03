@@ -160,6 +160,36 @@ describe("AvatarPicker — hard NSFW reject", () => {
   });
 });
 
+describe("AvatarPicker — transport failure clears the dangling pointer", () => {
+  it("best-effort clears profileImageUrl when uploadAvatar throws a transport error", async () => {
+    // uploadAvatar deletes the old object before uploading. A transport failure
+    // here leaves profileImageUrl pointing at a deleted object, so the handler
+    // must clear it (setProfileImageUrl(uid, null)) → fall back to default.
+    mockUploadAvatar.mockRejectedValueOnce(new Error("network down"));
+    renderPicker();
+    await pickFileAndOpenPreview();
+    await userEvent.click(screen.getByText("Confirm"));
+
+    await waitFor(() =>
+      expect(screen.getByText("Upload failed. Check your connection and try again.")).toBeInTheDocument(),
+    );
+    await waitFor(() => expect(mockSetProfileImageUrl).toHaveBeenCalledWith("user-1", null));
+  });
+
+  it("swallows a failure to clear the pointer (best-effort, stays on error UI)", async () => {
+    mockUploadAvatar.mockRejectedValueOnce(new Error("network down"));
+    mockSetProfileImageUrl.mockRejectedValueOnce(new Error("clear failed"));
+    renderPicker();
+    await pickFileAndOpenPreview();
+    await userEvent.click(screen.getByText("Confirm"));
+
+    await waitFor(() =>
+      expect(screen.getByText("Upload failed. Check your connection and try again.")).toBeInTheDocument(),
+    );
+    expect(mockSetProfileImageUrl).toHaveBeenCalledWith("user-1", null);
+  });
+});
+
 describe("AvatarPicker — native capture failure surfaces user-visible error (audit B-BLOCKER-1)", () => {
   it("shows the camera-denied message when the Camera plugin throws", async () => {
     // Force the Capacitor branch by lying about the platform.

@@ -9,6 +9,36 @@ vi.mock("../../../services/spots", () => ({
   getSpotsInBounds: (...args: unknown[]) => mockGetSpotsInBounds(...args),
 }));
 
+// Stub the firebase module so re-importing SpotMap (via `vi.resetModules()` +
+// `await import(...)` in the missing-token / telemetry describes below) does
+// NOT re-run `initializeFirestore()` against an already-initialized
+// FirebaseApp. The second `initializeFirestore` call throws
+// "already been called with different options" because the persistent-cache
+// option objects are constructed fresh on each evaluation (object identity
+// differs even when shape is identical). SpotMap's transitive import chain
+// pulls firebase.ts via AddSpotSheet → AuthContext → services/auth, so we
+// short-circuit that chain at the boundary.
+vi.mock("../../../firebase", () => ({
+  FIRESTORE_DB_NAME: "skatehubba",
+  firebaseReady: true,
+  firestoreCacheMode: "memory" as const,
+  isAppCheckInitialized: () => false,
+  isEmulatorMode: false,
+  auth: null,
+  db: null,
+  storage: null,
+  requireDb: () => {
+    throw new Error("requireDb called in SpotMap test — should be mocked");
+  },
+  requireAuth: () => {
+    throw new Error("requireAuth called in SpotMap test — should be mocked");
+  },
+  requireStorage: () => {
+    throw new Error("requireStorage called in SpotMap test — should be mocked");
+  },
+  default: null,
+}));
+
 // Logger + Sentry are mocked so the missing-token / map-loaded / load-timeout
 // assertions have spies to inspect. `vi.hoisted` is required because
 // `vi.mock` factories are hoisted above all top-level variables — a plain

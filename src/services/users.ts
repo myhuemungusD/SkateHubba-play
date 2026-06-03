@@ -17,7 +17,7 @@ import {
 import { requireAuth, requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
-import { deleteUserClips } from "./clips";
+import { deleteUserClips, deleteUserClipVotes } from "./clips";
 import { deleteAvatar } from "./avatars";
 import { analytics } from "./analytics";
 import { logger } from "./logger";
@@ -327,10 +327,12 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // Phase 2: Delete game documents
   await Promise.all(nonActiveGameIds.map((gameId) => deleteDoc(doc(db, "games", gameId))));
 
-  // Phase 3: Scrub clips authored by this user from the feed. Best-effort —
-  // the owner-delete rule in firestore.rules only allows deleting your own
-  // clips, so this runs before the auth/profile teardown.
-  await deleteUserClips(uid);
+  // Phase 3: Scrub clips authored by this user from the feed AND the votes
+  // they cast on other users' clips. Best-effort — the owner-delete rules in
+  // firestore.rules only allow deleting your own clips/votes, so this runs
+  // before the auth/profile teardown. Both are independent best-effort scrubs,
+  // so run them in parallel.
+  await Promise.all([deleteUserClips(uid), deleteUserClipVotes(uid)]);
 
   // Phase 4: Delete profile + username + private profile doc atomically
   // (no reads needed, batch is cheaper). The private doc must be

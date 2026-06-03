@@ -31,6 +31,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, deleteDoc, getDoc, setDoc, updateDoc, setLogLevel } from "firebase/firestore";
+import { seedTerminatedGame } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-users-private-redteam";
 
@@ -229,9 +230,7 @@ describe("users/{uid} — sensitive fields forbidden at top level on CREATE", ()
 
 describe("users/{uid} — sensitive fields forbidden at top level on UPDATE", () => {
   it("attack: CANNOT update users/{uid} to add email at top level", async () => {
-    await assertFails(
-      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { email: "alice@example.com" }),
-    );
+    await assertFails(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { email: "alice@example.com" }));
   });
 
   it("attack: CANNOT update users/{uid} to add emailVerified at top level", async () => {
@@ -251,7 +250,17 @@ describe("users/{uid} — sensitive fields forbidden at top level on UPDATE", ()
   });
 
   it("legitimate: owner CAN update stats on users/{uid} without sensitive fields", async () => {
-    await assertSucceeds(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 1 }));
+    // Stats writes now require a backing game doc via lastStatsGameId
+    // (see firestore.rules ownerCanCloseWins helper). Seed a winning game
+    // so the wins++ catch-up path is satisfied.
+    await seedTerminatedGame(testEnv, "g-stats", {
+      player1Uid: OWNER_UID,
+      player2Uid: STRANGER_UID,
+      winner: OWNER_UID,
+    });
+    await assertSucceeds(
+      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 1, lastStatsGameId: "g-stats" }),
+    );
   });
 });
 

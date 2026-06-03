@@ -19,11 +19,15 @@ service firebase.storage {
         && request.resource.size > 1024
         // Maximum 50 MB per video
         && request.resource.size < 50 * 1024 * 1024
-        // Must be a valid video type: webm (web) or mp4 (native/Capacitor)
-        && (request.resource.contentType == 'video/webm'
-            || request.resource.contentType == 'video/mp4')
-        // Only the two known roles are valid filenames (rejects path traversal attempts)
-        && fileName.matches('(set|match)\\.(webm|mp4)')
+        // Per-extension content-type pinning: the extension and the
+        // contentType MUST agree (mirrors the avatar rule below). The bare
+        // allowlist used to accept `set.webm` with content-type video/mp4,
+        // letting a client lie about the payload format. Only the two known
+        // roles (set|match) are valid filenames (rejects path traversal).
+        && (
+          (fileName.matches('(set|match)\\.webm') && request.resource.contentType == 'video/webm')
+          || (fileName.matches('(set|match)\\.mp4') && request.resource.contentType == 'video/mp4')
+        )
         // Bind the new object to its uploader so delete can verify ownership.
         && request.resource.metadata.uploaderUid == request.auth.uid;
       // NOTE: `update` is intentionally NOT granted. Game-video objects are
