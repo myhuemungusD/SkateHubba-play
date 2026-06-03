@@ -150,10 +150,14 @@ private to the two players.
 ### Configuration
 
 Firebase Auth authorized domains are managed in the Firebase Console (Authentication → Settings →
-Authorized domains), not in code. The codebase configures `authDomain` in two places:
+Authorized domains), not in code. The codebase touches `authDomain` in two places:
 
-1. **`src/firebase.ts:28-30`** — Pins `authDomain` to `skatehubba.com` when `VITE_APP_URL` matches
-   the production URL. This prevents OAuth redirect mismatches if users arrive via legacy domains.
+1. **`src/firebase.ts:19-24`, `:64`** — Passes `authDomain` straight through from
+   `VITE_FIREBASE_AUTH_DOMAIN`. It intentionally does **NOT** override `authDomain` to
+   `skatehubba.com`. Firebase email-verification and password-reset links point to
+   `https://{authDomain}/__/auth/action`, a handler served only by Firebase Hosting on
+   `*.firebaseapp.com` — pinning `authDomain` to the Vercel-hosted custom domain would break every
+   outbound email link. (See the explanatory comment in `firebase.ts`.)
 
 2. **`public/firebase-messaging-sw.js`** — Service worker receives `authDomain` via URL parameter.
 
@@ -173,7 +177,8 @@ The authorized domains list is not stored in the codebase — it's configured in
 3. Remove any stale entries (e.g., old `skatehubba.xyz`, expired preview URLs, test domains)
 
 The `DEPLOYMENT.md` docs correctly instruct adding authorized domains but don't specify removing
-stale ones. The authDomain pin in `firebase.ts` is well-implemented.
+stale ones. `firebase.ts` deliberately leaves `authDomain` unmodified (it passes the env value
+through) so that Firebase-hosted `/__/auth/action` email links keep working.
 
 ---
 

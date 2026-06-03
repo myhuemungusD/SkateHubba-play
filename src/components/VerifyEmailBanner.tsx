@@ -31,6 +31,7 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(readStoredCooldown);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
 
   // Single setInterval owned by a ref so we never recreate the timer on every
   // tick. The previous useEffect-on-`cooldown` pattern re-armed a fresh
@@ -69,6 +70,7 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
       await resendVerification();
       writeStoredCooldown(RESEND_COOLDOWN_S);
       setCooldown(RESEND_COOLDOWN_S);
+      setSent(true);
     } catch (err) {
       const code = getErrorCode(err);
       captureException(err, { extra: { context: "VerifyEmailBanner resend" } });
@@ -84,14 +86,19 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
     }
   };
 
+  const statusMessage =
+    sendError ??
+    (sent
+      ? "Sent! Check your inbox and spam/junk folder."
+      : "Check your inbox and spam/junk folder for the verification link.");
   const btnLabel = sending ? "..." : cooldown > 0 ? `${cooldown}s` : sendError !== null ? "Retry" : "Resend";
 
   return (
     <div className="mx-5 mt-4 p-3.5 rounded-2xl bg-[rgba(255,107,0,0.06)] border border-brand-orange/40 flex items-center justify-between gap-3 shadow-[0_0_16px_rgba(255,107,0,0.06)] animate-fade-in">
       <div>
         <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
-        <span className="font-body text-xs text-muted">
-          {sendError ?? "Check your inbox for the verification link."}
+        <span className="font-body text-xs text-muted" aria-live="polite">
+          {statusMessage}
         </span>
       </div>
       <button

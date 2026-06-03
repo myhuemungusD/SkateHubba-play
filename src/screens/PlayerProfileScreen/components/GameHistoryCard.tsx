@@ -116,7 +116,7 @@ export function GameHistoryCard({ game, profileUid, expanded, onToggle, onOpenGa
           </div>
           <div className="flex items-center gap-3">
             <LetterScore count={playerLetterCount(game, profileUid)} label="You" />
-            <span className="font-body text-[10px] text-[#444]">vs</span>
+            <span className="font-body text-[10px] text-faint">vs</span>
             <LetterScore count={opponentLetterCount(game, profileUid)} label="Them" />
             {game.updatedAt && (
               <>

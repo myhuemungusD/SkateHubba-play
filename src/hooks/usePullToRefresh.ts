@@ -78,13 +78,17 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): PullToR
     // Only track the primary pointer / first touch. Secondary touches (pinch,
     // two-finger scroll) would otherwise spuriously trigger the refresh.
     if (!e.isPrimary) return;
-    // Only activate when the document is actually at the top — mid-scroll
-    // PTR would fight with normal vertical scrolling. `scrollY` reads from
-    // the root scrolling element in all modern browsers; we fall through to
-    // `documentElement.scrollTop` for quirks-mode documents that still pin
-    // scroll position on <html> instead of window. No SSR guard needed —
-    // React pointer events only fire on a mounted browser DOM.
-    const scrollTop = window.scrollY || document.documentElement.scrollTop || 0;
+    // Only activate when the scroll container is actually at the top —
+    // mid-scroll PTR would fight with normal vertical scrolling. The handlers
+    // are spread directly onto the scroll container, so `e.currentTarget` is
+    // that element; read its `scrollTop` so PTR works whether the screen
+    // scrolls an inner container (PlayerProfileScreen) or the document itself.
+    // When `currentTarget` isn't an element we can measure (e.g. a window-
+    // scrolled host), fall back to the root scrolling element. No SSR guard
+    // needed — React pointer events only fire on a mounted browser DOM.
+    const target = e.currentTarget as Element | null;
+    const containerScrollTop = target && typeof target.scrollTop === "number" ? target.scrollTop : null;
+    const scrollTop = containerScrollTop ?? (window.scrollY || document.documentElement.scrollTop || 0);
     if (scrollTop > 0) return;
     startYRef.current = e.clientY;
   }, []);

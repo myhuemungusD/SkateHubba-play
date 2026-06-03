@@ -5,9 +5,13 @@
  *
  * Fake behaviour:
  *  - getUserMedia resolves immediately with a minimal fake MediaStream.
- *  - MediaRecorder produces a small "fake-video-data" Blob when stopped so
- *    `blob.size > 0` passes the check in VideoRecorder.tsx and onRecorded() is
- *    called with a real Blob (not null).
+ *  - MediaRecorder produces a fake video Blob when stopped that is large
+ *    enough (> 1024 bytes) to clear the minimum-size gate in
+ *    `uploadVideo` (src/services/storage.ts) AND `storage.rules`, so the
+ *    real resumable upload against the Storage emulator actually succeeds.
+ *    A smaller blob would be rejected client-side as "too small" and the
+ *    upload-then-persist path would never run. onRecorded() still receives
+ *    a real Blob (not null), satisfying VideoRecorder.tsx's `size > 0` check.
  *  - MediaRecorder.isTypeSupported('video/webm') returns true so the component
  *    doesn't fall back to an unspecified mimeType.
  */
@@ -39,6 +43,11 @@ export const MEDIA_MOCK_SCRIPT = `
     configurable: true,
   });
 
+  // Fake clip payload, padded past the 1024-byte minimum enforced by
+  // uploadVideo() and storage.rules so the resumable upload to the Storage
+  // emulator is accepted instead of short-circuiting as "too small".
+  const FAKE_VIDEO_BYTES = 'fake-video-data'.repeat(200); // ~3 KB
+
   // ── Fake MediaRecorder ────────────────────────────────────────────────────
   class FakeMediaRecorder {
     state = 'inactive';
@@ -56,7 +65,7 @@ export const MEDIA_MOCK_SCRIPT = `
       // handler (set synchronously after construction) has been wired up.
       this._pendingTimer = setTimeout(() => {
         if (this.ondataavailable) {
-          const chunk = new Blob(['fake-video-data'], { type: 'video/webm' });
+          const chunk = new Blob([FAKE_VIDEO_BYTES], { type: 'video/webm' });
           this.ondataavailable({ data: chunk });
         }
       }, 50);

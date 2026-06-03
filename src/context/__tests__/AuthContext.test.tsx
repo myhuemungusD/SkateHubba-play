@@ -43,6 +43,7 @@ vi.mock("../../services/users", () => ({
 }));
 vi.mock("../../services/fcm", () => ({
   removeCurrentFcmToken: vi.fn().mockResolvedValue(undefined),
+  refreshWebPushTokenIfGranted: vi.fn().mockResolvedValue(null),
 }));
 // Native push service is fully gated via isPushSupported(); the AuthContext
 // tests run in jsdom where Capacitor.isNativePlatform() is false, so the

@@ -185,12 +185,19 @@ function AppRoutes() {
       const gameId = (e as CustomEvent).detail?.gameId;
       if (!gameId || !game.games) return;
       const found = game.games.find((g) => g.id === gameId);
-      if (found) game.openGame(found);
+      if (found) {
+        game.openGame(found);
+      } else {
+        // Deep-linked game isn't in the loaded list (stale push, completed
+        // game, or list not yet hydrated). Fall back to the lobby instead of
+        // silently no-op'ing so the tap always lands somewhere actionable.
+        nav.setScreen("lobby");
+      }
     };
     window.addEventListener(OPEN_GAME_EVENT, handler);
     return () => window.removeEventListener(OPEN_GAME_EVENT, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-subscribe when games list or openGame changes
-  }, [game.games, game.openGame]);
+  }, [game.games, game.openGame, nav.setScreen]);
 
   return (
     <>

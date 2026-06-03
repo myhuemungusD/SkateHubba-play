@@ -193,7 +193,10 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
   }, [game.id]);
 
   const [judgeActionSubmitting, setJudgeActionSubmitting] = useState(false);
+  const judgeActionSubmittedRef = useRef(false);
   const handleJudgeAccept = useCallback(async () => {
+    if (judgeActionSubmittedRef.current) return;
+    judgeActionSubmittedRef.current = true;
     setJudgeActionSubmitting(true);
     setError("");
     try {
@@ -201,11 +204,14 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to accept referee invite");
       captureException(err, { extra: { context: "acceptJudgeInvite", gameId: game.id } });
+      judgeActionSubmittedRef.current = false;
     } finally {
       setJudgeActionSubmitting(false);
     }
   }, [game.id]);
   const handleJudgeDecline = useCallback(async () => {
+    if (judgeActionSubmittedRef.current) return;
+    judgeActionSubmittedRef.current = true;
     setJudgeActionSubmitting(true);
     setError("");
     try {
@@ -213,6 +219,7 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to decline referee invite");
       captureException(err, { extra: { context: "declineJudgeInvite", gameId: game.id } });
+      judgeActionSubmittedRef.current = false;
     } finally {
       setJudgeActionSubmitting(false);
     }
@@ -231,6 +238,14 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
 
   const submittedRef = useRef(false);
   const uploadAbortRef = useRef<AbortController | null>(null);
+  // Abort any in-flight upload on unmount — back-navigating mid-upload would
+  // otherwise leak the transfer and risk setState-after-unmount in the upload
+  // progress / error callbacks.
+  useEffect(() => {
+    return () => {
+      uploadAbortRef.current?.abort();
+    };
+  }, []);
   const submitSetterTrick = useCallback(
     async (blob: Blob | null) => {
       /* v8 ignore start -- double-submit guard; ref always false on first call in tests */
@@ -259,6 +274,9 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
         setUploadProgress(null);
         await setTrick(game.id, trickNameRef.current.trim(), videoUrl);
       } catch (err: unknown) {
+        // Unmount-triggered abort: the component is gone, so skip state +
+        // Sentry to avoid setState-after-unmount noise.
+        if (err instanceof Error && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Failed to send trick");
         captureException(err, { extra: { context: "submitSetterTrick", gameId: game.id } });
         setUploadProgress(null);
@@ -322,6 +340,7 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
         setUploadProgress(null);
         await submitMatchAttempt(game.id, videoUrl, landed);
       } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") return;
         setError(err instanceof Error ? err.message : "Failed to submit attempt");
         captureException(err, { extra: { context: "submitMatchAttempt", gameId: game.id } });
         setUploadProgress(null);

@@ -75,6 +75,16 @@ export const analytics = {
   spotPreviewed: (spotId: string) => trackEvent("spot_previewed", { spotId }),
   /** Fired when ChallengeScreen mounts with a valid ?spot= URL param. */
   challengeFromSpot: (spotId: string) => trackEvent("challenge_from_spot", { spotId }),
+  // ── Landing map teaser (marketing top-of-funnel) ──────────────────────
+  /**
+   * Fires once when the landing-page map teaser actually mounts (gated by
+   * IntersectionObserver in Landing.tsx). Separate from `map_viewed` so the
+   * marketing funnel — visit → see map → click pin → sign up — stays
+   * distinct from the authenticated MapPage funnel.
+   */
+  landingMapViewed: () => trackEvent("landing_map_viewed"),
+  /** Fires when a locked pin on the landing map teaser is clicked. */
+  landingPinClicked: (spotId: string) => trackEvent("landing_pin_clicked", { spotId }),
   // ── Profile / stats / achievements rollout ────────────────────────────
   /**
    * Fires once per successful `deleteUserData` cascade. Not sampled —

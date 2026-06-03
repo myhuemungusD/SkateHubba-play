@@ -124,6 +124,22 @@ export async function signIn(email: string, password: string): Promise<User> {
 /** Sign the current user out. No-op if no user is signed in. */
 export async function signOut(): Promise<void> {
   logger.info("sign_out");
+  // On native (iOS/Android), Google sign-in goes through the platform-native
+  // Google Sign-In SDK via @capacitor-firebase/authentication. The Firebase
+  // Web SDK signOut below does NOT clear that native session, so without this
+  // branch the user can't switch Google accounts and the cached session
+  // survives account deletion. Best-effort: a plugin failure must not block
+  // the web-SDK signOut that follows.
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await FirebaseAuthentication.signOut();
+    } catch (err) {
+      logger.warn("sign_out_native_plugin_failed", {
+        code: getErrorCode(err),
+        message: parseFirebaseError(err),
+      });
+    }
+  }
   await fbSignOut(requireAuth());
   logger.info("sign_out_success");
 }
@@ -135,7 +151,18 @@ export async function signOut(): Promise<void> {
  */
 export async function resetPassword(email: string): Promise<void> {
   logger.info("password_reset_attempt", { email });
-  await sendPasswordResetEmail(requireAuth(), email, getActionCodeSettings());
+  try {
+    await sendPasswordResetEmail(requireAuth(), email, getActionCodeSettings());
+  } catch (err) {
+    const code = getErrorCode(err);
+    if (code === "auth/unauthorized-continue-uri" || code === "auth/invalid-continue-uri") {
+      logger.warn("password_reset_with_settings_failed", { email, code });
+      await sendPasswordResetEmail(requireAuth(), email);
+      logger.info("password_reset_sent_fallback", { email });
+      return;
+    }
+    throw err;
+  }
   logger.info("password_reset_sent", { email });
 }
 

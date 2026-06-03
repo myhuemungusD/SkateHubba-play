@@ -89,7 +89,7 @@ export function SpotDetailPage() {
   if (loading) {
     return (
       <div className="min-h-dvh bg-background flex items-center justify-center">
-        <div className="text-muted text-sm">Loading spot\u2026</div>
+        <div className="text-muted text-sm">Loading spot…</div>
       </div>
     );
   }
@@ -203,7 +203,7 @@ export function SpotDetailPage() {
               maxLength={300}
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Add a comment\u2026"
+              placeholder="Add a comment…"
               className="flex-1 bg-surface-alt border border-[#333] rounded-lg px-3 py-2 text-white text-sm
                          placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
             />
@@ -229,7 +229,7 @@ export function SpotDetailPage() {
               {comments.map((c) => (
                 <div key={c.id} className="bg-surface-alt rounded-lg p-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs text-muted">{c.userId.slice(0, 8)}\u2026</span>
+                    <span className="text-xs text-muted">{c.userId.slice(0, 8)}…</span>
                     <span className="text-xs text-subtle">{new Date(c.createdAt).toLocaleDateString()}</span>
                   </div>
                   <p className="text-sm text-[#CCC]">{c.content}</p>

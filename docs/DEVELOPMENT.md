@@ -174,13 +174,42 @@ skatehubba-play/
 
 ## Deploying Security Rules
 
-After changing `firestore.rules` or `storage.rules`, deploy manually:
+Firestore rules/indexes and Storage rules are deployed by the
+`.github/workflows/firebase-rules-deploy.yml` workflow whenever `firestore.rules`,
+`firestore.indexes.json`, `storage.rules`, `firebase.json`, or `.firebaserc`
+land on `main`. Rules are **not** deployed by Vercel (which only ships the SPA).
+
+To deploy manually (e.g. during an incident):
 
 ```bash
-firebase deploy --only firestore:rules,storage
+firebase deploy --only firestore:rules,firestore:indexes,storage:rules --project <PROJECT_ID>
 ```
 
-Rules are not deployed by Vercel and not deployed by CI — this is intentional. See [docs/DEPLOYMENT.md](DEPLOYMENT.md) for more detail.
+### CI deploy hardening (post-incident)
+
+The rules-deploy workflow was historically silent on failure, which let
+production rules drift for ~3 months unnoticed. Two guards now prevent a repeat:
+
+- **Loud failure alerting.** The `deploy` job has an `if: failure()` step
+  (`actions/github-script@v7`) that opens — or updates — a single GitHub issue
+  labelled `firebase-rules-deploy-failure` with the failed run URL. It is
+  idempotent: repeat failures comment on the existing open issue rather than
+  spamming new ones. This requires `issues: write` permission on the workflow.
+- **Daily freshness guard.** A `schedule` cron (`0 7 * * *`) re-runs the full
+  deploy every day. firebase-tools v15 has no reliable "fetch live deployed
+  rules" command to diff against `HEAD`, so re-deploying daily is the simplest
+  implementable guarantee — the deploy is idempotent, so drift between `main`
+  and production can never exceed 24h, and a failed scheduled deploy trips the
+  same alert step above.
+
+`firebase-tools` in the deploy step is pinned to `@15` to match the version in
+`package.json` (`firebase-tools@^15`). The deploy runs with `set -euo pipefail`
+and no `continue-on-error`/`|| true`, so an auth or permission failure always
+produces a red job. **Auth note:** legacy `FIREBASE_TOKEN` (`firebase login:ci`)
+is deprecated; prefer Workload Identity Federation
+(`FIREBASE_WIF_PROVIDER` + `FIREBASE_WIF_SERVICE_ACCOUNT`).
+
+See [docs/DEPLOYMENT.md](DEPLOYMENT.md) for more detail.
 
 ---
 
