@@ -188,6 +188,18 @@ export function AvatarPicker({ uid, onUploaded, onClose }: Props) {
           });
           analytics.avatarUploadFailed("transport", pending.source);
           setErrorMsg("Upload failed. Check your connection and try again.");
+          // uploadAvatar deletes the previous object before writing the new
+          // one. A transport failure here leaves profileImageUrl pointing at a
+          // now-deleted object → a broken avatar. Best-effort clear the pointer
+          // so the UI falls back to the default skater rather than a 404 image.
+          try {
+            await setProfileImageUrl(uid, null);
+          } catch (clearErr) {
+            logger.warn("avatar_pointer_clear_failed", {
+              uid,
+              error: clearErr instanceof Error ? clearErr.message : String(clearErr),
+            });
+          }
         }
       } finally {
         setBusy(false);

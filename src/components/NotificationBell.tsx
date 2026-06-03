@@ -163,7 +163,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
                   <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
                   <path d="M13.73 21a2 2 0 0 1-3.46 0" />
                 </svg>
-                <p className="font-body text-xs text-[#444]">No notifications yet</p>
+                <p className="font-body text-xs text-faint">No notifications yet</p>
               </div>
             ) : (
               notifications.map((n) => {
@@ -202,7 +202,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
                         {" · "}
                         <span className="text-subtle">{n.message}</span>
                       </p>
-                      <p className="font-body text-[10px] text-[#444] mt-0.5">{relativeTime(n.timestamp)}</p>
+                      <p className="font-body text-[10px] text-faint mt-0.5">{relativeTime(n.timestamp)}</p>
                     </div>
                     {!n.read && (
                       <span className="shrink-0 w-2 h-2 rounded-full bg-brand-orange mt-1.5" aria-label="Unread" />
@@ -214,7 +214,7 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
                         e.stopPropagation();
                         dismissNotification(n.id);
                       }}
-                      className="shrink-0 p-1 text-[#444] hover:text-brand-red transition-colors opacity-60 hover:opacity-100 focus-visible:opacity-100"
+                      className="shrink-0 p-1 text-faint hover:text-brand-red transition-colors opacity-60 hover:opacity-100 focus-visible:opacity-100"
                     >
                       <svg
                         width="12"

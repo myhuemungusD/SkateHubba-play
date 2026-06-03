@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRightIcon } from "../icons";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 
 /**
  * Single-clip video with tap-to-unmute and a Replay / Next Trick overlay on end.
@@ -19,6 +20,9 @@ function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasPlayedRef = useRef(false);
+  // When the user prefers reduced motion we never auto-start the clip — the
+  // tap-to-unmute overlay doubles as an explicit play affordance instead.
+  const reducedMotion = useReducedMotion();
 
   const handlePlay = useCallback(() => {
     hasPlayedRef.current = true;
@@ -30,13 +34,21 @@ function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }
   }, []);
 
   const toggleMute = useCallback(() => {
+    const el = videoRef.current;
+    // Reduced-motion clips never autoplay, so the first overlay tap is the
+    // explicit play affordance instead of a mute toggle. Once it has started
+    // (hasPlayedRef), and in all non-reduced-motion cases, the tap toggles
+    // mute exactly as before — non-reduced-motion behavior is unchanged.
+    if (reducedMotion && !hasPlayedRef.current && el) {
+      el.play().catch(() => undefined);
+      return;
+    }
     setMuted((prev) => {
       const next = !prev;
-      const el = videoRef.current;
       if (el) el.muted = next;
       return next;
     });
-  }, []);
+  }, [reducedMotion]);
 
   const handleReplay = useCallback(() => {
     const el = videoRef.current;
@@ -60,6 +72,9 @@ function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }
     const video = videoRef.current;
     const container = containerRef.current;
     if (!video || !container || typeof IntersectionObserver === "undefined") return;
+    // Honour prefers-reduced-motion: skip the auto-play-on-scroll entirely so
+    // the clip stays paused until the user explicitly taps the overlay.
+    if (reducedMotion) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -81,14 +96,14 @@ function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }
     );
     observer.observe(container);
     return () => observer.disconnect();
-  }, []);
+  }, [reducedMotion]);
 
   return (
     <div ref={containerRef} className="relative rounded-xl overflow-hidden border border-border">
       <video
         ref={videoRef}
         src={src}
-        autoPlay
+        autoPlay={!reducedMotion}
         muted
         playsInline
         // preload="auto" — this video IS the LCP element; we always intend

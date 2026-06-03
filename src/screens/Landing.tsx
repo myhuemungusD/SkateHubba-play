@@ -540,21 +540,21 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
             <button
               type="button"
               onClick={() => onNav("privacy")}
-              className="font-body text-xs text-[#444] hover:text-dim transition-colors duration-200"
+              className="font-body text-xs text-faint hover:text-dim transition-colors duration-200"
             >
               Privacy
             </button>
             <button
               type="button"
               onClick={() => onNav("terms")}
-              className="font-body text-xs text-[#444] hover:text-dim transition-colors duration-200"
+              className="font-body text-xs text-faint hover:text-dim transition-colors duration-200"
             >
               Terms
             </button>
             <button
               type="button"
               onClick={() => onNav("datadeletion")}
-              className="font-body text-xs text-[#444] hover:text-dim transition-colors duration-200"
+              className="font-body text-xs text-faint hover:text-dim transition-colors duration-200"
             >
               Data Deletion
             </button>

@@ -91,9 +91,11 @@ export function VideoRecorder({
 
   const startRec = useCallback(() => {
     if (!streamRef.current) {
-      setState("recording");
-      setSeconds(0);
-      timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
+      // Camera open silently failed (no stream acquired) — surface the error
+      // and stay in pre-record state instead of pretending to record without
+      // a MediaRecorder, max-timer, or onRecorded callback.
+      setCameraError("Camera unavailable: no active stream. Please reopen the camera.");
+      logger.warn("start_rec_without_stream", {});
       return;
     }
 

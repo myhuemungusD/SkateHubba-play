@@ -47,7 +47,7 @@ STL files are **not** required for the app and will not be tracked. If physical 
 
 ---
 
-## DEC-003 — Firestore query pagination: `subscribeToMyGames` capped at 50, no cursor
+## DEC-003 — Firestore query pagination: `subscribeToMyGames` capped per listener, no cursor
 
 **Date:** 2026-03-20
 **Status:** Open — acceptable short-term, needs fix before scale
@@ -55,22 +55,25 @@ STL files are **not** required for the app and will not be tracked. If physical 
 
 ### Context
 
-`src/services/games.ts` lines 380–381 use `limit(50)` for both player-side queries:
+`subscribeToMyGames` in `src/services/games.subscriptions.ts` runs three parallel
+`onSnapshot` queries (player1, player2, judge), each capped at `limitCount`
+documents (defaults to `20`):
 
 ```ts
-const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(50));
-const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(50));
+const q1 = query(gamesRef(), where("player1Uid", "==", uid), limit(limitCount));
+const q2 = query(gamesRef(), where("player2Uid", "==", uid), limit(limitCount));
+const q3 = query(gamesRef(), where("judgeId", "==", uid), limit(limitCount));
 ```
 
-This caps each listener at 50 documents per side (up to 100 total after dedup), which is a reasonable guard against unbounded reads at the current user base size. However, there is no `startAfter` cursor, so users with more than 50 games per side will silently lose visibility of older games.
+This caps each listener at `limitCount` documents per slice, which is a reasonable guard against unbounded reads at the current user base size. However, there is no `startAfter` cursor, so users with more than `limitCount` games on any slice will silently lose visibility of older games.
 
 ### Decision
 
-`limit(50)` is acceptable for the current scale. True cursor-based pagination (or a "load more" UX) is deferred until usage data shows users approaching the cap.
+A fixed per-listener `limit` is acceptable for the current scale. True cursor-based pagination (or a "load more" UX) is deferred until usage data shows users approaching the cap.
 
 ### Risks
 
-- Users with > 50 games as player1 **or** > 50 games as player2 will not see their oldest games.
+- Users with more than `limitCount` games as player1, player2, **or** judge will not see their oldest games on that slice.
 - No warning is surfaced to the user when the cap is hit.
 
 ### Future work (not scheduled)

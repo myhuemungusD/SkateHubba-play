@@ -1,8 +1,9 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { X, ChevronLeft } from "lucide-react";
 import type { Spot, ObstacleType, CreateSpotRequest } from "../../types/spot";
 import { createSpot } from "../../services/spots";
 import { useAuthContext } from "../../context/AuthContext";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
 import { GnarRating } from "./GnarRating";
 import { BustRisk } from "./BustRisk";
 
@@ -43,6 +44,8 @@ type Step = 1 | 2 | 3;
 
 export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetProps) {
   const { user } = useAuthContext();
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheetRef);
   const [step, setStep] = useState<Step>(1);
 
   // Step 1: Location
@@ -129,10 +132,15 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
       {/* Sheet */}
       <div
+        ref={sheetRef}
         className="fixed bottom-0 left-0 right-0 z-50 bg-surface-alt rounded-t-2xl
                    max-h-[85dvh] overflow-y-auto shadow-2xl"
         role="dialog"
+        aria-modal="true"
         aria-label="Add a spot"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
       >
         {/* Header */}
         <div className="sticky top-0 bg-surface-alt px-4 pt-4 pb-2 flex items-center justify-between border-b border-[#333]">

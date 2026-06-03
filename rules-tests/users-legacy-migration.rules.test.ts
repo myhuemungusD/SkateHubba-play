@@ -42,6 +42,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, setDoc, updateDoc, setLogLevel } from "firebase/firestore";
+import { seedTerminatedGame } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-users-legacy-migration";
 
@@ -186,11 +187,15 @@ describe("users/{uid} — strict post-backfill behaviour against legacy-shaped d
 
   it("legitimate: wins++ against a clean (post-backfill) doc SUCCEEDS", async () => {
     await seedCleanPublicUser();
+    // Stats writes now require a backing game doc via lastStatsGameId
+    // (see firestore.rules ownerCanCloseWins helper).
+    await seedTerminatedGame(testEnv, "g-123", {
+      player1Uid: OWNER_UID,
+      player2Uid: "opponent-uid",
+      winner: OWNER_UID,
+    });
     await assertSucceeds(
-      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        wins: 4,
-        lastStatsGameId: "g-123",
-      }),
+      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 4, lastStatsGameId: "g-123" }),
     );
   });
 });
