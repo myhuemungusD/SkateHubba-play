@@ -30,8 +30,7 @@ const GAME_ID = "g-turn";
 // writes below carry a recorded attempt video, so they use a bucket-pinned
 // URL — otherwise the pin (correctly) rejects them for a reason unrelated to
 // the turn-order invariant each test is actually exercising.
-const VALID_MATCH_URL =
-  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
+const VALID_MATCH_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
 
 let testEnv: RulesTestEnvironment;
 
@@ -150,8 +149,7 @@ describe("games — red-team regression guards on game state", () => {
         phase: "matching",
         currentTrickName: "kickflip",
         // Bucket-pinned per audit-P2 host pin on currentTrickVideoUrl.
-        currentTrickVideoUrl:
-          "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm",
+        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm",
         currentTurn: P2_UID,
         turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
         updatedAt: serverTimestamp(),

@@ -46,9 +46,7 @@ describe("uidForEmail", () => {
   it("POSTs to identitytoolkit accounts:query with owner bearer + returnUserInfo body", async () => {
     const fetchMock = vi
       .mocked(globalThis.fetch)
-      .mockResolvedValue(
-        jsonResponse({ userInfo: [{ localId: "uid-123", email: "alice@example.com" }] }),
-      );
+      .mockResolvedValue(jsonResponse({ userInfo: [{ localId: "uid-123", email: "alice@example.com" }] }));
 
     const uid = await uidForEmail("alice@example.com");
 
@@ -91,15 +89,11 @@ describe("uidForEmail", () => {
       jsonResponse({ userInfo: [{ localId: "uid-bob", email: "bob@example.com" }] }),
     );
 
-    await expect(uidForEmail("missing@example.com")).rejects.toThrow(
-      /No emulator user found for missing@example.com/,
-    );
+    await expect(uidForEmail("missing@example.com")).rejects.toThrow(/No emulator user found for missing@example.com/);
   });
 
   it("throws when the emulator returns a non-2xx status", async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValue(
-      new Response("nope", { status: 500 }),
-    );
+    vi.mocked(globalThis.fetch).mockResolvedValue(new Response("nope", { status: 500 }));
 
     await expect(uidForEmail("anyone@example.com")).rejects.toThrow(/accounts lookup failed: 500/);
   });

@@ -63,8 +63,7 @@ function makeValidGame(overrides: Record<string, unknown> = {}): Record<string, 
 // Bucket-pinned per the audit-P2 host pin on clips.videoUrl. Anything else
 // is rejected on create. Tests that want to exercise the negative path can
 // override via `makeValidClip({ videoUrl: <attacker URL> })`.
-const VALID_VIDEO_URL =
-  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/clip.webm";
+const VALID_VIDEO_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/clip.webm";
 
 function makeValidClip(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -244,8 +243,7 @@ describe("clips — create", () => {
       setDoc(
         clipRef(asP1(), deterministicId()),
         makeValidClip({
-          videoUrl:
-            "https://firebasestorage.googleapis.com/v0/b/attacker-project.firebasestorage.app/o/clip.webm",
+          videoUrl: "https://firebasestorage.googleapis.com/v0/b/attacker-project.firebasestorage.app/o/clip.webm",
         }),
       ),
     );

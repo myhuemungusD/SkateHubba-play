@@ -178,6 +178,63 @@ describe("games service", () => {
       expect(updates.currentTurn).toBe("p2"); // matcher
     });
 
+    // Shared helper: seed an expired-deadline game, run forfeit, return the
+    // captured update payload. Keeps the dup-detector happy and lets the two
+    // forfeit-record assertions focus on the data they care about.
+    async function runForfeitAndGetUpdates(game: Record<string, unknown>): Promise<Record<string, unknown>> {
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+      await forfeitExpiredTurn("g1");
+      return mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    }
+
+    it("appends a final turnHistory record on plain forfeit (setting/matching)", async () => {
+      // Regression: status/winner advanced on forfeit but turnHistory never
+      // got the closing frame. The disputable / setReview branches append
+      // their own records — the plain-forfeit path was the inconsistency.
+      const updates = await runForfeitAndGetUpdates({
+        ...baseGame,
+        currentSetter: "p1",
+        currentTurn: "p1",
+        currentTrickName: "Kickflip",
+        currentTrickVideoUrl: "https://vid.url/set.webm",
+        matchVideoUrl: null,
+        turnNumber: 4,
+        turnDeadline: { toMillis: () => Date.now() - 1000 },
+      });
+
+      expect(updates.status).toBe("forfeit");
+      expect(updates.winner).toBe("p2");
+      const record = (updates.turnHistory as { _arrayUnion: Record<string, unknown>[] })._arrayUnion[0];
+      expect(record.turnNumber).toBe(4);
+      expect(record.trickName).toBe("Kickflip");
+      expect(record.setterUid).toBe("p1");
+      expect(record.setterUsername).toBe("alice");
+      expect(record.matcherUid).toBe("p2");
+      expect(record.matcherUsername).toBe("bob");
+      expect(record.landed).toBe(false);
+      // The forfeited player (currentTurn) is the loser → records the letter.
+      expect(record.letterTo).toBe("p1");
+      expect(record.judgedBy).toBeNull();
+    });
+
+    it("forfeit record falls back to 'Trick' when no trickName is set yet", async () => {
+      const updates = await runForfeitAndGetUpdates({
+        ...baseGame,
+        currentSetter: "p2",
+        currentTurn: "p2", // p2 forfeits while still in setting
+        currentTrickName: null,
+        currentTrickVideoUrl: null,
+        matchVideoUrl: null,
+        turnDeadline: { toMillis: () => Date.now() - 1000 },
+      });
+
+      const record = (updates.turnHistory as { _arrayUnion: Record<string, unknown>[] })._arrayUnion[0];
+      expect(record.trickName).toBe("Trick");
+      expect(record.setterUsername).toBe("bob");
+      expect(record.matcherUsername).toBe("alice");
+      expect(record.letterTo).toBe("p2");
+    });
+
     it("does not auto-accept disputable when deadline is in the future", async () => {
       const game = {
         ...baseGame,

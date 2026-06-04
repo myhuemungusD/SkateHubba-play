@@ -61,8 +61,7 @@ const VALID_DEADLINE = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
 // Bucket-pinned to satisfy the currentTrickVideoUrl + matchVideoUrl regex
 // pins added in audit P2 — any other shape (legacy paths, foreign buckets)
 // is rejected post-hardening.
-const VALID_VIDEO_URL =
-  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
+const VALID_VIDEO_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
 // Sentinel value the matching-phase rule writes; any prior turn leaves this on
 // the doc, so every turn-2+ setting-phase write must coexist with it. Used by
 // the matchVideoUrl-immutability tests below. Bucket-pinned per audit P2.

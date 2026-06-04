@@ -46,8 +46,7 @@ const FUTURE_DEADLINE = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
 // to this project's storage bucket (FIREBASE_BUCKET() in firestore.rules);
 // any other shape — including legacy fixtures missing the `/v0/b/<bucket>/`
 // prefix — is rejected post-hardening.
-const VALID_TRICK_URL =
-  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
+const VALID_TRICK_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
 
 let testEnv: RulesTestEnvironment;
 
@@ -264,9 +263,7 @@ describe("games update — currentTrickVideoUrl host pin (setting→matching bra
     await assertFails(
       updateDoc(
         gameRef(asP1()),
-        setTrickUpdate(
-          "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806xfirebasestoragexapp/o/set.webm",
-        ),
+        setTrickUpdate("https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806xfirebasestoragexapp/o/set.webm"),
       ),
     );
   });
@@ -281,8 +278,7 @@ describe("games update — currentTrickVideoUrl host pin (setting→matching bra
 // vector + content spoof). The pin requires the URL to be unchanged,
 // explicit null, or this project's Firebase Storage bucket.
 describe("games update — matchVideoUrl bucket pin", () => {
-  const VALID_MATCH_URL =
-    "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
+  const VALID_MATCH_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
   const ATTACKER_URL = "https://attacker.com/payload.html";
   const ATTACKER_BUCKET_URL =
     "https://firebasestorage.googleapis.com/v0/b/attacker-project.firebasestorage.app/o/match.webm";
