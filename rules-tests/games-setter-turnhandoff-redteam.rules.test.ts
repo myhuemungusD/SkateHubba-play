@@ -58,11 +58,16 @@ const P2_UID = "p2-bob";
 const GAME_ID = "g-setter";
 
 const VALID_DEADLINE = () => new Date(Date.now() + 24 * 60 * 60 * 1000);
-const VALID_VIDEO_URL = "https://firebasestorage.googleapis.com/test/set.webm";
+// Bucket-pinned to satisfy the currentTrickVideoUrl + matchVideoUrl regex
+// pins added in audit P2 — any other shape (legacy paths, foreign buckets)
+// is rejected post-hardening.
+const VALID_VIDEO_URL =
+  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
 // Sentinel value the matching-phase rule writes; any prior turn leaves this on
 // the doc, so every turn-2+ setting-phase write must coexist with it. Used by
-// the matchVideoUrl-immutability tests below.
-const PREV_MATCH_URL = "https://firebasestorage.googleapis.com/test/prev-turn-match.webm";
+// the matchVideoUrl-immutability tests below. Bucket-pinned per audit P2.
+const PREV_MATCH_URL =
+  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/prev-turn-match.webm";
 
 // Canonical setting→matching payload (setter records a trick). Spread `extra`
 // to override/add fields — e.g. `setTrickPayload({ matchVideoUrl: null })` for
