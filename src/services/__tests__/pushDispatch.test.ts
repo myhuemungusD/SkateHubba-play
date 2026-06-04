@@ -201,6 +201,34 @@ describe("dispatchPushNotification", () => {
     mockBatchCommit.mockRejectedValueOnce(new Error("permission-denied"));
     await expect(dispatchPushNotification(baseParams)).resolves.toBeUndefined();
   });
+
+  it("routes two distinct pushes to separate cooldown buckets so neither is dropped", async () => {
+    // Regression: the 5s cooldown must dedupe only TRUE duplicates — the same
+    // (sender, recipient, game, type) tuple. Two legitimately-distinct events
+    // (here a `your_turn` and a `game_won` on the same game, fired well inside
+    // 5s) key DIFFERENT /push_dispatch_limits docs, so both commit. A
+    // blanket-per-(sender,recipient) cooldown would have dropped the second.
+    mockGetDoc.mockResolvedValue(snapshot(true, { tokens: ["t1"] }));
+
+    await dispatchPushNotification(baseParams);
+    await dispatchPushNotification({ ...baseParams, type: "game_won" });
+
+    // Both writes went through — two batches committed, not one.
+    expect(mockBatchCommit).toHaveBeenCalledTimes(2);
+
+    // The limit-doc ids differ only by `type`, so they land in separate
+    // server-side cooldown buckets and never contend.
+    expect(mockDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      PUSH_DISPATCH_LIMITS_COLLECTION,
+      "alice_bob_game-1_your_turn",
+    );
+    expect(mockDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      PUSH_DISPATCH_LIMITS_COLLECTION,
+      "alice_bob_game-1_game_won",
+    );
+  });
 });
 
 /* ── outbox ─────────────────────────────────── */

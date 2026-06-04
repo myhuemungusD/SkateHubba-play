@@ -64,9 +64,11 @@ import {
   writeLandedClipsInTransaction,
   fetchClipsFeed,
   deleteUserClips,
+  deleteUserClipVotes,
   upvoteClip,
   fetchClipUpvoteState,
   AlreadyUpvotedError,
+  SelfUpvoteError,
   _resetTopIndexCircuitBreaker,
   type LandedClipContext,
   type ClipsFeedCursor,
@@ -718,6 +720,166 @@ describe("deleteUserClips", () => {
   });
 });
 
+/* ── deleteUserClipVotes (account-deletion cascade) ──────────── */
+
+describe("deleteUserClipVotes", () => {
+  type CascadeTx = {
+    get: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
+
+  /**
+   * A vote-doc snapshot as returned by the cascade query: carries an id and a
+   * `data()` body with the clipId (mirrors how upvoteClip writes the doc).
+   */
+  function voteDocSnap(id: string, data: Record<string, unknown> = {}): { id: string; data: () => unknown } {
+    return { id, data: () => data };
+  }
+
+  /**
+   * Drive `mockRunTransaction` for the cascade: every transaction gets a tx
+   * stub whose `tx.get(clipRef)` resolves to the supplied clip state keyed by
+   * the clip's `__path` ("clips/{clipId}"). Records every tx so assertions can
+   * inspect the delete/update calls.
+   */
+  function wireCascadeTx(clipStateByPath: Record<string, { exists: boolean; upvoteCount?: unknown }>): {
+    txs: () => CascadeTx[];
+  } {
+    const recorded: CascadeTx[] = [];
+    mockRunTransaction.mockImplementation(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
+      const tx: CascadeTx = {
+        get: vi.fn().mockImplementation(async (ref: { __path?: string }) => {
+          const state = clipStateByPath[ref.__path ?? ""] ?? { exists: false };
+          return {
+            exists: () => state.exists,
+            data: () => ({ upvoteCount: state.upvoteCount }),
+          };
+        }),
+        delete: vi.fn(),
+        update: vi.fn(),
+      };
+      recorded.push(tx);
+      await cb(tx);
+    });
+    return { txs: () => recorded };
+  }
+
+  it("queries clipVotes by the voter's uid, deletes each vote, and decrements the parent clip's upvoteCount", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        voteDocSnap("p1_g1_2_set", { clipId: "g1_2_set" }),
+        voteDocSnap("p1_g7_4_match", { clipId: "g7_4_match" }),
+      ],
+    });
+    const cap = wireCascadeTx({
+      "clips/g1_2_set": { exists: true, upvoteCount: 5 },
+      "clips/g7_4_match": { exists: true, upvoteCount: 1 },
+    });
+
+    await deleteUserClipVotes("p1");
+
+    // Votes are filtered by the voter's `uid` field, not the clip owner.
+    expect(mockWhere).toHaveBeenCalledWith("uid", "==", "p1");
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+
+    const [tx1, tx2] = cap.txs();
+    // Each tx deletes its vote doc...
+    expect((tx1.delete.mock.calls[0][0] as { __path: string }).__path).toBe("clipVotes/p1_g1_2_set");
+    expect((tx2.delete.mock.calls[0][0] as { __path: string }).__path).toBe("clipVotes/p1_g7_4_match");
+    // ...and decrements the paired clip's aggregate by exactly 1.
+    expect(tx1.update).toHaveBeenCalledWith({ __path: "clips/g1_2_set", id: "g1_2_set" }, { upvoteCount: 4 });
+    expect(tx2.update).toHaveBeenCalledWith({ __path: "clips/g7_4_match", id: "g7_4_match" }, { upvoteCount: 0 });
+  });
+
+  it("skips the decrement (still deletes the vote) when the parent clip no longer exists", async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [voteDocSnap("p1_gone", { clipId: "gone" })] });
+    const cap = wireCascadeTx({ "clips/gone": { exists: false } });
+
+    await deleteUserClipVotes("p1");
+
+    const [tx] = cap.txs();
+    expect((tx.delete.mock.calls[0][0] as { __path: string }).__path).toBe("clipVotes/p1_gone");
+    // No update — the rule's -1 branch requires the clip to exist, and there
+    // is nothing left to keep consistent.
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it("deletes the vote without a clip read when the vote body has no usable clipId (defensive)", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        voteDocSnap("p1_nostr", { clipId: 42 }), // non-string
+        voteDocSnap("p1_empty", { clipId: "" }), // empty string
+        voteDocSnap("p1_missing", {}), // absent entirely
+      ],
+    });
+    const cap = wireCascadeTx({});
+
+    await deleteUserClipVotes("p1");
+
+    expect(mockRunTransaction).toHaveBeenCalledTimes(3);
+    for (const tx of cap.txs()) {
+      expect(tx.delete).toHaveBeenCalledTimes(1);
+      // No clip read and no decrement — the clipId can't target a clip.
+      expect(tx.get).not.toHaveBeenCalled();
+      expect(tx.update).not.toHaveBeenCalled();
+    }
+  });
+
+  it("skips the decrement when the clip's upvoteCount is already 0, missing, or corrupt (never writes < 0)", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        voteDocSnap("p1_zero", { clipId: "zero" }),
+        voteDocSnap("p1_neg", { clipId: "neg" }),
+        voteDocSnap("p1_nan", { clipId: "nan" }),
+        voteDocSnap("p1_undef", { clipId: "undef" }),
+      ],
+    });
+    const cap = wireCascadeTx({
+      "clips/zero": { exists: true, upvoteCount: 0 },
+      "clips/neg": { exists: true, upvoteCount: -3 }, // drifted/corrupt
+      "clips/nan": { exists: true, upvoteCount: "broken" },
+      "clips/undef": { exists: true, upvoteCount: undefined },
+    });
+
+    await deleteUserClipVotes("p1");
+
+    // Every vote is still deleted, but none drives the count below 0.
+    for (const tx of cap.txs()) {
+      expect(tx.delete).toHaveBeenCalledTimes(1);
+      expect(tx.update).not.toHaveBeenCalled();
+    }
+  });
+
+  it("is a no-op when the user has cast no votes", async () => {
+    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+
+    await deleteUserClipVotes("stranger");
+
+    expect(mockRunTransaction).not.toHaveBeenCalled();
+  });
+
+  it("swallows the query error and returns so account deletion can continue", async () => {
+    // Permanent error code so withRetry aborts immediately.
+    mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+
+    await expect(deleteUserClipVotes("p1")).resolves.toBeUndefined();
+    expect(mockRunTransaction).not.toHaveBeenCalled();
+  });
+
+  it("tolerates per-vote transaction failures without throwing (partial cascade)", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [voteDocSnap("p1_ok", { clipId: "ok" }), voteDocSnap("p1_fails", { clipId: "fails" })],
+    });
+    mockRunTransaction
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+
+    await expect(deleteUserClipVotes("p1")).resolves.toBeUndefined();
+    expect(mockRunTransaction).toHaveBeenCalledTimes(2);
+  });
+});
+
 /* ── upvoteClip ────────────────────────────────── */
 
 describe("upvoteClip", () => {
@@ -737,6 +899,7 @@ describe("upvoteClip", () => {
   function captureTxOnce(
     voteExists: boolean,
     currentUpvoteCount: number | "no-clip-doc" | "non-numeric" = 0,
+    clipOwnerUid?: string,
   ): { observed: () => ObservedTx } {
     let captured: ObservedTx | undefined;
     mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
@@ -757,9 +920,12 @@ describe("upvoteClip", () => {
             // 'non-numeric' covers a corrupted clip doc — upvoteCount field
             // present but not a finite number. The service must coerce to 0.
             if (currentUpvoteCount === "non-numeric") {
-              return { exists: () => true, data: () => ({ upvoteCount: "broken" }) };
+              return { exists: () => true, data: () => ({ upvoteCount: "broken", playerUid: clipOwnerUid }) };
             }
-            return { exists: () => true, data: () => ({ upvoteCount: currentUpvoteCount }) };
+            return {
+              exists: () => true,
+              data: () => ({ upvoteCount: currentUpvoteCount, playerUid: clipOwnerUid }),
+            };
           }
           throw new Error(`Unexpected ref path in tx.get: ${path}`);
         }),
@@ -867,6 +1033,27 @@ describe("upvoteClip", () => {
     mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
 
     await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(AlreadyUpvotedError);
+  });
+
+  it("throws SelfUpvoteError without writing when the caller owns the clip", async () => {
+    // The clipVotes create rule does NOT reject a vote on your own clip, so
+    // this service guard is the canonical block against inflating your own
+    // count. The clip doc's playerUid matches the upvoter here.
+    const cap = captureTxOnce(false, 3, "me");
+
+    await expect(upvoteClip("me", "g1_2_set")).rejects.toBeInstanceOf(SelfUpvoteError);
+
+    // No vote doc, no count bump — the guard fires before either write.
+    const tx = cap.observed();
+    expect(tx.set).not.toHaveBeenCalled();
+    expect(tx.update).not.toHaveBeenCalled();
+  });
+
+  it("re-throws SelfUpvoteError verbatim rather than masking it as AlreadyUpvotedError", async () => {
+    // The catch block must let SelfUpvoteError pass through untouched — a
+    // self-upvote is a distinct business state from a duplicate upvote.
+    captureTxOnce(false, 0, "me");
+    await expect(upvoteClip("me", "g1_2_set")).rejects.toThrow(/^self_upvote:g1_2_set$/);
   });
 
   it("propagates unexpected transaction errors", async () => {

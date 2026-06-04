@@ -200,7 +200,13 @@ export function subscribeToGame(gameId: string, onUpdate: (game: GameDoc | null)
     (err) => {
       logger.warn("game_subscription_error", { gameId, error: err.message });
       captureException(err, { extra: { context: "subscribeToGame", gameId } });
-      onUpdate(null);
+      // Do NOT emit null here. A transient listener error (network blip,
+      // token refresh, App Check) is consumed by the UI as "game gone" and
+      // bounces the user off a live ACTIVE game. The Firestore SDK
+      // auto-reconnects and the next successful snapshot re-emits the
+      // current doc; until then we retain the last-good value rather than
+      // dropping the user. `null` is reserved for the authoritative
+      // "document does not exist" path above.
     },
   );
 }

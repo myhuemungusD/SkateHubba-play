@@ -1,8 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { X, ChevronLeft } from "lucide-react";
 import type { Spot, ObstacleType, CreateSpotRequest } from "../../types/spot";
 import { createSpot } from "../../services/spots";
 import { useAuthContext } from "../../context/AuthContext";
+import { useFocusTrap } from "../../hooks/useFocusTrap";
+import { logger } from "../../services/logger";
+import { captureException } from "../../lib/sentry";
+import { hashUid } from "../../utils/pii";
 import { GnarRating } from "./GnarRating";
 import { BustRisk } from "./BustRisk";
 
@@ -14,6 +18,17 @@ function isValidPhotoUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Parse a coordinate input string into a number, or NaN when the parse
+ * fails (empty, "-", etc.). NaN is intentional — callers keep it in
+ * state so the submit guard's Number.isFinite check rejects empty input
+ * rather than silently zeroing the pin into the Atlantic.
+ */
+function parseCoord(raw: string): number {
+  const next = Number.parseFloat(raw);
+  return Number.isFinite(next) ? next : NaN;
 }
 
 interface AddSpotSheetProps {
@@ -43,11 +58,21 @@ type Step = 1 | 2 | 3;
 
 export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetProps) {
   const { user } = useAuthContext();
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(sheetRef);
   const [step, setStep] = useState<Step>(1);
 
-  // Step 1: Location
-  const [pinLat, setPinLat] = useState(userLocation?.lat ?? 34.0522);
-  const [pinLng, setPinLng] = useState(userLocation?.lng ?? -118.2437);
+  // Step 1: Location.
+  // Text state is the source of truth for the inputs so users can clear
+  // or partially type ("-", "12."). pinLat/pinLng are derived numbers,
+  // intentionally NaN while the text is invalid — the submit guard
+  // (Number.isFinite) catches NaN and surfaces "Invalid coordinates".
+  const initialLat = userLocation?.lat ?? 34.0522;
+  const initialLng = userLocation?.lng ?? -118.2437;
+  const [pinLatText, setPinLatText] = useState(String(initialLat));
+  const [pinLngText, setPinLngText] = useState(String(initialLng));
+  const [pinLat, setPinLat] = useState<number>(initialLat);
+  const [pinLng, setPinLng] = useState<number>(initialLng);
 
   // Step 2: Details
   const [name, setName] = useState("");
@@ -81,6 +106,25 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
       return;
     }
 
+    // Client-side coord validation. Firestore rules are the authoritative
+    // gate, but rejecting locally avoids a needless write + error round trip
+    // when the user has typed a coordinate outside Earth's lat/lng range
+    // (or left an input partially edited like "-").
+    if (
+      !Number.isFinite(pinLat) ||
+      !Number.isFinite(pinLng) ||
+      pinLat < -90 ||
+      pinLat > 90 ||
+      pinLng < -180 ||
+      pinLng > 180
+    ) {
+      // Bounce back to step 1 so the user lands on the offending input
+      // instead of seeing a generic banner two steps away from it.
+      setStep(1);
+      setError("Invalid coordinates");
+      return;
+    }
+
     setSubmitting(true);
 
     const req: CreateSpotRequest = {
@@ -98,7 +142,17 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
       const spot: Spot = await createSpot(req, user.uid);
       onSuccess(spot);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create spot");
+      // Mirror ProfileSetup's catch: surface the Firestore error code in the
+      // inline banner so operators can distinguish App Check / permission /
+      // rate-limit failures at a glance, and forward to Sentry with a hashed
+      // uid so PII never leaves the client.
+      const code = (err as { code?: string })?.code ?? "";
+      const msg = err instanceof Error ? err.message : "Failed to create spot";
+      captureException(err, {
+        extra: { context: "AddSpotSheet.createSpot", uid: hashUid(user.uid), code },
+      });
+      logger.warn("add_spot_failed", { uid: user.uid, code, message: msg });
+      setError(code ? `${msg} [${code}]` : msg);
     } finally {
       setSubmitting(false);
     }
@@ -129,10 +183,16 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
       {/* Sheet */}
       <div
+        ref={sheetRef}
         className="fixed bottom-0 left-0 right-0 z-50 bg-surface-alt rounded-t-2xl
                    max-h-[85dvh] overflow-y-auto shadow-2xl"
         role="dialog"
+        aria-modal="true"
         aria-label="Add a spot"
+        tabIndex={-1}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+        }}
       >
         {/* Header */}
         <div className="sticky top-0 bg-surface-alt px-4 pt-4 pb-2 flex items-center justify-between border-b border-[#333]">
@@ -159,6 +219,18 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
         </div>
 
         <div className="p-4">
+          {/* Submission error — rendered above the step content so it stays
+              visible after a guard like "Invalid coordinates" bounces the
+              user back to step 1, and after a Firestore rejection on step 3. */}
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm"
+            >
+              {error}
+            </div>
+          )}
+
           {/* Step 1: Pin location */}
           {step === 1 && (
             <div>
@@ -177,8 +249,11 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       step="0.0001"
                       min={-90}
                       max={90}
-                      value={pinLat}
-                      onChange={(e) => setPinLat(parseFloat(e.target.value) || 0)}
+                      value={pinLatText}
+                      onChange={(e) => {
+                        setPinLatText(e.target.value);
+                        setPinLat(parseCoord(e.target.value));
+                      }}
                       className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
                     />
                   </div>
@@ -189,8 +264,11 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       step="0.0001"
                       min={-180}
                       max={180}
-                      value={pinLng}
-                      onChange={(e) => setPinLng(parseFloat(e.target.value) || 0)}
+                      value={pinLngText}
+                      onChange={(e) => {
+                        setPinLngText(e.target.value);
+                        setPinLng(parseCoord(e.target.value));
+                      }}
                       className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
                     />
                   </div>
@@ -201,6 +279,8 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                     onClick={() => {
                       setPinLat(userLocation.lat);
                       setPinLng(userLocation.lng);
+                      setPinLatText(String(userLocation.lat));
+                      setPinLngText(String(userLocation.lng));
                     }}
                     className="mt-3 text-xs text-[#F97316] hover:underline"
                   >
@@ -358,13 +438,6 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
 
               {/* Photo URL validation error */}
               {photoError && <p className="text-red-400 text-xs">{photoError}</p>}
-
-              {/* Submission error */}
-              {error && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-3 text-red-400 text-sm">
-                  {error}
-                </div>
-              )}
 
               <button
                 type="button"

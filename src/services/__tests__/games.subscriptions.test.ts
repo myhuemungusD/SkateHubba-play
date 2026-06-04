@@ -43,15 +43,27 @@ describe("games service", () => {
       expect(mockUnsub).toHaveBeenCalled();
     });
 
-    it("calls onUpdate with null on snapshot error", () => {
+    it("logs a snapshot error WITHOUT emitting null (retains last-good)", () => {
+      // Regression: a transient listener error must NOT emit null. The UI
+      // reads null as "game gone" and bounces the user off a live ACTIVE
+      // game. We log + capture and wait for the SDK's auto-reconnect to
+      // re-emit the current doc.
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
       mockOnSnapshot.mockImplementation((_ref: unknown, _onNext: unknown, onError: Function) => {
-        onError(new Error("permission-denied"));
+        onError(new Error("network-blip"));
         return vi.fn();
       });
 
       const onUpdate = vi.fn();
       subscribeToGame("g1", onUpdate);
-      expect(onUpdate).toHaveBeenCalledWith(null);
+
+      expect(onUpdate).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[WARN]",
+        "game_subscription_error",
+        expect.objectContaining({ gameId: "g1", error: "network-blip" }),
+      );
+      warnSpy.mockRestore();
     });
   });
 

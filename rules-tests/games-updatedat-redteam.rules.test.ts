@@ -53,6 +53,10 @@ const GAME_ID = "g-updatedat";
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 // Legitimate, production-shaped future deadline (matches TURN_DURATION_MS).
 const validFutureDeadline = () => new Date(Date.now() + TWENTY_FOUR_HOURS_MS);
+// Bucket-pinned video URLs — required by the audit-P2 host pin on
+// currentTrickVideoUrl + matchVideoUrl writes.
+const VALID_TRICK_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
+const VALID_MATCH_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
 
 let testEnv: RulesTestEnvironment;
 
@@ -135,7 +139,7 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         updateDoc(gameRef(asP1()), {
           phase: "matching",
           currentTrickName: "kickflip",
-          currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+          currentTrickVideoUrl: VALID_TRICK_URL,
           currentTurn: P2_UID,
           turnDeadline: validFutureDeadline(),
           updatedAt: new Date(0),
@@ -151,7 +155,7 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         updateDoc(gameRef(asP1()), {
           phase: "matching",
           currentTrickName: "kickflip",
-          currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+          currentTrickVideoUrl: VALID_TRICK_URL,
           currentTurn: P2_UID,
           turnDeadline: validFutureDeadline(),
         }),
@@ -164,7 +168,7 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         updateDoc(gameRef(asP1()), {
           phase: "matching",
           currentTrickName: "kickflip",
-          currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+          currentTrickVideoUrl: VALID_TRICK_URL,
           currentTurn: P2_UID,
           turnDeadline: validFutureDeadline(),
           updatedAt: serverTimestamp(),
@@ -181,13 +185,16 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
       });
       await assertFails(
         updateDoc(gameRef(asP2()), {
           p2Letters: 1, // matcher admits miss → +1 letter
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber (games.match.ts 320) so the
+          // write fails ONLY on the stale updatedAt, not the P0 turn-order pin.
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
@@ -203,13 +210,14 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
       });
       await assertFails(
         updateDoc(gameRef(asP2()), {
           p2Letters: 1,
           phase: "setting",
           currentTurn: P1_UID,
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
@@ -224,13 +232,15 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
       });
       await assertSucceeds(
         updateDoc(gameRef(asP2()), {
           p2Letters: 1,
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber by 1 (games.match.ts 320).
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
@@ -248,7 +258,7 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         phase: "disputable",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });
@@ -272,7 +282,7 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         phase: "disputable",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });
@@ -294,7 +304,7 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         phase: "disputable",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });
@@ -321,7 +331,7 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });
@@ -342,7 +352,7 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });
@@ -361,7 +371,7 @@ describe("games.updatedAt — red-team against stale-timestamp cooldown bypass",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });

@@ -55,6 +55,10 @@ const GAME_ID = "g-deadline";
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 // A legitimate, production-shaped future deadline.
 const validFutureDeadline = () => new Date(Date.now() + TWENTY_FOUR_HOURS_MS);
+// Bucket-pinned trick/match URLs — required by the audit-P2 host pin on
+// currentTrickVideoUrl + matchVideoUrl writes.
+const VALID_TRICK_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
+const VALID_MATCH_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
 // Maximum SDK-serialisable Timestamp (year 9999). Without the 48h cap this
 // would permanently block the opponent's forfeit path. `Timestamp.fromMillis(
 // Number.MAX_SAFE_INTEGER)` is rejected client-side by the SDK, so this is
@@ -154,7 +158,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         updateDoc(gameRef(asP1()), {
           phase: "matching",
           currentTrickName: "kickflip",
-          currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+          currentTrickVideoUrl: VALID_TRICK_URL,
           currentTurn: P2_UID,
           turnDeadline: farFutureDeadline(),
           updatedAt: serverTimestamp(),
@@ -168,7 +172,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         updateDoc(gameRef(asP1()), {
           phase: "matching",
           currentTrickName: "kickflip",
-          currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+          currentTrickVideoUrl: VALID_TRICK_URL,
           currentTurn: P2_UID,
           turnDeadline: validFutureDeadline(),
           updatedAt: serverTimestamp(),
@@ -187,13 +191,16 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
       });
       await assertFails(
         updateDoc(gameRef(asP2()), {
           p2Letters: 1, // matcher admits miss → +1 letter
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber (games.match.ts 320) so the
+          // write fails ONLY on the year-9999 turnDeadline, not the P0 pin.
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
@@ -209,13 +216,15 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
       });
       await assertSucceeds(
         updateDoc(gameRef(asP2()), {
           p2Letters: 1,
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber by 1 (games.match.ts 320).
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
@@ -233,7 +242,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         phase: "disputable",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });
@@ -257,7 +266,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         phase: "disputable",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });
@@ -284,7 +293,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });
@@ -305,7 +314,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
       });
@@ -330,7 +339,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         phase: "disputable",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
         turnDeadline: new Date(Date.now() - 60_000),
@@ -354,7 +363,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         phase: "disputable",
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
         turnDeadline: new Date(Date.now() - 60_000),
@@ -382,7 +391,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
         turnDeadline: new Date(Date.now() - 60_000),
@@ -403,7 +412,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID,
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         judgeId: JUDGE_UID,
         judgeStatus: "accepted",
         turnDeadline: new Date(Date.now() - 60_000),

@@ -984,6 +984,41 @@ describe("GamePlayScreen", () => {
     });
   });
 
+  it("guards against double-submit while accept is in flight", async () => {
+    // First click hangs (never resolves). The in-flight guard keeps the accept
+    // from firing twice: the card swaps the buttons for a "Submitting..." state,
+    // and the judgeActionSubmittedRef short-circuits any racing re-entry.
+    mockAcceptJudgeInvite.mockImplementation(() => new Promise(() => {}));
+    const game = makeJudgeGame({ judgeStatus: "pending" });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Accept"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Submitting...")).toBeInTheDocument();
+    });
+    // Buttons are gone while in flight, so no second click is possible.
+    expect(screen.queryByText("Accept")).not.toBeInTheDocument();
+    expect(mockAcceptJudgeInvite).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-arms accept after a failed attempt so the judge can retry", async () => {
+    // A rejected accept must reset judgeActionSubmittedRef so a subsequent
+    // click can retry (mirrors callBS / dispute retry semantics).
+    mockAcceptJudgeInvite.mockRejectedValueOnce(new Error("Network error"));
+    mockAcceptJudgeInvite.mockResolvedValueOnce(undefined);
+    const game = makeJudgeGame({ judgeStatus: "pending" });
+    render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Accept"));
+    await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("Accept"));
+    await waitFor(() => {
+      expect(mockAcceptJudgeInvite).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("shows 'Ruling...' during setReview submission", async () => {
     mockJudgeRuleSetTrick.mockImplementation(() => new Promise(() => {}));
     const game = makeJudgeGame({

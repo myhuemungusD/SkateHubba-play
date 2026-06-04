@@ -209,6 +209,15 @@ describe("AuthScreen", () => {
     expect(screen.getByText("Weak")).toBeInTheDocument();
   });
 
+  it("password strength shows Fair for a mixed-case password", async () => {
+    render(<AuthScreen {...defaultProps} mode="signup" />);
+
+    const pw = screen.getAllByPlaceholderText(/•/)[0];
+    await userEvent.type(pw, "Abcdefgh");
+
+    expect(screen.getByText("Fair")).toBeInTheDocument();
+  });
+
   it("password strength shows Strong for complex password", async () => {
     render(<AuthScreen {...defaultProps} mode="signup" />);
 

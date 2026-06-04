@@ -254,6 +254,64 @@ describe("useOnboarding", () => {
     expect(mockResetOnboarding).toHaveBeenCalledWith("u1");
   });
 
+  it("replay() clears the device-local dismissed/progress flags synchronously", async () => {
+    seedSubscription(doneState());
+    const { result } = renderHook(() => useOnboarding("u1", TOTAL_STEPS));
+    await waitFor(() => expect(result.current.shouldShow).toBe(false));
+
+    // Block resetOnboarding so we can assert the local flags were cleared
+    // BEFORE the async persistence ever settles.
+    let release: (() => void) | null = null;
+    mockResetOnboarding.mockReturnValueOnce(
+      new Promise<void>((res) => {
+        release = res;
+      }),
+    );
+
+    act(() => {
+      void result.current.replay();
+    });
+
+    // Synchronous-before-await: both local flags cleared immediately, while
+    // resetOnboarding is still in flight.
+    expect(mockClearLocalDismissed).toHaveBeenCalledWith("u1");
+    expect(mockClearLocalProgress).toHaveBeenCalledWith("u1");
+    await act(async () => {
+      release?.();
+    });
+  });
+
+  it("replay() survives a racing local-dismissed reconcile (cross-tab storage event)", async () => {
+    // Capture the subscription callback so we can fire a late reconcile that
+    // races the async resetOnboarding. The cross-tab storage path re-runs
+    // reconcile(null), which decides visibility purely from getLocalDismissed.
+    let reconcileCb: ((s: OnboardingStateLike | null) => void) | null = null;
+    mockSubscribeToOnboardingState.mockImplementation((_uid: string, cb: (s: OnboardingStateLike | null) => void) => {
+      reconcileCb = cb;
+      cb(null);
+      return () => undefined;
+    });
+    // Tour starts dismissed; the synchronous clear in replay() must flip this.
+    mockGetLocalDismissed.mockReturnValue(true);
+    mockClearLocalDismissed.mockImplementation(() => mockGetLocalDismissed.mockReturnValue(false));
+
+    const { result } = renderHook(() => useOnboarding("u1", TOTAL_STEPS));
+    await waitFor(() => expect(result.current.shouldShow).toBe(false));
+
+    await act(async () => {
+      await result.current.replay();
+    });
+    expect(result.current.shouldShow).toBe(true);
+
+    // A late reconcile(null) races in. Because replay() synchronously cleared
+    // local-dismissed, getLocalDismissed now returns false, so reconcile must
+    // NOT re-hide the just-replayed tour.
+    act(() => {
+      reconcileCb?.(null);
+    });
+    expect(result.current.shouldShow).toBe(true);
+  });
+
   it("replay() swallows persistence rejections", async () => {
     seedSubscription(doneState());
     mockResetOnboarding.mockRejectedValueOnce(new Error("offline"));

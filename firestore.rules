@@ -4,14 +4,37 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // ── Project bucket name (audit S5+S12, PR-B) ──
-    // Hardcoded production bucket. Used by the avatar URL pinning
-    // rule below — the regex must contain the exact bucket so user A
-    // cannot point `profileImageUrl` at user B's avatar in another
-    // project's bucket. If the project is ever migrated to a new
-    // bucket, update this constant in lockstep with .firebaserc and
-    // VITE_FIREBASE_STORAGE_BUCKET.
+    // Hardcoded production bucket, REGEX-ESCAPED. Used exclusively
+    // inside `.matches(...)` predicates (avatar URL, video URL pins).
+    // The literal bucket is `sk8hub-d7806.firebasestorage.app`; the
+    // `.` characters are escaped to `\.` so that a similarly-named
+    // attacker bucket (e.g. `sk8hub-d7806xfirebasestoragexapp`) cannot
+    // satisfy the wildcard a raw dot would create. If the project is
+    // ever migrated to a new bucket, update this constant in lockstep
+    // with .firebaserc and VITE_FIREBASE_STORAGE_BUCKET — and remember
+    // to escape every `.` in the new value.
     function FIREBASE_BUCKET() {
-      return 'sk8hub-d7806.firebasestorage.app';
+      return 'sk8hub-d7806\\.firebasestorage\\.app';
+    }
+
+    // Fully-assembled regex literals. The match-resolution `allow update`
+    // rule sits right under Firestore's per-evaluation 1000-expression
+    // ceiling once main's turn-order seize guard and this PR's video-URL
+    // pins are stacked; assembling the pattern via runtime '+'
+    // concatenation of FIREBASE_BUCKET() multiplied the expression count
+    // at every call site and tipped it over. Returning the finished
+    // literal (still REGEX-ESCAPED, still derived from the same bucket
+    // value — update both in lockstep with FIREBASE_BUCKET above) keeps
+    // each `.matches(...)` to a single string expression.
+    //   • download-URL form only (getDownloadURL output) — used by
+    //     matchVideoUrl / avatar pins.
+    function BUCKET_DL_URL_RE() {
+      return '^https://firebasestorage\\.googleapis\\.com/v0/b/sk8hub-d7806\\.firebasestorage\\.app/.+';
+    }
+    //   • both forms (download-URL + bucket-as-host CDN) — used by
+    //     currentTrickVideoUrl / clips.videoUrl.
+    function BUCKET_BOTH_FORMS_RE() {
+      return '^https://(firebasestorage\\.googleapis\\.com/v0/b/sk8hub-d7806\\.firebasestorage\\.app|sk8hub-d7806\\.firebasestorage\\.app)/.+';
     }
 
     // ── Helper functions ──
@@ -51,6 +74,25 @@ service cloud.firestore {
     function judgeActive(game) {
       return 'judgeId' in game && game.judgeId != null
         && 'judgeStatus' in game && game.judgeStatus == 'accepted';
+    }
+
+    // ── Video-URL bucket pins (audit P2) ──
+    // Factored out of the games match-resolution / dispute / clips rules so
+    // the bucket-pin predicate doesn't blow the per-rule 1000-expression
+    // evaluation ceiling when layered on top of the turn-order seize guard.
+    // Semantics are identical to the previous inline checks:
+    //   • matchVideoUrlOk: accepts the unchanged value, explicit null, or a
+    //     string pinned to FIREBASE_BUCKET() via the getDownloadURL() form.
+    //   • videoUrlBucketPinned: the both-forms (download-URL + bucket-as-host
+    //     CDN) check used by currentTrickVideoUrl and clips.videoUrl.
+    function videoUrlBucketPinned(url) {
+      return url is string && url.matches(BUCKET_BOTH_FORMS_RE());
+    }
+
+    function matchVideoUrlOk(newUrl, oldUrl) {
+      return newUrl == oldUrl
+        || newUrl == null
+        || (newUrl is string && newUrl.matches(BUCKET_DL_URL_RE()));
     }
 
     // ── Peer stats close-out ──
@@ -107,6 +149,34 @@ service cloud.firestore {
         );
     }
 
+    // ── Owner stats close-out ──
+    // Owner-side counterpart to canPeerCloseStats above. The owner-update
+    // branch on /users/{uid} invokes these to gate every wins/losses +1:
+    // without them, a signed-in user could bump their own counter in a
+    // loop and inflate the leaderboard. Same shape as the peer helper
+    // (game-doc get, forward-progress on lastStatsGameId, terminal status,
+    // participant + winner check) but the participant being checked is
+    // the owner themselves rather than the "other" player.
+    function ownerCanCloseWins(uid) {
+      let gid = request.resource.data.lastStatsGameId;
+      let game = get(/databases/$(database)/documents/games/$(gid)).data;
+      return gid is string
+        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
+        && (game.status == 'complete' || game.status == 'forfeit')
+        && game.winner == uid
+        && (uid == game.player1Uid || uid == game.player2Uid);
+    }
+    function ownerCanCloseLosses(uid) {
+      let gid = request.resource.data.lastStatsGameId;
+      let game = get(/databases/$(database)/documents/games/$(gid)).data;
+      return gid is string
+        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
+        && (game.status == 'complete' || game.status == 'forfeit')
+        && game.winner != null
+        && game.winner != uid
+        && (uid == game.player1Uid || uid == game.player2Uid);
+    }
+
     // ── turnHistory growth bounds ──
     // Every write path that legitimately appends to `games.turnHistory`
     // (match resolution, dispute resolution, Call BS resolution, expired
@@ -130,13 +200,22 @@ service cloud.firestore {
           && request.resource.data.turnHistory is list
           && request.resource.data.turnHistory.size() <= 200
           && (
-            // Unchanged (e.g. judge accepts without adding a record, or the
-            // resource has the field and the request keeps it identical).
-            ('turnHistory' in resource.data
-              && request.resource.data.turnHistory == resource.data.turnHistory)
+            // Cheap size-based checks FIRST so a growing/unchanged history
+            // never reaches the O(n) full-list equality below — that compare
+            // over a ~200-element array is the dominant node cost and, summed
+            // across the OR-chain of game-update rules, can blow Firestore's
+            // 1000-node per-evaluation budget (silent deny). Semantics are
+            // unchanged: these clauses are OR'd, so order doesn't affect the
+            // accepted set, only evaluation cost.
+            //
             // Appended exactly one entry to an existing history array.
+            ('turnHistory' in resource.data
+              && request.resource.data.turnHistory.size() == resource.data.turnHistory.size() + 1)
+            // Unchanged size against an existing history — same size is the
+            // common no-append case (judge accept, setReview auto-clear, etc.).
             || ('turnHistory' in resource.data
-                && request.resource.data.turnHistory.size() == resource.data.turnHistory.size() + 1)
+                && request.resource.data.turnHistory.size() == resource.data.turnHistory.size()
+                && request.resource.data.turnHistory == resource.data.turnHistory)
             // First-ever append: resource has no turnHistory yet, request
             // introduces a single-entry list.
             || (!('turnHistory' in resource.data)
@@ -273,26 +352,79 @@ service cloud.firestore {
         && !('dob' in request.resource.data)
         && !('parentalConsent' in request.resource.data)
         && !('fcmTokens' in request.resource.data)
-        // Wins/losses can only increment by 0 or 1 per write.
-        // When the field doesn't exist yet, only 0 or 1 is allowed
-        // (the old rule's !('wins' in resource.data) branch accepted any value).
+        // Wins/losses can only increment by 0 or 1 per write, AND any +1
+        // increment must be backed by an idempotency-checked game outcome.
+        //
+        // History: the prior form allowed an unconditional +1 on the owner
+        // branch — a signed-in user could call updateDoc({wins: stored + 1})
+        // in a tight loop and inflate their leaderboard rank arbitrarily.
+        // The peer branch (canPeerCloseStats) already required a game-doc
+        // relational check plus forward progress on `lastStatsGameId`; the
+        // owner branch must enforce the same shape, otherwise the peer-side
+        // hardening is useless.
+        //
+        // The +1 path now requires (via ownerCanCloseWins/Losses below):
+        //   (a) `lastStatsGameId` is a string and is the freshly written value
+        //   (b) `lastStatsGameId` actually advances (forward progress —
+        //       blocks rule-layer replays of the same gid)
+        //   (c) the referenced game doc exists, is complete/forfeit, and the
+        //       caller is one of the two players
+        //   (d) winner == uid for the wins side, winner != uid for losses
+        //
+        // The "unchanged" path stays free of game-doc checks so benign
+        // profile edits (stance, avatar URL, etc.) don't require a game ref.
         && (
           !('wins' in request.resource.data)
           || (!('wins' in resource.data)
-              && request.resource.data.wins >= 0 && request.resource.data.wins <= 1)
-          || ('wins' in resource.data && (
-            request.resource.data.wins == resource.data.wins
-            || request.resource.data.wins == resource.data.wins + 1
-          ))
+              && request.resource.data.wins == 0)
+          || (!('wins' in resource.data)
+              && request.resource.data.wins == 1
+              && ownerCanCloseWins(uid))
+          || ('wins' in resource.data
+              && request.resource.data.wins == resource.data.wins)
+          || ('wins' in resource.data
+              && request.resource.data.wins == resource.data.wins + 1
+              && ownerCanCloseWins(uid))
         )
         && (
           !('losses' in request.resource.data)
           || (!('losses' in resource.data)
-              && request.resource.data.losses >= 0 && request.resource.data.losses <= 1)
-          || ('losses' in resource.data && (
-            request.resource.data.losses == resource.data.losses
-            || request.resource.data.losses == resource.data.losses + 1
-          ))
+              && request.resource.data.losses == 0)
+          || (!('losses' in resource.data)
+              && request.resource.data.losses == 1
+              && ownerCanCloseLosses(uid))
+          || ('losses' in resource.data
+              && request.resource.data.losses == resource.data.losses)
+          || ('losses' in resource.data
+              && request.resource.data.losses == resource.data.losses + 1
+              && ownerCanCloseLosses(uid))
+        )
+        // ── lastStatsGameId toggle-bypass guard ──
+        // Without this, the wins/losses sub-branches above allow the
+        // "unchanged stat" path (`request.resource.data.wins == resource.data.wins`)
+        // to coexist with an arbitrary mutation to `lastStatsGameId`, because
+        // the unchanged path never calls ownerCanCloseWins/Losses. Attack:
+        //   (1) legitimately close G1: {wins: stored+1, lastStatsGameId: G1} — OK
+        //   (2) toggle alone:          {lastStatsGameId: "anything"}         — OK (BUG)
+        //   (3) replay G1:             {wins: stored+1, lastStatsGameId: G1} — OK again,
+        //       because ownerCanCloseWins's forward-progress check sees
+        //       resource.data.lastStatsGameId ("anything") != gid (G1).
+        // Looping (2)+(3) inflates wins indefinitely off ONE real game.
+        //
+        // Fix: any change to `lastStatsGameId` on the owner branch must be
+        // paired with a corresponding +1 stat advance that the matching
+        // ownerCanCloseWins/Losses helper validates against the game doc.
+        && (
+          !('lastStatsGameId' in request.resource.data)
+          || request.resource.data.lastStatsGameId == resource.data.get('lastStatsGameId', '')
+          || (
+            request.resource.data.wins == resource.data.get('wins', 0) + 1
+            && ownerCanCloseWins(uid)
+          )
+          || (
+            request.resource.data.losses == resource.data.get('losses', 0) + 1
+            && ownerCanCloseLosses(uid)
+          )
         )
         // lastGameCreatedAt is the server-side 30s game-creation cooldown
         // anchor (see /games create rule). Without this guard, a client
@@ -484,6 +616,20 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if isOwner(uid);
       }
+
+      // ── Achievements (subcollection) ──
+      // Earned-achievement records. Grants are server-authored (Admin SDK
+      // only) — clients never mint or mutate them, hence create/update are
+      // denied outright. The owner needs read for display and DELETE so the
+      // account-deletion batch in src/services/users.ts (~345-353) can wipe
+      // them atomically alongside /private + the parent user doc; under
+      // default-deny that batch fails closed and breaks GDPR erasure.
+      // Mirrors the owner-only shape of the sibling /private and
+      // /blocked_users blocks above.
+      match /achievements/{achievementId} {
+        allow read, delete: if isOwner(uid);
+        allow create, update: if false;
+      }
     }
 
     // ── Usernames (reservation docs for uniqueness) ──
@@ -505,6 +651,71 @@ service cloud.firestore {
     // ── Helper: determine the opponent of a player ──
     function opponentUid(game, uid) {
       return uid == game.player1Uid ? game.player2Uid : game.player1Uid;
+    }
+
+    // ── Match-resolution turn-order seize guard (P0) ──
+    // Extracted from the matching-phase `allow update` rule (PR
+    // claude/video-url-security) and flattened so the matching→* resolution
+    // write stays under Firestore's per-evaluation node ceiling once main's
+    // #373 seize guard and this PR's matchVideoUrl `.matches()` pin both apply.
+    // Cheap phase/status discriminators are checked first in each branch so the
+    // OR short-circuits before the costlier judgeActive()/opponentUid() calls.
+    //
+    // The accepted set is IDENTICAL to main's inline four-branch form — the
+    // shared `status == 'active' && winner == null` invariant of every
+    // non-completion outcome is hoisted once; completion (status == 'complete')
+    // is the lone remaining alternative. No new states are admitted. `cur` is
+    // resource.data, `nxt` is request.resource.data. Per-outcome pins:
+    //   • missed-continues (games.match.ts 315-321):
+    //       currentSetter UNCHANGED, turnNumber +1, currentTurn == currentSetter
+    //   • completion (312-314): currentSetter + turnNumber UNCHANGED,
+    //       winner = opponent of the player who hit 5 letters
+    //   • honor+landed (222-233): currentSetter ROTATES to the matcher
+    //       (opponentUid(currentSetter)), currentTurn follows, turnNumber +1
+    //   • judge landed→disputable (169-176) / Call BS→setReview
+    //       (games.judge.ts 45-51): currentSetter + turnNumber UNCHANGED,
+    //       currentTurn routes to the judge
+    function matchResolutionPinsOk(cur, nxt) {
+      return (
+        nxt.status == 'active' && nxt.winner == null && (
+          // Missed — setter keeps the role, turnNumber +1, currentTurn pinned
+          // to the (unchanged) currentSetter.
+          (nxt.phase == 'setting'
+           && nxt.currentSetter == cur.currentSetter
+           && nxt.turnNumber == cur.turnNumber + 1
+           && nxt.currentTurn == cur.currentSetter)
+          // Honor system + landed — roles swap; currentSetter ROTATES to the
+          // matcher, currentTurn follows, turnNumber +1, letters unchanged,
+          // judge must NOT be active.
+          || (nxt.phase == 'setting'
+              && nxt.p1Letters == cur.p1Letters
+              && nxt.p2Letters == cur.p2Letters
+              && nxt.currentSetter == opponentUid(cur, cur.currentSetter)
+              && nxt.currentTurn == nxt.currentSetter
+              && nxt.turnNumber == cur.turnNumber + 1
+              && !judgeActive(cur))
+          // Judge-active landed→disputable OR Call BS→setReview — letters
+          // unchanged, currentSetter + turnNumber UNCHANGED, currentTurn → judge.
+          || ((nxt.phase == 'disputable' || nxt.phase == 'setReview')
+              && nxt.currentTurn == cur.judgeId
+              && nxt.currentSetter == cur.currentSetter
+              && nxt.turnNumber == cur.turnNumber
+              && nxt.p1Letters == cur.p1Letters
+              && nxt.p2Letters == cur.p2Letters
+              && judgeActive(cur))
+        )
+      )
+      // Completion: winner pinned to the opponent of the player who hit 5
+      // letters; currentSetter + turnNumber UNCHANGED. currentTurn is NOT
+      // pinned — no further game update is permitted once complete.
+      || (nxt.status == 'complete'
+          && nxt.winner != null
+          && nxt.currentSetter == cur.currentSetter
+          && nxt.turnNumber == cur.turnNumber
+          && (
+            (nxt.p1Letters >= 5 && nxt.winner == cur.player2Uid)
+            || (nxt.p2Letters >= 5 && nxt.winner == cur.player1Uid)
+          ));
     }
 
     // ── Games ──
@@ -587,6 +798,16 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && isPlayer(resource.data)
         && resource.data.status == 'active'
+        // Early phase gate (PR claude/video-url-security): every branch of this
+        // rule already requires resource.data.phase == 'setting'. Hoisting it
+        // to the top fails matching-phase writes BEFORE they reach the
+        // expensive currentTrickVideoUrl `.matches()` below — without this, a
+        // matcher's resolution write burns this rule's regex node cost on its
+        // way to the match-resolution rule, and the two `.matches()` calls
+        // together blow Firestore's cumulative 1000-expression evaluation
+        // budget for the request (silent PERMISSION_DENIED). Pure
+        // optimization: the accepted set is unchanged.
+        && resource.data.phase == 'setting'
         && request.auth.uid == resource.data.currentTurn
         // Rate limit: at most one turn action per 2 seconds (prevents write flooding).
         // The cooldown below compares against the STORED updatedAt; without
@@ -668,16 +889,16 @@ service cloud.firestore {
            && request.resource.data.currentTrickName is string
            && request.resource.data.currentTrickName.size() > 0
            && request.resource.data.currentTrickName.size() <= 64
-           && request.resource.data.currentTrickVideoUrl is string
-           // Pin trick-video URL to Firebase Storage hosts only. Without this
-           // anchor, a setter could point currentTrickVideoUrl at any HTTP
-           // origin — exfiltrating viewer IPs via referrer/preconnect, or
-           // serving NSFW/malicious media inside the matcher's recorder UI.
-           // Mirrors the client-side `isFirebaseStorageUrl` helper
-           // (src/utils/helpers.ts): the legacy
-           // firebasestorage.googleapis.com host (literal) and the newer
-           // bucket-as-subdomain *.firebasestorage.app host.
-           && request.resource.data.currentTrickVideoUrl.matches('^https://(firebasestorage\\.googleapis\\.com|[^/]+\\.firebasestorage\\.app)/.+'))
+           // Pin trick-video URL to THIS project's Firebase Storage bucket
+           // only. The legacy regex accepted any `*.firebasestorage.app`
+           // subdomain — which matches ATTACKER-PROJECT.firebasestorage.app
+           // and lets a setter point currentTrickVideoUrl at another
+           // project's storage (referrer/exfil, NSFW/malicious media in
+           // the matcher recorder UI, content-spoof in the clip feed).
+           // videoUrlBucketPinned() accepts both forms (getDownloadURL() and
+           // the bucket-as-host CDN form). Mirrors the matchVideoUrl +
+           // clips.videoUrl pins below.
+           && videoUrlBucketPinned(request.resource.data.currentTrickVideoUrl))
           // setting → setting (setter failed to land, turn passes to opponent)
           //   • currentSetter MUST flip to the other player (the whole point of
           //     failSetTrick is the role passes) — this is the invariant the
@@ -763,63 +984,28 @@ service cloud.firestore {
           || (request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters + 1)
         )
-        // Valid outcomes depend on whether a judge is active.
-        && (
-          // Missed path — immediate resolution, both branches. currentTurn
-          // stays on a player (same setter). Game may complete here.
-          (request.resource.data.status == 'active'
-           && request.resource.data.phase == 'setting'
-           && request.resource.data.winner == null
-           && (
-             request.resource.data.currentTurn == resource.data.player1Uid
-             || request.resource.data.currentTurn == resource.data.player2Uid
-           ))
-          // Completion: pin winner to the opponent of the player who just
-          // hit 5 letters. Without this pin, a losing matcher whose own
-          // counter just reached 5 could write `winner = themselves` —
-          // every read of the doc (leaderboard, clip feed, push, profile)
-          // would then surface the wrong outcome.
-          || (request.resource.data.status == 'complete'
-              && request.resource.data.winner != null
-              && (
-                (request.resource.data.p1Letters >= 5
-                 && request.resource.data.winner == resource.data.player2Uid)
-                || (request.resource.data.p2Letters >= 5
-                    && request.resource.data.winner == resource.data.player1Uid)
-              ))
-          // Honor system + landed — roles swap immediately, no judge routing.
-          // Letters must stay unchanged; currentTurn becomes the matcher
-          // (opponent of resource.data.currentSetter). Only allowed when the
-          // judge is NOT active.
-          || (!judgeActive(resource.data)
-              && request.resource.data.status == 'active'
-              && request.resource.data.phase == 'setting'
-              && request.resource.data.winner == null
-              && request.resource.data.p1Letters == resource.data.p1Letters
-              && request.resource.data.p2Letters == resource.data.p2Letters
-              && request.resource.data.currentTurn == opponentUid(resource.data, resource.data.currentSetter))
-          // Judge-active + landed — enter disputable, route currentTurn to judge.
-          || (judgeActive(resource.data)
-              && request.resource.data.status == 'active'
-              && request.resource.data.phase == 'disputable'
-              && request.resource.data.winner == null
-              && request.resource.data.p1Letters == resource.data.p1Letters
-              && request.resource.data.p2Letters == resource.data.p2Letters
-              && request.resource.data.currentTurn == resource.data.judgeId)
-          // Judge-active + Call BS — enter setReview, route currentTurn to judge.
-          // Letters unchanged; matchVideoUrl unchanged (no attempt recorded).
-          || (judgeActive(resource.data)
-              && request.resource.data.status == 'active'
-              && request.resource.data.phase == 'setReview'
-              && request.resource.data.winner == null
-              && request.resource.data.p1Letters == resource.data.p1Letters
-              && request.resource.data.p2Letters == resource.data.p2Letters
-              && request.resource.data.currentTurn == resource.data.judgeId)
-        )
+        // ── matchVideoUrl bucket pin (audit P2) ──
+        // The matcher writes their attempt video here. Without this pin a
+        // matcher could stash an arbitrary HTTPS URL (or another project's
+        // bucket) into matchVideoUrl, which then flows verbatim into the
+        // dispute UI and the cross-game clip feed — referrer/exfil vector
+        // and content-spoof surface. Accepted shapes mirror the
+        // profileImageUrl pin above: unchanged, explicit null, or a string
+        // matching the project bucket regex.
+        && matchVideoUrlOk(request.resource.data.matchVideoUrl, resource.data.matchVideoUrl)
         // turnHistory growth bound — cap appends to 1 per write and total
         // size to 200 entries. Prevents a 1 MB TurnRecord balloon attack
-        // against the Firestore doc-size ceiling.
-        && turnHistoryGrowthOk();
+        // against the Firestore doc-size ceiling. Evaluated BEFORE the seize
+        // guard so its cheap size-based fast path runs while node budget is
+        // plentiful (the O(n) full-list compare is gated behind a size check
+        // and skipped on the append path — see turnHistoryGrowthOk).
+        && turnHistoryGrowthOk()
+        // ── Turn-order seize guard (P0) ──
+        // Extracted to matchResolutionPinsOk() so this rule stays under
+        // Firestore's per-evaluation node ceiling once main's #373 guard and
+        // this PR's matchVideoUrl `.matches()` pin are both present. Accepted
+        // set is unchanged — see the helper for the per-outcome rationale.
+        && matchResolutionPinsOk(resource.data, request.resource.data);
 
       // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
       // Judge-only. The setter never self-judges — disputes only exist in
@@ -873,6 +1059,14 @@ service cloud.firestore {
           || (request.resource.data.p1Letters == resource.data.p1Letters
               && request.resource.data.p2Letters == resource.data.p2Letters + 1)
         )
+        // ── matchVideoUrl bucket pin (audit P2) ──
+        // Mirrors the match-resolution branch: dispute resolution can flip
+        // matchVideoUrl to a freshly recorded clip, but only when the value
+        // is pinned to this project's bucket. Without this, a judge ruling
+        // could overwrite the matcher's stored URL with an attacker-hosted
+        // payload (or the matcher's pre-rule write could survive into the
+        // judge's flow). Accepted shapes: unchanged, null, or bucket regex.
+        && matchVideoUrlOk(request.resource.data.matchVideoUrl, resource.data.matchVideoUrl)
         // Must resolve to setting (continue) or complete (game over).
         // Completion path pins winner direction (see match-resolution rule
         // for rationale) — judge-overruled dispute that pushes a player to
@@ -1054,6 +1248,14 @@ service cloud.firestore {
         && request.resource.data.turnDeadline is timestamp
         && request.resource.data.turnDeadline > request.time
         && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
+        // ── matchVideoUrl bucket pin (audit P2) ──
+        // Auto-accept finalises the matcher's "landed" call without judge
+        // intervention. The matcher's stored matchVideoUrl is now the canonical
+        // record of the trick — without a bucket pin a participant could
+        // overwrite it on this transition with an attacker-hosted payload
+        // that the clip feed and dispute UI would render verbatim. Same
+        // shape as the match-resolution + dispute branches above.
+        && matchVideoUrlOk(request.resource.data.matchVideoUrl, resource.data.matchVideoUrl)
         // turnHistory growth bound — auto-accept writes a TurnRecord for
         // the expired dispute. Same 1-per-write + ≤200 ceiling.
         && turnHistoryGrowthOk();
@@ -1788,6 +1990,18 @@ service cloud.firestore {
         && request.resource.data.videoUrl is string
         && request.resource.data.videoUrl.size() > 0
         && request.resource.data.videoUrl.size() <= 2048
+        // ── videoUrl bucket pin (audit P2) ──
+        // The clip feed is app-wide readable and renders this URL directly.
+        // Without a host pin, any signed-in participant could stamp an
+        // attacker-hosted URL ("https://attacker.com/payload.html") into
+        // the public feed — same referrer/exfil/content-spoof surface as
+        // matchVideoUrl above. Pin to this project's Firebase Storage
+        // bucket only; mirrors the currentTrickVideoUrl pin on the games
+        // collection — BOTH accepted forms must be allowed here because
+        // `writeLandedClipsInTransaction` copies the (already-pinned)
+        // games video URL into clips.videoUrl verbatim, and the games
+        // rule accepts the bucket-as-host CDN form too.
+        && videoUrlBucketPinned(request.resource.data.videoUrl)
         && (request.resource.data.spotId == null
             || (request.resource.data.spotId is string
                 && request.resource.data.spotId.size() <= 64))

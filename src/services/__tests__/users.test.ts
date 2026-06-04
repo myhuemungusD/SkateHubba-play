@@ -89,8 +89,10 @@ vi.mock("../storage", () => ({
 }));
 
 const mockDeleteUserClips = vi.fn().mockResolvedValue(undefined);
+const mockDeleteUserClipVotes = vi.fn().mockResolvedValue(undefined);
 vi.mock("../clips", () => ({
   deleteUserClips: (...args: unknown[]) => mockDeleteUserClips(...args),
+  deleteUserClipVotes: (...args: unknown[]) => mockDeleteUserClipVotes(...args),
 }));
 
 const mockAccountDeleted = vi.fn();
@@ -457,6 +459,9 @@ describe("users service", () => {
       // Clips cascade invoked before the profile/username batch so the
       // owner-delete rule still has a valid auth context to match playerUid.
       expect(mockDeleteUserClips).toHaveBeenCalledWith("u1");
+      // Votes the user cast are scrubbed in the same phase (GDPR erasure) —
+      // also before the auth/profile teardown so the owner-delete rule matches.
+      expect(mockDeleteUserClipVotes).toHaveBeenCalledWith("u1");
       // Profile + private profile doc + username deleted via batch.
       // Three deletes since the public/private split: the private
       // users/{uid}/private/profile doc holds the sensitive fields

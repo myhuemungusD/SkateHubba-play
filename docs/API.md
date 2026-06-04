@@ -8,14 +8,39 @@ All Firebase operations are contained in `src/services/`. Components and hooks i
 
 ### `UserProfile` (`src/services/users.ts`)
 
+The user record is split into a **public** doc at `users/{uid}` (readable by any
+signed-in user — opponent lookup, leaderboards) and a **private** doc at
+`users/{uid}/private/profile` (owner-only). Sensitive/account-state fields
+(`emailVerified`, `dob`, `fcmTokens`) live on the private doc so a signed-in
+attacker cannot scrape them. `firestore.rules` rejects writes that try to put
+those field names at the top level.
+
+`email` is **not** stored in Firestore at all — Firebase Auth
+(`auth.currentUser.email`) is the canonical source, avoiding a second source of
+truth that could drift.
+
 ```ts
+// Public — users/{uid}
 interface UserProfile {
   uid: string; // Firebase Auth UID — matches Firestore document ID
-  email: string; // From Firebase Auth at profile creation time
   username: string; // Normalized lowercase, 3–20 chars, [a-z0-9_]+
   stance: string; // "Regular" | "Goofy"
-  createdAt: unknown; // Firestore serverTimestamp() — type widened intentionally
-  emailVerified: boolean;
+  createdAt: FieldValue | null; // Firestore serverTimestamp() on write, Timestamp on read
+  wins?: number; // Denormalized leaderboard stats
+  losses?: number;
+  lastStatsGameId?: string; // Idempotency key for stat updates
+  isVerifiedPro?: boolean; // Admin-SDK-only
+  verifiedBy?: string;
+  verifiedAt?: FieldValue | null;
+  profileImageUrl?: string | null; // Avatar download URL, or null
+}
+
+// Private — users/{uid}/private/profile (owner-only readable)
+interface UserPrivateProfile {
+  emailVerified: boolean; // Mirrored from Auth at profile-creation time
+  dob?: string; // YYYY-MM-DD (COPPA/CCPA age gate)
+  parentalConsent?: boolean;
+  fcmTokens?: string[]; // Push registration tokens (≤10, owner-only)
 }
 ```
 
@@ -76,10 +101,15 @@ Subscribes to Firebase Auth state changes. Returns an unsubscribe function. Call
 ### `signUp(email, password)`
 
 ```ts
-signUp(email: string, password: string): Promise<User>
+signUp(email: string, password: string): Promise<SignUpResult>
+
+interface SignUpResult {
+  user: User;
+  verificationEmailSent: boolean;
+}
 ```
 
-Creates an email/password account. Fires a verification email as a side effect (fire-and-forget — does not affect the returned `User`).
+Creates an email/password account and sends a verification email. Resolves with `verificationEmailSent: false` if the verification email fails (e.g. the continue-URI is not in Firebase's authorized domains) — the account is still created and the user can request another via `resendVerification`.
 
 **Throws:** Firebase Auth errors (`auth/email-already-in-use`, `auth/weak-password`, etc.)
 
@@ -275,11 +305,12 @@ Checks whether `turnDeadline` has passed and, if so, sets `status: "forfeit"` an
 ```ts
 subscribeToMyGames(
   uid: string,
-  onUpdate: (games: GameDoc[]) => void
+  onUpdate: (games: GameDoc[]) => void,
+  limitCount?: number // defaults to 20
 ): Unsubscribe
 ```
 
-Runs two parallel Firestore `onSnapshot` queries (`player1Uid == uid` and `player2Uid == uid`). Merges and deduplicates results by document ID. Sorts active games first, then by `turnNumber` descending. Returns a composite unsubscribe that cancels both listeners.
+Defined in `src/services/games.subscriptions.ts`. Runs three parallel Firestore `onSnapshot` queries (`player1Uid == uid`, `player2Uid == uid`, and `judgeId == uid`), each capped at `limitCount`. Merges and deduplicates results by document ID. Sorts active games first, then by `turnNumber` descending. Returns a composite unsubscribe that cancels all three listeners.
 
 ---
 

@@ -67,4 +67,36 @@ describe("Timer", () => {
     });
     expect(screen.getByText("TIME'S UP")).toBeInTheDocument();
   });
+
+  it("does not announce the per-second countdown to screen readers", () => {
+    // The ticking value lives in an aria-label (read on demand), not a live
+    // region, so a polite live region must NOT carry the changing countdown.
+    // Well outside the 2-hour urgency window → calm, empty live region.
+    const deadline = Date.now() + 5 * 60 * 60 * 1000;
+    const { container } = render(<Timer deadline={deadline} />);
+    expect(container.querySelector('[aria-live="polite"]')).toBeNull();
+    // The only live region is the assertive urgency channel, empty while calm.
+    const live = container.querySelector('[aria-live="assertive"]');
+    expect(live).not.toBeNull();
+    expect(live?.textContent).toBe("");
+  });
+
+  it("announces expiry via an assertive live region", () => {
+    const deadline = Date.now() - 1000;
+    const { container } = render(<Timer deadline={deadline} />);
+    const live = container.querySelector('[aria-live="assertive"]');
+    expect(live?.textContent).toBe("Turn timer expired");
+  });
+
+  it("announces urgency once when inside the final two-hour window", () => {
+    const deadline = Date.now() + 60 * 60 * 1000; // 1h left → urgent
+    const { container } = render(<Timer deadline={deadline} />);
+    const live = container.querySelector('[aria-live="assertive"]');
+    expect(live?.textContent).toBe("Less than two hours left on this turn");
+    // Ticking a second keeps the same stable announcement string (no re-chatter).
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(live?.textContent).toBe("Less than two hours left on this turn");
+  });
 });

@@ -39,6 +39,13 @@ const P2_UID = "p2-bob";
 const GAME_ID = "g-turnhistory";
 
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+// Bucket-pinned video URLs — required by the audit-P2 host pin on
+// currentTrickVideoUrl + matchVideoUrl writes. Strings inside turnHistory
+// TurnRecords don't currently go through a rule-level URL check (the
+// growth-cap rule only validates list size + shape), so the values stored
+// via makeTurnRecord stay legacy until/unless that changes.
+const VALID_TRICK_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
+const VALID_MATCH_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
 
 let testEnv: RulesTestEnvironment;
 
@@ -62,8 +69,8 @@ function makeTurnRecord(turnNumber: number, overrides: Record<string, unknown> =
     setterUsername: "alice",
     matcherUid: P2_UID,
     matcherUsername: "bob",
-    setVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
-    matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+    setVideoUrl: VALID_TRICK_URL,
+    matchVideoUrl: VALID_MATCH_URL,
     landed: false,
     letterTo: P2_UID,
     judgedBy: null,
@@ -126,16 +133,13 @@ beforeEach(async () => {
 // Shared matcher-phase seed used by both the live match-resolution suite
 // and the plain-forfeit suite below. Lifted to module scope so the test
 // duplication gate stays clean (`scripts/check-test-duplication.mjs`).
-function seedMatching(
-  existingHistory: unknown[] = [],
-  extraOverrides: Record<string, unknown> = {},
-) {
+function seedMatching(existingHistory: unknown[] = [], extraOverrides: Record<string, unknown> = {}) {
   return seedGame({
     currentTurn: P2_UID,
     currentSetter: P1_UID,
     phase: "matching",
     currentTrickName: "kickflip",
-    currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+    currentTrickVideoUrl: VALID_TRICK_URL,
     turnHistory: existingHistory,
     ...extraOverrides,
   });
@@ -143,7 +147,6 @@ function seedMatching(
 
 describe("games.turnHistory — growth caps", () => {
   describe("match-resolution branch (missed)", () => {
-
     it("legitimate: matcher can append exactly ONE TurnRecord on a missed attempt", async () => {
       await seedMatching([]);
       await assertSucceeds(
@@ -151,6 +154,9 @@ describe("games.turnHistory — growth caps", () => {
           p2Letters: 1,
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber by 1 (games.match.ts 320) —
+          // the P0 turn-order pin now requires it.
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
@@ -228,6 +234,8 @@ describe("games.turnHistory — growth caps", () => {
           p2Letters: 1,
           phase: "setting",
           currentTurn: P1_UID,
+          // Missed-continues advances turnNumber (games.match.ts 320).
+          turnNumber: 2,
           currentTrickName: null,
           currentTrickVideoUrl: null,
           matchVideoUrl: null,
@@ -246,12 +254,12 @@ describe("games.turnHistory — growth caps", () => {
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         turnHistory: [],
       });
       await assertSucceeds(
         updateDoc(gameRef(asP2()), {
-          matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+          matchVideoUrl: VALID_MATCH_URL,
           phase: "setting",
           currentSetter: P2_UID,
           currentTurn: P2_UID,
@@ -269,12 +277,12 @@ describe("games.turnHistory — growth caps", () => {
         currentSetter: P1_UID,
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        currentTrickVideoUrl: VALID_TRICK_URL,
         turnHistory: [],
       });
       await assertFails(
         updateDoc(gameRef(asP2()), {
-          matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+          matchVideoUrl: VALID_MATCH_URL,
           phase: "setting",
           currentSetter: P2_UID,
           currentTurn: P2_UID,
@@ -303,7 +311,7 @@ describe("games.turnHistory — growth caps", () => {
         updateDoc(gameRef(asP1()), {
           phase: "matching",
           currentTrickName: "kickflip",
-          currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+          currentTrickVideoUrl: VALID_TRICK_URL,
           currentTurn: P2_UID,
           turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
           turnHistory: arrayUnion(makeTurnRecord(999)),
@@ -345,10 +353,7 @@ describe("games.turnHistory — growth caps", () => {
         updateDoc(gameRef(asP1()), {
           status: "forfeit",
           winner: P1_UID,
-          turnHistory: arrayUnion(
-            makeTurnRecord(1, { letterTo: P2_UID }),
-            makeTurnRecord(2, { letterTo: P2_UID }),
-          ),
+          turnHistory: arrayUnion(makeTurnRecord(1, { letterTo: P2_UID }), makeTurnRecord(2, { letterTo: P2_UID })),
           updatedAt: serverTimestamp(),
         }),
       );

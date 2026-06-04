@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mockCreateSpot = vi.fn();
@@ -116,5 +116,85 @@ describe("AddSpotSheet", () => {
     expect(ledge.className).toContain("F97316");
     await userEvent.click(ledge);
     expect(ledge.className).not.toContain("F97316");
+  });
+
+  it("closes when Escape is pressed inside the dialog", async () => {
+    const onClose = vi.fn();
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={onClose} onSuccess={vi.fn()} />);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    dialog.focus();
+    await userEvent.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("bounces back to step 1 and shows an error when coords are out of WGS84 range", async () => {
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    // Drive the latitude out of range directly — userEvent.type on a number
+    // input with an existing value would append digits instead of replacing,
+    // which wouldn't actually exceed the [-90, 90] band.
+    const latInput = screen.getByDisplayValue("34.0522");
+    fireEvent.change(latInput, { target: { value: "120" } });
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(screen.getByPlaceholderText(/Hollywood High/i), "Hubba");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+
+    // The guard should land the user back on step 1 with a visible alert,
+    // not leave them on step 3 staring at an opaque banner.
+    await waitFor(() => {
+      expect(screen.getByText("Pin Location")).toBeInTheDocument();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Invalid coordinates");
+    expect(mockCreateSpot).not.toHaveBeenCalled();
+  });
+
+  it("allows the latitude input to be cleared and re-typed without zeroing the pin", async () => {
+    mockCreateSpot.mockResolvedValueOnce(FIXTURE_SPOT);
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    // The original bug: `parseFloat("") || 0` silently flipped the pin to
+    // lat=0 (Atlantic Ocean). After the fix the input text is independent
+    // of the parsed number — clearing leaves the field empty (NaN under
+    // the hood), and typing a new value updates the parsed coord on the
+    // fly so the next submit uses the new coord, never 0.
+    const latInput = screen.getByDisplayValue("34.0522");
+    await userEvent.clear(latInput);
+    expect((latInput as HTMLInputElement).value).toBe("");
+    await userEvent.type(latInput, "37.7749");
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(screen.getByPlaceholderText(/Hollywood High/i), "Hubba");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+
+    await waitFor(() => {
+      expect(mockCreateSpot).toHaveBeenCalledTimes(1);
+    });
+    const [req] = mockCreateSpot.mock.calls[0];
+    expect(req.latitude).toBeCloseTo(37.7749);
+    expect(req.longitude).toBeCloseTo(-118.2437);
+  });
+
+  it("blocks submit and surfaces an error when a coordinate input is left empty", async () => {
+    render(<AddSpotSheet userLocation={{ lat: 34.0522, lng: -118.2437 }} onClose={vi.fn()} onSuccess={vi.fn()} />);
+
+    // Clear latitude and try to walk through the flow without re-typing —
+    // the submit guard's Number.isFinite check must reject NaN rather
+    // than letting the spot create with stale or zeroed coords.
+    const latInput = screen.getByDisplayValue("34.0522");
+    await userEvent.clear(latInput);
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(screen.getByPlaceholderText(/Hollywood High/i), "Hubba");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.click(screen.getByRole("button", { name: /Submit Spot/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Invalid coordinates/i)).toBeInTheDocument();
+    });
+    expect(mockCreateSpot).not.toHaveBeenCalled();
   });
 });

@@ -4,12 +4,14 @@ import { ClockIcon } from "./icons";
 export function Timer({ deadline }: { deadline: number }) {
   const [text, setText] = useState("");
   const [urgent, setUrgent] = useState(false);
+  const [expired, setExpired] = useState(false);
   useEffect(() => {
     const update = () => {
       const diff = deadline - Date.now();
       if (diff <= 0) {
         setText("TIME'S UP");
         setUrgent(true);
+        setExpired(true);
         return true;
       }
       setUrgent(diff < 2 * 3_600_000);
@@ -25,6 +27,11 @@ export function Timer({ deadline }: { deadline: number }) {
     }, 1000);
     return () => clearInterval(id);
   }, [deadline]);
+  // Urgency announcement only — a stable string that changes at most twice
+  // (enters the <2h window, then expires). The per-second countdown is NOT
+  // announced; the static aria-label below carries the current value for a
+  // screen reader that navigates to the element on demand.
+  const announcement = expired ? "Turn timer expired" : urgent ? "Less than two hours left on this turn" : "";
   return (
     <div
       className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border transition-all duration-300 ${
@@ -32,7 +39,6 @@ export function Timer({ deadline }: { deadline: number }) {
           ? "bg-brand-red/[0.06] border-brand-red/30 shadow-[0_0_12px_rgba(255,61,0,0.08)]"
           : "bg-surface-alt border-border"
       }`}
-      aria-live="polite"
     >
       <ClockIcon size={14} className={urgent ? "text-brand-red" : "text-subtle"} />
       <span
@@ -40,6 +46,9 @@ export function Timer({ deadline }: { deadline: number }) {
         aria-label={`Turn timer: ${text}`}
       >
         {text}
+      </span>
+      <span role="status" aria-live="assertive" className="sr-only">
+        {announcement}
       </span>
     </div>
   );

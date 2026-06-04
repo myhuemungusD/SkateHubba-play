@@ -36,6 +36,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, serverTimestamp, setDoc, setLogLevel, updateDoc } from "firebase/firestore";
+import { seedTerminatedGame } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-rate-limit-redteam";
 
@@ -161,11 +162,12 @@ describe("users.lastGameCreatedAt — red-team against stale-timestamp cooldown 
     // even when lastGameCreatedAt already exists on the stored doc.
     // (fcmTokens was used here pre-split; post-split it lives on the
     // private subcollection and is forbidden at the top level.)
+    // Stats writes now also require a backing game doc via
+    // lastStatsGameId — see firestore.rules ownerCanCloseWins.
     await seedUser({ lastGameCreatedAt: new Date(Date.now() - 60_000) });
+    await seedTerminatedGame(testEnv, "g-rl-1", { player1Uid: OWNER_UID, player2Uid: "opp", winner: OWNER_UID });
     await assertSucceeds(
-      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        wins: 1,
-      }),
+      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 1, lastStatsGameId: "g-rl-1" }),
     );
   });
 });
@@ -254,11 +256,12 @@ describe("users.lastSpotCreatedAt — red-team against stale-timestamp cooldown 
     // already exists on the stored doc. (fcmTokens would be rejected by
     // the transitional users-doc-split guard — it lives on the private
     // subcollection post-split, not the public doc.)
+    // Stats writes now also require a backing game doc via
+    // lastStatsGameId — see firestore.rules ownerCanCloseWins.
     await seedUser({ lastSpotCreatedAt: new Date(Date.now() - 60_000) });
+    await seedTerminatedGame(testEnv, "g-rl-2", { player1Uid: OWNER_UID, player2Uid: "opp", winner: OWNER_UID });
     await assertSucceeds(
-      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        wins: 1,
-      }),
+      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 1, lastStatsGameId: "g-rl-2" }),
     );
   });
 
