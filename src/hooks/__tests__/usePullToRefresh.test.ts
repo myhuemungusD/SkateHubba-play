@@ -9,11 +9,19 @@ vi.mock("../../services/haptics", () => ({
 /** Build a pointer-event-shaped object the hook actually reads. The real
  *  React.PointerEvent type has far more fields we don't touch. */
 function pointerEvent(
-  overrides: Partial<{ clientY: number; isPrimary: boolean; currentTarget: { scrollTop: number } }> = {},
+  overrides: Partial<{
+    clientY: number;
+    isPrimary: boolean;
+    cancelable: boolean;
+    preventDefault: () => void;
+    currentTarget: { scrollTop: number };
+  }> = {},
 ) {
   return {
     clientY: 0,
     isPrimary: true,
+    cancelable: true,
+    preventDefault: () => undefined,
     ...overrides,
   } as unknown as React.PointerEvent;
 }
@@ -348,6 +356,49 @@ describe("usePullToRefresh", () => {
       result.current.containerProps.onPointerMove(pointerEvent({ clientY: 450 }));
     });
     expect(haptic).toHaveBeenCalledTimes(1);
+  });
+
+  it("exposes touchAction 'pan-y' so the browser only consults vertical pans for native gestures", () => {
+    const { result } = renderHook(() => usePullToRefresh(vi.fn()));
+    expect(result.current.containerProps.style).toEqual({ touchAction: "pan-y" });
+  });
+
+  it("preventDefaults the first downward move so iOS Safari's native PTR can't claim the gesture", () => {
+    const { result } = renderHook(() => usePullToRefresh(vi.fn()));
+    const preventDefault = vi.fn();
+    act(() => {
+      result.current.containerProps.onPointerDown(pointerEvent({ clientY: 0 }));
+      // 30px is well below the 72px trigger — the point of this test is that
+      // suppression starts at gesture activation, not at commit. Anything else
+      // leaves a window where the native rubber-band wins.
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 30, preventDefault }));
+    });
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips preventDefault when the underlying event is not cancelable", () => {
+    const { result } = renderHook(() => usePullToRefresh(vi.fn()));
+    const preventDefault = vi.fn();
+    act(() => {
+      result.current.containerProps.onPointerDown(pointerEvent({ clientY: 0 }));
+      // Passive listeners and our jsdom test events both report
+      // cancelable=false. Calling preventDefault would either throw or
+      // log a console warning; the guard keeps the hook quiet.
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 30, cancelable: false, preventDefault }));
+    });
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("does not preventDefault upward moves so the page can still scroll after a partial pull", () => {
+    const { result } = renderHook(() => usePullToRefresh(vi.fn()));
+    const preventDefault = vi.fn();
+    act(() => {
+      result.current.containerProps.onPointerDown(pointerEvent({ clientY: 100 }));
+      // dy is negative — user is reversing direction to scroll. Letting the
+      // browser handle this is the whole point of the dy<=0 early-return.
+      result.current.containerProps.onPointerMove(pointerEvent({ clientY: 50, preventDefault }));
+    });
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 
   it("uses the latest onRefresh callback without re-binding pointer handlers", async () => {

@@ -136,6 +136,8 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
             <img
               src="/logonew.webp"
               alt="SkateHubba"
+              width={1536}
+              height={1024}
               draggable={false}
               fetchPriority="high"
               decoding="async"
@@ -478,6 +480,8 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
             <img
               src="/logonew.webp"
               alt=""
+              width={1536}
+              height={1024}
               draggable={false}
               loading="lazy"
               decoding="async"

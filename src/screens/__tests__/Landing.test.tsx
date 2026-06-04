@@ -122,6 +122,20 @@ describe("Landing", () => {
     expect(onNav).toHaveBeenCalledWith("terms");
   });
 
+  it("lazy-loads the below-the-fold footer logo but keeps the nav logo eager", () => {
+    render(<Landing {...defaultProps} />);
+    // Nav logo is the above-the-fold LCP-adjacent image: must NOT lazy-load.
+    const navLogo = screen.getByAltText("SkateHubba");
+    expect(navLogo).not.toHaveAttribute("loading", "lazy");
+    expect(navLogo).toHaveAttribute("fetchpriority", "high");
+    // Footer logo sits far below the fold: defer it to protect initial transfer.
+    const footerLogo = document.querySelector('footer img[src="/logonew.webp"]');
+    expect(footerLogo).toHaveAttribute("loading", "lazy");
+    // Both carry intrinsic dimensions so deferral introduces no layout shift.
+    expect(navLogo).toHaveAttribute("width", "1536");
+    expect(footerLogo).toHaveAttribute("height", "1024");
+  });
+
   it("renders social media links", () => {
     render(<Landing {...defaultProps} />);
     expect(screen.getByLabelText("Follow on X")).toBeInTheDocument();

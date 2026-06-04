@@ -25,6 +25,14 @@ const P1_UID = "p1-alice";
 const P2_UID = "p2-bob";
 const GAME_ID = "g-turn";
 
+// matchVideoUrl must be pinned to THIS project's Firebase Storage bucket
+// (audit-P2 bucket pin in firestore.rules). The legitimate match-resolution
+// writes below carry a recorded attempt video, so they use a bucket-pinned
+// URL — otherwise the pin (correctly) rejects them for a reason unrelated to
+// the turn-order invariant each test is actually exercising.
+const VALID_MATCH_URL =
+  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
+
 let testEnv: RulesTestEnvironment;
 
 function asP1(): RulesTestContext {
@@ -141,7 +149,9 @@ describe("games — red-team regression guards on game state", () => {
       updateDoc(doc(asP1().firestore(), "games", GAME_ID), {
         phase: "matching",
         currentTrickName: "kickflip",
-        currentTrickVideoUrl: "https://firebasestorage.googleapis.com/test/set.webm",
+        // Bucket-pinned per audit-P2 host pin on currentTrickVideoUrl.
+        currentTrickVideoUrl:
+          "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm",
         currentTurn: P2_UID,
         turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
         updatedAt: serverTimestamp(),
@@ -240,7 +250,7 @@ describe("games — P0 match-resolution turn-order seize guard", () => {
         currentTurn: P2_UID, // …but currentTurn seized to the matcher
         turnNumber: 2,
         turnHistory: [{ turnNumber: 1, landed: false, letterTo: P2_UID }],
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
         updatedAt: serverTimestamp(),
       }),
@@ -267,7 +277,7 @@ describe("games — P0 match-resolution turn-order seize guard", () => {
         winner: P1_UID,
         p2Letters: 5,
         turnHistory: [{ turnNumber: 7, landed: false, letterTo: P2_UID }],
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
         updatedAt: serverTimestamp(),
       }),
@@ -297,7 +307,7 @@ describe("games — P0 match-resolution turn-order seize guard", () => {
         p2Letters: 5,
         currentSetter: P2_UID, // SEIZE — must stay P1 on completion
         turnHistory: [{ turnNumber: 7, landed: false, letterTo: P2_UID }],
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
         updatedAt: serverTimestamp(),
       }),
@@ -316,7 +326,7 @@ describe("games — P0 match-resolution turn-order seize guard", () => {
         currentTurn: P1_UID,
         turnNumber: 2,
         turnHistory: [{ turnNumber: 1, landed: false, letterTo: P2_UID }],
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
         updatedAt: serverTimestamp(),
       }),
@@ -335,7 +345,7 @@ describe("games — P0 match-resolution turn-order seize guard", () => {
         currentTurn: P2_UID,
         turnNumber: 2,
         turnHistory: [{ turnNumber: 1, landed: true, letterTo: null }],
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
         updatedAt: serverTimestamp(),
       }),
@@ -380,7 +390,7 @@ describe("games — P0 judge-routing turn-order seize guard", () => {
     await assertSucceeds(
       updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
         phase: "disputable",
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         currentTurn: JUDGE_UID,
         currentSetter: P1_UID, // UNCHANGED
         turnNumber: 3, // UNCHANGED
@@ -400,7 +410,7 @@ describe("games — P0 judge-routing turn-order seize guard", () => {
     await assertFails(
       updateDoc(doc(asP2().firestore(), "games", GAME_ID), {
         phase: "disputable",
-        matchVideoUrl: "https://firebasestorage.googleapis.com/test/match.webm",
+        matchVideoUrl: VALID_MATCH_URL,
         currentTurn: JUDGE_UID,
         currentSetter: P2_UID, // SEIZE — must stay P1 on a judge-routing write
         turnNumber: 3,
