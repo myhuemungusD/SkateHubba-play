@@ -44,10 +44,8 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 // TurnRecords don't currently go through a rule-level URL check (the
 // growth-cap rule only validates list size + shape), so the values stored
 // via makeTurnRecord stay legacy until/unless that changes.
-const VALID_TRICK_URL =
-  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
-const VALID_MATCH_URL =
-  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
+const VALID_TRICK_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
+const VALID_MATCH_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
 
 let testEnv: RulesTestEnvironment;
 
@@ -132,19 +130,23 @@ beforeEach(async () => {
   await testEnv.clearFirestore();
 });
 
+// Shared matcher-phase seed used by both the live match-resolution suite
+// and the plain-forfeit suite below. Lifted to module scope so the test
+// duplication gate stays clean (`scripts/check-test-duplication.mjs`).
+function seedMatching(existingHistory: unknown[] = [], extraOverrides: Record<string, unknown> = {}) {
+  return seedGame({
+    currentTurn: P2_UID,
+    currentSetter: P1_UID,
+    phase: "matching",
+    currentTrickName: "kickflip",
+    currentTrickVideoUrl: VALID_TRICK_URL,
+    turnHistory: existingHistory,
+    ...extraOverrides,
+  });
+}
+
 describe("games.turnHistory — growth caps", () => {
   describe("match-resolution branch (missed)", () => {
-    function seedMatching(existingHistory: unknown[] = []) {
-      return seedGame({
-        currentTurn: P2_UID,
-        currentSetter: P1_UID,
-        phase: "matching",
-        currentTrickName: "kickflip",
-        currentTrickVideoUrl: VALID_TRICK_URL,
-        turnHistory: existingHistory,
-      });
-    }
-
     it("legitimate: matcher can append exactly ONE TurnRecord on a missed attempt", async () => {
       await seedMatching([]);
       await assertSucceeds(
@@ -313,6 +315,62 @@ describe("games.turnHistory — growth caps", () => {
           currentTurn: P2_UID,
           turnDeadline: new Date(Date.now() + TWENTY_FOUR_HOURS_MS),
           turnHistory: arrayUnion(makeTurnRecord(999)),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+  });
+
+  describe("plain-forfeit branch (expired setting/matching turn)", () => {
+    // Forfeit fires when the current-turn player's deadline expires. Either
+    // player may flip status→forfeit + winner→opponent. The plain-forfeit
+    // path now also appends a final closing TurnRecord so consumers walking
+    // turnHistory can render the "how it ended" frame (parity with the
+    // disputable / setReview auto-resolution branches). The +1 / ≤200
+    // ceiling is shared via turnHistoryGrowthOk() — these tests prove the
+    // ceiling actually holds on the forfeit branch.
+    // Reuses the module-scope seedMatching helper; the only delta is a
+    // back-dated turnDeadline so the forfeit `request.time > turnDeadline`
+    // predicate passes.
+    const seedExpiredMatching = (existingHistory: unknown[] = []) =>
+      seedMatching(existingHistory, { turnDeadline: new Date(Date.now() - 60_000) });
+
+    it("legitimate: forfeit with exactly +1 turnHistory entry succeeds", async () => {
+      await seedExpiredMatching([]);
+      await assertSucceeds(
+        updateDoc(gameRef(asP1()), {
+          status: "forfeit",
+          winner: P1_UID,
+          turnHistory: arrayUnion(makeTurnRecord(1, { letterTo: P2_UID })),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("attack: forfeit with +2 turnHistory entries fails", async () => {
+      await seedExpiredMatching([]);
+      await assertFails(
+        updateDoc(gameRef(asP1()), {
+          status: "forfeit",
+          winner: P1_UID,
+          turnHistory: arrayUnion(makeTurnRecord(1, { letterTo: P2_UID }), makeTurnRecord(2, { letterTo: P2_UID })),
+          updatedAt: serverTimestamp(),
+        }),
+      );
+    });
+
+    it("attack: forfeit that mutates an existing turnHistory entry fails", async () => {
+      // Seed with one historical record. A forfeit write that REPLACES the
+      // array (size unchanged but content mutated) violates the helper's
+      // "appended exactly one entry" predicate and must reject — proving
+      // attackers can't quietly rewrite past turns on the forfeit branch.
+      const seeded = [makeTurnRecord(1, { trickName: "kickflip", letterTo: P2_UID })];
+      await seedExpiredMatching(seeded);
+      await assertFails(
+        updateDoc(gameRef(asP1()), {
+          status: "forfeit",
+          winner: P1_UID,
+          turnHistory: [makeTurnRecord(1, { trickName: "tampered", letterTo: P1_UID })],
           updatedAt: serverTimestamp(),
         }),
       );

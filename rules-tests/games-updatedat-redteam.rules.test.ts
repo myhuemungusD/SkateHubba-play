@@ -55,10 +55,8 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const validFutureDeadline = () => new Date(Date.now() + TWENTY_FOUR_HOURS_MS);
 // Bucket-pinned video URLs — required by the audit-P2 host pin on
 // currentTrickVideoUrl + matchVideoUrl writes.
-const VALID_TRICK_URL =
-  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
-const VALID_MATCH_URL =
-  "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
+const VALID_TRICK_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
+const VALID_MATCH_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
 
 let testEnv: RulesTestEnvironment;
 

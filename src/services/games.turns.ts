@@ -170,9 +170,37 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{
     // ── Normal forfeit (setting / matching) ──────────────────
     const winner = getOpponent(game, game.currentTurn);
 
+    // Append a final turn record so consumers walking turnHistory can render
+    // the "how it ended" frame. Without this, the forfeited turn never
+    // appears in the history strip even though status/winner advance — the
+    // disputable/setReview branches above already append, so this kept the
+    // plain-forfeit branch as the inconsistency.
+    const setterUid = game.currentSetter;
+    const matcherUid = getOpponent(game, setterUid);
+    const setterUsername = game.player1Uid === setterUid ? game.player1Username : game.player2Username;
+    const matcherUsername = game.player1Uid === setterUid ? game.player2Username : game.player1Username;
+    const turnRecord: TurnRecord = {
+      turnNumber: game.turnNumber,
+      trickName: game.currentTrickName || "Trick",
+      setterUid,
+      setterUsername,
+      matcherUid,
+      matcherUsername,
+      setVideoUrl: game.currentTrickVideoUrl,
+      matchVideoUrl: game.matchVideoUrl,
+      landed: false,
+      // The forfeited player (whose turn it was) is the loser — record that
+      // they took the letter ending the game. Mirrors the shape used by the
+      // in-progress letter-award flow so history-walkers see a uniform
+      // "this player lost the turn" signal.
+      letterTo: game.currentTurn,
+      judgedBy: null,
+    };
+
     tx.update(gameRef, {
       status: "forfeit",
       winner,
+      turnHistory: arrayUnion(turnRecord),
       updatedAt: serverTimestamp(),
     });
 
