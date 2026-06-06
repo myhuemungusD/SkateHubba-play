@@ -109,8 +109,8 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
         { tokens: arrayRemove(staleToken), updatedAt: serverTimestamp() },
         { merge: true },
       );
-    } catch {
-      // Best-effort: stale token stays until cap forces eviction or sign-out
+    } catch (err) {
+      logger.warn("fcm_stale_token_removal_failed", { uid, error: parseFirebaseError(err) });
     }
   }
 
