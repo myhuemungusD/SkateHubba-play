@@ -10,8 +10,8 @@ name: Deploy Firebase Rules
 # Project resolution:
 #   The deploy job reads the target project ID from the `FIREBASE_PROJECT_ID`
 #   secret first.  If that secret is empty, it falls back to the `default`
-#   project in `.firebaserc` (parsed with `node -p`).  The step fails only
-#   when neither source provides a project ID.
+#   project in `.firebaserc` (parsed with `jq`, preinstalled on GitHub-hosted
+#   runners).  The step fails only when neither source provides a project ID.
 #
 # Authentication:
 #   Uses Google Cloud Workload Identity Federation via
@@ -107,7 +107,10 @@ jobs:
           PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"
           if [ -z "$PROJECT_ID" ]; then
             echo "FIREBASE_PROJECT_ID secret is empty — falling back to .firebaserc"
-            PROJECT_ID=$(node -p "JSON.parse(require('fs').readFileSync('./.firebaserc','utf8')).projects.default || ''")
+            # `// empty` returns "" when .projects or .default is missing,
+            # rather than the literal string "null" that `jq -r .a.b` would
+            # emit. Keeps the `-z` check below correct.
+            PROJECT_ID=$(jq -r '.projects.default // empty' .firebaserc)
           fi
           if [ -z "$PROJECT_ID" ]; then
             echo "::error::Cannot resolve Firebase project ID."

@@ -130,54 +130,65 @@ describe("requestPushPermission", () => {
     const result = await requestPushPermission("u1");
 
     expect(result).toBe("new-token");
-    // 2 (initial) + 4 (remove old + union new on each doc)
+    // 2 (initial) + 4 (union new + remove old on each doc)
     expect(mockSetDoc).toHaveBeenCalledTimes(6);
-    // Stale removes (grouped, best-effort)
+    // New token adds happen FIRST so senders reading pushTargets/{uid}
+    // never see an empty list mid-rotation.
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       3,
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayUnion", value: "new-token" } },
+      { merge: true },
+    );
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      4,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayUnion", value: "new-token" }, updatedAt: "SERVER_TS" },
+      { merge: true },
+    );
+    // Stale removes follow (best-effort, allSettled).
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      5,
       "users/u1/private/profile",
       { fcmTokens: { _op: "arrayRemove", value: "old-token" } },
       { merge: true },
     );
     expect(mockSetDoc).toHaveBeenNthCalledWith(
-      4,
+      6,
       "pushTargets/u1",
       { tokens: { _op: "arrayRemove", value: "old-token" }, updatedAt: "SERVER_TS" },
       { merge: true },
     );
-    // New token adds
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      5,
-      "users/u1/private/profile",
-      { fcmTokens: { _op: "arrayUnion", value: "new-token" } },
-      { merge: true },
-    );
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      6,
-      "pushTargets/u1",
-      { tokens: { _op: "arrayUnion", value: "new-token" }, updatedAt: "SERVER_TS" },
-      { merge: true },
-    );
   });
 
-  it("still stores the new token when stale removal fails", async () => {
+  it("still stores the new token when stale removal fails, and warns once per failed prune", async () => {
     mockRequestPermission.mockResolvedValue("granted");
     mockGetToken.mockResolvedValue("old-token");
     await requestPushPermission("u1");
 
     mockGetToken.mockResolvedValue("new-token");
-    mockSetDoc.mockRejectedValueOnce(new Error("permission-denied"));
+    // Queue: succeed the 2 new-token writes, then reject the private-profile
+    // prune. The mirror prune must still run (Promise.allSettled) and
+    // succeed under the default mock.
+    mockSetDoc
+      .mockResolvedValueOnce(undefined as unknown as void)
+      .mockResolvedValueOnce(undefined as unknown as void)
+      .mockRejectedValueOnce(new Error("permission-denied"));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const result = await requestPushPermission("u1");
+
     expect(result).toBe("new-token");
-    // 2 (initial) + 1 (failed remove) + 2 (new adds) = 5
-    expect(mockSetDoc).toHaveBeenCalledTimes(5);
-    expect(mockSetDoc).toHaveBeenNthCalledWith(
-      4,
-      "users/u1/private/profile",
-      { fcmTokens: { _op: "arrayUnion", value: "new-token" } },
-      { merge: true },
-    );
+    // 6 = 2 initial + 2 new adds + 2 prune attempts. Anything <6 would mean
+    // Promise.allSettled short-circuited and left one doc with a stale entry.
+    expect(mockSetDoc).toHaveBeenCalledTimes(6);
+    // Telemetry: the rejected prune surfaces as a structured warn — silent
+    // catches were the failure mode this polish replaces.
+    expect(warnSpy).toHaveBeenCalledWith("[WARN]", "fcm_stale_token_removal_failed", {
+      uid: "u1",
+      error: "permission-denied",
+    });
+    warnSpy.mockRestore();
   });
 
   it("skips pruning when the same token is re-acquired", async () => {
