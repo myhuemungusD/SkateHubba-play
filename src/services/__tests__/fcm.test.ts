@@ -120,6 +120,90 @@ describe("requestPushPermission", () => {
     );
   });
 
+  it("prunes the stale token when FCM rotates this device's token", async () => {
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockResolvedValue("old-token");
+    await requestPushPermission("u1");
+    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+
+    mockGetToken.mockResolvedValue("new-token");
+    const result = await requestPushPermission("u1");
+
+    expect(result).toBe("new-token");
+    // 2 (initial) + 4 (remove old + union new on each doc)
+    expect(mockSetDoc).toHaveBeenCalledTimes(6);
+    // Stale removes (grouped, best-effort)
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      3,
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayRemove", value: "old-token" } },
+      { merge: true },
+    );
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      4,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayRemove", value: "old-token" }, updatedAt: "SERVER_TS" },
+      { merge: true },
+    );
+    // New token adds
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      5,
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayUnion", value: "new-token" } },
+      { merge: true },
+    );
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      6,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayUnion", value: "new-token" }, updatedAt: "SERVER_TS" },
+      { merge: true },
+    );
+  });
+
+  it("still stores the new token when stale removal fails", async () => {
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockResolvedValue("old-token");
+    await requestPushPermission("u1");
+
+    mockGetToken.mockResolvedValue("new-token");
+    mockSetDoc.mockRejectedValueOnce(new Error("permission-denied"));
+
+    const result = await requestPushPermission("u1");
+    expect(result).toBe("new-token");
+    // 2 (initial) + 1 (failed remove) + 2 (new adds) = 5
+    expect(mockSetDoc).toHaveBeenCalledTimes(5);
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      4,
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayUnion", value: "new-token" } },
+      { merge: true },
+    );
+  });
+
+  it("skips pruning when the same token is re-acquired", async () => {
+    mockRequestPermission.mockResolvedValue("granted");
+    mockGetToken.mockResolvedValue("same-token");
+    await requestPushPermission("u1");
+    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+
+    const result = await requestPushPermission("u1");
+    expect(result).toBe("same-token");
+    // No arrayRemove calls — only the normal 2 arrayUnion writes
+    expect(mockSetDoc).toHaveBeenCalledTimes(4);
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      3,
+      "users/u1/private/profile",
+      { fcmTokens: { _op: "arrayUnion", value: "same-token" } },
+      { merge: true },
+    );
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      4,
+      "pushTargets/u1",
+      { tokens: { _op: "arrayUnion", value: "same-token" }, updatedAt: "SERVER_TS" },
+      { merge: true },
+    );
+  });
+
   it("returns null when getToken returns empty", async () => {
     mockRequestPermission.mockResolvedValue("granted");
     mockGetToken.mockResolvedValue("");

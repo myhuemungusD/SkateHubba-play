@@ -7,6 +7,12 @@ name: Deploy Firebase Rules
 # app code are explicitly excluded to preserve the "no Cloud Functions in
 # PRs" invariant documented in .github/BRANCH_PROTECTION.md and CLAUDE.md.
 #
+# Project resolution:
+#   The deploy job reads the target project ID from the `FIREBASE_PROJECT_ID`
+#   secret first.  If that secret is empty, it falls back to the `default`
+#   project in `.firebaserc` (parsed with `node -p`).  The step fails only
+#   when neither source provides a project ID.
+#
 # Authentication:
 #   Uses Google Cloud Workload Identity Federation via
 #   `google-github-actions/auth@v2` when both `FIREBASE_WIF_PROVIDER` and
@@ -100,10 +106,15 @@ jobs:
         run: |
           PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}"
           if [ -z "$PROJECT_ID" ]; then
-            echo "::error::FIREBASE_PROJECT_ID secret is not set."
-            echo "Add it in GitHub → Settings → Secrets and variables → Actions."
+            echo "FIREBASE_PROJECT_ID secret is empty — falling back to .firebaserc"
+            PROJECT_ID=$(node -p "JSON.parse(require('fs').readFileSync('./.firebaserc','utf8')).projects.default || ''")
+          fi
+          if [ -z "$PROJECT_ID" ]; then
+            echo "::error::Cannot resolve Firebase project ID."
+            echo "Set the FIREBASE_PROJECT_ID secret, or add a default project to .firebaserc."
             exit 1
           fi
+          echo "Resolved project: $PROJECT_ID"
           echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
 
       - name: Detect available credentials

@@ -95,6 +95,25 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
   if (!token) return null;
 
   const db = requireDb();
+  const staleToken = activeFcmToken && activeFcmToken !== token ? activeFcmToken : null;
+
+  if (staleToken) {
+    try {
+      await setDoc(
+        doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+        { fcmTokens: arrayRemove(staleToken) },
+        { merge: true },
+      );
+      await setDoc(
+        doc(db, PUSH_TARGETS_COLLECTION, uid),
+        { tokens: arrayRemove(staleToken), updatedAt: serverTimestamp() },
+        { merge: true },
+      );
+    } catch {
+      // Best-effort: stale token stays until cap forces eviction or sign-out
+    }
+  }
+
   await setDoc(
     doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
     { fcmTokens: arrayUnion(token) },
