@@ -61,6 +61,14 @@
         { "fieldPath": "recipientUid", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "games",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "turnDeadline", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

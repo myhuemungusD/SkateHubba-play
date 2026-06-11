@@ -5,6 +5,10 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsBuildInfo",
     "types": ["vitest/globals", "@testing-library/jest-dom/vitest", "node"]
   },
-  "include": ["src"],
+  // `api` is included so the server-layer tests (sweep handler + parity), which
+  // import the cron handler from `api/cron/`, type-check here. The api files are
+  // also in `tsconfig.api.json`; both projects set `noEmit`, so there is no
+  // duplicate-output conflict.
+  "include": ["src", "api"],
   "exclude": []
 }

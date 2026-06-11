@@ -127,8 +127,11 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{
  * Translate the SDK-agnostic `ForfeitGameUpdate` into a Firebase web-SDK write
  * object: epoch-ms deadlines become `Timestamp`s, the optional turn record is
  * appended via `arrayUnion`, and `updatedAt` is always stamped server-side.
+ *
+ * @internal Exported for the parity test that proves the server's
+ * `toAdminGameUpdate` produces the same logical write. Not consumed elsewhere.
  */
-function toWebGameUpdate(update: ForfeitGameUpdate): Record<string, unknown> {
+export function toWebGameUpdate(update: ForfeitGameUpdate): Record<string, unknown> {
   const out: Record<string, unknown> = { updatedAt: serverTimestamp() };
   if (update.status !== undefined) out.status = update.status;
   if (update.winner !== undefined) out.winner = update.winner;

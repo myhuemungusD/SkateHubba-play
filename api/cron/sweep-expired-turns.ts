@@ -24,6 +24,7 @@
  *   • Dry-run: `?dryRun=1` (or DRY_RUN=1) logs intended forfeits, writes nothing.
  */
 
+import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
 import { decideExpiredForfeit, type ForfeitGameUpdate } from "../../src/services/turnForfeit.shared";
@@ -97,13 +98,26 @@ function getAdminFirestore(): Firestore {
   return getFirestore(cachedApp, FIRESTORE_DB_NAME);
 }
 
-/** Constant-time-ish bearer check against CRON_SECRET. */
+/**
+ * Constant-time bearer check against CRON_SECRET.
+ *
+ * Fail-closed: returns false when CRON_SECRET is unset, the header is missing,
+ * or it is empty. The token comparison uses `crypto.timingSafeEqual` so a
+ * network attacker cannot recover the secret byte-by-byte via response timing.
+ * timingSafeEqual throws on unequal-length buffers, so we length-guard first —
+ * the length check itself is not constant-time, but only leaks the secret's
+ * length, not its bytes.
+ */
 function isAuthorized(req: CronRequest): boolean {
   const secret = process.env.CRON_SECRET;
   if (!secret) return false;
   const header = req.headers["authorization"] ?? req.headers["Authorization"];
   const value = Array.isArray(header) ? header[0] : header;
-  return value === `Bearer ${secret}`;
+  if (!value) return false;
+  const expected = Buffer.from(`Bearer ${secret}`);
+  const actual = Buffer.from(value);
+  if (actual.length !== expected.length) return false;
+  return timingSafeEqual(actual, expected);
 }
 
 function isDryRun(req: CronRequest): boolean {
@@ -120,8 +134,11 @@ function isDryRun(req: CronRequest): boolean {
  * Translate the SDK-agnostic `ForfeitGameUpdate` into an admin-SDK write
  * object. Mirrors `toWebGameUpdate` in games.turns.ts exactly, but uses the
  * admin SDK's Timestamp / FieldValue so the persisted document is identical.
+ *
+ * @internal Exported for the parity test that proves this stays byte-identical
+ * to the client's `toWebGameUpdate`. Not part of the handler's public surface.
  */
-function toAdminGameUpdate(update: ForfeitGameUpdate): Record<string, unknown> {
+export function toAdminGameUpdate(update: ForfeitGameUpdate): Record<string, unknown> {
   const out: Record<string, unknown> = { updatedAt: FieldValue.serverTimestamp() };
   if (update.status !== undefined) out.status = update.status;
   if (update.winner !== undefined) out.winner = update.winner;
