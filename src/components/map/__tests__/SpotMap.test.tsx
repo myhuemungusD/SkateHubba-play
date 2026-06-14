@@ -227,6 +227,23 @@ describe("SpotMap", () => {
     });
   });
 
+  it("does NOT inject a runtime <style> tag on mount (CSP regression for #339)", async () => {
+    // Pulse-ring / user-dot / accuracy-halo CSS used to be injected via a
+    // runtime <style id="spot-pulse-css"> from spotMapStyles.ts. After the
+    // CSP `style-src` was tightened to drop `'unsafe-inline'`, those rules
+    // were moved into src/index.css so they ship in the compiled bundle.
+    // Guard against a future regression that re-introduces runtime injection.
+    render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(mockGetSpotsInBounds).toHaveBeenCalled();
+    });
+    expect(document.head.querySelector("style#spot-pulse-css")).toBeNull();
+  });
+
   it("logs a warning but does not crash when the bounds query fails", async () => {
     mockGetSpotsInBounds.mockRejectedValueOnce(new Error("network down"));
     render(
