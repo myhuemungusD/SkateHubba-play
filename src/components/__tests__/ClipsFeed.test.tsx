@@ -585,9 +585,9 @@ describe("ClipsFeed", () => {
 
       // Regression guard: out-of-viewport BEFORE play() resolves must NOT
       // pause() — that revokes the muted-autoplay grant on mobile Safari.
-      // Wait for the observer to register: the clip's text commits before
-      // the IntersectionObserver effect flushes, so a bare synchronous read
-      // of `ioCallback` is racy and intermittently null in CI.
+      //
+      // The IO callback registers in a useEffect that flushes after the
+      // clip's text commits, so await it instead of reading synchronously.
       await waitFor(() => expect(ioCallback).toBeTruthy());
       const outOfView = { isIntersecting: false, target: videoEl } as unknown as IntersectionObserverEntry;
       ioCallback!([outOfView], {} as IntersectionObserver);
