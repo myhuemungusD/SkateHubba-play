@@ -47,9 +47,10 @@ export async function initSentry(config: SentryInitConfig): Promise<void> {
   const SentryReact = await import("@sentry/react");
 
   if (Capacitor.isNativePlatform()) {
-    // @sentry/capacitor v3 pins @sentry/react@10.43.0 as a peer. If we
-    // ever bump @sentry/react we must bump @sentry/capacitor in lockstep
-    // — see scripts/check-siblings.js inside the package for the guard.
+    // @sentry/capacitor pins @sentry/react to an exact minor as a peer
+    // (see its peerDependencies in package-lock.json). If we ever bump
+    // @sentry/react we must bump @sentry/capacitor in lockstep — see
+    // scripts/check-siblings.js inside the package for the guard.
     const SentryCapacitor = await import("@sentry/capacitor");
     SentryCapacitor.init(config, SentryReact.init);
     sdk = SentryCapacitor as unknown as SentryLike;
