@@ -476,6 +476,14 @@ describe("getSpotsInBounds", () => {
     await expect(getSpotsInBounds({ north: 0, south: 1, east: 0, west: 0 })).rejects.toThrow(/Invalid/);
     await expect(getSpotsInBounds({ north: NaN, south: 0, east: 0, west: 0 })).rejects.toThrow(/Invalid/);
   });
+
+  it.each<{ label: string; bounds: { north: number; south: number; east: number; west: number } }>([
+    { label: "south is NaN", bounds: { north: 1, south: NaN, east: 0, west: 0 } },
+    { label: "east is Infinity", bounds: { north: 1, south: 0, east: Infinity, west: 0 } },
+    { label: "west is -Infinity", bounds: { north: 1, south: 0, east: 0, west: -Infinity } },
+  ])("rejects when $label", async ({ bounds }) => {
+    await expect(getSpotsInBounds(bounds)).rejects.toThrow(/Invalid/);
+  });
 });
 
 /* ────────────────────────────────────────────
