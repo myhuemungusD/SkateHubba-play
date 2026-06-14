@@ -59,6 +59,7 @@
     "zod": "^4.3.6"
   },
   "overrides": {
+    "@grpc/grpc-js": "^1.14.4",
     "http-proxy-agent": "^7.0.2",
     "@xmldom/xmldom": "^0.9.10",
     "uuid": "^14.0.0",
