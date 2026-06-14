@@ -42,3 +42,21 @@ export function makeGameDoc(overrides: Partial<GameDoc> = {}): GameDoc {
     ...overrides,
   };
 }
+
+/**
+ * Build an expired GameDoc whose phase is `disputable` — the auto-accept path
+ * the cron handler and the decision tests both exercise. Shared so the two
+ * suites agree on the canonical disputable fixture (trick + videos + spot).
+ */
+export function makeDisputableGameDoc(overrides: Partial<GameDoc> = {}): GameDoc {
+  return makeGameDoc({
+    phase: "disputable",
+    currentSetter: "p1",
+    currentTurn: "p1",
+    currentTrickName: "Heelflip",
+    currentTrickVideoUrl: "https://vid/set.webm",
+    matchVideoUrl: "https://vid/match.webm",
+    spotId: "spot-1",
+    ...overrides,
+  });
+}

@@ -3,42 +3,27 @@ import { describe, it, expect } from "vitest";
 import { decideExpiredForfeit } from "../turnForfeit.shared";
 import { TURN_DURATION_MS } from "../turnDuration";
 import type { GameDoc } from "../games.mappers";
+import { FORFEIT_NOW as NOW, makeDeadline, makeDisputableGameDoc, makeGameDoc } from "./turnForfeit.test-helpers";
 
-const NOW = 1_700_000_000_000;
-
-/** Minimal Timestamp-like stub: only `toMillis` is read by the helper. */
-function deadline(ms: number): GameDoc["turnDeadline"] {
-  return { toMillis: () => ms } as unknown as GameDoc["turnDeadline"];
-}
-
+// The shared fixture in test-helpers.ts pre-populates trick/video/letters; the
+// decision tests assert against zeroed defaults, so each case overrides the
+// fields it exercises.
 function baseGame(overrides: Partial<GameDoc> = {}): GameDoc {
-  return {
-    id: "g1",
-    player1Uid: "p1",
-    player2Uid: "p2",
-    player1Username: "alice",
-    player2Username: "bob",
+  return makeGameDoc({
     p1Letters: 0,
     p2Letters: 0,
-    status: "active",
-    currentTurn: "p1",
-    phase: "setting",
-    currentSetter: "p1",
+    turnNumber: 1,
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    turnDeadline: deadline(NOW - 1),
-    turnNumber: 1,
-    winner: null,
-    createdAt: null,
-    updatedAt: null,
+    spotId: null,
     ...overrides,
-  };
+  });
 }
 
 describe("decideExpiredForfeit", () => {
   it("returns null when the deadline has not passed", () => {
-    const game = baseGame({ turnDeadline: deadline(NOW + 1) });
+    const game = baseGame({ turnDeadline: makeDeadline(NOW + 1) });
     expect(decideExpiredForfeit(game, NOW, "g1")).toBeNull();
   });
 
@@ -48,7 +33,7 @@ describe("decideExpiredForfeit", () => {
   });
 
   it("returns null when deadline resolves to 0", () => {
-    const game = baseGame({ turnDeadline: deadline(0) });
+    const game = baseGame({ turnDeadline: makeDeadline(0) });
     expect(decideExpiredForfeit(game, NOW, "g1")).toBeNull();
   });
 
@@ -99,15 +84,9 @@ describe("decideExpiredForfeit", () => {
   });
 
   it("auto-accepts an expired disputable phase (matcher's landed call stands)", () => {
-    const game = baseGame({
-      phase: "disputable",
-      currentSetter: "p1",
-      currentTurn: "p1",
-      currentTrickName: "Heelflip",
-      currentTrickVideoUrl: "https://vid/set.webm",
-      matchVideoUrl: "https://vid/match.webm",
-      spotId: "spot-1",
-    });
+    // makeDisputableGameDoc already pre-populates trick/videos/spot so this
+    // test exercises the full landed-clip branch with the shared fixture.
+    const game = makeDisputableGameDoc({ p1Letters: 0, p2Letters: 0, turnNumber: 1 });
 
     const decision = decideExpiredForfeit(game, NOW, "g1");
     expect(decision!.kind).toBe("disputeAccept");
