@@ -2,9 +2,11 @@ import { collection, doc, runTransaction, serverTimestamp, Timestamp, arrayUnion
 import { requireDb } from "../firebase";
 import { metrics } from "./logger";
 import { writeLandedClipsInTransaction } from "./clips";
-import { toGameDoc, type GameDoc, type TurnRecord } from "./games.mappers";
+import { toGameDoc, type GameDoc } from "./games.mappers";
+import { TURN_DURATION_MS } from "./turnDuration";
+import { decideExpiredForfeit, type ForfeitGameUpdate } from "./turnForfeit.shared";
 
-export const TURN_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
+export { TURN_DURATION_MS };
 
 export function gamesRef() {
   return collection(requireDb(), "games");
@@ -92,119 +94,55 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{
     if (!snap.exists()) return { forfeited: false, winner: null };
 
     const game = toGameDoc(snap);
-    if (game.status !== "active") return { forfeited: false, winner: null };
 
-    const deadline = game.turnDeadline?.toMillis?.() ?? 0;
-    if (deadline === 0 || Date.now() < deadline) {
-      return { forfeited: false, winner: null };
-    }
+    // Decision logic lives in the SDK-agnostic helper so the client and the
+    // server "auto-referee" cron sweep can never diverge. Returns null when
+    // the game is no longer active or the deadline hasn't passed.
+    const decision = decideExpiredForfeit(game, Date.now(), gameId);
+    if (!decision) return { forfeited: false, winner: null };
 
-    // ── Disputable phase expired → auto-accept matcher's "landed" call ──
-    if (game.phase === "disputable") {
-      const matcherUid = getOpponent(game, game.currentSetter);
-      const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
-      const matcherUsernameVal = game.player1Uid === game.currentSetter ? game.player2Username : game.player1Username;
+    tx.update(gameRef, toWebGameUpdate(decision.gameUpdate));
 
-      // Roles swap: matcher (who landed) becomes next setter
-      const nextSetter = matcherUid;
-
-      const turnRecord: TurnRecord = {
-        turnNumber: game.turnNumber,
-        trickName: game.currentTrickName || "Trick",
-        setterUid: game.currentSetter,
-        setterUsername,
-        matcherUid,
-        matcherUsername: matcherUsernameVal,
-        setVideoUrl: game.currentTrickVideoUrl,
-        matchVideoUrl: game.matchVideoUrl,
-        landed: true,
-        letterTo: null,
-        judgedBy: null, // auto-accept, no judge ruled explicitly
-      };
-
-      tx.update(gameRef, {
-        phase: "setting",
-        currentSetter: nextSetter,
-        currentTurn: nextSetter,
-        turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
-        turnNumber: game.turnNumber + 1,
-        turnHistory: arrayUnion(turnRecord),
-        p1Letters: game.p1Letters,
-        p2Letters: game.p2Letters,
-        judgeReviewFor: null,
-        updatedAt: serverTimestamp(),
-      });
-
+    if (decision.landedClips) {
       // Auto-accept: matcher's landed call stands, so both set and match are
       // confirmed landed clips for the feed.
-      writeLandedClipsInTransaction(tx, {
-        gameId,
-        turnNumber: game.turnNumber,
-        trickName: game.currentTrickName || "Trick",
-        setterUid: game.currentSetter,
-        setterUsername,
-        matcherUid,
-        matcherUsername: matcherUsernameVal,
-        setVideoUrl: game.currentTrickVideoUrl,
-        matchVideoUrl: game.matchVideoUrl,
-        matcherLanded: true,
-        spotId: game.spotId ?? null,
-      });
-
-      return { forfeited: false, winner: null, disputeAutoAccepted: true };
+      writeLandedClipsInTransaction(tx, decision.landedClips);
     }
 
-    // ── setReview phase expired → benefit of doubt to setter (set stands) ──
-    if (game.phase === "setReview") {
-      const matcherUid = getOpponent(game, game.currentSetter);
-      tx.update(gameRef, {
-        phase: "matching",
-        currentTurn: matcherUid,
-        judgeReviewFor: null,
-        turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
-        updatedAt: serverTimestamp(),
-      });
+    if (decision.kind === "disputeAccept") {
+      return { forfeited: false, winner: null, disputeAutoAccepted: true };
+    }
+    if (decision.kind === "setReviewClear") {
       return { forfeited: false, winner: null, setReviewAutoCleared: true };
     }
 
-    // ── Normal forfeit (setting / matching) ──────────────────
-    const winner = getOpponent(game, game.currentTurn);
-
-    // Append a final turn record so consumers walking turnHistory can render
-    // the "how it ended" frame. Without this, the forfeited turn never
-    // appears in the history strip even though status/winner advance — the
-    // disputable/setReview branches above already append, so this kept the
-    // plain-forfeit branch as the inconsistency.
-    const setterUid = game.currentSetter;
-    const matcherUid = getOpponent(game, setterUid);
-    const setterUsername = game.player1Uid === setterUid ? game.player1Username : game.player2Username;
-    const matcherUsername = game.player1Uid === setterUid ? game.player2Username : game.player1Username;
-    const turnRecord: TurnRecord = {
-      turnNumber: game.turnNumber,
-      trickName: game.currentTrickName || "Trick",
-      setterUid,
-      setterUsername,
-      matcherUid,
-      matcherUsername,
-      setVideoUrl: game.currentTrickVideoUrl,
-      matchVideoUrl: game.matchVideoUrl,
-      landed: false,
-      // The forfeited player (whose turn it was) is the loser — record that
-      // they took the letter ending the game. Mirrors the shape used by the
-      // in-progress letter-award flow so history-walkers see a uniform
-      // "this player lost the turn" signal.
-      letterTo: game.currentTurn,
-      judgedBy: null,
-    };
-
-    tx.update(gameRef, {
-      status: "forfeit",
-      winner,
-      turnHistory: arrayUnion(turnRecord),
-      updatedAt: serverTimestamp(),
-    });
-
+    // Terminal forfeit — winner is non-null by construction for this kind.
+    const winner = decision.winnerUid as string;
     metrics.gameForfeit(gameId, winner);
     return { forfeited: true, winner };
   });
+}
+
+/**
+ * Translate the SDK-agnostic `ForfeitGameUpdate` into a Firebase web-SDK write
+ * object: epoch-ms deadlines become `Timestamp`s, the optional turn record is
+ * appended via `arrayUnion`, and `updatedAt` is always stamped server-side.
+ *
+ * @internal Exported for the parity test that proves the server's
+ * `toAdminGameUpdate` produces the same logical write. Not consumed elsewhere.
+ */
+export function toWebGameUpdate(update: ForfeitGameUpdate): Record<string, unknown> {
+  const out: Record<string, unknown> = { updatedAt: serverTimestamp() };
+  if (update.status !== undefined) out.status = update.status;
+  if (update.winner !== undefined) out.winner = update.winner;
+  if (update.phase !== undefined) out.phase = update.phase;
+  if (update.currentSetter !== undefined) out.currentSetter = update.currentSetter;
+  if (update.currentTurn !== undefined) out.currentTurn = update.currentTurn;
+  if (update.turnDeadlineMs !== undefined) out.turnDeadline = Timestamp.fromMillis(update.turnDeadlineMs);
+  if (update.turnNumber !== undefined) out.turnNumber = update.turnNumber;
+  if (update.p1Letters !== undefined) out.p1Letters = update.p1Letters;
+  if (update.p2Letters !== undefined) out.p2Letters = update.p2Letters;
+  if (update.judgeReviewFor !== undefined) out.judgeReviewFor = update.judgeReviewFor;
+  if (update.appendTurnRecord !== undefined) out.turnHistory = arrayUnion(update.appendTurnRecord);
+  return out;
 }
