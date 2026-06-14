@@ -15,12 +15,7 @@ interface SpotMapUnavailableProps {
  */
 export function SpotMapUnavailable({ onRetry }: SpotMapUnavailableProps) {
   return (
-    <div
-      role="alert"
-      aria-live="polite"
-      className="w-full flex items-center justify-center bg-background"
-      style={{ height: "100dvh" }}
-    >
+    <div role="alert" aria-live="polite" className="w-full h-dvh flex items-center justify-center bg-background">
       <div className="text-center px-6 max-w-xs flex flex-col items-center">
         <div
           className="w-14 h-14 rounded-full bg-surface-alt border border-[#333] flex items-center justify-center mb-4"

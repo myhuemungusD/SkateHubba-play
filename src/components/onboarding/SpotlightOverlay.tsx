@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
-import { Z_TUTORIAL_OVERLAY } from "./constants";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Z_TUTORIAL_OVERLAY_CLASS } from "./constants";
 import { logger } from "../../services/logger";
 
 interface Rect {
@@ -48,6 +48,13 @@ function readRect(selector: string): Rect | null {
  */
 export function SpotlightOverlay({ targetSelector, reducedMotion, onAnchorMissing, children }: SpotlightOverlayProps) {
   const [rect, setRect] = useState<Rect | null>(null);
+  // The highlight rect is a runtime measurement (getBoundingClientRect), so its
+  // top/left/width/height can't be expressed as build-time Tailwind classes.
+  // We write them through the CSSOM via refs instead of an inline `style=`
+  // attribute so the CSP `style-src` can drop `'unsafe-inline'` — CSSOM writes
+  // (element.style.x = y) are not governed by `style-src`, unlike `style=`.
+  const cutoutRef = useRef<HTMLDivElement | null>(null);
+  const ringRef = useRef<HTMLDivElement | null>(null);
 
   useLayoutEffect(() => {
     if (!targetSelector) return;
@@ -149,39 +156,41 @@ export function SpotlightOverlay({ targetSelector, reducedMotion, onAnchorMissin
   // ring disappears.
   const effectiveRect = targetSelector ? rect : null;
 
+  // Push the measured geometry onto the cutout + ring via the CSSOM. Runs after
+  // the conditional render commits the elements, so the refs are populated when
+  // a rect exists and null when it's cleared.
+  useLayoutEffect(() => {
+    for (const el of [cutoutRef.current, ringRef.current]) {
+      if (!el) continue;
+      if (effectiveRect) {
+        el.style.top = `${effectiveRect.top}px`;
+        el.style.left = `${effectiveRect.left}px`;
+        el.style.width = `${effectiveRect.width}px`;
+        el.style.height = `${effectiveRect.height}px`;
+      }
+    }
+  }, [effectiveRect]);
+
   const ringPulse = reducedMotion ? "" : "motion-safe:animate-pulse";
 
   return (
-    <div
-      className="fixed inset-0 pointer-events-none"
-      style={{ zIndex: Z_TUTORIAL_OVERLAY }}
-      data-testid="spotlight-overlay"
-    >
+    <div className={`fixed inset-0 pointer-events-none ${Z_TUTORIAL_OVERLAY_CLASS}`} data-testid="spotlight-overlay">
       {effectiveRect && (
         <>
-          {/* Soft glow halo behind the ring for depth without dimming the page */}
+          {/* Soft glow halo behind the ring for depth without dimming the page.
+              Geometry is applied via the CSSOM in the layout effect above; the
+              static glow shadow stays a Tailwind arbitrary-value class. */}
           <div
+            ref={cutoutRef}
             aria-hidden="true"
             data-testid="spotlight-cutout"
-            className="absolute rounded-2xl pointer-events-none"
-            style={{
-              top: effectiveRect.top,
-              left: effectiveRect.left,
-              width: effectiveRect.width,
-              height: effectiveRect.height,
-              boxShadow: "0 0 0 4px rgba(255, 107, 0, 0.18), 0 0 32px 8px rgba(255, 107, 0, 0.25)",
-            }}
+            className="absolute rounded-2xl pointer-events-none shadow-[0_0_0_4px_rgba(255,107,0,0.18),0_0_32px_8px_rgba(255,107,0,0.25)]"
           />
           {/* Pulsing accent ring around the highlighted target */}
           <div
+            ref={ringRef}
             aria-hidden="true"
             className={`absolute rounded-2xl border-2 border-brand-orange pointer-events-none ${ringPulse}`}
-            style={{
-              top: effectiveRect.top,
-              left: effectiveRect.left,
-              width: effectiveRect.width,
-              height: effectiveRect.height,
-            }}
           />
         </>
       )}

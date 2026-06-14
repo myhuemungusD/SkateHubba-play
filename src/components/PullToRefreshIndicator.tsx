@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import { TRIGGER_DISTANCE, type PullToRefreshState } from "../hooks/usePullToRefresh";
 
 /**
@@ -18,7 +19,6 @@ export function PullToRefreshIndicator({
   triggerReached: boolean;
 }) {
   const visible = state !== "idle" || offset > 0;
-  if (!visible) return null;
 
   const label = state === "refreshing" ? "Refreshing…" : triggerReached ? "Release to refresh" : "Pull to refresh";
 
@@ -30,12 +30,30 @@ export function PullToRefreshIndicator({
   // so a future threshold tune doesn't silently desync the visual calc.
   const rotation = state === "refreshing" ? 0 : triggerReached ? 180 : Math.min(180, (offset / TRIGGER_DISTANCE) * 180);
 
+  // offset/opacity/rotation are continuous gesture values, so they can't be
+  // build-time Tailwind classes. Apply them through the CSSOM via refs rather
+  // than inline `style=` attributes so the CSP `style-src` can drop
+  // `'unsafe-inline'`.
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const arrowRef = useRef<SVGSVGElement | null>(null);
+  useLayoutEffect(() => {
+    if (wrapperRef.current) {
+      wrapperRef.current.style.height = `${offset}px`;
+      wrapperRef.current.style.opacity = String(Math.min(1, offset / 48));
+    }
+    if (arrowRef.current) {
+      arrowRef.current.style.transform = `rotate(${rotation}deg)`;
+    }
+  }, [offset, rotation]);
+
+  if (!visible) return null;
+
   return (
     <div
+      ref={wrapperRef}
       role="status"
       aria-live="polite"
       className="pointer-events-none absolute left-0 right-0 top-0 flex flex-col items-center justify-end"
-      style={{ height: `${offset}px`, opacity: Math.min(1, offset / 48) }}
     >
       <div className="mb-2 flex items-center gap-2 rounded-full border border-border bg-surface/80 px-3 py-1.5 backdrop-blur-sm shadow-[0_4px_16px_rgba(0,0,0,0.25)]">
         {state === "refreshing" ? (
@@ -45,6 +63,7 @@ export function PullToRefreshIndicator({
           />
         ) : (
           <svg
+            ref={arrowRef}
             width="14"
             height="14"
             viewBox="0 0 24 24"
@@ -55,7 +74,6 @@ export function PullToRefreshIndicator({
             strokeLinejoin="round"
             aria-hidden="true"
             className={`text-brand-orange transition-transform duration-200 ${triggerReached ? "text-brand-green" : ""}`}
-            style={{ transform: `rotate(${rotation}deg)` }}
           >
             <line x1="12" y1="5" x2="12" y2="19" />
             <polyline points="19 12 12 19 5 12" />
