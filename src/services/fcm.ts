@@ -95,6 +95,12 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
   if (!token) return null;
 
   const db = requireDb();
+  const staleToken = activeFcmToken && activeFcmToken !== token ? activeFcmToken : null;
+
+  // Write the new token BEFORE pruning the old one. Senders read
+  // pushTargets/{uid} when composing a /push_dispatch doc; reversing this
+  // order would leave a brief window where the mirror is empty and routed
+  // pushes silently no-op.
   await setDoc(
     doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
     { fcmTokens: arrayUnion(token) },
@@ -108,6 +114,32 @@ async function acquireAndStoreToken(uid: string): Promise<string | null> {
 
   // Cache so sign-out can scrub exactly this device's token.
   activeFcmToken = token;
+
+  if (staleToken) {
+    // Best-effort prune. allSettled so a single rejection doesn't leave
+    // the other doc with a dangling stale entry — each surface fails
+    // independently and is logged for telemetry. A leaked stale token is
+    // capped at the dispatch layer (see pushDispatch.ts) and eventually
+    // evicted on the next rotation or sign-out.
+    const results = await Promise.allSettled([
+      setDoc(
+        doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID),
+        { fcmTokens: arrayRemove(staleToken) },
+        { merge: true },
+      ),
+      setDoc(
+        doc(db, PUSH_TARGETS_COLLECTION, uid),
+        { tokens: arrayRemove(staleToken), updatedAt: serverTimestamp() },
+        { merge: true },
+      ),
+    ]);
+    for (const r of results) {
+      if (r.status === "rejected") {
+        logger.warn("fcm_stale_token_removal_failed", { uid, error: parseFirebaseError(r.reason) });
+      }
+    }
+  }
+
   return token;
 }
 
