@@ -3,7 +3,9 @@ import { getLeaderboard, type UserProfile } from "../services/users";
 import { getBlockedUserIds } from "../services/blocking";
 import { ProUsername } from "./ProUsername";
 
-const RANK_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32"] as const; // gold, silver, bronze
+// gold, silver, bronze. Expressed as Tailwind text-color utility classes
+// (literal arbitrary values) so the CSP `style-src` can drop `'unsafe-inline'`.
+const RANK_COLOR_CLASSES = ["text-[#FFD700]", "text-[#C0C0C0]", "text-[#CD7F32]"] as const;
 
 export function Leaderboard({
   currentUserUid,
@@ -107,7 +109,7 @@ export function Leaderboard({
           const losses = p.losses ?? 0;
           const total = wins + losses;
           const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
-          const rankColor = i < 3 ? RANK_COLORS[i] : undefined;
+          const rankColorClass = i < 3 ? RANK_COLOR_CLASSES[i] : undefined;
 
           return (
             <div
@@ -121,10 +123,11 @@ export function Leaderboard({
               <div className="flex items-center gap-3 min-w-0">
                 {/* Rank */}
                 <span
-                  className="font-display text-[15px] w-6 text-center shrink-0 leading-none tabular-nums"
-                  style={rankColor ? { color: rankColor } : undefined}
+                  className={`font-display text-[15px] w-6 text-center shrink-0 leading-none tabular-nums ${
+                    rankColorClass ?? ""
+                  }`}
                 >
-                  {rankColor ? (
+                  {rankColorClass ? (
                     <span className="drop-shadow-[0_0_4px_rgba(255,215,0,0.3)]">{i + 1}</span>
                   ) : (
                     <span className="text-subtle">{i + 1}</span>

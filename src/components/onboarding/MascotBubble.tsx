@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useLayoutEffect, useRef } from "react";
 import { HubzMascot, type HubzState } from "./HubzMascot";
 import { playHaptic } from "../../services/haptics";
 
@@ -83,6 +83,15 @@ export function MascotBubble({
   // shows a sliver of grip rather than rendering as completely fresh.
   const wornPct = Math.max(0, Math.min(100, ((stepIndex + 1) / Math.max(totalSteps, 1)) * 100));
 
+  // wornPct is a runtime value, so the grip-strip fill width can't be a
+  // build-time Tailwind class. Apply it through the CSSOM via a ref rather than
+  // an inline `style=` attribute so the CSP `style-src` can drop
+  // `'unsafe-inline'`.
+  const gripFillRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (gripFillRef.current) gripFillRef.current.style.width = `${wornPct}%`;
+  }, [wornPct]);
+
   return (
     <div
       className={`glass-card rounded-2xl px-4 py-3 shadow-2xl ring-1 ring-brand-orange/20 ${enterAnim}`}
@@ -143,8 +152,8 @@ export function MascotBubble({
           <rect width="100%" height="100%" filter={`url(#${filterId})`} />
         </svg>
         <div
+          ref={gripFillRef}
           className="absolute inset-y-0 left-0 bg-gradient-to-r from-brand-orange/80 to-brand-orange"
-          style={{ width: `${wornPct}%` }}
         />
       </div>
 

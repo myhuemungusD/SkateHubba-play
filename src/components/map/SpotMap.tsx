@@ -203,7 +203,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProp
   }
 
   return (
-    <div className="relative w-full" style={{ height: "100dvh" }}>
+    <div className="relative w-full h-dvh">
       <div ref={mapContainer} className="w-full h-full" />
 
       {/* Map loading overlay. If the load event doesn't fire within 15s we

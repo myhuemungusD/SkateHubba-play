@@ -42,11 +42,7 @@ class MapErrorBoundary extends Component<{ children: ReactNode; onReset?: () => 
     if (this.state.hasError) {
       const showReload = this.state.retryAttempted;
       return (
-        <div
-          role="alert"
-          className="w-full flex items-center justify-center bg-background"
-          style={{ height: "100dvh" }}
-        >
+        <div role="alert" className="w-full h-dvh flex items-center justify-center bg-background">
           <div className="text-center px-6 max-w-xs">
             <p className="text-[#CCC] text-sm mb-1">
               {showReload ? "The map still isn't loading." : "Something went wrong loading the map."}

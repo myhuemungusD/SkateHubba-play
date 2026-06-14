@@ -24,24 +24,34 @@ export type LandingProps = {
 
 const BRAND_ICON_CLASS = "text-brand-orange";
 
+// Per-step circle styling is expressed as Tailwind utility classes (literal
+// arbitrary values) rather than inline styles so the CSP `style-src` can drop
+// `'unsafe-inline'`. The colors here mirror the previous inline values
+// (#FF6B00 / #FF8533 / #FFA366) with their original alpha suffixes.
 const HOW_IT_WORKS = [
   {
     step: "01",
     label: "Film It",
     desc: "One take. One chance. Land your trick on camera or don't bother.",
-    color: "#FF6B00",
+    circleClass:
+      "bg-[radial-gradient(circle,#FF6B0018,#FF6B0008)] border border-[#FF6B0025] shadow-[0_0_30px_#FF6B0010]",
+    numClass: "text-[#FF6B00]",
   },
   {
     step: "02",
     label: "Send the Challenge",
     desc: "Call out your opponent. They got 24 hours to match it or eat a letter.",
-    color: "#FF8533",
+    circleClass:
+      "bg-[radial-gradient(circle,#FF853318,#FF853308)] border border-[#FF853325] shadow-[0_0_30px_#FF853310]",
+    numClass: "text-[#FF8533]",
   },
   {
     step: "03",
     label: "Spell It Out",
     desc: "Miss the trick, take the letter. S-K-A-T-E and you're done.",
-    color: "#FFA366",
+    circleClass:
+      "bg-[radial-gradient(circle,#FFA36618,#FFA36608)] border border-[#FFA36625] shadow-[0_0_30px_#FFA36610]",
+    numClass: "text-[#FFA366]",
   },
 ] as const;
 
@@ -334,16 +344,9 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
               <div key={item.step} className="relative flex flex-col items-center text-center">
                 {/* Step circle */}
                 <div
-                  className="w-16 h-16 rounded-full flex items-center justify-center mb-5 relative z-10"
-                  style={{
-                    background: `radial-gradient(circle, ${item.color}18, ${item.color}08)`,
-                    border: `1px solid ${item.color}25`,
-                    boxShadow: `0 0 30px ${item.color}10`,
-                  }}
+                  className={`w-16 h-16 rounded-full flex items-center justify-center mb-5 relative z-10 ${item.circleClass}`}
                 >
-                  <span className="font-display text-xl" style={{ color: item.color }}>
-                    {item.step}
-                  </span>
+                  <span className={`font-display text-xl ${item.numClass}`}>{item.step}</span>
                 </div>
                 <h3 className="font-display text-xl text-white tracking-wide mb-2">{item.label}</h3>
                 <p className="font-body text-sm text-faint leading-relaxed max-w-[260px]">{item.desc}</p>
@@ -368,11 +371,9 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
                   {["S", "K", "A", "T", "E"].map((l, i) => (
                     <span
                       key={l}
-                      className="font-display text-xl"
-                      style={{
-                        color: i < 2 ? "#FF3D00" : "#222",
-                        textShadow: i < 2 ? "0 0 8px rgba(255,61,0,0.4)" : "none",
-                      }}
+                      className={`font-display text-xl ${
+                        i < 2 ? "text-[#FF3D00] [text-shadow:0_0_8px_rgba(255,61,0,0.4)]" : "text-[#222]"
+                      }`}
                     >
                       {l}
                     </span>

@@ -66,7 +66,7 @@ export const NextClipPrefetcher = memo(function NextClipPrefetcher({ src }: { sr
       // which some browsers honour by aborting the network fetch.
       aria-hidden="true"
       tabIndex={-1}
-      style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
+      className="absolute w-0 h-0 opacity-0 pointer-events-none"
     />
   );
 });

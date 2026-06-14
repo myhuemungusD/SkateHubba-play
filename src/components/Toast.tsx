@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useLayoutEffect } from "react";
 import type { AppNotification } from "../context/NotificationContext";
 import { notificationIcon, notificationAccentBg, notificationAccentText } from "../lib/notificationMeta";
 const SWIPE_THRESHOLD = 80;
@@ -8,6 +8,24 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
   const [dragX, setDragX] = useState(0);
   const dragXRef = useRef(0);
   const startXRef = useRef<number | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+
+  // transform/opacity track the continuous pointer-drag, so they can't be
+  // build-time Tailwind classes. Apply them through the CSSOM via a ref rather
+  // than an inline `style=` attribute so the CSP `style-src` can drop
+  // `'unsafe-inline'`. Cleared back to "" at rest so the element carries no
+  // stray inline transform once a swipe is released.
+  useLayoutEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    if (dragX > 0) {
+      el.style.transform = `translateX(${dragX}px)`;
+      el.style.opacity = String(1 - dragX / 200);
+    } else {
+      el.style.transform = "";
+      el.style.opacity = "";
+    }
+  }, [dragX]);
 
   const dismiss = useCallback(() => {
     setExiting(true);
@@ -47,14 +65,10 @@ export function Toast({ notification, onDismiss }: { notification: AppNotificati
 
   return (
     <div
+      ref={rootRef}
       role="status"
       aria-live="polite"
       className={`relative flex items-start gap-3 p-3.5 pr-8 rounded-2xl glass-card shadow-[0_8px_32px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] overflow-hidden touch-pan-y select-none ${exiting ? "animate-toast-out" : "animate-toast-in"}`}
-      // Inline style required: transform/opacity are driven by continuous pointer drag state
-      style={{
-        transform: dragX > 0 ? `translateX(${dragX}px)` : undefined,
-        opacity: dragX > 0 ? 1 - dragX / 200 : undefined,
-      }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

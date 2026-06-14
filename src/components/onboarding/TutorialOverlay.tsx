@@ -4,7 +4,7 @@ import { useOnboardingContext } from "../../context/OnboardingContext";
 import { TUTORIAL_STEPS } from "./tutorialSteps";
 import { MascotBubble } from "./MascotBubble";
 import { SpotlightOverlay } from "./SpotlightOverlay";
-import { Z_TUTORIAL_OVERLAY } from "./constants";
+import { Z_TUTORIAL_OVERLAY_CLASS } from "./constants";
 import type { HubzState } from "./HubzMascot";
 
 function mascotStateForStep(stepIndex: number, isFinal: boolean): HubzState {
@@ -184,8 +184,7 @@ export function TutorialOverlay() {
         <div
           aria-hidden="true"
           data-testid="tutorial-ghost-letter"
-          className="pointer-events-none fixed top-10 right-6 motion-safe:animate-graffiti-drip"
-          style={{ zIndex: Z_TUTORIAL_OVERLAY }}
+          className={`pointer-events-none fixed top-10 right-6 motion-safe:animate-graffiti-drip ${Z_TUTORIAL_OVERLAY_CLASS}`}
         >
           <span className="font-display text-7xl text-brand-orange opacity-90 select-none">S</span>
         </div>
