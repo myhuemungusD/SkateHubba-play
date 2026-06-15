@@ -78,6 +78,30 @@ export interface ForfeitLandedClips {
   spotId: string | null;
 }
 
+/**
+ * "Your turn" notification side-effect that accompanies a turn-advancing
+ * resolution (disputeAccept + setReviewClear). `null` for the terminal forfeit
+ * branch (the game ends — nobody's turn is next).
+ *
+ * This is a SIDE-EFFECT descriptor, NOT part of the game-state write. Both SDK
+ * paths read the SAME `notification` value, but they MATERIALIZE it differently:
+ *   • Server sweep (admin SDK) ALWAYS writes it — the recipient is the away
+ *     player and admin bypasses firestore.rules.
+ *   • Client (web SDK) writes it ONLY when the recipient is not the caller,
+ *     because the /notifications create rule forbids self-notify
+ *     (senderUid == auth.uid AND recipientUid != auth.uid). The game-state
+ *     write is identical regardless — only this side-effect is conditional.
+ */
+export interface ForfeitNotification {
+  /** Player to alert that it's now their turn. */
+  recipientUid: string;
+  /** Notification author — the player whose inaction triggered the resolution. */
+  senderUid: string;
+  type: "your_turn";
+  title: string;
+  body: string;
+}
+
 export interface ForfeitDecision {
   kind: ForfeitKind;
   /** Winner UID for a terminal forfeit; null for the non-terminal branches. */
@@ -88,6 +112,13 @@ export interface ForfeitDecision {
   gameUpdate: ForfeitGameUpdate;
   /** Landed-clip context to write (disputeAccept only). */
   landedClips: ForfeitLandedClips | null;
+  /**
+   * "Your turn" notification for the turn-advancing branches; `null` for plain
+   * forfeit. Identical across both SDK paths — the client may conditionally
+   * skip EMITTING it (self-notify rule), but the decision value itself is the
+   * same regardless of caller.
+   */
+  notification: ForfeitNotification | null;
 }
 
 /**
@@ -160,12 +191,24 @@ export function decideExpiredForfeit(game: GameDoc, nowMs: number, gameId: strin
         matcherLanded: true,
         spotId: game.spotId ?? null,
       },
+      // Roles swapped: the matcher who landed becomes the next setter. Alert
+      // them it's their turn. Sender is the prior setter whose expired dispute
+      // window triggered the auto-accept.
+      notification: {
+        recipientUid: nextSetter,
+        senderUid: game.currentSetter,
+        type: "your_turn",
+        title: "Your Turn to Set!",
+        body: `You landed @${setterUsername}'s ${trickName}. Set a trick!`,
+      },
     };
   }
 
   // ── setReview phase expired → benefit of doubt to setter (set stands) ──
   if (game.phase === "setReview") {
     const matcherUid = opponentOf(game, game.currentSetter);
+    const setterUsername = game.player1Uid === game.currentSetter ? game.player1Username : game.player2Username;
+    const trickName = game.currentTrickName || "Trick";
     return {
       kind: "setReviewClear",
       winnerUid: null,
@@ -177,6 +220,15 @@ export function decideExpiredForfeit(game: GameDoc, nowMs: number, gameId: strin
         turnDeadlineMs: newDeadlineMs,
       },
       landedClips: null,
+      // The set stood; the matcher is now on the clock. Alert them it's their
+      // turn. Sender is the setter, whose unreviewed trick was ruled clean.
+      notification: {
+        recipientUid: matcherUid,
+        senderUid: game.currentSetter,
+        type: "your_turn",
+        title: "Your Turn!",
+        body: `Match @${setterUsername}'s ${trickName}`,
+      },
     };
   }
 
@@ -216,5 +268,7 @@ export function decideExpiredForfeit(game: GameDoc, nowMs: number, gameId: strin
       appendTurnRecord: turnRecord,
     },
     landedClips: null,
+    // Game ends here — nobody's turn is next, so no "your turn" notification.
+    notification: null,
   };
 }

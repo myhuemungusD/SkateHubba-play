@@ -2,6 +2,8 @@ import { collection, doc, runTransaction, serverTimestamp, Timestamp, arrayUnion
 import { requireDb } from "../firebase";
 import { metrics } from "./logger";
 import { writeLandedClipsInTransaction } from "./clips";
+import { writeNotificationInTx } from "./notifications";
+import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 import { toGameDoc, type GameDoc } from "./games.mappers";
 import { TURN_DURATION_MS } from "./turnDuration";
 import { decideExpiredForfeit, type ForfeitGameUpdate } from "./turnForfeit.shared";
@@ -79,8 +81,19 @@ export function _turnActionMapSize(): number {
  *   • `setting` / `matching`  → active player forfeits (opponent wins)
  *   • `disputable`            → matcher's "landed" call auto-accepted
  *   • `setReview`             → setter's trick auto-ruled clean
+ *
+ * `callerUid` is the acting user's uid (the player whose tab triggered this
+ * speculative resolve). It gates the "your turn" notification: the
+ * disputable/setReview phases can be triggered by EITHER participant, so the
+ * player advanced by the resolution is often the caller themselves. The
+ * /notifications create rule forbids self-notify (senderUid == auth.uid AND
+ * recipientUid != auth.uid), so emitting one would abort the whole transaction.
+ * Pass `null` only from contexts with no signed-in user (none today).
  */
-export async function forfeitExpiredTurn(gameId: string): Promise<{
+export async function forfeitExpiredTurn(
+  gameId: string,
+  callerUid: string | null,
+): Promise<{
   forfeited: boolean;
   winner: string | null;
   disputeAutoAccepted?: boolean;
@@ -88,8 +101,12 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{
   setReviewAutoCleared?: boolean;
 }> {
   const gameRef = doc(requireDb(), "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
 
-  return runTransaction(requireDb(), async (tx) => {
+  const result = await runTransaction(requireDb(), async (tx) => {
+    // Reset on every tx body invocation so a retry doesn't accumulate
+    // duplicate push dispatches.
+    resetPushDispatchOutbox(pushOutbox);
     const snap = await tx.get(gameRef);
     if (!snap.exists()) return { forfeited: false, winner: null };
 
@@ -101,12 +118,38 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{
     const decision = decideExpiredForfeit(game, Date.now(), gameId);
     if (!decision) return { forfeited: false, winner: null };
 
+    // GAME-STATE write is identical regardless of who the caller is — this is
+    // what keeps the client and the admin sweep byte-for-byte in parity.
     tx.update(gameRef, toWebGameUpdate(decision.gameUpdate));
 
     if (decision.landedClips) {
       // Auto-accept: matcher's landed call stands, so both set and match are
       // confirmed landed clips for the feed.
       writeLandedClipsInTransaction(tx, decision.landedClips);
+    }
+
+    // Emit the "your turn" notification ONLY when the advanced player is not
+    // the caller. The disputable/setReview phases let either participant
+    // trigger the resolve, so the recipient is frequently the caller — and the
+    // /notifications create rule denies a self-notify (recipientUid must differ
+    // from auth.uid), which would roll back this entire transaction. Skipping
+    // is also correct on its own terms: a caller who triggered the resolve is
+    // demonstrably in the app and doesn't need to be told it's their turn. The
+    // game-state write above already happened unconditionally, so the server
+    // sweep (which always notifies the away player) stays in parity.
+    if (decision.notification && decision.notification.recipientUid !== callerUid) {
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: decision.notification.senderUid,
+          recipientUid: decision.notification.recipientUid,
+          type: decision.notification.type,
+          title: decision.notification.title,
+          body: decision.notification.body,
+          gameId,
+        },
+        pushOutbox,
+      );
     }
 
     if (decision.kind === "disputeAccept") {
@@ -121,6 +164,10 @@ export async function forfeitExpiredTurn(gameId: string): Promise<{
     metrics.gameForfeit(gameId, winner);
     return { forfeited: true, winner };
   });
+
+  // Fire any staged push AFTER the tx commits (never on retries/rollbacks).
+  void drainPushDispatchOutbox(pushOutbox);
+  return result;
 }
 
 /**
