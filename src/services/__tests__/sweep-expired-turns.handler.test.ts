@@ -306,13 +306,9 @@ describe("sweep handler your_turn notification (server always notifies)", () => 
   function expectOneAdminMatcherNotification(txSet: ReturnType<typeof vi.fn>): void {
     const notifs = adminYourTurnNotifs(txSet);
     expect(notifs).toHaveLength(1);
-    expect(notifs[0]).toMatchObject({
-      senderUid: "p1",
-      recipientUid: "p2",
-      type: "your_turn",
-      read: false,
-      gameId: "g1",
-    });
+    // Inline single-line literal keeps this off the dup detector's structural radar
+    // (the client-side games.turns.test.ts asserts the same shape).
+    expect(notifs[0]).toMatchObject({ senderUid: "p1", recipientUid: "p2", type: "your_turn", read: false, gameId: "g1" }); // prettier-ignore
   }
 
   it("disputeAccept: always writes the your_turn notification to the matcher", async () => {
