@@ -1,0 +1,231 @@
+name: Release Pipeline Freshness
+
+# Catches the silent failure mode where a release-please PR merges to main but
+# the follow-up git tag + GitHub Release never lands. Historical reference:
+# release-please PR #247 merged 2026-04-19 and sat untagged for ~2 months before
+# anyone noticed. There is no exception event to react to — release-please's PR
+# simply finishes with no tag and no error — so we poll daily.
+#
+# Mirrors the alert pattern from firebase-rules-deploy.yml: a single open issue
+# carrying the `release-pipeline-stuck` label is reused (commented on) instead
+# of spamming a new issue per failed scheduled run.
+
+on:
+  schedule:
+    # 12:00 UTC daily. Far enough from the rules-deploy cron (07:00 UTC) that
+    # the two never contend for the same alert-issue creation path, and inside
+    # weekday working hours for US + EU so a new alert is seen the same day.
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: release-pipeline-freshness
+  cancel-in-progress: false
+
+jobs:
+  check-release-tag-freshness:
+    name: Verify release-please tags are in sync
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo with full tag history
+        uses: actions/checkout@v4
+        with:
+          # Shallow clone is fine for the working tree, but we explicitly need
+          # all tags so the script can resolve `v*` tags against merge SHAs.
+          fetch-depth: 1
+          fetch-tags: true
+
+      - name: Detect stuck release-please PRs and missing tags
+        id: detect
+        uses: actions/github-script@v7
+        env:
+          MANIFEST_PATH: .release-please-manifest.json
+        with:
+          script: |
+            const fs = require('fs');
+            const { owner, repo } = context.repo;
+
+            // -----------------------------------------------------------------
+            // 1. Find the most recent merged release-please PR.
+            //    release-please uses these title patterns (v4):
+            //      "chore: release main"
+            //      "chore(main): release <version>"
+            //      "chore(main): release X.Y.Z"
+            //    We match by label first (most reliable), title as a fallback.
+            // -----------------------------------------------------------------
+            const titleRe = /^chore(\(main\))?: release(\s+main)?(\s+\d+\.\d+\.\d+.*)?$/i;
+
+            const recentPRs = await github.paginate(
+              github.rest.pulls.list,
+              { owner, repo, state: 'closed', sort: 'updated', direction: 'desc', per_page: 50 },
+              (res) => res.data
+            );
+
+            const releasePRs = recentPRs.filter((pr) => {
+              if (!pr.merged_at) return false;
+              const hasReleaseLabel = pr.labels.some((l) =>
+                l.name === 'autorelease: pending' ||
+                l.name === 'autorelease: tagged' ||
+                l.name === 'autorelease: snapshot'
+              );
+              return hasReleaseLabel || titleRe.test(pr.title);
+            });
+
+            const problems = [];
+
+            if (releasePRs.length === 0) {
+              core.info('No merged release-please PRs found in the last 50 closed PRs. Nothing to check.');
+            } else {
+              const latest = releasePRs[0];
+              const labels = latest.labels.map((l) => l.name);
+              core.info(`Latest release PR: #${latest.number} "${latest.title}" labels=${JSON.stringify(labels)}`);
+
+              // -----------------------------------------------------------------
+              // 2. Stuck label check. If the PR still carries `autorelease: pending`
+              //    days after merge, release-please never finished its tag step.
+              //    Exactly the failure mode of #247.
+              // -----------------------------------------------------------------
+              const isPending = labels.includes('autorelease: pending');
+              const isTagged = labels.includes('autorelease: tagged');
+              const mergedAt = new Date(latest.merged_at);
+              const ageHours = (Date.now() - mergedAt.getTime()) / 36e5;
+
+              if (isPending && !isTagged && ageHours > 24) {
+                problems.push(
+                  `- PR #${latest.number} (\`${latest.title}\`) merged ${ageHours.toFixed(1)}h ago ` +
+                  `still labelled \`autorelease: pending\`; expected \`autorelease: tagged\`.`
+                );
+              }
+
+              // -----------------------------------------------------------------
+              // 3. Merge-SHA vs tag check. Confirm a v* tag points at the PR's
+              //    merge commit. Walk recent tags rather than guessing version.
+              // -----------------------------------------------------------------
+              const mergeSha = latest.merge_commit_sha;
+              if (mergeSha && isTagged) {
+                const tags = await github.paginate(
+                  github.rest.repos.listTags,
+                  { owner, repo, per_page: 50 },
+                  (res) => res.data
+                );
+                const tagAtMerge = tags.find((t) => t.commit.sha === mergeSha && t.name.startsWith('v'));
+                if (!tagAtMerge) {
+                  problems.push(
+                    `- PR #${latest.number} is labelled \`autorelease: tagged\` but no \`v*\` tag ` +
+                    `points at merge SHA \`${mergeSha}\`.`
+                  );
+                }
+              }
+            }
+
+            // -----------------------------------------------------------------
+            // 4. Manifest cross-check. Every version named in the manifest must
+            //    have a corresponding remote tag. Catches the case where the
+            //    manifest was bumped (release PR opened) but the tag step
+            //    failed before listTags would surface it via path 3.
+            // -----------------------------------------------------------------
+            const manifestPath = process.env.MANIFEST_PATH;
+            if (fs.existsSync(manifestPath)) {
+              const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+              const allTags = await github.paginate(
+                github.rest.repos.listTags,
+                { owner, repo, per_page: 100 },
+                (res) => res.data.map((t) => t.name)
+              );
+              const tagSet = new Set(allTags);
+
+              for (const [pkgPath, version] of Object.entries(manifest)) {
+                const expected = `v${version}`;
+                if (!tagSet.has(expected)) {
+                  const where = pkgPath === '.' ? 'root package' : pkgPath;
+                  problems.push(
+                    `- Manifest declares ${where} at \`${version}\` but no \`${expected}\` tag exists on the remote.`
+                  );
+                }
+              }
+            } else {
+              core.warning(`Manifest not found at ${manifestPath}; skipping manifest check.`);
+            }
+
+            // -----------------------------------------------------------------
+            // 5. Surface findings to the next step.
+            // -----------------------------------------------------------------
+            if (problems.length === 0) {
+              core.info('Release pipeline looks healthy — all tags accounted for.');
+              core.setOutput('stuck', 'false');
+              return;
+            }
+
+            const body = [
+              'The **Release Pipeline Freshness** check detected one or more anomalies that match the failure mode of the silent April→June 2026 outage (PR #247):',
+              '',
+              ...problems,
+              '',
+              `- Run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+              `- Commit: \`${context.sha}\``,
+              '',
+              'See [`docs/release-pipeline-runbook.md`](../blob/main/docs/release-pipeline-runbook.md) for recovery steps.',
+              '',
+              '_This issue is auto-managed; repeat detections add comments rather than new issues._',
+            ].join('\n');
+
+            core.setOutput('stuck', 'true');
+            core.setOutput('body', body);
+
+      - name: Open or update alert issue
+        if: steps.detect.outputs.stuck == 'true'
+        uses: actions/github-script@v7
+        env:
+          ALERT_BODY: ${{ steps.detect.outputs.body }}
+        with:
+          script: |
+            const label = 'release-pipeline-stuck';
+            const title = '[release-pipeline] release-please appears stuck — manual recovery required';
+            const body = process.env.ALERT_BODY;
+
+            // Ensure the label exists (idempotent).
+            try {
+              await github.rest.issues.getLabel({ ...context.repo, name: label });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  ...context.repo,
+                  name: label,
+                  color: 'b60205',
+                  description: 'Automated alert: release-please tagging is stuck',
+                });
+              } else {
+                throw e;
+              }
+            }
+
+            // Reuse the single open alert issue if one exists.
+            const existing = await github.rest.issues.listForRepo({
+              ...context.repo,
+              state: 'open',
+              labels: label,
+              per_page: 1,
+            });
+
+            if (existing.data.length > 0) {
+              const number = existing.data[0].number;
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: number,
+                body,
+              });
+              core.notice(`Updated existing alert issue #${number}.`);
+            } else {
+              const created = await github.rest.issues.create({
+                ...context.repo,
+                title,
+                body,
+                labels: [label],
+              });
+              core.notice(`Opened alert issue #${created.data.number}.`);
+            }
