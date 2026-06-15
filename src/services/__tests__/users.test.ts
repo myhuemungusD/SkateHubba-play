@@ -23,7 +23,10 @@ const {
     mockGetDoc: vi.fn(),
     mockGetDocs: vi.fn(),
     mockSetDoc: vi.fn(),
-    mockDeleteDoc: vi.fn(),
+    // Default to a resolved promise so the Phase 3b pushTargets `.catch()` and
+    // the game-doc deletes have a thenable to chain. Individual tests still
+    // override with mockRejectedValueOnce to exercise failure paths.
+    mockDeleteDoc: vi.fn().mockResolvedValue(undefined),
     mockUpdateDoc: vi.fn().mockResolvedValue(undefined),
     mockIncrement: vi.fn((n: number) => ({ _op: "increment", operand: n })),
     mockRunTransaction: vi.fn(),
@@ -93,6 +96,15 @@ const mockDeleteUserClipVotes = vi.fn().mockResolvedValue(undefined);
 vi.mock("../clips", () => ({
   deleteUserClips: (...args: unknown[]) => mockDeleteUserClips(...args),
   deleteUserClipVotes: (...args: unknown[]) => mockDeleteUserClipVotes(...args),
+}));
+
+/* ── mock notifications + pushDispatch (deleteUserData Phase 3b scrub) ─ */
+const mockDeleteUserNotifications = vi.fn().mockResolvedValue(undefined);
+vi.mock("../notifications", () => ({
+  deleteUserNotifications: (...args: unknown[]) => mockDeleteUserNotifications(...args),
+}));
+vi.mock("../pushDispatch", () => ({
+  PUSH_TARGETS_COLLECTION: "pushTargets",
 }));
 
 const mockAccountDeleted = vi.fn();
@@ -454,8 +466,14 @@ describe("users service", () => {
       // Videos deleted for each non-active game
       expect(mockDeleteGameVideos).toHaveBeenCalledWith("g1");
       expect(mockDeleteGameVideos).toHaveBeenCalledWith("g2");
-      // Game docs deleted individually
-      expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
+      // Game docs deleted individually (mockDoc joins path segments with "/")
+      expect(mockDeleteDoc).toHaveBeenCalledWith("games/g1");
+      expect(mockDeleteDoc).toHaveBeenCalledWith("games/g2");
+      // Phase 3b: the cross-readable FCM-token mirror is wiped before the
+      // identity batch so erasure leaves no orphaned device→uid map.
+      expect(mockDeleteDoc).toHaveBeenCalledWith("pushTargets/u1");
+      // 2 game docs + the pushTargets mirror = 3 standalone deleteDoc calls.
+      expect(mockDeleteDoc).toHaveBeenCalledTimes(3);
       // Clips cascade invoked before the profile/username batch so the
       // owner-delete rule still has a valid auth context to match playerUid.
       expect(mockDeleteUserClips).toHaveBeenCalledWith("u1");
@@ -481,8 +499,11 @@ describe("users service", () => {
 
       await deleteUserData("u1", "sk8r");
 
-      // Only the complete game is deleted, not the active one
-      expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+      // Only the complete game is deleted, not the active one. 1 game doc +
+      // the pushTargets mirror = 2 standalone deleteDoc calls.
+      expect(mockDeleteDoc).toHaveBeenCalledWith("games/g2");
+      expect(mockDeleteDoc).not.toHaveBeenCalledWith("games/g1");
+      expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
       expect(mockDeleteGameVideos).toHaveBeenCalledWith("g2");
       expect(mockDeleteGameVideos).not.toHaveBeenCalledWith("g1");
     });
@@ -495,8 +516,11 @@ describe("users service", () => {
 
       await deleteUserData("u1", "sk8r");
 
-      // Only one deleteDoc call despite game appearing twice
-      expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+      // Only one game deleteDoc despite the game appearing in both queries;
+      // plus the pushTargets mirror delete = 2 standalone deleteDoc calls.
+      expect(mockDeleteDoc).toHaveBeenCalledWith("games/g1");
+      expect(mockDeleteDoc).toHaveBeenCalledWith("pushTargets/u1");
+      expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
       expect(mockDeleteGameVideos).toHaveBeenCalledTimes(1);
     });
 
@@ -511,6 +535,88 @@ describe("users service", () => {
       const batch = mockWriteBatch();
       batch.commit.mockRejectedValueOnce(new Error("Batch commit failed"));
       await expect(deleteUserData("u1", "sk8r")).rejects.toThrow("Batch commit failed");
+    });
+
+    it("scrubs the pushTargets mirror and received notifications in Phase 3b", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] }) // games p1
+        .mockResolvedValueOnce({ docs: [] }) // games p2
+        .mockResolvedValueOnce({ docs: [] }); // achievements
+
+      await deleteUserData("u1", "sk8r");
+
+      // FCM-token mirror (cross-readable device→uid map) wiped — GDPR erasure.
+      expect(mockDeleteDoc).toHaveBeenCalledWith("pushTargets/u1");
+      // Received notifications scrubbed by the cascade itself, not the
+      // NotificationContext React effect.
+      expect(mockDeleteUserNotifications).toHaveBeenCalledWith("u1");
+    });
+
+    it("logs and continues when the pushTargets mirror delete fails", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] }); // achievements
+      // Only the pushTargets delete rejects (game deletes use the default
+      // resolved mock; there are no games here anyway).
+      mockDeleteDoc.mockRejectedValueOnce(new Error("mirror delete denied"));
+
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        "push_targets_delete_failed",
+        expect.objectContaining({ uid: "u1", error: "mirror delete denied" }),
+      );
+      // Cascade still completed the identity batch.
+      const batch = mockWriteBatch();
+      expect(batch.commit).toHaveBeenCalled();
+    });
+
+    it("stringifies non-Error pushTargets delete rejections before logging", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+      mockDeleteDoc.mockRejectedValueOnce("mirror-string-error");
+
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        "push_targets_delete_failed",
+        expect.objectContaining({ error: "mirror-string-error" }),
+      );
+    });
+
+    it("logs and continues when deleteUserNotifications fails", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+      mockDeleteUserNotifications.mockRejectedValueOnce(new Error("notif scrub denied"));
+
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        "user_notifications_delete_failed",
+        expect.objectContaining({ uid: "u1", error: "notif scrub denied" }),
+      );
+      const batch = mockWriteBatch();
+      expect(batch.commit).toHaveBeenCalled();
+    });
+
+    it("stringifies non-Error notification scrub rejections before logging", async () => {
+      mockGetDocs
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] })
+        .mockResolvedValueOnce({ docs: [] });
+      mockDeleteUserNotifications.mockRejectedValueOnce("notif-string-error");
+
+      await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
+
+      expect(mockLoggerWarn).toHaveBeenCalledWith(
+        "user_notifications_delete_failed",
+        expect.objectContaining({ error: "notif-string-error" }),
+      );
     });
 
     it("folds the achievements subcollection into the profile/username batch", async () => {
