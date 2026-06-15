@@ -201,6 +201,12 @@ export async function createGame(
     turnDeadline: deadline,
     turnNumber: 1,
     winner: null,
+    // Production createGame() seeds an empty history (src/services/games.create.ts).
+    // Mirror it so the game-update rules take their cheap "turnHistory present"
+    // branches — a seed that omits the field pushes the OR-chain of update rules
+    // down a costlier path that can exhaust Firestore's per-evaluation node
+    // budget on the judge-ruling writes (silent permission-denied).
+    turnHistory: [],
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -315,6 +321,72 @@ export async function getCurrentTrickVideoUrl(gameId: string): Promise<string | 
   if (!field || "nullValue" in field) return null;
   if ("stringValue" in field) return field.stringValue;
   throw new Error(`getCurrentTrickVideoUrl: unexpected field shape ${JSON.stringify(field)}`);
+}
+
+/** The handful of game fields dispute specs assert on after a judge ruling. */
+export interface GameStateSnapshot {
+  phase: string | null;
+  status: string | null;
+  currentSetter: string | null;
+  currentTurn: string | null;
+  p1Letters: number;
+  p2Letters: number;
+  winner: string | null;
+}
+
+function readStringField(field: FsValue | undefined): string | null {
+  if (!field || "nullValue" in field) return null;
+  if ("stringValue" in field) return field.stringValue;
+  throw new Error(`readStringField: unexpected field shape ${JSON.stringify(field)}`);
+}
+
+function readIntField(field: FsValue | undefined): number {
+  if (!field) return 0;
+  if ("integerValue" in field) return Number(field.integerValue);
+  throw new Error(`readIntField: unexpected field shape ${JSON.stringify(field)}`);
+}
+
+/**
+ * Read the phase/turn/letter state of a game back from the emulator so a spec
+ * can assert the exact transition a judge ruling produced (e.g. dispute
+ * accepted → currentSetter rotated to the matcher, letters unchanged).
+ *
+ * Reading authoritative Firestore state — rather than only the rendered UI —
+ * pins the state-machine contract from GAME_STATE_MACHINE.md directly.
+ */
+export async function getGameState(gameId: string): Promise<GameStateSnapshot> {
+  const games = await listGames();
+  const fields = games[gameId];
+  if (!fields) throw new Error(`getGameState: no game ${gameId}`);
+  return {
+    phase: readStringField(fields.phase),
+    status: readStringField(fields.status),
+    currentSetter: readStringField(fields.currentSetter),
+    currentTurn: readStringField(fields.currentTurn),
+    p1Letters: readIntField(fields.p1Letters),
+    p2Letters: readIntField(fields.p2Letters),
+    winner: readStringField(fields.winner),
+  };
+}
+
+/**
+ * Poll `getGameState` until `predicate` is satisfied or the timeout elapses.
+ * Judge rulings commit asynchronously after a button tap, so specs that read
+ * persisted state need to wait for the transaction rather than racing it.
+ */
+export async function waitForGameState(
+  gameId: string,
+  predicate: (s: GameStateSnapshot) => boolean,
+  timeoutMs = 10_000,
+): Promise<GameStateSnapshot> {
+  const start = Date.now();
+  let last: GameStateSnapshot | null = null;
+  while (Date.now() - start < timeoutMs) {
+    last = await getGameState(gameId);
+    if (predicate(last)) return last;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`waitForGameState: timed out. last=${JSON.stringify(last)}`);
 }
 
 /**

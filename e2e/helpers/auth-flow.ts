@@ -38,7 +38,11 @@ export async function signUpViaUI(page: Page, email: string, password: string): 
     await fetch("http://localhost:9099/", { mode: "no-cors" }).catch(() => {});
     await fetch("http://localhost:8080/", { mode: "no-cors" }).catch(() => {});
   });
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
+  // The landing hero exposes "Sign in" / "Create account" entries that route
+  // straight to the AuthScreen email form — the old "Use email" intermediate
+  // step was removed when the landing CTAs were reworked (Landing CLS refactor).
+  // "Create account" opens the form in signup mode.
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   // Fill both password fields (Password + Confirm).
@@ -82,7 +86,10 @@ export async function signUpAndSetupProfile(
  */
 export async function signInViaUI(page: Page, email: string, password: string): Promise<void> {
   await page.goto("/");
-  await page.getByRole("button", { name: "Account" }).click();
+  // "Sign in" on the landing hero opens the AuthScreen in sign-in mode (single
+  // password field, no DOB). Exact match avoids colliding with the hero's
+  // "Create account" button or the nav "Account" entry.
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(password);

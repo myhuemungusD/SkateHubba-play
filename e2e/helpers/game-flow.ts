@@ -8,13 +8,84 @@
  * at the point where the trick-name input is ready.
  */
 import { expect, type Page } from "@playwright/test";
-import { verifyEmail, forceTokenRefresh } from "./emulator";
+import { createGame, createProfile, createUser, verifyEmail, forceTokenRefresh } from "./emulator";
 import { signUpAndSetupProfile } from "./auth-flow";
 
 interface Credentials {
   email: string;
   password: string;
   username: string;
+}
+
+/** UIDs returned by seedJudgeRefGame, so specs can assert on persisted state. */
+export interface SeededJudgeGame {
+  setterUid: string;
+  matcherUid: string;
+  judgeUid: string;
+}
+
+/** Which party a uid-valued game field should resolve to. */
+type Party = "setter" | "matcher" | "judge";
+
+export interface SeedJudgeGameOptions {
+  /** Game phase to seed (matching for Call-BS, disputable for landed review). */
+  phase: "setting" | "matching" | "setReview" | "disputable";
+  /** Who currently holds the turn — the player/judge whose action unblocks it. */
+  turnHolder: Party;
+  /** The player whose attempt the judge is reviewing (disputable / setReview). */
+  judgeReviewFor?: Party;
+  /** Non-uid field overrides (trick name, video urls, letter counts, etc.). */
+  fields?: Record<string, unknown>;
+}
+
+/**
+ * Seed a three-party refereed game directly via the emulator REST API: two
+ * players plus an accepted judge, with the judge denormalized onto the game
+ * doc so `isJudgeActive` is true and the dispute / Call-BS paths unlock.
+ *
+ * Players + judge are created programmatically (no UI signup) because dispute
+ * specs only ever sign them in. `setter` always holds `currentSetter`; the
+ * caller names the `turnHolder` (and optional `judgeReviewFor`) by ROLE and the
+ * helper resolves them to the freshly-minted UIDs — the caller can't reference
+ * a uid it doesn't yet have.
+ *
+ * Returns the three UIDs so specs can read the game back with `getGameState`
+ * and assert the post-ruling transition (currentSetter rotation, letter deltas).
+ */
+export async function seedJudgeRefGame(
+  gameId: string,
+  setter: Credentials,
+  matcher: Credentials,
+  judge: Credentials,
+  opts: SeedJudgeGameOptions,
+): Promise<SeededJudgeGame> {
+  const setterUser = await createUser(setter.email, setter.password);
+  const matcherUser = await createUser(matcher.email, matcher.password);
+  const judgeUser = await createUser(judge.email, judge.password);
+  await Promise.all([
+    createProfile(setterUser.uid, setter.username, setter.email, true),
+    createProfile(matcherUser.uid, matcher.username, matcher.email, true),
+    createProfile(judgeUser.uid, judge.username, judge.email, true),
+  ]);
+
+  const uidFor: Record<Party, string> = {
+    setter: setterUser.uid,
+    matcher: matcherUser.uid,
+    judge: judgeUser.uid,
+  };
+
+  await createGame(gameId, setterUser.uid, setter.username, matcherUser.uid, matcher.username, {
+    phase: opts.phase,
+    currentSetter: setterUser.uid,
+    currentTurn: uidFor[opts.turnHolder],
+    judgeId: judgeUser.uid,
+    judgeUsername: judge.username,
+    judgeStatus: "accepted",
+    ...(opts.judgeReviewFor ? { judgeReviewFor: uidFor[opts.judgeReviewFor] } : {}),
+    ...(opts.fields ?? {}),
+  });
+
+  return { setterUid: setterUser.uid, matcherUid: matcherUser.uid, judgeUid: judgeUser.uid };
 }
 
 /**
