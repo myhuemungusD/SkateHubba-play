@@ -129,19 +129,37 @@ export async function forfeitExpiredTurn(
     }
 
     // Emit the "your turn" notification ONLY when the advanced player is not
-    // the caller. The disputable/setReview phases let either participant
-    // trigger the resolve, so the recipient is frequently the caller — and the
-    // /notifications create rule denies a self-notify (recipientUid must differ
-    // from auth.uid), which would roll back this entire transaction. Skipping
-    // is also correct on its own terms: a caller who triggered the resolve is
-    // demonstrably in the app and doesn't need to be told it's their turn. The
-    // game-state write above already happened unconditionally, so the server
-    // sweep (which always notifies the away player) stays in parity.
+    // the caller. The disputable/setReview phases let EITHER participant —
+    // player OR judge — trigger the resolve, so the recipient is frequently the
+    // caller, and the /notifications create rule denies a self-notify
+    // (recipientUid must differ from auth.uid), which would roll back this
+    // entire transaction. Skipping is also correct on its own terms: a caller
+    // who triggered the resolve is demonstrably in the app.
+    //
+    // CRITICAL: the notification's senderUid MUST be `callerUid` (the
+    // authenticated writer), NOT the shared decision's canonical sender (the
+    // currentSetter). The /notifications create rule requires
+    // `senderUid == request.auth.uid`, so stamping the setter would DENY the
+    // write — and abort this whole transaction — whenever the caller is not the
+    // setter. That is exactly the JUDGE-as-caller case: disputable/setReview
+    // have `currentTurn == judgeId`, and subscribeToMyGames (which includes
+    // judge games) triggers the resolve from the judge's tab with
+    // callerUid == judgeUid. With senderUid = callerUid, sender == auth.uid and
+    // recipient (the matcher) != caller, so the create is rule-legal for BOTH
+    // setter-caller and judge-caller; the matcher-self case is skipped by the
+    // guard above (the matcher is present anyway). The game-state `tx.update`
+    // above is UNCONDITIONAL and never depends on this side-effect, so the
+    // server sweep (admin SDK, always notifies the away player) stays in parity.
     if (decision.notification && decision.notification.recipientUid !== callerUid) {
       writeNotificationInTx(
         tx,
         {
-          senderUid: decision.notification.senderUid,
+          // The authenticated user who triggered the resolve — satisfies the
+          // /notifications create rule's `senderUid == request.auth.uid`. The
+          // canonical sender from the shared decision (currentSetter) is the
+          // null-caller fallback only; production always has a signed-in caller
+          // (none pass null today), so that branch is never rule-evaluated.
+          senderUid: callerUid ?? decision.notification.senderUid,
           recipientUid: decision.notification.recipientUid,
           type: decision.notification.type,
           title: decision.notification.title,

@@ -73,9 +73,20 @@ function bothWrites(game: GameDoc) {
 }
 
 /**
- * Assert the decision's notification targets the matcher (p2 ← p1) as a
- * "your_turn" alert. Shared by both turn-advancing branches — the notification
- * is part of the SDK-agnostic decision, not the per-SDK game-state write.
+ * Assert the SDK-agnostic decision's notification targets the matcher (p2) as a
+ * "your_turn" alert with the CANONICAL sender (the setter, p1). Shared by both
+ * turn-advancing branches — the notification descriptor is part of the decision,
+ * not the per-SDK game-state write.
+ *
+ * IMPORTANT — senderUid is intentionally PATH-SPECIFIC at materialization time:
+ *   • The shared decision (asserted here) carries the canonical sender = setter.
+ *   • The SERVER sweep (admin SDK, bypasses rules) writes that canonical sender
+ *     verbatim.
+ *   • The CLIENT (games.turns.ts) overrides senderUid = callerUid (the
+ *     authenticated writer) so the /notifications create rule
+ *     (senderUid == request.auth.uid) accepts the write — critical for the
+ *     judge-as-caller case where the caller is not the setter.
+ * The recipient and type are identical across paths; only the writer differs.
  */
 function expectMatcherNotification(notification: unknown): void {
   expect(notification).toEqual({

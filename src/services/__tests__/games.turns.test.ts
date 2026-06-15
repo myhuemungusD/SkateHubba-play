@@ -265,12 +265,16 @@ describe("games service", () => {
   // the notification is conditionally skipped when the caller IS the recipient,
   // because the /notifications create rule forbids a self-notify.
   describe("forfeitExpiredTurn — auto-resolve your_turn notification", () => {
-    // Assert exactly one your_turn notification to the matcher (p2 ← p1).
-    function expectOneMatcherNotification(): void {
+    // Assert exactly one your_turn notification to the matcher (p2), authored by
+    // `senderUid`. The sender MUST be the authenticated caller — never the
+    // setter when the caller differs — so the /notifications create rule
+    // (senderUid == request.auth.uid) accepts the write rather than aborting the
+    // whole transaction. The recipient is always the matcher (p2).
+    function expectOneMatcherNotification(senderUid: string): void {
       const notifs = yourTurnNotifications();
       expect(notifs).toHaveLength(1);
       expect(notifs[0]).toMatchObject({
-        senderUid: "p1",
+        senderUid,
         recipientUid: "p2",
         type: "your_turn",
         read: false,
@@ -279,13 +283,14 @@ describe("games service", () => {
     }
 
     it("disputeAccept: writes your_turn to the matcher when caller is not the recipient", async () => {
-      // Recipient is the matcher (p2). Caller is p1 → not the recipient → notify.
+      // Recipient is the matcher (p2). Caller is p1 (the setter) → not the
+      // recipient → notify. Caller == setter, so sender is p1 either way.
       mockTxGet.mockResolvedValueOnce(makeGameSnap(disputableGame()));
 
       const result = await forfeitExpiredTurn("g1", "p1");
       expect(result.disputeAutoAccepted).toBe(true);
 
-      expectOneMatcherNotification();
+      expectOneMatcherNotification("p1");
       // Game state still advanced correctly.
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.phase).toBe("setting");
@@ -315,10 +320,54 @@ describe("games service", () => {
       const result = await forfeitExpiredTurn("g1", "p1");
       expect(result.setReviewAutoCleared).toBe(true);
 
-      expectOneMatcherNotification();
+      expectOneMatcherNotification("p1");
       const updates = mockTxUpdate.mock.calls[0][1];
       expect(updates.phase).toBe("matching");
       expect(updates.currentTurn).toBe("p2");
+    });
+
+    // ── JUDGE-as-caller regression (the bug this PR fixes) ──────────────────
+    // disputable/setReview phases have `currentTurn == judgeId`, so the judge's
+    // own tab (or subscribeToMyGames, which includes judge games) triggers the
+    // resolve with callerUid == judgeUid. The shared decision's canonical
+    // sender is the setter (p1), but materializing that on the CLIENT would make
+    // senderUid (p1) != auth.uid (j1) → the /notifications create rule DENIES it
+    // → the ENTIRE runTransaction rolls back → the judged game never
+    // auto-resolves on the client. The fix stamps senderUid = callerUid so the
+    // create is rule-legal; the game-state advance is unconditional regardless.
+    it("setReviewClear: judge-as-caller notifies the matcher with sender = judge (not setter)", async () => {
+      // setReviewGame(): currentSetter "p1", currentTurn "j1" (judge), matcher p2.
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(setReviewGame()));
+
+      const result = await forfeitExpiredTurn("g1", "j1");
+      expect(result.setReviewAutoCleared).toBe(true);
+
+      // (a) Game-state advance happened — UNCONDITIONALLY, never gated on the
+      // notification. This is the corruption the bug caused: the whole tx aborted.
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.phase).toBe("matching");
+      expect(updates.currentTurn).toBe("p2");
+      expect(updates.judgeReviewFor).toBeNull();
+
+      // (b) Notification written with sender = the judge/caller (j1), NOT the
+      // setter (p1), and recipient = the matcher (p2). It does NOT skip.
+      expectOneMatcherNotification("j1");
+    });
+
+    it("disputeAccept: judge-as-caller notifies the matcher with sender = judge (not setter)", async () => {
+      // A disputable game judged by j1: currentTurn is the judge, recipient is
+      // the matcher (p2) who becomes next setter. Sender must be the caller j1.
+      const game = disputableGame({ currentTurn: "j1", judgeId: "j1", judgeStatus: "accepted" });
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(game));
+
+      const result = await forfeitExpiredTurn("g1", "j1");
+      expect(result.disputeAutoAccepted).toBe(true);
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      expect(updates.phase).toBe("setting");
+      expect(updates.currentSetter).toBe("p2"); // matcher swaps in as setter
+
+      expectOneMatcherNotification("j1");
     });
 
     it("setReviewClear: skips the notification when the caller IS the recipient, but still advances", async () => {
