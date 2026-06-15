@@ -41,6 +41,14 @@ import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import type { NotificationDocType } from "./notifications";
+import {
+  MAX_BODY_LEN,
+  MAX_TITLE_LEN,
+  MAX_TOKENS_PER_DISPATCH,
+  PUSH_DISPATCH_COLLECTION as SHARED_PUSH_DISPATCH_COLLECTION,
+  PUSH_TARGETS_COLLECTION as SHARED_PUSH_TARGETS_COLLECTION,
+  truncate,
+} from "./pushDispatch.shared";
 
 export interface PushDispatchParams {
   senderUid: string;
@@ -56,19 +64,20 @@ export interface PushDispatchParams {
  * ──────────────────────────────────────────── */
 
 /**
- * Collection path for the cross-readable token mirror. One doc per user,
- * keyed by uid. Kept top-level (not nested under /users/{uid}) so the rules
- * stay short and the reader doesn't accidentally inherit /users/{uid}
- * permissions on adjacent fields.
+ * Cross-readable per-user FCM token mirror. Kept top-level (not nested under
+ * /users/{uid}) so the rules stay short and the reader doesn't accidentally
+ * inherit /users/{uid} permissions on adjacent fields. Re-exported from the
+ * SDK-free shared module so server-side callers (cron sweep) and client-side
+ * callers can never drift on the literal.
  */
-export const PUSH_TARGETS_COLLECTION = "pushTargets" as const;
+export const PUSH_TARGETS_COLLECTION = SHARED_PUSH_TARGETS_COLLECTION;
 
 /**
- * Collection path the Firebase Extension watches. Matches the value of
- * COLLECTION_PATH in extensions/firestore-send-fcm.env — if you rename
- * one, rename the other in lockstep.
+ * Outbox the `firebase/firestore-send-fcm` extension watches. Matches the
+ * value of COLLECTION_PATH in extensions/firestore-send-fcm.env — if you
+ * rename one, rename the other in lockstep.
  */
-export const PUSH_DISPATCH_COLLECTION = "push_dispatch" as const;
+export const PUSH_DISPATCH_COLLECTION = SHARED_PUSH_DISPATCH_COLLECTION;
 
 /**
  * Cooldown-anchor collection. The /push_dispatch create rule REQUIRES a
@@ -108,27 +117,6 @@ export async function getRecipientPushTokens(uid: string): Promise<string[]> {
 /* ────────────────────────────────────────────
  * Dispatch
  * ──────────────────────────────────────────── */
-
-/**
- * Cap on tokens per dispatch doc. Matches the per-user fcmTokens cap in
- * firestore.rules (≤10) so the worst-case fan-out is bounded: even if the
- * recipient signed in on every device they own, one game event triggers
- * at most 10 FCM API calls via the extension.
- */
-const MAX_TOKENS_PER_DISPATCH = 10;
-
-/**
- * Hard caps on user-visible strings, mirrored on the /push_dispatch create
- * rule. The extension forwards these verbatim to FCM; without caps a
- * malicious sender could wedge multi-megabyte payloads through and burn
- * the recipient's quota.
- */
-const MAX_TITLE_LEN = 80;
-const MAX_BODY_LEN = 200;
-
-function truncate(value: string, max: number): string {
-  return value.length > max ? value.slice(0, max) : value;
-}
 
 /**
  * Build the dispatch doc shape consumed by `firebase/firestore-send-fcm`.

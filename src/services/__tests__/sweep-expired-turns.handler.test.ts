@@ -286,9 +286,7 @@ describe("sweep handler dry-run (never writes)", () => {
 
 /** Pull the in-tx "your_turn" notification writes out of captured tx.set calls. */
 function adminYourTurnNotifs(txSet: ReturnType<typeof vi.fn>): Array<Record<string, unknown>> {
-  return txSet.mock.calls
-    .map((c) => c[1] as Record<string, unknown>)
-    .filter((d) => d.type === "your_turn");
+  return txSet.mock.calls.map((c) => c[1] as Record<string, unknown>).filter((d) => d.type === "your_turn");
 }
 
 describe("sweep handler your_turn notification (server always notifies)", () => {
@@ -308,7 +306,13 @@ describe("sweep handler your_turn notification (server always notifies)", () => 
   function expectOneAdminMatcherNotification(txSet: ReturnType<typeof vi.fn>): void {
     const notifs = adminYourTurnNotifs(txSet);
     expect(notifs).toHaveLength(1);
-    expect(notifs[0]).toMatchObject({ senderUid: "p1", recipientUid: "p2", type: "your_turn", read: false, gameId: "g1" });
+    expect(notifs[0]).toMatchObject({
+      senderUid: "p1",
+      recipientUid: "p2",
+      type: "your_turn",
+      read: false,
+      gameId: "g1",
+    });
   }
 
   it("disputeAccept: always writes the your_turn notification to the matcher", async () => {
@@ -344,8 +348,9 @@ describe("sweep handler your_turn notification (server always notifies)", () => 
     expect(adminYourTurnNotifs(txSet)).toHaveLength(0);
   });
 
-  it("dry-run writes no notification even on a notifying branch", async () => {
-    const { db, txSet } = dbForResolve(rawGame(DISPUTABLE));
+  it("dry-run writes no notification AND fires no OS push even on a notifying branch", async () => {
+    // Recipient even has tokens — dry-run must still no-op on push fan-out.
+    const { db, txSet, dispatchAdd, pushTargetsGet } = dbForResolve(rawGame(DISPUTABLE), ["tok-1"]);
     getFirestoreMock.mockReturnValue(db);
 
     const { res, out } = makeRes();
@@ -353,6 +358,8 @@ describe("sweep handler your_turn notification (server always notifies)", () => 
 
     expect(out.body).toMatchObject({ forfeited: 1, dryRun: true });
     expect(adminYourTurnNotifs(txSet)).toHaveLength(0);
+    expect(pushTargetsGet).not.toHaveBeenCalled();
+    expect(dispatchAdd).not.toHaveBeenCalled();
   });
 
   it("fans out the OS push after the tx when the recipient has tokens", async () => {

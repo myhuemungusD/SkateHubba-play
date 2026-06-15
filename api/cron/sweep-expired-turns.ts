@@ -27,8 +27,21 @@
 import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
-import { decideExpiredForfeit, type ForfeitGameUpdate } from "../../src/services/turnForfeit.shared";
+import {
+  decideExpiredForfeit,
+  type ForfeitGameUpdate,
+  type ForfeitNotification,
+} from "../../src/services/turnForfeit.shared";
 import { toGameDoc, type GameDoc } from "../../src/services/games.mappers";
+import {
+  MAX_BODY_LEN,
+  MAX_TITLE_LEN,
+  MAX_TOKENS_PER_DISPATCH,
+  NOTIFICATIONS_COLLECTION,
+  PUSH_DISPATCH_COLLECTION,
+  PUSH_TARGETS_COLLECTION,
+  truncate,
+} from "../../src/services/pushDispatch.shared";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -159,21 +172,6 @@ function clipId(gameId: string, turnNumber: number, role: "set" | "match"): stri
   return `${gameId}_${turnNumber}_${role}`;
 }
 
-/** Collection the in-app notification feed reads — mirrors notifications.ts. */
-const NOTIFICATIONS_COLLECTION = "notifications";
-/** Token mirror + dispatch collections — mirror pushDispatch.ts constants. */
-const PUSH_TARGETS_COLLECTION = "pushTargets";
-const PUSH_DISPATCH_COLLECTION = "push_dispatch";
-/** Per-dispatch token cap — mirrors MAX_TOKENS_PER_DISPATCH in pushDispatch.ts. */
-const MAX_TOKENS_PER_DISPATCH = 10;
-/** User-visible string caps — mirror pushDispatch.ts. */
-const MAX_TITLE_LEN = 80;
-const MAX_BODY_LEN = 200;
-
-function truncate(value: string, max: number): string {
-  return value.length > max ? value.slice(0, max) : value;
-}
-
 /**
  * Deterministic "your turn" notification doc id for a given resolved turn.
  * Keying on (gameId, turnNumber, kind) makes the notification write idempotent:
@@ -186,11 +184,7 @@ function notifyId(gameId: string, turnNumber: number, kind: string): string {
 }
 
 /** Mirror of buildDispatchDoc in pushDispatch.ts, using the admin SDK. */
-function buildAdminDispatchDoc(
-  n: { senderUid: string; recipientUid: string; type: string; title: string; body: string },
-  gameId: string,
-  tokens: string[],
-): Record<string, unknown> {
+function buildAdminDispatchDoc(n: ForfeitNotification, gameId: string, tokens: string[]): Record<string, unknown> {
   return {
     tokens,
     notification: { title: truncate(n.title, MAX_TITLE_LEN), body: truncate(n.body, MAX_BODY_LEN) },
@@ -213,7 +207,7 @@ interface SweepOneResult {
    * the dispatch reads /pushTargets and writes /push_dispatch, neither of which
    * belongs in the game tx). `null` for plain forfeit / dry-run / no-op.
    */
-  push: { senderUid: string; recipientUid: string; type: string; title: string; body: string } | null;
+  push: ForfeitNotification | null;
 }
 
 /**
@@ -305,11 +299,7 @@ async function sweepOneGame(db: Firestore, gameId: string, nowMs: number, dryRun
  * the firestore-send-fcm extension drains. Best-effort: no tokens → no-op; any
  * failure is logged and swallowed so push health never fails the sweep.
  */
-async function dispatchAdminPush(
-  db: Firestore,
-  gameId: string,
-  n: { senderUid: string; recipientUid: string; type: string; title: string; body: string },
-): Promise<void> {
+async function dispatchAdminPush(db: Firestore, gameId: string, n: ForfeitNotification): Promise<void> {
   try {
     const targetSnap = await db.collection(PUSH_TARGETS_COLLECTION).doc(n.recipientUid).get();
     const raw = targetSnap.exists ? (targetSnap.data() as { tokens?: unknown }).tokens : undefined;
