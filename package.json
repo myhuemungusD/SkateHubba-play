@@ -29,7 +29,8 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "check:test-dup": "node scripts/check-test-duplication.mjs",
     "check:file-length": "node scripts/check-file-length.mjs",
-    "verify": "tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup",
+    "check:release-tags": "node scripts/check-release-tags.mjs",
+    "verify": "tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup && node scripts/check-release-tags.mjs ${CI:+--strict}",
     "prepare": "husky"
   },
   "dependencies": {
