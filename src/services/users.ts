@@ -19,6 +19,8 @@ import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips, deleteUserClipVotes } from "./clips";
 import { deleteAvatar } from "./avatars";
+import { deleteUserNotifications } from "./notifications";
+import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 import { analytics } from "./analytics";
 import { logger } from "./logger";
 
@@ -296,6 +298,13 @@ export async function createProfile(
  * Phase 1: Delete video files from Storage for non-active games.
  * Phase 2: Delete non-active game documents.
  * Phase 3: Delete clips authored by this user (App Store / GDPR cascade).
+ * Phase 3b: Scrub the cross-readable FCM-token mirror (pushTargets/{uid})
+ *         and received notifications. Both are owner-deletable but the
+ *         delete must land BEFORE the Phase 4 identity batch wipes
+ *         users/{uid}, so the owner-delete rules still resolve cleanly.
+ *         The pushTargets mirror holds device identifiers (FCM tokens),
+ *         which are personal data under GDPR — leaving it orphaned would
+ *         keep a uid→device map readable by every signed-in user.
  * Phase 4: Atomically delete profile + username reservation + private
  *         profile doc (where sensitive fields live since the
  *         public-doc privacy split).
@@ -333,6 +342,38 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // before the auth/profile teardown. Both are independent best-effort scrubs,
   // so run them in parallel.
   await Promise.all([deleteUserClips(uid), deleteUserClipVotes(uid)]);
+
+  // Phase 3b: Scrub the cross-readable FCM-token mirror and the user's
+  // received notifications. Both are owner-deletable in firestore.rules
+  // (pushTargets/{uid}: `allow delete: if isOwner(uid)`; notifications:
+  // `allow delete` when recipientUid == request.auth.uid), but the deletes
+  // MUST run here — before the Phase 4 batch torches users/{uid} — while the
+  // just-deleted user's cached credentials still resolve those owner checks.
+  //
+  // FCM tokens are device identifiers (GDPR personal data). The pushTargets
+  // mirror is readable by every signed-in user, so an orphaned doc leaves a
+  // uid→device map exposed after erasure — exactly what the right-to-erasure
+  // cascade must close. deleteUserNotifications is folded in here so erasure
+  // no longer depends on the NotificationContext.clearAll React effect firing
+  // (which never runs during account deletion).
+  //
+  // Both are independent best-effort scrubs (matching the clips phase above):
+  // a failure in one must not abort the rest of the cascade, so each is
+  // caught and logged rather than rethrown. They run in parallel.
+  await Promise.all([
+    deleteDoc(doc(db, PUSH_TARGETS_COLLECTION, uid)).catch((err) => {
+      logger.warn("push_targets_delete_failed", {
+        uid,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }),
+    deleteUserNotifications(uid).catch((err) => {
+      logger.warn("user_notifications_delete_failed", {
+        uid,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }),
+  ]);
 
   // Phase 4: Delete profile + username + private profile doc atomically
   // (no reads needed, batch is cheaper). The private doc must be
