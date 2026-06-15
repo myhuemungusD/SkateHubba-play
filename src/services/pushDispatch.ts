@@ -45,10 +45,14 @@ import {
   MAX_BODY_LEN,
   MAX_TITLE_LEN,
   MAX_TOKENS_PER_DISPATCH,
-  PUSH_DISPATCH_COLLECTION as SHARED_PUSH_DISPATCH_COLLECTION,
-  PUSH_TARGETS_COLLECTION as SHARED_PUSH_TARGETS_COLLECTION,
+  PUSH_DISPATCH_COLLECTION,
+  PUSH_TARGETS_COLLECTION,
   truncate,
 } from "./pushDispatch.shared";
+// Re-export so existing callers (fcm.ts, pushNotifications.ts, the test suite)
+// keep importing the collection constants from "./pushDispatch". The JSDoc for
+// each constant lives on the shared module — single source of truth.
+export { PUSH_DISPATCH_COLLECTION, PUSH_TARGETS_COLLECTION } from "./pushDispatch.shared";
 
 export interface PushDispatchParams {
   senderUid: string;
@@ -64,22 +68,6 @@ export interface PushDispatchParams {
  * ──────────────────────────────────────────── */
 
 /**
- * Cross-readable per-user FCM token mirror. Kept top-level (not nested under
- * /users/{uid}) so the rules stay short and the reader doesn't accidentally
- * inherit /users/{uid} permissions on adjacent fields. Re-exported from the
- * SDK-free shared module so server-side callers (cron sweep) and client-side
- * callers can never drift on the literal.
- */
-export const PUSH_TARGETS_COLLECTION = SHARED_PUSH_TARGETS_COLLECTION;
-
-/**
- * Outbox the `firebase/firestore-send-fcm` extension watches. Matches the
- * value of COLLECTION_PATH in extensions/firestore-send-fcm.env — if you
- * rename one, rename the other in lockstep.
- */
-export const PUSH_DISPATCH_COLLECTION = SHARED_PUSH_DISPATCH_COLLECTION;
-
-/**
  * Cooldown-anchor collection. The /push_dispatch create rule REQUIRES a
  * companion-write to /push_dispatch_limits/{senderUid_recipientUid_gameId_type}
  * in the same writeBatch, with lastSentAt pinned to serverTimestamp().
@@ -87,6 +75,10 @@ export const PUSH_DISPATCH_COLLECTION = SHARED_PUSH_DISPATCH_COLLECTION;
  * what actually rate-limits dispatch fan-out (closes the Codex P1 burst
  * window where one legit notification authorized unbounded dispatches in
  * a 10s sliding gate).
+ *
+ * Stays here (not in pushDispatch.shared.ts) because only the client write
+ * batch references it — the cron sweep doesn't write a limits doc since the
+ * 5s cooldown gates spammy client fan-out, not the every-15-min cron.
  */
 export const PUSH_DISPATCH_LIMITS_COLLECTION = "push_dispatch_limits" as const;
 

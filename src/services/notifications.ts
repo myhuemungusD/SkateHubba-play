@@ -18,6 +18,7 @@ import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { dispatchPushNotification, type PushDispatchOutbox } from "./pushDispatch";
+import { NOTIFICATIONS_COLLECTION } from "./pushDispatch.shared";
 
 export type NotificationDocType = "your_turn" | "new_challenge" | "game_won" | "game_lost" | "judge_invite";
 
@@ -72,7 +73,7 @@ export async function writeNotification(params: WriteNotificationParams): Promis
 
   try {
     const db = requireDb();
-    const notificationRef = doc(collection(db, "notifications"));
+    const notificationRef = doc(collection(db, NOTIFICATIONS_COLLECTION));
     const limitRef = doc(db, "notification_limits", key);
 
     const batch = writeBatch(db);
@@ -165,7 +166,7 @@ export function writeNotificationInTx(
   // transaction is retried by the SDK the same ID is reused, keeping the
   // notification create idempotent with the game update.
   const db = requireDb();
-  const notificationRef = doc(collection(db, "notifications"));
+  const notificationRef = doc(collection(db, NOTIFICATIONS_COLLECTION));
   tx.set(notificationRef, {
     senderUid: params.senderUid,
     recipientUid: params.recipientUid,
@@ -194,7 +195,7 @@ export function writeNotificationInTx(
  */
 export async function markNotificationRead(notificationId: string): Promise<void> {
   try {
-    await updateDoc(doc(requireDb(), "notifications", notificationId), { read: true });
+    await updateDoc(doc(requireDb(), NOTIFICATIONS_COLLECTION, notificationId), { read: true });
   } catch (err) {
     logger.warn("notification_mark_read_failed", {
       notificationId,
@@ -207,14 +208,14 @@ export async function markNotificationRead(notificationId: string): Promise<void
  * Delete a single notification document.
  */
 export async function deleteNotification(notificationId: string): Promise<void> {
-  await deleteDoc(doc(requireDb(), "notifications", notificationId));
+  await deleteDoc(doc(requireDb(), NOTIFICATIONS_COLLECTION, notificationId));
 }
 
 /**
  * Delete all notification documents for a user. Best-effort batch delete.
  */
 export async function deleteUserNotifications(uid: string): Promise<void> {
-  const q = query(collection(requireDb(), "notifications"), where("recipientUid", "==", uid));
+  const q = query(collection(requireDb(), NOTIFICATIONS_COLLECTION), where("recipientUid", "==", uid));
   const snap = await getDocs(q);
   const deletions = snap.docs.map((d) => deleteDoc(d.ref));
   await Promise.all(deletions);
@@ -297,7 +298,7 @@ export function subscribeToNotifications(uid: string, onNotification: (notif: No
     return () => {};
   }
   const q = query(
-    collection(db, "notifications"),
+    collection(db, NOTIFICATIONS_COLLECTION),
     where("recipientUid", "==", uid),
     where("read", "==", false),
     orderBy("createdAt", "desc"),

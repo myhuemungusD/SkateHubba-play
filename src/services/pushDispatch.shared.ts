@@ -13,10 +13,18 @@
 /** Collection the in-app notification feed reads. */
 export const NOTIFICATIONS_COLLECTION = "notifications" as const;
 
-/** Cross-readable per-user FCM token mirror. */
+/**
+ * Cross-readable per-user FCM token mirror. Kept top-level (not nested under
+ * /users/{uid}) so the rules stay short and the reader doesn't accidentally
+ * inherit /users/{uid} permissions on adjacent fields.
+ */
 export const PUSH_TARGETS_COLLECTION = "pushTargets" as const;
 
-/** Outbox the `firebase/firestore-send-fcm` extension drains. */
+/**
+ * Outbox the `firebase/firestore-send-fcm` extension watches. Matches the
+ * value of COLLECTION_PATH in extensions/firestore-send-fcm.env — if you
+ * rename one, rename the other in lockstep.
+ */
 export const PUSH_DISPATCH_COLLECTION = "push_dispatch" as const;
 
 /**
