@@ -7,6 +7,8 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  # Required for label management on the release PR (see upstream README).
+  issues: write
 
 concurrency:
   group: release-please-${{ github.ref }}
@@ -24,10 +26,37 @@ jobs:
       # Conventional Commit prefix (feat/fix/perf/refactor/docs), and either
       # updates an in-flight release PR or opens a new one. When that PR is
       # merged, it tags HEAD and creates a GitHub Release in a single step.
+      #
+      # Pinned by SHA to defend against tag-hijack supply-chain attacks; the
+      # comment records the human-readable version for future maintainers.
+      # v5.0.0 also moves the action runtime to node24, ahead of the
+      # node20 deprecation on the GitHub Actions runners.
       - id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           # Scope the release to the default repo token; no PAT needed.
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fail loudly if release-please claims a release was created but the
+      # tag is not actually present on origin. This catches the silent
+      # failure mode observed after PR #247 (2026-04-19), where the action
+      # reported success with exit code 0 but never pushed the tag, leaving
+      # the production deploy pipeline stuck on the previous version for
+      # ~2 months without any visible CI signal.
+      - name: Verify release tag exists on origin
+        if: steps.release.outputs.release_created == 'true'
+        run: |
+          set -euo pipefail
+          tag="${{ steps.release.outputs.tag_name }}"
+          if [ -z "$tag" ]; then
+            echo "::error::release_created=true but tag_name is empty"
+            exit 1
+          fi
+          git fetch --tags --force origin
+          if ! git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+            echo "::error::release-please reported release_created=true for ${tag}, but the tag is missing on origin. Investigate the release-please-action run before merging further changes."
+            exit 1
+          fi
+          echo "Verified tag ${tag} is present on origin."
