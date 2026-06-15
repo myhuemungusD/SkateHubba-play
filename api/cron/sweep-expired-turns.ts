@@ -159,24 +159,82 @@ function clipId(gameId: string, turnNumber: number, role: "set" | "match"): stri
   return `${gameId}_${turnNumber}_${role}`;
 }
 
+/** Collection the in-app notification feed reads — mirrors notifications.ts. */
+const NOTIFICATIONS_COLLECTION = "notifications";
+/** Token mirror + dispatch collections — mirror pushDispatch.ts constants. */
+const PUSH_TARGETS_COLLECTION = "pushTargets";
+const PUSH_DISPATCH_COLLECTION = "push_dispatch";
+/** Per-dispatch token cap — mirrors MAX_TOKENS_PER_DISPATCH in pushDispatch.ts. */
+const MAX_TOKENS_PER_DISPATCH = 10;
+/** User-visible string caps — mirror pushDispatch.ts. */
+const MAX_TITLE_LEN = 80;
+const MAX_BODY_LEN = 200;
+
+function truncate(value: string, max: number): string {
+  return value.length > max ? value.slice(0, max) : value;
+}
+
+/**
+ * Deterministic "your turn" notification doc id for a given resolved turn.
+ * Keying on (gameId, turnNumber, kind) makes the notification write idempotent:
+ * a re-run of the sweep over the same (now already-resolved) turn would no-op
+ * anyway via decideExpiredForfeit, but a deterministic id is belt-and-braces in
+ * case two overlapping invocations both read the still-expired doc.
+ */
+function notifyId(gameId: string, turnNumber: number, kind: string): string {
+  return `${gameId}_${turnNumber}_${kind}_notify`;
+}
+
+/** Mirror of buildDispatchDoc in pushDispatch.ts, using the admin SDK. */
+function buildAdminDispatchDoc(
+  n: { senderUid: string; recipientUid: string; type: string; title: string; body: string },
+  gameId: string,
+  tokens: string[],
+): Record<string, unknown> {
+  return {
+    tokens,
+    notification: { title: truncate(n.title, MAX_TITLE_LEN), body: truncate(n.body, MAX_BODY_LEN) },
+    data: { gameId, type: n.type, click_action: `/?game=${gameId}` },
+    senderUid: n.senderUid,
+    recipientUid: n.recipientUid,
+    gameId,
+    type: n.type,
+    createdAt: FieldValue.serverTimestamp(),
+  };
+}
+
+/** What one swept game produced — drives the post-tx push fan-out. */
+interface SweepOneResult {
+  /** True when a transition was applied (or would be, under dry-run). */
+  forfeited: boolean;
+  /**
+   * The "your turn" notification that was written in-tx, surfaced so the
+   * handler can fire the OS-level push AFTER the tx commits (never inside it —
+   * the dispatch reads /pushTargets and writes /push_dispatch, neither of which
+   * belongs in the game tx). `null` for plain forfeit / dry-run / no-op.
+   */
+  push: { senderUid: string; recipientUid: string; type: string; title: string; body: string } | null;
+}
+
 /**
  * Process one game inside an admin transaction. Re-reads + re-decides, so it is
- * a no-op when the game is no longer eligible. Returns whether it forfeited.
+ * a no-op when the game is no longer eligible. Returns whether it forfeited and
+ * the notification (if any) to push after the tx.
  */
-async function sweepOneGame(db: Firestore, gameId: string, nowMs: number, dryRun: boolean): Promise<boolean> {
+async function sweepOneGame(db: Firestore, gameId: string, nowMs: number, dryRun: boolean): Promise<SweepOneResult> {
   const gameRef = db.collection("games").doc(gameId);
 
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(gameRef);
-    if (!snap.exists) return false;
+    if (!snap.exists) return { forfeited: false, push: null };
 
     // toGameDoc only reads { id, data() } — admin DocumentSnapshot satisfies it.
     const game: GameDoc = toGameDoc({ id: snap.id, data: () => snap.data() as Record<string, unknown> });
 
     const decision = decideExpiredForfeit(game, nowMs, gameId);
-    if (!decision) return false; // idempotent no-op: already resolved / not expired
+    if (!decision) return { forfeited: false, push: null }; // idempotent no-op
 
-    if (dryRun) return true;
+    if (dryRun) return { forfeited: true, push: null };
 
     tx.update(gameRef, toAdminGameUpdate(decision.gameUpdate));
 
@@ -217,8 +275,58 @@ async function sweepOneGame(db: Firestore, gameId: string, nowMs: number, dryRun
       }
     }
 
-    return true;
+    // "Your turn" notification for the turn-advancing branches. Unlike the
+    // client, the server ALWAYS writes it: the admin SDK bypasses
+    // firestore.rules, so the self-notify constraint that gates the client
+    // doesn't apply, and the recipient (the away player) is exactly who needs
+    // alerting. Mirrors writeNotificationInTx's doc shape; the deterministic
+    // id keeps the write idempotent across overlapping sweeps.
+    const n = decision.notification;
+    if (n) {
+      tx.set(db.collection(NOTIFICATIONS_COLLECTION).doc(notifyId(gameId, game.turnNumber, decision.kind)), {
+        senderUid: n.senderUid,
+        recipientUid: n.recipientUid,
+        type: n.type,
+        title: n.title,
+        body: n.body,
+        gameId,
+        read: false,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+
+    return { forfeited: true, push: n };
   });
+}
+
+/**
+ * Fire the OS-level push for a server-written notification, AFTER the game tx
+ * committed. Reads the recipient's token mirror and writes a /push_dispatch doc
+ * the firestore-send-fcm extension drains. Best-effort: no tokens → no-op; any
+ * failure is logged and swallowed so push health never fails the sweep.
+ */
+async function dispatchAdminPush(
+  db: Firestore,
+  gameId: string,
+  n: { senderUid: string; recipientUid: string; type: string; title: string; body: string },
+): Promise<void> {
+  try {
+    const targetSnap = await db.collection(PUSH_TARGETS_COLLECTION).doc(n.recipientUid).get();
+    const raw = targetSnap.exists ? (targetSnap.data() as { tokens?: unknown }).tokens : undefined;
+    const tokens = (Array.isArray(raw) ? raw : [])
+      .filter((t): t is string => typeof t === "string" && t.length > 0)
+      .slice(0, MAX_TOKENS_PER_DISPATCH);
+    if (tokens.length === 0) return;
+    await db.collection(PUSH_DISPATCH_COLLECTION).add(buildAdminDispatchDoc(n, gameId, tokens));
+  } catch (err) {
+    console.warn(
+      JSON.stringify({
+        event: "sweep_push_failed",
+        gameId,
+        message: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  }
 }
 
 export default async function handler(req: CronRequest, res: CronResponse): Promise<void> {
@@ -256,9 +364,12 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
       // Re-read Date.now() per game so a long batch uses a current clock for
       // each transaction's expiry re-check.
       try {
-        const forfeited = await sweepOneGame(db, docSnap.id, Date.now(), dryRun);
+        const { forfeited, push } = await sweepOneGame(db, docSnap.id, Date.now(), dryRun);
         if (forfeited) summary.forfeited += 1;
         else summary.skipped += 1;
+        // Fan out the OS push after the game tx committed. Skipped under
+        // dry-run (push is null) and for plain forfeit (no next turn).
+        if (push) await dispatchAdminPush(db, docSnap.id, push);
       } catch (err) {
         summary.errors += 1;
         console.warn(

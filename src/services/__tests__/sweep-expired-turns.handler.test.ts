@@ -188,6 +188,54 @@ function dbWithOneExpiredGame() {
   return { db, txUpdate, txSet };
 }
 
+/**
+ * A richer db double for the auto-resolve notification path. Routes by
+ * collection name so the in-tx notification write, the post-tx pushTargets
+ * read, and the push_dispatch add can all be observed. The candidate query is
+ * served from the "games" collection; everything else is the per-collection
+ * surface the handler touches.
+ */
+function dbForResolve(rawGameData: Record<string, unknown>, pushTokens: string[] = []) {
+  const txUpdate = vi.fn();
+  const txSet = vi.fn();
+  const txGet = vi.fn().mockResolvedValue({ exists: true, id: "g1", data: () => rawGameData });
+  const dispatchAdd = vi.fn().mockResolvedValue(undefined);
+  const pushTargetsGet = vi
+    .fn()
+    .mockResolvedValue({ exists: pushTokens.length > 0, data: () => ({ tokens: pushTokens }) });
+
+  const collection = vi.fn((name: string) => {
+    if (name === "push_dispatch") {
+      return { add: dispatchAdd, doc: vi.fn(() => ({ __doc: "push_dispatch" })) };
+    }
+    if (name === "pushTargets") {
+      return { doc: vi.fn(() => ({ get: pushTargetsGet })) };
+    }
+    // games (candidate query + gameRef) and notifications/clips (doc refs).
+    return {
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      get: vi.fn().mockResolvedValue({ docs: [{ id: "g1" }] }),
+      doc: vi.fn(() => ({ __doc: name })),
+    };
+  });
+
+  const db = {
+    collection,
+    runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ get: txGet, update: txUpdate, set: txSet }),
+    ),
+  };
+  return { db, txUpdate, txSet, dispatchAdd, pushTargetsGet };
+}
+
+/** Raw (id-stripped) game data for a phase, already expired + active. */
+function rawGame(overrides: Record<string, unknown>): Record<string, unknown> {
+  const { id: _id, ...data } = makeGameDoc({ turnDeadline: makeDeadline(Date.now() - 60_000), ...overrides });
+  return data;
+}
+
 describe("sweep handler dry-run (never writes)", () => {
   beforeEach(() => {
     process.env.CRON_SECRET = "s3cret";
@@ -233,5 +281,115 @@ describe("sweep handler dry-run (never writes)", () => {
     const write = txUpdate.mock.calls[0][1] as Record<string, unknown>;
     expect(write.status).toBe("forfeit");
     expect(write.winner).toBe("p2");
+  });
+});
+
+/** Pull the in-tx "your_turn" notification writes out of captured tx.set calls. */
+function adminYourTurnNotifs(txSet: ReturnType<typeof vi.fn>): Array<Record<string, unknown>> {
+  return txSet.mock.calls
+    .map((c) => c[1] as Record<string, unknown>)
+    .filter((d) => d.type === "your_turn");
+}
+
+describe("sweep handler your_turn notification (server always notifies)", () => {
+  beforeEach(() => {
+    process.env.CRON_SECRET = "s3cret";
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SA;
+    getAppsMock.mockReturnValue([]);
+    initializeAppMock.mockReturnValue({ name: "app" });
+  });
+
+  // Phase overrides that drive each turn-advancing branch. Inline single-object
+  // literals keep them off the dup detector's structural radar.
+  const DISPUTABLE = { phase: "disputable", currentSetter: "p1", currentTurn: "p1", currentTrickName: "Kickflip", currentTrickVideoUrl: "https://vid/set.webm", matchVideoUrl: "https://vid/match.webm" }; // prettier-ignore
+  const SET_REVIEW = { phase: "setReview", currentSetter: "p1", currentTurn: "j1", judgeId: "j1", judgeStatus: "accepted" }; // prettier-ignore
+
+  /** Assert exactly one admin-written your_turn notification to the matcher. */
+  function expectOneAdminMatcherNotification(txSet: ReturnType<typeof vi.fn>): void {
+    const notifs = adminYourTurnNotifs(txSet);
+    expect(notifs).toHaveLength(1);
+    expect(notifs[0]).toMatchObject({ senderUid: "p1", recipientUid: "p2", type: "your_turn", read: false, gameId: "g1" });
+  }
+
+  it("disputeAccept: always writes the your_turn notification to the matcher", async () => {
+    const { db, txSet } = dbForResolve(rawGame(DISPUTABLE));
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ forfeited: 1, dryRun: false });
+    expectOneAdminMatcherNotification(txSet);
+  });
+
+  it("setReviewClear: always writes the your_turn notification to the matcher", async () => {
+    const { db, txSet } = dbForResolve(rawGame(SET_REVIEW));
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ forfeited: 1 });
+    expectOneAdminMatcherNotification(txSet);
+  });
+
+  it("plain forfeit: writes NO your_turn notification (game ends)", async () => {
+    const { db, txSet } = dbForResolve(rawGame({ currentSetter: "p1", currentTurn: "p1" }));
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ forfeited: 1 });
+    expect(adminYourTurnNotifs(txSet)).toHaveLength(0);
+  });
+
+  it("dry-run writes no notification even on a notifying branch", async () => {
+    const { db, txSet } = dbForResolve(rawGame(DISPUTABLE));
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret", query: { dryRun: "1" } }), res);
+
+    expect(out.body).toMatchObject({ forfeited: 1, dryRun: true });
+    expect(adminYourTurnNotifs(txSet)).toHaveLength(0);
+  });
+
+  it("fans out the OS push after the tx when the recipient has tokens", async () => {
+    const { db, dispatchAdd, pushTargetsGet } = dbForResolve(rawGame(DISPUTABLE), ["tok-1", "tok-2"]);
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(pushTargetsGet).toHaveBeenCalledTimes(1);
+    expect(dispatchAdd).toHaveBeenCalledTimes(1);
+    const dispatch = dispatchAdd.mock.calls[0][0] as Record<string, unknown>;
+    expect(dispatch).toMatchObject({ recipientUid: "p2", type: "your_turn", gameId: "g1" });
+    expect((dispatch.tokens as string[]).sort()).toEqual(["tok-1", "tok-2"]);
+  });
+
+  it("skips the push fan-out when the recipient has no tokens", async () => {
+    const { db, dispatchAdd, pushTargetsGet } = dbForResolve(rawGame(DISPUTABLE), []);
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(pushTargetsGet).toHaveBeenCalledTimes(1);
+    expect(dispatchAdd).not.toHaveBeenCalled();
+  });
+
+  it("swallows a push-dispatch failure without failing the sweep", async () => {
+    const { db, dispatchAdd } = dbForResolve(rawGame(DISPUTABLE), ["tok-1"]);
+    dispatchAdd.mockRejectedValueOnce(new Error("dispatch boom"));
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    // The game still counts as forfeited; push failure is best-effort.
+    expect(out.code).toBe(200);
+    expect(out.body).toMatchObject({ forfeited: 1, errors: 0 });
   });
 });

@@ -80,23 +80,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Sweep all expired turns in a games list. Extracted so the snapshot
   // handler and the deadline timer (below) share one code path. Safe to call
   // speculatively — forfeitExpiredTurn re-checks the deadline server-side.
-  const sweepExpiredTurns = useCallback((list: GameDoc[]) => {
-    const now = Date.now();
-    for (const g of list) {
-      if (g.status !== "active" || forfeitAttemptedRef.current.has(g.id)) continue;
-      const deadline = g.turnDeadline?.toMillis?.() ?? 0;
-      if (deadline > 0 && deadline <= now) {
-        forfeitAttemptedRef.current.add(g.id);
-        forfeitExpiredTurn(g.id).catch((err) => {
-          logger.warn("forfeit_expired_failed", {
-            gameId: g.id,
-            error: parseFirebaseError(err),
+  const sweepExpiredTurns = useCallback(
+    (list: GameDoc[]) => {
+      const now = Date.now();
+      for (const g of list) {
+        if (g.status !== "active" || forfeitAttemptedRef.current.has(g.id)) continue;
+        const deadline = g.turnDeadline?.toMillis?.() ?? 0;
+        if (deadline > 0 && deadline <= now) {
+          forfeitAttemptedRef.current.add(g.id);
+          // Pass the caller's uid so forfeitExpiredTurn can skip the
+          // self-notify the /notifications rule forbids (see that fn's doc).
+          forfeitExpiredTurn(g.id, user?.uid ?? null).catch((err) => {
+            logger.warn("forfeit_expired_failed", {
+              gameId: g.id,
+              error: parseFirebaseError(err),
+            });
+            forfeitAttemptedRef.current.delete(g.id);
           });
-          forfeitAttemptedRef.current.delete(g.id);
-        });
+        }
       }
-    }
-  }, []);
+    },
+    [user],
+  );
 
   // Subscribe to games list with pagination
   useEffect(() => {

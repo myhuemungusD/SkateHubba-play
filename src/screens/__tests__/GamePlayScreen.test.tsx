@@ -149,7 +149,7 @@ describe("GamePlayScreen", () => {
     render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
     await waitFor(() => {
-      expect(mockForfeitExpiredTurn).toHaveBeenCalledWith("game1");
+      expect(mockForfeitExpiredTurn).toHaveBeenCalledWith("game1", "u1");
     });
   });
 

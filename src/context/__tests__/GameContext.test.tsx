@@ -29,7 +29,7 @@ const mockSubscribeToMyGames = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 vi.mock("../../services/games", () => ({
   createGame: vi.fn(),
-  forfeitExpiredTurn: (gameId: string) => mockForfeitExpiredTurn(gameId),
+  forfeitExpiredTurn: (gameId: string, callerUid: string | null) => mockForfeitExpiredTurn(gameId, callerUid),
   subscribeToMyGames: (uid: string, cb: (games: GameDoc[]) => void, limit?: number) =>
     mockSubscribeToMyGames(uid, cb, limit),
   subscribeToGame: vi.fn(() => vi.fn()),
@@ -312,7 +312,7 @@ describe("GameProvider auto-forfeit sweep", () => {
       await vi.advanceTimersByTimeAsync(61_500);
     });
 
-    expect(mockForfeitExpiredTurn).toHaveBeenCalledWith("g1");
+    expect(mockForfeitExpiredTurn).toHaveBeenCalledWith("g1", "u1");
     expect(mockForfeitExpiredTurn).toHaveBeenCalledTimes(1);
   });
 
