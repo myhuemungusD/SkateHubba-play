@@ -1,0 +1,148 @@
+name: Release Recovery (v1.1.0 retroactive tag)
+
+# One-shot recovery for the 2026-04-19 release-please outage.
+#
+# PR #247 ("chore: release main") merged into main as commit 5050f212 on
+# 2026-04-19T19:01:02Z. The release-please-action@v4 tagging step did not
+# fire, so no v1.1.0 git tag or GitHub Release was ever created. Every
+# subsequent release-please run has aborted with
+#   "There are untagged, merged release PRs outstanding - aborting".
+#
+# This workflow is workflow_dispatch only (manual run by a maintainer).
+# It creates the v1.1.0 tag at the original merge commit, opens a GitHub
+# Release at that tag, and flips PR #247's label from
+# `autorelease: pending` to `autorelease: tagged` so release-please can
+# resume on the next push to main.
+#
+# Delete this file in a follow-up PR after the run succeeds.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type YES to confirm you understand this creates v1.1.0 retroactively'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  recover-v1-1-0:
+    if: github.event.inputs.confirm == 'YES'
+    runs-on: ubuntu-latest
+    steps:
+      # actions/github-script v7.0.1 — pinned by SHA per CLAUDE.md hardening
+      - name: Create v1.1.0 tag, Release, and flip PR #247 label
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo  = context.repo.repo;
+            const tag   = 'v1.1.0';
+            const sha   = '5050f21207467848a9fab1e78f4d98d846866951';
+            const prNumber = 247;
+
+            // 1. Verify the merge commit exists on the default branch.
+            await github.rest.repos.getCommit({ owner, repo, ref: sha });
+            core.info(`Verified merge commit ${sha} exists.`);
+
+            // 2. Check whether the tag already exists; if it does, skip
+            //    the tag-create step (idempotent re-run safety).
+            let tagExists = false;
+            try {
+              await github.rest.git.getRef({ owner, repo, ref: `tags/${tag}` });
+              tagExists = true;
+              core.info(`Tag ${tag} already exists — skipping tag create.`);
+            } catch (e) {
+              if (e.status !== 404) throw e;
+            }
+
+            if (!tagExists) {
+              const tagObj = await github.rest.git.createTag({
+                owner, repo,
+                tag,
+                message: [
+                  'Release v1.1.0',
+                  '',
+                  'Retroactive tag created via release-recovery.yml workflow.',
+                  'The release-please-action tagging step did not fire when PR',
+                  `#${prNumber} merged on 2026-04-19. CHANGELOG and package.json`,
+                  'updates landed; only the tag/Release creation failed.',
+                  '',
+                  `Tag points at PR #${prNumber}'s merge commit (${sha}).`,
+                ].join('\n'),
+                object: sha,
+                type: 'commit',
+                tagger: {
+                  name:  'github-actions[bot]',
+                  email: '41898282+github-actions[bot]@users.noreply.github.com',
+                  date:  new Date().toISOString(),
+                },
+              });
+              await github.rest.git.createRef({
+                owner, repo,
+                ref: `refs/tags/${tag}`,
+                sha: tagObj.data.sha,
+              });
+              core.info(`Created annotated tag ${tag} -> ${sha}`);
+            }
+
+            // 3. Create the GitHub Release (skip if it already exists).
+            let releaseExists = false;
+            try {
+              await github.rest.repos.getReleaseByTag({ owner, repo, tag });
+              releaseExists = true;
+              core.info(`Release ${tag} already exists — skipping release create.`);
+            } catch (e) {
+              if (e.status !== 404) throw e;
+            }
+
+            if (!releaseExists) {
+              await github.rest.repos.createRelease({
+                owner, repo,
+                tag_name: tag,
+                name: tag,
+                target_commitish: sha,
+                body: [
+                  '> Retroactive release entry.',
+                  '',
+                  `The substantive release notes for v1.1.0 are in [PR #${prNumber}](https://github.com/${owner}/${repo}/pull/${prNumber})`,
+                  'and the CHANGELOG.md `## [1.1.0]` section.',
+                  '',
+                  'This Release exists so that:',
+                  '- release-please can resume computing version deltas on the next push to main',
+                  '- the `release.yml` workflow can register the Sentry release for v1.1.0',
+                  '- the historical record of shipped versions matches reality',
+                ].join('\n'),
+                draft: false,
+                prerelease: false,
+              });
+              core.info(`Created Release ${tag}`);
+            }
+
+            // 4. Flip PR #247's label so release-please's state machine
+            //    sees the release as completed.
+            const pendingLabel = 'autorelease: pending';
+            const taggedLabel  = 'autorelease: tagged';
+
+            const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+              owner, repo, issue_number: prNumber,
+            });
+            const labelNames = labels.map((l) => l.name);
+
+            if (labelNames.includes(pendingLabel)) {
+              await github.rest.issues.removeLabel({
+                owner, repo, issue_number: prNumber, name: pendingLabel,
+              });
+              core.info(`Removed '${pendingLabel}' from PR #${prNumber}`);
+            }
+            if (!labelNames.includes(taggedLabel)) {
+              await github.rest.issues.addLabels({
+                owner, repo, issue_number: prNumber, labels: [taggedLabel],
+              });
+              core.info(`Added '${taggedLabel}' to PR #${prNumber}`);
+            }
+
+            core.info('Recovery complete. Delete this workflow file in a follow-up PR.');
