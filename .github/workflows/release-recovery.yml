@@ -28,6 +28,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: release-recovery-v1-1-0
+  cancel-in-progress: false
+
 jobs:
   recover-v1-1-0:
     if: github.event.inputs.confirm == 'YES'
@@ -43,6 +47,15 @@ jobs:
             const tag   = 'v1.1.0';
             const sha   = '5050f21207467848a9fab1e78f4d98d846866951';
             const prNumber = 247;
+            const runUrl  = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            // Track what this run actually changed vs. what was already in place
+            // so the postcondition summary reflects real outcomes, not intent.
+            const outcome = {
+              tagCreated: false,
+              releaseCreated: false,
+              labelFlipped: false,
+            };
 
             // 1. Verify the merge commit exists on the default branch.
             await github.rest.repos.getCommit({ owner, repo, ref: sha });
@@ -86,7 +99,8 @@ jobs:
                 ref: `refs/tags/${tag}`,
                 sha: tagObj.data.sha,
               });
-              core.info(`Created annotated tag ${tag} -> ${sha}`);
+              outcome.tagCreated = true;
+              core.notice(`Created annotated tag ${tag} -> ${sha}`);
             }
 
             // 3. Create the GitHub Release (skip if it already exists).
@@ -115,11 +129,14 @@ jobs:
                   '- release-please can resume computing version deltas on the next push to main',
                   '- the `release.yml` workflow can register the Sentry release for v1.1.0',
                   '- the historical record of shipped versions matches reality',
+                  '',
+                  `Created by [release-recovery workflow run](${runUrl}).`,
                 ].join('\n'),
                 draft: false,
                 prerelease: false,
               });
-              core.info(`Created Release ${tag}`);
+              outcome.releaseCreated = true;
+              core.notice(`Created Release ${tag}`);
             }
 
             // 4. Flip PR #247's label so release-please's state machine
@@ -136,13 +153,30 @@ jobs:
               await github.rest.issues.removeLabel({
                 owner, repo, issue_number: prNumber, name: pendingLabel,
               });
-              core.info(`Removed '${pendingLabel}' from PR #${prNumber}`);
+              outcome.labelFlipped = true;
+              core.notice(`Removed '${pendingLabel}' from PR #${prNumber}`);
             }
             if (!labelNames.includes(taggedLabel)) {
               await github.rest.issues.addLabels({
                 owner, repo, issue_number: prNumber, labels: [taggedLabel],
               });
-              core.info(`Added '${taggedLabel}' to PR #${prNumber}`);
+              outcome.labelFlipped = true;
+              core.notice(`Added '${taggedLabel}' to PR #${prNumber}`);
             }
+
+            const mark = (changed) => (changed ? '✅ created' : '↪︎ already in place');
+            await core.summary
+              .addHeading('Release recovery — v1.1.0', 2)
+              .addTable([
+                [
+                  { data: 'Artifact', header: true },
+                  { data: 'Outcome',  header: true },
+                ],
+                [`Tag \`${tag}\` at \`${sha.slice(0, 7)}\``, mark(outcome.tagCreated)],
+                [`Release \`${tag}\``,                       mark(outcome.releaseCreated)],
+                [`PR #${prNumber} labels`,                   outcome.labelFlipped ? '✅ flipped to `autorelease: tagged`' : '↪︎ already `autorelease: tagged`'],
+              ])
+              .addRaw('\nDelete `.github/workflows/release-recovery.yml` in a follow-up PR once release-please has shipped the next version.')
+              .write();
 
             core.info('Recovery complete. Delete this workflow file in a follow-up PR.');
