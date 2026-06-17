@@ -293,18 +293,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Version
 - sync README + game docs with current feature state ([0b59ab3](https://github.com/myhuemungusD/SkateHubba-play/commit/0b59ab372f26bd2db62d44563cc8eaa1ae7313a0))
 - update roadmap — spots/map shipped, Phase 4 at 56% ([336ab8a](https://github.com/myhuemungusD/SkateHubba-play/commit/336ab8a58c20f0e5188f6975f9cd2ffcbf69aa9b))
 
-## [Unreleased]
-
-### Added
-
-**Release hygiene (Tier 2)**
-
-- **release-please automation.** `.github/workflows/release-please.yml` runs on every push to `main`, maintains an in-flight release PR with auto-computed semver bumps from Conventional Commit prefixes, and updates `CHANGELOG.md` in place. Merging the release PR tags `vX.Y.Z` and creates a GitHub Release in a single step.
-- **Versioned release builds.** `.github/workflows/release.yml` now triggers on `release: published` instead of raw tag pushes, attaches a versioned web bundle ZIP to the release, and uploads Sentry source maps against the release tag so production stack traces demangle correctly.
-- **PostHog analytics wrapper** (`src/lib/posthog.ts`) with a lazy dynamic import — the ~90 KB SDK never loads when `VITE_POSTHOG_KEY` is absent. `src/services/analytics.ts` now fans events to Vercel Analytics + PostHog in parallel. User identity is kept in sync with Firebase Auth via `AuthContext`; sign-out resets so anonymous sessions don't inherit the previous user's distinct_id.
-- **Build-time release identifier.** `VITE_APP_VERSION` is injected by `vite.config.ts` from `package.json` (overridable via env var) and forwarded to Sentry (`release`) and PostHog (`app_version` super-property) so every event traces back to a specific build.
-- **Fastlane scaffolding** (`fastlane/Fastfile`, `Appfile`, `Matchfile`, `Pluginfile`, `Gemfile`, `fastlane/README.md`). iOS lanes: `certificates`, `beta`, `release`. Android lanes: `internal`, `beta`, `release`. Lanes don't auto-run in CI yet — iOS needs `npx cap add ios` on a macOS host before `fastlane ios beta` can complete. Full setup instructions + secret checklist in `fastlane/README.md`.
-
 ---
 
 ## [1.0.0] — 2024-12-01
@@ -374,5 +362,6 @@ Initial production release of the SkateHubba S.K.A.T.E. async trick battle game.
 
 ---
 
-[Unreleased]: https://github.com/myhuemungusD/skatehubba-play/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/myhuemungusD/skatehubba-play/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/myhuemungusD/skatehubba-play/releases/tag/v1.1.0
 [1.0.0]: https://github.com/myhuemungusD/skatehubba-play/releases/tag/v1.0.0
