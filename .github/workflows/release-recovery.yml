@@ -14,6 +14,18 @@ name: Release Recovery (v1.1.0 retroactive tag)
 # `autorelease: pending` to `autorelease: tagged` so release-please can
 # resume on the next push to main.
 #
+# Known limitation (intentional): the GitHub Release created here will NOT
+# trigger `release.yml` (which listens on `release: published`). GitHub
+# Actions suppresses downstream workflow runs for events created by the
+# default `GITHUB_TOKEN`. That means v1.1.0 will not retroactively get a
+# build artifact attached or a Sentry source-map upload — those were
+# missed when the original April release-please run failed, and we are
+# not backfilling them here. v1.1.0 has been running in production for
+# two months without those assets; the marginal value of backfilling does
+# not justify adding a `workflow_dispatch` trigger to the load-bearing
+# release.yml or provisioning a PAT/App-token secret. v1.2.0+ will work
+# normally because release-please uses its own GitHub App token.
+#
 # Delete this file in a follow-up PR after the run succeeds.
 
 on:
@@ -113,8 +125,13 @@ jobs:
                   '',
                   'This Release exists so that:',
                   '- release-please can resume computing version deltas on the next push to main',
-                  '- the `release.yml` workflow can register the Sentry release for v1.1.0',
                   '- the historical record of shipped versions matches reality',
+                  '',
+                  'Note: no build artifact is attached and no Sentry release was',
+                  'registered for v1.1.0 — `release.yml` (the artifact + Sentry',
+                  'workflow) does not fire on releases created via GITHUB_TOKEN.',
+                  'v1.1.0 has been running in production without these assets',
+                  'since 2026-04-19; v1.2.0+ will register normally.',
                 ].join('\n'),
                 draft: false,
                 prerelease: false,
