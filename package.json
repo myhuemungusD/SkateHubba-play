@@ -60,6 +60,7 @@
   },
   "overrides": {
     "@grpc/grpc-js": "^1.14.4",
+    "@opentelemetry/core": "^2.8.0",
     "http-proxy-agent": "^7.0.2",
     "@xmldom/xmldom": "^0.9.10",
     "uuid": "^14.0.0",
