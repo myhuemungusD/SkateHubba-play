@@ -34,6 +34,14 @@ on:
 permissions:
   contents: read
 
+# Serialize runs. The endpoint's per-game runTransaction is idempotent under
+# overlap, but a delayed schedule tick can stack on top of an in-flight run and
+# waste Actions minutes. `cancel-in-progress: false` lets the running sweep
+# finish; GitHub auto-collapses queued duplicates to the most recent.
+concurrency:
+  group: sweep-expired-turns
+  cancel-in-progress: false
+
 jobs:
   sweep:
     name: Call /api/cron/sweep-expired-turns
@@ -44,6 +52,10 @@ jobs:
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "::error::CRON_SECRET repository secret is not set. Add it under Settings → Secrets and variables → Actions, matching the Vercel project env value." >&2
+            exit 1
+          fi
           curl \
             --fail-with-body \
             --show-error \
