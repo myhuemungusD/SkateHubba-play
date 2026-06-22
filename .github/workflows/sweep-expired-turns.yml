@@ -34,9 +34,22 @@ on:
 permissions:
   contents: read
 
+# Cancel an in-flight sweep if a newer one starts. Endpoint writes are
+# idempotent (each game is re-read and re-decided inside its own admin
+# transaction), so overlap is correctness-safe -- this just saves runner
+# minutes when a delayed run bumps into the next scheduled one.
+concurrency:
+  group: sweep-expired-turns
+  cancel-in-progress: true
+
 jobs:
   sweep:
     name: Call /api/cron/sweep-expired-turns
+    # Skip on forks so a fork owner does not get 401 failure emails every
+    # 15 minutes from a schedule trigger they never wanted. Forks can still
+    # trigger this manually via workflow_dispatch after setting their own
+    # CRON_SECRET if they want to test against a fork-owned endpoint.
+    if: github.repository == 'myhuemungusD/SkateHubba-play'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
