@@ -144,7 +144,7 @@ describe("Smoke: Gameplay", () => {
     await openExpiredDeadlineGame({ phase: "setting" });
 
     await waitFor(() => {
-      expect(games.refs.forfeitExpiredTurn).toHaveBeenCalledWith("game1");
+      expect(games.refs.forfeitExpiredTurn).toHaveBeenCalledWith("game1", "u1");
     });
   });
 

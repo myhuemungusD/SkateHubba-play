@@ -72,9 +72,35 @@ function bothWrites(game: GameDoc) {
   return { decision: decision!, web, admin };
 }
 
+/**
+ * Assert the SDK-agnostic decision's notification targets the matcher (p2) as a
+ * "your_turn" alert with the CANONICAL sender (the setter, p1). Shared by both
+ * turn-advancing branches — the notification descriptor is part of the decision,
+ * not the per-SDK game-state write.
+ *
+ * IMPORTANT — senderUid is intentionally PATH-SPECIFIC at materialization time:
+ *   • The shared decision (asserted here) carries the canonical sender = setter.
+ *   • The SERVER sweep (admin SDK, bypasses rules) writes that canonical sender
+ *     verbatim.
+ *   • The CLIENT (games.turns.ts) overrides senderUid = callerUid (the
+ *     authenticated writer) so the /notifications create rule
+ *     (senderUid == request.auth.uid) accepts the write — critical for the
+ *     judge-as-caller case where the caller is not the setter.
+ * The recipient and type are identical across paths; only the writer differs.
+ */
+function expectMatcherNotification(notification: unknown): void {
+  expect(notification).toEqual({
+    recipientUid: "p2",
+    senderUid: "p1",
+    type: "your_turn",
+    title: expect.any(String),
+    body: expect.any(String),
+  });
+}
+
 describe("toAdminGameUpdate / toWebGameUpdate parity", () => {
   it("plain forfeit (setting/matching) — identical write", () => {
-    const { web, admin } = bothWrites(baseGame({ currentTurn: "p1", currentSetter: "p1" }));
+    const { decision, web, admin } = bothWrites(baseGame({ currentTurn: "p1", currentSetter: "p1" }));
 
     // Byte-for-byte identical given the shared sentinel mocks.
     expect(admin).toEqual(web);
@@ -86,6 +112,8 @@ describe("toAdminGameUpdate / toWebGameUpdate parity", () => {
     expect(admin.turnHistory).toEqual(
       arrayUnion(web.turnHistory ? (web.turnHistory as { __arrayUnion: unknown }).__arrayUnion : undefined),
     );
+    // Game ends — no "your turn" notification on either path.
+    expect(decision.notification).toBeNull();
   });
 
   it("disputeAccept (disputable phase expired) — identical write incl. Timestamp + arrayUnion", () => {
@@ -102,6 +130,14 @@ describe("toAdminGameUpdate / toWebGameUpdate parity", () => {
     expect(admin.turnHistory).toEqual(web.turnHistory);
     expect(admin.turnNumber).toBe(web.turnNumber);
     expect(admin.judgeReviewFor).toBeNull();
+    // The notification is part of the shared decision (recipient = matcher who
+    // landed and now sets) — NOT part of the game-state write. Both SDK paths
+    // read this same value; only the client may skip EMITTING it (self-notify).
+    expectMatcherNotification(decision.notification);
+    // The game-state write carries NO notification fields — divergence is only
+    // in the side-effect emission, never in the persisted game doc.
+    expect(web).not.toHaveProperty("recipientUid");
+    expect(admin).not.toHaveProperty("recipientUid");
   });
 
   it("setReviewClear (setReview phase expired) — identical write", () => {
@@ -122,6 +158,8 @@ describe("toAdminGameUpdate / toWebGameUpdate parity", () => {
     expect(admin.judgeReviewFor).toBeNull();
     // Only the fields the decision set are present — no stray keys on either side.
     expect(Object.keys(admin).sort()).toEqual(Object.keys(web).sort());
+    // Notification recipient = matcher now on the clock; shared across paths.
+    expectMatcherNotification(decision.notification);
   });
 
   it("never emits a key the other side omits (no partial drift on any branch)", () => {

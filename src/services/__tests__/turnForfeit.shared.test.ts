@@ -171,5 +171,36 @@ describe("decideExpiredForfeit", () => {
     expect(u.currentTurn).toBe("p2"); // matcher (opponent of setter)
     expect(u.judgeReviewFor).toBeNull();
     expect(u.turnDeadlineMs).toBe(NOW + TURN_DURATION_MS);
+
+    // "Your turn" notification targets the matcher now on the clock; sender is
+    // the setter whose trick was ruled clean.
+    expect(decision!.notification).toEqual({
+      recipientUid: "p2",
+      senderUid: "p1",
+      type: "your_turn",
+      title: expect.any(String),
+      body: expect.any(String),
+    });
+  });
+
+  it("setReviewClear notification uses p2's username when p2 is the setter", () => {
+    // Covers the player1Uid===currentSetter ternary false branch + currentTrickName fallback.
+    const game = baseGame({
+      phase: "setReview",
+      currentSetter: "p2",
+      currentTurn: "j1",
+      currentTrickName: null,
+      judgeId: "j1",
+      judgeStatus: "accepted",
+    });
+
+    const decision = decideExpiredForfeit(game, NOW, "g1");
+    expect(decision!.kind).toBe("setReviewClear");
+    expect(decision!.gameUpdate.currentTurn).toBe("p1"); // matcher = opponent of p2
+    expect(decision!.notification).toMatchObject({
+      recipientUid: "p1",
+      senderUid: "p2",
+      body: "Match @bob's Trick", // bob = p2 username, "Trick" fallback
+    });
   });
 });

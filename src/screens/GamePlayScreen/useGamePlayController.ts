@@ -107,7 +107,9 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     if (forfeitChecked || game.status !== "active") return;
     const deadline = game.turnDeadline?.toMillis?.() ?? 0;
     if (deadline > 0 && Date.now() >= deadline) {
-      forfeitExpiredTurn(game.id).catch((err) => {
+      // Pass the acting user's uid so forfeitExpiredTurn can skip the
+      // self-notify the /notifications rule forbids (see that fn's doc).
+      forfeitExpiredTurn(game.id, profile.uid).catch((err) => {
         logger.warn("forfeit_check_failed", {
           error: parseFirebaseError(err),
           gameId: game.id,
@@ -116,7 +118,7 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
       });
     }
     setForfeitChecked(true);
-  }, [game.id, game.status, forfeitChecked, game.turnDeadline]);
+  }, [game.id, game.status, forfeitChecked, game.turnDeadline, profile.uid]);
 
   const isPlayer = game.player1Uid === profile.uid || game.player2Uid === profile.uid;
   const isJudge = !!game.judgeId && game.judgeId === profile.uid;
