@@ -3,7 +3,6 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "crons": [{ "path": "/api/cron/sweep-expired-turns", "schedule": "*/15 * * * *" }],
   "redirects": [
     {
       "source": "/(.*)",
