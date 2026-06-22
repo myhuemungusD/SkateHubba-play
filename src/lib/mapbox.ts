@@ -5,9 +5,11 @@ import { captureMessage } from "./sentry";
 
 export const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 
-// SkateHubba dark map style fallback — used when VITE_MAPBOX_STYLE_URL is
-// unset OR set to an invalid value. Replace by designing a custom style in
-// Mapbox Studio and pointing VITE_MAPBOX_STYLE_URL at it (no code change).
+// Default map style — Mapbox's stock `dark-v11`. The branded SkateHubba style
+// (dark base, emphasized roads + plazas, de-emphasized labels so spots stand
+// out) lives in Mapbox Studio and is wired in via VITE_MAPBOX_STYLE_URL with no
+// code change; see docs/MAPBOX_STYLE.md for the authoring + publish steps. This
+// constant is the fallback used when that env var is unset OR invalid.
 export const DEFAULT_MAP_STYLE = "mapbox://styles/mapbox/dark-v11";
 
 /**

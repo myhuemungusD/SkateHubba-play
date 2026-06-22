@@ -127,7 +127,9 @@ VITE_MAPBOX_STYLE_URL — Custom Mapbox style URL. Optional override consumed
                         `map_style_invalid` Sentry event is emitted with
                         the offending value attached, and the map falls
                         back to `mapbox://styles/mapbox/dark-v11` so a typo
-                        can't take the /map page down. Leave unset to use
+                        can't take the /map page down. See
+                        docs/MAPBOX_STYLE.md for the Mapbox Studio authoring
+                        + publish steps. Leave unset to use
                         the default dark style. NOTE: a self-hosted https
                         style URL on a non-Mapbox origin also requires
                         adding that origin to the `connect-src` directive
