@@ -54,6 +54,13 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Invoke sweep endpoint
+        # `shell: bash` is load-bearing: it tells GitHub to run the step with
+        # `bash --noprofile --norc -eo pipefail`. Without an explicit shell the
+        # default is `bash -e {0}` (no pipefail), and the trailing
+        # `| tee /dev/stderr` would mask curl's exit status with tee's
+        # always-success status -- a drifted CRON_SECRET (401) or endpoint 5xx
+        # would silently keep this workflow green while nothing gets swept.
+        shell: bash
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
