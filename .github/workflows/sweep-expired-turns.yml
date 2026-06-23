@@ -1,0 +1,75 @@
+# Sweep Expired Turns (cron referee)
+#
+# Why this exists:
+#   The auto-referee endpoint at /api/cron/sweep-expired-turns needs to run
+#   every 15 minutes to forfeit turns whose timer has elapsed. We originally
+#   wired this through Vercel's `crons` block in vercel.json, but Vercel's
+#   Hobby plan caps cron frequency at once per day -- which also blocks every
+#   PR preview deploy with "Hobby accounts are limited to daily cron jobs".
+#   Until the project moves to a paid Vercel plan, GitHub Actions hosts the
+#   schedule and just calls the Vercel-hosted endpoint over HTTPS.
+#
+# Secret setup (operator action required):
+#   The endpoint authenticates via `Authorization: Bearer ${CRON_SECRET}`
+#   using a constant-time compare. The SAME value that lives in the Vercel
+#   project env as CRON_SECRET must also be added to this repo under
+#   Settings -> Secrets and variables -> Actions -> New repository secret,
+#   named `CRON_SECRET`. If the values drift, every run here will 401.
+#
+# Scheduling caveats:
+#   GitHub Actions `schedule` triggers are best-effort. During platform load
+#   runs can be delayed by several minutes or skipped entirely. That is
+#   acceptable for this job because the 15-minute cadence is itself a soft
+#   deadline -- a late sweep just means a turn forfeits a little later than
+#   the ideal moment. `workflow_dispatch` is included so an operator can
+#   trigger an ad hoc sweep from the Actions UI if a delay matters.
+
+name: Sweep Expired Turns (cron referee)
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel an in-flight sweep if a newer one starts. Endpoint writes are
+# idempotent (each game is re-read and re-decided inside its own admin
+# transaction), so overlap is correctness-safe -- this just saves runner
+# minutes when a delayed run bumps into the next scheduled one.
+concurrency:
+  group: sweep-expired-turns
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    name: Call /api/cron/sweep-expired-turns
+    # Skip on forks so a fork owner does not get 401 failure emails every
+    # 15 minutes from a schedule trigger they never wanted. Forks can still
+    # trigger this manually via workflow_dispatch after setting their own
+    # CRON_SECRET if they want to test against a fork-owned endpoint.
+    if: github.repository == 'myhuemungusD/SkateHubba-play'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Invoke sweep endpoint
+        # `shell: bash` is load-bearing: it tells GitHub to run the step with
+        # `bash --noprofile --norc -eo pipefail`. Without an explicit shell the
+        # default is `bash -e {0}` (no pipefail), and the trailing
+        # `| tee /dev/stderr` would mask curl's exit status with tee's
+        # always-success status -- a drifted CRON_SECRET (401) or endpoint 5xx
+        # would silently keep this workflow green while nothing gets swept.
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 240 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -w "\nHTTP %{http_code} in %{time_total}s\n" \
+            https://skatehubba.com/api/cron/sweep-expired-turns \
+            | tee /dev/stderr
