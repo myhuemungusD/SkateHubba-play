@@ -211,16 +211,14 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         if (err instanceof AlreadyUpvotedError) return;
         logger.warn("clips_feed_upvote_failed", { clipId: clip.id, error: parseFirebaseError(err) });
         if (!mountedRef.current) return;
-        // Only restore the pre-tap snapshot if state still matches what we
-        // optimistically set. If a sort-toggle re-hydration replaced our entry
-        // with an authoritative server snapshot mid-flight, leave it alone —
-        // rolling back would regress the UI to a value the server has since
-        // moved past.
+        // Only restore the pre-tap snapshot if our exact optimistic object is
+        // still at this key. Reference equality — not value equality — is what
+        // we want: if a sort-toggle re-hydration replaced the entry with a
+        // fresh server snapshot (same values or not), that snapshot is now
+        // authoritative and rolling back to the pre-tap value would regress
+        // the UI to something the server has already moved past.
         setUpvoteState((prev) => {
-          const cur = prev.get(clip.id);
-          if (!cur || cur.count !== optimistic.count || cur.alreadyUpvoted !== optimistic.alreadyUpvoted) {
-            return prev;
-          }
+          if (prev.get(clip.id) !== optimistic) return prev;
           const next = new Map(prev);
           next.set(clip.id, current);
           return next;
