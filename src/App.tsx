@@ -200,8 +200,13 @@ const UNVERIFIED_CHALLENGE_TOAST = {
  *      unmounts this component immediately, and a cleanup would cancel the
  *      very toast we're deferring. Calling `notify` after unmount is safe
  *      because NotificationProvider (the ancestor) stays mounted for the
- *      app's lifetime, and `firedRef` prevents a second fire under React
- *      StrictMode dev double-invoke of the effect. */
+ *      app's lifetime.
+ *
+ *  StrictMode note: the `<Navigate>` route swap unmounts this component
+ *  before StrictMode's dev-only remount could hit — so the real
+ *  double-fire guard is the route change, not `firedRef`. `firedRef` is
+ *  kept as belt-and-suspenders in case a future refactor delays the
+ *  redirect. */
 function UnverifiedChallengeRedirect() {
   const { notify } = useNotifications();
   const firedRef = useRef(false);
