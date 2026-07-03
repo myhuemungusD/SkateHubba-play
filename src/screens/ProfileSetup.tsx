@@ -48,7 +48,6 @@ function usernameNote(name: string, available: boolean | null, availabilityError
 
 export function ProfileSetup({
   uid,
-  emailVerified = false,
   displayName,
   onDone,
   onSignOut,
@@ -57,7 +56,6 @@ export function ProfileSetup({
   onNavLegal,
 }: {
   uid: string;
-  emailVerified?: boolean;
   displayName?: string | null;
   onDone: (p: UserProfile) => void;
   /** Escape hatch for the retry screen — lets the user sign out when the
@@ -216,7 +214,7 @@ export function ProfileSetup({
 
     setLoading(true);
     try {
-      const profile = await createProfile(uid, normalized, stance, emailVerified, effectiveDob, effectiveConsent);
+      const profile = await createProfile(uid, normalized, stance, effectiveDob, effectiveConsent);
       metrics.signUp("google", uid);
       analytics.signUp("google");
       onDone(profile);

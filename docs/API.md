@@ -195,15 +195,15 @@ Normalizes the username (`toLowerCase().trim()`), validates format client-side, 
 
 ---
 
-### `createProfile(uid, email, username, stance, emailVerified?)`
+### `createProfile(uid, username, stance, dob?, parentalConsent?)`
 
 ```ts
 createProfile(
   uid: string,
-  email: string,
   username: string,
   stance: string,
-  emailVerified?: boolean
+  dob?: string,
+  parentalConsent?: boolean
 ): Promise<UserProfile>
 ```
 
@@ -211,11 +211,12 @@ Creates the user profile atomically using a Firestore transaction:
 
 1. Reads `usernames/{normalized}` — aborts if it exists.
 2. Writes `usernames/{normalized} = { uid, reservedAt }`.
-3. Writes `users/{uid} = full profile`.
+3. Writes `users/{uid} = { uid, username, stance, createdAt }` (public, cross-user readable).
+4. Writes `users/{uid}/private/profile = { dob, parentalConsent? }` (owner-only readable).
 
-The username is normalized (`toLowerCase().trim()`) before storage.
+The username is normalized (`toLowerCase().trim()`) before storage. `dob` must be `YYYY-MM-DD` (age-gate output); a missing or malformed value throws `AgeVerificationRequiredError` so the UI can redirect to the age gate. `emailVerified` is never persisted — Firebase Auth (`auth.currentUser.emailVerified` + the `email_verified` JWT claim) is the source of truth.
 
-**Throws:** `"Username is already taken"` if the reservation was lost to a race condition.
+**Throws:** `AgeVerificationRequiredError` when `dob` is missing or malformed. `"Username is already taken"` if the reservation was lost to a race condition.
 
 ---
 

@@ -215,16 +215,6 @@ export async function createProfile(
   uid: string,
   username: string,
   stance: string,
-  /**
-   * @deprecated Historical emailVerified mirror. No longer persisted —
-   * Firebase Auth (`auth.currentUser.emailVerified`) and the JWT claim
-   * `request.auth.token.email_verified` are the canonical sources, and
-   * mirroring the flag at creation time silently went stale as soon as
-   * the user completed verification. Positional parameter retained so
-   * existing UI callers keep compiling until the follow-up UX PR drops
-   * the argument. Ignored inside this function.
-   */
-  _emailVerified = false,
   dob?: string,
   parentalConsent?: boolean,
 ): Promise<UserProfile> {
@@ -272,13 +262,13 @@ export async function createProfile(
     // parentalConsent today; future sensitive fields (email,
     // fcmTokens) get written here via dedicated updates.
     //
-    // emailVerified is intentionally NOT mirrored here — it defaulted
-    // to false for email signups and was never updated once the user
-    // completed verification, so it was silently stale for the
-    // majority of accounts. Auth is the source of truth via
-    // `auth.currentUser.emailVerified` and the JWT
-    // `request.auth.token.email_verified` claim. The field remains in
-    // `privateProfileKeysOk()` so legacy docs still validate on
+    // emailVerified is intentionally NOT mirrored here. Firebase Auth
+    // (`auth.currentUser.emailVerified` plus the JWT
+    // `request.auth.token.email_verified` claim) is the source of
+    // truth — a mirrored copy would go stale the moment the user
+    // completes verification and no reader should trust one. The name
+    // is kept in `privateProfileKeysOk()` inside `firestore.rules` so
+    // legacy docs from the previous mirroring era still validate on
     // future partial updates.
     //
     // merge:true is defense-in-depth: the OnboardingProvider gate on

@@ -255,7 +255,6 @@ function AppRoutes() {
                 auth.user ? (
                   <ProfileSetup
                     uid={auth.user.uid}
-                    emailVerified={auth.user.emailVerified}
                     displayName={auth.user.displayName}
                     dob={nav.ageGateDob}
                     parentalConsent={nav.ageGateParentalConsent}

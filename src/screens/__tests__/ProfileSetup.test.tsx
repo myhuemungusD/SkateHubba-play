@@ -45,7 +45,6 @@ beforeEach(() => {
 describe("ProfileSetup", () => {
   const defaultProps = {
     uid: "u1",
-    emailVerified: false,
     displayName: null,
     onDone: vi.fn(),
     // Email-signup path: DOB arrives as a prop so the form skips the inline
@@ -179,7 +178,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "testname", "Regular", false, "2000-01-15", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "testname", "Regular", "2000-01-15", false);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -227,7 +226,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, "2000-01-15", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", "2000-01-15", false);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -243,7 +242,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", false, "2000-01-15", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Goofy", "2000-01-15", false);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -454,7 +453,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", false, "2000-01-15", false);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "newuser", "Regular", "2000-01-15", false);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
@@ -474,7 +473,7 @@ describe("ProfileSetup", () => {
     await userEvent.click(screen.getByRole("button", { name: /Lock It In/ }));
 
     await waitFor(() => {
-      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "teenuser", "Regular", false, "2011-01-01", true);
+      expect(mockCreateProfile).toHaveBeenCalledWith("u1", "teenuser", "Regular", "2011-01-01", true);
       expect(onDone).toHaveBeenCalledWith(createdProfile);
     });
   });
