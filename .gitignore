@@ -31,6 +31,11 @@ src/**/*.mov
 # entitlements, icons, signing configs, and Info.plist. Only build artefacts
 # and per-developer Xcode state are ignored below.
 
+# Firebase native config — contains project keys; injected in CI from
+# base64 secrets (GOOGLE_SERVICES_JSON / GOOGLESERVICE_INFO_PLIST). Never commit.
+android/app/google-services.json
+ios/App/App/GoogleService-Info.plist
+
 # iOS (Capacitor/Xcode) — tracked project, ignore build + pod artefacts
 ios/App/Pods/
 ios/App/*.xcworkspace/xcuserdata/

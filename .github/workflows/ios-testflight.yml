@@ -1,0 +1,113 @@
+name: iOS TestFlight / App Store
+# Dispatch-only until the maintainer has added every secret listed below.
+# Do NOT add push/schedule triggers: macOS runners bill ~10x ubuntu minutes,
+# and an incomplete-secret run would burn them only to fail at signing.
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: 'Fastlane iOS lane to run'
+        type: choice
+        default: beta
+        options:
+          - beta # build + upload to TestFlight
+          - release # submit latest TestFlight build for App Store review
+
+# ---------------------------------------------------------------------------
+# REQUIRED GitHub Actions secrets (maintainer must add before first run).
+# Sourced from fastlane/Fastfile, fastlane/Appfile, fastlane/Matchfile and
+# fastlane/README.md — do not rename without updating those.
+#
+#   APPLE_ID                            Apple Developer account email
+#   APPLE_TEAM_ID                       10-char Apple team identifier
+#   APP_STORE_CONNECT_API_KEY_ID        App Store Connect API key id
+#   APP_STORE_CONNECT_API_KEY_ISSUER_ID Issuer UUID
+#   APP_STORE_CONNECT_API_KEY_CONTENT   Full contents of the .p8 key (paste as-is)
+#   MATCH_PASSWORD                      Symmetric passphrase for signing certs
+#   MATCH_GIT_URL                       Private git repo holding encrypted certs
+#   GOOGLESERVICE_INFO_PLIST            base64 of ios/App/App/GoogleService-Info.plist
+#
+# MATCH_READONLY is intentionally left unset: the Matchfile defaults to
+# readonly in CI so runners consume pre-generated certs (never rotate them).
+# ---------------------------------------------------------------------------
+jobs:
+  build:
+    name: Build & upload (fastlane ${{ inputs.lane }})
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web assets
+        run: npm run build
+        env:
+          VITE_FIREBASE_API_KEY: ${{ secrets.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ secrets.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
+          VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
+          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
+
+      - name: Inject GoogleService-Info.plist
+        # iOS Firebase config is git-ignored (contains project keys), so CI must
+        # materialise it from a base64 secret. Hard-fail rather than ship a
+        # build with broken FCM + Google sign-in. This runs BEFORE `cap sync`
+        # (mirrors the Android ordering) and, critically, before the fastlane
+        # build: the Xcode project (App.xcodeproj/project.pbxproj) registers
+        # GoogleService-Info.plist as a bundle resource, so it MUST exist on
+        # disk at build time or the Resources build phase fails. Keep this
+        # injection ahead of the build step.
+        env:
+          GOOGLESERVICE_INFO_PLIST: ${{ secrets.GOOGLESERVICE_INFO_PLIST }}
+        run: |
+          if [ -z "$GOOGLESERVICE_INFO_PLIST" ]; then
+            echo "::error::GOOGLESERVICE_INFO_PLIST secret is empty or unset. Add the base64-encoded ios/App/App/GoogleService-Info.plist as a repo secret before running this workflow."
+            exit 1
+          fi
+          echo "$GOOGLESERVICE_INFO_PLIST" | base64 --decode > ios/App/App/GoogleService-Info.plist
+
+      - name: Sync Capacitor (iOS)
+        run: npx cap sync ios
+
+      - name: Setup Ruby + bundler
+        # bundler-cache installs the pinned fastlane from the repo-root Gemfile
+        # and caches the resulting gems between runs.
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+
+      - name: Write App Store Connect API key
+        # The Fastfile reads api_key_path from APP_STORE_CONNECT_API_KEY_PATH,
+        # so decode the .p8 contents to a runner-local file and export its path.
+        env:
+          APP_STORE_CONNECT_API_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_API_KEY_CONTENT }}
+        run: |
+          if [ -z "$APP_STORE_CONNECT_API_KEY_CONTENT" ]; then
+            echo "::error::APP_STORE_CONNECT_API_KEY_CONTENT secret is empty or unset."
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/appstore"
+          printf '%s' "$APP_STORE_CONNECT_API_KEY_CONTENT" > "$RUNNER_TEMP/appstore/AuthKey.p8"
+          echo "APP_STORE_CONNECT_API_KEY_PATH=$RUNNER_TEMP/appstore/AuthKey.p8" >> "$GITHUB_ENV"
+
+      - name: Run fastlane
+        run: bundle exec fastlane ios ${{ inputs.lane }}
+        env:
+          # Apple account + team (Appfile / Matchfile).
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # App Store Connect API key (Fastfile beta/release lanes).
+          APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+          APP_STORE_CONNECT_API_KEY_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ISSUER_ID }}
+          # APP_STORE_CONNECT_API_KEY_PATH exported by the previous step.
+          # fastlane match — decrypts signing certs from the private git repo.
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}

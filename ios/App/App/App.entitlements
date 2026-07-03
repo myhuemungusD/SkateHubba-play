@@ -2,7 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Ship with the production APNs environment for App Store / TestFlight
+	     distribution. Xcode signing maps this correctly at export time, and
+	     local development builds override it to `development` via the
+	     provisioning profile, so this value is safe for both. -->
 	<key>aps-environment</key>
-	<string>development</string>
+	<string>production</string>
 </dict>
 </plist>

@@ -27,6 +27,20 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
+      - name: Inject google-services.json
+        # Firebase Android config is git-ignored (contains project keys), so CI
+        # must materialise it from a base64-encoded secret. Without it, the
+        # google-services Gradle plugin silently no-ops and the release AAB
+        # ships with broken FCM + Google sign-in — hard-fail rather than
+        # produce a quietly-broken store artifact.
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "::error::GOOGLE_SERVICES_JSON secret is empty or unset. Add the base64-encoded android/app/google-services.json as a repo secret before building a release AAB."
+            exit 1
+          fi
+          echo "$GOOGLE_SERVICES_JSON" | base64 -d > android/app/google-services.json
       - name: Build web assets
         run: npm run build
         env:
