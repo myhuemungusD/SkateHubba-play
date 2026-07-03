@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { resendVerification, reloadUser } from "../services/auth";
+import { resendVerification } from "../services/auth";
+import { useAuthContext } from "../context/AuthContext";
 import { getErrorCode } from "../utils/helpers";
 import { captureException } from "../lib/sentry";
 
@@ -28,6 +29,7 @@ function writeStoredCooldown(seconds: number): void {
 }
 
 export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
+  const { refreshUser } = useAuthContext();
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(readStoredCooldown);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -95,13 +97,18 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
   const handleCheckNow = async () => {
     setChecking(true);
     try {
-      // reloadUser() force-refreshes the ID token if verified. useAuth's
-      // reload tick then re-renders us with emailVerified=true and this
-      // component returns null. Errors are non-critical — swallow them
-      // so the button doesn't need its own error surface.
-      await reloadUser();
+      // refreshUser() bumps useAuth's reload tick after calling reloadUser(),
+      // which is how AuthContext re-renders with the new emailVerified claim.
+      // Calling reloadUser directly would mutate the SDK user in place —
+      // Object.is on the same reference wouldn't trigger a re-render, so the
+      // banner wouldn't unmount even after successful verification.
+      await refreshUser();
     } catch {
-      /* best-effort — user can retry */
+      // Defense in depth. refreshUser already catches internally and
+      // breadcrumbs via logger.debug, but if a future edit lets an
+      // exception escape (e.g. a synchronous throw before the internal
+      // try), we must not surface an unhandled rejection — the finally
+      // below still restores the button state either way.
     } finally {
       setChecking(false);
     }
@@ -121,13 +128,20 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
       : "Resend verification email";
 
   return (
+    // No `role="status"` on the outer container — the resend button's visible
+    // countdown text (`60s` → `59s` → …) mutates every second, and putting the
+    // whole banner inside an implicit live region would queue a screen-reader
+    // announcement on every tick. The status message span below is the sole
+    // live region; the button announces via its aria-label when focused.
     <div
-      role="status"
+      aria-labelledby="verify-email-banner-title"
       className="mx-5 mt-4 p-3.5 rounded-2xl bg-[rgba(255,107,0,0.06)] border border-brand-orange/40 flex items-center justify-between gap-3 shadow-[0_0_16px_rgba(255,107,0,0.06)] animate-fade-in"
     >
       <div>
-        <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
-        <span className="font-body text-xs text-muted" aria-live="polite">
+        <span id="verify-email-banner-title" className="font-display text-xs tracking-wider text-brand-orange block">
+          VERIFY YOUR EMAIL
+        </span>
+        <span role="status" className="font-body text-xs text-muted">
           {statusMessage}
         </span>
         {/* Desktop users with side-by-side tabs never trigger

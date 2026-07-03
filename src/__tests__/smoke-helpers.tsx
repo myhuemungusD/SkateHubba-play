@@ -106,6 +106,7 @@ export function createMockHelpers(mocks: {
       user: authedUser,
       profile: testProfile as UserProfile,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     withGames(games);
     return renderApp();
@@ -117,6 +118,7 @@ export function createMockHelpers(mocks: {
       user: verifiedUser,
       profile: testProfile as UserProfile,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     withGames(games);
     return renderApp();

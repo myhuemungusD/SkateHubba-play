@@ -66,6 +66,7 @@ describe("Smoke: direct-URL deep-linking", () => {
       user: verifiedUser,
       profile: testProfile as UserProfile,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
   });
 

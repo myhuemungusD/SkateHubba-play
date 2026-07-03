@@ -4,10 +4,15 @@ import userEvent from "@testing-library/user-event";
 import { VerifyEmailBanner } from "../VerifyEmailBanner";
 
 const mockResendVerification = vi.fn();
-const mockReloadUser = vi.fn();
+const mockRefreshUser = vi.fn();
 vi.mock("../../services/auth", () => ({
   resendVerification: (...args: unknown[]) => mockResendVerification(...args),
-  reloadUser: (...args: unknown[]) => mockReloadUser(...args),
+}));
+// The banner reads refreshUser off AuthContext (see the P0 fix in useAuth /
+// AuthContext) — mocking the hook lets these tests stay decoupled from the
+// full AuthProvider tree and its Firebase / router prerequisites.
+vi.mock("../../context/AuthContext", () => ({
+  useAuthContext: () => ({ refreshUser: mockRefreshUser }),
 }));
 vi.mock("../../utils/helpers", () => ({
   getErrorCode: (err: unknown) => (err as { code?: string })?.code ?? null,
@@ -178,12 +183,23 @@ describe("VerifyEmailBanner", () => {
     vi.useRealTimers();
   });
 
-  it("banner container is announced as a status region", () => {
-    // Screen reader users need to know the banner is present even though it
-    // isn't the primary landmark on the page.
+  it("status message is announced as a status region — but the ticking button is not", () => {
+    // Screen reader users need to hear the message ("Check your inbox…") when
+    // the banner appears. The role="status" MUST live on the message span, not
+    // the outer container — the resend button below shows a live countdown
+    // ("60s"→"59s"…) and wrapping the whole banner in a live region would
+    // queue an announcement every second.
     render(<VerifyEmailBanner emailVerified={false} />);
     const status = screen.getByRole("status");
-    expect(status).toHaveTextContent("VERIFY YOUR EMAIL");
+    expect(status).toHaveTextContent(/Check your inbox and spam\/junk folder/i);
+    // Regression guard: the ticking Resend button must NOT be inside the
+    // status region (would spam ATs with per-second announcements).
+    expect(status).not.toContainElement(screen.getByRole("button", { name: /Resend verification email/ }));
+  });
+
+  it("banner is labelled by its title for screen readers", () => {
+    render(<VerifyEmailBanner emailVerified={false} />);
+    expect(screen.getByText("VERIFY YOUR EMAIL")).toHaveAttribute("id", "verify-email-banner-title");
   });
 
   it("resend button reflects aria-busy + label swap while sending", async () => {
@@ -216,24 +232,31 @@ describe("VerifyEmailBanner", () => {
     });
   });
 
-  it("manual 'I verified' button calls reloadUser", async () => {
+  it("manual 'I verified' button calls refreshUser (via AuthContext, not the raw service)", async () => {
     // Desktop users with side-by-side tabs never fire visibilitychange, so
     // they need a manual affordance to force useAuth to refresh the token.
-    mockReloadUser.mockResolvedValueOnce(true);
+    // Critical wiring: the button must go through AuthContext.refreshUser
+    // (which bumps useAuth's reload tick) — NOT the raw services/auth
+    // reloadUser export. reloadUser mutates the SDK user in place; without
+    // the tick bump the banner would not unmount after verification. This
+    // test would fail if a future edit reintroduced the direct import.
+    mockRefreshUser.mockResolvedValueOnce(true);
     render(<VerifyEmailBanner emailVerified={false} />);
 
     const btn = screen.getByRole("button", { name: /I verified my email/ });
     await userEvent.click(btn);
 
     await waitFor(() => {
-      expect(mockReloadUser).toHaveBeenCalledTimes(1);
+      expect(mockRefreshUser).toHaveBeenCalledTimes(1);
     });
   });
 
-  it("manual 'I verified' button swallows reloadUser errors", async () => {
-    // Manual refresh is best-effort — a network blip must not throw an
-    // unhandled promise rejection or leave the button stuck in "Checking…".
-    mockReloadUser.mockRejectedValueOnce(new Error("network"));
+  it("manual 'I verified' button clears its loading state even if refreshUser rejects", async () => {
+    // Defense in depth — refreshUser is expected to swallow errors internally
+    // (breadcrumbs via logger.debug) but if a future edit lets an exception
+    // escape, the finally block on the button handler must still clear the
+    // `checking` state so the button doesn't wedge on "Checking…".
+    mockRefreshUser.mockRejectedValueOnce(new Error("network"));
     render(<VerifyEmailBanner emailVerified={false} />);
 
     const btn = screen.getByRole("button", { name: /I verified my email/ });

@@ -111,6 +111,7 @@ describe("Smoke: Onboarding tour", () => {
       user: verifiedUser,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     games.refs.subscribeToMyGames.mockImplementation(() => () => {});
     await renderApp();

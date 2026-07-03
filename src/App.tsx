@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, lazy, Suspense, type ReactNode } from "react";
 import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -83,10 +83,14 @@ function FirebaseMissing() {
   );
 }
 
-/** Route prefixes where the VerifyEmailBanner MUST NOT render — the pre-auth
- *  landing / auth / legal surfaces have no notion of a signed-in user, and
- *  showing a "verify your email" banner over the auth form is confusing. */
-const BANNER_HIDDEN_PATHS = new Set<string>(["/", "/landing", "/auth"]);
+/** Routes where the VerifyEmailBanner MUST NOT render even for a signed-in
+ *  unverified user. Two rationales:
+ *   - `/` and `/auth` are pre-auth surfaces where the banner over an auth
+ *     form is confusing.
+ *   - `/privacy`, `/terms`, `/data-deletion`, `/404` are static legal / error
+ *     screens where a "verify your email" reminder is off-topic noise;
+ *     the banner reappears when the user returns to any authed feature route. */
+const BANNER_HIDDEN_PATHS = new Set<string>(["/", "/auth", "/privacy", "/terms", "/data-deletion", "/404"]);
 
 function AppEmailVerifyBanner() {
   const auth = useAuthContext();
@@ -180,14 +184,31 @@ const UNVERIFIED_CHALLENGE_TOAST = {
 };
 
 /** Rendered from the `/challenge` route when the user is signed in but
- *  unverified. Fires the shared toast on mount then redirects to /lobby so
- *  the redirect isn't silent (audit P1). Deliberately a component, not an
- *  inline callback, so React can commit the toast side-effect exactly once
- *  before Navigate replaces the route. */
+ *  unverified. Fires the shared toast then redirects to /lobby so the
+ *  redirect isn't silent (audit P1).
+ *
+ *  Two non-obvious wiring details, both load-bearing:
+ *
+ *   1. The notify is deferred to a subsequent macrotask via `setTimeout(0)`
+ *      because when a fresh sign-in resolves on this route,
+ *      NotificationProvider's `uid`-change effect fires `setToasts([])` in
+ *      the same commit. React runs child effects before parent effects, so
+ *      a synchronous `notify()` here is wiped by the parent reset;
+ *      deferring pushes it past the reset.
+ *
+ *   2. The timeout is NOT cleaned up on unmount — the `<Navigate>` below
+ *      unmounts this component immediately, and a cleanup would cancel the
+ *      very toast we're deferring. Calling `notify` after unmount is safe
+ *      because NotificationProvider (the ancestor) stays mounted for the
+ *      app's lifetime, and `firedRef` prevents a second fire under React
+ *      StrictMode dev double-invoke of the effect. */
 function UnverifiedChallengeRedirect() {
   const { notify } = useNotifications();
+  const firedRef = useRef(false);
   useEffect(() => {
-    notify(UNVERIFIED_CHALLENGE_TOAST);
+    if (firedRef.current) return;
+    firedRef.current = true;
+    window.setTimeout(() => notify(UNVERIFIED_CHALLENGE_TOAST), 0);
   }, [notify]);
   return <Navigate to="/lobby" replace />;
 }

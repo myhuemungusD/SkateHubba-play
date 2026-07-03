@@ -40,6 +40,10 @@ export function makeAuthStateSetters(refs: { useAuth: Mock }): AuthStateSetters 
       user: state.user,
       profile: state.profile ?? null,
       refreshProfile,
+      // refreshUser is consumed by VerifyEmailBanner (mounted globally in
+      // AppScreens). Smoke tests that render the full app tree crash on the
+      // banner's initial destructure without it. See useAuth.ts:refreshUser.
+      refreshUser: vi.fn(),
     });
     return refreshProfile;
   }

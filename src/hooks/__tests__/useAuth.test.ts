@@ -318,6 +318,49 @@ describe("useAuth hook", () => {
     expect(result.current.user).toBeTruthy();
   });
 
+  it("refreshUser returns null and does not call reloadUser when signed out", async () => {
+    // The refreshUser callback is exposed on useAuth so the manual "I
+    // verified — check now" button on VerifyEmailBanner can force a token
+    // reload. If the user has signed out between rendering the button and
+    // clicking it, refreshUser must no-op cleanly rather than dereference
+    // a null userRef.
+    const { result } = renderHook(() => useAuth());
+    // Never fire authChangeCallback — userRef stays null.
+
+    let outcome: boolean | null | undefined;
+    await act(async () => {
+      outcome = await result.current.refreshUser();
+    });
+
+    expect(outcome).toBeNull();
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
+  it("refreshUser swallows reloadUser errors and returns the current emailVerified", async () => {
+    // Regression guard: refreshUser wraps reloadUser in try/catch so a
+    // network blip on the manual "check now" click never surfaces an
+    // unhandled promise rejection. It returns the pre-existing verified
+    // flag so callers can distinguish "still unverified" from success.
+    mockGetUserProfile.mockResolvedValue({ uid: "u1", username: "sk8r" });
+    mockReloadUser.mockRejectedValueOnce(new Error("network"));
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      authChangeCallback?.({ uid: "u1", email: "a@b.com", emailVerified: false });
+    });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    let outcome: boolean | null | undefined;
+    await act(async () => {
+      outcome = await result.current.refreshUser();
+    });
+
+    expect(mockReloadUser).toHaveBeenCalled();
+    // The pre-reload emailVerified value — false — is what refreshUser
+    // returns from the catch branch.
+    expect(outcome).toBe(false);
+  });
+
   it("refreshProfile preserves existing profile on transient error", async () => {
     const profile = { uid: "u1", username: "sk8r" };
     mockGetUserProfile.mockResolvedValueOnce(profile).mockRejectedValueOnce(new Error("network error"));

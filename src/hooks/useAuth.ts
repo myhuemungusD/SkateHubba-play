@@ -13,6 +13,16 @@ interface AuthState {
   user: User | null;
   profile: UserProfile | null;
   refreshProfile: () => Promise<void>;
+  /**
+   * Force-refresh the current user's `emailVerified` claim (via
+   * `reloadUser()` in `services/auth`) and bump an internal tick so
+   * consumers re-render. Mirrors the visibilitychange auto-refresh; used
+   * by the VerifyEmailBanner manual "I verified — check now" button on
+   * desktop where side-by-side tabs never fire visibilitychange.
+   *
+   * Returns the post-reload `emailVerified` value (or null if signed out).
+   */
+  refreshUser: () => Promise<boolean | null>;
 }
 
 export function useAuth(): AuthState {
@@ -122,6 +132,30 @@ export function useAuth(): AuthState {
     return unsub;
   }, []);
 
+  /**
+   * Shared reload path used by the visibility auto-refresh and the manual
+   * VerifyEmailBanner button. `reloadUser()` mutates the live SDK User
+   * instance in place — cloning would strip the private token cache and
+   * `getIdToken`/`delete` closures — so we bump a version tick to force a
+   * re-render for the new `emailVerified` claim.
+   */
+  const refreshUser = useCallback(async (): Promise<boolean | null> => {
+    const u = userRef.current;
+    if (!u) return null;
+    try {
+      const verified = await reloadUser();
+      // reloadUser() returns null if signed out mid-flight; otherwise the
+      // updated verified flag. Bump the tick even when unchanged so a
+      // no-op manual click still surfaces (e.g. checking twice in a row).
+      setReloadTick((t) => t + 1);
+      return verified;
+    } catch (err) {
+      // Non-critical — surfaced by the caller's own error handling.
+      logger.debug("refresh_user_error", { uid: u.uid, error: parseFirebaseError(err) });
+      return u.emailVerified;
+    }
+  }, []);
+
   // When the user returns to the tab after clicking a verification link in
   // another tab/browser, onAuthStateChanged does NOT fire.  We detect the
   // page becoming visible and force-refresh the auth token so the UI picks
@@ -131,24 +165,13 @@ export function useAuth(): AuthState {
       if (document.visibilityState !== "visible") return;
       const u = userRef.current;
       if (!u || u.emailVerified) return;
-      try {
-        const verified = await reloadUser();
-        if (verified) {
-          logger.debug("visibility_reload_verified", { uid: u.uid });
-          // Bump the reload tick to force a re-render. Don't clone the User
-          // — the live SDK instance carries methods + private state
-          // (`getIdToken`, `delete`, internal token cache) that a shallow
-          // prototype-copy can't safely reproduce across SDK versions.
-          setReloadTick((t) => t + 1);
-        }
-      } catch {
-        // Network error while reloading — non-critical, will retry on next focus.
-      }
+      const verified = await refreshUser();
+      if (verified) logger.debug("visibility_reload_verified", { uid: u.uid });
     };
 
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, []);
+  }, [refreshUser]);
 
-  return { loading, user, profile, refreshProfile };
+  return { loading, user, profile, refreshProfile, refreshUser };
 }

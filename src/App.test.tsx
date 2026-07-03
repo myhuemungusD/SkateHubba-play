@@ -127,6 +127,7 @@ describe("App", () => {
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp();
     expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
@@ -138,6 +139,7 @@ describe("App", () => {
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp();
     await waitFor(() => {
@@ -153,6 +155,7 @@ describe("App", () => {
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp();
 
@@ -172,6 +175,7 @@ describe("App", () => {
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp();
 
@@ -187,6 +191,7 @@ describe("App", () => {
       user: { uid: "u1", email: "a@b.com" },
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp();
     await waitFor(() => {
@@ -200,6 +205,7 @@ describe("App", () => {
       user: { uid: "u1", email: "a@b.com" },
       profile: { uid: "u1", username: "sk8r", stance: "regular" },
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp();
     await waitFor(() => {
@@ -213,6 +219,7 @@ describe("App", () => {
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp("/privacy");
     await waitFor(() => {
@@ -226,6 +233,7 @@ describe("App", () => {
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp("/terms");
     await waitFor(() => {
@@ -239,6 +247,7 @@ describe("App", () => {
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp("/nonexistent-page");
     await waitFor(() => {
@@ -255,6 +264,7 @@ describe("App", () => {
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile: { uid: "u1", username: "sk8r", stance: "regular" },
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp("/lobby");
     await waitFor(() => {
@@ -268,6 +278,7 @@ describe("App", () => {
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp("/");
     await waitFor(() => {
@@ -282,6 +293,7 @@ describe("App", () => {
       user: null,
       profile: null,
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp("/auth");
     // Default authMode is "signup", so /auth deep-link lands on the signup
@@ -298,6 +310,7 @@ describe("App", () => {
       user: { uid: "u1", email: "a@b.com", emailVerified: true },
       profile: { uid: "u1", username: "sk8r", stance: "regular" },
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp("/lobby");
     await waitFor(() => {
@@ -306,29 +319,61 @@ describe("App", () => {
     expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
   });
 
-  it("unverified user deep-linking to /challenge is redirected to /lobby", async () => {
+  it("unverified user deep-linking to /challenge is redirected to /lobby WITH a toast", async () => {
     // Audit P1: silent gating is fixed by rendering UnverifiedChallengeRedirect
-    // (which fires the toast + Navigates). This smoke test asserts the
-    // redirect half; the toast half is covered by the dedicated
-    // UnverifiedChallengeRedirect unit test in
-    // src/__tests__/UnverifiedChallengeRedirect.test.tsx — colocated toast
-    // assertion here fights an initial-mount uid-change race in
-    // NotificationProvider that never triggers in production because the
-    // user is always signed in with a stable uid before they can hit
-    // /challenge in the wild.
+    // (which fires the toast + Navigates). We assert both halves here:
+    //   1. the /challenge route does NOT render ChallengeScreen (regression
+    //      guard against a future rules-relaxation that lets unverified users
+    //      through), and
+    //   2. the "Verify your email first" toast surfaces on the destination
+    //      screen. The toast fires from a setTimeout(0) inside
+    //      UnverifiedChallengeRedirect specifically to sidestep an
+    //      initial-mount uid-change race with NotificationProvider — that
+    //      deferral is the load-bearing bit for this test's second assertion,
+    //      so if this test regresses check that fix first.
     mockUseAuth.mockReturnValue({
       loading: false,
       user: { uid: "u1", email: "a@b.com", emailVerified: false },
       profile: { uid: "u1", username: "sk8r", stance: "regular" },
       refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
     });
     renderApp("/challenge");
     await waitFor(() => {
       // Lands on lobby (username visible in header).
       expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
     });
-    // The pre-existing ChallengeScreen must NOT render — regression guard
-    // against a future rules-relaxation that lets unverified users through.
+    // The pre-existing ChallengeScreen must NOT render.
     expect(screen.queryByRole("heading", { name: /Challenge/i })).not.toBeInTheDocument();
+    // Toast fires after the setTimeout(0) tick — waitFor handles the deferral.
+    await waitFor(() => {
+      expect(screen.getByText("Verify your email first")).toBeInTheDocument();
+      expect(screen.getByText("Verify your email to challenge someone.")).toBeInTheDocument();
+    });
+  });
+
+  it("does NOT mount VerifyEmailBanner on /privacy or /terms (static legal surfaces)", async () => {
+    // Regression: previously the hidden-paths set only excluded /, /landing,
+    // /auth — leaving the banner overlaid on static legal / error content
+    // for signed-in unverified users. Legal surfaces should be topic-pure.
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "u1", email: "a@b.com", emailVerified: false },
+      profile: { uid: "u1", username: "sk8r", stance: "regular" },
+      refreshProfile: vi.fn(),
+      refreshUser: vi.fn(),
+    });
+    const { unmount } = renderApp("/privacy");
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /Privacy Policy/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
+    unmount();
+
+    renderApp("/terms");
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: /Terms of Service/i })).toBeInTheDocument();
+    });
+    expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
   });
 });
