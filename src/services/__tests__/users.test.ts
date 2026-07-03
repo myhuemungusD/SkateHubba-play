@@ -303,9 +303,9 @@ describe("users service", () => {
 
     // Helper: run the create-profile transaction and capture the two
     // tx.set payloads we care about — the public users/{uid} doc
-    // (identified by the presence of `uid`) and the private
-    // users/{uid}/private/profile doc (identified by the presence of
-    // `emailVerified`, which only lives on the private payload).
+    // (identified by the presence of `uid` + `username`) and the
+    // private users/{uid}/private/profile doc (identified by the
+    // presence of `dob`, which only lives on the private payload).
     function stubTransaction(): {
       capturedPublic: Record<string, unknown> | undefined;
       capturedPrivate: Record<string, unknown> | undefined;
@@ -320,7 +320,7 @@ describe("users service", () => {
           get: vi.fn().mockResolvedValue({ exists: () => false }),
           set: vi.fn((_ref: unknown, data: Record<string, unknown>) => {
             if (data.uid && data.username) captured.capturedPublic = data;
-            else if ("emailVerified" in data) captured.capturedPrivate = data;
+            else if ("dob" in data) captured.capturedPrivate = data;
           }),
         };
         return fn(tx);
@@ -348,7 +348,7 @@ describe("users service", () => {
       expect(result).not.toHaveProperty("fcmTokens");
     });
 
-    it("writes public doc without sensitive fields and private doc with emailVerified + dob", async () => {
+    it("writes public doc without sensitive fields and private doc with dob only", async () => {
       const captured = stubTransaction();
 
       await createProfile("u1", "sk8r", "regular", true, VALID_DOB);
@@ -365,8 +365,24 @@ describe("users service", () => {
       expect(captured.capturedPublic).not.toHaveProperty("fcmTokens");
       expect(captured.capturedPublic).not.toHaveProperty("email");
 
-      // Private doc carries emailVerified + dob.
-      expect(captured.capturedPrivate).toMatchObject({ emailVerified: true, dob: VALID_DOB });
+      // Private doc carries dob only. `emailVerified` is intentionally
+      // NOT mirrored anymore — see the createProfile docstring: the
+      // flag went stale for the majority of accounts, and Firebase Auth
+      // (`auth.currentUser.emailVerified` + the JWT claim) is the
+      // canonical source used by every reader.
+      expect(captured.capturedPrivate).toMatchObject({ dob: VALID_DOB });
+      expect(captured.capturedPrivate).not.toHaveProperty("emailVerified");
+    });
+
+    it("does not mirror emailVerified on the private doc regardless of the caller argument", async () => {
+      const captured = stubTransaction();
+
+      // Even when the caller passes `emailVerified: true`, nothing lands in
+      // Firestore — the private-profile mirror was silent tech debt and has
+      // been removed. The positional parameter is preserved for caller
+      // compat until the UX PR drops the argument.
+      await createProfile("u1", "sk8r", "regular", true, VALID_DOB);
+      expect(captured.capturedPrivate).not.toHaveProperty("emailVerified");
     });
 
     it("includes parentalConsent on the private doc when provided", async () => {
@@ -379,10 +395,10 @@ describe("users service", () => {
         stance: "regular",
       });
       expect(captured.capturedPrivate).toMatchObject({
-        emailVerified: true,
         dob: "2005-06-15",
         parentalConsent: true,
       });
+      expect(captured.capturedPrivate).not.toHaveProperty("emailVerified");
     });
 
     it("omits parentalConsent (but keeps dob) on the private doc when not provided", async () => {
@@ -390,8 +406,8 @@ describe("users service", () => {
 
       await createProfile("u1", "sk8r", "regular", false, VALID_DOB);
       expect(captured.capturedPrivate).toHaveProperty("dob", VALID_DOB);
-      expect(captured.capturedPrivate).toHaveProperty("emailVerified", false);
       expect(captured.capturedPrivate).not.toHaveProperty("parentalConsent");
+      expect(captured.capturedPrivate).not.toHaveProperty("emailVerified");
     });
 
     it("throws AgeVerificationRequiredError when dob is missing (COPPA)", async () => {
@@ -483,8 +499,8 @@ describe("users service", () => {
       // Profile + private profile doc + username deleted via batch.
       // Three deletes since the public/private split: the private
       // users/{uid}/private/profile doc holds the sensitive fields
-      // (emailVerified, dob, fcmTokens, parentalConsent) and must be
-      // scrubbed as part of the account-deletion cascade.
+      // (dob, fcmTokens, parentalConsent) and must be scrubbed as
+      // part of the account-deletion cascade.
       const batch = mockWriteBatch();
       expect(batch.delete).toHaveBeenCalledTimes(3);
       expect(batch.commit).toHaveBeenCalled();
