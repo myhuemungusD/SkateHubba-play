@@ -318,6 +318,36 @@ describe("useAuth hook", () => {
     expect(result.current.user).toBeTruthy();
   });
 
+  // reloadAuthUser routes the manual "I verified" check through the hook so a
+  // successful reload bumps the reload tick and forces a re-render (the bare
+  // service reloadUser mutates the User in place and would leave the UI stale).
+  it.each([
+    { verified: true, expectRerender: true },
+    { verified: false, expectRerender: false },
+  ])("reloadAuthUser returns $verified and forces re-render=$expectRerender", async ({ verified, expectRerender }) => {
+    mockReloadUser.mockResolvedValue(verified);
+
+    let renderCount = 0;
+    const { result } = renderHook(() => {
+      renderCount += 1;
+      return useAuth();
+    });
+    const rendersBefore = renderCount;
+
+    let returned: boolean | undefined;
+    await act(async () => {
+      returned = await result.current.reloadAuthUser();
+    });
+
+    expect(returned).toBe(verified);
+    expect(mockReloadUser).toHaveBeenCalledTimes(1);
+    if (expectRerender) {
+      expect(renderCount).toBeGreaterThan(rendersBefore);
+    } else {
+      expect(renderCount).toBe(rendersBefore);
+    }
+  });
+
   it("refreshProfile preserves existing profile on transient error", async () => {
     const profile = { uid: "u1", username: "sk8r" };
     mockGetUserProfile.mockResolvedValueOnce(profile).mockRejectedValueOnce(new Error("network error"));

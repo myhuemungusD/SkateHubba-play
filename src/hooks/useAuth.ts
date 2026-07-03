@@ -13,6 +13,7 @@ interface AuthState {
   user: User | null;
   profile: UserProfile | null;
   refreshProfile: () => Promise<void>;
+  reloadAuthUser: () => Promise<boolean>;
 }
 
 export function useAuth(): AuthState {
@@ -48,6 +49,18 @@ export function useAuth(): AuthState {
       // than clearing it, which would wrongly route the user to profile setup.
       logger.warn("refresh_profile_error", { uid: u.uid, error: parseFirebaseError(err) });
     }
+  }, []);
+
+  // Manual "I verified — check now" path. Mirrors the visibilitychange
+  // handler below: reloadUser() mutates the live User in place, so we must
+  // bump the reload tick ourselves to force a re-render — otherwise the
+  // banner and unverified-gating keep seeing the stale claim until some
+  // unrelated re-render. Coerce the service's `boolean | null` to a strict
+  // boolean so the surface stays `Promise<boolean>`.
+  const reloadAuthUser = useCallback(async (): Promise<boolean> => {
+    const verified = (await reloadUser()) === true;
+    if (verified) setReloadTick((t) => t + 1);
+    return verified;
   }, []);
 
   useEffect(() => {
@@ -150,5 +163,5 @@ export function useAuth(): AuthState {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, []);
 
-  return { loading, user, profile, refreshProfile };
+  return { loading, user, profile, refreshProfile, reloadAuthUser };
 }

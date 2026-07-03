@@ -95,7 +95,7 @@ function AppEmailVerifyBanner() {
   if (BANNER_HIDDEN_PATHS.has(location.pathname)) return null;
   return (
     <div className="max-w-2xl mx-auto">
-      <VerifyEmailBanner emailVerified={auth.user.emailVerified} />
+      <VerifyEmailBanner emailVerified={auth.user.emailVerified} onManualReload={auth.reloadAuthUser} />
     </div>
   );
 }

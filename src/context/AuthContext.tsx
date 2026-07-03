@@ -50,6 +50,7 @@ export interface AuthContextValue {
   activeProfile: UserProfile | null;
   setActiveProfile: (p: UserProfile | null) => void;
   refreshProfile: () => Promise<void>;
+  reloadAuthUser: () => Promise<boolean>;
   handleGoogleSignIn: () => Promise<void>;
   googleLoading: boolean;
   googleError: string;
@@ -76,7 +77,7 @@ export function useAuthContext(): AuthContextValue {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { loading, user, profile, refreshProfile } = useAuth();
+  const { loading, user, profile, refreshProfile, reloadAuthUser } = useAuth();
 
   // Sync activeProfile from `profile` during render rather than via useEffect.
   // The previous useEffect-mirror introduced a one-render lag because effects
@@ -389,6 +390,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     activeProfile,
     setActiveProfile,
     refreshProfile,
+    reloadAuthUser,
     handleGoogleSignIn,
     googleLoading,
     googleError,

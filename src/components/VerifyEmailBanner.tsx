@@ -27,7 +27,17 @@ function writeStoredCooldown(seconds: number): void {
   }
 }
 
-export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
+export function VerifyEmailBanner({
+  emailVerified,
+  onManualReload,
+}: {
+  emailVerified: boolean;
+  // Routed through AuthContext.reloadAuthUser so a successful reload bumps
+  // useAuth's reload tick and forces a re-render. Optional (no default) —
+  // a render-time default referencing `reloadUser` would throw in the many
+  // test files that mock ./services/auth without a reloadUser export.
+  onManualReload?: () => Promise<unknown>;
+}) {
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(readStoredCooldown);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -95,11 +105,11 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
   const handleCheckNow = async () => {
     setChecking(true);
     try {
-      // reloadUser() force-refreshes the ID token if verified. useAuth's
-      // reload tick then re-renders us with emailVerified=true and this
-      // component returns null. Errors are non-critical — swallow them
-      // so the button doesn't need its own error surface.
-      await reloadUser();
+      // Prefer the context method (bumps useAuth's reload tick so a verified
+      // reload actually re-renders us to null); fall back to the bare service
+      // when no handler is wired. Resolved at CALL time, not render time, so
+      // the `reloadUser` reference never fires during render (see prop doc).
+      await (onManualReload ?? reloadUser)();
     } catch {
       /* best-effort — user can retry */
     } finally {

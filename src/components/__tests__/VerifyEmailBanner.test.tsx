@@ -230,6 +230,23 @@ describe("VerifyEmailBanner", () => {
     });
   });
 
+  it("manual 'I verified' button prefers onManualReload over the bare service", async () => {
+    // When wired to AuthContext.reloadAuthUser (which bumps useAuth's reload
+    // tick to force a re-render), the click must route through that handler and
+    // NOT the bare service reloadUser — the bare path mutates the User in place
+    // without triggering a render, leaving the banner and gating stale.
+    const onManualReload = vi.fn().mockResolvedValue(true);
+    render(<VerifyEmailBanner emailVerified={false} onManualReload={onManualReload} />);
+
+    const btn = screen.getByRole("button", { name: /I verified my email/ });
+    await userEvent.click(btn);
+
+    await waitFor(() => {
+      expect(onManualReload).toHaveBeenCalledTimes(1);
+    });
+    expect(mockReloadUser).not.toHaveBeenCalled();
+  });
+
   it("manual 'I verified' button swallows reloadUser errors", async () => {
     // Manual refresh is best-effort — a network blip must not throw an
     // unhandled promise rejection or leave the button stuck in "Checking…".
