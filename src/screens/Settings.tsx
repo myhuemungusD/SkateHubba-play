@@ -13,6 +13,7 @@ import { ProUsername } from "../components/ProUsername";
 import { ChevronLeftIcon } from "../components/icons";
 import { useOnboardingContext } from "../context/OnboardingContext";
 import { AvatarPicker } from "../components/AvatarPicker";
+import { SOCIAL_LINKS } from "../constants/socialLinks";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
 
@@ -480,6 +481,56 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
           >
             <p className="font-display text-sm text-white tracking-wide">Send feedback</p>
             <p className="font-body text-xs text-faint mt-1">Tell us what you&apos;d like to see in the app.</p>
+          </a>
+        </div>
+
+        {/* Follow SkateHubba — official accounts + Shopify store */}
+        <SectionHeader title="FOLLOW SKATEHUBBA" />
+        <div className="space-y-2">
+          <a
+            href={SOCIAL_LINKS.store}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <p className="font-display text-sm text-white tracking-wide">Shop the Store</p>
+            <p className="font-body text-xs text-faint mt-1">Decks, tees, and more at skatehubba.store.</p>
+          </a>
+          <a
+            href={SOCIAL_LINKS.tiktok}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <p className="font-display text-sm text-white tracking-wide">TikTok</p>
+            <p className="font-body text-xs text-faint mt-1">@skatehubba_app</p>
+          </a>
+          <a
+            href={SOCIAL_LINKS.instagram}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <p className="font-display text-sm text-white tracking-wide">Instagram</p>
+            <p className="font-body text-xs text-faint mt-1">@skatehubba_app</p>
+          </a>
+          <a
+            href={SOCIAL_LINKS.facebook}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <p className="font-display text-sm text-white tracking-wide">Facebook</p>
+            <p className="font-body text-xs text-faint mt-1">SkateHubba on Facebook</p>
+          </a>
+          <a
+            href={SOCIAL_LINKS.x}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block p-4 rounded-2xl glass-card hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            <p className="font-display text-sm text-white tracking-wide">X</p>
+            <p className="font-body text-xs text-faint mt-1">@skatehubba_</p>
           </a>
         </div>
 

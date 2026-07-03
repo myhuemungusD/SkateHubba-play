@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Landing } from "../Landing";
 import { playOlliePop } from "../../utils/ollieSound";
+import { SOCIAL_LINKS } from "../../constants/socialLinks";
 
 vi.mock("../../utils/ollieSound", () => ({
   playOlliePop: vi.fn(),
@@ -138,8 +139,27 @@ describe("Landing", () => {
 
   it("renders social media links", () => {
     render(<Landing {...defaultProps} />);
-    expect(screen.getByLabelText("Follow on X")).toBeInTheDocument();
-    expect(screen.getByLabelText("Follow on Instagram")).toBeInTheDocument();
+    // Every footer social/store anchor must point at the shared source of
+    // truth — a mismatched handle would send users to the wrong account.
+    const socials: Array<{ label: string; href: string }> = [
+      { label: "Follow on X", href: SOCIAL_LINKS.x },
+      { label: "Follow on Instagram", href: SOCIAL_LINKS.instagram },
+      { label: "Follow on Facebook", href: SOCIAL_LINKS.facebook },
+      { label: "Follow on TikTok", href: SOCIAL_LINKS.tiktok },
+      { label: "SkateHubba store", href: SOCIAL_LINKS.store },
+    ];
+    for (const { label, href } of socials) {
+      const link = screen.getByLabelText(label);
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute("href", href);
+    }
+    // The newly added TikTok and store anchors open off-site, so they must
+    // carry target/rel that prevents reverse-tabnabbing.
+    for (const label of ["Follow on TikTok", "SkateHubba store"]) {
+      const link = screen.getByLabelText(label);
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    }
   });
 
   it("renders Data Deletion link", async () => {
