@@ -60,7 +60,23 @@ export function onAuthChange(cb: (user: User | null) => void) {
 export interface SignUpResult {
   user: User;
   verificationEmailSent: boolean;
+  /**
+   * True when Firebase Auth throttled the verification-email send
+   * (`auth/too-many-requests` or `auth/quota-exceeded`). Lets the caller
+   * distinguish "retry available after a cooldown" — e.g. surface a
+   * banner with a retry timer — from a permanent send failure. Only
+   * meaningful when `verificationEmailSent` is `false`; always `false`
+   * on a successful send.
+   */
+  throttled: boolean;
 }
+
+/**
+ * Firebase Auth error codes that signal a temporary send-side throttle
+ * on `sendEmailVerification` — the account is created, the send just
+ * needs a cooldown before it will accept another attempt.
+ */
+const VERIFICATION_THROTTLED_CODES = new Set<string>(["auth/too-many-requests", "auth/quota-exceeded"]);
 
 /**
  * Create a new email/password account and send a verification email.
@@ -70,6 +86,11 @@ export interface SignUpResult {
  * should surface a non-blocking warning — the account is still created and the
  * user can request another verification email via {@link resendVerification}.
  *
+ * When the send fails specifically because Firebase throttled the request
+ * (`auth/too-many-requests` / `auth/quota-exceeded`) the result also carries
+ * `throttled: true` so the UI can distinguish "retry after a cooldown" from
+ * a permanent send failure and surface the retry affordance accordingly.
+ *
  * Rejects with a Firebase Auth error code on sign-up failure (email in use,
  * weak password, etc). Callers should translate codes via `parseFirebaseError`.
  */
@@ -78,6 +99,7 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
   const cred = await createUserWithEmailAndPassword(requireAuth(), email, password);
   logger.info("sign_up_success", { uid: cred.user.uid, email: cred.user.email });
   let verificationEmailSent = false;
+  let throttled = false;
   try {
     await sendEmailVerification(cred.user, getActionCodeSettings());
     verificationEmailSent = true;
@@ -91,13 +113,16 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
         verificationEmailSent = true;
         logger.info("sign_up_verification_email_sent_fallback", { uid: cred.user.uid });
       } catch (retryErr) {
+        const retryCode = getErrorCode(retryErr);
+        if (VERIFICATION_THROTTLED_CODES.has(retryCode)) throttled = true;
         logger.error("sign_up_verification_email_failed", {
           uid: cred.user.uid,
-          error: getErrorCode(retryErr) || parseFirebaseError(retryErr),
+          error: retryCode || parseFirebaseError(retryErr),
         });
         captureException(retryErr, { extra: { context: "sendEmailVerification on sign-up (fallback)" } });
       }
     } else {
+      if (VERIFICATION_THROTTLED_CODES.has(code)) throttled = true;
       logger.error("sign_up_verification_email_failed", {
         uid: cred.user.uid,
         error: code || parseFirebaseError(err),
@@ -105,7 +130,7 @@ export async function signUp(email: string, password: string): Promise<SignUpRes
       captureException(err, { extra: { context: "sendEmailVerification on sign-up" } });
     }
   }
-  return { user: cred.user, verificationEmailSent };
+  return { user: cred.user, verificationEmailSent, throttled };
 }
 
 /**
