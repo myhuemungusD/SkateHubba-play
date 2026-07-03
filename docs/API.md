@@ -195,15 +195,16 @@ Normalizes the username (`toLowerCase().trim()`), validates format client-side, 
 
 ---
 
-### `createProfile(uid, email, username, stance, emailVerified?)`
+### `createProfile(uid, username, stance, emailVerified?, dob?, parentalConsent?)`
 
 ```ts
 createProfile(
   uid: string,
-  email: string,
   username: string,
   stance: string,
-  emailVerified?: boolean
+  emailVerified?: boolean,
+  dob?: string,
+  parentalConsent?: boolean
 ): Promise<UserProfile>
 ```
 
@@ -215,7 +216,21 @@ Creates the user profile atomically using a Firestore transaction:
 
 The username is normalized (`toLowerCase().trim()`) before storage.
 
-**Throws:** `"Username is already taken"` if the reservation was lost to a race condition.
+`email` is not a parameter — Firebase Auth (`auth.currentUser.email`) is the
+canonical store, so nothing is passed through here.
+
+`dob` is typed as optional but is **required at runtime**: `createProfile`
+throws `AgeVerificationRequiredError` (exported from the same module) when
+`dob` is missing or not `YYYY-MM-DD`. Callers that skipped the age gate
+(deep-links to `/auth`, Google sign-in without the gate) must catch that
+error and redirect the user to `/age-gate` — the service is the canonical
+COPPA enforcement point.
+
+**Throws:**
+
+- `AgeVerificationRequiredError` when `dob` is missing or malformed.
+- `"Username must be 3–20 characters"` / `"Username may only contain lowercase letters, numbers, and underscores"` on invalid input.
+- `"Username is already taken"` if the reservation was lost to a race condition.
 
 ---
 
