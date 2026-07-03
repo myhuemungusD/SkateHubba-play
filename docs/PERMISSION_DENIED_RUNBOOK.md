@@ -112,14 +112,27 @@ Not a `permission-denied` symptom, but the failure surface overlaps enough
 covers it. Work through these in order when a user reports "I can't verify
 my email" or "the verification banner won't clear".
 
-### `auth/too-many-requests` on signup
+### `auth/too-many-requests` on send
 
 Firebase's server-side throttle fired — the client asked Firebase to send a
-verification email too many times in a short window. The account itself is
-preserved; only the send is rate-limited.
+verification email too many times in a short window. Applies to both the
+sign-up path (`signUp` → `sendEmailVerification`) and the banner's Resend
+button (`resendVerification`). The account itself is preserved; only the
+send is rate-limited.
 
-**Fix path:** User waits ~5 min and taps **Resend** on the verification
-banner. Not an actionable incident — do not page.
+Only the Resend-button path arms the on-banner cooldown: the banner
+catches this code and locks its Resend button for 5 minutes
+(`RATE_LIMIT_COOLDOWN_S` in `src/components/VerifyEmailBanner.tsx`,
+persisted in `localStorage` so a refresh doesn't reset it), so the user
+sees a countdown rather than a raw error. If the throttle fires on the
+initial sign-up send instead, `signUp` logs + captures the error but
+does not seed the cooldown — the banner still appears (account was
+created), and the user can tap Resend after the throttle window clears
+Firebase-side.
+
+**Fix path:** User waits ~5 min — for the on-banner countdown if it's
+shown, otherwise silently server-side — then taps **Resend**. Not an
+actionable incident — do not page.
 
 ### `auth/unauthorized-continue-uri`
 
@@ -150,18 +163,20 @@ The ID token cached in the client is stale. Auth's `email_verified` claim
 only refreshes when the token is refreshed.
 
 - The client force-refreshes via `reloadUser()` when the tab regains
-  focus (`visibilitychange`), which covers the common "open link in new
-  tab, then come back" flow.
-- If both tabs stay visible (desktop side-by-side), the visibilitychange
-  event never fires — the user must trigger a manual reload via the
-  **Check now** button on the verification banner.
+  focus (`visibilitychange`; see `src/hooks/useAuth.ts`), which covers
+  the common "open link in a new tab, come back to the app tab" flow.
+- If the app tab was visible the whole time (desktop side-by-side, or
+  the user opened the link in the same tab and hit Back),
+  `visibilitychange` never fires — no button on the banner triggers the
+  reload, so the user must switch away and back, or hard-reload the tab.
 - Can also happen when App Check enforcement is on and the recheck
   request is being blocked — see the App Check enforcement section
   above.
 
-**Fix path:** Hit **Check now** on the banner, or reload the tab. If
-that still doesn't clear it, walk through the App Check enforcement
-section.
+**Fix path:** Have the user switch to another tab and back (or reload
+the tab outright) — that trips `visibilitychange` and refreshes the
+token. If it still doesn't clear, walk through the App Check
+enforcement section.
 
 ### Verification email never arrives
 
@@ -175,7 +190,8 @@ section.
   email sends per day. If the counter is red, sends are being dropped.
 
 **Fix path:** Restore the template (Firebase provides a **Reset to
-default** button), then have the user hit **Resend** on the banner.
+default** button on the template editor), then have the user tap
+**Resend** on the banner.
 
 ## What the retry screen shows
 

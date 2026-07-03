@@ -212,7 +212,11 @@ Creates the user profile atomically using a Firestore transaction:
 
 1. Reads `usernames/{normalized}` — aborts if it exists.
 2. Writes `usernames/{normalized} = { uid, reservedAt }`.
-3. Writes `users/{uid} = full profile`.
+3. Writes the public profile at `users/{uid}` (`uid`, `username`, `stance`, `createdAt`).
+4. Writes the private companion at `users/{uid}/private/profile`
+   (`emailVerified`, `dob`, and `parentalConsent` when supplied) with
+   `merge: true`. See `docs/DATABASE.md` for why the sensitive fields
+   live on a separate owner-only doc.
 
 The username is normalized (`toLowerCase().trim()`) before storage.
 
