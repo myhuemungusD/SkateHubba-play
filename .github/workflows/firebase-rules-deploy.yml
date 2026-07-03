@@ -152,6 +152,7 @@ jobs:
           service_account: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
 
       - name: Deploy rules and indexes
+        id: deploy
         if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
           # Only pass FIREBASE_TOKEN when WIF isn't configured — firebase-tools
@@ -169,12 +170,40 @@ jobs:
           # and fails with "Could not find rules for the following storage
           # targets: rules". For a single-bucket project, `storage` alone
           # deploys the rules file declared in firebase.json.
+          #
+          # Retry loop: the legacy FIREBASE_TOKEN auth path is being sunset via
+          # Google deprecation *brownouts* — short intermittent windows where a
+          # still-valid token is rejected with "credentials are no longer valid"
+          # (issue #394). A brownout blip can outlast a couple of seconds, so we
+          # retry up to 4 times with exponential backoff (15s / 60s / 180s)
+          # before giving up. The deploy is idempotent, so retrying a partially
+          # applied deploy is safe. Do NOT remove this without fixing the
+          # underlying auth (WIF migration) first.
           set -euo pipefail
-          npx --yes firebase-tools@15 deploy \
-            --project "$PROJECT_ID" \
-            --only firestore:rules,firestore:indexes,storage \
-            --non-interactive \
-            --force
+          BACKOFFS=(15 60 180) # sleep between attempt 1→2, 2→3, 3→4
+          # Derived, not hardcoded: keeps attempts and backoffs in lockstep so
+          # extending one can never index past the end of the other under set -u.
+          MAX_ATTEMPTS=$(( ${#BACKOFFS[@]} + 1 ))
+          attempt=1
+          while :; do
+            echo "Deploy attempt ${attempt}/${MAX_ATTEMPTS}..."
+            if npx --yes firebase-tools@15 deploy \
+              --project "$PROJECT_ID" \
+              --only firestore:rules,firestore:indexes,storage \
+              --non-interactive \
+              --force; then
+              echo "Deploy succeeded on attempt ${attempt}."
+              break
+            fi
+            if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+              echo "::error::Deploy failed after ${MAX_ATTEMPTS} attempts."
+              exit 1
+            fi
+            sleep_for="${BACKOFFS[$((attempt - 1))]}"
+            echo "Deploy attempt ${attempt} failed; sleeping ${sleep_for}s before retry..."
+            sleep "$sleep_for"
+            attempt=$((attempt + 1))
+          done
 
       - name: Dry-run summary
         if: ${{ github.event.inputs.dry_run == 'true' }}
@@ -250,4 +279,58 @@ jobs:
                 labels: [label],
               });
               core.notice(`Opened alert issue #${created.data.number}.`);
+            }
+
+      # ---------------------------------------------------------------------
+      # Auto-resolve alerting. A successful (non-dry-run) deploy means
+      # production rules are back in sync, so close any open alert issue that
+      # a prior failure left behind. Without this, the brownout-induced
+      # failures (issue #394) would leave a stale "FAILED" issue open even
+      # after the very next scheduled run succeeds. Matches the failure step:
+      # same label, same run-URL/trigger body style, idempotent (no-op when
+      # no alert issue is open).
+      # ---------------------------------------------------------------------
+      - name: Resolve alert on deploy success
+        if: ${{ steps.deploy.outcome == 'success' && github.event.inputs.dry_run != 'true' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const label = 'firebase-rules-deploy-failure';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              'The **Deploy Firebase Rules** workflow succeeded — production',
+              'Firestore/Storage rules and indexes are back in sync.',
+              '',
+              `- Successful run: ${runUrl}`,
+              `- Commit: \`${context.sha}\``,
+              `- Triggered by: \`${context.eventName}\``,
+              '',
+              'Closing this auto-managed alert. It will reopen automatically on',
+              'the next failed deploy.',
+            ].join('\n');
+
+            // Find an open alert issue left behind by a prior failure.
+            const existing = await github.rest.issues.listForRepo({
+              ...context.repo,
+              state: 'open',
+              labels: label,
+              per_page: 1,
+            });
+
+            if (existing.data.length > 0) {
+              const number = existing.data[0].number;
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: number,
+                body,
+              });
+              await github.rest.issues.update({
+                ...context.repo,
+                issue_number: number,
+                state: 'closed',
+                state_reason: 'completed',
+              });
+              core.notice(`Closed alert issue #${number} after successful deploy.`);
+            } else {
+              core.notice('No open alert issue to close.');
             }
