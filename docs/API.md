@@ -106,10 +106,13 @@ signUp(email: string, password: string): Promise<SignUpResult>
 interface SignUpResult {
   user: User;
   verificationEmailSent: boolean;
+  throttled: boolean;
 }
 ```
 
 Creates an email/password account and sends a verification email. Resolves with `verificationEmailSent: false` if the verification email fails (e.g. the continue-URI is not in Firebase's authorized domains) — the account is still created and the user can request another via `resendVerification`.
+
+`throttled` is `true` only when the verification email failed specifically because Firebase throttled the request (`auth/too-many-requests` or `auth/quota-exceeded`), letting the caller offer a retry-after-cooldown affordance instead of a permanent-failure message. It is only meaningful when `verificationEmailSent` is `false`; it is always `false` on a successful send.
 
 **Throws:** Firebase Auth errors (`auth/email-already-in-use`, `auth/weak-password`, etc.)
 
@@ -218,6 +221,14 @@ The username is normalized (`toLowerCase().trim()`) before storage.
 
 `email` is not a parameter — Firebase Auth (`auth.currentUser.email`) is the
 canonical store, so nothing is passed through here.
+
+The `emailVerified` positional parameter is **deprecated — accepted for
+positional compatibility but ignored.** It is declared as `_emailVerified`
+with an `@deprecated` JSDoc tag and is never read inside the function body;
+passing a value persists nothing. Verification state is canonical only via
+Firebase Auth (`auth.currentUser.emailVerified`) and the JWT claim
+`request.auth.token.email_verified`. The argument is retained so existing
+callers keep compiling until the follow-up UX PR drops it.
 
 `dob` is typed as optional but is **required at runtime**: `createProfile`
 throws `AgeVerificationRequiredError` (exported from the same module) when
