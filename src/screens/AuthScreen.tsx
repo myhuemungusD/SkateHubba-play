@@ -24,6 +24,7 @@ export function AuthScreen({
   onGoogleErrorDismiss,
   showAgeFields = false,
   onAgeVerified,
+  onAgeGateReset,
   onNavLegal,
 }: {
   mode: "signup" | "signin";
@@ -37,6 +38,11 @@ export function AuthScreen({
   showAgeFields?: boolean;
   /** Called with the verified DOB string + consent flag BEFORE signUp runs. */
   onAgeVerified?: (dob: string, parentalConsent: boolean) => void;
+  /** Called after a signUp rejection to roll back the age-gate context that
+   *  `onAgeVerified` optimistically wrote BEFORE the network call. Without
+   *  this the DOB leaks across the failed-signup boundary and pollutes a
+   *  subsequent sign-in with an existing account. */
+  onAgeGateReset?: () => void;
   /** Navigate to the privacy/terms screen from inline consent links. */
   onNavLegal?: (screen: "privacy" | "terms") => void;
 }) {
@@ -154,6 +160,10 @@ export function AuthScreen({
         code,
         message: parseFirebaseError(err),
       });
+      // Roll back the optimistic age-gate context write we made before the
+      // network call. Otherwise the DOB persists past the failed signup and
+      // pollutes a subsequent sign-in with a different (existing) account.
+      if (isSignup && verifiedDob) onAgeGateReset?.();
       if (isSignup) analytics.signUpFailure("email", code || "unknown");
       else analytics.signInFailure("email", code || "unknown");
       if (isSignup) metrics.signUpFailure("email", code || "unknown");
