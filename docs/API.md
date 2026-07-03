@@ -221,10 +221,12 @@ canonical store, so nothing is passed through here.
 
 `dob` is typed as optional but is **required at runtime**: `createProfile`
 throws `AgeVerificationRequiredError` (exported from the same module) when
-`dob` is missing or not `YYYY-MM-DD`. Callers that skipped the age gate
-(deep-links to `/auth`, Google sign-in without the gate) must catch that
-error and redirect the user to `/age-gate` — the service is the canonical
-COPPA enforcement point.
+`dob` is missing or not `YYYY-MM-DD`. There is no standalone age-gate
+route — DOB is collected inline: email signup collects it on `/auth`, and
+`ProfileSetup` renders inline DOB inputs for callers that arrive without
+one (Google sign-in, deep links). Callers must catch this error and
+surface the inline DOB recovery flow, as `ProfileSetup` does — the
+service is the canonical COPPA enforcement point.
 
 **Throws:**
 

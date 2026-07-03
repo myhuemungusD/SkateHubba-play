@@ -153,13 +153,14 @@ only refreshes when the token is refreshed.
   focus (`visibilitychange`), which covers the common "open link in new
   tab, then come back" flow.
 - If both tabs stay visible (desktop side-by-side), the visibilitychange
-  event never fires — the user must trigger a manual reload via the
-  **Check now** button on the verification banner.
+  event never fires — the user must switch to another tab/window and
+  back, or reload the page, to trigger the refresh.
 - Can also happen when App Check enforcement is on and the recheck
   request is being blocked — see the App Check enforcement section
   above.
 
-**Fix path:** Hit **Check now** on the banner, or reload the tab. If
+**Fix path:** Have the user switch away from the tab and back (fires
+`visibilitychange` → `reloadUser()`), or simply reload the page. If
 that still doesn't clear it, walk through the App Check enforcement
 section.
 
