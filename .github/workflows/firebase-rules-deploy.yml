@@ -298,15 +298,15 @@ jobs:
             const label = 'firebase-rules-deploy-failure';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
-              'The **Deploy Firebase Rules** workflow succeeded — production',
-              'Firestore/Storage rules and indexes are back in sync.',
+              'The **Deploy Firebase Rules** workflow succeeded.',
+              'Production Firestore/Storage rules and indexes are back in sync.',
               '',
               `- Successful run: ${runUrl}`,
               `- Commit: \`${context.sha}\``,
               `- Triggered by: \`${context.eventName}\``,
               '',
-              'Closing this auto-managed alert. It will reopen automatically on',
-              'the next failed deploy.',
+              'Closing this auto-managed alert.',
+              'It will reopen automatically on the next failed deploy.',
             ].join('\n');
 
             // Find an open alert issue left behind by a prior failure.
