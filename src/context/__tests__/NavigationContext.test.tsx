@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { Component, type ReactNode } from "react";
 import { useNavigationContext, NavigationProvider } from "../NavigationContext";
@@ -79,6 +79,59 @@ describe("useNavigationContext", () => {
     );
 
     expect(getByTestId("screen").textContent).toBe("landing");
+  });
+
+  describe("age gate", () => {
+    // Wraps the hook under test in the same provider stack the app mounts,
+    // scoped to /auth so the auth router doesn't try to bounce us mid-test.
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={["/auth"]}>
+        <AuthProvider>
+          <NavigationProvider>{children}</NavigationProvider>
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    it("initializes ageGateDob=null and ageGateParentalConsent=false", () => {
+      const { result } = renderHook(() => useNavigationContext(), { wrapper });
+      expect(result.current.ageGateDob).toBeNull();
+      expect(result.current.ageGateParentalConsent).toBe(false);
+    });
+
+    it("setAgeGateResult stores DOB and parentalConsent for ProfileSetup to consume", () => {
+      const { result } = renderHook(() => useNavigationContext(), { wrapper });
+      act(() => result.current.setAgeGateResult("2000-01-15", false));
+      expect(result.current.ageGateDob).toBe("2000-01-15");
+      expect(result.current.ageGateParentalConsent).toBe(false);
+
+      act(() => result.current.setAgeGateResult("2012-06-01", true));
+      expect(result.current.ageGateDob).toBe("2012-06-01");
+      expect(result.current.ageGateParentalConsent).toBe(true);
+    });
+
+    it("clearAgeGate wipes both fields so a failed signUp doesn't leak DOB across the mode toggle", () => {
+      // Regression: setAgeGateResult fires BEFORE signUp so ProfileSetup can
+      // read the DOB synchronously once auth flips. If signUp then rejects
+      // and the user toggles to sign-in with an existing account whose
+      // profile is missing, ProfileSetup would read the stale DOB. The
+      // AuthScreen catch handler calls clearAgeGate to roll that back.
+      const { result } = renderHook(() => useNavigationContext(), { wrapper });
+      act(() => result.current.setAgeGateResult("2012-06-01", true));
+      expect(result.current.ageGateDob).toBe("2012-06-01");
+      expect(result.current.ageGateParentalConsent).toBe(true);
+
+      act(() => result.current.clearAgeGate());
+      expect(result.current.ageGateDob).toBeNull();
+      expect(result.current.ageGateParentalConsent).toBe(false);
+    });
+
+    it("clearAgeGate is a no-op when the context is already empty", () => {
+      const { result } = renderHook(() => useNavigationContext(), { wrapper });
+      expect(result.current.ageGateDob).toBeNull();
+      act(() => result.current.clearAgeGate());
+      expect(result.current.ageGateDob).toBeNull();
+      expect(result.current.ageGateParentalConsent).toBe(false);
+    });
   });
 
   it("setScreen('player') throws — callers must go through navigateToPlayer(uid)", () => {
