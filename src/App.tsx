@@ -243,6 +243,7 @@ function AppRoutes() {
                   onGoogleErrorDismiss={() => auth.setGoogleError("")}
                   showAgeFields={nav.authMode === "signup"}
                   onAgeVerified={nav.setAgeGateResult}
+                  onAgeGateReset={nav.clearAgeGate}
                   onNavLegal={nav.setScreen}
                 />
               }

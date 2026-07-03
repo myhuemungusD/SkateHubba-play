@@ -98,6 +98,10 @@ export interface NavigationContextValue {
   ageGateDob: string | null;
   ageGateParentalConsent: boolean;
   setAgeGateResult: (dob: string, parentalConsent: boolean) => void;
+  /** Reset the age-gate context. Called when a signUp attempt fails so the
+   *  DOB doesn't leak across the failed-signup boundary into a subsequent
+   *  sign-in with an existing account. */
+  clearAgeGate: () => void;
 }
 
 const NavigationContext = createContext<NavigationContextValue | null>(null);
@@ -152,6 +156,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const setAgeGateResult = useCallback((dob: string, parentalConsent: boolean) => {
     setAgeGateDob(dob);
     setAgeGateParentalConsent(parentalConsent);
+  }, []);
+
+  const clearAgeGate = useCallback(() => {
+    setAgeGateDob(null);
+    setAgeGateParentalConsent(false);
   }, []);
 
   // Route based on auth state — this is intentionally synchronous within the
@@ -249,6 +258,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     ageGateDob,
     ageGateParentalConsent,
     setAgeGateResult,
+    clearAgeGate,
   };
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;

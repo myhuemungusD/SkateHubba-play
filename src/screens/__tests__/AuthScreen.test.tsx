@@ -517,6 +517,27 @@ describe("AuthScreen", () => {
       await userEvent.type(pws[1], pw);
     }
 
+    /** Type DOB into the three inline inputs. Shared between the DOB tests so
+     *  they don't duplicate the label-lookup boilerplate. */
+    async function fillDob(month: string, day: string, year: string) {
+      await userEvent.type(screen.getByLabelText("Birth month"), month);
+      await userEvent.type(screen.getByLabelText("Birth day"), day);
+      await userEvent.type(screen.getByLabelText("Birth year"), year);
+    }
+
+    /** Render, fill an adult DOB, and submit the signup form. Returns the
+     *  age-gate callback spies so tests can assert their invocation. */
+    async function submitAdultSignup() {
+      const onAgeVerified = vi.fn();
+      const onAgeGateReset = vi.fn();
+      render(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} onAgeGateReset={onAgeGateReset} />);
+      await fillSignupForm();
+      await fillDob("01", "15", "2000");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+      await waitFor(() => expect(mockSignUp).toHaveBeenCalled());
+      return { onAgeVerified, onAgeGateReset };
+    }
+
     it("renders DOB inputs only when showAgeFields is true", () => {
       render(<AuthScreen {...signupProps} />);
       expect(screen.getByLabelText("Birth month")).toBeInTheDocument();
@@ -582,15 +603,36 @@ describe("AuthScreen", () => {
       const onAgeVerified = vi.fn();
       render(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
       await fillSignupForm();
-      await userEvent.type(screen.getByLabelText("Birth month"), "01");
-      await userEvent.type(screen.getByLabelText("Birth day"), "15");
-      await userEvent.type(screen.getByLabelText("Birth year"), "2000");
+      await fillDob("01", "15", "2000");
       await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
       await waitFor(() => expect(mockSignUp).toHaveBeenCalled());
       expect(onAgeVerified).toHaveBeenCalledWith("2000-01-15", false);
       // onAgeVerified fires before signUp so context can stash the DOB for ProfileSetup.
       expect(onAgeVerified.mock.invocationCallOrder[0]).toBeLessThan(mockSignUp.mock.invocationCallOrder[0]);
+    });
+
+    it("calls onAgeGateReset after signUp rejects so DOB doesn't leak past the failure", async () => {
+      // Regression: onAgeVerified fires BEFORE signUp (contract), so a failed
+      // signUp leaves the age-gate context populated. If the user toggles to
+      // sign-in with an existing account, ProfileSetup would read the stale DOB.
+      // The reset callback rolls the context back on rejection.
+      mockSignUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
+      const { onAgeVerified, onAgeGateReset } = await submitAdultSignup();
+
+      expect(onAgeVerified).toHaveBeenCalledWith("2000-01-15", false);
+      await waitFor(() => expect(onAgeGateReset).toHaveBeenCalledTimes(1));
+      // Reset must fire AFTER signUp so the pre-network context write is
+      // rolled back only once the failure is confirmed.
+      expect(onAgeGateReset.mock.invocationCallOrder[0]).toBeGreaterThan(mockSignUp.mock.invocationCallOrder[0]);
+    });
+
+    it("does not call onAgeGateReset when signUp resolves", async () => {
+      mockSignUp.mockResolvedValueOnce({ user: { uid: "u1" }, verificationEmailSent: true });
+      const { onAgeVerified, onAgeGateReset } = await submitAdultSignup();
+
+      expect(onAgeVerified).toHaveBeenCalledWith("2000-01-15", false);
+      expect(onAgeGateReset).not.toHaveBeenCalled();
     });
 
     it("passes parentalConsent=true to onAgeVerified when a minor confirms consent", async () => {
