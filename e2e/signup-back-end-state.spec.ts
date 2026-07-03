@@ -59,12 +59,15 @@ test("first-time signup writes users/{uid}, users/{uid}/private/profile, and use
   expect(userDoc).toHaveProperty("createdAt");
 
   // 2. users/{uid}/private/profile — owner-only sensitive fields.
-  // emailVerified starts false (Firebase emulator does not auto-verify
-  // password signups). dob is set by the inline age-gate on the signup
-  // card; the production createProfile rejects calls without it.
+  // emailVerified is intentionally NOT mirrored here — Firebase Auth
+  // (`auth.currentUser.emailVerified` + the JWT
+  // `request.auth.token.email_verified` claim) is the source of truth
+  // and a Firestore mirror would silently go stale. dob is set by the
+  // inline age-gate on the signup card; the production createProfile
+  // rejects calls without it.
   const privateDoc = await readDocByPath(`users/${uid}/private/profile`);
   expect(privateDoc, "users/{uid}/private/profile must exist after signup").not.toBeNull();
-  expect(privateDoc).toHaveProperty("emailVerified");
+  expect(privateDoc).not.toHaveProperty("emailVerified");
   expect(privateDoc).toHaveProperty("dob");
   // dob shape is ISO YYYY-MM-DD per DOB_RE in src/services/users.ts.
   expect(privateDoc?.dob).toMatch(/^\d{4}-\d{2}-\d{2}$/);
