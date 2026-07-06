@@ -79,6 +79,9 @@ describe("auth service", () => {
       expect(mockCreateUser).toHaveBeenCalledWith(auth, "a@b.com", "pass123");
       expect(result.user).toEqual(mockUserCredential.user);
       expect(result.verificationEmailSent).toBe(true);
+      // Successful sends must never surface throttled=true. Callers rely on
+      // the invariant that `throttled` is only meaningful when the send failed.
+      expect(result.throttled).toBe(false);
     });
 
     it("sends a verification email and awaits the result", async () => {
@@ -89,11 +92,35 @@ describe("auth service", () => {
       });
     });
 
-    it("returns verificationEmailSent=false when email send fails", async () => {
+    it("returns verificationEmailSent=false and throttled=false for a generic send failure", async () => {
+      // Non-throttled error — the send is a hard failure but the UI must not
+      // surface a "retry after cooldown" affordance for it.
       mockSendVerify.mockRejectedValueOnce(new Error("email quota exceeded"));
       const result = await signUp("a@b.com", "pass123");
       expect(result.user).toEqual(mockUserCredential.user);
       expect(result.verificationEmailSent).toBe(false);
+      expect(result.throttled).toBe(false);
+    });
+
+    it("returns throttled=true when send fails with auth/too-many-requests", async () => {
+      // Throttle error surfaced as a distinguishable flag so the UI can show
+      // a cooldown banner instead of a generic "sign-up failed" toast.
+      const throttleErr = Object.assign(new Error("throttled"), { code: "auth/too-many-requests" });
+      mockSendVerify.mockRejectedValueOnce(throttleErr);
+      const result = await signUp("a@b.com", "pass123");
+      expect(result.verificationEmailSent).toBe(false);
+      expect(result.throttled).toBe(true);
+      // The account was still created — throttled is a send-side signal only.
+      expect(result.user).toEqual(mockUserCredential.user);
+    });
+
+    it("returns throttled=true when send fails with auth/quota-exceeded", async () => {
+      // Sibling quota-exceeded code — same UX treatment as too-many-requests.
+      const quotaErr = Object.assign(new Error("quota"), { code: "auth/quota-exceeded" });
+      mockSendVerify.mockRejectedValueOnce(quotaErr);
+      const result = await signUp("a@b.com", "pass123");
+      expect(result.verificationEmailSent).toBe(false);
+      expect(result.throttled).toBe(true);
     });
 
     it("retries without actionCodeSettings on unauthorized-continue-uri", async () => {
@@ -101,6 +128,7 @@ describe("auth service", () => {
       mockSendVerify.mockRejectedValueOnce(uriError).mockResolvedValueOnce(undefined);
       const result = await signUp("a@b.com", "pass123");
       expect(result.verificationEmailSent).toBe(true);
+      expect(result.throttled).toBe(false);
       expect(mockSendVerify).toHaveBeenCalledTimes(2);
       // Second call should be without actionCodeSettings
       expect(mockSendVerify.mock.calls[1]).toEqual([mockUserCredential.user]);
@@ -113,6 +141,22 @@ describe("auth service", () => {
       mockSendVerify.mockRejectedValueOnce(uriError).mockRejectedValueOnce(retryError);
       const result = await signUp("a@b.com", "pass123");
       expect(result.verificationEmailSent).toBe(false);
+      // Generic retry failure is not a throttle — keep the UX distinction.
+      expect(result.throttled).toBe(false);
+      expect(mockSendVerify).toHaveBeenCalledTimes(2);
+    });
+
+    it("returns throttled=true when the URI fallback retry hits auth/too-many-requests", async () => {
+      // First call fails with a URI error (triggers the fallback branch); the
+      // retry without actionCodeSettings then hits the throttle. The retry
+      // path must set throttled=true too so the UX signal survives the
+      // fallback.
+      const uriError = Object.assign(new Error("unauthorized"), { code: "auth/unauthorized-continue-uri" });
+      const throttleErr = Object.assign(new Error("throttled"), { code: "auth/too-many-requests" });
+      mockSendVerify.mockRejectedValueOnce(uriError).mockRejectedValueOnce(throttleErr);
+      const result = await signUp("a@b.com", "pass123");
+      expect(result.verificationEmailSent).toBe(false);
+      expect(result.throttled).toBe(true);
       expect(mockSendVerify).toHaveBeenCalledTimes(2);
     });
   });

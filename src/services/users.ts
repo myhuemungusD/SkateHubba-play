@@ -82,8 +82,6 @@ export interface UserProfile {
  * time — not speculatively.
  */
 interface UserPrivateProfile {
-  /** Auth emailVerified flag mirrored at profile creation time. */
-  emailVerified: boolean;
   /** Date of birth in YYYY-MM-DD format (collected at age gate for COPPA/CCPA compliance). */
   dob?: string;
   /** Whether parental consent was given (for users 13-17 at signup). */
@@ -217,7 +215,16 @@ export async function createProfile(
   uid: string,
   username: string,
   stance: string,
-  emailVerified = false,
+  /**
+   * @deprecated Historical emailVerified mirror. No longer persisted —
+   * Firebase Auth (`auth.currentUser.emailVerified`) and the JWT claim
+   * `request.auth.token.email_verified` are the canonical sources, and
+   * mirroring the flag at creation time silently went stale as soon as
+   * the user completed verification. Positional parameter retained so
+   * existing UI callers keep compiling until the follow-up UX PR drops
+   * the argument. Ignored inside this function.
+   */
+  _emailVerified = false,
   dob?: string,
   parentalConsent?: boolean,
 ): Promise<UserProfile> {
@@ -249,10 +256,9 @@ export async function createProfile(
     tx.set(usernameRef, { uid, reservedAt: serverTimestamp() });
 
     // Public profile — readable by every signed-in user. Must not
-    // contain PII (email/dob) or account state (emailVerified,
-    // fcmTokens); those fields live on the owner-only private doc
-    // below. `firestore.rules` rejects any write that tries to put
-    // them at the top level.
+    // contain PII (email/dob) or account state (fcmTokens); those
+    // fields live on the owner-only private doc below. `firestore.rules`
+    // rejects any write that tries to put them at the top level.
     const userRef = doc(db, "users", uid);
     const profileData: UserProfile = {
       uid,
@@ -262,9 +268,18 @@ export async function createProfile(
     };
     tx.set(userRef, profileData);
 
-    // Private profile — owner-only. Holds emailVerified + dob +
-    // optional parentalConsent today; future sensitive fields
-    // (email, fcmTokens) get written here via dedicated updates.
+    // Private profile — owner-only. Holds dob + optional
+    // parentalConsent today; future sensitive fields (email,
+    // fcmTokens) get written here via dedicated updates.
+    //
+    // emailVerified is intentionally NOT mirrored here — it defaulted
+    // to false for email signups and was never updated once the user
+    // completed verification, so it was silently stale for the
+    // majority of accounts. Auth is the source of truth via
+    // `auth.currentUser.emailVerified` and the JWT
+    // `request.auth.token.email_verified` claim. The field remains in
+    // `privateProfileKeysOk()` so legacy docs still validate on
+    // future partial updates.
     //
     // merge:true is defense-in-depth: the OnboardingProvider gate on
     // activeProfile prevents onboarding writes from landing here before
@@ -274,7 +289,6 @@ export async function createProfile(
     // merge, those untouched fields would be silently dropped here.
     const privateRef = doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID);
     const privateData: UserPrivateProfile = {
-      emailVerified,
       dob,
       ...(parentalConsent !== undefined ? { parentalConsent } : {}),
     };
