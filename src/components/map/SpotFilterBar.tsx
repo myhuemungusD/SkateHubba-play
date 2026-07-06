@@ -123,7 +123,7 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
             onChange={(e) => onChange({ ...filters, query: e.target.value })}
             placeholder="Search spots in view"
             aria-label="Search spots in current map view"
-            className="flex-1 min-w-0 bg-transparent text-sm text-white placeholder:text-faint focus:outline-none"
+            className="flex-1 min-w-0 bg-transparent text-base text-white placeholder:text-faint focus:outline-none"
           />
           {filters.query.length > 0 && (
             <button

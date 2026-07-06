@@ -204,7 +204,7 @@ export function SpotDetailPage() {
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder="Add a comment…"
-              className="flex-1 bg-surface-alt border border-[#333] rounded-lg px-3 py-2 text-white text-sm
+              className="flex-1 bg-surface-alt border border-[#333] rounded-lg px-3 py-2 text-white text-base
                          placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
             />
             <button
