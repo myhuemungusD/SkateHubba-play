@@ -11,9 +11,9 @@ All Firebase operations are contained in `src/services/`. Components and hooks i
 The user record is split into a **public** doc at `users/{uid}` (readable by any
 signed-in user — opponent lookup, leaderboards) and a **private** doc at
 `users/{uid}/private/profile` (owner-only). Sensitive/account-state fields
-(`emailVerified`, `dob`, `fcmTokens`) live on the private doc so a signed-in
-attacker cannot scrape them. `firestore.rules` rejects writes that try to put
-those field names at the top level.
+(`dob`, `fcmTokens`) live on the private doc so a signed-in attacker cannot
+scrape them. `firestore.rules` rejects writes that try to put those field
+names at the top level.
 
 `email` is **not** stored in Firestore at all — Firebase Auth
 (`auth.currentUser.email`) is the canonical source, avoiding a second source of
@@ -37,11 +37,13 @@ interface UserProfile {
 
 // Private — users/{uid}/private/profile (owner-only readable)
 interface UserPrivateProfile {
-  emailVerified: boolean; // Mirrored from Auth at profile-creation time
   dob?: string; // YYYY-MM-DD (COPPA/CCPA age gate)
   parentalConsent?: boolean;
   fcmTokens?: string[]; // Push registration tokens (≤10, owner-only)
 }
+// Legacy: pre-deprecation docs may carry an `emailVerified` field. It is no
+// longer written and was never updated post-verification — authorization
+// uses the request.auth.token.email_verified JWT claim instead.
 ```
 
 ### `GameDoc` (`src/services/games.ts`)
