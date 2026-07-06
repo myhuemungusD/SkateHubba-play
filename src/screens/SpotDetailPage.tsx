@@ -211,7 +211,7 @@ export function SpotDetailPage() {
               type="button"
               onClick={handleSubmitComment}
               disabled={submittingComment || !commentText.trim()}
-              className="touch-target inline-flex items-center justify-center px-3 py-2 bg-[#F97316] text-white rounded-lg
+              className="touch-target min-w-[44px] inline-flex items-center justify-center px-3 py-2 bg-[#F97316] text-white rounded-lg
                          hover:bg-[#EA580C] disabled:opacity-40 disabled:cursor-not-allowed"
               aria-label="Send comment"
             >
