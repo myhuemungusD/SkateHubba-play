@@ -11,3 +11,7 @@ capacitor-cordova-ios-plugins
 # Generated Config files
 App/App/capacitor.config.json
 App/App/config.xml
+
+# Firebase iOS config — contains project credentials (API key,
+# REVERSED_CLIENT_ID). Distribute out of band (see NATIVE_SETUP.md §1).
+App/App/GoogleService-Info.plist

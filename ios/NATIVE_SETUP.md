@@ -18,9 +18,10 @@ Status of the three audit blockers:
 > contains real project credentials (API key, bundle/client IDs,
 > `REVERSED_CLIENT_ID`). We do not fabricate it or invent IDs. Adding a
 > `FirebaseApp.configure()` call **without** the plist present makes the
-> launch **crash harder** — `configure()` traps when the plist is absent —
-> and `@capacitor-firebase/app-check` fails at startup. So the code change
-> and the secret must land together, on a Mac, by the maintainer.
+> app crash **earlier** on launch — `configure()` traps when the plist is
+> absent — and `@capacitor-firebase/app-check` fails at startup. So the
+> code change and the secret must land together, on a Mac, by the
+> maintainer.
 
 ---
 
@@ -36,9 +37,9 @@ Status of the three audit blockers:
      plist must ship inside the app bundle).
 4. Confirm it lands on disk at `ios/App/App/GoogleService-Info.plist`.
 
-> This file is **git-ignored / kept out of the repo as a secret**. Do not
-> commit it. Distribute it to teammates and CI (fastlane match / a secure
-> file) out of band.
+> This file contains real credentials and is **blocked by `ios/.gitignore`**.
+> Do not force-add it. Distribute to teammates and CI (fastlane match /
+> a secure file) out of band.
 
 ## 2. Call `FirebaseApp.configure()` in `AppDelegate.swift`
 
