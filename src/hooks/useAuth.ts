@@ -7,6 +7,7 @@ import { parseFirebaseError } from "../utils/helpers";
 import { captureMessage, setUser as setSentryUser } from "../lib/sentry";
 import { FIRESTORE_DB_NAME, isAppCheckInitialized } from "../firebase";
 import { env } from "../lib/env";
+import { hashUid } from "../utils/pii";
 
 interface AuthState {
   loading: boolean;
@@ -69,7 +70,10 @@ export function useAuth(): AuthState {
       logger.debug("use_auth_change", { uid: u?.uid ?? null });
       setUser(u);
       userRef.current = u;
-      setSentryUser(u ? { id: u.uid } : null);
+      // Hash the uid before it leaves the app so Sentry never receives the raw
+      // Firebase identifier. hashUid is deterministic, so scoped issues stay
+      // correlatable per user without shipping raw PII to a third party.
+      setSentryUser(u ? { id: hashUid(u.uid) } : null);
       if (u) {
         // Keep loading=true while we fetch the profile so the routing effect
         // doesn't see a user with no profile and prematurely navigate to

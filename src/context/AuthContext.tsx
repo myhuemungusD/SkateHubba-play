@@ -11,6 +11,7 @@ import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException, setUser as setSentryUser } from "../lib/sentry";
 import { identify as posthogIdentify, resetIdentity as posthogReset } from "../lib/posthog";
+import { hashUid } from "../utils/pii";
 
 // sessionStorage key that survives the sign-out/sign-in round-trip required
 // after auth/requires-recent-login. We only need the uid — the Firestore wipe
@@ -188,8 +189,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user) {
       const username = activeProfile?.username;
-      posthogIdentify(user.uid, username ? { username } : undefined);
-      setSentryUser({ id: user.uid, ...(username ? { username } : {}) });
+      // Hash the uid before it reaches PostHog / Sentry. hashUid is a stable,
+      // deterministic surrogate, so the distinct_id stays consistent per user
+      // (analytics continuity, sign-out reset still works) while the raw
+      // Firebase identifier never leaves the app.
+      const surrogateId = hashUid(user.uid);
+      posthogIdentify(surrogateId, username ? { username } : undefined);
+      setSentryUser({ id: surrogateId, ...(username ? { username } : {}) });
     } else {
       posthogReset();
       setSentryUser(null);
