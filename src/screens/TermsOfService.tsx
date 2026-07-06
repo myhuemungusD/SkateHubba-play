@@ -72,6 +72,13 @@ export function TermsOfService({ onBack }: { onBack: () => void }) {
             <li>Depicts dangerous activities that could endanger yourself or others.</li>
           </ul>
           <p>We reserve the right to remove Content and suspend accounts that violate these rules.</p>
+          <p>
+            <strong className="text-white">Zero tolerance for objectionable content and abusive behaviour.</strong>{" "}
+            SkateHubba has a zero-tolerance policy toward objectionable content and abusive users. You can report
+            content or another user, and you can block a user so they can no longer interact with you. We review reports
+            and will remove violating Content and the users who post it, and may report unlawful activity to the
+            appropriate authorities. We aim to act on reports of objectionable content within 24 hours.
+          </p>
         </Section>
 
         <Section title="6. Prohibited Conduct">
