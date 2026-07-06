@@ -3,6 +3,7 @@ import { act, render, waitFor } from "@testing-library/react";
 import { Component, useEffect, useRef, type ReactNode } from "react";
 import { useAuthContext, AuthProvider } from "../AuthContext";
 import type { UserProfile } from "../../services/users";
+import { hashIdentity } from "../../utils/pii";
 
 // Widened return shape so mockReturnValue can swap user/profile to non-null
 // values mid-test (the initial () => null literals would otherwise narrow the
@@ -14,20 +15,35 @@ type AuthState = {
   refreshProfile: () => void;
 };
 
-const { mockUseAuth, mockDeleteAccount, mockDeleteUserData, mockLoggerError, mockLoggerInfo, mockCaptureException } =
-  vi.hoisted(() => ({
-    mockUseAuth: vi.fn<() => AuthState>(() => ({
-      loading: false,
-      user: null,
-      profile: null,
-      refreshProfile: vi.fn(),
-    })),
-    mockDeleteAccount: vi.fn(),
-    mockDeleteUserData: vi.fn(),
-    mockLoggerError: vi.fn(),
-    mockLoggerInfo: vi.fn(),
-    mockCaptureException: vi.fn(),
-  }));
+const {
+  mockUseAuth,
+  mockDeleteAccount,
+  mockDeleteUserData,
+  mockLoggerError,
+  mockLoggerInfo,
+  mockCaptureException,
+  mockPosthogIdentify,
+  mockPosthogReset,
+  mockSetSentryUser,
+  mockConsent,
+} = vi.hoisted(() => ({
+  mockUseAuth: vi.fn<() => AuthState>(() => ({
+    loading: false,
+    user: null,
+    profile: null,
+    refreshProfile: vi.fn(),
+  })),
+  mockDeleteAccount: vi.fn(),
+  mockDeleteUserData: vi.fn(),
+  mockLoggerError: vi.fn(),
+  mockLoggerInfo: vi.fn(),
+  mockCaptureException: vi.fn(),
+  mockPosthogIdentify: vi.fn(),
+  mockPosthogReset: vi.fn(),
+  mockSetSentryUser: vi.fn(),
+  // Default: no analytics consent. Individual tests flip this to true.
+  mockConsent: vi.fn<() => boolean>(() => false),
+}));
 
 vi.mock("../../hooks/useAuth", () => ({
   useAuth: () => mockUseAuth(),
@@ -73,11 +89,14 @@ vi.mock("../../services/logger", () => ({
 }));
 vi.mock("../../lib/sentry", () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
-  setUser: vi.fn(),
+  setUser: (...args: unknown[]) => mockSetSentryUser(...args),
 }));
 vi.mock("../../lib/posthog", () => ({
-  identify: vi.fn(),
-  resetIdentity: vi.fn(),
+  identify: (...args: unknown[]) => mockPosthogIdentify(...args),
+  resetIdentity: (...args: unknown[]) => mockPosthogReset(...args),
+}));
+vi.mock("../../hooks/useAnalyticsConsent", () => ({
+  useAnalyticsConsent: () => mockConsent(),
 }));
 
 class ErrorCatcher extends Component<{ children: ReactNode }, { error: Error | null }> {
@@ -127,6 +146,68 @@ describe("useAuthContext", () => {
     );
 
     expect(getByTestId("loading").textContent).toBe("false");
+  });
+});
+
+/**
+ * Analytics + error-tracking identity sync. PostHog identify is analytics and
+ * must be gated on consent (PrivacyPolicy §Usage data); Sentry setUser is
+ * legitimate-interest crash reporting and fires regardless. Both use the wider
+ * hashIdentity surrogate, never the raw Firebase uid.
+ */
+describe("identity sync", () => {
+  // Renders the provider with a signed-in u1/sk8r user and the given analytics
+  // consent, or a signed-out session when `user` is null.
+  function renderIdentity(opts: { user: boolean; consent: boolean }): void {
+    mockConsent.mockReturnValue(opts.consent);
+    mockUseAuth.mockReturnValue(
+      opts.user
+        ? { loading: false, user: { uid: "u1" }, profile: { uid: "u1", username: "sk8r" }, refreshProfile: vi.fn() }
+        : { loading: false, user: null, profile: null, refreshProfile: vi.fn() },
+    );
+    function Harness() {
+      useAuthContext();
+      return null;
+    }
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockConsent.mockReturnValue(false);
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+  });
+
+  it("sets the Sentry user with a hashed surrogate even without analytics consent", () => {
+    renderIdentity({ user: true, consent: false });
+
+    expect(mockSetSentryUser).toHaveBeenCalledWith({ id: hashIdentity("u1"), username: "sk8r" });
+    // Sentry id must not be the raw uid.
+    expect(mockSetSentryUser.mock.calls[0][0]).not.toMatchObject({ id: "u1" });
+  });
+
+  it("does NOT identify to PostHog until analytics consent is granted", () => {
+    renderIdentity({ user: true, consent: false });
+
+    expect(mockPosthogIdentify).not.toHaveBeenCalled();
+  });
+
+  it("identifies to PostHog with the hashed surrogate once consent is granted", () => {
+    renderIdentity({ user: true, consent: true });
+
+    expect(mockPosthogIdentify).toHaveBeenCalledWith(hashIdentity("u1"), { username: "sk8r" });
+  });
+
+  it("resets PostHog and clears the Sentry user on sign-out", () => {
+    renderIdentity({ user: false, consent: true });
+
+    expect(mockPosthogReset).toHaveBeenCalled();
+    expect(mockSetSentryUser).toHaveBeenCalledWith(null);
+    expect(mockPosthogIdentify).not.toHaveBeenCalled();
   });
 });
 
