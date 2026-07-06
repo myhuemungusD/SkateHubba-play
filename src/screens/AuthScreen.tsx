@@ -13,6 +13,7 @@ import { logger, metrics } from "../services/logger";
 import { analytics } from "../services/analytics";
 import { captureException } from "../lib/sentry";
 import { isBenignAuthCode, getAuthErrorMessage } from "../utils/authCodes";
+import { useNotifications } from "../context/NotificationContext";
 
 export function AuthScreen({
   mode,
@@ -59,7 +60,7 @@ export function AuthScreen({
   const [lastErrorCode, setLastErrorCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [resetSent, setResetSent] = useState(false);
-  const [verifyWarning, setVerifyWarning] = useState(false);
+  const { notify } = useNotifications();
   const isSignup = mode === "signup";
   const showDob = isSignup && showAgeFields;
   const anyLoading = loading || googleLoading;
@@ -77,7 +78,6 @@ export function AuthScreen({
     setError("");
     setLastErrorCode("");
     setResetSent(false);
-    setVerifyWarning(false);
     setAgeBlocked(false);
   }, [mode]);
 
@@ -142,7 +142,16 @@ export function AuthScreen({
         if (verifiedDob) onAgeVerified?.(verifiedDob, verifiedConsent);
         const result: SignUpResult = await signUp(trimmedEmail, password);
         if (!result.verificationEmailSent) {
-          setVerifyWarning(true);
+          // Fire a toast rather than inline banner state — onDone() below
+          // triggers a screen swap almost immediately, so any local banner
+          // would render for at most a frame. The toast persists in
+          // NotificationProvider state across the unmount and surfaces on
+          // the destination screen (usually ProfileSetup or Lobby).
+          notify({
+            type: "error",
+            title: "Verification email failed",
+            message: "Account created — use the Resend button to try again.",
+          });
         }
         analytics.signUp("email");
         metrics.signUp("email", result.user.uid);
@@ -358,14 +367,6 @@ export function AuthScreen({
             >
               {recovery.label}
             </button>
-          )}
-
-          {verifyWarning && (
-            <div className="w-full p-3 rounded-xl bg-[rgba(255,168,0,0.08)] border border-yellow-500/40 mb-4">
-              <span className="font-body text-sm text-yellow-400">
-                Account created but the verification email failed to send. Use the Resend button on the next screen.
-              </span>
-            </div>
           )}
 
           {resetSent && (

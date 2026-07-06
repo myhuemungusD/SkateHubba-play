@@ -245,4 +245,90 @@ describe("App", () => {
       expect(screen.getByText("BAIL!")).toBeInTheDocument();
     });
   });
+
+  it("mounts VerifyEmailBanner globally for authed unverified users", async () => {
+    // Regression (audit P1): the banner used to live only on Lobby, so a
+    // brand-new signup landing on /profile / /settings / /map never saw the
+    // verification reminder. Hoisting it into AppScreens fixes that.
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "u1", email: "a@b.com", emailVerified: false },
+      profile: { uid: "u1", username: "sk8r", stance: "regular" },
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/lobby");
+    await waitFor(() => {
+      expect(screen.getByText("VERIFY YOUR EMAIL")).toBeInTheDocument();
+    });
+  });
+
+  it("does NOT mount VerifyEmailBanner on / (pre-auth landing)", async () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/");
+    await waitFor(() => {
+      expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
+  });
+
+  it("does NOT mount VerifyEmailBanner on /auth", async () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/auth");
+    // Default authMode is "signup", so /auth deep-link lands on the signup
+    // heading rather than "Welcome Back".
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Create Account" })).toBeInTheDocument();
+    });
+    expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
+  });
+
+  it("hides the banner when authed user is already verified", async () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "u1", email: "a@b.com", emailVerified: true },
+      profile: { uid: "u1", username: "sk8r", stance: "regular" },
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/lobby");
+    await waitFor(() => {
+      expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
+  });
+
+  it("unverified user deep-linking to /challenge is redirected to /lobby", async () => {
+    // Audit P1: silent gating is fixed by rendering UnverifiedChallengeRedirect
+    // (which fires the toast + Navigates). This smoke test asserts the
+    // redirect half; the toast half is covered by the dedicated
+    // UnverifiedChallengeRedirect unit test in
+    // src/__tests__/UnverifiedChallengeRedirect.test.tsx — colocated toast
+    // assertion here fights an initial-mount uid-change race in
+    // NotificationProvider that never triggers in production because the
+    // user is always signed in with a stable uid before they can hit
+    // /challenge in the wild.
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "u1", email: "a@b.com", emailVerified: false },
+      profile: { uid: "u1", username: "sk8r", stance: "regular" },
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/challenge");
+    await waitFor(() => {
+      // Lands on lobby (username visible in header).
+      expect(screen.getByText(/@sk8r/i)).toBeInTheDocument();
+    });
+    // The pre-existing ChallengeScreen must NOT render — regression guard
+    // against a future rules-relaxation that lets unverified users through.
+    expect(screen.queryByRole("heading", { name: /Challenge/i })).not.toBeInTheDocument();
+  });
 });

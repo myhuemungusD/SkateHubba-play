@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { resendVerification } from "../services/auth";
+import { resendVerification, reloadUser } from "../services/auth";
 import { getErrorCode } from "../utils/helpers";
 import { captureException } from "../lib/sentry";
 
@@ -27,11 +27,22 @@ function writeStoredCooldown(seconds: number): void {
   }
 }
 
-export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean }) {
+export function VerifyEmailBanner({
+  emailVerified,
+  onManualReload,
+}: {
+  emailVerified: boolean;
+  // Routed through AuthContext.reloadAuthUser so a successful reload bumps
+  // useAuth's reload tick and forces a re-render. Optional (no default) —
+  // a render-time default referencing `reloadUser` would throw in the many
+  // test files that mock ./services/auth without a reloadUser export.
+  onManualReload?: () => Promise<unknown>;
+}) {
   const [sending, setSending] = useState(false);
   const [cooldown, setCooldown] = useState(readStoredCooldown);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [checking, setChecking] = useState(false);
 
   // Single setInterval owned by a ref so we never recreate the timer on every
   // tick. The previous useEffect-on-`cooldown` pattern re-armed a fresh
@@ -79,10 +90,30 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
         setCooldown(RATE_LIMIT_COOLDOWN_S);
         setSendError("Too many attempts — please wait 5 minutes before retrying.");
       } else {
+        // Apply the standard 60s cooldown on ANY failure — otherwise the
+        // button is spammable and users hammer it until Firebase throttles
+        // them into the 5-minute cooldown branch above.
+        writeStoredCooldown(RESEND_COOLDOWN_S);
+        setCooldown(RESEND_COOLDOWN_S);
         setSendError("Failed to send — check your connection.");
       }
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleCheckNow = async () => {
+    setChecking(true);
+    try {
+      // Prefer the context method (bumps useAuth's reload tick so a verified
+      // reload actually re-renders us to null); fall back to the bare service
+      // when no handler is wired. Resolved at CALL time, not render time, so
+      // the `reloadUser` reference never fires during render (see prop doc).
+      await (onManualReload ?? reloadUser)();
+    } catch {
+      /* best-effort — user can retry */
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -93,20 +124,43 @@ export function VerifyEmailBanner({ emailVerified }: { emailVerified: boolean })
       : "Check your inbox and spam/junk folder for the verification link.");
   const btnLabel = sending ? "..." : cooldown > 0 ? `${cooldown}s` : sendError !== null ? "Retry" : "Resend";
 
+  const resendAriaLabel = sending
+    ? "Sending verification email"
+    : cooldown > 0
+      ? `Resend available in ${cooldown} seconds`
+      : "Resend verification email";
+
   return (
-    <div className="mx-5 mt-4 p-3.5 rounded-2xl bg-[rgba(255,107,0,0.06)] border border-brand-orange/40 flex items-center justify-between gap-3 shadow-[0_0_16px_rgba(255,107,0,0.06)] animate-fade-in">
+    <div
+      role="status"
+      className="mx-5 mt-4 p-3.5 rounded-2xl bg-[rgba(255,107,0,0.06)] border border-brand-orange/40 flex items-center justify-between gap-3 shadow-[0_0_16px_rgba(255,107,0,0.06)] animate-fade-in"
+    >
       <div>
         <span className="font-display text-xs tracking-wider text-brand-orange block">VERIFY YOUR EMAIL</span>
         <span className="font-body text-xs text-muted" aria-live="polite">
           {statusMessage}
         </span>
+        {/* Desktop users with side-by-side tabs never trigger
+            visibilitychange, so surface a manual affordance to force a
+            token reload after they click the verification link. */}
+        <button
+          type="button"
+          onClick={handleCheckNow}
+          disabled={checking}
+          className="mt-1 inline-flex items-center font-body text-[11px] text-subtle underline underline-offset-2 hover:text-brand-orange disabled:opacity-40 transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange rounded"
+          aria-busy={checking}
+          aria-label={checking ? "Checking verification status" : "I verified my email — check now"}
+        >
+          {checking ? "Checking…" : "I verified — check now"}
+        </button>
       </div>
       <button
         type="button"
         onClick={handleResend}
         disabled={sending || cooldown > 0}
         className="touch-target inline-flex items-center justify-center font-display text-[11px] tracking-wider text-brand-orange border border-brand-orange/40 rounded-xl px-3.5 py-1.5 whitespace-nowrap disabled:opacity-40 hover:bg-brand-orange/[0.08] hover:border-brand-orange/60 active:scale-[0.97] transition-all duration-300"
-        aria-label={cooldown > 0 ? `Resend available in ${cooldown} seconds` : "Resend verification email"}
+        aria-label={resendAriaLabel}
+        aria-busy={sending}
       >
         {btnLabel}
       </button>

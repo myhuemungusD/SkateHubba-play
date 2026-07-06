@@ -16,12 +16,21 @@ export function GameOverScreen({
   game,
   profile,
   onRematch,
+  rematchDisabledReason,
   onBack,
   onViewPlayer,
 }: {
   game: GameDoc;
   profile: UserProfile;
   onRematch?: () => Promise<void>;
+  /**
+   * When set, the Rematch button stays visible and clickable (so the click
+   * handler can surface a toast explaining why) but shows the reason as its
+   * label — e.g. "Verify email to rematch". Kept separate from `onRematch`
+   * being undefined so callers can distinguish "no rematch handler wired"
+   * from "handler present but gated with a user-facing reason".
+   */
+  rematchDisabledReason?: string;
   onBack: () => void;
   onViewPlayer?: (uid: string) => void;
 }) {
@@ -192,7 +201,9 @@ export function GameOverScreen({
             </Btn>
           )}
           <Btn onClick={handleRematch} disabled={rematching || !onRematch}>
-            {rematching ? "Starting..." : !onRematch ? "Verify email to rematch" : "Rematch"}
+            {rematching
+              ? "Starting..."
+              : (rematchDisabledReason ?? (!onRematch ? "Verify email to rematch" : "Rematch"))}
           </Btn>
           <InviteButton username={profile.username} />
           <Btn onClick={onBack} variant="ghost">

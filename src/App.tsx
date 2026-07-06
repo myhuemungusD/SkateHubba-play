@@ -1,12 +1,14 @@
 import { useState, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react";
-import { Routes, Route, Navigate, useParams, useNavigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
 import { NavigationProvider, useNavigationContext } from "./context/NavigationContext";
 import { GameProvider, useGameContext } from "./context/GameContext";
-import { NotificationProvider } from "./context/NotificationContext";
+import { NotificationProvider, useNotifications } from "./context/NotificationContext";
 import { OnboardingProvider } from "./context/OnboardingContext";
+import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
+import { useEmailVerifiedToast } from "./hooks/useEmailVerifiedToast";
 import { TutorialOverlay } from "./components/onboarding/TutorialOverlay";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -81,8 +83,26 @@ function FirebaseMissing() {
   );
 }
 
+/** Route prefixes where the VerifyEmailBanner MUST NOT render — the pre-auth
+ *  landing / auth / legal surfaces have no notion of a signed-in user, and
+ *  showing a "verify your email" banner over the auth form is confusing. */
+const BANNER_HIDDEN_PATHS = new Set<string>(["/", "/landing", "/auth"]);
+
+function AppEmailVerifyBanner() {
+  const auth = useAuthContext();
+  const location = useLocation();
+  if (!auth.user) return null;
+  if (BANNER_HIDDEN_PATHS.has(location.pathname)) return null;
+  return (
+    <div className="max-w-2xl mx-auto">
+      <VerifyEmailBanner emailVerified={auth.user.emailVerified} onManualReload={auth.reloadAuthUser} />
+    </div>
+  );
+}
+
 function AppScreens() {
   const auth = useAuthContext();
+  useEmailVerifiedToast(auth.user?.emailVerified);
 
   if (auth.loading) return <Spinner />;
 
@@ -91,6 +111,7 @@ function AppScreens() {
       <OfflineBanner />
       <DeleteAccountRetryBanner />
       <GameNotificationWatcher />
+      <AppEmailVerifyBanner />
       <AppRoutes />
       <ToastContainer />
       <TutorialOverlay />
@@ -148,6 +169,29 @@ function PlayerProfileRoute({
   );
 }
 
+/** Shared toast fired whenever an unverified user attempts to challenge —
+ *  used by directChallenge, the /challenge Navigate fallback, and the
+ *  rematch button on GameOverScreen. Kept as a single string constant so
+ *  the copy stays consistent across all three entry points. */
+const UNVERIFIED_CHALLENGE_TOAST = {
+  type: "error" as const,
+  title: "Verify your email first",
+  message: "Verify your email to challenge someone.",
+};
+
+/** Rendered from the `/challenge` route when the user is signed in but
+ *  unverified. Fires the shared toast on mount then redirects to /lobby so
+ *  the redirect isn't silent (audit P1). Deliberately a component, not an
+ *  inline callback, so React can commit the toast side-effect exactly once
+ *  before Navigate replaces the route. */
+function UnverifiedChallengeRedirect() {
+  const { notify } = useNotifications();
+  useEffect(() => {
+    notify(UNVERIFIED_CHALLENGE_TOAST);
+  }, [notify]);
+  return <Navigate to="/lobby" replace />;
+}
+
 function AppRoutes() {
   const auth = useAuthContext();
   const nav = useNavigationContext();
@@ -155,10 +199,15 @@ function AppRoutes() {
   const game = useGameContext();
   const blockedUids = useBlockedUsers(auth.user?.uid ?? "");
   const analyticsAllowed = useAnalyticsConsent();
+  const { notify } = useNotifications();
   const [challengeTarget, setChallengeTarget] = useState("");
   const directChallenge = useCallback(
     async (username: string) => {
       if (!auth.user?.emailVerified) {
+        // Explain the silent-redirect. Without this toast the user just
+        // "bounced back to lobby" with no cue on why the challenge didn't
+        // fire — see audit P1 "Silent gating on unverified users".
+        notify(UNVERIFIED_CHALLENGE_TOAST);
         nav.setScreen("lobby");
         return;
       }
@@ -176,7 +225,7 @@ function AppRoutes() {
         nav.setScreen("challenge");
       }
     },
-    [auth.user?.emailVerified, nav, game],
+    [auth.user?.emailVerified, nav, game, notify],
   );
 
   // Deep-link into a game when a push notification is tapped (service worker postMessage)
@@ -317,6 +366,10 @@ function AppRoutes() {
                     onViewPlayer={nav.navigateToPlayer}
                     blockedUids={blockedUids}
                   />
+                ) : auth.activeProfile ? (
+                  // Signed in but unverified — surface the reason via a
+                  // toast so the redirect isn't silent (audit P1).
+                  <UnverifiedChallengeRedirect />
                 ) : (
                   <Navigate to="/lobby" replace />
                 )
@@ -384,8 +437,17 @@ function AppRoutes() {
                                   : game.activeGame.player1Username;
                               await game.startChallenge(opponentUid, opponentName);
                             }
-                          : undefined
+                          : // Unverified users get a placeholder handler that
+                            // fires the same shared toast the /challenge and
+                            // directChallenge paths use — no more silent
+                            // no-op (audit P1). Button label swaps via
+                            // rematchDisabledReason so the "why" is visible
+                            // even without triggering the toast.
+                            async (): Promise<void> => {
+                              notify(UNVERIFIED_CHALLENGE_TOAST);
+                            }
                       }
+                      rematchDisabledReason={auth.user.emailVerified ? undefined : "Verify email to rematch"}
                       onBack={() => {
                         game.setActiveGame(null);
                         nav.setScreen("lobby");

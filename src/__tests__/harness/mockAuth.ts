@@ -40,6 +40,7 @@ export function makeAuthStateSetters(refs: { useAuth: Mock }): AuthStateSetters 
       user: state.user,
       profile: state.profile ?? null,
       refreshProfile,
+      reloadAuthUser: vi.fn().mockResolvedValue(false),
     });
     return refreshProfile;
   }

@@ -1,7 +1,6 @@
 import type { UserProfile } from "../../services/users";
 import type { GameDoc } from "../../services/games";
 import { DeleteAccountModal } from "../../components/DeleteAccountModal";
-import { VerifyEmailBanner } from "../../components/VerifyEmailBanner";
 import { PushPermissionBanner } from "../../components/PushPermissionBanner";
 import { PullToRefreshIndicator } from "../../components/PullToRefreshIndicator";
 import { ClipsFeed } from "../../components/ClipsFeed";
@@ -67,7 +66,6 @@ export function Lobby({
       />
 
       <div className="max-w-2xl mx-auto">
-        <VerifyEmailBanner emailVerified={emailVerified} />
         <PushPermissionBanner uid={profile.uid} />
       </div>
 

@@ -1,7 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, type RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { AuthScreen } from "../AuthScreen";
+import { NotificationProvider } from "../../context/NotificationContext";
+import { ToastContainer } from "../../components/ToastContainer";
+
+function Wrapper({ children }: { children: ReactNode }) {
+  return (
+    <NotificationProvider uid="u1">
+      {children}
+      <ToastContainer />
+    </NotificationProvider>
+  );
+}
+
+const renderWithProviders = (ui: ReactNode, options?: Omit<RenderOptions, "wrapper">) =>
+  render(ui, { wrapper: Wrapper, ...options });
 
 const mockSignUp = vi.fn();
 const mockSignIn = vi.fn();
@@ -70,7 +85,7 @@ const defaultProps = {
 describe("AuthScreen", () => {
   it("shows generic error for unknown auth error codes", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/some-unknown-code" });
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -89,7 +104,7 @@ describe("AuthScreen", () => {
       code: "auth/internal-error",
       message: "Firebase: Error (auth/internal-error).",
     });
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -103,7 +118,7 @@ describe("AuthScreen", () => {
 
   it("shows error for account-exists-with-different-credential", async () => {
     mockSignUp.mockRejectedValueOnce({ code: "auth/account-exists-with-different-credential" });
-    render(<AuthScreen {...defaultProps} mode="signup" />);
+    renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     const pws = screen.getAllByPlaceholderText(/•/);
@@ -118,7 +133,7 @@ describe("AuthScreen", () => {
 
   it("shows error for wrong-password code", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/wrong-password" });
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "wrongpass");
@@ -131,7 +146,7 @@ describe("AuthScreen", () => {
 
   it("shows error for weak-password code", async () => {
     mockSignUp.mockRejectedValueOnce({ code: "auth/weak-password" });
-    render(<AuthScreen {...defaultProps} mode="signup" />);
+    renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     const pws = screen.getAllByPlaceholderText(/•/);
@@ -146,7 +161,7 @@ describe("AuthScreen", () => {
 
   it("shows Error.message for non-code Error objects", async () => {
     mockSignIn.mockRejectedValueOnce(new Error("Custom auth failure"));
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -159,7 +174,7 @@ describe("AuthScreen", () => {
 
   it("shows non-Error thrown fallback", async () => {
     mockSignIn.mockRejectedValueOnce("string error");
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -171,14 +186,14 @@ describe("AuthScreen", () => {
   });
 
   it("password reset requires email", async () => {
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
     await userEvent.click(screen.getByText("Forgot password?"));
     expect(screen.getByText("Enter your email first")).toBeInTheDocument();
   });
 
   it("password reset handles failure silently", async () => {
     mockResetPassword.mockRejectedValueOnce(new Error("fail"));
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.click(screen.getByText("Forgot password?"));
@@ -189,19 +204,19 @@ describe("AuthScreen", () => {
   });
 
   it("form has reduced opacity when googleLoading", () => {
-    render(<AuthScreen {...defaultProps} googleLoading={true} />);
+    renderWithProviders(<AuthScreen {...defaultProps} googleLoading={true} />);
     const form = screen.getByPlaceholderText("you@email.com").closest("form");
     expect(form).toHaveAttribute("aria-busy", "true");
     expect(form).toHaveClass("opacity-40");
   });
 
   it("displays googleError", () => {
-    render(<AuthScreen {...defaultProps} googleError="Google auth failed" />);
+    renderWithProviders(<AuthScreen {...defaultProps} googleError="Google auth failed" />);
     expect(screen.getByText("Google auth failed")).toBeInTheDocument();
   });
 
   it("password strength indicator shows for signup", async () => {
-    render(<AuthScreen {...defaultProps} mode="signup" />);
+    renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
 
     const pw = screen.getAllByPlaceholderText(/•/)[0];
     await userEvent.type(pw, "abcdef");
@@ -210,7 +225,7 @@ describe("AuthScreen", () => {
   });
 
   it("password strength shows Fair for a mixed-case password", async () => {
-    render(<AuthScreen {...defaultProps} mode="signup" />);
+    renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
 
     const pw = screen.getAllByPlaceholderText(/•/)[0];
     await userEvent.type(pw, "Abcdefgh");
@@ -219,7 +234,7 @@ describe("AuthScreen", () => {
   });
 
   it("password strength shows Strong for complex password", async () => {
-    render(<AuthScreen {...defaultProps} mode="signup" />);
+    renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
 
     const pw = screen.getAllByPlaceholderText(/•/)[0];
     await userEvent.type(pw, "Abcdefghijk!1");
@@ -229,7 +244,7 @@ describe("AuthScreen", () => {
 
   it("shows rate-limit error for auth/too-many-requests", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/too-many-requests" });
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -242,7 +257,7 @@ describe("AuthScreen", () => {
 
   it("shows network error for auth/network-request-failed", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/network-request-failed" });
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -258,7 +273,7 @@ describe("AuthScreen", () => {
     // — used to fall through the generic else branch and surface the raw
     // "Firebase: Error (auth/user-disabled)." message.
     mockSignIn.mockRejectedValueOnce({ code: "auth/user-disabled" });
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -271,7 +286,7 @@ describe("AuthScreen", () => {
 
   it("shows session-expired copy for auth/user-token-expired", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/user-token-expired" });
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -284,7 +299,7 @@ describe("AuthScreen", () => {
 
   it("shows actionable copy for auth/web-storage-unsupported (Safari private mode)", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/web-storage-unsupported" });
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -306,7 +321,7 @@ describe("AuthScreen", () => {
     const onToggle = vi.fn(() => {
       mode = mode === "signup" ? "signin" : "signup";
     });
-    const { rerender } = render(<AuthScreen {...defaultProps} mode={mode} onToggle={onToggle} />);
+    const { rerender } = renderWithProviders(<AuthScreen {...defaultProps} mode={mode} onToggle={onToggle} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "bryan@test.com");
     const pws = screen.getAllByPlaceholderText(/•/);
@@ -337,7 +352,7 @@ describe("AuthScreen", () => {
     const onToggle = vi.fn(() => {
       mode = mode === "signup" ? "signin" : "signup";
     });
-    const { rerender } = render(<AuthScreen {...defaultProps} mode={mode} onToggle={onToggle} />);
+    const { rerender } = renderWithProviders(<AuthScreen {...defaultProps} mode={mode} onToggle={onToggle} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "newbie@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -358,7 +373,7 @@ describe("AuthScreen", () => {
   it("surfaces inline 'Forgot password?' action on auth/invalid-credential during sign-in", async () => {
     mockSignIn.mockRejectedValueOnce({ code: "auth/invalid-credential" });
     mockResetPassword.mockResolvedValueOnce(undefined);
-    render(<AuthScreen {...defaultProps} />);
+    renderWithProviders(<AuthScreen {...defaultProps} />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "wrongpass");
@@ -375,7 +390,7 @@ describe("AuthScreen", () => {
 
   it("clears the inline recovery button when the surfaced error is dismissed", async () => {
     mockSignUp.mockRejectedValueOnce({ code: "auth/email-already-in-use" });
-    render(<AuthScreen {...defaultProps} mode="signup" />);
+    renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
 
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "bryan@test.com");
     const pws = screen.getAllByPlaceholderText(/•/);
@@ -394,7 +409,7 @@ describe("AuthScreen", () => {
     // user toggles sign-in <-> sign-up — the screen must reset only the
     // transient one-shot state (errors, verification warnings) while keeping
     // the user's typed credentials so they don't have to retype on switch.
-    const { rerender } = render(<AuthScreen {...defaultProps} mode="signin" />);
+    const { rerender } = renderWithProviders(<AuthScreen {...defaultProps} mode="signin" />);
     await userEvent.type(screen.getByPlaceholderText("you@email.com"), "bryan@test.com");
     await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
 
@@ -410,7 +425,7 @@ describe("AuthScreen", () => {
   describe("auth telemetry (outage detection)", () => {
     it("fires sign_in_attempt + sign_in success on successful email sign-in", async () => {
       mockSignIn.mockResolvedValueOnce({ uid: "uid-success" });
-      render(<AuthScreen {...defaultProps} />);
+      renderWithProviders(<AuthScreen {...defaultProps} />);
 
       await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
       await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -429,7 +444,7 @@ describe("AuthScreen", () => {
         user: { uid: "uid-newaccount" },
         verificationEmailSent: true,
       });
-      render(<AuthScreen {...defaultProps} mode="signup" />);
+      renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
 
       await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
       const pws = screen.getAllByPlaceholderText(/•/);
@@ -444,9 +459,38 @@ describe("AuthScreen", () => {
       expect(mockCaptureException).not.toHaveBeenCalled();
     });
 
+    it("surfaces a toast when signUp succeeds but verificationEmailSent is false", async () => {
+      // Regression: the previous inline `verifyWarning` banner rendered for
+      // at most a frame because onDone()/auth state changes swapped screens
+      // immediately. A toast survives the screen swap via the persistent
+      // NotificationProvider queue.
+      mockSignUp.mockResolvedValueOnce({
+        user: { uid: "uid-verify-failed" },
+        verificationEmailSent: false,
+      });
+      renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
+
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      const pws = screen.getAllByPlaceholderText(/•/);
+      await userEvent.type(pws[0], "password123");
+      await userEvent.type(pws[1], "password123");
+      await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
+
+      // The toast appears in ToastContainer, but the Wrapper only mounts
+      // NotificationProvider — assert on the persisted toast title.
+      await waitFor(() => expect(mockSignUpSuccess).toHaveBeenCalledWith("email"));
+      // Toast surfaces through the mounted ToastContainer in Wrapper.
+      await waitFor(() => {
+        expect(screen.getByText("Verification email failed")).toBeInTheDocument();
+        expect(screen.getByText("Account created — use the Resend button to try again.")).toBeInTheDocument();
+      });
+      // The removed inline banner must NOT render — regression guard.
+      expect(screen.queryByText(/Account created but the verification email failed to send/)).not.toBeInTheDocument();
+    });
+
     it("does NOT capture benign user-errors to Sentry (wrong password)", async () => {
       mockSignIn.mockRejectedValueOnce({ code: "auth/wrong-password" });
-      render(<AuthScreen {...defaultProps} />);
+      renderWithProviders(<AuthScreen {...defaultProps} />);
 
       await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
       await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -459,7 +503,7 @@ describe("AuthScreen", () => {
     it("captures auth/internal-error to Sentry with context", async () => {
       const err = { code: "auth/internal-error", message: "Firebase: Error (auth/internal-error)." };
       mockSignIn.mockRejectedValueOnce(err);
-      render(<AuthScreen {...defaultProps} />);
+      renderWithProviders(<AuthScreen {...defaultProps} />);
 
       await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
       await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -481,7 +525,7 @@ describe("AuthScreen", () => {
     it("captures unknown codes to Sentry (escalate for investigation)", async () => {
       const err = { code: "auth/some-brand-new-code" };
       mockSignIn.mockRejectedValueOnce(err);
-      render(<AuthScreen {...defaultProps} />);
+      renderWithProviders(<AuthScreen {...defaultProps} />);
 
       await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
       await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -493,7 +537,7 @@ describe("AuthScreen", () => {
 
     it("falls back to 'unknown' code when error has no code field", async () => {
       mockSignIn.mockRejectedValueOnce(new Error("weird"));
-      render(<AuthScreen {...defaultProps} />);
+      renderWithProviders(<AuthScreen {...defaultProps} />);
 
       await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
       await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
@@ -530,7 +574,9 @@ describe("AuthScreen", () => {
     async function submitAdultSignup() {
       const onAgeVerified = vi.fn();
       const onAgeGateReset = vi.fn();
-      render(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} onAgeGateReset={onAgeGateReset} />);
+      renderWithProviders(
+        <AuthScreen {...signupProps} onAgeVerified={onAgeVerified} onAgeGateReset={onAgeGateReset} />,
+      );
       await fillSignupForm();
       await fillDob("01", "15", "2000");
       await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
@@ -539,25 +585,25 @@ describe("AuthScreen", () => {
     }
 
     it("renders DOB inputs only when showAgeFields is true", () => {
-      render(<AuthScreen {...signupProps} />);
+      renderWithProviders(<AuthScreen {...signupProps} />);
       expect(screen.getByLabelText("Birth month")).toBeInTheDocument();
       expect(screen.getByLabelText("Birth day")).toBeInTheDocument();
       expect(screen.getByLabelText("Birth year")).toBeInTheDocument();
     });
 
     it("does not render DOB inputs when showAgeFields is false", () => {
-      render(<AuthScreen {...defaultProps} mode="signup" />);
+      renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
       expect(screen.queryByLabelText("Birth month")).not.toBeInTheDocument();
     });
 
     it("does not render DOB inputs in signin mode even if showAgeFields=true", () => {
-      render(<AuthScreen {...defaultProps} showAgeFields={true} />);
+      renderWithProviders(<AuthScreen {...defaultProps} showAgeFields={true} />);
       expect(screen.queryByLabelText("Birth month")).not.toBeInTheDocument();
     });
 
     it("blocks under-13 signups with the inline COPPA card", async () => {
       const onAgeVerified = vi.fn();
-      render(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
+      renderWithProviders(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
       await fillSignupForm();
       await userEvent.type(screen.getByLabelText("Birth month"), "01");
       await userEvent.type(screen.getByLabelText("Birth day"), "01");
@@ -570,7 +616,7 @@ describe("AuthScreen", () => {
     });
 
     it("Go Back from the blocked card restores the signup form with cleared DOB", async () => {
-      render(<AuthScreen {...signupProps} />);
+      renderWithProviders(<AuthScreen {...signupProps} />);
       await fillSignupForm();
       await userEvent.type(screen.getByLabelText("Birth month"), "01");
       await userEvent.type(screen.getByLabelText("Birth day"), "01");
@@ -587,7 +633,7 @@ describe("AuthScreen", () => {
     });
 
     it("requires parental consent for 13-17 year olds before submitting", async () => {
-      render(<AuthScreen {...signupProps} />);
+      renderWithProviders(<AuthScreen {...signupProps} />);
       await fillSignupForm();
       await userEvent.type(screen.getByLabelText("Birth month"), "01");
       await userEvent.type(screen.getByLabelText("Birth day"), "01");
@@ -601,7 +647,7 @@ describe("AuthScreen", () => {
     it("emits onAgeVerified with the DOB + consent flag before signUp", async () => {
       mockSignUp.mockResolvedValueOnce({ user: { uid: "u1" }, verificationEmailSent: true });
       const onAgeVerified = vi.fn();
-      render(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
+      renderWithProviders(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
       await fillSignupForm();
       await fillDob("01", "15", "2000");
       await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
@@ -638,7 +684,7 @@ describe("AuthScreen", () => {
     it("passes parentalConsent=true to onAgeVerified when a minor confirms consent", async () => {
       mockSignUp.mockResolvedValueOnce({ user: { uid: "u1" }, verificationEmailSent: true });
       const onAgeVerified = vi.fn();
-      render(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
+      renderWithProviders(<AuthScreen {...signupProps} onAgeVerified={onAgeVerified} />);
       await fillSignupForm();
       await userEvent.type(screen.getByLabelText("Birth month"), "01");
       await userEvent.type(screen.getByLabelText("Birth day"), "01");
@@ -651,7 +697,7 @@ describe("AuthScreen", () => {
     });
 
     it("surfaces an invalid-date error without calling signUp", async () => {
-      render(<AuthScreen {...signupProps} />);
+      renderWithProviders(<AuthScreen {...signupProps} />);
       await fillSignupForm();
       await userEvent.type(screen.getByLabelText("Birth month"), "02");
       await userEvent.type(screen.getByLabelText("Birth day"), "30");
@@ -663,7 +709,7 @@ describe("AuthScreen", () => {
     });
 
     it("surfaces an empty-date error without calling signUp", async () => {
-      render(<AuthScreen {...signupProps} />);
+      renderWithProviders(<AuthScreen {...signupProps} />);
       await fillSignupForm();
       await userEvent.click(screen.getByRole("button", { name: "Create Account" }));
 
@@ -673,7 +719,7 @@ describe("AuthScreen", () => {
 
     it("routes clicks on the minor consent legal links via onNavLegal", async () => {
       const onNavLegal = vi.fn();
-      render(<AuthScreen {...signupProps} onNavLegal={onNavLegal} />);
+      renderWithProviders(<AuthScreen {...signupProps} onNavLegal={onNavLegal} />);
       await fillSignupForm();
       await userEvent.type(screen.getByLabelText("Birth month"), "01");
       await userEvent.type(screen.getByLabelText("Birth day"), "01");
