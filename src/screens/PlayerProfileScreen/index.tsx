@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { analytics, trackEvent } from "../../services/analytics";
+import { hashUid } from "../../utils/pii";
 import type { StatTileName } from "./components/ProfileStatsGrid";
 import { usePullToRefresh } from "../../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "../../components/PullToRefreshIndicator";
@@ -112,7 +113,7 @@ export function PlayerProfileScreen({
   const [shareCopiedAt, setShareCopiedAt] = useState<number | null>(null);
   const handleShareProfile = useCallback(async () => {
     const url = `${window.location.origin}/profile/${currentUserProfile.uid}`;
-    trackEvent("profile_share_my_profile_tapped", { uid: currentUserProfile.uid });
+    trackEvent("profile_share_my_profile_tapped", { uid: hashUid(currentUserProfile.uid) });
     const payload: ShareData = {
       title: `@${currentUserProfile.username} on SkateHubba`,
       text: `Catch my SkateHubba profile`,
