@@ -392,9 +392,7 @@ describe("ClipsFeed", () => {
     const upvote = deferred<number>();
     const hydrationAfterToggle = deferred<Map<string, { count: number; alreadyUpvoted: boolean }>>();
 
-    mockFetchClipsFeed
-      .mockResolvedValueOnce([makeClip()])
-      .mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]).mockResolvedValueOnce([makeClip()]);
     mockFetchClipUpvoteState
       .mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]))
       .mockReturnValueOnce(hydrationAfterToggle.promise);
@@ -424,9 +422,7 @@ describe("ClipsFeed", () => {
     await act(async () => {
       hydrationAfterToggle.resolve(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
     });
-    expect(
-      screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i })).toBeInTheDocument();
   });
 
   it("keeps the optimistic upvoted state when the server already had our vote", async () => {
@@ -688,25 +684,20 @@ describe("ClipsFeed", () => {
       const videoEl = document.querySelector("video") as HTMLVideoElement;
       const pauseSpy = vi.spyOn(videoEl, "pause").mockImplementation(() => undefined);
 
-      // Flush the clip's mount effects BEFORE dispatching the native `play`.
-      // The observer is created in the same passive-effect pass as the
-      // `hasPlayedRef` reset (the `[src]` effect); once `ioCallback` is set,
-      // that reset has already run. If `play` fired while those effects were
-      // still pending, fireEvent's own act() would flush the reset AFTER
-      // `handlePlay` opened the gate, clobbering `hasPlayedRef` back to false
-      // so the out-of-viewport branch never calls pause(). That interleaving
-      // is the intermittent failure this ordering removes.
+      // Wait for the observer to register before firing `play`. Both mount
+      // effects (the `[src]` reset and the `[reducedMotion]` observer setup)
+      // run in the same passive pass; if `play` fires while they're pending,
+      // fireEvent's own act() flushes the reset AFTER handlePlay opens the
+      // gate — clobbering hasPlayedRef and skipping pause().
       await waitFor(() => expect(ioCallback).toBeTruthy());
 
       fireEvent.play(videoEl);
 
-      act(() => {
-        ioCallback!(
-          [{ isIntersecting: false, target: videoEl } as unknown as IntersectionObserverEntry],
-          {} as IntersectionObserver,
-        );
-      });
-      await waitFor(() => expect(pauseSpy).toHaveBeenCalled());
+      ioCallback!(
+        [{ isIntersecting: false, target: videoEl } as unknown as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      );
+      expect(pauseSpy).toHaveBeenCalled();
     } finally {
       globalThis.IntersectionObserver = originalIO;
     }
