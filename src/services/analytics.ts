@@ -15,6 +15,7 @@
  */
 import { captureEvent as posthogCapture } from "../lib/posthog";
 import { isAnalyticsAllowed } from "../lib/consent";
+import { hashUid } from "../utils/pii";
 
 type EventValue = string | number | boolean | null | undefined;
 type EventProperties = Record<string, EventValue>;
@@ -94,19 +95,19 @@ export const analytics = {
    * was found and deleted from Storage.
    */
   accountDeleted: (uid: string, achievementsRemoved: number, avatarRemoved: boolean) =>
-    trackEvent("account_deleted", { uid, achievementsRemoved, avatarRemoved }),
+    trackEvent("account_deleted", { uid: hashUid(uid), achievementsRemoved, avatarRemoved }),
   // ── Avatar upload (PR-B, plan §6.3) ────────────────────────────────────
   /** Fires when the AvatarPicker hands a blob to the upload pipeline. */
   avatarUploadStarted: (source: "camera" | "gallery" | "url", originalSizeBytes: number, nsfwScore?: number) =>
     trackEvent("avatar_upload_started", { source, originalSizeBytes, nsfwScore }),
   /** Fires after `setProfileImageUrl` resolves. */
   avatarUploadCompleted: (uid: string, finalSizeBytes: number, durationMs: number) =>
-    trackEvent("avatar_upload_completed", { uid, finalSizeBytes, durationMs }),
+    trackEvent("avatar_upload_completed", { uid: hashUid(uid), finalSizeBytes, durationMs }),
   /** Fires on every rejection — NSFW, oversize, transport, rule. */
   avatarUploadFailed: (errorCode: string, source: "camera" | "gallery" | "url", nsfwScore?: number) =>
     trackEvent("avatar_upload_failed", { errorCode, source, nsfwScore }),
   /** Fires after `deleteAvatar` resolves. */
-  avatarDeleted: (uid: string) => trackEvent("avatar_deleted", { uid }),
+  avatarDeleted: (uid: string) => trackEvent("avatar_deleted", { uid: hashUid(uid) }),
   // ── PR-C profile UX telemetry (plan §6.4 + §7.2) ──────────────────────
   /**
    * Fires once per `PlayerProfileScreen` mount. `viewerUid` is always the
@@ -118,8 +119,8 @@ export const analytics = {
    */
   profileViewed: (viewerUid: string, profileUid: string, isOwn: boolean, msToFirstPaint: number) =>
     trackEvent("profile_viewed", {
-      viewerUid,
-      profileUid,
+      viewerUid: hashUid(viewerUid),
+      profileUid: hashUid(profileUid),
       isOwn,
       msToFirstPaint,
     }),
@@ -131,5 +132,5 @@ export const analytics = {
    * now so the dashboard accumulates baseline data.
    */
   profileStatTileTapped: (statName: string, profileUid: string) =>
-    trackEvent("profile_stat_tile_tapped", { statName, profileUid }),
+    trackEvent("profile_stat_tile_tapped", { statName, profileUid: hashUid(profileUid) }),
 } as const;

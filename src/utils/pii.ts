@@ -34,6 +34,34 @@ export function hashUid(uid: string): string {
   return `uid_${fnv1a(uid)}`;
 }
 
+// Non-cryptographic 64-bit FNV-1a (BigInt). The 32-bit hashUid above is sized
+// for breadcrumb correlation, where a rare collision only mislabels a single
+// log line. When the same surrogate becomes a *stable identity* — the PostHog
+// distinct_id and Sentry user id — a 32-bit space (~4.3B) risks birthday-bound
+// collisions that would silently merge two accounts at scale. FNV-1a-64 widens
+// the space to ~1.8e19 with no crypto dependency and no async boundary.
+function fnv1a64(input: string): string {
+  const prime = 1099511628211n;
+  const mask = (1n << 64n) - 1n;
+  let hash = 14695981039346656037n; // FNV-1a 64-bit offset basis
+  for (let i = 0; i < input.length; i++) {
+    hash ^= BigInt(input.charCodeAt(i));
+    hash = (hash * prime) & mask;
+  }
+  return hash.toString(16).padStart(16, "0");
+}
+
+/**
+ * Wider identity digest for cross-session correlation (PostHog distinct_id,
+ * Sentry user id). Use {@link hashUid} for breadcrumb/event properties; use
+ * this for anything that anchors a durable identity where collisions would
+ * merge distinct users.
+ */
+export function hashIdentity(uid: string): string {
+  if (!uid) return uid;
+  return `uid_${fnv1a64(uid)}`;
+}
+
 export function redactPII(data: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
   if (!data) return data;
   const out: Record<string, unknown> = {};

@@ -11,6 +11,8 @@ import { analytics } from "../services/analytics";
 import { logger, metrics } from "../services/logger";
 import { captureException, setUser as setSentryUser } from "../lib/sentry";
 import { identify as posthogIdentify, resetIdentity as posthogReset } from "../lib/posthog";
+import { hashIdentity } from "../utils/pii";
+import { useAnalyticsConsent } from "../hooks/useAnalyticsConsent";
 
 // sessionStorage key that survives the sign-out/sign-in round-trip required
 // after auth/requires-recent-login. We only need the uid — the Firestore wipe
@@ -181,20 +183,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Reactive analytics-consent gate. PostHog identify is only permitted once
+  // the user has accepted the ConsentBanner (see PrivacyPolicy §Usage data:
+  // "Analytics are only active after you accept the consent banner"). This
+  // flips live, so an already-signed-in user who accepts later still gets
+  // identified — the identity effect below is keyed on it.
+  const analyticsConsented = useAnalyticsConsent();
+
   // Keep analytics + error-tracking identity in sync with Firebase auth
   // state. PostHog.reset() must fire on sign-out so the next anonymous
   // session doesn't inherit the previous user's distinct_id (which would
-  // silently merge cohorts). Sentry uses the same uid for scoped issues.
+  // silently merge cohorts). Sentry uses the same surrogate for scoped issues.
   useEffect(() => {
     if (user) {
       const username = activeProfile?.username;
-      posthogIdentify(user.uid, username ? { username } : undefined);
-      setSentryUser({ id: user.uid, ...(username ? { username } : {}) });
+      // Hash the uid before it reaches PostHog / Sentry. hashIdentity is a
+      // stable, deterministic surrogate, so the distinct_id stays consistent
+      // per user (analytics continuity, sign-out reset still works) while the
+      // raw Firebase identifier never leaves the app.
+      const surrogateId = hashIdentity(user.uid);
+      // Sentry is crash/error reporting under legitimate interest (PrivacyPolicy
+      // §Error data — no consent gate; PII is stripped in main.tsx beforeSend),
+      // so setUser stays unconditional. PostHog is analytics: gate on consent.
+      setSentryUser({ id: surrogateId, ...(username ? { username } : {}) });
+      if (analyticsConsented) {
+        posthogIdentify(surrogateId, username ? { username } : undefined);
+      }
     } else {
       posthogReset();
       setSentryUser(null);
     }
-  }, [user, activeProfile?.username]);
+  }, [user, activeProfile?.username, analyticsConsented]);
 
   // Register for native push notifications after sign-in. Gated on
   // isPushSupported() so web users never hit the Capacitor plugin (which

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hashUid, redactPII } from "../pii";
+import { hashUid, hashIdentity, redactPII } from "../pii";
 
 describe("hashUid", () => {
   it("produces a stable uid_ + 8 hex char surrogate", () => {
@@ -17,6 +17,29 @@ describe("hashUid", () => {
 
   it("passes falsy input through unchanged", () => {
     expect(hashUid("")).toBe("");
+  });
+});
+
+describe("hashIdentity", () => {
+  it("produces a stable uid_ + 16 hex char surrogate (64-bit digest)", () => {
+    expect(hashIdentity("abc123")).toMatch(/^uid_[0-9a-f]{16}$/);
+  });
+
+  it("is deterministic", () => {
+    expect(hashIdentity("abc123")).toBe(hashIdentity("abc123"));
+  });
+
+  it("produces different surrogates for different inputs", () => {
+    expect(hashIdentity("abc123")).not.toBe(hashIdentity("abc124"));
+  });
+
+  it("is a wider digest than the 32-bit hashUid (no shared value)", () => {
+    // 16 hex chars vs 8 — the identity digest must not collapse to hashUid.
+    expect(hashIdentity("abc123")).not.toBe(hashUid("abc123"));
+  });
+
+  it("passes falsy input through unchanged", () => {
+    expect(hashIdentity("")).toBe("");
   });
 });
 

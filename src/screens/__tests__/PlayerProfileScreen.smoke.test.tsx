@@ -35,6 +35,7 @@ vi.mock("../../services/analytics", () => ({
 }));
 
 import { analytics, trackEvent } from "../../services/analytics";
+import { hashUid } from "../../utils/pii";
 const analyticsMock = vi.mocked(analytics);
 const trackEventMock = vi.mocked(trackEvent);
 
@@ -113,7 +114,9 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
 
       await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
       expect(share.mock.calls[0][0]).toMatchObject({ url: expect.stringContaining("/profile/me") });
-      expect(trackEventMock).toHaveBeenCalledWith("profile_share_my_profile_tapped", { uid: "me" });
+      // uid is hashed before it reaches analytics — raw Firebase uids never
+      // leave the app (privacy sweep; matches every other analytics call site).
+      expect(trackEventMock).toHaveBeenCalledWith("profile_share_my_profile_tapped", { uid: hashUid("me") });
     });
 
     it("copies the link and surfaces LINK COPIED when Web Share is unavailable", async () => {

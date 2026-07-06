@@ -37,6 +37,11 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
               Google profile (name, email, profile photo URL) from Google OAuth.
             </li>
             <li>
+              <strong className="text-white">Date of birth:</strong> Collected once during the age-verification gate at
+              sign-up. We use it to confirm you meet our minimum age requirement and to comply with COPPA. It is stored
+              in a private, owner-only part of your profile and is never shown to other users.
+            </li>
+            <li>
               <strong className="text-white">Game data:</strong> Trick names, game results, scores, and turn history
               associated with your account.
             </li>
@@ -45,9 +50,21 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
               These are uploaded to Firebase Storage and linked to your game sessions.
             </li>
             <li>
-              <strong className="text-white">Usage data:</strong> Anonymous event data (e.g. game created, sign-in
-              method) collected via Vercel Analytics. This data does not identify you personally and does not use
-              cookies.
+              <strong className="text-white">Precise device location:</strong> If you open the map and grant permission,
+              we read your device&apos;s GPS location to centre the map and show skate spots near you. Location is used
+              only while the map is open, is not stored on our servers, and you can revoke the permission at any time in
+              your device or browser settings.
+            </li>
+            <li>
+              <strong className="text-white">Push notification tokens:</strong> If you enable notifications, we store
+              the Firebase Cloud Messaging (FCM) device token for your device so we can send you game notifications
+              (e.g. it&apos;s your turn). Tokens are held in the private part of your profile and removed when you sign
+              out or disable notifications.
+            </li>
+            <li>
+              <strong className="text-white">Usage data:</strong> Product-usage events (e.g. game created, sign-in
+              method, screens viewed) collected via Vercel Analytics and PostHog. Analytics are only active after you
+              accept the consent banner, and any user identifiers in these events are hashed before transmission.
             </li>
             <li>
               <strong className="text-white">Error data:</strong> Crash reports and stack traces collected via Sentry.
@@ -101,7 +118,13 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
               Google LLC, USA.
             </li>
             <li>
-              <strong className="text-white">Vercel</strong> (hosting, edge network, analytics) — Vercel Inc., USA.
+              <strong className="text-white">Vercel</strong> (hosting, edge network, and privacy-friendly aggregate
+              analytics) — Vercel Inc., USA.
+            </li>
+            <li>
+              <strong className="text-white">PostHog</strong> (product analytics — funnels, retention, and feature
+              usage) — PostHog Inc., USA. Only active after you accept the consent banner. We do not enable session
+              recording or autocapture, and user identifiers are hashed.
             </li>
             <li>
               <strong className="text-white">Sentry</strong> (error tracking) — Functional Software Inc., USA.
@@ -143,9 +166,12 @@ export function PrivacyPolicy({ onBack, onNav }: { onBack: () => void; onNav?: (
 
         <Section title="8. Cookies &amp; Tracking">
           <p>
-            We do not use advertising cookies or third-party trackers. Vercel Analytics collects anonymised, aggregated
-            usage metrics without using cookies or fingerprinting. Firebase may store authentication tokens in browser
-            storage (IndexedDB / localStorage) to keep you signed in.
+            We do not use advertising cookies, cross-site tracking, or behavioural ad networks. Vercel Analytics
+            collects anonymised, aggregated usage metrics without using cookies or fingerprinting. PostHog is used for
+            product analytics (understanding how features are used) and only runs after you accept the consent banner;
+            it stores its identifier in your browser&apos;s local storage rather than in third-party cookies, has
+            autocapture and session recording disabled, and receives only hashed user identifiers. Firebase may store
+            authentication tokens in browser storage (IndexedDB / localStorage) to keep you signed in.
           </p>
         </Section>
 
