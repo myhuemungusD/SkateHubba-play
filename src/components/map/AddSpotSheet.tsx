@@ -348,7 +348,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       key={o}
                       type="button"
                       onClick={() => toggleObstacle(o)}
-                      className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                      className={`touch-target inline-flex items-center justify-center px-3 py-1 text-xs rounded-full border transition-colors ${
                         obstacles.includes(o)
                           ? "bg-[#F97316] border-[#F97316] text-white"
                           : "bg-transparent border-[#444] text-muted hover:border-[#666]"
