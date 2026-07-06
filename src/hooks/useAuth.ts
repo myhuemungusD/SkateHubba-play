@@ -121,7 +121,7 @@ export function useAuth(): AuthState {
             captureMessage("users/{uid} permission-denied after retries", {
               level: "error",
               extra: {
-                uid: u.uid,
+                uid: hashUid(u.uid),
                 appCheckInitialized: isAppCheckInitialized(),
                 dbName: FIRESTORE_DB_NAME,
                 projectId: env?.VITE_FIREBASE_PROJECT_ID,

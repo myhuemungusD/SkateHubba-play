@@ -41,6 +41,7 @@ vi.mock("../../firebase", () => ({
 }));
 
 import { useAuth } from "../useAuth";
+import { hashUid } from "../../utils/pii";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -168,7 +169,7 @@ describe("useAuth hook", () => {
       expect.objectContaining({
         level: "error",
         extra: expect.objectContaining({
-          uid: "u-denied",
+          uid: hashUid("u-denied"),
           appCheckInitialized: false,
           dbName: "skatehubba",
         }),
