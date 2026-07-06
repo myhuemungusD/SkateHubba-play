@@ -7,6 +7,7 @@ vi.mock("../../lib/posthog", () => ({
 
 import { trackEvent, analytics } from "../analytics";
 import { CONSENT_KEY } from "../../lib/consent";
+import { hashUid } from "../../utils/pii";
 
 describe("analytics service", () => {
   let vaSpy: ReturnType<typeof vi.fn>;
@@ -192,11 +193,11 @@ describe("analytics service", () => {
       });
     });
 
-    it("accountDeleted sends account_deleted event with achievement + avatar tally", () => {
+    it("accountDeleted sends account_deleted event with a hashed uid + tally", () => {
       analytics.accountDeleted("u1", 3, true);
       expect(vaSpy).toHaveBeenCalledWith("event", {
         name: "account_deleted",
-        uid: "u1",
+        uid: hashUid("u1"),
         achievementsRemoved: 3,
         avatarRemoved: true,
       });
@@ -212,11 +213,11 @@ describe("analytics service", () => {
       });
     });
 
-    it("avatarUploadCompleted fires with uid + size + duration", () => {
+    it("avatarUploadCompleted fires with a hashed uid + size + duration", () => {
       analytics.avatarUploadCompleted("u1", 50_000, 1234);
       expect(vaSpy).toHaveBeenCalledWith("event", {
         name: "avatar_upload_completed",
-        uid: "u1",
+        uid: hashUid("u1"),
         finalSizeBytes: 50_000,
         durationMs: 1234,
       });
@@ -232,17 +233,17 @@ describe("analytics service", () => {
       });
     });
 
-    it("avatarDeleted fires with uid", () => {
+    it("avatarDeleted fires with a hashed uid", () => {
       analytics.avatarDeleted("u1");
-      expect(vaSpy).toHaveBeenCalledWith("event", { name: "avatar_deleted", uid: "u1" });
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "avatar_deleted", uid: hashUid("u1") });
     });
 
-    it("profileViewed sends profile_viewed with viewer/profile/isOwn/firstPaint", () => {
+    it("profileViewed sends profile_viewed with hashed viewer/profile + isOwn/firstPaint", () => {
       analytics.profileViewed("v1", "p1", false, 42);
       expect(vaSpy).toHaveBeenCalledWith("event", {
         name: "profile_viewed",
-        viewerUid: "v1",
-        profileUid: "p1",
+        viewerUid: hashUid("v1"),
+        profileUid: hashUid("p1"),
         isOwn: false,
         msToFirstPaint: 42,
       });
@@ -252,19 +253,19 @@ describe("analytics service", () => {
       analytics.profileViewed("u1", "u1", true, 17);
       expect(vaSpy).toHaveBeenCalledWith("event", {
         name: "profile_viewed",
-        viewerUid: "u1",
-        profileUid: "u1",
+        viewerUid: hashUid("u1"),
+        profileUid: hashUid("u1"),
         isOwn: true,
         msToFirstPaint: 17,
       });
     });
 
-    it("profileStatTileTapped sends profile_stat_tile_tapped with stat name + profileUid", () => {
+    it("profileStatTileTapped sends profile_stat_tile_tapped with stat name + hashed profileUid", () => {
       analytics.profileStatTileTapped("wins", "p1");
       expect(vaSpy).toHaveBeenCalledWith("event", {
         name: "profile_stat_tile_tapped",
         statName: "wins",
-        profileUid: "p1",
+        profileUid: hashUid("p1"),
       });
     });
   });
