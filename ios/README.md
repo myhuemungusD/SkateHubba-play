@@ -4,6 +4,12 @@ This directory holds the Capacitor-generated Xcode project that ships
 SkateHubba to the App Store / TestFlight. Most of the files here are produced
 by `@capacitor/ios` and should not be edited by hand unless noted below.
 
+> **Before the first App Store / TestFlight build:** complete the native
+> launch blockers in [`NATIVE_SETUP.md`](./NATIVE_SETUP.md) — they require
+> the maintainer's `GoogleService-Info.plist` (a secret) and cannot be done
+> in CI. The app-level privacy manifest (`App/PrivacyInfo.xcprivacy`) is
+> already committed and wired into the target.
+
 ## What is tracked in git
 
 - `ios/App/App/Info.plist` — hand-authored. Contains every usage-description
