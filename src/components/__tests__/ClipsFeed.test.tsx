@@ -688,14 +688,25 @@ describe("ClipsFeed", () => {
       const videoEl = document.querySelector("video") as HTMLVideoElement;
       const pauseSpy = vi.spyOn(videoEl, "pause").mockImplementation(() => undefined);
 
+      // Flush the clip's mount effects BEFORE dispatching the native `play`.
+      // The observer is created in the same passive-effect pass as the
+      // `hasPlayedRef` reset (the `[src]` effect); once `ioCallback` is set,
+      // that reset has already run. If `play` fired while those effects were
+      // still pending, fireEvent's own act() would flush the reset AFTER
+      // `handlePlay` opened the gate, clobbering `hasPlayedRef` back to false
+      // so the out-of-viewport branch never calls pause(). That interleaving
+      // is the intermittent failure this ordering removes.
+      await waitFor(() => expect(ioCallback).toBeTruthy());
+
       fireEvent.play(videoEl);
 
-      await waitFor(() => expect(ioCallback).toBeTruthy());
-      ioCallback!(
-        [{ isIntersecting: false, target: videoEl } as unknown as IntersectionObserverEntry],
-        {} as IntersectionObserver,
-      );
-      expect(pauseSpy).toHaveBeenCalled();
+      act(() => {
+        ioCallback!(
+          [{ isIntersecting: false, target: videoEl } as unknown as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        );
+      });
+      await waitFor(() => expect(pauseSpy).toHaveBeenCalled());
     } finally {
       globalThis.IntersectionObserver = originalIO;
     }
