@@ -48,12 +48,7 @@ const config: CapacitorConfig = {
   },
   plugins: {
     Keyboard: {
-      // Resize the webview when the on-screen keyboard opens so fixed
-      // bottom-anchored sheets (e.g. AddSpotSheet) and their submit
-      // buttons stay above the keyboard instead of being overlaid.
-      // `native` is the standard iOS resize mode and avoids the layout
-      // jank `body` can introduce with dynamic-viewport (dvh) units.
-      resize: "native",
+      resize: "native", // keeps fixed bottom sheets above the iOS keyboard
     },
     SplashScreen: {
       // Keep the splash visible until the bundled JS signals ready (via
