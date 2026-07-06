@@ -105,6 +105,79 @@ state is the issue.
 doesn't help, ask them to clear site data (Chrome DevTools → Application → Storage
 → Clear site data) and retry.
 
+## Email verification failure modes
+
+Not a `permission-denied` symptom, but the failure surface overlaps enough
+(Firebase Auth, authorized-domains list, App Check) that the same on-call
+covers it. Work through these in order when a user reports "I can't verify
+my email" or "the verification banner won't clear".
+
+### `auth/too-many-requests` on signup
+
+Firebase's server-side throttle fired — the client asked Firebase to send a
+verification email too many times in a short window. The account itself is
+preserved; only the send is rate-limited.
+
+**Fix path:** User waits ~5 min and taps **Resend** on the verification
+banner. Not an actionable incident — do not page.
+
+### `auth/unauthorized-continue-uri`
+
+The continue URL passed with the verification link (see `VITE_APP_URL` in
+`.env.example`) resolves to a domain that isn't on Firebase's
+authorized-domains list.
+
+- **Firebase Console → Authentication → Settings → Authorized domains**
+  - Must include every domain the client can serve from:
+    `skatehubba.com`, `www.skatehubba.com`, and any active Vercel preview
+    domain that's being tested. `localhost` is already there by default.
+  - Missing entry = Firebase rejects the continue URL and the client
+    silently falls back to the `firebaseapp.com` default handler, which
+    still verifies the address but returns the user to an unbranded
+    Firebase-hosted page.
+
+**Fix path:** Add the missing domain, wait ~60 s, retry.
+
+### Verification link returns to the wrong domain
+
+Same root cause as `auth/unauthorized-continue-uri` above — the client
+detected the rejection and used the `firebaseapp.com` fallback handler.
+Check the authorized-domains list.
+
+### User clicked the link but the app still says "unverified"
+
+The ID token cached in the client is stale. Auth's `email_verified` claim
+only refreshes when the token is refreshed.
+
+- The client force-refreshes via `reloadUser()` when the tab regains
+  focus (`visibilitychange`), which covers the common "open link in new
+  tab, then come back" flow.
+- If both tabs stay visible (desktop side-by-side), the visibilitychange
+  event never fires — the user must switch to another tab/window and
+  back, or reload the page, to trigger the refresh.
+- Can also happen when App Check enforcement is on and the recheck
+  request is being blocked — see the App Check enforcement section
+  above.
+
+**Fix path:** Have the user switch away from the tab and back (fires
+`visibilitychange` → `reloadUser()`), or simply reload the page. If
+that still doesn't clear it, walk through the App Check enforcement
+section.
+
+### Verification email never arrives
+
+- **Spam folder first.** Gmail in particular buckets Firebase's default
+  sender aggressively.
+- **Firebase Console → Authentication → Templates → Email address
+  verification** — confirm the template hasn't been deleted or
+  corrupted (empty subject / empty body will send but land as spam
+  everywhere).
+- Check the **Usage** tab for the same project — Firebase caps free-tier
+  email sends per day. If the counter is red, sends are being dropped.
+
+**Fix path:** Restore the template (Firebase provides a **Reset to
+default** button), then have the user hit **Resend** on the banner.
+
 ## What the retry screen shows
 
 After these changes, the retry screen renders:

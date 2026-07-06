@@ -55,7 +55,6 @@ writable only by the owning user per `firestore.rules`.
 
 | Field             | Type      | Description                                                                    |
 | ----------------- | --------- | ------------------------------------------------------------------------------ |
-| `emailVerified`   | `boolean` | Mirrors Auth state at profile creation time                                    |
 | `dob`             | `string`  | YYYY-MM-DD, collected at age gate (COPPA/CCPA)                                 |
 | `parentalConsent` | `boolean` | Optional; present when the age-gate collected consent for 13-17 year olds      |
 | `fcmTokens`       | `array`   | Firebase Cloud Messaging tokens for this user's devices (≤10 entries enforced) |
@@ -63,6 +62,18 @@ writable only by the owning user per `firestore.rules`.
 > Note: email is **not** stored here. Firebase Auth is the canonical
 > store for a user's email address. Duplicating it on Firestore would
 > create a second source of truth.
+
+**Legacy fields — `emailVerified`:** This field is **no longer written
+for new profiles.** `createProfile` writes only `dob` and optional
+`parentalConsent` to this doc, and `UserPrivateProfile` no longer
+declares `emailVerified`. The field survives only on pre-deprecation
+documents, where its value was always stale — it captured Auth state at
+profile-creation time and was **never updated** after the user later
+completed verification. Do **not** rely on it for anything. All
+authorization reads the JWT claim `request.auth.token.email_verified`
+from Firebase Auth (available in `firestore.rules` and `storage.rules`),
+and client code reads `auth.currentUser.emailVerified` — those reflect
+live Auth state and are canonical.
 
 **Constraints (enforced by Firestore rules):**
 
