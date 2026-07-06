@@ -27,6 +27,36 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
+      - name: Resolve build metadata
+        id: version
+        run: |
+          # versionCode: monotonically increasing workflow run number. Play Store
+          # requires each uploaded artifact to have a unique, increasing code.
+          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          # For tag builds (refs/tags/vX.Y.Z) emit two forms of the version:
+          #  - name: unprefixed SemVer for Gradle's -PversionName= (build.gradle
+          #    requires a numeric-ish string; a leading 'v' is invalid).
+          #  - appVersion: the raw tag name (with 'v' prefix) mirroring the
+          #    value release.yml passes as VITE_APP_VERSION, so Sentry groups
+          #    web and Android crashes under the same release string.
+          # Non-tag builds leave both empty: Gradle falls back to
+          # package.json.version, and the Vite build falls through to
+          # VITE_GIT_SHA (github.sha) as the release identifier — keeping
+          # CI/dev builds from masquerading as the current tagged release
+          # in Sentry.
+          REF="${{ github.ref }}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            TAG="${REF#refs/tags/}"
+            echo "name=${TAG#v}" >> "$GITHUB_OUTPUT"
+            echo "appVersion=$TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=" >> "$GITHUB_OUTPUT"
+            echo "appVersion=" >> "$GITHUB_OUTPUT"
+          fi
+      # This env block must stay in sync with the VITE_* schema in
+      # src/lib/env.ts — any VITE_* var read by the running app at runtime
+      # needs to be injected here so it lands in the built bundle that
+      # Capacitor ships inside the Android WebView.
       - name: Build web assets
         run: npm run build
         env:
@@ -44,6 +74,13 @@ jobs:
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_APPCHECK_ENABLED: ${{ secrets.VITE_APPCHECK_ENABLED }}
           VITE_RECAPTCHA_SITE_KEY: ${{ secrets.VITE_RECAPTCHA_SITE_KEY }}
+          # Release identifier used by main.tsx → Sentry.init({release}). For
+          # tag builds this matches release.yml's VITE_APP_VERSION exactly so
+          # a v1.2.3 release unifies web + Android crash grouping. For non-tag
+          # builds appVersion is empty and main.tsx falls through to
+          # VITE_GIT_SHA below.
+          VITE_APP_VERSION: ${{ steps.version.outputs.appVersion }}
+          VITE_GIT_SHA: ${{ github.sha }}
       - name: Sync Capacitor
         run: npx cap sync android
       - uses: actions/setup-java@v4
@@ -55,22 +92,6 @@ jobs:
       - name: Decode keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/skatehubba-upload.keystore
-      - name: Resolve Android version
-        id: version
-        run: |
-          # versionCode: monotonically increasing workflow run number. Play Store
-          # requires each uploaded artifact to have a unique, increasing code.
-          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          # versionName: if this build was triggered by a v*.*.* tag, strip the
-          # leading 'v' and use that. Otherwise leave empty so build.gradle
-          # falls back to package.json.version.
-          REF="${{ github.ref }}"
-          if [[ "$REF" == refs/tags/v* ]]; then
-            NAME="${REF#refs/tags/v}"
-            echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=" >> "$GITHUB_OUTPUT"
-          fi
       - name: Build signed AAB
         working-directory: android
         run: |
