@@ -27,6 +27,24 @@ jobs:
           cache: 'npm'
       - name: Install dependencies
         run: npm ci
+      # Runs before the web build so steps.version outputs are available to
+      # both the VITE_APP_VERSION env below and the Gradle args later.
+      - name: Resolve Android version
+        id: version
+        run: |
+          # versionCode: monotonically increasing workflow run number. Play Store
+          # requires each uploaded artifact to have a unique, increasing code.
+          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          # versionName: if this build was triggered by a v*.*.* tag, strip the
+          # leading 'v' and use that. Otherwise leave empty so build.gradle
+          # falls back to package.json.version.
+          REF="${{ github.ref }}"
+          if [[ "$REF" == refs/tags/v* ]]; then
+            NAME="${REF#refs/tags/v}"
+            echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build web assets
         run: npm run build
         env:
@@ -44,6 +62,10 @@ jobs:
           VITE_APP_URL: ${{ secrets.VITE_APP_URL }}
           VITE_APPCHECK_ENABLED: ${{ secrets.VITE_APPCHECK_ENABLED }}
           VITE_RECAPTCHA_SITE_KEY: ${{ secrets.VITE_RECAPTCHA_SITE_KEY }}
+          # Release tagging for Sentry/PostHog (APP_RELEASE in src/main.tsx).
+          # Empty versionName on non-tag builds falls through to the git sha.
+          VITE_APP_VERSION: ${{ steps.version.outputs.name }}
+          VITE_GIT_SHA: ${{ github.sha }}
       - name: Sync Capacitor
         run: npx cap sync android
       - uses: actions/setup-java@v4
@@ -55,22 +77,6 @@ jobs:
       - name: Decode keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/skatehubba-upload.keystore
-      - name: Resolve Android version
-        id: version
-        run: |
-          # versionCode: monotonically increasing workflow run number. Play Store
-          # requires each uploaded artifact to have a unique, increasing code.
-          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          # versionName: if this build was triggered by a v*.*.* tag, strip the
-          # leading 'v' and use that. Otherwise leave empty so build.gradle
-          # falls back to package.json.version.
-          REF="${{ github.ref }}"
-          if [[ "$REF" == refs/tags/v* ]]; then
-            NAME="${REF#refs/tags/v}"
-            echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=" >> "$GITHUB_OUTPUT"
-          fi
       - name: Build signed AAB
         working-directory: android
         run: |
