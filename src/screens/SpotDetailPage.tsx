@@ -204,14 +204,14 @@ export function SpotDetailPage() {
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder="Add a comment…"
-              className="flex-1 bg-surface-alt border border-[#333] rounded-lg px-3 py-2 text-white text-sm
+              className="flex-1 bg-surface-alt border border-[#333] rounded-lg px-3 py-2 text-white text-base
                          placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
             />
             <button
               type="button"
               onClick={handleSubmitComment}
               disabled={submittingComment || !commentText.trim()}
-              className="px-3 py-2 bg-[#F97316] text-white rounded-lg
+              className="touch-target min-w-[44px] inline-flex items-center justify-center px-3 py-2 bg-[#F97316] text-white rounded-lg
                          hover:bg-[#EA580C] disabled:opacity-40 disabled:cursor-not-allowed"
               aria-label="Send comment"
             >

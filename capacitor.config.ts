@@ -47,6 +47,9 @@ const config: CapacitorConfig = {
     contentInset: "always",
   },
   plugins: {
+    Keyboard: {
+      resize: "native", // keeps fixed bottom sheets above the iOS keyboard
+    },
     SplashScreen: {
       // Keep the splash visible until the bundled JS signals ready (via
       // SplashScreen.hide()). `0` on launchShowDuration + manual hide gives

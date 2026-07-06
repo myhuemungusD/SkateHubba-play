@@ -254,7 +254,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                         setPinLatText(e.target.value);
                         setPinLat(parseCoord(e.target.value));
                       }}
-                      className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
+                      className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-base"
                     />
                   </div>
                   <div>
@@ -269,7 +269,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                         setPinLngText(e.target.value);
                         setPinLng(parseCoord(e.target.value));
                       }}
-                      className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-sm"
+                      className="w-full bg-surface-alt border border-[#444] rounded-lg px-3 py-2 text-white text-base"
                     />
                   </div>
                 </div>
@@ -317,7 +317,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                     setNameError(e.target.value.trim().length === 0 ? "Name is required" : null);
                   }}
                   placeholder="e.g. Hollywood High 16"
-                  className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-sm
+                  className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-base
                              placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
                 />
                 {nameError && <p className="text-red-400 text-xs mt-1">{nameError}</p>}
@@ -333,7 +333,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="What makes this spot special?"
                   rows={3}
-                  className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-sm
+                  className="w-full bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-base
                              placeholder:text-subtle focus:outline-none focus:border-[#F97316] resize-none"
                 />
                 <p className="text-subtle text-xs mt-1">{description.length}/500</p>
@@ -348,7 +348,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                       key={o}
                       type="button"
                       onClick={() => toggleObstacle(o)}
-                      className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                      className={`touch-target inline-flex items-center justify-center px-3 py-1 text-xs rounded-full border transition-colors ${
                         obstacles.includes(o)
                           ? "bg-[#F97316] border-[#F97316] text-white"
                           : "bg-transparent border-[#444] text-muted hover:border-[#666]"
@@ -421,7 +421,7 @@ export function AddSpotSheet({ userLocation, onClose, onSuccess }: AddSpotSheetP
                     value={photoInput}
                     onChange={(e) => setPhotoInput(e.target.value)}
                     placeholder="https://..."
-                    className="flex-1 bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-sm
+                    className="flex-1 bg-background border border-[#444] rounded-lg px-3 py-2 text-white text-base
                                placeholder:text-subtle focus:outline-none focus:border-[#F97316]"
                   />
                   <button
