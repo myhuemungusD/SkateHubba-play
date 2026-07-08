@@ -9,9 +9,11 @@
  *
  * This test walks the relative-import closure from the cron entrypoint and
  * asserts every relative specifier ends in a Node-resolvable extension
- * (`.js` / `.mjs` / `.cjs`), so a dropped extension fails in CI instead of at
- * 2am on a cold start. Bare specifiers (`firebase-admin/*`, `node:crypto`)
- * are skipped — those go through Node's package resolution.
+ * (`.js` / `.mjs` / `.cjs` / `.json`), so a dropped extension fails in CI
+ * instead of at 2am on a cold start. Bare specifiers (`firebase-admin/*`,
+ * `node:crypto`) are skipped — those go through Node's package resolution.
+ * Type-only imports/exports are also skipped: they are erased at compile
+ * time and never reach Node's loader.
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -30,21 +32,34 @@ const rel = (file: string): string => {
 };
 
 /** Extensions Node's ESM loader resolves without help — the single source of truth. */
-const NODE_RESOLVABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs"]);
+const NODE_RESOLVABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs", ".json"]);
 
 /** Source extensions the walker tries when mapping a runtime specifier back to its TS source. */
 const SOURCE_EXTENSIONS = [".ts", ".tsx"] as const;
 
 /**
- * Collect every static and dynamic import/export specifier in a TS source
- * file, using the TypeScript compiler's AST so comments, template literals,
- * and string-valued expressions can never masquerade as imports. Covers:
- *   • `import x from "…"` / `import "…"` / `import type { … } from "…"`
- *   • `export { … } from "…"` / `export * from "…"` / `export type { … } from "…"`
- *   • `import("…")` (dynamic — Vercel ESM enforces the same rule)
+ * Collect every runtime-relevant import/export specifier in a TS source file
+ * via the TypeScript compiler's AST, so comments and template literals can
+ * never masquerade as imports. Type-only declarations are skipped: they are
+ * erased before Vercel runs the code, so an extensionless (or otherwise
+ * un-loadable) type-only specifier can never cause the cold-start crash this
+ * test guards against. Including them would over-restrict — a legally erased
+ * type import would fail the offender check for a runtime bug that cannot
+ * exist.
+ *
+ * Covers:
+ *   • `import x from "…"` / `import "…"` (side-effect)
+ *   • `export { … } from "…"` / `export * from "…"`
+ *   • `import("…")` (dynamic — Vercel ESM enforces the same extension rule)
+ *
+ * Skipped by design:
+ *   • `import type { … } from "…"` / `export type { … } from "…"` — erased.
+ *   • `import(<non-string-literal>)` — the cron does not use it; a static
+ *     walker cannot resolve a runtime-computed specifier, and this file is
+ *     not the right place to enforce a "no dynamic import()" policy.
  */
 function collectSpecifiers(file: string): string[] {
-  const src = readFileSync(file, "utf-8");
+  const src = readFileSync(file, "utf8");
   // Pick ScriptKind by extension so a `.tsx` module reached via `resolveToSource`'s
   // fallback still parses correctly (JSX in `.ts` mode leans on parser recovery).
   const scriptKind = file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
@@ -52,12 +67,10 @@ function collectSpecifiers(file: string): string[] {
   const found: string[] = [];
 
   const visit = (node: ts.Node): void => {
-    if (
-      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
-      node.moduleSpecifier &&
-      ts.isStringLiteral(node.moduleSpecifier)
-    ) {
-      found.push(node.moduleSpecifier.text);
+    if (ts.isImportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (!node.importClause?.isTypeOnly) found.push(node.moduleSpecifier.text);
+    } else if (ts.isExportDeclaration(node) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {
+      if (!node.isTypeOnly) found.push(node.moduleSpecifier.text);
     } else if (
       ts.isCallExpression(node) &&
       node.expression.kind === ts.SyntaxKind.ImportKeyword &&
@@ -79,11 +92,19 @@ function collectSpecifiers(file: string): string[] {
  * then `<bare>/index.{ts,tsx}` so a legitimate future refactor to a
  * directory-with-index doesn't crash the walker with an opaque ENOENT.
  *
+ * `.json` specifiers resolve to the on-disk JSON file directly — they are
+ * runtime leaves (no imports of their own) and Vercel's JSON module hook
+ * doesn't map them to a TS source.
+ *
  * Returns `null` when nothing resolves — the caller records the specifier as
  * unresolvable so the failure is actionable instead of a stack trace.
  */
 function resolveToSource(fromFile: string, specifier: string): string | null {
   const runtimeExt = extname(specifier);
+  if (runtimeExt === ".json") {
+    const jsonPath = resolve(dirname(fromFile), specifier);
+    return existsSync(jsonPath) ? jsonPath : null;
+  }
   const bare = NODE_RESOLVABLE_EXTENSIONS.has(runtimeExt) ? specifier.slice(0, -runtimeExt.length) : specifier;
   const base = resolve(dirname(fromFile), bare);
   for (const ext of SOURCE_EXTENSIONS) {
@@ -120,11 +141,12 @@ function walkRelativeGraph(entry: string): WalkResult {
     graph.set(file, relative);
     for (const spec of relative) {
       const resolved = resolveToSource(file, spec);
-      if (resolved) {
-        queue.push(resolved);
-      } else {
+      if (!resolved) {
         unresolvable.push({ file: rel(file), specifier: spec });
+        continue;
       }
+      // Only walk into TS/TSX sources — `.json` leaves have no imports to check.
+      if (SOURCE_EXTENSIONS.some((ext) => resolved.endsWith(ext))) queue.push(resolved);
     }
   }
   return { graph, unresolvable };
