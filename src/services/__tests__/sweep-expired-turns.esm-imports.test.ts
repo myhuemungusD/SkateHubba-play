@@ -1,27 +1,21 @@
 /**
- * Regression guard for the Vercel ESM cold-start crash the `.js`-extension
- * fix was landed for (commit e29c087).
+ * Regression guard for the Vercel ESM cold-start crash fixed in PR #419.
  *
  * The sweep cron (`api/cron/sweep-expired-turns.ts`) runs on Vercel Node ESM,
- * which — unlike Vite or Vitest — does NOT extension-resolve relative
- * specifiers. Any extensionless relative import in the traced runtime graph
- * crashes the function at cold start with ERR_MODULE_NOT_FOUND. The bug is
- * silent locally (tsc + vitest both accept extensionless via
- * `moduleResolution: bundler`) and only surfaces in production.
+ * which — unlike tsc or vitest under `moduleResolution: bundler` — does NOT
+ * extension-resolve relative specifiers. Any extensionless relative import in
+ * the traced runtime graph crashes cold start with ERR_MODULE_NOT_FOUND, and
+ * the bug is silent locally: it only surfaces in production.
  *
- * This test walks the entire relative-import graph reachable from the cron
- * entrypoint and asserts every relative specifier ends in a Node-resolvable
- * extension (`.js` / `.mjs` / `.cjs`). Adding a new relative import without an
- * extension here (or introducing a new source file into the graph that lacks
- * one) fails at CI time instead of at 2am on a production cold start.
- *
- * Bare specifiers (`firebase-admin/*`, `node:crypto`, `firebase/firestore`)
- * are skipped — those go through Node's package resolution and don't need the
- * extension.
+ * This test walks the relative-import closure from the cron entrypoint and
+ * asserts every relative specifier ends in a Node-resolvable extension
+ * (`.js` / `.mjs` / `.cjs`), so a dropped extension fails in CI instead of at
+ * 2am on a cold start. Bare specifiers (`firebase-admin/*`, `node:crypto`)
+ * are skipped — those go through Node's package resolution.
  */
 import { describe, it, expect } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
@@ -30,7 +24,7 @@ const REPO_ROOT = resolve(HERE, "../../..");
 const ENTRYPOINT = resolve(REPO_ROOT, "api/cron/sweep-expired-turns.ts");
 
 /** Extensions Node's ESM loader resolves without help. */
-const NODE_RESOLVABLE_EXTENSIONS = [".js", ".mjs", ".cjs"];
+const NODE_RESOLVABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs"]);
 
 /** Source extensions to try when resolving a `.js` specifier to its TS sibling. */
 const SOURCE_EXTENSIONS = [".ts", ".tsx"];
@@ -130,9 +124,9 @@ describe("sweep cron ESM cold-start guard", () => {
   it("every relative import in the traced runtime graph ends in a Node-resolvable extension", () => {
     const { graph, unresolvable } = walkRelativeGraph(ENTRYPOINT);
 
-    // Sanity: we actually walked past the entrypoint. If the walker regressed
-    // and only inspected the entry file, the assertion below would trivially
-    // pass on a graph the fix already covers.
+    // Sanity: the walker actually recursed. If it regressed to only inspecting
+    // the entrypoint, the offender assertion below would trivially pass on the
+    // subgraph the fix already covers.
     expect(graph.size).toBeGreaterThanOrEqual(2);
 
     // Fail loudly on a specifier whose target source couldn't be located —
@@ -142,7 +136,7 @@ describe("sweep cron ESM cold-start guard", () => {
     const offenders: Array<{ file: string; specifier: string }> = [];
     for (const [file, specifiers] of graph) {
       for (const spec of specifiers) {
-        if (!NODE_RESOLVABLE_EXTENSIONS.some((ext) => spec.endsWith(ext))) {
+        if (!NODE_RESOLVABLE_EXTENSIONS.has(extname(spec))) {
           offenders.push({ file: file.replace(`${REPO_ROOT}/`, ""), specifier: spec });
         }
       }
