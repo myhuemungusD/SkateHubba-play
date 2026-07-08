@@ -12,7 +12,9 @@ import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { Leaderboard } from "../components/Leaderboard";
 import { RulesSheet } from "../components/RulesSheet";
+import { TrickCategoryPicker } from "../components/TrickCategoryPicker";
 import { FlameIcon, MapPinIcon } from "../components/icons";
+import type { TrickCategoryId } from "../constants/trickCategories";
 
 /**
  * Loose UUID shape check — rejects obvious garbage without being strict about
@@ -40,6 +42,7 @@ export function ChallengeScreen({
   blockedUids?: Set<string>;
 }) {
   const [opponent, setOpponent] = useState(initialOpponent);
+  const [trickCategory, setTrickCategory] = useState<TrickCategoryId>("any");
   const [judge, setJudge] = useState("");
   const [judgePickerOpen, setJudgePickerOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -165,7 +168,7 @@ export function ChallengeScreen({
         judgeUsername = judgeNormalized;
       }
 
-      await onSend(uid, normalized, { spotId, judgeUid, judgeUsername });
+      await onSend(uid, normalized, { spotId, judgeUid, judgeUsername, trickCategory });
     } catch (err: unknown) {
       // Reaches here only on onSend rejection — the lookups above settle to
       // explicit setError + return paths.
@@ -245,6 +248,10 @@ export function ChallengeScreen({
               user who briefly clears the opponent field doesn't lose work. */}
           {usernameLooksValid && (
             <div data-testid="challenge-extras">
+              <div className="mt-6">
+                <TrickCategoryPicker value={trickCategory} onChange={setTrickCategory} disabled={loading} />
+              </div>
+
               {spotId && spotName !== "loading" && (
                 <div
                   className="mt-6 inline-flex items-center gap-2 rounded-full border border-brand-orange/40 bg-brand-orange/10 px-3 py-1.5 text-xs text-brand-orange"
