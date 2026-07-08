@@ -27,8 +27,12 @@
 import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, FieldValue, Timestamp, type Firestore } from "firebase-admin/firestore";
-import { decideExpiredForfeit, type ForfeitGameUpdate } from "../../src/services/turnForfeit.shared";
-import { toGameDoc, type GameDoc } from "../../src/services/games.mappers";
+// Relative imports in this file's traced graph need explicit .js extensions:
+// Vercel compiles each file separately (no bundling) and the ESM loader does
+// not do extension resolution. Extensionless specifiers crash the function at
+// cold start (ERR_MODULE_NOT_FOUND).
+import { decideExpiredForfeit, type ForfeitGameUpdate } from "../../src/services/turnForfeit.shared.js";
+import { toGameDoc, type GameDoc } from "../../src/services/games.mappers.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
