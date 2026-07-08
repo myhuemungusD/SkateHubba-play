@@ -49,10 +49,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [games, setGames] = useState<GameDoc[]>([]);
   const [activeGame, setActiveGame] = useState<GameDoc | null>(null);
 
-  // Track which games have already had stats recorded this session.
-  // Keys are `${gameId}:self` and `${gameId}:opp` so a self-write failure
-  // does not block the opponent retry (and vice versa). The two writes
-  // fire in parallel; each catch() rolls back its own key independently.
+  // Track which stats writes have been attempted this session.
+  // Keys are `${gameId}:self` and `${gameId}:opp` so the self and opponent
+  // writes are guarded independently — one side being blocked by rules or
+  // network doesn't prevent the other from firing. Keys are one-shot: once
+  // added, they stay added even if the write fails, so re-emissions from
+  // onSnapshot don't re-arm the same write. Unrecorded stats catch up on
+  // the next app session. See the fan-out sites below for why re-arming on
+  // failure produced a failed-precondition retry storm.
   const processedStatsRef = useRef(new Set<string>());
 
   // Track which expired games have already had forfeit attempted this session,
@@ -232,7 +236,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         if (!processedStatsRef.current.has(oppKey)) {
           processedStatsRef.current.add(oppKey);
           updatePlayerStats(opponentUid, updated.id, !won).catch((err) => {
-            logger.warn("opponent_stats_catchup_failed", {
+            logger.warn("opponent_stats_update_failed", {
               gameId: updated.id,
               error: parseFirebaseError(err),
             });
