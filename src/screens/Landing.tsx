@@ -493,8 +493,9 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
             <span className="font-body text-xs text-[#888]">For the love of the game.</span>
           </div>
 
-          {/* Social Links */}
-          <div className="flex gap-4 items-center" aria-label="Social media">
+          {/* Social + store links — grouped under one label because the row
+              now mixes owned social accounts with the Shopify store. */}
+          <div className="flex gap-4 items-center" role="group" aria-label="Follow SkateHubba">
             <a
               href={SOCIAL_LINKS.x}
               target="_blank"

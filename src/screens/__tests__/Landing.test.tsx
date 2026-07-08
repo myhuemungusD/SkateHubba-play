@@ -139,6 +139,10 @@ describe("Landing", () => {
 
   it("renders social media links", () => {
     render(<Landing {...defaultProps} />);
+    // The row mixes owned socials with the Shopify store, so the group
+    // is labelled "Follow SkateHubba" — asserting the label guards against
+    // a regression back to the old (now inaccurate) "Social media" copy.
+    expect(screen.getByRole("group", { name: "Follow SkateHubba" })).toBeInTheDocument();
     // Every footer social/store anchor must point at the shared source of
     // truth — a mismatched handle would send users to the wrong account.
     const socials: Array<{ label: string; href: string }> = [
