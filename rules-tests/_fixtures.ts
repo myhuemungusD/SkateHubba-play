@@ -9,11 +9,15 @@
  * the existing files (whose duplicates are already snapshotted in the
  * baseline).
  */
-import { initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
+import {
+  initializeTestEnvironment,
+  type RulesTestEnvironment,
+  type RulesTestContext,
+} from "@firebase/rules-unit-testing";
 import type { Reference } from "@firebase/storage-types";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { doc, serverTimestamp, setDoc, setLogLevel } from "firebase/firestore";
+import { doc, serverTimestamp, setDoc, setLogLevel, type DocumentReference } from "firebase/firestore";
 import { afterAll, beforeAll, beforeEach } from "vitest";
 
 interface ValidGameOpts {
@@ -65,6 +69,53 @@ export function makeValidGame(
     turnHistory: [],
     turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
     createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+/** Build an email-verified authenticated context (the common games case). */
+export function authedContext(env: RulesTestEnvironment, uid: string): RulesTestContext {
+  return env.authenticatedContext(uid, { email_verified: true });
+}
+
+/** DocumentReference to a /games doc for the given context. */
+export function gameDoc(ctx: RulesTestContext, gameId: string): DocumentReference {
+  return doc(ctx.firestore(), "games", gameId);
+}
+
+/**
+ * Seed a /games doc whose `updatedAt` is back-dated 60s so the 2s turn-action
+ * rate limit passes when a test immediately issues an update against it.
+ */
+export async function seedGameForUpdate(
+  env: RulesTestEnvironment,
+  gameId: string,
+  opts: ValidGameOpts,
+  overrides: Record<string, unknown> = {},
+): Promise<void> {
+  await seedValidGame(env, gameId, opts, {
+    updatedAt: new Date(Date.now() - 60_000),
+    ...overrides,
+  });
+}
+
+/**
+ * A setting→matching turn-update payload that otherwise passes the normal
+ * turn-update rule: a real trick name plus a bucket-pinned trick video URL
+ * (required by the April 2026 setter-turn-handoff hardening) and a fresh,
+ * bounded turnDeadline. Callers override only the field(s) under test.
+ */
+export function settingToMatchingUpdate(
+  nextTurnUid: string,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    phase: "matching",
+    currentTrickName: "kickflip",
+    currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm",
+    currentTurn: nextTurnUid,
+    turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
     updatedAt: serverTimestamp(),
     ...overrides,
   };
