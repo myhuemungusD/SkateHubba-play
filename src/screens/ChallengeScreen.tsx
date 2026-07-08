@@ -14,7 +14,7 @@ import { Leaderboard } from "../components/Leaderboard";
 import { RulesSheet } from "../components/RulesSheet";
 import { TrickCategoryPicker } from "../components/TrickCategoryPicker";
 import { FlameIcon, MapPinIcon } from "../components/icons";
-import type { TrickCategoryId } from "../constants/trickCategories";
+import { CUSTOM_CATEGORY_ID, CUSTOM_RULES_MAX_LENGTH, type TrickCategoryId } from "../constants/trickCategories";
 
 /**
  * Loose UUID shape check — rejects obvious garbage without being strict about
@@ -43,6 +43,7 @@ export function ChallengeScreen({
 }) {
   const [opponent, setOpponent] = useState(initialOpponent);
   const [trickCategory, setTrickCategory] = useState<TrickCategoryId>("any");
+  const [customRules, setCustomRules] = useState("");
   const [judge, setJudge] = useState("");
   const [judgePickerOpen, setJudgePickerOpen] = useState(false);
   const [rulesOpen, setRulesOpen] = useState(false);
@@ -168,7 +169,15 @@ export function ChallengeScreen({
         judgeUsername = judgeNormalized;
       }
 
-      await onSend(uid, normalized, { spotId, judgeUid, judgeUsername, trickCategory });
+      await onSend(uid, normalized, {
+        spotId,
+        judgeUid,
+        judgeUsername,
+        trickCategory,
+        // Only forward custom text for the custom category; the service
+        // sanitizes and drops it for every other category anyway.
+        customRules: trickCategory === CUSTOM_CATEGORY_ID ? customRules.trim() : null,
+      });
     } catch (err: unknown) {
       // Reaches here only on onSend rejection — the lookups above settle to
       // explicit setError + return paths.
@@ -250,6 +259,24 @@ export function ChallengeScreen({
             <div data-testid="challenge-extras">
               <div className="mt-6">
                 <TrickCategoryPicker value={trickCategory} onChange={setTrickCategory} disabled={loading} />
+                {trickCategory === CUSTOM_CATEGORY_ID && (
+                  <div className="mt-3">
+                    <Field
+                      label="Your Rules"
+                      name="custom-rules"
+                      value={customRules}
+                      onChange={(v) => {
+                        if (!loading) setCustomRules(v);
+                      }}
+                      placeholder="e.g. mongo only, no pushing"
+                      maxLength={CUSTOM_RULES_MAX_LENGTH}
+                      disabled={loading}
+                      autoComplete="off"
+                      inputMode="text"
+                      note="Describe the game — shown to your opponent in the challenge."
+                    />
+                  </div>
+                )}
               </div>
 
               {spotId && spotName !== "loading" && (

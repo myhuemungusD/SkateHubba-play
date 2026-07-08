@@ -61,6 +61,7 @@ describe("Smoke: Challenge", () => {
         judgeUid: null,
         judgeUsername: null,
         trickCategory: "any",
+        customRules: null,
       });
     });
   });

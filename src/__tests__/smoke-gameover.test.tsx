@@ -33,6 +33,7 @@ const rematchCreateOptions = {
   judgeUid: null,
   judgeUsername: null,
   trickCategory: null,
+  customRules: null,
 };
 
 const { withGameSub, renderLobby, renderVerifiedLobby } = createMockHelpers({

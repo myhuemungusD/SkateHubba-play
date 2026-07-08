@@ -16,6 +16,7 @@ export interface StartChallengeOptions {
   judgeUid?: string | null;
   judgeUsername?: string | null;
   trickCategory?: TrickCategoryId | null;
+  customRules?: string | null;
 }
 
 export interface GameContextValue {
@@ -259,6 +260,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const judgeUid = options?.judgeUid ?? null;
       const judgeUsername = options?.judgeUsername ?? null;
       const trickCategory = options?.trickCategory ?? null;
+      const customRules = options?.customRules ?? null;
       // Defense-in-depth: check block status client-side (Firestore rules enforce server-side)
       const [blockedByMe, blockedByThem] = await Promise.all([
         isUserBlocked(user.uid, opponentUid),
@@ -273,6 +275,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         opponentIsVerifiedPro: opponentProfile?.isVerifiedPro,
         spotId,
         trickCategory,
+        customRules,
         judgeUid,
         judgeUsername,
       });
@@ -287,6 +290,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         judgeUid,
         judgeUsername,
         trickCategory,
+        customRules,
       );
       setActiveGame(shell);
       setScreen("game");

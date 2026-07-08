@@ -158,4 +158,15 @@ describe("newGameShell", () => {
     const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", validSpotId);
     expect(shell.spotId).toBe(validSpotId);
   });
+
+  it("defaults customRules to null for a non-custom game", () => {
+    const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival");
+    expect(shell.customRules).toBeNull();
+  });
+
+  it("carries sanitized customRules for a custom game", () => {
+    const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", null, null, null, "custom", "  no pushing  ");
+    expect(shell.trickCategory).toBe("custom");
+    expect(shell.customRules).toBe("no pushing");
+  });
 });

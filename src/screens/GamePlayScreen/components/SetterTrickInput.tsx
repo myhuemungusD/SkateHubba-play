@@ -1,4 +1,4 @@
-import { trickCategoryLabel, type TrickCategoryId } from "../../../constants/trickCategories";
+import { trickCategoryHeadline, CUSTOM_CATEGORY_ID, type TrickCategoryId } from "../../../constants/trickCategories";
 
 interface Props {
   trickName: string;
@@ -7,6 +7,7 @@ interface Props {
   showRecorder: boolean;
   trimmedTrickName: string;
   trickCategory: TrickCategoryId | undefined;
+  customRules: string | null | undefined;
 }
 
 export function SetterTrickInput({
@@ -16,8 +17,11 @@ export function SetterTrickInput({
   showRecorder,
   trimmedTrickName,
   trickCategory,
+  customRules,
 }: Props) {
-  const showCategory = !!trickCategory && trickCategory !== "any";
+  const headline = trickCategoryHeadline(trickCategory, customRules);
+  // "Flip Tricks only" reads right for presets; custom text stands alone.
+  const constraintText = headline && (trickCategory === CUSTOM_CATEGORY_ID ? headline : `${headline} only`);
   return (
     <div className="text-center mb-5 rounded-2xl border bg-brand-orange/[0.06] backdrop-blur-sm border-brand-orange/30 shadow-[0_0_20px_rgba(255,107,0,0.06)]">
       <label
@@ -26,9 +30,7 @@ export function SetterTrickInput({
       >
         TRICK NAME
       </label>
-      {showCategory && (
-        <p className="font-body text-xs text-brand-orange/80 pt-1">{trickCategoryLabel(trickCategory)} only</p>
-      )}
+      {constraintText && <p className="font-body text-xs text-brand-orange/80 pt-1">{constraintText}</p>}
       <input
         id="trickNameInput"
         type="text"

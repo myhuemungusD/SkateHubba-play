@@ -20,7 +20,20 @@ import * as fx from "./_fixtures";
 const PROJECT_ID = "demo-skatehubba-rules-trickcategory";
 const P1_UID = "p1-alice";
 const P2_UID = "p2-bob";
-const VALID_CATEGORIES = ["any", "flip", "grind", "air", "manual", "oldschool"] as const;
+const VALID_CATEGORIES = [
+  "any",
+  "flip",
+  "grind",
+  "air",
+  "manual",
+  "oldschool",
+  "flatground",
+  "switch",
+  "flatbar",
+  "transition",
+  "team2v2",
+  "custom",
+] as const;
 const OPTS = { player1Uid: P1_UID, player2Uid: P2_UID };
 
 const getEnv = fx.setupRulesTestEnv(PROJECT_ID);
@@ -114,6 +127,55 @@ describe("games rules — trickCategory invariants", () => {
       await fx.seedGameForUpdate(getEnv(), "g1", OPTS, JUDGE_FIELDS);
       const ref = fx.gameDoc(fx.authedContext(getEnv(), JUDGE_UID), "g1");
       await assertFails(updateDoc(ref, { judgeStatus: "declined", trickCategory: "flip" }));
+    });
+  });
+
+  // customRules is the challenger's free-text for custom games — a bounded,
+  // optional string set at creation and immutable thereafter (pairs with the
+  // 'custom' category). Mirrors the trickCategory invariants.
+  describe("customRules (custom-game free text)", () => {
+    describe("create", () => {
+      it("accepts a custom game with bounded customRules text", async () => {
+        const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
+        await assertSucceeds(
+          setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "custom", customRules: "mongo only, no pushing" })),
+        );
+      });
+
+      it("accepts an explicit null customRules (non-custom game)", async () => {
+        const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
+        await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "flip", customRules: null })));
+      });
+
+      it("rejects customRules over the 120-char limit", async () => {
+        const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
+        await assertFails(
+          setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "custom", customRules: "x".repeat(121) })),
+        );
+      });
+
+      it("rejects a non-string customRules (number)", async () => {
+        const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
+        await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "custom", customRules: 123 })));
+      });
+    });
+
+    describe("update — immutability", () => {
+      it("accepts a turn update that carries customRules unchanged", async () => {
+        await fx.seedGameForUpdate(getEnv(), "g1", OPTS, { trickCategory: "custom", customRules: "no pushing" });
+        const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
+        await assertSucceeds(
+          updateDoc(ref, fx.settingToMatchingUpdate(P2_UID, { trickCategory: "custom", customRules: "no pushing" })),
+        );
+      });
+
+      it("rejects changing customRules on a turn update", async () => {
+        await fx.seedGameForUpdate(getEnv(), "g1", OPTS, { trickCategory: "custom", customRules: "no pushing" });
+        const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
+        await assertFails(
+          updateDoc(ref, fx.settingToMatchingUpdate(P2_UID, { trickCategory: "custom", customRules: "mongo only" })),
+        );
+      });
     });
   });
 });

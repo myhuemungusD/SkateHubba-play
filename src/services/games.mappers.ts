@@ -80,6 +80,12 @@ export interface GameDoc {
    */
   trickCategory?: TrickCategoryId;
   /**
+   * Challenger-authored free-text rules, only meaningful when
+   * `trickCategory === "custom"`. null for every other category. Set at game
+   * creation, immutable (mirrors trickCategory/spotId).
+   */
+  customRules?: string | null;
+  /**
    * UID of the nominated judge, or null for honor-system games.
    * Honor system: no disputable phase, no "Call BS" option.
    * With judge: dispute/BS flows route to the judge instead of the setter.
@@ -127,6 +133,8 @@ export interface CreateGameOptions {
   spotId?: string | null;
   /** Trick category chosen by the challenger. Missing/null defaults to "any". */
   trickCategory?: TrickCategoryId | null;
+  /** Free-text rules, only used when `trickCategory === "custom"`. */
+  customRules?: string | null;
   /** Optional judge UID — must be different from both players. */
   judgeUid?: string | null;
   /** Denormalized judge username (for UI). Required when judgeUid is set. */
