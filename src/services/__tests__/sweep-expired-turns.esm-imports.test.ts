@@ -24,7 +24,10 @@ const REPO_ROOT = resolve(HERE, "../../..");
 const ENTRYPOINT = resolve(REPO_ROOT, "api/cron/sweep-expired-turns.ts");
 
 /** Strip the repo-root prefix so failure output is short and copy-pastable. */
-const rel = (file: string): string => file.replace(`${REPO_ROOT}/`, "");
+const rel = (file: string): string => {
+  const prefix = `${REPO_ROOT}/`;
+  return file.startsWith(prefix) ? file.slice(prefix.length) : file;
+};
 
 /** Extensions Node's ESM loader resolves without help — the single source of truth. */
 const NODE_RESOLVABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs"]);
@@ -45,7 +48,7 @@ function collectSpecifiers(file: string): string[] {
   // Pick ScriptKind by extension so a `.tsx` module reached via `resolveToSource`'s
   // fallback still parses correctly (JSX in `.ts` mode leans on parser recovery).
   const scriptKind = file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-  const sf = ts.createSourceFile(file, src, ts.ScriptTarget.ESNext, /*setParentNodes*/ false, scriptKind);
+  const sf = ts.createSourceFile(file, src, ts.ScriptTarget.ESNext, false, scriptKind);
   const found: string[] = [];
 
   const visit = (node: ts.Node): void => {
@@ -97,7 +100,7 @@ function resolveToSource(fromFile: string, specifier: string): string | null {
 interface WalkResult {
   /** Absolute source path → outgoing relative specifiers (only). */
   graph: Map<string, string[]>;
-  /** Relative specifiers whose target source file could not be located. */
+  /** Specifiers whose target source file could not be located; `file` is repo-relative. */
   unresolvable: Array<{ file: string; specifier: string }>;
 }
 
@@ -129,14 +132,20 @@ function walkRelativeGraph(entry: string): WalkResult {
 
 describe("sweep cron ESM cold-start guard", () => {
   it("every relative import in the traced runtime graph ends in a Node-resolvable extension", () => {
+    // Guard against a silent entrypoint rename: readFileSync would otherwise
+    // surface as a raw ENOENT with no context.
+    expect(
+      existsSync(ENTRYPOINT),
+      `Cron entrypoint not found at ${rel(ENTRYPOINT)} — update ENTRYPOINT if it was moved.`,
+    ).toBe(true);
+
     const { graph, unresolvable } = walkRelativeGraph(ENTRYPOINT);
 
-    // Sanity: the walker actually recursed through the transitive graph. The
-    // current closure is 5 files (entry + turnForfeit.shared + turnDuration +
-    // games.mappers + trickCategories); we assert ≥4 to leave one file of
-    // headroom for legitimate contraction while still catching a walker that
-    // stops after one hop — a shallower walk would let the offender assertion
-    // below trivially pass on the subgraph the fix already covers.
+    // Sanity: the walker actually recursed through the transitive graph. A
+    // shallower walk would let the offender assertion below trivially pass on
+    // the subgraph the fix already covers. The floor is deliberately loose so
+    // legitimate graph contractions don't force a churn edit here — tighten it
+    // only if the walker regresses in a way this doesn't catch.
     expect(graph.size).toBeGreaterThanOrEqual(4);
 
     // Fail loudly on a specifier whose target source couldn't be located —
