@@ -32,8 +32,14 @@ const ENTRYPOINT = resolve(REPO_ROOT, "api/cron/sweep-expired-turns.ts");
  * Match every static import/export specifier in a TS source file. Handles
  * both value and `import type` forms because a runtime edit could easily
  * convert one to the other without noticing the extension is missing.
+ *
+ * Newlines are permitted between `import`/`export` and the quoted specifier so
+ * multi-line imports (`import {\n  a,\n} from "./x.js";`) are also traced —
+ * otherwise a refactor to multi-line form would silently drop that specifier
+ * from the guard, which is the exact "silent pass at 2am" failure mode this
+ * whole file exists to prevent. `;` still bounds each statement.
  */
-const IMPORT_SPECIFIER = /(?:^|[\n;])[ \t]*(?:import|export)[^"'`\n;]*?(?:from\s+)?["']([^"']+)["']/g;
+const IMPORT_SPECIFIER = /(?:^|[\n;])[ \t]*(?:import|export)[^"'`;]*?(?:from\s+)?["']([^"']+)["']/g;
 
 /** Read a source file and collect every specifier it imports/re-exports. */
 function collectSpecifiers(file: string): string[] {
