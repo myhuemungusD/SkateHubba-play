@@ -211,11 +211,6 @@ describe("GameProvider — opponent stats catch-up fan-out", () => {
     expect(usersService.updatePlayerStats).toHaveBeenCalledWith("bob-uid", "game-1", false);
   });
 
-  /**
-   * Fire the fan-out for one finished game, wait for the initial two writes,
-   * then re-emit the same game twice and assert the count stays at two — i.e.
-   * the processedStatsRef guard prevents re-firing on later snapshots.
-   */
   async function expectNoReFireOnReEmit() {
     await renderProvider();
     const game = makeFinishedGame();
