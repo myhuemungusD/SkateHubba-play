@@ -861,10 +861,9 @@ describe("users service", () => {
       );
     });
 
-    it("rethrows non-permission errors so the caller's retry path engages", async () => {
-      // Network / internal failures are recoverable — surfacing them lets
-      // GameContext's catch-block clear processedStatsRef so the next
-      // snapshot re-attempts the write.
+    it("rethrows non-permission errors", async () => {
+      // Only permission-denied is swallowed (peer-write denorm loss).
+      // Everything else is the caller's concern.
       const netErr = Object.assign(new Error("unavailable"), { code: "unavailable" });
       mockRunTransaction.mockRejectedValueOnce(netErr);
 
