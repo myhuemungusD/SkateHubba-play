@@ -94,28 +94,29 @@ describe("games rules — trickCategory invariants", () => {
     // normal turn update; its own whitelist doesn't automatically pin every
     // field. Cover the accept path explicitly so trickCategory can't be
     // smuggled alongside a `judgeStatus: accepted` write.
-    it("rejects changing trickCategory on a judge-accept write", async () => {
+    describe("judge-invite accept path", () => {
       const JUDGE_UID = "j-charlie";
-      await fx.seedGameForUpdate(getEnv(), "g1", OPTS, {
-        trickCategory: "flip",
-        judgeId: JUDGE_UID,
-        judgeUsername: "charlie",
-        judgeStatus: "pending",
-      });
-      const ref = fx.gameDoc(fx.authedContext(getEnv(), JUDGE_UID), "g1");
-      await assertFails(updateDoc(ref, { judgeStatus: "accepted", trickCategory: "grind" }));
-    });
+      async function seedPendingJudgeGame(): Promise<void> {
+        await fx.seedGameForUpdate(getEnv(), "g1", OPTS, {
+          trickCategory: "flip",
+          judgeId: JUDGE_UID,
+          judgeUsername: "charlie",
+          judgeStatus: "pending",
+        });
+      }
+      function asJudgeRef() {
+        return fx.gameDoc(fx.authedContext(getEnv(), JUDGE_UID), "g1");
+      }
 
-    it("accepts a judge-accept write that leaves trickCategory unchanged", async () => {
-      const JUDGE_UID = "j-charlie";
-      await fx.seedGameForUpdate(getEnv(), "g1", OPTS, {
-        trickCategory: "flip",
-        judgeId: JUDGE_UID,
-        judgeUsername: "charlie",
-        judgeStatus: "pending",
+      it("rejects changing trickCategory on a judge-accept write", async () => {
+        await seedPendingJudgeGame();
+        await assertFails(updateDoc(asJudgeRef(), { judgeStatus: "accepted", trickCategory: "grind" }));
       });
-      const ref = fx.gameDoc(fx.authedContext(getEnv(), JUDGE_UID), "g1");
-      await assertSucceeds(updateDoc(ref, { judgeStatus: "accepted" }));
+
+      it("accepts a judge-accept write that leaves trickCategory unchanged", async () => {
+        await seedPendingJudgeGame();
+        await assertSucceeds(updateDoc(asJudgeRef(), { judgeStatus: "accepted" }));
+      });
     });
   });
 });
