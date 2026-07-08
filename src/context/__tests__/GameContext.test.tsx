@@ -238,7 +238,11 @@ describe("GameProvider — opponent stats catch-up fan-out", () => {
     // Regression for the failed-precondition retry storm: on failure the guard
     // key must stay marked so re-emissions do not re-arm the write. Previously
     // the catch deleted the key, so every snapshot re-fired the losing write.
-    vi.mocked(usersService.updatePlayerStats).mockRejectedValue(new Error("failed-precondition"));
+    // Model the real rejection shape (Firestore error with a `code`), not a
+    // bare Error — the point of the fix is that write outcome (success OR
+    // permission-denied OR failed-precondition) never re-arms the guard.
+    const stormErr = Object.assign(new Error("failed-precondition"), { code: "failed-precondition" });
+    vi.mocked(usersService.updatePlayerStats).mockRejectedValue(stormErr);
     await expectNoReFireOnReEmit();
   });
 });

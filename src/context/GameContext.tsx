@@ -215,7 +215,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // catch-up loop above — fan out self + opponent in parallel so the
       // loser's `losses` counter increments even if they never reopen
       // the app. Each write is guarded by an independent `:self`/`:opp`
-      // key so a single-side failure doesn't block the other retry.
+      // key so a rules rejection on one side doesn't suppress the other's
+      // attempt. Neither side retries on failure (see the catch-up loop's
+      // note on the retry storm); unrecorded stats catch up next session.
       const currentUser = userRef.current;
       if ((updated.status === "complete" || updated.status === "forfeit") && currentUser && updated.winner) {
         const selfKey = `${updated.id}:self`;
