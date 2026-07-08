@@ -23,6 +23,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
 const ENTRYPOINT = resolve(REPO_ROOT, "api/cron/sweep-expired-turns.ts");
 
+/** Strip the repo-root prefix so failure output is short and copy-pastable. */
+const rel = (file: string): string => file.replace(`${REPO_ROOT}/`, "");
+
 /** Extensions Node's ESM loader resolves without help. */
 const NODE_RESOLVABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs"]);
 
@@ -113,7 +116,7 @@ function walkRelativeGraph(entry: string): WalkResult {
       if (resolved) {
         queue.push(resolved);
       } else {
-        unresolvable.push({ file: file.replace(`${REPO_ROOT}/`, ""), specifier: spec });
+        unresolvable.push({ file: rel(file), specifier: spec });
       }
     }
   }
@@ -140,7 +143,7 @@ describe("sweep cron ESM cold-start guard", () => {
     for (const [file, specifiers] of graph) {
       for (const spec of specifiers) {
         if (!NODE_RESOLVABLE_EXTENSIONS.has(extname(spec))) {
-          offenders.push({ file: file.replace(`${REPO_ROOT}/`, ""), specifier: spec });
+          offenders.push({ file: rel(file), specifier: spec });
         }
       }
     }
