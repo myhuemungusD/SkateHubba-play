@@ -1,6 +1,7 @@
 import { Btn } from "../../../components/ui/Btn";
 import type { GameDoc } from "../../../services/games";
 import { isFirebaseStorageUrl } from "../../../utils/helpers";
+import { trickCategoryHeadline } from "../../../constants/trickCategories";
 
 interface Props {
   game: GameDoc;
@@ -21,6 +22,7 @@ export function SetTrickReviewPanel({
   error,
   onRule,
 }: Props) {
+  const headline = trickCategoryHeadline(game.trickCategory, game.customRules);
   return (
     <div className="mt-5">
       <div className="text-center py-3 px-5 mb-5 rounded-2xl border bg-amber-500/[0.06] backdrop-blur-sm border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.06)]">
@@ -29,6 +31,7 @@ export function SetTrickReviewPanel({
           @{matcherUsername} called BS on @{setterUsername}&apos;s {game.currentTrickName || "trick"}. Rule clean or
           sketchy.
         </p>
+        {headline && <p className="font-body text-xs text-amber-400/80 mt-1">Game rules: {headline}</p>}
       </div>
 
       {game.currentTrickVideoUrl && isFirebaseStorageUrl(game.currentTrickVideoUrl) ? (
