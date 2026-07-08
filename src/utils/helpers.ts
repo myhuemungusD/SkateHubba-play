@@ -1,6 +1,11 @@
 import type { GameDoc } from "../services/games";
 import { timestampFromMillis } from "../services/games";
-import { normalizeTrickCategory, type TrickCategoryId } from "../constants/trickCategories";
+import {
+  normalizeTrickCategory,
+  normalizeCustomRules,
+  CUSTOM_CATEGORY_ID,
+  type TrickCategoryId,
+} from "../constants/trickCategories";
 
 /** Extract a Firebase error code from an unknown error value. */
 export function getErrorCode(err: unknown): string {
@@ -82,6 +87,7 @@ export function newGameShell(
   judgeUid: string | null = null,
   judgeUsername: string | null = null,
   trickCategory: TrickCategoryId | null = null,
+  customRules: string | null = null,
 ): GameDoc {
   return {
     id: gameId,
@@ -106,6 +112,9 @@ export function newGameShell(
     updatedAt: null,
     spotId,
     trickCategory: normalizeTrickCategory(trickCategory),
+    // Mirror createGame: custom text only rides with the custom category.
+    customRules:
+      normalizeTrickCategory(trickCategory) === CUSTOM_CATEGORY_ID ? normalizeCustomRules(customRules) : null,
     judgeId: judgeUid,
     judgeUsername,
     judgeStatus: judgeUid ? "pending" : null,

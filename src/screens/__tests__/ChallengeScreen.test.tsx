@@ -47,7 +47,14 @@ describe("ChallengeScreen", () => {
 
   /** Expected onSend options for a default challenge; override per test. */
   function sendOptions(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-    return { spotId: null, judgeUid: null, judgeUsername: null, trickCategory: "any", ...overrides };
+    return {
+      spotId: null,
+      judgeUid: null,
+      judgeUsername: null,
+      trickCategory: "any",
+      customRules: null,
+      ...overrides,
+    };
   }
 
   it("rejects short username on submit", async () => {
@@ -190,6 +197,34 @@ describe("ChallengeScreen", () => {
     await waitFor(() => {
       expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions());
     });
+  });
+
+  it("forwards the chosen category and custom rules to onSend", async () => {
+    mockGetUidByUsername.mockResolvedValueOnce("u2");
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderWithRouter(<ChallengeScreen {...defaultProps} onSend={onSend} />);
+
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    // The picker only appears once the username looks valid; pick "Custom Rules"
+    // to reveal the free-text field, then type the rules.
+    await userEvent.click(screen.getByRole("radio", { name: "Custom Rules" }));
+    await userEvent.type(screen.getByPlaceholderText("e.g. mongo only, no pushing"), "mongo only");
+    await userEvent.click(screen.getByText(/Send Challenge/));
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith(
+        "u2",
+        "rival",
+        sendOptions({ trickCategory: "custom", customRules: "mongo only" }),
+      );
+    });
+  });
+
+  it("does not show the custom-rules field for a preset category", async () => {
+    renderWithRouter(<ChallengeScreen {...defaultProps} />);
+    await userEvent.type(screen.getByPlaceholderText("their_handle"), "rival");
+    // Default category is "any" — no custom field until "Custom Rules" is picked.
+    expect(screen.queryByPlaceholderText("e.g. mongo only, no pushing")).not.toBeInTheDocument();
   });
 
   it("drops a garbled ?spot= value so onSend receives null", async () => {

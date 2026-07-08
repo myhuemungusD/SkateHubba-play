@@ -1,6 +1,11 @@
 import { doc, setDoc, runTransaction, serverTimestamp, Timestamp } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
-import { normalizeTrickCategory } from "../constants/trickCategories";
+import {
+  normalizeTrickCategory,
+  normalizeCustomRules,
+  trickCategoryHeadline,
+  CUSTOM_CATEGORY_ID,
+} from "../constants/trickCategories";
 import { addBreadcrumb } from "../lib/sentry";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
@@ -41,12 +46,26 @@ export async function createGame(
 ): Promise<string> {
   checkGameCreationRate();
 
-  const { challengerIsVerifiedPro, opponentIsVerifiedPro, spotId, trickCategory, judgeUid, judgeUsername } = options;
+  const {
+    challengerIsVerifiedPro,
+    opponentIsVerifiedPro,
+    spotId,
+    trickCategory,
+    customRules,
+    judgeUid,
+    judgeUsername,
+  } = options;
 
   // Defense-in-depth: drop any spotId that doesn't look like a UUID before
   // it reaches Firestore. Keeps the data model clean even if an upstream
   // caller forgets to validate or a shared URL has a stale/garbled value.
   const safeSpotId = normalizeSpotId(spotId);
+
+  // Normalize the category, then keep custom-rules text only for custom games —
+  // sanitized (trim/strip/cap) at this boundary so untrusted input never
+  // reaches Firestore raw. Any non-custom category stores null.
+  const safeCategory = normalizeTrickCategory(trickCategory);
+  const safeCustomRules = safeCategory === CUSTOM_CATEGORY_ID ? normalizeCustomRules(customRules) : null;
 
   // Judge validation: if a judge is nominated, they must be a distinct third
   // party. Silently dropping an invalid nomination lets the game fall back to
@@ -83,7 +102,10 @@ export async function createGame(
     turnHistory: [],
     // Always write an explicit trick category (default "any") — same rationale
     // as the explicit judge nulls: keeps the schema uniform across all docs.
-    trickCategory: normalizeTrickCategory(trickCategory),
+    trickCategory: safeCategory,
+    // Explicit null for non-custom games keeps the schema uniform and lets the
+    // rules pin it immutable without presence gymnastics.
+    customRules: safeCustomRules,
     // Judge fields default to null (honor system). Keeping explicit nulls —
     // rather than omitting — makes security rule checks easier and keeps
     // the schema uniform across all game docs.
@@ -136,12 +158,17 @@ export async function createGame(
   // Notify opponent about the new challenge (best-effort). createGame is not
   // transactional, so this stays outside — the only perceivable race is a
   // missed toast if the tab dies in the narrow window between the two writes.
+  // Append the agreed constraint ("— Flat Bar", or the custom rules text) so
+  // the invite states the game up front; "any"/legacy games announce nothing.
+  const headline = trickCategoryHeadline(safeCategory, safeCustomRules);
   writeNotification({
     senderUid: challengerUid,
     recipientUid: opponentUid,
     type: "new_challenge",
     title: "New Challenge!",
-    body: `@${challengerUsername} challenged you to S.K.A.T.E.`,
+    body: headline
+      ? `@${challengerUsername} challenged you to S.K.A.T.E. — ${headline}`
+      : `@${challengerUsername} challenged you to S.K.A.T.E.`,
     gameId: newGameId,
   });
   // Notify the referee (if any) that they've been nominated (best-effort).

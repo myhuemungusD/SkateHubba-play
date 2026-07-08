@@ -58,6 +58,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             showRecorder={c.showRecorder}
             trimmedTrickName={c.trimmedTrickName}
             trickCategory={game.trickCategory}
+            customRules={game.customRules}
           />
         )}
         {!c.isJudge && !c.isSetter && c.isMatcher && (
@@ -66,6 +67,7 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             setterIsPro={c.setterIsPro}
             currentTrickName={game.currentTrickName}
             trickCategory={game.trickCategory}
+            customRules={game.customRules}
           />
         )}
 

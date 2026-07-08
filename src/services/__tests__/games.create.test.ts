@@ -263,6 +263,43 @@ describe("games service", () => {
       expect(docData.trickCategory).toBe("any");
     });
 
+    it("writes sanitized custom rules onto the game doc for a custom game", async () => {
+      await createGame("p1", "alice", "p2", "bob", {
+        trickCategory: "custom",
+        customRules: "  mongo only, no pushing  ",
+      });
+      const docData = gameSetDocCall();
+      expect(docData.trickCategory).toBe("custom");
+      expect(docData.customRules).toBe("mongo only, no pushing");
+    });
+
+    it("writes null customRules for a custom game with no rules text", async () => {
+      await createGame("p1", "alice", "p2", "bob", { trickCategory: "custom" });
+      const docData = gameSetDocCall();
+      expect(docData.customRules).toBeNull();
+    });
+
+    it("drops customRules for a non-custom category", async () => {
+      await createGame("p1", "alice", "p2", "bob", {
+        trickCategory: "flip",
+        customRules: "should be ignored",
+      });
+      const docData = gameSetDocCall();
+      expect(docData.customRules).toBeNull();
+    });
+
+    it("announces a preset category in the challenge notification body", async () => {
+      await createGame("p1", "alice", "p2", "bob", { trickCategory: "flatbar" });
+      const notif = mockBatchSet.mock.calls.map((c) => c[1]).find((d) => d && "body" in d);
+      expect(notif?.body).toContain("Flat Bar");
+    });
+
+    it("announces custom rules text in the challenge notification body", async () => {
+      await createGame("p1", "alice", "p2", "bob", { trickCategory: "custom", customRules: "mongo only" });
+      const notif = mockBatchSet.mock.calls.map((c) => c[1]).find((d) => d && "body" in d);
+      expect(notif?.body).toContain("mongo only");
+    });
+
     it("defaults to no judge (honor system)", async () => {
       await createGame("p1", "alice", "p2", "bob");
       const docData = gameSetDocCall();

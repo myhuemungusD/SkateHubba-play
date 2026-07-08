@@ -766,11 +766,22 @@ service cloud.firestore {
               && request.resource.data.spotId.size() <= 64)
         )
         // Optional trickCategory (game-level trick filter): absent, or exactly
-        // one of the six known values. Mirrors spotId — set once and immutable
+        // one of the known values. Mirrors spotId — set once and immutable
         // thereafter (legacy clients omit it, so presence stays optional).
         && (
           !('trickCategory' in request.resource.data)
-          || request.resource.data.trickCategory in ['any', 'flip', 'grind', 'air', 'manual', 'oldschool']
+          || request.resource.data.trickCategory in ['any', 'flip', 'grind', 'air', 'manual', 'oldschool',
+                                                      'flatground', 'switch', 'flatbar', 'transition', 'team2v2', 'custom']
+        )
+        // Optional customRules (challenger free-text, only meaningful when
+        // trickCategory == 'custom'): absent, null, or a bounded string. The
+        // client sanitizes/caps at 120 chars; the rule enforces the coarser
+        // type + length invariant. Immutable after creation like trickCategory.
+        && (
+          !('customRules' in request.resource.data)
+          || request.resource.data.customRules == null
+          || (request.resource.data.customRules is string
+              && request.resource.data.customRules.size() <= 120)
         )
         // Judge fields must be present with correct shape. judgeId can be
         // null (honor system) or a non-player string UID. When judgeId is
@@ -847,6 +858,13 @@ service cloud.firestore {
           (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
           || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
               && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
         )
         // Judge identity is immutable after creation. judgeStatus may only
         // change via dedicated accept/decline rules below.
@@ -977,6 +995,13 @@ service cloud.firestore {
           || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
               && request.resource.data.trickCategory == resource.data.trickCategory)
         )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
+        )
         // Judge identity + status immutable during match resolution
         && (
           (!('judgeId' in resource.data) && !('judgeId' in request.resource.data))
@@ -1063,6 +1088,13 @@ service cloud.firestore {
           || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
               && request.resource.data.trickCategory == resource.data.trickCategory)
         )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
+        )
         // Judge identity and status immutable during ruling
         && request.resource.data.judgeId == resource.data.judgeId
         && request.resource.data.judgeStatus == resource.data.judgeStatus
@@ -1148,6 +1180,13 @@ service cloud.firestore {
           || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
               && request.resource.data.trickCategory == resource.data.trickCategory)
         )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
+        )
         && request.resource.data.judgeId == resource.data.judgeId
         && request.resource.data.judgeStatus == resource.data.judgeStatus
         && request.resource.data.status == 'active'
@@ -1215,6 +1254,13 @@ service cloud.firestore {
           (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
           || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
               && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
         );
 
       // Either player can forfeit the current-turn player's expired turn
@@ -1246,6 +1292,13 @@ service cloud.firestore {
           (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
           || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
               && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
         )
         // Winner must be the opponent of the current-turn player (who timed out)
         && request.resource.data.winner == opponentUid(resource.data, resource.data.currentTurn)
@@ -1284,6 +1337,13 @@ service cloud.firestore {
           (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
           || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
               && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
         )
         && request.resource.data.judgeId == resource.data.judgeId
         && request.resource.data.judgeStatus == resource.data.judgeStatus
@@ -1333,6 +1393,13 @@ service cloud.firestore {
           (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
           || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
               && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules pairs with trickCategory: set at creation, immutable
+        // thereafter (a mid-game rewrite of the agreed rules is not allowed).
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
         )
         && request.resource.data.judgeId == resource.data.judgeId
         && request.resource.data.judgeStatus == resource.data.judgeStatus
