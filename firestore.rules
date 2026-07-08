@@ -765,6 +765,13 @@ service cloud.firestore {
           || (request.resource.data.spotId is string
               && request.resource.data.spotId.size() <= 64)
         )
+        // Optional trickCategory (game-level trick filter): absent, or exactly
+        // one of the six known values. Mirrors spotId — set once and immutable
+        // thereafter (legacy clients omit it, so presence stays optional).
+        && (
+          !('trickCategory' in request.resource.data)
+          || request.resource.data.trickCategory in ['any', 'flip', 'grind', 'air', 'manual', 'oldschool']
+        )
         // Judge fields must be present with correct shape. judgeId can be
         // null (honor system) or a non-player string UID. When judgeId is
         // set, judgeStatus must start as 'pending'. When null, judgeStatus
@@ -833,6 +840,13 @@ service cloud.firestore {
           (!('spotId' in resource.data) && !('spotId' in request.resource.data))
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
+        )
+        // trickCategory is set at creation and immutable thereafter (mirrors
+        // spotId's presence-tolerant pin above).
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
         )
         // Judge identity is immutable after creation. judgeStatus may only
         // change via dedicated accept/decline rules below.
@@ -957,6 +971,12 @@ service cloud.firestore {
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
         )
+        // trickCategory immutable (mirrors spotId)
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
         // Judge identity + status immutable during match resolution
         && (
           (!('judgeId' in resource.data) && !('judgeId' in request.resource.data))
@@ -1037,6 +1057,12 @@ service cloud.firestore {
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
         )
+        // trickCategory immutable (mirrors spotId)
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
         // Judge identity and status immutable during ruling
         && request.resource.data.judgeId == resource.data.judgeId
         && request.resource.data.judgeStatus == resource.data.judgeStatus
@@ -1116,6 +1142,11 @@ service cloud.firestore {
           (!('spotId' in resource.data) && !('spotId' in request.resource.data))
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
+        )
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
         )
         && request.resource.data.judgeId == resource.data.judgeId
         && request.resource.data.judgeStatus == resource.data.judgeStatus
@@ -1203,6 +1234,12 @@ service cloud.firestore {
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
         )
+        // trickCategory is immutable after creation — a forfeit must not change it.
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
         // Winner must be the opponent of the current-turn player (who timed out)
         && request.resource.data.winner == opponentUid(resource.data, resource.data.currentTurn)
         // turnHistory may append exactly ONE closing TurnRecord so consumers
@@ -1234,6 +1271,12 @@ service cloud.firestore {
           (!('spotId' in resource.data) && !('spotId' in request.resource.data))
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
+        )
+        // trickCategory immutable (mirrors spotId)
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
         )
         && request.resource.data.judgeId == resource.data.judgeId
         && request.resource.data.judgeStatus == resource.data.judgeStatus
@@ -1278,6 +1321,11 @@ service cloud.firestore {
           (!('spotId' in resource.data) && !('spotId' in request.resource.data))
           || ('spotId' in resource.data && 'spotId' in request.resource.data
               && request.resource.data.spotId == resource.data.spotId)
+        )
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
         )
         && request.resource.data.judgeId == resource.data.judgeId
         && request.resource.data.judgeStatus == resource.data.judgeStatus
