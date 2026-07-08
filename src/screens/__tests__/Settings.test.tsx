@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { Settings } from "../Settings";
 import { NotificationProvider } from "../../context/NotificationContext";
+import { SOCIAL_LINKS } from "../../constants/socialLinks";
 import type { UserProfile } from "../../services/users";
 
 /* ── Mocks ─────────────────────────────────────────────── */
@@ -340,6 +341,29 @@ describe("Settings", () => {
         .closest("a")
         ?.getAttribute("href"),
     ).toBe("/data-deletion");
+  });
+
+  it("renders the FOLLOW SKATEHUBBA section linking to every official account", () => {
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+    expect(screen.getByText(/FOLLOW SKATEHUBBA/)).toBeInTheDocument();
+
+    // Each card must resolve to the shared SOCIAL_LINKS URL and open safely
+    // off-site — a wrong href or missing rel ships users to the wrong place
+    // (or exposes the tab to reverse-tabnabbing).
+    const cards: Array<{ title: string; href: string }> = [
+      { title: "Shop the Store", href: SOCIAL_LINKS.store },
+      { title: "TikTok", href: SOCIAL_LINKS.tiktok },
+      { title: "Instagram", href: SOCIAL_LINKS.instagram },
+      { title: "Facebook", href: SOCIAL_LINKS.facebook },
+      { title: "X", href: SOCIAL_LINKS.x },
+    ];
+    for (const { title, href } of cards) {
+      const link = screen.getByText(title).closest("a");
+      expect(link).not.toBeNull();
+      expect(link?.getAttribute("href")).toBe(href);
+      expect(link?.getAttribute("target")).toBe("_blank");
+      expect(link?.getAttribute("rel")).toBe("noopener noreferrer");
+    }
   });
 
   it("falls through to the unsupported branch when the Notification API is missing", () => {
