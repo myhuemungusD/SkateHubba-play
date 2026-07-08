@@ -52,9 +52,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // One-shot guard for the stats fan-out. Keys `${gameId}:self` and
   // `${gameId}:opp` isolate the owner and peer writes so a rules-rejected
   // peer write can't suppress the owner. Keys are never cleared once set:
-  // clearing on catch let onSnapshot re-emissions hammer a doomed write.
-  // Any unrecorded stats catch up on the next session — updatePlayerStats
-  // is idempotent per game via the lastStatsGameId transaction check.
+  // clearing on catch would let onSnapshot re-emissions hammer a doomed
+  // write. Any unrecorded stats catch up on the next session —
+  // updatePlayerStats is idempotent per game via the lastStatsGameId
+  // transaction check.
   const processedStatsRef = useRef(new Set<string>());
 
   // Track which expired games have already had forfeit attempted this session,
