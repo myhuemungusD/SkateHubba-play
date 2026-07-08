@@ -49,14 +49,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [games, setGames] = useState<GameDoc[]>([]);
   const [activeGame, setActiveGame] = useState<GameDoc | null>(null);
 
-  // Track which stats writes have been attempted this session.
-  // Keys are `${gameId}:self` and `${gameId}:opp` so the self and opponent
-  // writes are guarded independently — one side being blocked by rules or
-  // network doesn't prevent the other from firing. Keys are one-shot: once
-  // added, they stay added even if the write fails, so re-emissions from
-  // onSnapshot don't re-arm the same write. Unrecorded stats catch up on
-  // the next app session. See the fan-out sites below for why re-arming on
-  // failure produced a failed-precondition retry storm.
+  // One-shot guard for the stats fan-out. Keys `${gameId}:self` and
+  // `${gameId}:opp` isolate the owner and peer writes so a rules-rejected
+  // peer write can't suppress the owner. Keys are never cleared once set:
+  // clearing on catch let onSnapshot re-emissions hammer a doomed write.
+  // Any unrecorded stats catch up on the next session — updatePlayerStats
+  // is idempotent per game via the lastStatsGameId transaction check.
   const processedStatsRef = useRef(new Set<string>());
 
   // Track which expired games have already had forfeit attempted this session,
@@ -132,13 +130,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
             const opponentUid = getOpponent(g, user.uid);
             if (!processedStatsRef.current.has(selfKey)) {
               processedStatsRef.current.add(selfKey);
-              // Best-effort: on failure, log but LEAVE the key marked. Deleting
-              // it here re-armed the write for the very next snapshot emit, and
-              // with both participants online writing each other's stats that
-              // became a failed-precondition retry storm (~2/sec) that never
-              // settled. Leaving the key marked stops the loop; the next app
-              // session catches up — updatePlayerStats is idempotent per game
-              // via the lastStatsGameId transaction check in services/users.ts.
               updatePlayerStats(user.uid, g.id, won).catch((err) => {
                 logger.warn("stats_catchup_failed", {
                   gameId: g.id,
@@ -211,13 +202,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
         setScreen("gameover");
       }
-      // Update leaderboard stats when a game completes. Mirrors the
-      // catch-up loop above — fan out self + opponent in parallel so the
-      // loser's `losses` counter increments even if they never reopen
-      // the app. Each write is guarded by an independent `:self`/`:opp`
-      // key so a rules rejection on one side doesn't suppress the other's
-      // attempt. Neither side retries on failure (see the catch-up loop's
-      // note on the retry storm); unrecorded stats catch up next session.
+      // Same fan-out as the games-list catch-up, sharing processedStatsRef
+      // so a completion delivered via both subscriptions doesn't double-fire.
       const currentUser = userRef.current;
       if ((updated.status === "complete" || updated.status === "forfeit") && currentUser && updated.winner) {
         const selfKey = `${updated.id}:self`;
@@ -226,8 +212,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const opponentUid = getOpponent(updated, currentUser.uid);
         if (!processedStatsRef.current.has(selfKey)) {
           processedStatsRef.current.add(selfKey);
-          // Leave the key marked on failure — see the catch-up loop above for
-          // why re-arming here caused a failed-precondition retry storm.
           updatePlayerStats(currentUser.uid, updated.id, won).catch((err) => {
             logger.warn("stats_update_failed", {
               gameId: updated.id,

@@ -491,17 +491,13 @@ export async function updatePlayerStats(uid: string, gameId: string, won: boolea
       });
     });
   } catch (err) {
-    // Peer-write path (GameContext fan-out updates BOTH the local user and
-    // the opponent's stats) is gated by `canPeerCloseStats` in
-    // firestore.rules. When a peer write loses the rules check — e.g. the
-    // owner already incremented their own stats, or the rule's preconditions
-    // (winner / direction match) aren't met — Firestore returns
-    // permission-denied. That's a best-effort denormalization failure, not
-    // a real error: swallow it with a warn so fire-and-forget callers don't
-    // produce uncaught rejections. Everything else rethrows so GameContext
-    // can log the failure with parseFirebaseError context — the fan-out
-    // catch does NOT re-arm the guard key (that re-arm caused a failed-
-    // precondition retry storm); unrecorded stats catch up next session.
+    // Peer-write path (fan-out writes the opponent's stats too) is gated by
+    // `canPeerCloseStats` in firestore.rules; when its preconditions aren't
+    // met — owner already committed, winner/direction mismatch — Firestore
+    // returns permission-denied. That's a best-effort denormalization
+    // failure: swallow it with a warn so fire-and-forget callers don't
+    // produce uncaught rejections. Anything else rethrows for the caller
+    // to log or handle.
     const code = (err as { code?: string })?.code;
     if (code === "permission-denied") {
       logger.warn("update_player_stats_peer_failed", { uid, code });
