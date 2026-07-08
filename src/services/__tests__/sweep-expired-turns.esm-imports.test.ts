@@ -30,18 +30,27 @@ const ENTRYPOINT = resolve(REPO_ROOT, "api/cron/sweep-expired-turns.ts");
 
 /**
  * Match every static import/export specifier in a TS source file. Handles
- * both value and `import type` forms because a runtime edit could easily
+ * value, `import type`, and multi-line forms — a runtime edit could easily
  * convert one to the other without noticing the extension is missing.
+ *
+ * Both patterns anchor on `import`/`export` at statement start ( (?:^|[;\n])
+ * then whitespace only ) so `from "…"` inside JSDoc prose or backticked code
+ * examples does not produce false hits. The middle uses `[\s\S]*?` (lazy) so
+ * `import {\n  X,\n} from "…"` is captured — plain `[^…\n]*?` would stop at
+ * the newline and silently miss the specifier.
+ *   • IMPORT_FROM — every `import … from "…"` / `export … from "…"` form.
+ *   • BARE_IMPORT — side-effect imports (`import "specifier";`) that have no
+ *     `from`.
  */
-const IMPORT_SPECIFIER = /(?:^|[\n;])[ \t]*(?:import|export)[^"'`\n;]*?(?:from\s+)?["']([^"']+)["']/g;
+const IMPORT_FROM = /(?:^|[;\n])\s*(?:import|export)\b[\s\S]*?\bfrom\s+["']([^"']+)["']/g;
+const BARE_IMPORT = /(?:^|[;\n])\s*import\s+["']([^"']+)["']/g;
 
 /** Read a source file and collect every specifier it imports/re-exports. */
 function collectSpecifiers(file: string): string[] {
   const src = readFileSync(file, "utf-8");
   const found: string[] = [];
-  for (const match of src.matchAll(IMPORT_SPECIFIER)) {
-    found.push(match[1]);
-  }
+  for (const match of src.matchAll(IMPORT_FROM)) found.push(match[1]);
+  for (const match of src.matchAll(BARE_IMPORT)) found.push(match[1]);
   return found;
 }
 
