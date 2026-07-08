@@ -136,9 +136,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
               // it here re-armed the write for the very next snapshot emit, and
               // with both participants online writing each other's stats that
               // became a failed-precondition retry storm (~2/sec) that never
-              // settled. Leaving the key marked stops the loop; unrecorded
-              // stats catch up on the next app session. The durable per-game
-              // idempotency fix is tracked separately.
+              // settled. Leaving the key marked stops the loop; the next app
+              // session catches up — updatePlayerStats is idempotent per game
+              // via the lastStatsGameId transaction check in services/users.ts.
               updatePlayerStats(user.uid, g.id, won).catch((err) => {
                 logger.warn("stats_catchup_failed", {
                   gameId: g.id,
