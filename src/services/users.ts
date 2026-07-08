@@ -498,9 +498,10 @@ export async function updatePlayerStats(uid: string, gameId: string, won: boolea
     // (winner / direction match) aren't met — Firestore returns
     // permission-denied. That's a best-effort denormalization failure, not
     // a real error: swallow it with a warn so fire-and-forget callers don't
-    // produce uncaught rejections. Owner-side writes still throw because
-    // the user expects their own stats to commit; any non-permission error
-    // (network / internal) rethrows so the catch-up retry path engages.
+    // produce uncaught rejections. Everything else rethrows so GameContext
+    // can log the failure with parseFirebaseError context — the fan-out
+    // catch does NOT re-arm the guard key (that re-arm caused a failed-
+    // precondition retry storm); unrecorded stats catch up next session.
     const code = (err as { code?: string })?.code;
     if (code === "permission-denied") {
       logger.warn("update_player_stats_peer_failed", { uid, code });
