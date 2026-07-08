@@ -90,4 +90,30 @@ describe("games rules — trickCategory invariants", () => {
       await assertFails(setDoc(ref, fx.makeValidGame(OPTS)));
     });
   });
+
+  // The judge invite rule pins its own explicit field list, so trickCategory
+  // needs its own pin there — a judge flipping judgeStatus must not be able to
+  // smuggle a category rewrite into the same write (PR #406 review finding).
+  describe("update — judge invite accept/decline", () => {
+    const JUDGE_UID = "judge-carol";
+    const JUDGE_FIELDS = { judgeId: JUDGE_UID, judgeUsername: "carol", judgeStatus: "pending" };
+
+    it("accepts an invite acceptance that leaves trickCategory untouched", async () => {
+      await fx.seedGameForUpdate(getEnv(), "g1", OPTS, { ...JUDGE_FIELDS, trickCategory: "flip" });
+      const ref = fx.gameDoc(fx.authedContext(getEnv(), JUDGE_UID), "g1");
+      await assertSucceeds(updateDoc(ref, { judgeStatus: "accepted" }));
+    });
+
+    it("rejects an invite acceptance that changes trickCategory", async () => {
+      await fx.seedGameForUpdate(getEnv(), "g1", OPTS, { ...JUDGE_FIELDS, trickCategory: "flip" });
+      const ref = fx.gameDoc(fx.authedContext(getEnv(), JUDGE_UID), "g1");
+      await assertFails(updateDoc(ref, { judgeStatus: "accepted", trickCategory: "grind" }));
+    });
+
+    it("rejects an invite decline that adds trickCategory to a legacy doc", async () => {
+      await fx.seedGameForUpdate(getEnv(), "g1", OPTS, JUDGE_FIELDS);
+      const ref = fx.gameDoc(fx.authedContext(getEnv(), JUDGE_UID), "g1");
+      await assertFails(updateDoc(ref, { judgeStatus: "declined", trickCategory: "flip" }));
+    });
+  });
 });

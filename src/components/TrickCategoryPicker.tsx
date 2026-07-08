@@ -9,8 +9,9 @@ interface Props {
 /**
  * Horizontal chip row for choosing a game's trick category. Rendered on the
  * ChallengeScreen; the selection is stored immutably on the game doc. Uses
- * radiogroup semantics (roving `role="radio"` chips) so the whole control is a
- * single tab stop with arrow-key-free selection via click/Enter/Space.
+ * radiogroup/radio semantics with `aria-checked`; each chip is a natively
+ * tab-focusable button selected via click/Enter/Space (no roving tabindex —
+ * with six chips, Tab-through is acceptable keyboard navigation).
  */
 export function TrickCategoryPicker({ value, onChange, disabled = false }: Props) {
   return (

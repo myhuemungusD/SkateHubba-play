@@ -1208,6 +1208,13 @@ service cloud.firestore {
         && (
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory
+        )
+        // trickCategory is immutable after creation — accepting/declining an
+        // invite must not let the judge rewrite the game's trick filter.
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
         );
 
       // Either player can forfeit the current-turn player's expired turn
