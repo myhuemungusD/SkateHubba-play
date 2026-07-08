@@ -128,12 +128,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
             const opponentUid = getOpponent(g, user.uid);
             if (!processedStatsRef.current.has(selfKey)) {
               processedStatsRef.current.add(selfKey);
+              // Best-effort: on failure, log but LEAVE the key marked. Deleting
+              // it here re-armed the write for the very next snapshot emit, and
+              // with both participants online writing each other's stats that
+              // became a failed-precondition retry storm (~2/sec) that never
+              // settled. Leaving the key marked stops the loop; unrecorded
+              // stats catch up on the next app session. The durable per-game
+              // idempotency fix is tracked separately.
               updatePlayerStats(user.uid, g.id, won).catch((err) => {
                 logger.warn("stats_catchup_failed", {
                   gameId: g.id,
                   error: parseFirebaseError(err),
                 });
-                processedStatsRef.current.delete(selfKey);
               });
             }
             if (!processedStatsRef.current.has(oppKey)) {
@@ -143,7 +149,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
                   gameId: g.id,
                   error: parseFirebaseError(err),
                 });
-                processedStatsRef.current.delete(oppKey);
               });
             }
           }
@@ -215,12 +220,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
         const opponentUid = getOpponent(updated, currentUser.uid);
         if (!processedStatsRef.current.has(selfKey)) {
           processedStatsRef.current.add(selfKey);
+          // Leave the key marked on failure — see the catch-up loop above for
+          // why re-arming here caused a failed-precondition retry storm.
           updatePlayerStats(currentUser.uid, updated.id, won).catch((err) => {
             logger.warn("stats_update_failed", {
               gameId: updated.id,
               error: parseFirebaseError(err),
             });
-            processedStatsRef.current.delete(selfKey); // allow retry on next update
           });
         }
         if (!processedStatsRef.current.has(oppKey)) {
@@ -230,7 +236,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
               gameId: updated.id,
               error: parseFirebaseError(err),
             });
-            processedStatsRef.current.delete(oppKey);
           });
         }
       }

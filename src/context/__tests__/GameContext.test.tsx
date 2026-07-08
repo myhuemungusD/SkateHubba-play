@@ -211,20 +211,35 @@ describe("GameProvider — opponent stats catch-up fan-out", () => {
     expect(usersService.updatePlayerStats).toHaveBeenCalledWith("bob-uid", "game-1", false);
   });
 
-  it("idempotency: re-emission of the same finished game does not double-fire either write", async () => {
+  /**
+   * Fire the fan-out for one finished game, wait for the initial two writes,
+   * then re-emit the same game twice and assert the count stays at two — i.e.
+   * the processedStatsRef guard prevents re-firing on later snapshots.
+   */
+  async function expectNoReFireOnReEmit() {
     await renderProvider();
     const game = makeFinishedGame();
     subscribeCallback!([game]);
     await waitFor(() => {
       expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
     });
-    // Re-emit the same game (e.g. another snapshot ticked while still
-    // mounted). processedStatsRef must keep the count at two.
     subscribeCallback!([game]);
     subscribeCallback!([game]);
-    // Give microtasks a chance to flush.
-    await Promise.resolve();
+    await Promise.resolve(); // flush microtasks
     expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
+  }
+
+  it("idempotency: re-emission of the same finished game does not double-fire either write", async () => {
+    // Writes succeed; the guard keeps re-emissions from double-firing.
+    await expectNoReFireOnReEmit();
+  });
+
+  it("storm guard: a failed write is NOT re-fired on subsequent snapshots", async () => {
+    // Regression for the failed-precondition retry storm: on failure the guard
+    // key must stay marked so re-emissions do not re-arm the write. Previously
+    // the catch deleted the key, so every snapshot re-fired the losing write.
+    vi.mocked(usersService.updatePlayerStats).mockRejectedValue(new Error("failed-precondition"));
+    await expectNoReFireOnReEmit();
   });
 });
 
