@@ -26,11 +26,11 @@ const ENTRYPOINT = resolve(REPO_ROOT, "api/cron/sweep-expired-turns.ts");
 /** Strip the repo-root prefix so failure output is short and copy-pastable. */
 const rel = (file: string): string => file.replace(`${REPO_ROOT}/`, "");
 
-/** Extensions Node's ESM loader resolves without help. */
+/** Extensions Node's ESM loader resolves without help — the single source of truth. */
 const NODE_RESOLVABLE_EXTENSIONS = new Set([".js", ".mjs", ".cjs"]);
 
-/** Source extensions to try when resolving a `.js` specifier to its TS sibling. */
-const SOURCE_EXTENSIONS = [".ts", ".tsx"];
+/** Source extensions the walker tries when mapping a runtime specifier back to its TS source. */
+const SOURCE_EXTENSIONS = [".ts", ".tsx"] as const;
 
 /**
  * Collect every static and dynamic import/export specifier in a TS source
@@ -42,7 +42,10 @@ const SOURCE_EXTENSIONS = [".ts", ".tsx"];
  */
 function collectSpecifiers(file: string): string[] {
   const src = readFileSync(file, "utf-8");
-  const sf = ts.createSourceFile(file, src, ts.ScriptTarget.ESNext, /*setParentNodes*/ false, ts.ScriptKind.TS);
+  // Pick ScriptKind by extension so a `.tsx` module reached via `resolveToSource`'s
+  // fallback still parses correctly (JSX in `.ts` mode leans on parser recovery).
+  const scriptKind = file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(file, src, ts.ScriptTarget.ESNext, /*setParentNodes*/ false, scriptKind);
   const found: string[] = [];
 
   const visit = (node: ts.Node): void => {
@@ -67,17 +70,18 @@ function collectSpecifiers(file: string): string[] {
 }
 
 /**
- * Resolve a relative `.js`-flavored specifier to the on-disk TS source file
- * it points to. Vercel's build reads the TS source, so we walk sources — not
- * `.js` artifacts. Tries `.ts`, `.tsx`, then `<bare>/index.{ts,tsx}` so a
- * legitimate future refactor to a directory-with-index or a `.tsx` module
- * doesn't crash the walker with an opaque ENOENT.
+ * Map a relative runtime specifier (`./foo.js`) to the on-disk TS source file
+ * the walker needs to descend into. The walker follows sources — the compiled
+ * `.js` artifacts don't exist until Vercel builds. Tries `<bare>.{ts,tsx}`
+ * then `<bare>/index.{ts,tsx}` so a legitimate future refactor to a
+ * directory-with-index doesn't crash the walker with an opaque ENOENT.
  *
  * Returns `null` when nothing resolves — the caller records the specifier as
  * unresolvable so the failure is actionable instead of a stack trace.
  */
 function resolveToSource(fromFile: string, specifier: string): string | null {
-  const bare = specifier.replace(/\.(?:js|mjs|cjs)$/, "");
+  const runtimeExt = extname(specifier);
+  const bare = NODE_RESOLVABLE_EXTENSIONS.has(runtimeExt) ? specifier.slice(0, -runtimeExt.length) : specifier;
   const base = resolve(dirname(fromFile), bare);
   for (const ext of SOURCE_EXTENSIONS) {
     const candidate = `${base}${ext}`;
