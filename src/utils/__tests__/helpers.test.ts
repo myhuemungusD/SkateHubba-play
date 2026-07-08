@@ -158,4 +158,14 @@ describe("newGameShell", () => {
     const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", validSpotId);
     expect(shell.spotId).toBe(validSpotId);
   });
+
+  it("defaults trickCategory to 'any' when not provided", () => {
+    const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival");
+    expect(shell.trickCategory).toBe("any");
+  });
+
+  it("carries the trickCategory when one is passed in", () => {
+    const shell = newGameShell("g1", "u1", "sk8r", "u2", "rival", null, null, null, "flip");
+    expect(shell.trickCategory).toBe("flip");
+  });
 });

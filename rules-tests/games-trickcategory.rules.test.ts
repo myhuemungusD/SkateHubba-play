@@ -42,19 +42,21 @@ describe("games rules — trickCategory invariants", () => {
       await assertSucceeds(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: category })));
     });
 
-    it("rejects an unknown trickCategory string ('kickflips')", async () => {
+    // Mirror the unit-test negative set (see
+    // `src/constants/__tests__/trickCategories.test.ts`) at the rules layer —
+    // the rules ARE the real defense boundary, so any type the client's
+    // normalizer would collapse to "any" must also be rejected server-side.
+    it.each<[string, unknown]>([
+      ["an unknown string", "kickflips"],
+      ["an empty string", ""],
+      ["a number", 123],
+      ["null", null],
+      ["a boolean", true],
+      ["an array", ["flip"]],
+      ["an object", { id: "flip" }],
+    ])("rejects trickCategory that is %s", async (_label, raw) => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "kickflips" })));
-    });
-
-    it("rejects a numeric trickCategory (123)", async () => {
-      const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: 123 })));
-    });
-
-    it("rejects a null trickCategory", async () => {
-      const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
-      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: null })));
+      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: raw })));
     });
   });
 
