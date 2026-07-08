@@ -60,6 +60,7 @@ describe("Smoke: Challenge", () => {
         spotId: null,
         judgeUid: null,
         judgeUsername: null,
+        trickCategory: "any",
       });
     });
   });

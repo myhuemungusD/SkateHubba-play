@@ -45,6 +45,11 @@ describe("ChallengeScreen", () => {
     onBack: vi.fn(),
   };
 
+  /** Expected onSend options for a default challenge; override per test. */
+  function sendOptions(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return { spotId: null, judgeUid: null, judgeUsername: null, trickCategory: "any", ...overrides };
+  }
+
   it("rejects short username on submit", async () => {
     renderWithRouter(<ChallengeScreen {...defaultProps} />);
 
@@ -170,11 +175,7 @@ describe("ChallengeScreen", () => {
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
-        spotId: VALID_SPOT_ID,
-        judgeUid: null,
-        judgeUsername: null,
-      });
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions({ spotId: VALID_SPOT_ID }));
     });
   });
 
@@ -187,11 +188,7 @@ describe("ChallengeScreen", () => {
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
-        spotId: null,
-        judgeUid: null,
-        judgeUsername: null,
-      });
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions());
     });
   });
 
@@ -206,11 +203,7 @@ describe("ChallengeScreen", () => {
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
-        spotId: null,
-        judgeUid: null,
-        judgeUsername: null,
-      });
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions());
     });
     // No chip should render for garbled input, and neither analytics nor
     // the fetch helper should ever see the garbled value.
@@ -288,11 +281,7 @@ describe("ChallengeScreen", () => {
     await userEvent.click(screen.getByText(/Send Challenge/));
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
-        spotId: null,
-        judgeUid: "u3",
-        judgeUsername: "judge",
-      });
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions({ judgeUid: "u3", judgeUsername: "judge" }));
     });
   });
 
@@ -334,11 +323,7 @@ describe("ChallengeScreen", () => {
     resolveOpp("u2");
 
     await waitFor(() => {
-      expect(onSend).toHaveBeenCalledWith("u2", "rival", {
-        spotId: null,
-        judgeUid: "u3",
-        judgeUsername: "judge",
-      });
+      expect(onSend).toHaveBeenCalledWith("u2", "rival", sendOptions({ judgeUid: "u3", judgeUsername: "judge" }));
     });
   });
 
