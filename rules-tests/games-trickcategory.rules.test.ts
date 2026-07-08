@@ -89,5 +89,33 @@ describe("games rules — trickCategory invariants", () => {
       // A full rewrite (setDoc without merge) effectively drops trickCategory.
       await assertFails(setDoc(ref, fx.makeValidGame(OPTS)));
     });
+
+    // Judge invite accept/decline is a distinct `allow update` block from the
+    // normal turn update; its own whitelist doesn't automatically pin every
+    // field. Cover the accept path explicitly so trickCategory can't be
+    // smuggled alongside a `judgeStatus: accepted` write.
+    it("rejects changing trickCategory on a judge-accept write", async () => {
+      const JUDGE_UID = "j-charlie";
+      await fx.seedGameForUpdate(getEnv(), "g1", OPTS, {
+        trickCategory: "flip",
+        judgeId: JUDGE_UID,
+        judgeUsername: "charlie",
+        judgeStatus: "pending",
+      });
+      const ref = fx.gameDoc(fx.authedContext(getEnv(), JUDGE_UID), "g1");
+      await assertFails(updateDoc(ref, { judgeStatus: "accepted", trickCategory: "grind" }));
+    });
+
+    it("accepts a judge-accept write that leaves trickCategory unchanged", async () => {
+      const JUDGE_UID = "j-charlie";
+      await fx.seedGameForUpdate(getEnv(), "g1", OPTS, {
+        trickCategory: "flip",
+        judgeId: JUDGE_UID,
+        judgeUsername: "charlie",
+        judgeStatus: "pending",
+      });
+      const ref = fx.gameDoc(fx.authedContext(getEnv(), JUDGE_UID), "g1");
+      await assertSucceeds(updateDoc(ref, { judgeStatus: "accepted" }));
+    });
   });
 });

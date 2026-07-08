@@ -1205,6 +1205,19 @@ service cloud.firestore {
         && request.resource.data.p2Letters == resource.data.p2Letters
         && request.resource.data.winner == resource.data.winner
         && request.resource.data.turnNumber == resource.data.turnNumber
+        // spotId and trickCategory are immutable across every other update
+        // path — pin them here too so a nominated judge accepting/declining
+        // cannot smuggle a change alongside `judgeStatus`.
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
         && (
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory

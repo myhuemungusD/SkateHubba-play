@@ -8,9 +8,10 @@ interface Props {
 
 /**
  * Horizontal chip row for choosing a game's trick category. Rendered on the
- * ChallengeScreen; the selection is stored immutably on the game doc. Uses
- * radiogroup semantics (roving `role="radio"` chips) so the whole control is a
- * single tab stop with arrow-key-free selection via click/Enter/Space.
+ * ChallengeScreen; the selection is stored immutably on the game doc. Mirrors
+ * the `role="radiogroup"` + `role="radio"` chip pattern used by ProfileSetup's
+ * Stance picker — each chip is a real `<button>`, so tab lands on each chip
+ * and Enter/Space selects it. `aria-checked` reflects the current selection.
  */
 export function TrickCategoryPicker({ value, onChange, disabled = false }: Props) {
   return (
