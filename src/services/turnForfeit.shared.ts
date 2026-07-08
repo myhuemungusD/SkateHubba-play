@@ -20,8 +20,8 @@
  * across both SDKs.
  */
 
-import { TURN_DURATION_MS } from "./turnDuration";
-import type { GameDoc, TurnRecord } from "./games.mappers";
+import { TURN_DURATION_MS } from "./turnDuration.js";
+import type { GameDoc, TurnRecord } from "./games.mappers.js";
 
 /** The opponent of `playerUid` in a two-player game. Mirrors getOpponent. */
 function opponentOf(game: GameDoc, playerUid: string): string {

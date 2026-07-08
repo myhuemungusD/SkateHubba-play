@@ -1,8 +1,8 @@
 import { Timestamp } from "firebase/firestore";
-import type { TrickCategoryId } from "../constants/trickCategories";
+import type { TrickCategoryId } from "../constants/trickCategories.js";
 
 /** Re-exported so callers can pull the game trick-category type from the games barrel. */
-export type { TrickCategoryId } from "../constants/trickCategories";
+export type { TrickCategoryId } from "../constants/trickCategories.js";
 
 /* ────────────────────────────────────────────
  * Types
