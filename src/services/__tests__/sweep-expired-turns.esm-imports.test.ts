@@ -124,10 +124,13 @@ describe("sweep cron ESM cold-start guard", () => {
   it("every relative import in the traced runtime graph ends in a Node-resolvable extension", () => {
     const { graph, unresolvable } = walkRelativeGraph(ENTRYPOINT);
 
-    // Sanity: the walker actually recursed. If it regressed to only inspecting
-    // the entrypoint, the offender assertion below would trivially pass on the
-    // subgraph the fix already covers.
-    expect(graph.size).toBeGreaterThanOrEqual(2);
+    // Sanity: the walker actually recursed through the transitive graph. The
+    // current closure is 5 files (entry + turnForfeit.shared + turnDuration +
+    // games.mappers + trickCategories); we assert ≥4 to leave one file of
+    // headroom for legitimate contraction while still catching a walker that
+    // stops after one hop — a shallower walk would let the offender assertion
+    // below trivially pass on the subgraph the fix already covers.
+    expect(graph.size).toBeGreaterThanOrEqual(4);
 
     // Fail loudly on a specifier whose target source couldn't be located —
     // otherwise a bad refactor would show up as an opaque ENOENT in CI.
