@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, waitFor, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { Component, type ReactNode } from "react";
+import { Component, useEffect, type ReactNode } from "react";
 import { useGameContext } from "../GameContext";
 import { AuthProvider } from "../AuthContext";
 import { NavigationProvider } from "../NavigationContext";
@@ -26,13 +26,14 @@ vi.mock("../../services/users", () => ({
 }));
 vi.mock("../../services/blocking", () => ({ isUserBlocked: vi.fn().mockResolvedValue(false) }));
 const mockSubscribeToMyGames = vi.fn();
+const mockSubscribeToGame = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 vi.mock("../../services/games", () => ({
   createGame: vi.fn(),
   forfeitExpiredTurn: (gameId: string, callerUid: string | null) => mockForfeitExpiredTurn(gameId, callerUid),
   subscribeToMyGames: (uid: string, cb: (games: GameDoc[]) => void, limit?: number) =>
     mockSubscribeToMyGames(uid, cb, limit),
-  subscribeToGame: vi.fn(() => vi.fn()),
+  subscribeToGame: (gameId: string, cb: (g: GameDoc | null) => void) => mockSubscribeToGame(gameId, cb),
 }));
 vi.mock("../../services/analytics", () => ({
   analytics: { signIn: vi.fn(), gameCreated: vi.fn() },
@@ -71,6 +72,7 @@ function resetMocks(): void {
   vi.clearAllMocks();
   mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
   mockSubscribeToMyGames.mockReturnValue(vi.fn());
+  mockSubscribeToGame.mockReturnValue(vi.fn());
   mockForfeitExpiredTurn.mockResolvedValue({ forfeited: false, winner: null });
 }
 
@@ -123,7 +125,7 @@ describe("useGameContext", () => {
   });
 });
 
-describe("GameProvider — opponent stats catch-up fan-out", () => {
+describe("GameProvider — fanOutStats", () => {
   type SubscribeCallback = (games: GameDoc[]) => void;
 
   // Hold onto the callback subscribeToMyGames was invoked with so each test
@@ -241,6 +243,68 @@ describe("GameProvider — opponent stats catch-up fan-out", () => {
     const stormErr = Object.assign(new Error("failed-precondition"), { code: "failed-precondition" });
     vi.mocked(usersService.updatePlayerStats).mockRejectedValue(stormErr);
     await expectNoReFireOnReEmit();
+  });
+
+  it("shared-ref: a completion delivered via BOTH subscribers only fires two writes", async () => {
+    // Locks in the load-bearing invariant of fanOutStats: processedStatsRef
+    // is shared across subscribeToMyGames AND subscribeToGame, so a single
+    // game completion arriving on both paths still fires each side exactly
+    // once. Without the shared ref, the peer write would double-count.
+    let gameCallback: ((g: GameDoc | null) => void) | null = null;
+    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
+      gameCallback = cb;
+      return () => {};
+    });
+
+    // Grab setActiveGame out of context so we can mount the single-game
+    // listener without going through the full openGame flow. Assignment
+    // is deferred to useEffect to satisfy react-hooks/immutability, which
+    // rejects outer-cell writes during render (see AuthContext.test.tsx's
+    // handleDeleteAccount harness for the same pattern).
+    const bridge: { setActive: ((g: GameDoc | null) => void) | null } = { setActive: null };
+    function Grab() {
+      const { setActiveGame } = useGameContext();
+      useEffect(() => {
+        bridge.setActive = setActiveGame;
+      }, [setActiveGame]);
+      return null;
+    }
+    const { GameProvider } = await import("../GameContext");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AuthProvider>
+          <NavigationProvider>
+            <NotificationProvider uid="alice-uid">
+              <GameProvider>
+                <Grab />
+              </GameProvider>
+            </NotificationProvider>
+          </NavigationProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    const game = makeFinishedGame();
+    await waitFor(() => {
+      expect(bridge.setActive).not.toBeNull();
+    });
+    act(() => {
+      bridge.setActive!(game);
+    });
+    expect(gameCallback).not.toBeNull();
+
+    act(() => {
+      subscribeCallback!([game]);
+    });
+    await waitFor(() => {
+      expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
+    });
+
+    act(() => {
+      gameCallback!(game);
+    });
+    await Promise.resolve(); // flush microtasks
+    expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
   });
 });
 
