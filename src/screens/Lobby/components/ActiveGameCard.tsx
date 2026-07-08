@@ -4,6 +4,7 @@ import { LETTERS } from "../../../utils/helpers";
 import { LobbyTimer } from "../../../components/LobbyTimer";
 import { ChevronRightIcon } from "../../../components/icons";
 import { ProUsername } from "../../../components/ProUsername";
+import { trickCategoryLabel } from "../../../constants/trickCategories";
 
 interface Props {
   game: GameDoc;
@@ -38,6 +39,7 @@ export function ActiveGameCard({
   onOpenGame,
   onViewPlayer,
 }: Props) {
+  const showCategory = !!game.trickCategory && game.trickCategory !== "any";
   return (
     <div
       role="button"
@@ -94,6 +96,11 @@ export function ActiveGameCard({
             {turnLabel}
           </span>
           <LobbyTimer deadline={game.turnDeadline?.toMillis?.() ?? 0} isMyTurn={isMyTurn} />
+          {showCategory && (
+            <span className="inline-flex items-center rounded-full border border-white/[0.08] px-2 py-0.5 font-body text-[10px] text-muted shrink-0">
+              {trickCategoryLabel(game.trickCategory)}
+            </span>
+          )}
         </div>
         {judgeViewer ? (
           <div className="flex items-center gap-3 mt-2.5">

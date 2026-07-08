@@ -1,5 +1,6 @@
 import { doc, setDoc, runTransaction, serverTimestamp, Timestamp } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
+import { normalizeTrickCategory } from "../constants/trickCategories";
 import { addBreadcrumb } from "../lib/sentry";
 import { withRetry } from "../utils/retry";
 import { parseFirebaseError } from "../utils/helpers";
@@ -40,7 +41,7 @@ export async function createGame(
 ): Promise<string> {
   checkGameCreationRate();
 
-  const { challengerIsVerifiedPro, opponentIsVerifiedPro, spotId, judgeUid, judgeUsername } = options;
+  const { challengerIsVerifiedPro, opponentIsVerifiedPro, spotId, trickCategory, judgeUid, judgeUsername } = options;
 
   // Defense-in-depth: drop any spotId that doesn't look like a UUID before
   // it reaches Firestore. Keeps the data model clean even if an upstream
@@ -80,6 +81,9 @@ export async function createGame(
     turnNumber: 1,
     winner: null,
     turnHistory: [],
+    // Always write an explicit trick category (default "any") — same rationale
+    // as the explicit judge nulls: keeps the schema uniform across all docs.
+    trickCategory: normalizeTrickCategory(trickCategory),
     // Judge fields default to null (honor system). Keeping explicit nulls —
     // rather than omitting — makes security rule checks easier and keeps
     // the schema uniform across all game docs.

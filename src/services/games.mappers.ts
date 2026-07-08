@@ -1,4 +1,8 @@
 import { Timestamp } from "firebase/firestore";
+import type { TrickCategoryId } from "../constants/trickCategories";
+
+/** Re-exported so callers can pull the game trick-category type from the games barrel. */
+export type { TrickCategoryId } from "../constants/trickCategories";
 
 /* ────────────────────────────────────────────
  * Types
@@ -71,6 +75,11 @@ export interface GameDoc {
   /** Optional associated spot for location context. Set at game creation, immutable. */
   spotId?: string | null;
   /**
+   * Trick category for the game. Optional because legacy docs predate the
+   * field; missing = "any". Set at game creation, immutable (mirrors spotId).
+   */
+  trickCategory?: TrickCategoryId;
+  /**
    * UID of the nominated judge, or null for honor-system games.
    * Honor system: no disputable phase, no "Call BS" option.
    * With judge: dispute/BS flows route to the judge instead of the setter.
@@ -116,6 +125,8 @@ export interface CreateGameOptions {
   challengerIsVerifiedPro?: boolean;
   opponentIsVerifiedPro?: boolean;
   spotId?: string | null;
+  /** Trick category chosen by the challenger. Missing/null defaults to "any". */
+  trickCategory?: TrickCategoryId | null;
   /** Optional judge UID — must be different from both players. */
   judgeUid?: string | null;
   /** Denormalized judge username (for UI). Required when judgeUid is set. */

@@ -25,6 +25,16 @@ vi.mock("../services/onboarding", () => onboarding.module);
 
 beforeEach(() => vi.clearAllMocks());
 
+/** Options createGame receives from a rematch (no challenge-screen extras). */
+const rematchCreateOptions = {
+  challengerIsVerifiedPro: undefined,
+  opponentIsVerifiedPro: undefined,
+  spotId: null,
+  judgeUid: null,
+  judgeUsername: null,
+  trickCategory: null,
+};
+
 const { withGameSub, renderLobby, renderVerifiedLobby } = createMockHelpers({
   mockUseAuth: auth.refs.useAuth,
   mockSubscribeToMyGames: games.refs.subscribeToMyGames,
@@ -102,13 +112,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
-        challengerIsVerifiedPro: undefined,
-        opponentIsVerifiedPro: undefined,
-        spotId: null,
-        judgeUid: null,
-        judgeUsername: null,
-      });
+      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", rematchCreateOptions);
     });
   });
 
@@ -240,13 +244,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
 
     await waitFor(() => {
-      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
-        challengerIsVerifiedPro: undefined,
-        opponentIsVerifiedPro: undefined,
-        spotId: null,
-        judgeUid: null,
-        judgeUsername: null,
-      });
+      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", rematchCreateOptions);
     });
   });
 
@@ -272,13 +270,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText(/Rematch/));
     await waitFor(() => {
       // Should call createGame with the opponent's uid and username
-      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
-        challengerIsVerifiedPro: undefined,
-        opponentIsVerifiedPro: undefined,
-        spotId: null,
-        judgeUid: null,
-        judgeUsername: null,
-      });
+      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", rematchCreateOptions);
     });
   });
 

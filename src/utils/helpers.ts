@@ -1,5 +1,6 @@
 import type { GameDoc } from "../services/games";
 import { timestampFromMillis } from "../services/games";
+import { normalizeTrickCategory, type TrickCategoryId } from "../constants/trickCategories";
 
 /** Extract a Firebase error code from an unknown error value. */
 export function getErrorCode(err: unknown): string {
@@ -80,6 +81,7 @@ export function newGameShell(
   spotId: string | null = null,
   judgeUid: string | null = null,
   judgeUsername: string | null = null,
+  trickCategory: TrickCategoryId | null = null,
 ): GameDoc {
   return {
     id: gameId,
@@ -103,6 +105,7 @@ export function newGameShell(
     createdAt: null,
     updatedAt: null,
     spotId,
+    trickCategory: normalizeTrickCategory(trickCategory),
     judgeId: judgeUid,
     judgeUsername,
     judgeStatus: judgeUid ? "pending" : null,

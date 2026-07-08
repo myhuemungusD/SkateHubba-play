@@ -23,6 +23,7 @@ vi.mock("../../lib/sentry", () => ({
 }));
 
 import { auth } from "../../firebase";
+import type { TrickCategoryId } from "../../constants/trickCategories";
 import { createGame, acceptJudgeInvite, declineJudgeInvite } from "../games";
 
 installGamesTestBeforeEach();
@@ -238,6 +239,28 @@ describe("games service", () => {
       await createGame("p1", "alice", "p2", "bob", { spotId: "not-a-uuid" });
       const docData = gameSetDocCall();
       expect("spotId" in docData).toBe(false);
+    });
+
+    it("writes the selected trick category onto the game doc", async () => {
+      await createGame("p1", "alice", "p2", "bob", { trickCategory: "flip" });
+      const docData = gameSetDocCall();
+      expect(docData.trickCategory).toBe("flip");
+    });
+
+    it("defaults the trick category to 'any' when no option is given", async () => {
+      await createGame("p1", "alice", "p2", "bob");
+      const docData = gameSetDocCall();
+      expect(docData.trickCategory).toBe("any");
+    });
+
+    it("normalizes a bogus trick category to 'any' before writing", async () => {
+      // Untrusted boundary: an upstream caller (or stale shared URL) can smuggle
+      // a value the type system doesn't cover. It must never reach Firestore raw.
+      await createGame("p1", "alice", "p2", "bob", {
+        trickCategory: "kickflips" as unknown as TrickCategoryId,
+      });
+      const docData = gameSetDocCall();
+      expect(docData.trickCategory).toBe("any");
     });
 
     it("defaults to no judge (honor system)", async () => {
