@@ -500,7 +500,10 @@ export async function updatePlayerStats(uid: string, gameId: string, won: boolea
     // a real error: swallow it with a warn so fire-and-forget callers don't
     // produce uncaught rejections. Owner-side writes still throw because
     // the user expects their own stats to commit; any non-permission error
-    // (network / internal) rethrows so the catch-up retry path engages.
+    // (network / internal) rethrows so the fire-and-forget catch in
+    // GameContext can log it. That catch used to also re-arm the write on
+    // failure — that re-arm was the engine of the stats retry storm and no
+    // longer runs, so the rethrow is purely for observability now.
     const code = (err as { code?: string })?.code;
     if (code === "permission-denied") {
       logger.warn("update_player_stats_peer_failed", { uid, code });
