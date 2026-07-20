@@ -97,7 +97,6 @@ export interface UsersServiceRefs {
   getLeaderboard: Mock;
   getUserProfile: Mock;
   getUserProfileOnAuth: Mock;
-  updatePlayerStats: Mock;
 }
 
 export interface UsersServiceModule {
@@ -109,7 +108,6 @@ export interface UsersServiceModule {
   getLeaderboard: (...args: unknown[]) => unknown;
   getUserProfile: (...args: unknown[]) => unknown;
   getUserProfileOnAuth: (...args: unknown[]) => unknown;
-  updatePlayerStats: (...args: unknown[]) => unknown;
   // Validation constants imported by ProfileSetup.
   USERNAME_MIN: number;
   USERNAME_MAX: number;
@@ -147,7 +145,6 @@ export function createUsersServiceMocks(): UsersServiceMocks {
     getLeaderboard: vi.fn().mockResolvedValue([]),
     getUserProfile: vi.fn().mockResolvedValue(null),
     getUserProfileOnAuth: vi.fn().mockResolvedValue(null),
-    updatePlayerStats: vi.fn().mockResolvedValue(undefined),
   };
   return {
     refs,
@@ -160,7 +157,6 @@ export function createUsersServiceMocks(): UsersServiceMocks {
       getLeaderboard: (...args: unknown[]) => refs.getLeaderboard(...args),
       getUserProfile: (...args: unknown[]) => refs.getUserProfile(...args),
       getUserProfileOnAuth: (...args: unknown[]) => refs.getUserProfileOnAuth(...args),
-      updatePlayerStats: (...args: unknown[]) => refs.updatePlayerStats(...args),
       USERNAME_MIN: 3,
       USERNAME_MAX: 20,
       USERNAME_RE: /^[a-z0-9_]+$/,

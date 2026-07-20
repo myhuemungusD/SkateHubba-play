@@ -123,10 +123,12 @@ export function settingToMatchingUpdate(
 
 /**
  * Seed a terminated /games doc whose `winner` field is pre-populated. Used by
- * the wins/losses-update tests that need a backing game for the owner-side
- * `ownerCanCloseWins` / `ownerCanCloseLosses` checks in firestore.rules. Keeps
- * the per-test shape down to a single helper call so the test-duplication
- * detector stays clean.
+ * the stats red-team tests that need a genuine terminal game to prove that a
+ * client stat write is denied EVEN when a real game outcome exists (stats are
+ * server-only now — the applyGameStats Cloud Function is the sole writer, and
+ * firestore.rules deny any client change to wins/losses/lastStatsGameId).
+ * Keeps the per-test shape down to a single helper call so the
+ * test-duplication detector stays clean.
  *
  * When `winner` is omitted, the seeded game records the OPPONENT as the
  * winner — convenient for tests that need a "losing" backing game.

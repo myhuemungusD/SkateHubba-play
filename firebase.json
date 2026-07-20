@@ -7,6 +7,10 @@
   "storage": {
     "rules": "storage.rules"
   },
+  "functions": {
+    "source": "functions",
+    "predeploy": ["npm --prefix functions ci", "npm --prefix functions run build"]
+  },
   "extensions": {
     "firestore-send-fcm": "firebase/firestore-send-fcm@0.1.16"
   },

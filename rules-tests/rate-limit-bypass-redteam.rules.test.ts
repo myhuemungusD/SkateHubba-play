@@ -36,7 +36,6 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, serverTimestamp, setDoc, setLogLevel, updateDoc } from "firebase/firestore";
-import { seedTerminatedGame } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-rate-limit-redteam";
 
@@ -158,17 +157,12 @@ describe("users.lastGameCreatedAt — red-team against stale-timestamp cooldown 
 
   it("legitimate: a user update that doesn't touch lastGameCreatedAt still works", async () => {
     // Regression guard: the new constraint is gated on the field being
-    // written, so an unrelated profile update (wins++) must still pass
-    // even when lastGameCreatedAt already exists on the stored doc.
-    // (fcmTokens was used here pre-split; post-split it lives on the
-    // private subcollection and is forbidden at the top level.)
-    // Stats writes now also require a backing game doc via
-    // lastStatsGameId — see firestore.rules ownerCanCloseWins.
+    // written, so an unrelated profile update (a benign stance change) must
+    // still pass even when lastGameCreatedAt already exists on the stored
+    // doc. (A wins++ was used here before the stats fan-out lockdown; stats
+    // are server-only now, so a benign non-stats edit is the right probe.)
     await seedUser({ lastGameCreatedAt: new Date(Date.now() - 60_000) });
-    await seedTerminatedGame(testEnv, "g-rl-1", { player1Uid: OWNER_UID, player2Uid: "opp", winner: OWNER_UID });
-    await assertSucceeds(
-      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 1, lastStatsGameId: "g-rl-1" }),
-    );
+    await assertSucceeds(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { stance: "Goofy" }));
   });
 });
 
@@ -252,17 +246,12 @@ describe("users.lastSpotCreatedAt — red-team against stale-timestamp cooldown 
   it("legitimate: a user update that doesn't touch lastSpotCreatedAt still works", async () => {
     // Regression guard mirroring the lastGameCreatedAt variant above: the
     // new constraint is gated on the field being written, so an unrelated
-    // profile update (wins++) must still pass even when lastSpotCreatedAt
-    // already exists on the stored doc. (fcmTokens would be rejected by
-    // the transitional users-doc-split guard — it lives on the private
-    // subcollection post-split, not the public doc.)
-    // Stats writes now also require a backing game doc via
-    // lastStatsGameId — see firestore.rules ownerCanCloseWins.
+    // profile update (a benign stance change) must still pass even when
+    // lastSpotCreatedAt already exists on the stored doc. (A wins++ probe
+    // was used here before the stats fan-out lockdown made stats
+    // server-only.)
     await seedUser({ lastSpotCreatedAt: new Date(Date.now() - 60_000) });
-    await seedTerminatedGame(testEnv, "g-rl-2", { player1Uid: OWNER_UID, player2Uid: "opp", winner: OWNER_UID });
-    await assertSucceeds(
-      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 1, lastStatsGameId: "g-rl-2" }),
-    );
+    await assertSucceeds(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { stance: "Goofy" }));
   });
 
   it("legitimate: an update may touch both cooldown anchors in a single write", async () => {

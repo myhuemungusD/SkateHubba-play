@@ -4,7 +4,6 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
-  increment,
   query,
   where,
   orderBy,
@@ -42,11 +41,12 @@ export interface UserProfile {
   stance: string;
   /** serverTimestamp() on write; Firestore Timestamp on read. */
   createdAt: FieldValue | null;
-  /** Denormalized leaderboard stats — updated atomically when games complete. */
+  /**
+   * Denormalized leaderboard stats. Maintained server-side (Cloud Function)
+   * when a game completes — the client never writes these fields.
+   */
   wins?: number;
   losses?: number;
-  /** ID of the last game that updated this user's stats (idempotency key). */
-  lastStatsGameId?: string;
   /** Whether this user is a verified pro. Only settable via Admin SDK / Firebase console. */
   isVerifiedPro?: boolean;
   /** UID of the user or admin who granted verified-pro status. */
@@ -449,62 +449,6 @@ export async function getUidByUsername(username: string): Promise<string | null>
   if (!snap.exists()) return null;
   const data = snap.data();
   return typeof data.uid === "string" ? data.uid : null;
-}
-
-/**
- * Atomically update a player's win/loss stats after a game completes.
- * Uses lastStatsGameId as an idempotency key to prevent double-counting
- * when subscriptions fire multiple times for the same game.
- *
- * The read-then-write is wrapped in a Firestore transaction so the
- * idempotency check and the increment commit as one unit. Without the
- * transaction, two tabs (or the client + the Cloud Function fallback)
- * can both read `lastStatsGameId !== gameId`, then both fire
- * `increment(1)` and the win/loss counter gets bumped twice for the
- * same game. The re-read inside the tx makes the loser of a contention
- * race see the winner's updated lastStatsGameId and bail cleanly.
- *
- * Called by the local client for both its OWN profile and the
- * opponent's profile during the catch-up fan-out in
- * src/context/GameContext.tsx. The opponent-targeted write is gated
- * by the `canPeerCloseStats` rule in firestore.rules — only the two
- * game participants may close out each other's wins/losses, the
- * increment direction must match the recorded `game.winner`, and the
- * affectedKeys() guard restricts the peer write to
- * wins/losses/lastStatsGameId. Without the fan-out, an
- * absent player's stats never advance until they reopen the app.
- */
-export async function updatePlayerStats(uid: string, gameId: string, won: boolean): Promise<void> {
-  const db = requireDb();
-  const userRef = doc(db, "users", uid);
-
-  try {
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(userRef);
-      if (!snap.exists()) return; // profile deleted
-      // Idempotency re-checked inside the tx — a parallel writer that
-      // won the race will have already committed the new lastStatsGameId.
-      if (snap.data().lastStatsGameId === gameId) return;
-      tx.update(userRef, {
-        [won ? "wins" : "losses"]: increment(1),
-        lastStatsGameId: gameId,
-      });
-    });
-  } catch (err) {
-    // Peer-write path (fan-out writes the opponent's stats too) is gated by
-    // `canPeerCloseStats` in firestore.rules; when its preconditions aren't
-    // met — owner already committed, winner/direction mismatch — Firestore
-    // returns permission-denied. That's a best-effort denormalization
-    // failure: swallow it with a warn so fire-and-forget callers don't
-    // produce uncaught rejections. Anything else rethrows for the caller
-    // to log or handle.
-    const code = (err as { code?: string })?.code;
-    if (code === "permission-denied") {
-      logger.warn("update_player_stats_peer_failed", { uid, code });
-      return;
-    }
-    throw err;
-  }
 }
 
 /**

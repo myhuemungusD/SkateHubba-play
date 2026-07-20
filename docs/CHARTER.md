@@ -172,7 +172,7 @@ Push dispatch is shipped via the `firestore-send-fcm` Firebase Extension. The ex
 
 Dispatches fire from a post-transaction outbox (`createPushDispatchOutbox` / `drainPushDispatchOutbox`) — never from inside a `runTransaction` callback, so retries don't re-stage and a failed push never rolls back the game write. The extension config lives in `extensions/firestore-send-fcm.env` (collection name, TTL, named database, region must all stay in lockstep with `pushDispatch.ts` and `firestore.rules`).
 
-The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — extensions do not touch that path, so the gate remains in force against application-authored Cloud Functions. Reintroducing authored functions still requires maintainer sign-off.
+The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — extensions do not touch that path, so the gate remains in force against application-authored Cloud Functions. As of 2026-07 the gate is an allowlist: it permits exactly the maintainer-approved stats close-out file set (see §4.14) and hard-fails any other `functions/src/` addition. Reintroducing further authored functions still requires maintainer sign-off.
 
 Auto-forfeit (`forfeitExpiredTurn`) remains client-triggered; closing that gap is tracked in §9.2.
 
@@ -316,7 +316,7 @@ screenshots/
 ### 4.14 Prohibited
 
 - Custom backend / API server (no Express, no Next.js routes, no Vercel serverless functions for app logic)
-- Application-authored Cloud Functions in PRs (CI rejects new code under `functions/src/`; reintroduction requires maintainer sign-off and a tightened gate). The `firestore-send-fcm` Firebase Extension is the one managed exception: it provisions a Cloud Run dispatcher we configure but do not author, and its files live under `extensions/`, outside the `functions/src/` gate.
+- Application-authored Cloud Functions in PRs (CI rejects new code under `functions/src/`; reintroduction requires maintainer sign-off and a tightened gate). Two approved exceptions exist. (1) The `firestore-send-fcm` Firebase Extension: it provisions a Cloud Run dispatcher we configure but do not author, and its files live under `extensions/`, outside the `functions/src/` gate. (2) The **stats close-out function** under `functions/src/` — maintainer-approved 2026-07 under exactly the sign-off + tightened-gate procedure this bullet defines. It moved win/loss stat writes server-side after a client-side stats-replay path corrupted production win/loss counters. The tightened gate (`verify-no-cloud-functions` in `pr-gate.yml`) pins its exact file set — `functions/src/index.ts`, `functions/src/applyGameStats.ts`, `functions/src/applyGameStats.test.ts` — and hard-fails any other `functions/src/` addition; the `build-functions` job type-checks, builds, and tests it on every PR that touches `functions/**`.
 - PostgreSQL / Neon / Drizzle (Firestore is the datastore — final)
 - React Native / Expo (Capacitor wraps the PWA — final)
 - Redux / Zustand / MobX / TanStack Query (Context + hooks is sufficient)
@@ -372,7 +372,7 @@ screenshots/
 - Smoke tests for all screens
 - Rules tests for any rule change
 - E2E for critical flows (signup, challenge, full game)
-- Pre-flight gate: `npm run verify` runs `tsc -b && lint && test:coverage && build && check:test-dup`. This is a **subset** of CI — full CI (`.github/workflows/main.yml` + `pr-gate.yml`) additionally runs `npm audit --audit-level=moderate`, an inline `as any` grep guard, `npm run test:e2e`, and the 8 `pr-gate.yml` jobs listed in §8. A clean `verify` is necessary but not sufficient.
+- Pre-flight gate: `npm run verify` runs `tsc -b && lint && test:coverage && build && check:test-dup`. This is a **subset** of CI — full CI (`.github/workflows/main.yml` + `pr-gate.yml`) additionally runs `npm audit --audit-level=moderate`, an inline `as any` grep guard, `npm run test:e2e`, and the 9 `pr-gate.yml` jobs listed in §8. A clean `verify` is necessary but not sufficient.
 - Never push code that will fail CI
 
 ---
@@ -414,7 +414,7 @@ A change is not releasable unless:
 - `npm run lint` clean
 - `npm run test:coverage` passes thresholds
 - `npm run build` succeeds
-- All `pr-gate.yml` jobs pass (8 total):
+- All `pr-gate.yml` jobs pass (9 total):
   - `enforce-pr-policy`
   - `guard-as-any-casts`
   - `verify-no-cloud-functions`
@@ -423,6 +423,7 @@ A change is not releasable unless:
   - `check-test-duplication`
   - `check-file-length`
   - `validate-firebase-rules`
+  - `build-functions`
 - At least 1 CODEOWNER approval
 - Branch up to date with `main`
 - Firestore rules updated if data model changed

@@ -7,20 +7,22 @@
  *   1. Per-field value-equality guards (legacy form), which accept a
  *      field in request.resource.data IFF the value is unchanged from
  *      resource.data. Needed during the public/private backfill so that
- *      legitimate writes (wins++, stance edits) against legacy docs
- *      still pass while old inline values ride along.
+ *      legitimate writes (stance edits) against legacy docs still pass
+ *      while old inline values ride along.
  *
  *   2. A comprehensive `affectedKeys().hasAny([...])` guard that DENIES
  *      any update whose diff includes one of the privileged fields. This
- *      is the F2 backstop — it closes two gaps the per-field clauses
- *      left open (createdAt rewrite and lastStatsGameId forge by the
- *      owner branch), and provides defense-in-depth against a future
+ *      is the F2 backstop — it closes createdAt-rewrite and, since the
+ *      stats fan-out lockdown, ALSO covers wins / losses / lastStatsGameId
+ *      (stats are server-only now: the applyGameStats Cloud Function is
+ *      the sole writer). It provides defense-in-depth against a future
  *      typo in the per-field list.
  *
  * Trust-no-client: every privileged field gets a negative test that
- * proves the owner cannot self-mutate it, plus a positive test that
- * proves legitimate non-privileged updates (stance change, wins++) still
- * succeed.
+ * proves the owner cannot self-mutate it — including wins / losses /
+ * lastStatsGameId, even when the owner cites a real terminal game — plus
+ * a positive test that proves legitimate non-privileged updates (stance
+ * change) still succeed.
  *
  * Run via:  npm run test:rules
  */
@@ -205,39 +207,34 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
     );
   });
 
-  it("legitimate: owner CAN increment wins by exactly 1", async () => {
-    // Stats writes now require a backing game doc via lastStatsGameId
-    // (see firestore.rules ownerCanCloseWins helper). Seed a game the
-    // owner won so the wins++ path is satisfied.
+  it("attack: owner CANNOT increment wins — even citing a game they really won", async () => {
+    // Formerly legal (ownerCanCloseWins). Since the stats fan-out lockdown,
+    // wins is in the affectedKeys().hasAny([...]) backstop, so a real
+    // winning game no longer authorizes a client stat write.
     await seedTerminatedGame(testEnv, "g-win", {
       player1Uid: OWNER_UID,
       player2Uid: "opponent-uid",
       winner: OWNER_UID,
     });
-    await assertSucceeds(
-      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 4, lastStatsGameId: "g-win" }),
-    );
+    await assertFails(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 4, lastStatsGameId: "g-win" }));
   });
 
-  it("legitimate: owner CAN increment losses by exactly 1", async () => {
+  it("attack: owner CANNOT increment losses — even citing a game they really lost", async () => {
     await seedTerminatedGame(testEnv, "g-loss", { player1Uid: OWNER_UID, player2Uid: "opponent-uid" });
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { losses: 3, lastStatsGameId: "g-loss" }),
     );
   });
 
-  it("legitimate: owner CAN advance lastStatsGameId via the wins++ catch-up path", async () => {
-    // updatePlayerStats() in src/services/users.ts writes
-    // { wins: increment(1), lastStatsGameId: gameId } on the owner's
-    // doc as the local-side idempotency key. The privileged-field
-    // guard intentionally excludes lastStatsGameId so this path keeps
-    // working — guarded by this regression test.
+  it("attack: owner CANNOT advance lastStatsGameId (stats are server-only)", async () => {
+    // The dead lastStatsGameId field is now in the immutable backstop; the
+    // Cloud Function + admin backfill own all stats bookkeeping.
     await seedTerminatedGame(testEnv, "game-just-finished", {
       player1Uid: OWNER_UID,
       player2Uid: "opponent-uid",
       winner: OWNER_UID,
     });
-    await assertSucceeds(
+    await assertFails(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 4, lastStatsGameId: "game-just-finished" }),
     );
   });
@@ -254,9 +251,11 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
     // read-only from the client until it is migrated. The strict presence
     // checks further down in the owner-update clause
     //   && !('email' in request.resource.data) && !('dob' in ...)
-    // operate on the post-merge document state, so a partial `wins++`
-    // update on a doc that still has `email` stored produces
-    // `'email' in request.resource.data == true` → deny. This locks in the
+    // operate on the post-merge document state, so even a benign partial
+    // update (a stance change) on a doc that still has `email` stored
+    // produces `'email' in request.resource.data == true` → deny. This
+    // isolates the PII guard (a stats write would now be denied on its own
+    // by the wins/losses/lastStatsGameId backstop). It locks in the
     // migration invariant: callers must move PII into the /private
     // subcollection before they can resume writing the public doc.
     await testEnv.clearFirestore();
@@ -270,7 +269,7 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
 
     await assertFails(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        wins: 4,
+        stance: "Goofy",
       }),
     );
   });
