@@ -119,12 +119,12 @@ A Plan agent designed the 12-pairing matrix below. No code was modified; only th
 - ✓ **No `as any`** — zero hits in `src/**/*.{ts,tsx}` (excluding tests).
 - ✓ **No TODO/FIXME/HACK** — zero hits in `src/`.
 - ✓ **No `console.log`** — zero hits outside tests.
-- ✓ **No Firebase imports outside `src/services/**`or`src/firebase.ts`** — zero runtime leaks (three `import type` declarations exist; see §0c).
+- ✓ **No Firebase imports outside <code>src/services/\*\*</code> or `src/firebase.ts`** — zero runtime leaks (three `import type` declarations exist; see §0c).
 - ✓ **No Cloud Functions code** — `functions/` directory does not exist.
 - ✓ **No state-management libraries** — no redux, zustand, jotai, recoil, mobx, valtio, or xstate in `package.json`.
 - ✓ **No UI component libraries** — no @mui, @chakra-ui, antd, @mantine, react-bootstrap, @radix-ui.
 - ✓ **No CSS modules** — zero `.module.css` imports.
-- 🟡 **Inline styles — 18 occurrences across `src/components/**`and`src/screens/**`** (corrected post-publish; see §0e). The original audit reported "zero" — that was wrong. Most hits are runtime-computed values Tailwind cannot express (progress bars, pull-to-refresh transforms, `100dvh` viewport heights, animation delays, z-index tokens). Static-string cases that could move to Tailwind exist at `src/components/onboarding/SpotlightOverlay.tsx:138,150`, `src/screens/Landing.tsx:248,282`, and similar. Track as drift, not a hard violation: CLAUDE.md L59 says "Tailwind utility classes only — no CSS modules, no inline styles," which the runtime-value cases functionally require.
+- 🟡 **Inline styles — 18 occurrences across <code>src/components/\*\*</code> and <code>src/screens/\*\*</code>** (corrected post-publish; see §0e). The original audit reported "zero" — that was wrong. Most hits are runtime-computed values Tailwind cannot express (progress bars, pull-to-refresh transforms, `100dvh` viewport heights, animation delays, z-index tokens). Static-string cases that could move to Tailwind exist at `src/components/onboarding/SpotlightOverlay.tsx:138,150`, `src/screens/Landing.tsx:248,282`, and similar. Track as drift, not a hard violation: CLAUDE.md L59 says "Tailwind utility classes only — no CSS modules, no inline styles," which the runtime-value cases functionally require.
 
 ### Transactional game writes — all clean
 
