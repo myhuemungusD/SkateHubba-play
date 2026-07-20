@@ -6,8 +6,6 @@ const {
   mockGetDocs,
   mockSetDoc,
   mockDeleteDoc,
-  mockUpdateDoc,
-  mockIncrement,
   mockRunTransaction,
   mockWriteBatch,
   mockDoc,
@@ -27,8 +25,6 @@ const {
     // the game-doc deletes have a thenable to chain. Individual tests still
     // override with mockRejectedValueOnce to exercise failure paths.
     mockDeleteDoc: vi.fn().mockResolvedValue(undefined),
-    mockUpdateDoc: vi.fn().mockResolvedValue(undefined),
-    mockIncrement: vi.fn((n: number) => ({ _op: "increment", operand: n })),
     mockRunTransaction: vi.fn(),
     mockWriteBatch: vi.fn(() => batchInstance),
     mockDoc: vi.fn((_db: unknown, ...pathSegments: string[]) => pathSegments.join("/")),
@@ -41,14 +37,18 @@ const {
   };
 });
 
+// updateDoc / increment are intentionally NOT re-exported from the mocked
+// firebase/firestore module: users.ts stopped calling them when the client
+// stats fan-out was removed, so mocking them would advertise a capability the
+// service no longer uses (and lets a future incremental stat-write regression
+// slip past the tests silently). If a legitimate new caller in users.ts needs
+// them again, add them back here alongside the corresponding tests.
 vi.mock("firebase/firestore", () => ({
   collection: mockCollection,
   doc: mockDoc,
   deleteDoc: mockDeleteDoc,
   getDoc: mockGetDoc,
   getDocs: mockGetDocs,
-  updateDoc: mockUpdateDoc,
-  increment: (n: number) => mockIncrement(n),
   query: mockQuery,
   where: mockWhere,
   orderBy: mockOrderBy,

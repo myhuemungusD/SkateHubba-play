@@ -198,19 +198,18 @@ describe("users/{uid} — owner CANNOT re-introduce sensitive PII fields", () =>
   });
 });
 
-describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () => {
-  it("legitimate: owner CAN change stance without touching privileged fields", async () => {
-    await assertSucceeds(
-      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
-        stance: "Goofy",
-      }),
-    );
-  });
+describe("users/{uid} — F2 backstop denies stats-field self-writes (post-lockdown)", () => {
+  // The formerly-legal wins++/losses++ close-out paths now sit inside the
+  // affectedKeys().hasAny(['wins','losses','lastStatsGameId', …]) backstop.
+  // Even citing a genuine terminal game the caller participated in, a client
+  // stat write must fail closed — stats are exclusively the applyGameStats
+  // Cloud Function's job now. Overlaps intentionally with
+  // users-stats-selfinflate-redteam: that suite exhaustively covers the
+  // owner-branch value guard, whereas the three cases below pin the F2
+  // backstop specifically (a typo dropping wins/losses/lastStatsGameId from
+  // the hasAny list would fail here even if the per-field guards still held).
 
   it("attack: owner CANNOT increment wins — even citing a game they really won", async () => {
-    // Formerly legal (ownerCanCloseWins). Since the stats fan-out lockdown,
-    // wins is in the affectedKeys().hasAny([...]) backstop, so a real
-    // winning game no longer authorizes a client stat write.
     await seedTerminatedGame(testEnv, "g-win", {
       player1Uid: OWNER_UID,
       player2Uid: "opponent-uid",
@@ -236,6 +235,16 @@ describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () =
     });
     await assertFails(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 4, lastStatsGameId: "game-just-finished" }),
+    );
+  });
+});
+
+describe("users/{uid} — legitimate non-privileged updates still SUCCEED", () => {
+  it("legitimate: owner CAN change stance without touching privileged fields", async () => {
+    await assertSucceeds(
+      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
+        stance: "Goofy",
+      }),
     );
   });
 
