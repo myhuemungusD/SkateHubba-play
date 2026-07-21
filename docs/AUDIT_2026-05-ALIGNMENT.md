@@ -264,15 +264,15 @@ Every rule-enforced field on `clips` aligns with `clips.writes.ts` and `src/type
 
 7 composite indexes declared in `firestore.indexes.json`:
 
-| Index                                                                          | Backing query                         | Status                 |
-| ------------------------------------------------------------------------------ | ------------------------------------- | ---------------------- |
-| `spots`(isActive ASC, latitude ASC)                                            | `spots.ts:367–370` `queryNearbySpots` | ✓ used                 |
-| `clips`(moderationStatus ASC, createdAt DESC, **name** DESC)                   | `clips.feed.ts` chronological feed    | ✓ used                 |
-| `clips`(moderationStatus ASC, upvoteCount DESC, createdAt DESC, **name** DESC) | **none yet**                          | 🟡 declared but unused |
-| `notifications`(recipientUid ASC, read ASC, createdAt DESC)                    | `notifications.ts:300–303`            | ✓ used                 |
-| `games`(player1Uid ASC, status ASC, updatedAt DESC)                            | `games.subscriptions.ts:29–34`        | ✓ used                 |
-| `games`(player2Uid ASC, status ASC, updatedAt DESC)                            | `games.subscriptions.ts:36–41`        | ✓ used                 |
-| `nudges`(recipientUid ASC, createdAt DESC)                                     | `notifications.ts:243`                | ✓ used                 |
+| Index                                                                            | Backing query                         | Status                 |
+| -------------------------------------------------------------------------------- | ------------------------------------- | ---------------------- |
+| `spots`(isActive ASC, latitude ASC)                                              | `spots.ts:367–370` `queryNearbySpots` | ✓ used                 |
+| `clips`(moderationStatus ASC, createdAt DESC, `__name__` DESC)                   | `clips.feed.ts` chronological feed    | ✓ used                 |
+| `clips`(moderationStatus ASC, upvoteCount DESC, createdAt DESC, `__name__` DESC) | **none yet**                          | 🟡 declared but unused |
+| `notifications`(recipientUid ASC, read ASC, createdAt DESC)                      | `notifications.ts:300–303`            | ✓ used                 |
+| `games`(player1Uid ASC, status ASC, updatedAt DESC)                              | `games.subscriptions.ts:29–34`        | ✓ used                 |
+| `games`(player2Uid ASC, status ASC, updatedAt DESC)                              | `games.subscriptions.ts:36–41`        | ✓ used                 |
+| `nudges`(recipientUid ASC, createdAt DESC)                                       | `notifications.ts:243`                | ✓ used                 |
 
 ### Drift
 

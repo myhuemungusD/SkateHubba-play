@@ -103,7 +103,9 @@ describe("onGameCompleted trigger", () => {
     expect(initializeAppMock).toHaveBeenCalledTimes(1);
   });
 
-  it("skips when the document was deleted (event.data undefined)", async () => {
+  // onDocumentUpdated does not fire on delete — this covers the defensive
+  // guard for the rare case where the SDK hands us an event without snapshots.
+  it("skips when the event snapshot is unavailable", async () => {
     await captured.handler?.(event(undefined));
     expect(applyGameStatsMock).not.toHaveBeenCalled();
   });
