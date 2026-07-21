@@ -5,16 +5,35 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Daily drift audit (see audit-nightly below). 06:13 UTC — off the
+    # top-of-hour spike so the run isn't queued behind everyone else's crons.
+    - cron: "13 6 * * *"
+  # Manual smoke-test hook for audit-nightly: schedule-triggered jobs only
+  # fire from the workflow file on the default branch, so this is the only
+  # way to exercise that job before (or without) waiting for the cron.
+  # Dispatch runs are audit-only — build-and-test and its dependents skip.
+  workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # event_name is part of the group so a scheduled run on refs/heads/main can
+  # never cancel (or be cancelled by) an in-flight push run on the same ref.
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build-and-test:
+    # Scheduled + manually dispatched runs are audit-only — skipping this job
+    # also skips e2e and lighthouse via their `needs` edges.
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history so the dependency-change detection below can diff
+          # against the PR base / previous push head (same requirement as the
+          # merge-base diffs in pr-gate.yml).
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -23,9 +42,62 @@ jobs:
 
       - run: npm ci
 
-      - name: Audit dependencies (fail on moderate+)
+      # ── Dependency audit, scoped to what this change can control ──
+      # History: the audit used to run unconditionally as a hard gate, which
+      # meant every advisory published against an EXISTING pinned transitive
+      # instantly broke every open PR — including PRs that never touched a
+      # dependency (two consecutive days of this in 2026-07 forced hand-bumps
+      # into unrelated PRs). Policy now:
+      #   • change touches package.json / package-lock.json → audit BLOCKS
+      #     (nobody can introduce a vulnerable dep),
+      #   • change doesn't touch deps → audit still runs, report-only
+      #     (signal preserved, PR not held hostage for drift it can't fix),
+      #   • drift itself is caught by the daily audit-nightly job below +
+      #     Dependabot PRs.
+      # Detection fails SAFE on BOTH event paths: any state where the diff
+      # range can't be resolved (forced push, missing before-SHA, git error)
+      # treats deps as changed so the blocking audit runs.
+      - name: Detect dependency manifest changes
+        id: deps
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            RANGE="origin/${BASE_REF}...HEAD"
+          else
+            if [ -z "$BEFORE_SHA" ] || ! git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
+              echo "Cannot resolve previous head — failing safe (deps treated as changed)."
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            RANGE="${BEFORE_SHA}..HEAD"
+          fi
+          # `if !` keeps set -e from killing the step; a git error must land
+          # in the fail-safe branch, not silently select report-only mode.
+          if ! CHANGED_FILES=$(git diff --name-only "$RANGE" -- package.json package-lock.json); then
+            echo "git diff failed for range $RANGE — failing safe (deps treated as changed)."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -n "$CHANGED_FILES" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Audit dependencies (blocking — this change touches deps)
+        if: steps.deps.outputs.changed == 'true'
         run: |
           npm audit --audit-level=moderate
+
+      - name: Audit dependencies (report-only — deps untouched by this change)
+        if: steps.deps.outputs.changed != 'true'
+        run: |
+          if ! npm audit --audit-level=moderate; then
+            echo "::warning::npm audit found advisories in existing pinned dependencies. This change does not touch package.json/package-lock.json, so it is not blocked. Drift is handled by the nightly audit job and Dependabot."
+          fi
 
       - name: Guard against as-any in production code
         run: |
@@ -150,3 +222,29 @@ jobs:
         run: npx @lhci/cli autorun
         env:
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Nightly dependency-drift audit ──
+  # Companion to the deps-scoped audit in build-and-test: PRs only block on
+  # advisories THEY introduce; advisories published against main's existing
+  # lockfile surface here instead — a red scheduled run in the Actions tab is
+  # the alert, and the fix lands via Dependabot or a dedicated dep-bump PR
+  # rather than being hand-patched into whatever PR happens to be open.
+  # Root package only: functions/ carries known unfixable moderates via
+  # firebase-admin transitives (tracked upstream), so auditing it here would
+  # leave this job permanently red and train everyone to ignore it.
+  audit-nightly:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Audit dependencies (fail on moderate+)
+        run: |
+          npm audit --audit-level=moderate
