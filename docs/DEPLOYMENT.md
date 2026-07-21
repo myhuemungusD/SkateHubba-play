@@ -6,6 +6,7 @@
 | ------------------------- | ------------------------------------------- |
 | Code hosting              | Vercel (auto-deploys from GitHub)           |
 | Auth + Database + Storage | Firebase (manual rules deployment required) |
+| Stats close-out           | Firebase Cloud Functions (manual deploy)    |
 | CI gate                   | GitHub Actions (type check → test → build)  |
 
 ---
@@ -94,6 +95,94 @@ Firebase Console → Firestore → Rules tab → check the "Published rules" tim
 **Test before deploying:**
 
 Firebase Console → Firestore → Rules → Rules Playground lets you simulate reads and writes against your rules before publishing them.
+
+---
+
+## Cloud Functions Deployment
+
+The stats close-out function under `functions/` is the one application-authored
+Cloud Functions codebase — maintainer-approved (2026-07) to move win/loss stat
+writes server-side after a client-side stats-replay path corrupted production
+counters (see `docs/CHARTER.md §4.14`). Like rules, it is **not** part of the
+Vercel pipeline and must be deployed deliberately.
+
+```bash
+firebase use sk8hub-d7806
+firebase deploy --only functions
+```
+
+The `functions` block in `firebase.json` declares a `predeploy` hook that runs
+`npm ci` and `npm run build` inside `functions/` before the upload, so the
+deployed artifact always matches the committed lockfile and TypeScript source.
+CI mirrors this on every PR that touches `functions/**` via the `build-functions`
+job in `pr-gate.yml`.
+
+To deploy a single function by name (the deployed export is `onGameCompleted`;
+`applyGameStats` is the internal transaction module it calls):
+
+```bash
+firebase deploy --only functions:onGameCompleted
+```
+
+**Pre-deploy check — region co-location:** the trigger is pinned to
+`us-central1` (`functions/src/index.ts`), which must match the `skatehubba`
+named database's location or the trigger will never fire. Confirm with
+`gcloud firestore databases describe --database=skatehubba` (expected:
+`us-central1`, the same region pinned in `infra/firestore-backup.sh` and the
+`firestore-send-fcm` extension env).
+
+**Verify the deployment:**
+
+Firebase Console → Functions → confirm the function's "Last deployed" timestamp
+and that the newest revision is serving.
+
+---
+
+## Stats Backfill Runbook
+
+Run this when first cutting the win/loss counters over to the server-maintained
+model, or when reconciling counters after an incident. Because `wins`/`losses`
+on `users/{uid}` are now written **only** by the Cloud Function (clients are
+read-only), rollout order matters: deploy the enforcement boundary before the
+writer, and the writer before the clients that depend on it.
+
+**Rollout order (do not reorder):**
+
+1. **Deploy Firestore rules.** `firebase deploy --only firestore:rules` — makes
+   `wins`/`losses` and `games/{gameId}.statsApplied` client-read-only so no
+   client can race the function. See [Firebase Rules Deployment](#firebase-rules-deployment).
+2. **Deploy Cloud Functions.** `firebase deploy --only functions` — stand up the
+   stats close-out writer. See [Cloud Functions Deployment](#cloud-functions-deployment).
+3. **Deploy the client.** Merge to `main`; Vercel auto-deploys the SPA build that
+   no longer writes `wins`/`losses` itself and instead reads them as authoritative.
+4. **Backfill existing counters.** Run the one-off reconciliation script
+   (`--dry-run` first, then live) to recompute `wins`/`losses` from completed
+   games and stamp `statsApplied` on games that closed out before the function
+   existed.
+
+**Backfill script:**
+
+The script uses the Admin SDK — point `GOOGLE_APPLICATION_CREDENTIALS` at a
+service-account key JSON with Firestore access (Firebase Console → Project
+Settings → Service accounts → Generate new private key). Never commit the key.
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
+
+# 1. Dry run first — prints the diffs it WOULD apply, writes nothing.
+node scripts/backfill-stats.mjs --dry-run
+
+# 2. Review the deltas, then run live.
+node scripts/backfill-stats.mjs
+```
+
+Always run `--dry-run` first and eyeball the deltas before the live pass. The
+backfill is idempotent because it is a **recompute-from-source overwrite**:
+every run re-tallies all terminal games and rewrites every user's
+`wins`/`losses` with the recount, so repeat runs converge to the same values
+(`statsApplied` only lets the script skip the redundant game-flag write — it
+does not exempt a game from the tally, and stamping it by hand will not
+prevent a recount).
 
 ---
 

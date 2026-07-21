@@ -1,12 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, waitFor, act } from "@testing-library/react";
+import { render, act } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { Component, useEffect, type ReactNode } from "react";
+import { Component, type ReactNode } from "react";
 import { useGameContext } from "../GameContext";
 import { AuthProvider } from "../AuthContext";
 import { NavigationProvider } from "../NavigationContext";
 import { NotificationProvider } from "../NotificationContext";
-import * as usersService from "../../services/users";
 import type { GameDoc } from "../../services/games";
 
 const mockUseAuth = vi.fn();
@@ -21,7 +20,6 @@ vi.mock("../../services/auth", () => ({
 }));
 vi.mock("../../services/users", () => ({
   deleteUserData: vi.fn(),
-  updatePlayerStats: vi.fn().mockResolvedValue(undefined),
   getUserProfile: vi.fn().mockResolvedValue(null),
 }));
 vi.mock("../../services/blocking", () => ({ isUserBlocked: vi.fn().mockResolvedValue(false) }));
@@ -122,189 +120,6 @@ describe("useGameContext", () => {
     );
 
     expect(getByTestId("games").textContent).toBe("0");
-  });
-});
-
-describe("GameProvider — fanOutStats", () => {
-  type SubscribeCallback = (games: GameDoc[]) => void;
-
-  // Hold onto the callback subscribeToMyGames was invoked with so each test
-  // can drive its own emissions.
-  let subscribeCallback: SubscribeCallback | null = null;
-
-  beforeEach(() => {
-    resetMocks();
-    mockUseAuth.mockReturnValue({
-      loading: false,
-      user: { uid: "alice-uid" },
-      profile: { uid: "alice-uid", username: "alice", stance: "Regular" },
-      refreshProfile: vi.fn(),
-    });
-    vi.mocked(usersService.updatePlayerStats).mockReset().mockResolvedValue(undefined);
-    subscribeCallback = null;
-    mockSubscribeToMyGames.mockImplementation((_uid: string, cb: SubscribeCallback) => {
-      subscribeCallback = cb;
-      return () => {};
-    });
-  });
-
-  async function renderProvider(): Promise<void> {
-    // Mirror the dynamic import used in the existing test above so the
-    // module-level vi.mocks are honoured before GameProvider resolves.
-    const { GameProvider } = await import("../GameContext");
-    function Wrapper({ children }: { children: ReactNode }) {
-      return (
-        <MemoryRouter initialEntries={["/"]}>
-          <AuthProvider>
-            <NavigationProvider>
-              <NotificationProvider uid="alice-uid">{children}</NotificationProvider>
-            </NavigationProvider>
-          </AuthProvider>
-        </MemoryRouter>
-      );
-    }
-    render(
-      <Wrapper>
-        <GameProvider>
-          <span data-testid="ok">ok</span>
-        </GameProvider>
-      </Wrapper>,
-    );
-  }
-
-  function makeFinishedGame(overrides: Partial<GameDoc> = {}): GameDoc {
-    // Cast through unknown — we don't need every GameDoc field for this
-    // catch-up code path; it touches id/status/winner/playerNUid only.
-    return {
-      id: "game-1",
-      player1Uid: "alice-uid",
-      player2Uid: "bob-uid",
-      status: "complete",
-      winner: "alice-uid",
-      ...overrides,
-    } as unknown as GameDoc;
-  }
-
-  it("fan-out: fires updatePlayerStats for BOTH self and opponent on a finished game", async () => {
-    await renderProvider();
-    expect(subscribeCallback).not.toBeNull();
-    subscribeCallback!([makeFinishedGame()]);
-
-    await waitFor(() => {
-      expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
-    });
-    expect(usersService.updatePlayerStats).toHaveBeenCalledWith("alice-uid", "game-1", true);
-    expect(usersService.updatePlayerStats).toHaveBeenCalledWith("bob-uid", "game-1", false);
-  });
-
-  it("isolation: self-write failure does not suppress the opponent-write attempt", async () => {
-    vi.mocked(usersService.updatePlayerStats).mockImplementation(async (uid: string) => {
-      if (uid === "alice-uid") throw new Error("self write rejected");
-    });
-    await renderProvider();
-    subscribeCallback!([makeFinishedGame()]);
-
-    await waitFor(() => {
-      expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
-    });
-    // Both calls must have been issued — independent .catch() handlers
-    // mean the rejection on the self call does not block the opp call.
-    expect(usersService.updatePlayerStats).toHaveBeenCalledWith("alice-uid", "game-1", true);
-    expect(usersService.updatePlayerStats).toHaveBeenCalledWith("bob-uid", "game-1", false);
-  });
-
-  /**
-   * Fire the fan-out for one finished game, wait for the initial two writes,
-   * then re-emit the same game twice and assert the count stays at two — i.e.
-   * the processedStatsRef guard prevents re-firing on later snapshots.
-   */
-  async function expectNoReFireOnReEmit() {
-    await renderProvider();
-    const game = makeFinishedGame();
-    subscribeCallback!([game]);
-    await waitFor(() => {
-      expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
-    });
-    subscribeCallback!([game]);
-    subscribeCallback!([game]);
-    await Promise.resolve(); // flush microtasks
-    expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
-  }
-
-  it("idempotency: re-emission of the same finished game does not double-fire either write", async () => {
-    // Writes succeed; the guard keeps re-emissions from double-firing.
-    await expectNoReFireOnReEmit();
-  });
-
-  it("storm guard: a failed write is NOT re-fired on subsequent snapshots", async () => {
-    // Regression: the guard key must stay marked on failure so re-emissions
-    // don't re-arm a doomed write. Use a Firestore-shaped rejection to prove
-    // the guard doesn't peek at the error code.
-    const stormErr = Object.assign(new Error("failed-precondition"), { code: "failed-precondition" });
-    vi.mocked(usersService.updatePlayerStats).mockRejectedValue(stormErr);
-    await expectNoReFireOnReEmit();
-  });
-
-  it("shared-ref: a completion delivered via BOTH subscribers only fires two writes", async () => {
-    // Locks in the load-bearing invariant of fanOutStats: processedStatsRef
-    // is shared across subscribeToMyGames AND subscribeToGame, so a single
-    // game completion arriving on both paths still fires each side exactly
-    // once. Without the shared ref, the peer write would double-count.
-    let gameCallback: ((g: GameDoc | null) => void) | null = null;
-    mockSubscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
-      gameCallback = cb;
-      return () => {};
-    });
-
-    // Grab setActiveGame out of context so we can mount the single-game
-    // listener without going through the full openGame flow. Assignment
-    // is deferred to useEffect to satisfy react-hooks/immutability, which
-    // rejects outer-cell writes during render (see AuthContext.test.tsx's
-    // handleDeleteAccount harness for the same pattern).
-    const bridge: { setActive: ((g: GameDoc | null) => void) | null } = { setActive: null };
-    function Grab() {
-      const { setActiveGame } = useGameContext();
-      useEffect(() => {
-        bridge.setActive = setActiveGame;
-      }, [setActiveGame]);
-      return null;
-    }
-    const { GameProvider } = await import("../GameContext");
-    render(
-      <MemoryRouter initialEntries={["/"]}>
-        <AuthProvider>
-          <NavigationProvider>
-            <NotificationProvider uid="alice-uid">
-              <GameProvider>
-                <Grab />
-              </GameProvider>
-            </NotificationProvider>
-          </NavigationProvider>
-        </AuthProvider>
-      </MemoryRouter>,
-    );
-
-    const game = makeFinishedGame();
-    await waitFor(() => {
-      expect(bridge.setActive).not.toBeNull();
-    });
-    act(() => {
-      bridge.setActive!(game);
-    });
-    expect(gameCallback).not.toBeNull();
-
-    act(() => {
-      subscribeCallback!([game]);
-    });
-    await waitFor(() => {
-      expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
-    });
-
-    act(() => {
-      gameCallback!(game);
-    });
-    await Promise.resolve(); // flush microtasks
-    expect(usersService.updatePlayerStats).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -42,7 +42,6 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, setDoc, updateDoc, setLogLevel } from "firebase/firestore";
-import { seedTerminatedGame } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-users-legacy-migration";
 
@@ -126,13 +125,13 @@ describe("users/{uid} — strict post-backfill behaviour against legacy-shaped d
   // legacy fields through. After the May 2026 backfill, no such doc
   // should exist in production; this is defence-in-depth.
 
-  it("post-backfill strict: wins++ against a legacy-shaped doc is DENIED (sensitive fields ride through)", async () => {
+  it("post-backfill strict: a wins/lastStatsGameId write against a legacy-shaped doc is DENIED", async () => {
     await seedLegacyPublicUser();
-    // Exact shape of updatePlayerStats (src/services/users.ts:305) on
-    // a win: { wins: increment(1), lastStatsGameId: "g-123" }. When
-    // Firestore merges that into the legacy doc,
-    // request.resource.data carries every inline sensitive field,
-    // and the strict guard rejects them.
+    // A stats-shaped write { wins, lastStatsGameId } is now denied for TWO
+    // independent reasons: (a) stats are server-only, so wins/lastStatsGameId
+    // sit in the affectedKeys().hasAny([...]) backstop, and (b) the legacy
+    // doc still carries inline PII, which the strict `!('email' in ...)`
+    // guard rejects once Firestore merges it into request.resource.data.
     await assertFails(
       updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), {
         wins: 4,
@@ -185,17 +184,14 @@ describe("users/{uid} — strict post-backfill behaviour against legacy-shaped d
     await assertFails(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { email: "alice@example.com" }));
   });
 
-  it("legitimate: wins++ against a clean (post-backfill) doc SUCCEEDS", async () => {
+  it("post-lockdown: wins++ against a clean (post-backfill) doc is DENIED (stats are server-only)", async () => {
     await seedCleanPublicUser();
-    // Stats writes now require a backing game doc via lastStatsGameId
-    // (see firestore.rules ownerCanCloseWins helper).
-    await seedTerminatedGame(testEnv, "g-123", {
-      player1Uid: OWNER_UID,
-      player2Uid: "opponent-uid",
-      winner: OWNER_UID,
-    });
-    await assertSucceeds(
-      updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 4, lastStatsGameId: "g-123" }),
-    );
+    // Even on a perfectly clean doc, a client stat write is now rejected —
+    // wins/losses/lastStatsGameId are owned by the applyGameStats Cloud
+    // Function. A benign non-stats edit (stance) against the same clean doc
+    // still succeeds, proving it's the stats fields (not the doc) that are
+    // locked.
+    await assertFails(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { wins: 4, lastStatsGameId: "g-123" }));
+    await assertSucceeds(updateDoc(doc(asOwner().firestore(), "users", OWNER_UID), { stance: "Goofy" }));
   });
 });
