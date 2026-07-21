@@ -2,10 +2,9 @@ import { createContext, useContext, useState, useEffect, useCallback, useMemo, u
 import { useAuthContext } from "./AuthContext";
 import { useNavigationContext } from "./NavigationContext";
 import { useNotifications } from "./NotificationContext";
-import { updatePlayerStats, getUserProfile } from "../services/users";
+import { getUserProfile } from "../services/users";
 import { isUserBlocked } from "../services/blocking";
 import { createGame, forfeitExpiredTurn, subscribeToMyGames, subscribeToGame, type GameDoc } from "../services/games";
-import { getOpponent } from "../services/games.turns";
 import type { TrickCategoryId } from "../constants/trickCategories";
 import { newGameShell, parseFirebaseError } from "../utils/helpers";
 import { analytics } from "../services/analytics";
@@ -49,15 +48,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [games, setGames] = useState<GameDoc[]>([]);
   const [activeGame, setActiveGame] = useState<GameDoc | null>(null);
 
-  // One-shot guard for the stats fan-out (see fanOutStats below). Keys
-  // `${gameId}:self` and `${gameId}:opp` isolate the owner and peer writes
-  // so a rules-rejected peer write can't suppress the owner. Keys are
-  // never cleared once set: clearing on catch would let onSnapshot
-  // re-emissions hammer a doomed write. Any unrecorded stats catch up on
-  // the next session — updatePlayerStats is idempotent per game via the
-  // lastStatsGameId transaction check.
-  const processedStatsRef = useRef(new Set<string>());
-
   // Track which expired games have already had forfeit attempted this session,
   // so the subscription firing repeatedly (after any game update) doesn't spam
   // forfeitExpiredTurn for the same game.
@@ -73,47 +63,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
     setGamesLimit((prev) => prev + GAMES_PAGE_SIZE);
   }, []);
 
-  // Fan out win/loss increments for one finished game — writes both the
-  // caller's own stats (always permitted by isOwner) and the opponent's
-  // (gated by canPeerCloseStats in firestore.rules). Guarded per-side by
-  // processedStatsRef so re-emissions don't double-fire, and so a
-  // permission-denied on one side can't gate the other. Shared by the
-  // games-list catch-up loop and the single-game listener; the shared
-  // ref keeps the two subscriptions from re-firing the same write.
-  const fanOutStats = useCallback((game: GameDoc, selfUid: string): void => {
-    if ((game.status !== "complete" && game.status !== "forfeit") || !game.winner) return;
-    const selfKey = `${game.id}:self`;
-    const oppKey = `${game.id}:opp`;
-    const won = game.winner === selfUid;
-    const opponentUid = getOpponent(game, selfUid);
-    if (!processedStatsRef.current.has(selfKey)) {
-      processedStatsRef.current.add(selfKey);
-      updatePlayerStats(selfUid, game.id, won).catch((err) => {
-        logger.warn("stats_write_failed", {
-          gameId: game.id,
-          side: "self",
-          error: parseFirebaseError(err),
-        });
-      });
-    }
-    if (!processedStatsRef.current.has(oppKey)) {
-      processedStatsRef.current.add(oppKey);
-      updatePlayerStats(opponentUid, game.id, !won).catch((err) => {
-        logger.warn("stats_write_failed", {
-          gameId: game.id,
-          side: "opp",
-          error: parseFirebaseError(err),
-        });
-      });
-    }
-  }, []);
-
   // Clear game state when user logs out
   useEffect(() => {
     if (!user) {
       setGames([]);
       setActiveGame(null);
-      processedStatsRef.current.clear();
       forfeitAttemptedRef.current.clear();
     }
   }, [user]);
@@ -153,12 +107,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       (updatedGames) => {
         setGames(updatedGames);
         setGamesLoading(false);
-        // Catch up on stats for games that completed while the user was
-        // away. Without the opponent-side write, an absent loser's `losses`
-        // counter never advances and the leaderboard skews.
-        for (const g of updatedGames) {
-          fanOutStats(g, user.uid);
-        }
         // Auto-resolve games whose turn deadline passed while nobody was
         // watching. Mirrors the per-game check in GamePlayScreen but runs
         // against the full list so stale "active" games don't linger in
@@ -169,7 +117,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       gamesLimit,
     );
     return unsub;
-  }, [user, activeProfile, gamesLimit, sweepExpiredTurns, fanOutStats]);
+  }, [user, activeProfile, gamesLimit, sweepExpiredTurns]);
 
   // Schedule a sweep when the next visible deadline elapses. Without this,
   // a user who keeps the app open across an expiring deadline never sees
@@ -202,8 +150,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Real-time single game subscription
   const screenRef = useRef(screen);
   screenRef.current = screen;
-  const userRef = useRef(user);
-  userRef.current = user;
 
   useEffect(() => {
     if (!activeGame) return;
@@ -213,11 +159,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
         setScreen("gameover");
       }
-      // Live update path shares processedStatsRef with the games-list
-      // catch-up, so a completion delivered via both subscriptions can't
-      // double-fire.
-      const currentUser = userRef.current;
-      if (currentUser) fanOutStats(updated, currentUser.uid);
     });
     return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- re-subscribe only when game ID changes

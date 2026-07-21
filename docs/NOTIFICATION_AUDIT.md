@@ -212,7 +212,7 @@ No further action required for the judge-invite path. Do not add a separate `/pu
 
 1. ~~**No Firestore rules tests for `/notifications`**~~ — covered by `rules-tests/notifications-redteam.rules.test.ts` and `notification-limits.rules.test.ts` (added after this audit).
 2. ~~**No Firestore rules tests for `/nudges` or `/nudge_limits`**~~ — covered by `rules-tests/nudges-redteam.rules.test.ts`: companion `nudge_limits` write requirement, the 1-hour cooldown gate (including the stale-cooldown bypass), and limit-doc delete-denial are exercised at the rules level.
-3. **No application-authored Cloud Functions** — the `functions/` package was removed from this repo. Background push (FCM) is now delivered by the `firestore-send-fcm` Firebase Extension's managed Cloud Run worker consuming `/push_dispatch`. Scheduled forfeit enforcement and billing alerts previously implemented in `functions/` are no longer deployed; client-side `forfeitExpiredTurn` and `updatePlayerStats` continue to run on game completion (auto-forfeit gap tracked in `docs/CHARTER.md` §9.2).
+3. **Cloud Functions limited to the stats close-out** — the historical notification `functions/` package remains removed. Background push (FCM) is delivered by the `firestore-send-fcm` Firebase Extension's managed Cloud Run worker consuming `/push_dispatch`. Scheduled forfeit enforcement and billing alerts previously implemented in `functions/` are no longer deployed; client-side `forfeitExpiredTurn` continues to run on game completion (auto-forfeit gap tracked in `docs/CHARTER.md` §9.2). Win/loss stat writes moved server-side to the maintainer-approved stats close-out function (`functions/src/applyGameStats.ts`) — none of the notification paths audited here involve it.
 
 ---
 
