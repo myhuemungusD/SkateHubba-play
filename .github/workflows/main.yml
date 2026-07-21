@@ -237,6 +237,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Pin to main so `workflow_dispatch` fired from a feature branch still
+          # audits main's lockfile. Otherwise a dispatch from an outdated branch
+          # would report drift against that branch's stale lockfile and either
+          # cry wolf or (worse) miss a real advisory that only exists on main.
+          # Schedule runs already default to main; this only affects dispatch.
+          ref: main
 
       - uses: actions/setup-node@v4
         with:
