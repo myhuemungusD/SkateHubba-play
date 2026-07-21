@@ -116,15 +116,22 @@ A Plan agent designed the 12-pairing matrix below. No code was modified; only th
 
 ### Hard guardrails — all clean
 
+<!-- Two bullets below wrap code spans ending in `**` inside bold markup, which
+     prettier's markdown emphasis parser mangles (eats spaces, escapes the bold
+     close). The range pragma keeps this list verbatim. -->
+<!-- prettier-ignore-start -->
+
 - ✓ **No `as any`** — zero hits in `src/**/*.{ts,tsx}` (excluding tests).
 - ✓ **No TODO/FIXME/HACK** — zero hits in `src/`.
 - ✓ **No `console.log`** — zero hits outside tests.
-- ✓ **No Firebase imports outside `src/services/**`or`src/firebase.ts`** — zero runtime leaks (three `import type` declarations exist; see §0c).
+- ✓ **No Firebase imports outside `src/services/**` or `src/firebase.ts`** — zero runtime leaks (three `import type` declarations exist; see §0c).
 - ✓ **No Cloud Functions code** — `functions/` directory does not exist.
 - ✓ **No state-management libraries** — no redux, zustand, jotai, recoil, mobx, valtio, or xstate in `package.json`.
 - ✓ **No UI component libraries** — no @mui, @chakra-ui, antd, @mantine, react-bootstrap, @radix-ui.
 - ✓ **No CSS modules** — zero `.module.css` imports.
-- 🟡 **Inline styles — 18 occurrences across `src/components/**`and`src/screens/**`** (corrected post-publish; see §0e). The original audit reported "zero" — that was wrong. Most hits are runtime-computed values Tailwind cannot express (progress bars, pull-to-refresh transforms, `100dvh` viewport heights, animation delays, z-index tokens). Static-string cases that could move to Tailwind exist at `src/components/onboarding/SpotlightOverlay.tsx:138,150`, `src/screens/Landing.tsx:248,282`, and similar. Track as drift, not a hard violation: CLAUDE.md L59 says "Tailwind utility classes only — no CSS modules, no inline styles," which the runtime-value cases functionally require.
+- 🟡 **Inline styles — 18 occurrences across `src/components/**` and `src/screens/**`** (corrected post-publish; see §0e). The original audit reported "zero" — that was wrong. Most hits are runtime-computed values Tailwind cannot express (progress bars, pull-to-refresh transforms, `100dvh` viewport heights, animation delays, z-index tokens). Static-string cases that could move to Tailwind exist at `src/components/onboarding/SpotlightOverlay.tsx:138,150`, `src/screens/Landing.tsx:248,282`, and similar. Track as drift, not a hard violation: CLAUDE.md L59 says "Tailwind utility classes only — no CSS modules, no inline styles," which the runtime-value cases functionally require.
+
+<!-- prettier-ignore-end -->
 
 ### Transactional game writes — all clean
 
@@ -264,15 +271,15 @@ Every rule-enforced field on `clips` aligns with `clips.writes.ts` and `src/type
 
 7 composite indexes declared in `firestore.indexes.json`:
 
-| Index                                                                          | Backing query                         | Status                 |
-| ------------------------------------------------------------------------------ | ------------------------------------- | ---------------------- |
-| `spots`(isActive ASC, latitude ASC)                                            | `spots.ts:367–370` `queryNearbySpots` | ✓ used                 |
-| `clips`(moderationStatus ASC, createdAt DESC, **name** DESC)                   | `clips.feed.ts` chronological feed    | ✓ used                 |
-| `clips`(moderationStatus ASC, upvoteCount DESC, createdAt DESC, **name** DESC) | **none yet**                          | 🟡 declared but unused |
-| `notifications`(recipientUid ASC, read ASC, createdAt DESC)                    | `notifications.ts:300–303`            | ✓ used                 |
-| `games`(player1Uid ASC, status ASC, updatedAt DESC)                            | `games.subscriptions.ts:29–34`        | ✓ used                 |
-| `games`(player2Uid ASC, status ASC, updatedAt DESC)                            | `games.subscriptions.ts:36–41`        | ✓ used                 |
-| `nudges`(recipientUid ASC, createdAt DESC)                                     | `notifications.ts:243`                | ✓ used                 |
+| Index                                                                            | Backing query                         | Status                 |
+| -------------------------------------------------------------------------------- | ------------------------------------- | ---------------------- |
+| `spots`(isActive ASC, latitude ASC)                                              | `spots.ts:367–370` `queryNearbySpots` | ✓ used                 |
+| `clips`(moderationStatus ASC, createdAt DESC, `__name__` DESC)                   | `clips.feed.ts` chronological feed    | ✓ used                 |
+| `clips`(moderationStatus ASC, upvoteCount DESC, createdAt DESC, `__name__` DESC) | **none yet**                          | 🟡 declared but unused |
+| `notifications`(recipientUid ASC, read ASC, createdAt DESC)                      | `notifications.ts:300–303`            | ✓ used                 |
+| `games`(player1Uid ASC, status ASC, updatedAt DESC)                              | `games.subscriptions.ts:29–34`        | ✓ used                 |
+| `games`(player2Uid ASC, status ASC, updatedAt DESC)                              | `games.subscriptions.ts:36–41`        | ✓ used                 |
+| `nudges`(recipientUid ASC, createdAt DESC)                                       | `notifications.ts:243`                | ✓ used                 |
 
 ### Drift
 
@@ -410,10 +417,16 @@ Each prior-audit finding revisited against HEAD as of 2026-05-18:
 
 ### Not enforced in CI
 
+<!-- Same `**`-in-code-span emphasis hazard as the compliance list above:
+     prettier escapes the closing bold as \*\*. Range pragma keeps it verbatim. -->
+<!-- prettier-ignore-start -->
+
 - 🟡 **`console.log` ban** (CLAUDE.md L143) — no grep job in `pr-gate.yml`.
-- 🟡 **No Firebase imports outside `src/services/**`\*\* (CLAUDE.md L57) — no grep job.
+- 🟡 **No Firebase imports outside `src/services/**`** (CLAUDE.md L57) — no grep job.
 - 🟡 **No CSS files** (CLAUDE.md L59, L145) — no grep job for `*.css` imports.
 - 🟡 **No state-management libs** (CLAUDE.md L94) — no `package.json` dependency check.
+
+<!-- prettier-ignore-end -->
 
 These four guardrails have held via code review alone. They are not contractual violations — they are gaps between policy and automation.
 
