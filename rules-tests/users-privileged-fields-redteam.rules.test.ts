@@ -210,6 +210,9 @@ describe("users/{uid} — F2 backstop denies stats-field self-writes (post-lockd
   // the hasAny list would fail here even if the per-field guards still held).
 
   it("attack: owner CANNOT increment wins — even citing a game they really won", async () => {
+    // Formerly legal (ownerCanCloseWins). Since the stats fan-out lockdown,
+    // wins is in the affectedKeys().hasAny([...]) backstop, so a real
+    // winning game no longer authorizes a client stat write.
     await seedTerminatedGame(testEnv, "g-win", {
       player1Uid: OWNER_UID,
       player2Uid: "opponent-uid",
