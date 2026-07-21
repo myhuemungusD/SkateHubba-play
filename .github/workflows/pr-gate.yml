@@ -29,7 +29,9 @@ jobs:
 
       - name: Reject as-any in production code
         run: |
-          if grep -rn "as any" src/ --include="*.ts" --include="*.tsx" | grep -v __tests__ | grep -v __mocks__ | grep -v ".test."; then
+          # Covers both the app (src/) and the approved Cloud Functions
+          # codebase (functions/src/), with the same test-file exclusions.
+          if grep -rn "as any" src/ functions/src/ --include="*.ts" --include="*.tsx" | grep -v __tests__ | grep -v __mocks__ | grep -v ".test."; then
             echo "::error::'as any' found in production code. Keep type casts in test files only."
             exit 1
           fi
@@ -44,15 +46,32 @@ jobs:
           # can return empty and silently let new functions/src/ slip past.
           fetch-depth: 0
 
-      - name: Reject new Cloud Functions code
+      - name: Enforce Cloud Functions allowlist
         run: |
-          # Reject any new Cloud Functions source under functions/src/. The
-          # functions/ package was removed (see CLAUDE.md "No Cloud Functions"
-          # guardrail); this guard prevents AI agents from silently
-          # reintroducing it.
-          if git diff origin/main...HEAD --name-only | grep -qE '^functions/src/'; then
-            echo "::error::New Cloud Functions source detected in functions/src/."
-            echo "Cloud Functions require explicit maintainer approval."
+          # The stats close-out function is the one maintainer-approved,
+          # application-authored Cloud Functions codebase (see docs/CHARTER.md
+          # §4.14 and the CLAUDE.md guardrail table). It replaced a client-side
+          # stats-replay path that corrupted production win/loss counters.
+          # This gate pins its EXACT file set: any changed file under
+          # functions/src/ that is not on the allowlist below hard-fails, so no
+          # future PR can smuggle new authored Cloud Functions in beside it.
+          VIOLATIONS=""
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in
+              functions/src/index.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts) ;;
+              *) VIOLATIONS="${VIOLATIONS}${file}"$'\n' ;;
+            esac
+          done < <(git diff origin/main...HEAD --name-only | grep -E '^functions/src/' || true)
+
+          if [ -n "$VIOLATIONS" ]; then
+            printf '%s' "$VIOLATIONS"
+            echo "::error::Unapproved Cloud Functions source detected under functions/src/."
+            echo "Only the maintainer-approved stats close-out file set is allowed:"
+            echo "  functions/src/index.ts"
+            echo "  functions/src/applyGameStats.ts"
+            echo "  functions/src/applyGameStats.test.ts"
+            echo "Any other functions/src/ code requires explicit maintainer approval."
             echo "See .github/BRANCH_PROTECTION.md for details."
             exit 1
           fi
@@ -156,3 +175,49 @@ jobs:
       - name: Skip note
         if: steps.changed.outputs.touched != 'true'
         run: echo "No rules-related changes — skipping rules emulator tests."
+
+  build-functions:
+    name: Build and test Cloud Functions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Same merge-base requirement as the other change-scoped jobs —
+          # without full history the diff returns empty and this gate
+          # silently no-ops instead of building the functions package.
+          fetch-depth: 0
+
+      - name: Detect functions changes
+        id: changed
+        run: |
+          if git diff origin/main...HEAD --name-only | grep -qE '^functions/'; then
+            echo "touched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "touched=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changed.outputs.touched == 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+
+      - name: Install functions dependencies
+        if: steps.changed.outputs.touched == 'true'
+        working-directory: functions
+        run: npm ci
+
+      - name: Build functions
+        if: steps.changed.outputs.touched == 'true'
+        working-directory: functions
+        run: npm run build
+
+      - name: Test functions
+        if: steps.changed.outputs.touched == 'true'
+        working-directory: functions
+        run: npm test
+
+      - name: Skip note
+        if: steps.changed.outputs.touched != 'true'
+        run: echo "No functions/ changes — skipping Cloud Functions build and tests."

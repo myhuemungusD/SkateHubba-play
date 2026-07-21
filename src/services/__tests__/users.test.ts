@@ -128,7 +128,6 @@ import {
   createProfile,
   getUidByUsername,
   deleteUserData,
-  updatePlayerStats,
   getLeaderboard,
   getPlayerDirectory,
   setProfileImageUrl,
@@ -759,120 +758,6 @@ describe("users service", () => {
         data: () => ({ uid: 12345 }),
       });
       expect(await getUidByUsername("sk8r")).toBeNull();
-    });
-  });
-
-  describe("updatePlayerStats", () => {
-    /**
-     * Drive a mock Firestore transaction: invoke the user callback with a tx
-     * that reads the current user snapshot and captures the write payload.
-     * Returns the captured update spy so tests can assert on it.
-     */
-    function runStubTx(snapshot: { exists: () => boolean; data: () => unknown }) {
-      const txUpdate = vi.fn();
-      mockRunTransaction.mockImplementationOnce(async (_db: unknown, fn: Function) => {
-        const tx = {
-          get: vi.fn().mockResolvedValue(snapshot),
-          update: txUpdate,
-        };
-        return fn(tx);
-      });
-      return txUpdate;
-    }
-
-    it("increments wins inside a transaction when the player won", async () => {
-      const txUpdate = runStubTx({
-        exists: () => true,
-        data: () => ({ uid: "u1", username: "sk8r", wins: 3, losses: 1, lastStatsGameId: "old-game" }),
-      });
-
-      await updatePlayerStats("u1", "game-123", true);
-
-      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
-      expect(txUpdate).toHaveBeenCalledWith(expect.anything(), {
-        wins: { _op: "increment", operand: 1 },
-        lastStatsGameId: "game-123",
-      });
-      // Must NOT escape the transaction — the previous non-atomic
-      // read-then-write path double-counted when two tabs raced.
-      expect(mockUpdateDoc).not.toHaveBeenCalled();
-    });
-
-    it("increments losses inside a transaction when the player lost", async () => {
-      const txUpdate = runStubTx({
-        exists: () => true,
-        data: () => ({ uid: "u1", username: "sk8r", wins: 2, losses: 5, lastStatsGameId: "old-game" }),
-      });
-
-      await updatePlayerStats("u1", "game-456", false);
-
-      expect(txUpdate).toHaveBeenCalledWith(expect.anything(), {
-        losses: { _op: "increment", operand: 1 },
-        lastStatsGameId: "game-456",
-      });
-    });
-
-    it("uses increment(1) regardless of whether wins field exists", async () => {
-      const txUpdate = runStubTx({
-        exists: () => true,
-        data: () => ({ uid: "u1", username: "sk8r" }),
-      });
-
-      await updatePlayerStats("u1", "game-789", true);
-
-      expect(txUpdate).toHaveBeenCalledWith(expect.anything(), {
-        wins: { _op: "increment", operand: 1 },
-        lastStatsGameId: "game-789",
-      });
-    });
-
-    it("skips the update when lastStatsGameId matches (idempotency re-checked inside tx)", async () => {
-      const txUpdate = runStubTx({
-        exists: () => true,
-        data: () => ({ uid: "u1", wins: 3, losses: 1, lastStatsGameId: "game-123" }),
-      });
-
-      await updatePlayerStats("u1", "game-123", true);
-
-      expect(mockRunTransaction).toHaveBeenCalledTimes(1);
-      expect(txUpdate).not.toHaveBeenCalled();
-    });
-
-    it("skips the update when the profile does not exist", async () => {
-      const txUpdate = runStubTx({ exists: () => false, data: () => ({}) });
-
-      await updatePlayerStats("u1", "game-123", true);
-
-      expect(txUpdate).not.toHaveBeenCalled();
-    });
-
-    it("swallows permission-denied (peer-write loses canPeerCloseStats) and warns", async () => {
-      // Peer fan-out from GameContext writes the opponent's stats too.
-      // canPeerCloseStats can reject in legitimate states (owner already
-      // committed, winner/direction mismatch) — best-effort denorm, must
-      // not produce an uncaught rejection in fire-and-forget callers.
-      const permErr = Object.assign(new Error("permission-denied"), { code: "permission-denied" });
-      mockRunTransaction.mockRejectedValueOnce(permErr);
-
-      await expect(updatePlayerStats("opponent-uid", "game-123", false)).resolves.toBeUndefined();
-      expect(mockLoggerWarn).toHaveBeenCalledWith(
-        "update_player_stats_peer_failed",
-        expect.objectContaining({ uid: "opponent-uid", code: "permission-denied" }),
-      );
-    });
-
-    it("rethrows non-permission errors", async () => {
-      // Only permission-denied is swallowed (peer-write denorm loss).
-      // Everything else is the caller's concern.
-      const netErr = Object.assign(new Error("unavailable"), { code: "unavailable" });
-      mockRunTransaction.mockRejectedValueOnce(netErr);
-
-      await expect(updatePlayerStats("u1", "game-123", true)).rejects.toThrow("unavailable");
-    });
-
-    it("rethrows errors without a code (defensive — non-Firestore throws)", async () => {
-      mockRunTransaction.mockRejectedValueOnce(new Error("boom"));
-      await expect(updatePlayerStats("u1", "game-123", true)).rejects.toThrow("boom");
     });
   });
 

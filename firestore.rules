@@ -95,87 +95,18 @@ service cloud.firestore {
         || (newUrl is string && newUrl.matches(BUCKET_DL_URL_RE()));
     }
 
-    // ── Peer stats close-out ──
-    // Either participant of a complete/forfeit game may atomically increment
-    // the OTHER participant's wins/losses counter, gated by a relational
-    // check against the game doc and the existing lastStatsGameId
-    // idempotency key. Mirrors the cross-doc get() pattern used by /nudges
-    // (lines ~1093) and /notifications (lines ~1145). Without this, the
-    // catch-up loop in src/context/GameContext.tsx could only update the
-    // local user's stats, leaving the absent opponent's counters stale
-    // until they themselves reopened the app (P0 bug — leaderboard skew).
-    //
-    // The peer write is restricted to wins/losses/lastStatsGameId via
-    // affectedKeys().hasOnly(...), so a malicious caller cannot
-    // piggyback edits to username, isVerifiedPro, cooldown anchors, or
-    // any other field on the public profile doc. Increment direction is
-    // pinned to the game's recorded `winner`, and the
-    // `lastStatsGameId != resource.data.lastStatsGameId` guard forces
-    // forward progress (idempotency at the rules layer in addition to
-    // the in-transaction re-read in updatePlayerStats).
-    function canPeerCloseStats(uid) {
-      let gid = request.resource.data.lastStatsGameId;
-      let game = get(/databases/$(database)/documents/games/$(gid)).data;
-      return isSignedIn()
-        && gid is string
-        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
-        && (game.status == 'complete' || game.status == 'forfeit')
-        && game.winner != null
-        && (request.auth.uid == game.player1Uid || request.auth.uid == game.player2Uid)
-        && request.auth.uid != uid
-        && (uid == game.player1Uid || uid == game.player2Uid)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['wins','losses','lastStatsGameId'])
-        && (
-          (game.winner == uid
-            && (
-              (!('wins' in resource.data) && request.resource.data.wins == 1)
-              || ('wins' in resource.data && request.resource.data.wins == resource.data.wins + 1)
-            )
-            && (
-              (!('losses' in request.resource.data) && !('losses' in resource.data))
-              || ('losses' in request.resource.data && 'losses' in resource.data && request.resource.data.losses == resource.data.losses)
-            )
-          )
-          || (game.winner != uid
-            && (
-              (!('losses' in resource.data) && request.resource.data.losses == 1)
-              || ('losses' in resource.data && request.resource.data.losses == resource.data.losses + 1)
-            )
-            && (
-              (!('wins' in request.resource.data) && !('wins' in resource.data))
-              || ('wins' in request.resource.data && 'wins' in resource.data && request.resource.data.wins == resource.data.wins)
-            )
-          )
-        );
-    }
-
-    // ── Owner stats close-out ──
-    // Owner-side counterpart to canPeerCloseStats above. The owner-update
-    // branch on /users/{uid} invokes these to gate every wins/losses +1:
-    // without them, a signed-in user could bump their own counter in a
-    // loop and inflate the leaderboard. Same shape as the peer helper
-    // (game-doc get, forward-progress on lastStatsGameId, terminal status,
-    // participant + winner check) but the participant being checked is
-    // the owner themselves rather than the "other" player.
-    function ownerCanCloseWins(uid) {
-      let gid = request.resource.data.lastStatsGameId;
-      let game = get(/databases/$(database)/documents/games/$(gid)).data;
-      return gid is string
-        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
-        && (game.status == 'complete' || game.status == 'forfeit')
-        && game.winner == uid
-        && (uid == game.player1Uid || uid == game.player2Uid);
-    }
-    function ownerCanCloseLosses(uid) {
-      let gid = request.resource.data.lastStatsGameId;
-      let game = get(/databases/$(database)/documents/games/$(gid)).data;
-      return gid is string
-        && (!('lastStatsGameId' in resource.data) || resource.data.lastStatsGameId != gid)
-        && (game.status == 'complete' || game.status == 'forfeit')
-        && game.winner != null
-        && game.winner != uid
-        && (uid == game.player1Uid || uid == game.player2Uid);
-    }
+    // ── Stats are server-only (client fan-out lockdown) ──
+    // wins/losses/lastStatsGameId used to be closed out by client writes
+    // (the catch-up loop in the former src/context/GameContext.tsx, gated
+    // here by canPeerCloseStats / ownerCanCloseWins / ownerCanCloseLosses).
+    // That fan-out corrupted production counters, so it has been removed.
+    // Stats are now written EXCLUSIVELY server-side: the applyGameStats
+    // Cloud Function (admin SDK, bypasses these rules) increments
+    // users/{uid}.wins/.losses exactly once per terminal game, and a
+    // one-time admin backfill recomputes counters + deletes the dead
+    // lastStatsGameId field. The client stat helpers are therefore gone;
+    // clients may never modify these fields (owner-update backstop below)
+    // and may never forge the game-side statsApplied flag (games rules).
 
     // ── turnHistory growth bounds ──
     // Every write path that legitimately appends to `games.turnHistory`
@@ -317,8 +248,8 @@ service cloud.firestore {
         // ignores it. The per-field guards below remain the canonical
         // value-equality check; this clause is the comprehensive backstop
         // that closes self-modify attempts on fields the owner must never
-        // touch (createdAt rewrite, isVerifiedPro grant, etc.).
-        // `lastStatsGameId` is intentionally excluded — see NOTE below.
+        // touch (createdAt rewrite, isVerifiedPro grant, wins/losses
+        // inflation, etc.).
         //
         // Field rationale:
         //   uid, username, createdAt — identity, immutable post-create.
@@ -326,17 +257,18 @@ service cloud.firestore {
         //   email, emailVerified, dob, parentalConsent, fcmTokens —
         //     legacy sensitive fields; once moved to /private they must
         //     never reappear or be re-written on the public doc.
-        //
-        // NOTE: `lastStatsGameId` is deliberately NOT in this list. The
-        // owner legitimately advances it on every `updatePlayerStats`
-        // run (src/services/users.ts) as the local-side idempotency
-        // key for the wins/losses catch-up loop. The peer-write branch
-        // has its own forward-progress check in canPeerCloseStats().
+        //   wins, losses, lastStatsGameId — stats are written exclusively
+        //     server-side (applyGameStats Cloud Function + the one-time
+        //     admin backfill); clients may never modify them. affectedKeys()
+        //     only contains fields whose VALUE changes, so legacy docs still
+        //     carrying lastStatsGameId keep working for benign profile edits
+        //     (stance/avatar) that don't touch it.
         && !(request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['uid', 'username', 'createdAt',
                      'isVerifiedPro', 'verifiedBy', 'verifiedAt',
                      'email', 'emailVerified', 'dob', 'parentalConsent',
-                     'fcmTokens']))
+                     'fcmTokens',
+                     'wins', 'losses', 'lastStatsGameId']))
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
@@ -352,80 +284,11 @@ service cloud.firestore {
         && !('dob' in request.resource.data)
         && !('parentalConsent' in request.resource.data)
         && !('fcmTokens' in request.resource.data)
-        // Wins/losses can only increment by 0 or 1 per write, AND any +1
-        // increment must be backed by an idempotency-checked game outcome.
-        //
-        // History: the prior form allowed an unconditional +1 on the owner
-        // branch — a signed-in user could call updateDoc({wins: stored + 1})
-        // in a tight loop and inflate their leaderboard rank arbitrarily.
-        // The peer branch (canPeerCloseStats) already required a game-doc
-        // relational check plus forward progress on `lastStatsGameId`; the
-        // owner branch must enforce the same shape, otherwise the peer-side
-        // hardening is useless.
-        //
-        // The +1 path now requires (via ownerCanCloseWins/Losses below):
-        //   (a) `lastStatsGameId` is a string and is the freshly written value
-        //   (b) `lastStatsGameId` actually advances (forward progress —
-        //       blocks rule-layer replays of the same gid)
-        //   (c) the referenced game doc exists, is complete/forfeit, and the
-        //       caller is one of the two players
-        //   (d) winner == uid for the wins side, winner != uid for losses
-        //
-        // The "unchanged" path stays free of game-doc checks so benign
-        // profile edits (stance, avatar URL, etc.) don't require a game ref.
-        && (
-          !('wins' in request.resource.data)
-          || (!('wins' in resource.data)
-              && request.resource.data.wins == 0)
-          || (!('wins' in resource.data)
-              && request.resource.data.wins == 1
-              && ownerCanCloseWins(uid))
-          || ('wins' in resource.data
-              && request.resource.data.wins == resource.data.wins)
-          || ('wins' in resource.data
-              && request.resource.data.wins == resource.data.wins + 1
-              && ownerCanCloseWins(uid))
-        )
-        && (
-          !('losses' in request.resource.data)
-          || (!('losses' in resource.data)
-              && request.resource.data.losses == 0)
-          || (!('losses' in resource.data)
-              && request.resource.data.losses == 1
-              && ownerCanCloseLosses(uid))
-          || ('losses' in resource.data
-              && request.resource.data.losses == resource.data.losses)
-          || ('losses' in resource.data
-              && request.resource.data.losses == resource.data.losses + 1
-              && ownerCanCloseLosses(uid))
-        )
-        // ── lastStatsGameId toggle-bypass guard ──
-        // Without this, the wins/losses sub-branches above allow the
-        // "unchanged stat" path (`request.resource.data.wins == resource.data.wins`)
-        // to coexist with an arbitrary mutation to `lastStatsGameId`, because
-        // the unchanged path never calls ownerCanCloseWins/Losses. Attack:
-        //   (1) legitimately close G1: {wins: stored+1, lastStatsGameId: G1} — OK
-        //   (2) toggle alone:          {lastStatsGameId: "anything"}         — OK (BUG)
-        //   (3) replay G1:             {wins: stored+1, lastStatsGameId: G1} — OK again,
-        //       because ownerCanCloseWins's forward-progress check sees
-        //       resource.data.lastStatsGameId ("anything") != gid (G1).
-        // Looping (2)+(3) inflates wins indefinitely off ONE real game.
-        //
-        // Fix: any change to `lastStatsGameId` on the owner branch must be
-        // paired with a corresponding +1 stat advance that the matching
-        // ownerCanCloseWins/Losses helper validates against the game doc.
-        && (
-          !('lastStatsGameId' in request.resource.data)
-          || request.resource.data.lastStatsGameId == resource.data.get('lastStatsGameId', '')
-          || (
-            request.resource.data.wins == resource.data.get('wins', 0) + 1
-            && ownerCanCloseWins(uid)
-          )
-          || (
-            request.resource.data.losses == resource.data.get('losses', 0) + 1
-            && ownerCanCloseLosses(uid)
-          )
-        )
+        // wins / losses / lastStatsGameId are NOT validated here — they are
+        // covered by the affectedKeys().hasAny([...]) immutable backstop
+        // above, which denies ANY owner write that changes their value.
+        // Stats are server-only now (applyGameStats Cloud Function + admin
+        // backfill); there is no client close-out path to gate.
         // lastGameCreatedAt is the server-side 30s game-creation cooldown
         // anchor (see /games create rule). Without this guard, a client
         // could write a stale Timestamp (e.g. epoch 0) to instantly satisfy
@@ -487,17 +350,12 @@ service cloud.firestore {
             )
           )
         );
-      // Peer-write branch: either participant of a complete/forfeit game
-      // may close out the OTHER participant's wins/losses counter. Firestore
-      // rules are additive across `allow` statements of the same type — if
-      // either branch matches, the write is permitted. The owner branch
-      // above keeps every existing invariant; this branch is locked down
-      // by canPeerCloseStats(uid) (see helper near top of file): correct
-      // game outcome, correct increment direction, and an affectedKeys()
-      // hasOnly([wins,losses,lastStatsGameId]) guard so a peer
-      // cannot piggyback edits to username, isVerifiedPro, or any other
-      // public-profile field.
-      allow update: if canPeerCloseStats(uid);
+      // NOTE: there is deliberately no peer-write branch. wins/losses were
+      // once closed out by either participant (canPeerCloseStats); that
+      // client fan-out corrupted counters and has been removed. Stats are
+      // written exclusively by the applyGameStats Cloud Function (admin
+      // SDK), so the only client `allow update` is the owner branch above,
+      // and it can never touch wins/losses/lastStatsGameId.
       // Users may delete their own profile (account deletion flow)
       allow delete: if isOwner(uid);
 
@@ -718,6 +576,29 @@ service cloud.firestore {
           ));
     }
 
+    // ── statsApplied is server-only (stats fan-out lockdown) ──
+    // `statsApplied` on a game doc is written EXCLUSIVELY by the
+    // applyGameStats Cloud Function (admin SDK, bypasses these rules): it
+    // flips to true inside the same transaction that credits wins/losses
+    // for a terminal game, exactly once. A client must never introduce or
+    // change it — pre-setting statsApplied:true would make the Cloud
+    // Function treat the game as already-credited and skip the loser's loss
+    // forever. Every /games update branch pins it to its stored value via
+    // this helper, and the create rule forbids it outright.
+    //
+    // Presence-pair form (NOT request.resource.data.get('statsApplied',
+    // false)) on purpose: the .get()-with-default idiom trips the "Null
+    // value error" engine quirk documented on the spotId immutability pin
+    // in the games match below. This helper reads no documents — plain
+    // field comparison — so it adds negligible node cost to each branch
+    // (and net expression budget improves now that the three get()-heavy
+    // stat helpers are gone).
+    function statsAppliedUnchanged() {
+      return (!('statsApplied' in resource.data) && !('statsApplied' in request.resource.data))
+        || ('statsApplied' in resource.data && 'statsApplied' in request.resource.data
+            && request.resource.data.statsApplied == resource.data.statsApplied);
+    }
+
     // ── Games ──
     match /games/{gameId} {
       // Players AND the nominated judge can read the game document.
@@ -810,7 +691,10 @@ service cloud.firestore {
         // Block check: neither player may have blocked the other.
         // Uses exists() against both directions of the blocked_users subcollection.
         && !exists(/databases/$(database)/documents/users/$(request.auth.uid)/blocked_users/$(request.resource.data.player2Uid))
-        && !exists(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)/blocked_users/$(request.auth.uid));
+        && !exists(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)/blocked_users/$(request.auth.uid))
+        // statsApplied is server-only — a client that pre-seeds it at
+        // creation would make applyGameStats skip crediting this game.
+        && !('statsApplied' in request.resource.data);
 
       // Current-turn player can make normal game updates
       allow update: if isSignedIn()
@@ -951,7 +835,8 @@ service cloud.firestore {
         && (
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory
-        );
+        )
+        && statsAppliedUnchanged();
 
       // ── Match resolution (matcher submits an attempt) ──
       // Honor system (no active judge):
@@ -1050,7 +935,8 @@ service cloud.firestore {
         // Firestore's per-evaluation node ceiling once main's #373 guard and
         // this PR's matchVideoUrl `.matches()` pin are both present. Accepted
         // set is unchanged — see the helper for the per-outcome rationale.
-        && matchResolutionPinsOk(resource.data, request.resource.data);
+        && matchResolutionPinsOk(resource.data, request.resource.data)
+        && statsAppliedUnchanged();
 
       // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
       // Judge-only. The setter never self-judges — disputes only exist in
@@ -1145,7 +1031,8 @@ service cloud.firestore {
         // turnHistory growth bound — judge rulings append a single
         // TurnRecord with judgedBy set. Same 1-per-write + ≤200 ceiling
         // the match-resolution branch enforces.
-        && turnHistoryGrowthOk();
+        && turnHistoryGrowthOk()
+        && statsAppliedUnchanged();
 
       // ── Call BS resolution (judge rules on set trick in setReview phase) ──
       // Judge-only. Clean → back to matching (matcher must attempt).
@@ -1212,7 +1099,8 @@ service cloud.firestore {
         // turnHistory growth bound — Call BS rulings that go "sketchy"
         // append a TurnRecord noting the invalidated set. Same cap as the
         // other resolution branches.
-        && turnHistoryGrowthOk();
+        && turnHistoryGrowthOk()
+        && statsAppliedUnchanged();
 
       // ── Judge invite accept / decline ──
       // Only the nominated judge can flip their status from pending. No
@@ -1261,7 +1149,8 @@ service cloud.firestore {
           (!('customRules' in resource.data) && !('customRules' in request.resource.data))
           || ('customRules' in resource.data && 'customRules' in request.resource.data
               && request.resource.data.customRules == resource.data.customRules)
-        );
+        )
+        && statsAppliedUnchanged();
 
       // Either player can forfeit the current-turn player's expired turn
       // Winner must be the opponent of the player whose turn it is
@@ -1307,7 +1196,8 @@ service cloud.firestore {
         // Same +1 / ≤200 ceiling every other growth-capable branch uses; the
         // helper also accepts the "unchanged" shape for callers that don't
         // append (forward-compat).
-        && turnHistoryGrowthOk();
+        && turnHistoryGrowthOk()
+        && statsAppliedUnchanged();
 
       // ── Expired dispute auto-accept ──
       // When the judge's review window expires (24 h), any participant
@@ -1368,7 +1258,8 @@ service cloud.firestore {
         && matchVideoUrlOk(request.resource.data.matchVideoUrl, resource.data.matchVideoUrl)
         // turnHistory growth bound — auto-accept writes a TurnRecord for
         // the expired dispute. Same 1-per-write + ≤200 ceiling.
-        && turnHistoryGrowthOk();
+        && turnHistoryGrowthOk()
+        && statsAppliedUnchanged();
 
       // ── Expired setReview auto-clear ──
       // When the judge doesn't rule on a "Call BS" within 24h, the set
@@ -1417,7 +1308,8 @@ service cloud.firestore {
         // history unchanged (no new turn was completed), but we still run
         // the helper to enforce the absolute 200-entry ceiling and block
         // any sneaky append.
-        && turnHistoryGrowthOk();
+        && turnHistoryGrowthOk()
+        && statsAppliedUnchanged();
 
       // Players may delete their own non-active games (account deletion flow)
       allow delete: if isSignedIn() && isPlayer(resource.data)

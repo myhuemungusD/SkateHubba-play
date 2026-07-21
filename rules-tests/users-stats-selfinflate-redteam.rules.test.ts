@@ -1,31 +1,31 @@
 /**
- * Users — owner self-inflate red team for wins/losses.
+ * Users — owner stats are immutable to clients (stats fan-out lockdown).
  *
- * Audit finding: the `/users/{uid}` owner-update branch constrained the
- * wins/losses delta to ≤+1 per write but had NO idempotency check — no
- * `lastStatsGameId` guard, no game-relation check. The peer-update branch
- * (`canPeerCloseStats`) correctly enforces `resource.data.lastStatsGameId
- * != gid` for forward progress and a game-doc relational check, but the
- * owner branch silently dropped both guards.
+ * History: the `/users/{uid}` owner-update branch used to allow a wins/
+ * losses +1 when the same write advanced `lastStatsGameId` to a terminal
+ * game the caller participated in (ownerCanCloseWins / ownerCanCloseLosses).
+ * That client-side close-out — together with the peer branch — corrupted
+ * production counters and has been removed.
  *
- * Impact: any signed-in user could call `updateDoc({wins: stored + 1})`
- * in a tight loop and inflate their leaderboard rank arbitrarily.
+ * New model: stats are written EXCLUSIVELY server-side. The applyGameStats
+ * Cloud Function (admin SDK, bypasses these rules) increments
+ * users/{uid}.wins/.losses exactly once per terminal game, gated by a
+ * `statsApplied` flag it sets transactionally on the game doc. The rules
+ * therefore deny EVERY client write that changes wins, losses, or
+ * lastStatsGameId — enforced by the owner-update
+ * `affectedKeys().hasAny(['wins','losses','lastStatsGameId', …])` backstop.
  *
- * Fix: tighten the owner branch so that ANY wins/losses change must be
- * either (a) unchanged, or (b) exactly +1 AND the same write advances
- * `lastStatsGameId` to a complete/forfeit game where the caller is a
- * participant and the recorded winner matches the side being claimed.
- *
- * These tests pin the new tightening:
- *   - NEGATIVE: +1 without lastStatsGameId        → denied
- *   - NEGATIVE: +1 with stale lastStatsGameId     → denied (replay)
- *   - NEGATIVE: +1 with nonexistent gid           → denied
- *   - NEGATIVE: wins +1 on a game the caller lost → denied
- *   - NEGATIVE: losses +1 on a game the caller won → denied
- *   - NEGATIVE: +2 in a single write              → denied (existing)
- *   - POSITIVE: wins +1 with valid winning game   → succeeds
- *   - POSITIVE: losses +1 with valid losing game  → succeeds
- *   - REPLAY:   same gid submitted twice          → second denied
+ * These tests pin the lockdown:
+ *   - NEGATIVE: wins +1 WITH a valid backing game the caller won  → denied
+ *     (the formerly-legal path is now rejected)
+ *   - NEGATIVE: losses +1 WITH a valid backing game the caller lost → denied
+ *   - NEGATIVE: wins +1 without lastStatsGameId                    → denied
+ *   - NEGATIVE: wins +2 in a single write                          → denied
+ *   - NEGATIVE: lastStatsGameId toggled alone                      → denied
+ *   - NEGATIVE: wins decrement                                     → denied
+ *   - NEGATIVE: seed wins from absent → 1                          → denied
+ *   - POSITIVE: benign non-stats edit (stance)                     → succeeds
+ *   - POSITIVE: rewriting stats to their SAME stored value (no diff) → succeeds
  *
  * Run via:  npm run test:rules
  */
@@ -56,9 +56,9 @@ function asAlice(): RulesTestContext {
 }
 
 /**
- * Seed Alice's user doc plus two completed games: one Alice won, one Alice lost.
- * `aliceLastStatsGameId` lets tests stage the doc as if it already closed a
- * given gid (for replay/forward-progress cases).
+ * Seed Alice's user doc plus two completed games: one Alice won, one Alice
+ * lost. The games exist so the tests can prove that EVEN a genuine terminal
+ * game the caller participated in no longer authorizes a client stat write.
  */
 async function seed(
   opts: {
@@ -115,66 +115,39 @@ beforeEach(async () => {
   await testEnv.clearFirestore();
 });
 
-describe("users/{uid} owner stats — self-inflate denials", () => {
-  it("attack: owner CANNOT bump wins by +1 without lastStatsGameId", async () => {
+describe("users/{uid} owner stats — every client stat write is DENIED", () => {
+  it("denied: owner CANNOT bump wins +1 even citing a game they actually won", async () => {
+    // This is the formerly-legal path (ownerCanCloseWins). Stats are now
+    // server-only, so even with a real winning game it must fail closed.
     await seed({ aliceWins: 0 });
     await assertFails(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
         wins: 1,
-      }),
-    );
-  });
-
-  it("attack: owner CANNOT bump losses by +1 without lastStatsGameId", async () => {
-    await seed({ aliceLosses: 0 });
-    await assertFails(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        losses: 1,
-      }),
-    );
-  });
-
-  it("attack: owner CANNOT bump wins citing a game they did NOT win", async () => {
-    await seed({ aliceWins: 0 });
-    await assertFails(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        wins: 1,
-        lastStatsGameId: LOSS_GAME_ID,
-      }),
-    );
-  });
-
-  it("attack: owner CANNOT bump losses citing a game they did NOT lose", async () => {
-    await seed({ aliceLosses: 0 });
-    await assertFails(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        losses: 1,
         lastStatsGameId: WIN_GAME_ID,
       }),
     );
   });
 
-  it("attack: owner CANNOT bump wins citing a nonexistent game doc", async () => {
-    await seed({ aliceWins: 0 });
-    await assertFails(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        wins: 1,
-        lastStatsGameId: "nonexistent-game",
-      }),
-    );
-  });
-
-  it("attack: owner CANNOT bump losses citing a nonexistent game doc", async () => {
+  it("denied: owner CANNOT bump losses +1 even citing a game they actually lost", async () => {
     await seed({ aliceLosses: 0 });
     await assertFails(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
         losses: 1,
-        lastStatsGameId: "nonexistent-game",
+        lastStatsGameId: LOSS_GAME_ID,
       }),
     );
   });
 
-  it("attack: owner CANNOT bump wins by +2 in one write", async () => {
+  it("denied: owner CANNOT bump wins +1 without lastStatsGameId", async () => {
+    await seed({ aliceWins: 0 });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        wins: 1,
+      }),
+    );
+  });
+
+  it("denied: owner CANNOT bump wins +2 in one write", async () => {
     await seed({ aliceWins: 0 });
     await assertFails(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
@@ -184,9 +157,28 @@ describe("users/{uid} owner stats — self-inflate denials", () => {
     );
   });
 
-  it("attack: owner CANNOT seed wins=1 on a brand-new (no-stored) field without a backing game", async () => {
-    // resource.data has no `wins` key at all — old rule accepted 0 or 1 freely.
-    // New rule must still demand a backing game for the "1" value.
+  it("denied: owner CANNOT toggle lastStatsGameId alone", async () => {
+    await seed({ aliceWins: 1, aliceLastStatsGameId: WIN_GAME_ID });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        lastStatsGameId: "G2-arbitrary",
+      }),
+    );
+  });
+
+  it("denied: owner CANNOT decrement wins", async () => {
+    await seed({ aliceWins: 5 });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        wins: 4,
+        lastStatsGameId: WIN_GAME_ID,
+      }),
+    );
+  });
+
+  it("denied: owner CANNOT seed wins from absent → 1 on a doc with no stored wins", async () => {
+    // resource.data has no `wins` key — the diff introduces one, so it lands
+    // in affectedKeys() and the backstop denies it.
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
       await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
         uid: ALICE_UID,
@@ -200,44 +192,10 @@ describe("users/{uid} owner stats — self-inflate denials", () => {
       }),
     );
   });
-
-  it("attack: owner CANNOT replay the same lastStatsGameId twice", async () => {
-    // Alice's doc already records WIN_GAME_ID as last closed. Second close
-    // attempt must be rejected by the forward-progress check.
-    await seed({ aliceWins: 1, aliceLastStatsGameId: WIN_GAME_ID });
-    await assertFails(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        wins: 2,
-        lastStatsGameId: WIN_GAME_ID,
-      }),
-    );
-  });
 });
 
-describe("users/{uid} owner stats — legitimate writes still succeed", () => {
-  it("legitimate: owner can bump wins by +1 when citing a game they won", async () => {
-    await seed({ aliceWins: 0 });
-    await assertSucceeds(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        wins: 1,
-        lastStatsGameId: WIN_GAME_ID,
-      }),
-    );
-  });
-
-  it("legitimate: owner can bump losses by +1 when citing a game they lost", async () => {
-    await seed({ aliceLosses: 0 });
-    await assertSucceeds(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        losses: 1,
-        lastStatsGameId: LOSS_GAME_ID,
-      }),
-    );
-  });
-
-  it("legitimate: owner can write an unrelated update without touching wins/losses or lastStatsGameId", async () => {
-    // No wins/losses delta, no lastStatsGameId — the tightened branch must
-    // still permit benign profile updates (e.g. stance change).
+describe("users/{uid} owner stats — benign writes that don't change stats SUCCEED", () => {
+  it("succeeds: benign profile edit (stance) with stats untouched", async () => {
     await seed({ aliceWins: 3, aliceLosses: 1, aliceLastStatsGameId: WIN_GAME_ID });
     await assertSucceeds(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
@@ -245,121 +203,30 @@ describe("users/{uid} owner stats — legitimate writes still succeed", () => {
       }),
     );
   });
-});
 
-/**
- * Codex P1 follow-up: toggle-bypass replay.
- *
- * The previous fix only validated the +1 sub-branches; the "unchanged stat"
- * sub-branch silently permitted mutating `lastStatsGameId` alone. That broke
- * the forward-progress invariant — an attacker could toggle the idempotency
- * key to a junk value between two replays of the same legitimate win, so
- * ownerCanCloseWins's `resource.data.lastStatsGameId != gid` check stayed
- * green every time. These tests pin the new top-level guard that forbids
- * any `lastStatsGameId` change unless it rides along with a stat advance
- * that ownerCanCloseWins/Losses validates against the game doc.
- */
-describe("users/{uid} owner stats — lastStatsGameId toggle-bypass guard", () => {
-  it("attack: owner CANNOT toggle lastStatsGameId alone with no wins/losses change", async () => {
-    // Stage Alice as if she has already legitimately closed WIN_GAME_ID.
-    // The toggle write attempts to advance the key to an arbitrary string
-    // without touching wins/losses — must fail.
-    await seed({ aliceWins: 1, aliceLastStatsGameId: WIN_GAME_ID });
-    await assertFails(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        lastStatsGameId: "G2-arbitrary",
-      }),
-    );
-  });
-
-  it("attack: full 3-step replay is severed at step 2 (the toggle)", async () => {
-    // Step 1 is the legitimate close — succeeds and establishes the stored
-    // lastStatsGameId == WIN_GAME_ID. Step 2 (the toggle) must now fail,
-    // which prevents step 3 from ever satisfying the forward-progress check.
-    await seed({ aliceWins: 0 });
-    const aliceDb = asAlice().firestore();
-    // Step 1: legitimate close.
-    await assertSucceeds(
-      updateDoc(doc(aliceDb, "users", ALICE_UID), {
-        wins: 1,
-        lastStatsGameId: WIN_GAME_ID,
-      }),
-    );
-    // Step 2: toggle alone to bypass forward-progress on a future replay.
-    await assertFails(
-      updateDoc(doc(aliceDb, "users", ALICE_UID), {
-        lastStatsGameId: "anything-else",
-      }),
-    );
-  });
-
-  it("legitimate: paired wins +1 with new lastStatsGameId still succeeds", async () => {
-    // Sanity: the guard must not regress the legitimate close-out path.
-    await seed({ aliceWins: 0 });
-    await assertSucceeds(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        wins: 1,
-        lastStatsGameId: WIN_GAME_ID,
-      }),
-    );
-  });
-
-  it("legitimate: benign edit with no lastStatsGameId in payload still succeeds", async () => {
-    // Sanity: the guard is gated on `'lastStatsGameId' in request.resource.data`,
-    // so writes that don't touch the field must pay nothing.
-    await seed({ aliceWins: 2, aliceLastStatsGameId: WIN_GAME_ID });
+  it("succeeds: re-writing wins/losses to their SAME stored value is not a diff", async () => {
+    // affectedKeys() only contains fields whose VALUE changes. Writing the
+    // identical stored numbers alongside a benign edit produces no stat diff,
+    // so the backstop lets it through. Proves the guard is value-based, not
+    // presence-based — legacy docs stay writable for real profile edits.
+    await seed({ aliceWins: 3, aliceLosses: 2 });
     await assertSucceeds(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
         stance: "Goofy",
-      }),
-    );
-  });
-});
-
-describe("users/{uid} owner stats — game-doc relational guards", () => {
-  const ACTIVE_GAME_ID = "game-active-alice-vs-bob";
-  const NON_PARTICIPANT_GAME_ID = "game-bob-vs-charlie";
-  const CHARLIE_UID = "charlie-uid";
-
-  it("attack: owner CANNOT close stats against an active (non-terminal) game", async () => {
-    // The helper requires `game.status == 'complete' || 'forfeit'`. An
-    // in-progress game with Alice listed as `winner` (which shouldn't
-    // happen in real play, but the rule must defend against a hypothetical
-    // server bug or race) must still be rejected.
-    await seed({ aliceWins: 0 });
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "games", ACTIVE_GAME_ID), {
-        player1Uid: ALICE_UID,
-        player2Uid: BOB_UID,
-        status: "active",
-        winner: ALICE_UID,
-      });
-    });
-    await assertFails(
-      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        wins: 1,
-        lastStatsGameId: ACTIVE_GAME_ID,
+        wins: 3,
+        losses: 2,
       }),
     );
   });
 
-  it("attack: owner CANNOT cite a game they are not a participant in", async () => {
-    // Alice tries to claim a win using Bob-vs-Charlie's game id even
-    // though `winner == ALICE_UID` is forged in the seed. The participant
-    // check (`uid == player1Uid || uid == player2Uid`) must reject this.
-    await seed({ aliceWins: 0 });
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "games", NON_PARTICIPANT_GAME_ID), {
-        player1Uid: BOB_UID,
-        player2Uid: CHARLIE_UID,
-        status: "complete",
-        winner: ALICE_UID,
-      });
-    });
-    await assertFails(
+  it("succeeds: benign edit on a legacy doc still carrying lastStatsGameId (value unchanged)", async () => {
+    // A legacy doc that predates the backfill may still carry
+    // lastStatsGameId. A benign edit that doesn't touch it keeps working
+    // because the value doesn't change → not in affectedKeys().
+    await seed({ aliceWins: 4, aliceLastStatsGameId: "old-game" });
+    await assertSucceeds(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        wins: 1,
-        lastStatsGameId: NON_PARTICIPANT_GAME_ID,
+        stance: "Goofy",
       }),
     );
   });
