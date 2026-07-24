@@ -42,6 +42,5 @@ ios/build/
 # Firebase config — secret, never commit. Downloaded per ios/NATIVE_SETUP.md.
 ios/App/App/GoogleService-Info.plist
 android/app/google-services.json
-# TODO: decide whether to commit Podfile.lock. Some teams commit it for
-# reproducible CI builds; leaving it ignored for now to avoid merge churn.
-ios/App/Podfile.lock
+# Podfile.lock is intentionally committed for reproducible iOS pod resolution.
+# Regenerate with `pod install` on macOS and commit alongside Podfile changes.

@@ -1,0 +1,59 @@
+version: 2
+updates:
+  # ── Root web app (React SPA + build/test tooling) ──
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      # `chore` is hidden in release-please changelog-sections, so dependency
+      # bumps don't churn the CHANGELOG or force a version bump; they ride
+      # into the next feat/fix release.
+      prefix: chore
+      include: scope
+    groups:
+      production-dependencies:
+        dependency-type: production
+        update-types: ["minor", "patch"]
+      development-dependencies:
+        dependency-type: development
+        update-types: ["minor", "patch"]
+
+  # ── Cloud Functions package (approved stats close-out function) ──
+  - package-ecosystem: npm
+    directory: "/functions"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      functions-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # ── GitHub Actions used across .github/workflows/** ──
+  # NOTE: these PRs edit `uses:` pins inside .github/workflows/**, so each one
+  # trips the `verify-workflow-changes` warning in pr-gate.yml by design —
+  # that warning is the intended maintainer-review signal, not a failure.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+    groups:
+      github-actions:
+        patterns: ["*"]

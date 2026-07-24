@@ -1,0 +1,29 @@
+# Normalize line endings: store LF in the repo.
+* text=auto
+
+# Scripts that must stay LF on every platform (CI and gradlew run on Linux/macOS).
+*.sh text eol=lf
+gradlew text eol=lf
+
+# Windows batch scripts require CRLF on checkout.
+*.bat text eol=crlf
+
+# Binary assets — never normalize or diff as text.
+*.png binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mp4 binary
+*.webm binary
+*.mov binary
+*.jar binary
+*.keystore binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
+
+# Generated lockfiles — exclude from language stats.
+package-lock.json linguist-generated=true
+functions/package-lock.json linguist-generated=true

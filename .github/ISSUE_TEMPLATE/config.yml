@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability (do NOT open a public issue)
+    url: https://github.com/myhuemungusD/SkateHubba-play/blob/main/SECURITY.md
+    about: Email security@skatehubba.com with details. See SECURITY.md for the disclosure process and SLA.
+  - name: Contribution setup & scope questions
+    url: https://github.com/myhuemungusD/SkateHubba-play/blob/main/CONTRIBUTING.md
+    about: Local setup, emulator workflow, and what contributions fit before you file an issue.
