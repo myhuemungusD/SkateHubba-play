@@ -266,6 +266,20 @@ export function VideoRecorder({
           </>
         )}
 
+        {(state === "preview" || state === "recording") && (
+          <div
+            data-testid="camera-crosshair"
+            aria-hidden="true"
+            className="absolute inset-0 flex items-center justify-center pointer-events-none"
+          >
+            <div className="relative flex items-center justify-center">
+              <div className="absolute w-8 h-px bg-white/70" />
+              <div className="absolute h-8 w-px bg-white/70" />
+              <div className="w-3 h-3 rounded-full border border-white/70" />
+            </div>
+          </div>
+        )}
+
         {state === "recording" && (
           <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/70 px-3 py-1.5 rounded-full">
             <div className="w-2.5 h-2.5 rounded-full bg-brand-red animate-rec-pulse" />
