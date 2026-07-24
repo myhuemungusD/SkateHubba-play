@@ -69,7 +69,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 Only add the two lines marked above (`import FirebaseCore` and
 `FirebaseApp.configure()`). Leave the remaining delegate methods as-is.
 
-## 3. Confirm the Firebase iOS SDK pods are installed
+## 3. Confirm the Firebase iOS SDK native deps are installed
+
+> ⚠️ **Unverified CocoaPods flow.** The tracked Xcode project uses Swift
+> Package Manager (`ios/App/CapApp-SPM/Package.swift`) and has no `Podfile`.
+> The `pod install` steps below have not been confirmed against the current
+> project — resolve the SPM-vs-CocoaPods question (see `ios/README.md`) with
+> Xcode on a Mac before relying on them. If the project stays on SPM, the
+> Firebase frameworks resolve through the Swift package and there is no
+> `Podfile.lock` to check.
 
 `@capacitor-firebase/authentication` and `@capacitor-firebase/app-check`
 ship CocoaPods podspecs that pull the Firebase iOS SDK. After adding the

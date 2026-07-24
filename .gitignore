@@ -42,7 +42,11 @@ ios/build/
 # Firebase config — secret, never commit. Downloaded per ios/NATIVE_SETUP.md.
 ios/App/App/GoogleService-Info.plist
 android/app/google-services.json
-# Podfile.lock is NOT ignored — it should be committed for reproducible iOS
-# pod resolution (same standard as package-lock.json / Gemfile.lock). It is not
-# in the repo yet: generate it with `pod install` on macOS and commit it, then
-# keep it updated alongside Podfile changes.
+# Podfile.lock: intentionally NOT listed here, but the repo has no Podfile
+# either. The Xcode project (App.xcodeproj) resolves native plugins via Swift
+# Package Manager (ios/App/CapApp-SPM/Package.swift), not CocoaPods — so no
+# Podfile.lock is produced by the current setup. The CocoaPods flow described
+# in ios/README.md / ios/NATIVE_SETUP.md contradicts this and is UNVERIFIED;
+# which native path actually builds must be confirmed with Xcode on a Mac
+# before deciding what (if anything) to commit here. Do not add a Podfile.lock
+# ignore until that decision is made.

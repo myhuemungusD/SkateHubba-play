@@ -29,14 +29,26 @@ by `@capacitor/ios` and should not be edited by hand unless noted below.
 ## What is ignored
 
 See the repository-root `.gitignore` for the canonical list. In short:
-`Pods/`, `xcuserdata/`, `build/`, `DerivedData/`, `ios/build/`,
-`Podfile.lock` (pending team decision).
+`Pods/`, `xcuserdata/`, `build/`, `DerivedData/`, `ios/build/`. There is no
+`Podfile.lock` — see the note below.
+
+## ⚠️ Native dependency path is unresolved (SPM vs CocoaPods)
+
+The tracked Xcode project references `CapApp-SPM/Package.swift` as a local
+**Swift Package Manager** package (`XCLocalSwiftPackageReference`), and no
+`Podfile` exists in the repo. The CocoaPods workflow described below — and in
+[`NATIVE_SETUP.md`](./NATIVE_SETUP.md) — predates that and has **not** been
+verified against the current project. Some Capacitor plugins (`@sentry/capacitor`,
+`@capacitor-firebase/*`) historically shipped CocoaPods podspecs, so this may
+be a half-finished SPM migration. Which path actually builds can only be
+determined with Xcode on a Mac. Until then, treat the `pod install` steps below
+as provisional — do not assume a `Podfile.lock` is the right lockfile to commit.
 
 ## Developer workflow on macOS
 
 The Linux CI environment that initially materialised this directory cannot
-run CocoaPods or open Xcode. Finish the setup on a Mac with Xcode 15+ and
-CocoaPods installed:
+run CocoaPods or open Xcode. Finish the setup on a Mac with Xcode 15+ (resolve
+the SPM-vs-CocoaPods question above first):
 
 ```bash
 # 1. Install JS deps + build the web bundle so `dist/` exists.
