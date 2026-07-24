@@ -57,26 +57,26 @@ concurrency:
   group: firebase-rules-deploy
   cancel-in-progress: false
 
+# Default to read-only. Only the `deploy` job escalates (id-token for WIF,
+# issues for the failure/success alert). `validate-rules` runs emulator tests
+# and needs neither, so it inherits this minimal set.
 permissions:
   contents: read
-  id-token: write
-  # `issues: write` lets the failure-notification step open/update the alert
-  # issue so a broken deploy can never again pass unnoticed.
-  issues: write
 
 jobs:
   validate-rules:
     name: Validate rules against emulator
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9 # v4.8.0
         with:
           distribution: temurin
           java-version: 21
@@ -90,11 +90,19 @@ jobs:
     name: Deploy to Firebase
     needs: validate-rules
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: production
+    permissions:
+      contents: read
+      # WIF auth mints a short-lived GCP credential from the OIDC token.
+      id-token: write
+      # The failure/success alert steps open, comment on, and close the
+      # tracking issue so a broken rules deploy can never pass unnoticed.
+      issues: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
@@ -146,7 +154,7 @@ jobs:
 
       - name: Authenticate via Workload Identity Federation
         if: steps.creds.outputs.method == 'wif'
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
         with:
           workload_identity_provider: ${{ secrets.FIREBASE_WIF_PROVIDER }}
           service_account: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
@@ -220,7 +228,7 @@ jobs:
       # ---------------------------------------------------------------------
       - name: Alert on deploy failure
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const label = 'firebase-rules-deploy-failure';
@@ -292,7 +300,7 @@ jobs:
       # ---------------------------------------------------------------------
       - name: Resolve alert on deploy success
         if: ${{ steps.deploy.outcome == 'success' && github.event.inputs.dry_run != 'true' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const label = 'firebase-rules-deploy-failure';
