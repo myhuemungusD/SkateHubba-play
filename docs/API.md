@@ -26,10 +26,8 @@ interface UserProfile {
   username: string; // Normalized lowercase, 3–20 chars, [a-z0-9_]+
   stance: string; // "Regular" | "Goofy"
   createdAt: FieldValue | null; // Firestore serverTimestamp() on write, Timestamp on read
-  // Denormalized leaderboard stats — server-maintained by the stats close-out
-  // Cloud Function (Admin SDK). Clients are read-only.
-  wins?: number;
-  losses?: number;
+  wins?: number; // Denormalized leaderboard stats — server-maintained (stats
+  losses?: number; // close-out Cloud Function); clients read-only
   isVerifiedPro?: boolean; // Admin-SDK-only
   verifiedBy?: string;
   verifiedAt?: FieldValue | null;

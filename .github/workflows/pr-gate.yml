@@ -59,7 +59,7 @@ jobs:
           while IFS= read -r file; do
             [ -z "$file" ] && continue
             case "$file" in
-              functions/src/index.ts|functions/src/index.test.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts) ;;
+              functions/src/index.ts|functions/src/applyGameStats.ts|functions/src/applyGameStats.test.ts) ;;
               *) VIOLATIONS="${VIOLATIONS}${file}"$'\n' ;;
             esac
           done < <(git diff origin/main...HEAD --name-only | grep -E '^functions/src/' || true)
@@ -69,7 +69,6 @@ jobs:
             echo "::error::Unapproved Cloud Functions source detected under functions/src/."
             echo "Only the maintainer-approved stats close-out file set is allowed:"
             echo "  functions/src/index.ts"
-            echo "  functions/src/index.test.ts"
             echo "  functions/src/applyGameStats.ts"
             echo "  functions/src/applyGameStats.test.ts"
             echo "Any other functions/src/ code requires explicit maintainer approval."
