@@ -63,19 +63,19 @@ Configure these in **GitHub → Settings → Branches → Add rule** (pattern: `
 
 ## Automated Guards (CI-Enforced)
 
-In addition to GitHub's branch protection settings, the following CI checks run on every PR to `main` (plus the out-of-band jobs listed at the bottom of the table):
+In addition to GitHub's branch protection settings, the following CI checks run on every PR to `main` (plus the out-of-band `audit-nightly` job at the bottom of the table, which runs on a schedule rather than per PR):
 
-| Check                       | Workflow                    | Purpose                                                                                          |
-| --------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------ |
-| `enforce-pr-policy`         | `pr-gate.yml`               | Confirms the change arrived via PR                                                               |
-| `verify-no-cloud-functions` | `pr-gate.yml`               | Rejects new Cloud Functions code in `functions/src/`                                             |
-| `verify-workflow-changes`   | `pr-gate.yml`               | Warns when `.github/workflows/` files are modified                                               |
-| `validate-firebase-rules`   | `pr-gate.yml`               | Runs emulator rules tests when Firestore/Storage rules change                                    |
+| Check                       | Workflow                    | Purpose                                                                                                |
+| --------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `enforce-pr-policy`         | `pr-gate.yml`               | Confirms the change arrived via PR                                                                     |
+| `verify-no-cloud-functions` | `pr-gate.yml`               | Rejects new Cloud Functions code in `functions/src/`                                                   |
+| `verify-workflow-changes`   | `pr-gate.yml`               | Warns when `.github/workflows/` files are modified                                                     |
+| `validate-firebase-rules`   | `pr-gate.yml`               | Runs emulator rules tests when Firestore/Storage rules change                                          |
 | `build-and-test`            | `main.yml`                  | Lint, type check, tests, build (blocking `npm audit` when this PR touches deps; report-only otherwise) |
-| `lighthouse`                | `main.yml`                  | Performance regression check                                                                     |
-| Rules deploy                | `firebase-rules-deploy.yml` | Pushes `firestore.rules` / `storage.rules` / indexes to production on merge to `main`            |
-| Infra setup                 | `firebase-infra-setup.yml`  | Manual workflow for daily Firestore backups + 90-day Storage lifecycle (`workflow_dispatch`)     |
-| `audit-nightly`             | `main.yml`                  | Nightly `npm audit` against main's lockfile — catches drift no PR can gate (schedule + dispatch) |
+| `lighthouse`                | `main.yml`                  | Performance regression check                                                                           |
+| Rules deploy                | `firebase-rules-deploy.yml` | Pushes `firestore.rules` / `storage.rules` / indexes to production on merge to `main`                  |
+| Infra setup                 | `firebase-infra-setup.yml`  | Manual workflow for daily Firestore backups + 90-day Storage lifecycle (`workflow_dispatch`)           |
+| `audit-nightly`             | `main.yml`                  | Nightly `npm audit` against main's lockfile — catches drift no PR can gate (schedule + dispatch)       |
 
 ---
 

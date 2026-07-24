@@ -13,7 +13,21 @@ on:
   # fire from the workflow file on the default branch, so this is the only
   # way to exercise that job before (or without) waiting for the cron.
   # Dispatch runs are audit-only — build-and-test and its dependents skip.
+  # Note: workflow_dispatch runs the workflow DEFINITION from whatever branch
+  # is selected in the UI (only the checkout below is pinned to main). If
+  # audit-nightly's step list is being edited on a feature branch, dispatch
+  # from that branch to test the pending changes, but expect the audit itself
+  # to run against main's lockfile — that pinning is intentional (see below).
   workflow_dispatch:
+
+# Least-privilege baseline: read-only across the workflow. Each job that
+# genuinely needs to write (e.g. lighthouse posting statuses/PR comments)
+# escalates explicitly under its own `permissions:` block. Especially
+# relevant for the unattended `audit-nightly` cron below, which runs
+# `npm ci` (arbitrary postinstall scripts) on a schedule against main —
+# a malicious transitive must not inherit a write-scoped GITHUB_TOKEN.
+permissions:
+  contents: read
 
 concurrency:
   # event_name is part of the group so a scheduled run on refs/heads/main can
@@ -68,7 +82,7 @@ jobs:
             RANGE="origin/${BASE_REF}...HEAD"
           else
             if [ -z "$BEFORE_SHA" ] || ! git cat-file -e "$BEFORE_SHA" 2>/dev/null; then
-              echo "Cannot resolve previous head — failing safe (deps treated as changed)."
+              echo "::warning::Cannot resolve previous head (before-SHA missing or unknown to this clone) — failing safe: treating deps as changed so the blocking audit runs."
               echo "changed=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
@@ -77,7 +91,7 @@ jobs:
           # `if !` keeps set -e from killing the step; a git error must land
           # in the fail-safe branch, not silently select report-only mode.
           if ! CHANGED_FILES=$(git diff --name-only "$RANGE" -- package.json package-lock.json); then
-            echo "git diff failed for range $RANGE — failing safe (deps treated as changed)."
+            echo "::warning::git diff failed for range $RANGE — failing safe: treating deps as changed so the blocking audit runs."
             echo "changed=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -202,6 +216,14 @@ jobs:
   lighthouse:
     needs: build-and-test
     runs-on: ubuntu-latest
+    # LHCI uses GITHUB_TOKEN to publish commit statuses and (when configured)
+    # PR comments. Escalate above the workflow-level `contents: read` baseline
+    # for just this job — every other job stays read-only.
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+      checks: write
     steps:
       - uses: actions/checkout@v4
 
@@ -235,6 +257,10 @@ jobs:
   audit-nightly:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # Cap the run so a hung registry doesn't burn nightly minutes toward
+    # GitHub's 6-hour job default. `npm ci` + `npm audit` completes in ~1 min
+    # even on cold caches; 10 minutes is comfortable headroom.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -252,6 +278,6 @@ jobs:
 
       - run: npm ci
 
-      - name: Audit dependencies (fail on moderate+)
+      - name: Audit dependencies (blocking — main lockfile drift)
         run: |
           npm audit --audit-level=moderate
