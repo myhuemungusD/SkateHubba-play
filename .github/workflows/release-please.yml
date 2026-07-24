@@ -25,7 +25,7 @@ jobs:
       # updates an in-flight release PR or opens a new one. When that PR is
       # merged, it tags HEAD and creates a GitHub Release in a single step.
       - id: release
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json

@@ -19,13 +19,13 @@ jobs:
   release-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Release event payload references the tag; check it out explicitly
           # so the build matches the exact commit release-please just tagged.
           ref: ${{ github.event.release.tag_name }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -80,7 +80,7 @@ jobs:
         run: cd dist && zip -r ../skatehubba-${{ github.event.release.tag_name }}.zip .
 
       - name: Attach build artifact to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: skatehubba-${{ github.event.release.tag_name }}.zip
