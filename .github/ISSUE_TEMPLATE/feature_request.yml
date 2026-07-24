@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an enhancement or new capability.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check CONTRIBUTING.md § "What We're Not Looking For" first — backends, API servers, application-authored Cloud Functions, new datastores, and state-management / UI libraries are out of scope by design.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do that the app doesn't support today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What should happen? Sketch the behavior or UI.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not add a backend/API server, application-authored Cloud Functions, a new datastore, or a state-management/UI library (see CONTRIBUTING.md).
+          required: true
