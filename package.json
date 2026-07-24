@@ -64,7 +64,7 @@
     "@opentelemetry/core": "^2.8.0",
     "http-proxy-agent": "^7.0.2",
     "@xmldom/xmldom": "^0.9.10",
-    "uuid": "^14.0.0",
+    "uuid": "^14.0.1",
     "ip-address": "^10.1.1",
     "hono": "^4.12.23",
     "basic-ftp": "^5.3.1",
