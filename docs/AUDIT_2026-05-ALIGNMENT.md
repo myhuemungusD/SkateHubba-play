@@ -42,7 +42,7 @@ games-updatedat-redteam.rules.test.ts     rate-limit-bypass-redteam.rules.test.t
 
 The original §1 reported every game-state mutation lives inside `runTransaction`. Spot-check reveals two unwrapped writes that the audit missed:
 
-- `src/services/games.create.ts:120` — `withRetry(() => setDoc(doc(gamesRef(), newGameId), gameData))`. This is the **initial create**, deterministic id (comment at L118 explains addDoc would be non-deterministic). Defensible — "create" isn't a "mutation" — but the §1 wording should have said "all game-state *mutations*" matching CLAUDE.md L63 exactly, and called this out.
+- `src/services/games.create.ts:120` — `withRetry(() => setDoc(doc(gamesRef(), newGameId), gameData))`. This is the **initial create**, deterministic id (comment at L118 explains addDoc would be non-deterministic). Defensible — "create" isn't a "mutation" — but the §1 wording should have said "all game-state _mutations_" matching CLAUDE.md L63 exactly, and called this out.
 - `src/services/games.create.ts:124` — fire-and-forget `setDoc(doc(requireDb(), "users", challengerUid), { lastGameCreatedAt: serverTimestamp() }, { merge: true })`. Writes to the user doc, not the game; arguably out of scope for the runTransaction guardrail.
 - `src/services/clips.cascade.ts:32` — `deleteDoc(doc(db, "clips", d.id))` inside `Promise.allSettled` during the account-deletion cascade. Not a game mutation; deletes are not transactional today. Worth surfacing for review.
 
@@ -78,18 +78,18 @@ The audit is 100% static. Two dynamic checks would raise confidence materially:
 External review (Codex on PR #351) caught two assertions the original audit got wrong:
 
 - **§1 inline-style line** said "zero `style={{}}` usage in `src/components/**` or `src/screens/**`." Reality: `grep -rn "style={{" src/components src/screens --include="*.tsx"` returns 18 hits. Most are runtime-computed values Tailwind can't express, but several are static-string cases (`SpotlightOverlay.tsx:138,150`, `Landing.tsx:248,282`) that should be tracked. The §1 row has been rewritten to a 🟡 finding.
-- **§3 users row** said cooldown timestamps (`lastGameCreatedAt`, `lastSpotCreatedAt`) are "server-managed via the same transaction that creates the game/spot." Reality: both are fire-and-forget `setDoc({...}, { merge: true })` writes that fire *after* the create commits (`games.create.ts:120→124`, `spots.ts:264→268`). This contradicts §0b which already noted the games path. The §3 row has been split: `wins`/`losses` (truly transactional, `users.ts:381–395`) stay aligned; cooldown anchors are now 🟡.
+- **§3 users row** said cooldown timestamps (`lastGameCreatedAt`, `lastSpotCreatedAt`) are "server-managed via the same transaction that creates the game/spot." Reality: both are fire-and-forget `setDoc({...}, { merge: true })` writes that fire _after_ the create commits (`games.create.ts:120→124`, `spots.ts:264→268`). This contradicts §0b which already noted the games path. The §3 row has been split: `wins`/`losses` (truly transactional, `users.ts:381–395`) stay aligned; cooldown anchors are now 🟡.
 
 Both findings are now patched in their original sections — this entry exists to make the diff auditable.
 
 ### Revised severity tally (after self-correction)
 
-| Severity | Original | +Self-correction | Net |
-| -------- | -------: | ---------------: | --: |
-| 🔴 correctness | 4 | 0 | **4** |
-| 🟡 staleness | 18 | +4 (§0a, §0b, §0e×2) | **22** |
-| 🟢 cosmetic | 6 | +1 (§0c) | **7** |
-| ❓ unvalidated | 0 | +1 (§0d) | **1** |
+| Severity       | Original |     +Self-correction |    Net |
+| -------------- | -------: | -------------------: | -----: |
+| 🔴 correctness |        4 |                    0 |  **4** |
+| 🟡 staleness   |       18 | +4 (§0a, §0b, §0e×2) | **22** |
+| 🟢 cosmetic    |        6 |             +1 (§0c) |  **7** |
+| ❓ unvalidated |        0 |             +1 (§0d) |  **1** |
 
 ---
 
@@ -116,6 +116,11 @@ A Plan agent designed the 12-pairing matrix below. No code was modified; only th
 
 ### Hard guardrails — all clean
 
+<!-- Two bullets below wrap code spans ending in `**` inside bold markup, which
+     prettier's markdown emphasis parser mangles (eats spaces, escapes the bold
+     close). The range pragma keeps this list verbatim. -->
+<!-- prettier-ignore-start -->
+
 - ✓ **No `as any`** — zero hits in `src/**/*.{ts,tsx}` (excluding tests).
 - ✓ **No TODO/FIXME/HACK** — zero hits in `src/`.
 - ✓ **No `console.log`** — zero hits outside tests.
@@ -125,6 +130,8 @@ A Plan agent designed the 12-pairing matrix below. No code was modified; only th
 - ✓ **No UI component libraries** — no @mui, @chakra-ui, antd, @mantine, react-bootstrap, @radix-ui.
 - ✓ **No CSS modules** — zero `.module.css` imports.
 - 🟡 **Inline styles — 18 occurrences across `src/components/**` and `src/screens/**`** (corrected post-publish; see §0e). The original audit reported "zero" — that was wrong. Most hits are runtime-computed values Tailwind cannot express (progress bars, pull-to-refresh transforms, `100dvh` viewport heights, animation delays, z-index tokens). Static-string cases that could move to Tailwind exist at `src/components/onboarding/SpotlightOverlay.tsx:138,150`, `src/screens/Landing.tsx:248,282`, and similar. Track as drift, not a hard violation: CLAUDE.md L59 says "Tailwind utility classes only — no CSS modules, no inline styles," which the runtime-value cases functionally require.
+
+<!-- prettier-ignore-end -->
 
 ### Transactional game writes — all clean
 
@@ -140,18 +147,18 @@ No raw `setDoc`/`updateDoc`/`addDoc`/`deleteDoc` calls outside transactions in a
 
 CLAUDE.md L131–136 sets soft budgets: `src/services/**` 400, `src/screens/**` 350, `src/components/**` 250. The following files exceed budget; per CLAUDE.md these are "warnings, not hard errors" and "a signal to extract helpers."
 
-| File | Budget | Actual | Over |
-| ---- | -----: | -----: | ---: |
-| 🟡 `src/screens/Landing.tsx` | 350 | 444 | +94 |
-| 🟡 `src/screens/Settings.tsx` | 350 | 425 | +75 |
-| 🟡 `src/screens/AuthScreen.tsx` | 350 | 369 | +19 |
-| 🟡 `src/screens/GamePlayScreen/useGamePlayController.ts` | 350 | 366 | +16 |
-| 🟡 `src/screens/ProfileSetup.tsx` | 350 | 356 | +6 |
-| 🟡 `src/components/map/AddSpotSheet.tsx` | 250 | 341 | +91 |
-| 🟡 `src/components/VideoRecorder.tsx` | 250 | 298 | +48 |
-| 🟡 `src/components/InviteButton.tsx` | 250 | 270 | +20 |
-| 🟡 `src/components/TurnHistoryViewer.tsx` | 250 | 263 | +13 |
-| 🟡 `src/components/map/SpotFilterBar.tsx` | 250 | 251 | +1 |
+| File                                                     | Budget | Actual | Over |
+| -------------------------------------------------------- | -----: | -----: | ---: |
+| 🟡 `src/screens/Landing.tsx`                             |    350 |    444 |  +94 |
+| 🟡 `src/screens/Settings.tsx`                            |    350 |    425 |  +75 |
+| 🟡 `src/screens/AuthScreen.tsx`                          |    350 |    369 |  +19 |
+| 🟡 `src/screens/GamePlayScreen/useGamePlayController.ts` |    350 |    366 |  +16 |
+| 🟡 `src/screens/ProfileSetup.tsx`                        |    350 |    356 |   +6 |
+| 🟡 `src/components/map/AddSpotSheet.tsx`                 |    250 |    341 |  +91 |
+| 🟡 `src/components/VideoRecorder.tsx`                    |    250 |    298 |  +48 |
+| 🟡 `src/components/InviteButton.tsx`                     |    250 |    270 |  +20 |
+| 🟡 `src/components/TurnHistoryViewer.tsx`                |    250 |    263 |  +13 |
+| 🟡 `src/components/map/SpotFilterBar.tsx`                |    250 |    251 |   +1 |
 
 ---
 
@@ -161,19 +168,19 @@ CLAUDE.md L131–136 sets soft budgets: `src/services/**` 400, `src/screens/**` 
 
 Every rule-enforced field aligns across `firestore.rules`, `src/services/games.*.ts`, and `src/services/games.mappers.ts`. Spot-checked rows:
 
-| Field | Rules | Service write | TS type | Drift? |
-| ----- | ----- | ------------- | ------- | ------ |
-| `player1Uid` | `firestore.rules:432,515` | `games.create.ts:65` | `games.mappers.ts:46` | ✓ |
-| `p1Letters` / `p2Letters` (int, ≤1 step) | `firestore.rules:436–437,666–676` | `games.create.ts:69–70` | `games.mappers.ts:50–51` | ✓ |
-| `status` enum `active`\|`complete`\|`forfeit` | `firestore.rules:435,555,904` | `games.create.ts:71`, `games.match.ts:313`, `games.turns.ts:174` | `games.mappers.ts:52` | ✓ |
-| `phase` enum `setting`\|`matching`\|`setReview`\|`disputable` | `firestore.rules:442,568–607,627` | `games.create.ts:74`, all phase transitions | `games.mappers.ts:55` | ✓ |
-| `turnDeadline` (Timestamp, < 48h) | `firestore.rules:453–455,547–549,663–665,843–845` | `games.create.ts:62,79`, all phase transitions | `games.mappers.ts:61` | ✓ |
-| `currentTrickName` (≤64) | `firestore.rules:457,579–581` | `games.match.ts:51,104` | `games.mappers.ts:58` | ✓ |
-| `currentTrickVideoUrl` (storage host) | `firestore.rules:458,582–591` | `games.match.ts:52,105` | `games.mappers.ts:59` | ✓ |
-| `turnHistory` (immutable in setting/matching) | `firestore.rules:610–612,895–896,925–928` | `games.match.ts:229,306`, `games.judge.ts:214` | `games.mappers.ts:67` | ✓ |
-| `judgeId` (≠ players) | `firestore.rules:473–477` | `games.create.ts:86` | `games.mappers.ts:78` | ✓ |
-| `judgeStatus` `pending`\|`accepted`\|`declined`\|null | `firestore.rules:480–482` | `games.create.ts:88`, `games.create.ts:189,211` | `games.mappers.ts:20,87` | ✓ |
-| `updatedAt` (== `request.time`) | `firestore.rules:507–512` | every write path | `games.mappers.ts:65` | ✓ |
+| Field                                                         | Rules                                             | Service write                                                    | TS type                  | Drift? |
+| ------------------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------------------------- | ------------------------ | ------ |
+| `player1Uid`                                                  | `firestore.rules:432,515`                         | `games.create.ts:65`                                             | `games.mappers.ts:46`    | ✓      |
+| `p1Letters` / `p2Letters` (int, ≤1 step)                      | `firestore.rules:436–437,666–676`                 | `games.create.ts:69–70`                                          | `games.mappers.ts:50–51` | ✓      |
+| `status` enum `active`\|`complete`\|`forfeit`                 | `firestore.rules:435,555,904`                     | `games.create.ts:71`, `games.match.ts:313`, `games.turns.ts:174` | `games.mappers.ts:52`    | ✓      |
+| `phase` enum `setting`\|`matching`\|`setReview`\|`disputable` | `firestore.rules:442,568–607,627`                 | `games.create.ts:74`, all phase transitions                      | `games.mappers.ts:55`    | ✓      |
+| `turnDeadline` (Timestamp, < 48h)                             | `firestore.rules:453–455,547–549,663–665,843–845` | `games.create.ts:62,79`, all phase transitions                   | `games.mappers.ts:61`    | ✓      |
+| `currentTrickName` (≤64)                                      | `firestore.rules:457,579–581`                     | `games.match.ts:51,104`                                          | `games.mappers.ts:58`    | ✓      |
+| `currentTrickVideoUrl` (storage host)                         | `firestore.rules:458,582–591`                     | `games.match.ts:52,105`                                          | `games.mappers.ts:59`    | ✓      |
+| `turnHistory` (immutable in setting/matching)                 | `firestore.rules:610–612,895–896,925–928`         | `games.match.ts:229,306`, `games.judge.ts:214`                   | `games.mappers.ts:67`    | ✓      |
+| `judgeId` (≠ players)                                         | `firestore.rules:473–477`                         | `games.create.ts:86`                                             | `games.mappers.ts:78`    | ✓      |
+| `judgeStatus` `pending`\|`accepted`\|`declined`\|null         | `firestore.rules:480–482`                         | `games.create.ts:88`, `games.create.ts:189,211`                  | `games.mappers.ts:20,87` | ✓      |
+| `updatedAt` (== `request.time`)                               | `firestore.rules:507–512`                         | every write path                                                 | `games.mappers.ts:65`    | ✓      |
 
 **State machine — fully covered:**
 
@@ -189,13 +196,13 @@ Every rule-enforced field aligns across `firestore.rules`, `src/services/games.*
 
 Every rule-enforced field on `clips` aligns with `clips.writes.ts` and `src/types/clip.ts`:
 
-| Field | Rules | Service | TS type | Drift? |
-| ----- | ----- | ------- | ------- | ------ |
-| Deterministic id `${gameId}_${turnNumber}_${role}` | `firestore.rules:1684–1690` | `clips.writes.ts:51–53,73–75` | — | ✓ |
-| `role` enum `set`\|`match` | `firestore.rules:1686,1690` | `clips.writes.ts:53` | `clip.ts:34` (`ClipRole`) | ✓ |
-| `trickName` (≤100) | `firestore.rules:1695–1697` | `clips.writes.ts:56,78` | `clip.ts:37` | ✓ |
-| `moderationStatus` `active` on create | `firestore.rules:1705–1708` | `clips.writes.ts:59,81` | `clip.ts:41` | ✓ |
-| `upvoteCount` (int ≥0, ±1 via vote-doc atomicity) | `firestore.rules:1711,1735–1755` | `clips.writes.ts:60,82`, `clips.upvotes.ts` | `clip.ts:42` | ✓ |
+| Field                                              | Rules                            | Service                                     | TS type                   | Drift? |
+| -------------------------------------------------- | -------------------------------- | ------------------------------------------- | ------------------------- | ------ |
+| Deterministic id `${gameId}_${turnNumber}_${role}` | `firestore.rules:1684–1690`      | `clips.writes.ts:51–53,73–75`               | —                         | ✓      |
+| `role` enum `set`\|`match`                         | `firestore.rules:1686,1690`      | `clips.writes.ts:53`                        | `clip.ts:34` (`ClipRole`) | ✓      |
+| `trickName` (≤100)                                 | `firestore.rules:1695–1697`      | `clips.writes.ts:56,78`                     | `clip.ts:37`              | ✓      |
+| `moderationStatus` `active` on create              | `firestore.rules:1705–1708`      | `clips.writes.ts:59,81`                     | `clip.ts:41`              | ✓      |
+| `upvoteCount` (int ≥0, ±1 via vote-doc atomicity)  | `firestore.rules:1711,1735–1755` | `clips.writes.ts:60,82`, `clips.upvotes.ts` | `clip.ts:42`              | ✓      |
 
 **No drift detected in the games or clips schema surface.**
 
@@ -209,21 +216,21 @@ Every rule-enforced field on `clips` aligns with `clips.writes.ts` and `src/type
 - ✓ Username length 3–20 — `firestore.rules:168–169` ↔ `users.ts:166–167`.
 - ✓ Sensitive fields (`email`, `emailVerified`, `dob`, `parentalConsent`, `fcmTokens`) forbidden at top level — `firestore.rules:177,203` ↔ private subcollection path enforced in service.
 - ✓ `fcmTokens ≤ 10` — `firestore.rules:305–306` ↔ `users.ts:83`.
-- ✓ `wins` / `losses` — written inside `runTransaction` in `users.ts:381–395` (`updatePlayerStats`), with `lastStatsGameId` idempotency key. Aligned.
-- 🟡 `lastGameCreatedAt` / `lastSpotCreatedAt` — **not** transactional with the game/spot create as the original audit asserted (corrected post-publish; see §0e). Implemented as fire-and-forget `setDoc(..., { merge: true })` *after* the create commits: `games.create.ts:124` runs after `setDoc(games/<id>)` at L120; `spots.ts:268` runs after `addDoc(spots, ...)` at L264. The cooldown anchor and the game/spot create can therefore diverge if the second write fails (the `.catch` in both call sites logs but does not retry). Severity 🟡 because the rate-limit rule degrades to "permissive on failure" rather than corrupts state, but the audit's "same transaction" claim was wrong.
+- ✓ `wins` / `losses` — **server-maintained** (July 2026). Client stat writes were removed after a `GameContext.fanOutStats` replay bug corrupted production counters: `updatePlayerStats` and its single-slot `lastStatsGameId` idempotency field are gone (`users.ts` no longer imports `updateDoc`/`increment`; `UserProfile.lastStatsGameId` no longer exists). Firestore rules now include `wins`, `losses`, and `lastStatsGameId` in the users-update `affectedKeys().hasAny([...])` backstop (`firestore.rules:271`), so no client can mutate them. The `applyGameStats` Cloud Function (`functions/src/applyGameStats.ts`, admin SDK, bypasses rules) increments both counters exactly once per terminal game, gated by a server-only `statsApplied` flag on the game doc (rules pin it via `statsAppliedUnchanged()` on every `/games` update branch and forbid it on create). `scripts/backfill-stats.mjs` is the one-time recompute-from-source recovery. Aligned.
+- 🟡 `lastGameCreatedAt` / `lastSpotCreatedAt` — **not** transactional with the game/spot create as the original audit asserted (corrected post-publish; see §0e). Implemented as fire-and-forget `setDoc(..., { merge: true })` _after_ the create commits: `games.create.ts:124` runs after `setDoc(games/<id>)` at L120; `spots.ts:268` runs after `addDoc(spots, ...)` at L264. The cooldown anchor and the game/spot create can therefore diverge if the second write fails (the `.catch` in both call sites logs but does not retry). Severity 🟡 because the rate-limit rule degrades to "permissive on failure" rather than corrupts state, but the audit's "same transaction" claim was wrong.
 - ✓ `onboardingTutorialVersion` — server-default; rules enforce shape on update.
 
 ### Spots
 
-| Field | Rules | Service | TS type | Drift? |
-| ----- | ----- | ------- | ------- | ------ |
-| `name` 1–80 | `firestore.rules:1044–1046` | `spots.ts:95–97` | `spot.ts:30` | ✓ |
-| `description` ≤500 | `firestore.rules:1048–1051` | `spots.ts:99–101` | `spot.ts:31` | ✓ |
-| `gnarRating` / `bustRisk` 1–5 | `firestore.rules:1061–1066` | `spots.ts:149–150` | `spot.ts:34–35` (literal union) | ✓ |
-| `obstacles` ≤14 | `firestore.rules:1068–1069` | `spots.ts:100–101` | `spot.ts:36` | ✓ |
-| `photoUrls` ≤5 | `firestore.rules:1071–1072` | `spots.ts:104–105` | `spot.ts:37` | ✓ |
-| `isVerified` false on create | `firestore.rules:1075` | server-default | `spot.ts:38` | ✓ |
-| `isActive` true on create | `firestore.rules:1076` | server-default | `spot.ts:39` | ✓ |
+| Field                         | Rules                       | Service            | TS type                         | Drift? |
+| ----------------------------- | --------------------------- | ------------------ | ------------------------------- | ------ |
+| `name` 1–80                   | `firestore.rules:1044–1046` | `spots.ts:95–97`   | `spot.ts:30`                    | ✓      |
+| `description` ≤500            | `firestore.rules:1048–1051` | `spots.ts:99–101`  | `spot.ts:31`                    | ✓      |
+| `gnarRating` / `bustRisk` 1–5 | `firestore.rules:1061–1066` | `spots.ts:149–150` | `spot.ts:34–35` (literal union) | ✓      |
+| `obstacles` ≤14               | `firestore.rules:1068–1069` | `spots.ts:100–101` | `spot.ts:36`                    | ✓      |
+| `photoUrls` ≤5                | `firestore.rules:1071–1072` | `spots.ts:104–105` | `spot.ts:37`                    | ✓      |
+| `isVerified` false on create  | `firestore.rules:1075`      | server-default     | `spot.ts:38`                    | ✓      |
+| `isActive` true on create     | `firestore.rules:1076`      | server-default     | `spot.ts:39`                    | ✓      |
 
 ### Reports
 
@@ -245,16 +252,16 @@ Every rule-enforced field on `clips` aligns with `clips.writes.ts` and `src/type
 
 ### Storage
 
-| Constraint | `storage.rules` | `src/services/storage.ts` | Drift? |
-| ---------- | --------------- | -------------------------- | ------ |
-| Path format | L10 `games/{gameId}/{turnPath}/{fileName}` | `storage.ts:139` `games/${gameId}/turn-${turnNumber}/${role}.${ext}` | ✓ |
-| Role enum | L26 `(set\|match)` | `storage.ts:79–100` | ✓ |
-| Extension enum | L26 `(webm\|mp4)` | `storage.ts:79–100` | ✓ |
-| Content type | L23–24 `video/webm`, `video/mp4` | `storage.ts:50,82–100` | ✓ |
-| MIN_UPLOAD_BYTES | L19 `> 1024` | `storage.ts:31` `1024` | ✓ |
-| MAX_UPLOAD_BYTES | L21 `< 50 * 1024 * 1024` | `storage.ts:33` `50 * 1024 * 1024` | ✓ |
-| `customMetadata.uploaderUid` | L28 | `storage.ts:176–181` | ✓ |
-| Immutability after create | L29–44 | append-only contract in service | ✓ |
+| Constraint                   | `storage.rules`                            | `src/services/storage.ts`                                            | Drift? |
+| ---------------------------- | ------------------------------------------ | -------------------------------------------------------------------- | ------ |
+| Path format                  | L10 `games/{gameId}/{turnPath}/{fileName}` | `storage.ts:139` `games/${gameId}/turn-${turnNumber}/${role}.${ext}` | ✓      |
+| Role enum                    | L26 `(set\|match)`                         | `storage.ts:79–100`                                                  | ✓      |
+| Extension enum               | L26 `(webm\|mp4)`                          | `storage.ts:79–100`                                                  | ✓      |
+| Content type                 | L23–24 `video/webm`, `video/mp4`           | `storage.ts:50,82–100`                                               | ✓      |
+| MIN_UPLOAD_BYTES             | L19 `> 1024`                               | `storage.ts:31` `1024`                                               | ✓      |
+| MAX_UPLOAD_BYTES             | L21 `< 50 * 1024 * 1024`                   | `storage.ts:33` `50 * 1024 * 1024`                                   | ✓      |
+| `customMetadata.uploaderUid` | L28                                        | `storage.ts:176–181`                                                 | ✓      |
+| Immutability after create    | L29–44                                     | append-only contract in service                                      | ✓      |
 
 **No drift detected across users, spots, reports, blocks, votes, or storage.**
 
@@ -264,15 +271,15 @@ Every rule-enforced field on `clips` aligns with `clips.writes.ts` and `src/type
 
 7 composite indexes declared in `firestore.indexes.json`:
 
-| Index | Backing query | Status |
-| ----- | ------------- | ------ |
-| `spots`(isActive ASC, latitude ASC) | `spots.ts:367–370` `queryNearbySpots` | ✓ used |
-| `clips`(moderationStatus ASC, createdAt DESC, __name__ DESC) | `clips.feed.ts` chronological feed | ✓ used |
-| `clips`(moderationStatus ASC, upvoteCount DESC, createdAt DESC, __name__ DESC) | **none yet** | 🟡 declared but unused |
-| `notifications`(recipientUid ASC, read ASC, createdAt DESC) | `notifications.ts:300–303` | ✓ used |
-| `games`(player1Uid ASC, status ASC, updatedAt DESC) | `games.subscriptions.ts:29–34` | ✓ used |
-| `games`(player2Uid ASC, status ASC, updatedAt DESC) | `games.subscriptions.ts:36–41` | ✓ used |
-| `nudges`(recipientUid ASC, createdAt DESC) | `notifications.ts:243` | ✓ used |
+| Index                                                                            | Backing query                         | Status                 |
+| -------------------------------------------------------------------------------- | ------------------------------------- | ---------------------- |
+| `spots`(isActive ASC, latitude ASC)                                              | `spots.ts:367–370` `queryNearbySpots` | ✓ used                 |
+| `clips`(moderationStatus ASC, createdAt DESC, `__name__` DESC)                   | `clips.feed.ts` chronological feed    | ✓ used                 |
+| `clips`(moderationStatus ASC, upvoteCount DESC, createdAt DESC, `__name__` DESC) | **none yet**                          | 🟡 declared but unused |
+| `notifications`(recipientUid ASC, read ASC, createdAt DESC)                      | `notifications.ts:300–303`            | ✓ used                 |
+| `games`(player1Uid ASC, status ASC, updatedAt DESC)                              | `games.subscriptions.ts:29–34`        | ✓ used                 |
+| `games`(player2Uid ASC, status ASC, updatedAt DESC)                              | `games.subscriptions.ts:36–41`        | ✓ used                 |
+| `nudges`(recipientUid ASC, createdAt DESC)                                       | `notifications.ts:243`                | ✓ used                 |
 
 ### Drift
 
@@ -292,14 +299,14 @@ Covered fully in §3 above — every constant, enum, and path format matches. **
 
 ## 6. CLAUDE.md ↔ package.json + vite.config.ts
 
-| Claim | Source | Reality | Drift? |
-| ----- | ------ | ------- | ------ |
-| `verify` gate command | `CLAUDE.md:25` says `npx tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup` | `package.json:32` runs `tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup` | 🟢 cosmetic — bare `tsc` resolves via npm-script PATH |
-| 100% coverage on `src/services/**` and `src/hooks/**` | `CLAUDE.md:68` | `vite.config.ts:103–105` | ✓ |
-| `src/firebase.ts` coverage carve-out | not mentioned | `vite.config.ts:108` lowers to 93/100/80/93 | 🟢 missing from CLAUDE.md |
-| `src/components/**` and `src/screens/**` floor | not mentioned | `vite.config.ts:110–111` 80/80/75/80 | 🟢 missing from CLAUDE.md |
-| No state-management libs | `CLAUDE.md:94` | confirmed in `package.json` | ✓ |
-| Tailwind only | `CLAUDE.md:59,93` | `package.json` has only `@tailwindcss/vite` + `tailwindcss` | ✓ |
+| Claim                                                 | Source                                                                                                               | Reality                                                                                                             | Drift?                                                |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `verify` gate command                                 | `CLAUDE.md:25` says `npx tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup` | `package.json:32` runs `tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup` | 🟢 cosmetic — bare `tsc` resolves via npm-script PATH |
+| 100% coverage on `src/services/**` and `src/hooks/**` | `CLAUDE.md:68`                                                                                                       | `vite.config.ts:103–105`                                                                                            | ✓                                                     |
+| `src/firebase.ts` coverage carve-out                  | not mentioned                                                                                                        | `vite.config.ts:108` lowers to 93/100/80/93                                                                         | 🟢 missing from CLAUDE.md                             |
+| `src/components/**` and `src/screens/**` floor        | not mentioned                                                                                                        | `vite.config.ts:110–111` 80/80/75/80                                                                                | 🟢 missing from CLAUDE.md                             |
+| No state-management libs                              | `CLAUDE.md:94`                                                                                                       | confirmed in `package.json`                                                                                         | ✓                                                     |
+| Tailwind only                                         | `CLAUDE.md:59,93`                                                                                                    | `package.json` has only `@tailwindcss/vite` + `tailwindcss`                                                         | ✓                                                     |
 
 ---
 
@@ -352,20 +359,20 @@ Every `<Route>` in `src/App.tsx:206–467` matches the route map in `docs/ARCHIT
 
 ---
 
-## 10. docs/GAME_STATE_MACHINE.md ↔ services/games.* + firestore.rules
+## 10. docs/GAME_STATE_MACHINE.md ↔ services/games.\* + firestore.rules
 
 Six states (active:setting, active:matching, active:setReview, active:disputable, complete, forfeit) and every transition between them are implemented in the service layer and enforced in the rules:
 
-| Transition | Doc section | Service entry | Rule branch |
-| ---------- | ----------- | ------------- | ----------- |
-| `createGame` | L120–130 | `games.create.ts:createGame` | rules L430–495 |
-| `setTrick` | L132–144 | `games.match.ts` | rules L568–591 |
-| `submitMatchAttempt` (paths A/B/C) | L146–177 | `games.match.ts:130–301` | rules matching-update block |
-| `callBSOnSetTrick` | L179–185 | `games.judge.ts:37–60` | setReview branch |
-| `judgeRuleSetTrick` | L187–193 | `games.judge.ts:78+` | setReview→matching\|setting |
-| `resolveDispute` | L195–224 | `games.judge.ts` | disputable→setting\|complete |
-| `acceptJudgeInvite` / `declineJudgeInvite` | L226–231 | `games.judge.ts` | judgeStatus transitions |
-| `forfeitExpiredTurn` | L234–257 | `games.turns.ts:78–167` | forfeit branches |
+| Transition                                 | Doc section | Service entry                | Rule branch                  |
+| ------------------------------------------ | ----------- | ---------------------------- | ---------------------------- |
+| `createGame`                               | L120–130    | `games.create.ts:createGame` | rules L430–495               |
+| `setTrick`                                 | L132–144    | `games.match.ts`             | rules L568–591               |
+| `submitMatchAttempt` (paths A/B/C)         | L146–177    | `games.match.ts:130–301`     | rules matching-update block  |
+| `callBSOnSetTrick`                         | L179–185    | `games.judge.ts:37–60`       | setReview branch             |
+| `judgeRuleSetTrick`                        | L187–193    | `games.judge.ts:78+`         | setReview→matching\|setting  |
+| `resolveDispute`                           | L195–224    | `games.judge.ts`             | disputable→setting\|complete |
+| `acceptJudgeInvite` / `declineJudgeInvite` | L226–231    | `games.judge.ts`             | judgeStatus transitions      |
+| `forfeitExpiredTurn`                       | L234–257    | `games.turns.ts:78–167`      | forfeit branches             |
 
 ### Drift
 
@@ -377,19 +384,19 @@ Six states (active:setting, active:matching, active:setReview, active:disputable
 
 Each prior-audit finding revisited against HEAD as of 2026-05-18:
 
-| Prior finding | Status in AUDIT_2026-05.md | Current reality |
-| ------------- | -------------------------- | --------------- |
-| F1 `clips.ts` 620 LOC split | "Open PR #341" | 🟡 **Merged.** `src/services/clips.ts` is now a 28-LOC barrel; six shards (`clips.{mappers,writes,feed,upvotes,cascade}.ts`) exist. |
-| F2 users sensitive-fields guard | "Open PR #336" | 🟡 **Re-verify.** `firestore.rules:167–176` still contains the transitional relaxation. Confirm whether #336 has landed. |
-| F3 SpotDetailPage useNavigate drift | "Open PR #342" | 🟡 **Re-verify** against `src/screens/SpotDetailPage.tsx`. |
-| F4 `games.test.ts` 1938 LOC split | "Open PR #345" | 🟡 **Re-verify** against `src/services/__tests__/`. |
-| F5 App Check disabled | open | ✓ still open per env config |
-| F6 CSP unsafe-inline | open | ✓ still open per `vercel.json` |
-| F7 Lighthouse warn→error | open | ✓ |
-| F8 Playwright E2E surface | open | ✓ |
-| F9 Sentry capacitor v3→v4 | open | ✓ |
-| F10 `getIdToken(true)` before createGame | open | ✓ |
-| F11 turnHistory per-record cap | acknowledged, not actionable | ✓ |
+| Prior finding                            | Status in AUDIT_2026-05.md   | Current reality                                                                                                                     |
+| ---------------------------------------- | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| F1 `clips.ts` 620 LOC split              | "Open PR #341"               | 🟡 **Merged.** `src/services/clips.ts` is now a 28-LOC barrel; six shards (`clips.{mappers,writes,feed,upvotes,cascade}.ts`) exist. |
+| F2 users sensitive-fields guard          | "Open PR #336"               | 🟡 **Re-verify.** `firestore.rules:167–176` still contains the transitional relaxation. Confirm whether #336 has landed.            |
+| F3 SpotDetailPage useNavigate drift      | "Open PR #342"               | 🟡 **Re-verify** against `src/screens/SpotDetailPage.tsx`.                                                                          |
+| F4 `games.test.ts` 1938 LOC split        | "Open PR #345"               | 🟡 **Re-verify** against `src/services/__tests__/`.                                                                                 |
+| F5 App Check disabled                    | open                         | ✓ still open per env config                                                                                                         |
+| F6 CSP unsafe-inline                     | open                         | ✓ still open per `vercel.json`                                                                                                      |
+| F7 Lighthouse warn→error                 | open                         | ✓                                                                                                                                   |
+| F8 Playwright E2E surface                | open                         | ✓                                                                                                                                   |
+| F9 Sentry capacitor v3→v4                | open                         | ✓                                                                                                                                   |
+| F10 `getIdToken(true)` before createGame | open                         | ✓                                                                                                                                   |
+| F11 turnHistory per-record cap           | acknowledged, not actionable | ✓                                                                                                                                   |
 
 ---
 
@@ -397,23 +404,29 @@ Each prior-audit finding revisited against HEAD as of 2026-05-18:
 
 ### Enforced in `pr-gate.yml`
 
-| Guardrail | Job | Status |
-| --------- | --- | ------ |
-| No `as any` | `guard-as-any-casts` (L25–36) | ✓ |
-| No TODO/FIXME/HACK | `guard-todo-fixme-hack` (L60–73) | ✓ |
-| No Cloud Functions | `verify-no-cloud-functions` (L37–58) | ✓ |
-| Workflow-file review | `verify-workflow-changes` (L75–94) | ✓ (warn-only) |
-| Test duplication | `check-test-duplication` (L96–104) | ✓ |
-| File-length budgets | `check-file-length` (L106–117) | ✓ non-blocking |
-| Rules tests on rules changes | `validate-firebase-rules` (L119–158) | ✓ |
-| Full verify gate | `main.yml` `build-and-test` | ✓ |
+| Guardrail                    | Job                                  | Status         |
+| ---------------------------- | ------------------------------------ | -------------- |
+| No `as any`                  | `guard-as-any-casts` (L25–36)        | ✓              |
+| No TODO/FIXME/HACK           | `guard-todo-fixme-hack` (L60–73)     | ✓              |
+| No Cloud Functions           | `verify-no-cloud-functions` (L37–58) | ✓              |
+| Workflow-file review         | `verify-workflow-changes` (L75–94)   | ✓ (warn-only)  |
+| Test duplication             | `check-test-duplication` (L96–104)   | ✓              |
+| File-length budgets          | `check-file-length` (L106–117)       | ✓ non-blocking |
+| Rules tests on rules changes | `validate-firebase-rules` (L119–158) | ✓              |
+| Full verify gate             | `main.yml` `build-and-test`          | ✓              |
 
 ### Not enforced in CI
+
+<!-- Same `**`-in-code-span emphasis hazard as the compliance list above:
+     prettier escapes the closing bold as \*\*. Range pragma keeps it verbatim. -->
+<!-- prettier-ignore-start -->
 
 - 🟡 **`console.log` ban** (CLAUDE.md L143) — no grep job in `pr-gate.yml`.
 - 🟡 **No Firebase imports outside `src/services/**`** (CLAUDE.md L57) — no grep job.
 - 🟡 **No CSS files** (CLAUDE.md L59, L145) — no grep job for `*.css` imports.
 - 🟡 **No state-management libs** (CLAUDE.md L94) — no `package.json` dependency check.
+
+<!-- prettier-ignore-end -->
 
 These four guardrails have held via code review alone. They are not contractual violations — they are gaps between policy and automation.
 
@@ -432,13 +445,13 @@ These four guardrails have held via code review alone. They are not contractual 
 
 Counts below include the post-publish self-correction in §0 (see §0e for the most recent additions from external review).
 
-| Severity | Original (pre-§0) | Final (with §0 additions) |
-| -------- | ----------------: | -------------------------: |
-| 🔴 correctness | 4 | **4** |
-| 🟡 staleness | 18 | **22** |
-| 🟢 cosmetic | 6 | **7** |
-| ❓ unvalidated | 0 | **1** |
-| **Total** | 28 | **34** |
+| Severity       | Original (pre-§0) | Final (with §0 additions) |
+| -------------- | ----------------: | ------------------------: |
+| 🔴 correctness |                 4 |                     **4** |
+| 🟡 staleness   |                18 |                    **22** |
+| 🟢 cosmetic    |                 6 |                     **7** |
+| ❓ unvalidated |                 0 |                     **1** |
+| **Total**      |                28 |                    **34** |
 
 ### 🔴 Correctness drifts (read these first)
 
@@ -467,19 +480,19 @@ The report records this order; **no work is performed here**.
 
 ### Coverage of the audit
 
-| Pairing | Sections | Drift found |
-| ------- | -------- | ----------- |
-| 1. CLAUDE.md ↔ code | §1 | 10 🟡 (LOC) |
-| 2. rules ↔ games/clips services | §2 | 0 |
-| 3. rules ↔ users/spots/reports/blocks/votes/storage services | §3, §5 | 0 |
-| 4. rules ↔ indexes ↔ queries | §4 | 1 🟡 |
-| 5. storage.rules ↔ storage.ts | §5 | 0 |
-| 6. CLAUDE.md ↔ package.json/vite.config.ts | §6 | 3 🟢 |
-| 7. STATUS_REPORT.md ↔ shipped | §7 | 1 🟡 + 1 🟢 |
-| 8. ARCHITECTURE.md ↔ App.tsx | §8 | 1 🔴 |
-| 9. DATABASE.md ↔ rules | §9 | 3 🔴 + 2 🟡 |
-| 10. GAME_STATE_MACHINE.md ↔ services + rules | §10 | 1 🟢 |
-| 11. AUDIT_2026-05.md ↔ HEAD | §11 | 4 🟡 |
-| 12. workflows ↔ CLAUDE.md | §12 | 4 🟡 |
+| Pairing                                                      | Sections | Drift found |
+| ------------------------------------------------------------ | -------- | ----------- |
+| 1. CLAUDE.md ↔ code                                          | §1       | 10 🟡 (LOC) |
+| 2. rules ↔ games/clips services                              | §2       | 0           |
+| 3. rules ↔ users/spots/reports/blocks/votes/storage services | §3, §5   | 0           |
+| 4. rules ↔ indexes ↔ queries                                 | §4       | 1 🟡        |
+| 5. storage.rules ↔ storage.ts                                | §5       | 0           |
+| 6. CLAUDE.md ↔ package.json/vite.config.ts                   | §6       | 3 🟢        |
+| 7. STATUS_REPORT.md ↔ shipped                                | §7       | 1 🟡 + 1 🟢 |
+| 8. ARCHITECTURE.md ↔ App.tsx                                 | §8       | 1 🔴        |
+| 9. DATABASE.md ↔ rules                                       | §9       | 3 🔴 + 2 🟡 |
+| 10. GAME_STATE_MACHINE.md ↔ services + rules                 | §10      | 1 🟢        |
+| 11. AUDIT_2026-05.md ↔ HEAD                                  | §11      | 4 🟡        |
+| 12. workflows ↔ CLAUDE.md                                    | §12      | 4 🟡        |
 
 **Conclusion:** The code-side sources of truth (CLAUDE.md guardrails, firestore.rules, service layer, TS types, indexes, storage rules, CI) are tightly aligned. The documentation tree is where almost all drift lives — three of the four 🔴 drifts are in `docs/DATABASE.md`, one is in `docs/ARCHITECTURE.md`. A single doc-only PR can clear every 🔴 finding.
