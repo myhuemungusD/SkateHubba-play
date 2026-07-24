@@ -431,6 +431,42 @@ describe("VideoRecorder", () => {
     expect(screen.getByLabelText("Enable fisheye")).toHaveAttribute("aria-pressed", "false");
   });
 
+  it("shows the crosshair only while the camera is live", async () => {
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    // Idle: no crosshair
+    expect(screen.queryByTestId("camera-crosshair")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    // Preview: crosshair present and purely decorative
+    const crosshair = screen.getByTestId("camera-crosshair");
+    expect(crosshair).toHaveAttribute("aria-hidden", "true");
+    expect(crosshair).toHaveClass("pointer-events-none");
+
+    // Recording: still present
+    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+    expect(screen.getByTestId("camera-crosshair")).toBeInTheDocument();
+
+    // Done: gone
+    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
+    expect(screen.queryByTestId("camera-crosshair")).not.toBeInTheDocument();
+  });
+
+  it("keeps the crosshair visible when the fisheye overlay is enabled", async () => {
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+
+    await userEvent.click(screen.getByLabelText("Enable fisheye"));
+    expect(screen.getByLabelText("Disable fisheye")).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByTestId("camera-crosshair")).toBeInTheDocument();
+  });
+
   it("cleans up on unmount (revokes blob URL and stops tracks)", async () => {
     const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL");
     const { mockStop } = setupMockStream();
