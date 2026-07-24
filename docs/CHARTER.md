@@ -372,7 +372,7 @@ screenshots/
 - Smoke tests for all screens
 - Rules tests for any rule change
 - E2E for critical flows (signup, challenge, full game)
-- Pre-flight gate: `npm run verify` runs `tsc -b && lint && test:coverage && build && check:test-dup`. This is a **subset** of CI — full CI (`.github/workflows/main.yml` + `pr-gate.yml`) additionally runs `npm audit --audit-level=moderate`, an inline `as any` grep guard, `npm run test:e2e`, and the 9 `pr-gate.yml` jobs listed in §8. A clean `verify` is necessary but not sufficient.
+- Pre-flight gate: `npm run verify` runs `tsc -b && lint && test:coverage && build && check:test-dup`. This is a **subset** of CI — full CI (`.github/workflows/main.yml` + `pr-gate.yml`) additionally runs `npm audit --audit-level=moderate` (blocking only when the change touches `package.json`/`package-lock.json`; report-only otherwise, with a nightly scheduled audit catching advisory drift against main's existing lockfile), an inline `as any` grep guard, `npm run test:e2e`, and the 9 `pr-gate.yml` jobs listed in §8. A clean `verify` is necessary but not sufficient.
 - Never push code that will fail CI
 
 ---
