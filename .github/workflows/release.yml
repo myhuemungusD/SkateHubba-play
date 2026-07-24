@@ -18,14 +18,15 @@ concurrency:
 jobs:
   release-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Release event payload references the tag; check it out explicitly
           # so the build matches the exact commit release-please just tagged.
           ref: ${{ github.event.release.tag_name }}
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
@@ -63,7 +64,7 @@ jobs:
         # demangle. Silently skipped if SENTRY_AUTH_TOKEN is absent — a fresh
         # repo without Sentry configured still ships a valid GitHub Release.
         if: env.SENTRY_AUTH_TOKEN != ''
-        uses: getsentry/action-release@v3
+        uses: getsentry/action-release@ff07929a6537bac57790c3451cf4d364aca38528 # v3.7.0
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
@@ -77,10 +78,12 @@ jobs:
           strip_common_prefix: true
 
       - name: Archive build output
-        run: cd dist && zip -r ../skatehubba-${{ github.event.release.tag_name }}.zip .
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: cd dist && zip -r "../skatehubba-${TAG}.zip" .
 
       - name: Attach build artifact to release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           tag_name: ${{ github.event.release.tag_name }}
           files: skatehubba-${{ github.event.release.tag_name }}.zip
