@@ -85,7 +85,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
-    "@eslint/js": "^9.39.4",
+    "@eslint/js": "^10.0.1",
     "@firebase/rules-unit-testing": "^5.0.0",
     "@playwright/test": "^1.56.1",
     "@tailwindcss/vite": "^4.2.2",
