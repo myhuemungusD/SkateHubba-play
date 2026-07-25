@@ -280,6 +280,15 @@ export function VideoRecorder({
           </div>
         )}
 
+        {state === "preview" && (
+          <p
+            data-testid="crosshair-instruction"
+            className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-black/70 px-3 py-1.5 rounded-full font-body text-xs text-white whitespace-nowrap pointer-events-none"
+          >
+            Land your trick where the crosshair is aiming
+          </p>
+        )}
+
         {state === "recording" && (
           <div className="absolute top-4 left-4 flex items-center gap-2 bg-black/70 px-3 py-1.5 rounded-full">
             <div className="w-2.5 h-2.5 rounded-full bg-brand-red animate-rec-pulse" />
