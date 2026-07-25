@@ -2119,5 +2119,282 @@ service cloud.firestore {
       allow delete: if isSignedIn()
         && request.auth.uid == resource.data.uid;
     }
+
+    // ── Disputes (community-judged trick calls) ──
+    // When a matcher claims "I landed it", the SETTER can send the call to
+    // the community instead of accepting it on the honor system. The clip
+    // enters the feed and any OTHER signed-in user rules LAND or BAIL.
+    //
+    // Shape mirrors the clips collection deliberately — same integrity
+    // constraints, same proven pattern:
+    //   1. Deterministic doc id `${gameId}_${turnNumber}` — idempotent under
+    //      transaction retry, and a turn can only be disputed once.
+    //   2. Writer must be a participant of the referenced game (get() against
+    //      the game doc) AND specifically the SETTER of that turn. Only the
+    //      player whose trick was matched gets to question the claim.
+    //   3. Create seeds status 'open' / moderationStatus 'active' / tallies
+    //      at 0; clients can never forge a pre-loaded verdict, and takedowns
+    //      stay Admin-SDK-only (App Store Guideline 1.2).
+    //   4. matchVideoUrl is bucket-pinned — it renders in a public feed, the
+    //      same exfil / content-spoof surface clips.videoUrl guards against.
+    //
+    // Reads are open to any signed-in user: blocklist filtering is applied
+    // client-side (see useBlockedUsers), matching clips.
+    match /disputes/{disputeId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        && request.auth.token.email_verified == true
+        // Deterministic id must match the dispute's self-described coordinates.
+        && disputeId == (request.resource.data.gameId + '_'
+                         + string(request.resource.data.turnNumber))
+        && request.resource.data.gameId is string
+        && request.resource.data.turnNumber is int
+        && request.resource.data.turnNumber > 0
+        // Only the setter of the disputed turn may raise it — never the
+        // matcher (they'd be disputing their own claim), never the judge.
+        //
+        // ── KNOWN GAP: role self-assertion ──
+        // This proves the WRITER is who they claim to be; it does NOT prove
+        // they set the trick on `turnNumber`. Once the turn has resolved,
+        // `currentSetter`/`turnNumber` on the game have already moved on, and
+        // `turnHistory` cannot be indexed by turn from inside rules, so there
+        // is nothing server-side left to bind against. The matcher can
+        // therefore invert the roles and raise a dispute over their OWN claim
+        // (src/services/disputes.raise.ts blocks this client-side only —
+        // which is an affordance, not authorization).
+        //
+        // This is survivable TODAY only because the crowd verdict is
+        // non-binding on game state: it decides nothing but what a card
+        // displays, so the blast radius is feed spam, not corrupted letters
+        // or turn order. It MUST be closed before the verdict is ever made
+        // binding (see src/types/dispute.ts — that flip is a deliberate
+        // separate step).
+        //
+        // Recommended fix: have the game park in a pending state where
+        // `currentSetter` and `turnNumber` still name the disputed turn while
+        // the setter decides. This rule then binds both
+        // (`setterUid == game.currentSetter && turnNumber == game.turnNumber`)
+        // and the gap closes with no client cooperation required.
+        && request.resource.data.setterUid == request.auth.uid
+        && request.resource.data.matcherUid is string
+        && request.resource.data.matcherUid != request.resource.data.setterUid
+        && request.resource.data.setterUsername is string
+        && request.resource.data.setterUsername.size() > 0
+        && request.resource.data.setterUsername.size() <= 20
+        && request.resource.data.matcherUsername is string
+        && request.resource.data.matcherUsername.size() > 0
+        && request.resource.data.matcherUsername.size() <= 20
+        && request.resource.data.trickName is string
+        && request.resource.data.trickName.size() > 0
+        && request.resource.data.trickName.size() <= 100
+        // ── matchVideoUrl bucket pin (audit P2) ──
+        // REQUIRED: this is the clip the feed plays. Without a host pin any
+        // setter could stamp an attacker-hosted URL into an app-wide feed.
+        && request.resource.data.matchVideoUrl is string
+        && request.resource.data.matchVideoUrl.size() <= 2048
+        && videoUrlBucketPinned(request.resource.data.matchVideoUrl)
+        // setVideoUrl is optional (turns that pre-date set recording have
+        // none) but must clear the same pin whenever it is present.
+        && (request.resource.data.setVideoUrl == null
+            || (request.resource.data.setVideoUrl.size() <= 2048
+                && videoUrlBucketPinned(request.resource.data.setVideoUrl)))
+        && (request.resource.data.spotId == null
+            || (request.resource.data.spotId is string
+                && request.resource.data.spotId.size() <= 64))
+        && request.resource.data.createdAt == request.time
+        // A dispute always opens accepting verdicts; 'closed' is a
+        // server-side close-out transition, not a client starting state.
+        && request.resource.data.status == 'open'
+        && request.resource.data.moderationStatus == 'active'
+        // Tallies are read directly for the meter, so they must start empty.
+        && request.resource.data.landVotes == 0
+        && request.resource.data.bailVotes == 0
+        // Writer must be a participant of the referenced game.
+        && isParticipant(get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data)
+        // Both named uids must be the game's actual players — never the
+        // judge, never an arbitrary UID stamped in to fake a matchup.
+        && (
+          request.resource.data.setterUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
+          || request.resource.data.setterUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+        )
+        && (
+          request.resource.data.matcherUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
+          || request.resource.data.matcherUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player2Uid
+        );
+
+      // The ONLY client-writable change is a vote tally delta, bound to the
+      // paired disputeVotes create/delete in the same atomic write — the same
+      // shape as the clips.upvoteCount ±1 branches. Everything else (status
+      // close-out, moderation flips, content) is Admin SDK only.
+      //
+      // ── Why a symmetric -1 branch exists, despite "a verdict is final" ──
+      // "No un-vote" is a PRODUCT rule, enforced where product rules belong:
+      // the UI ships no retract affordance. It is deliberately NOT a
+      // rules-level invariant, because making it one is strictly worse on two
+      // counts. (1) Integrity: with delete allowed but no decrement, one
+      // account cycles vote → delete vote doc → the !exists() guard resets →
+      // vote again, and every +1 sticks. Unbounded ballot stuffing. Pairing
+      // the delete with a mandatory -1 makes that cycle net ZERO — stuffing
+      // becomes arithmetically impossible rather than merely forbidden.
+      // (2) Erasure: the account-deletion cascade
+      // (services/disputes.cascade.ts → deleteUserDisputeVotes) must be able
+      // to reap a user's verdicts from OPEN disputes. Gating deletes on
+      // status would strand a deleted user's recorded verdict on every live
+      // dispute — a real GDPR/CCPA gap in a repo that maintains explicit
+      // cascade functions for exactly this.
+      //
+      // Do NOT "restore" the asymmetry by dropping the -1 branch: that
+      // re-opens both holes. Integrity lives here; affordances live in the UI.
+      allow update: if isSignedIn()
+        && request.auth.token.email_verified == true
+        && (
+          // ── +1: the verdict doc was created in THIS write ──
+          // Absent before AND present after ⇒ genuinely new. Without
+          // !exists() a user who already voted could keep incrementing;
+          // without existsAfter() they could inflate the meter without
+          // recording any verdict at all.
+          (
+            !exists(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
+            && existsAfter(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
+            // New verdicts are only accepted while the dispute is open. (The
+            // -1 branch is deliberately NOT status-gated — erasure has to
+            // work on closed disputes too.)
+            && resource.data.status == 'open'
+            && (
+              // LAND: landVotes is the only field that may differ, and only
+              // to exactly +1 of its stored value.
+              (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['landVotes'])
+                && request.resource.data.landVotes is int
+                && request.resource.data.landVotes == resource.data.get('landVotes', 0) + 1
+                // The paired verdict must actually say 'land' — otherwise a
+                // voter files a BAIL verdict while inflating the LAND meter.
+                && getAfter(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId)).data.verdict == 'land')
+              ||
+              // BAIL: mirror image.
+              (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bailVotes'])
+                && request.resource.data.bailVotes is int
+                && request.resource.data.bailVotes == resource.data.get('bailVotes', 0) + 1
+                && getAfter(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId)).data.verdict == 'bail')
+            )
+          )
+          ||
+          // ── -1: the verdict doc was deleted in THIS write ──
+          // Present before AND absent after. The verdict is read from the
+          // PRE-state (get, not getAfter — the doc is gone afterwards), so a
+          // deleted BAIL vote can only ever decrement bailVotes.
+          (
+            exists(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
+            && !existsAfter(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
+            && (
+              (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['landVotes'])
+                && request.resource.data.landVotes is int
+                && request.resource.data.landVotes >= 0
+                && request.resource.data.landVotes == resource.data.get('landVotes', 0) - 1
+                && get(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId)).data.verdict == 'land')
+              ||
+              (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['bailVotes'])
+                && request.resource.data.bailVotes is int
+                && request.resource.data.bailVotes >= 0
+                && request.resource.data.bailVotes == resource.data.get('bailVotes', 0) - 1
+                && get(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId)).data.verdict == 'bail')
+            )
+          )
+        );
+
+      // Only the setter who raised the dispute can retract it. Backs the
+      // account-deletion cascade and lets a user scrub their own call.
+      //
+      // ── KNOWN GAP: delete + re-raise wipes an unfavourable tally ──
+      // The doc id is deterministic and create requires the tallies to seed
+      // at 0, so a setter losing the vote can delete and re-raise to reset
+      // the board. It is self-limiting (the previous round's verdict docs
+      // survive, so those voters are permanently locked out by the +1
+      // branch's !exists() guard) and it is visible (the tally drops to
+      // zero in the feed), but it is real.
+      //
+      // Deliberately NOT closed by restricting delete to non-open disputes:
+      // that would strand a deleted user's dispute on the feed forever, the
+      // same erasure gap the update rule's -1 branch exists to avoid.
+      //
+      // Like the role self-assertion gap on create, this is survivable only
+      // because the crowd verdict is currently non-binding on game state —
+      // it costs feed spam, not letters or turn order. Both MUST be closed
+      // before the verdict is ever made binding; the fix here is a
+      // server-side close-out that freezes the dispute rather than a client
+      // delete.
+      allow delete: if isSignedIn()
+        && request.auth.uid == resource.data.setterUid;
+    }
+
+    // ── Dispute verdicts ──
+    //
+    // One verdict per (uid, disputeId), enforced by the deterministic
+    // `${uid}_${disputeId}` doc id, verified at create time so a client
+    // cannot file a verdict under someone else's name. Verdicts are
+    // immutable — update is forbidden outright, so a call cannot be changed
+    // after the fact — and delete is owner-only for the deletion cascade.
+    match /disputeVotes/{voteId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn()
+        // Email verification mirrors clipVotes — without it, throwaway
+        // accounts could brigade a public verdict.
+        && request.auth.token.email_verified == true
+        && voteId == (request.auth.uid + '_' + request.resource.data.disputeId)
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.disputeId is string
+        && request.resource.data.disputeId.size() > 0
+        && request.resource.data.disputeId.size() <= 128
+        && request.resource.data.verdict in ['land', 'bail']
+        && request.resource.data.createdAt == request.time
+        // Target must exist — no orphaned verdicts on deleted disputes.
+        && exists(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId))
+        && get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.status == 'open'
+        // You never judge your own trick. This is the AUTHORITATIVE check —
+        // the client's canVote flag is a UI affordance, not authorization.
+        && get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.setterUid != request.auth.uid
+        && get(/databases/$(database)/documents/disputes/$(request.resource.data.disputeId)).data.matcherUid != request.auth.uid;
+
+      allow update: if false;
+
+      // Owner-only delete, and — crucially — the delete must CARRY ITS OWN
+      // TALLY CORRECTION. A bare delete would reset the +1 branch's !exists()
+      // guard while leaving the earlier increment on the board, so one
+      // account could cycle vote → delete → vote → … and add +1 every lap.
+      // Forcing the paired -1 makes that cycle net zero: stuffing is blocked
+      // by arithmetic, not by forbidding the delete, which is what keeps the
+      // account-deletion cascade working on OPEN disputes (see the update
+      // rule above for the full rationale).
+      //
+      // Note this is NOT status-gated: erasure must succeed on closed
+      // disputes too. A closed dispute's tally is "final" as a product
+      // statement; it must still shed the verdicts of a deleted account.
+      allow delete: if isSignedIn()
+        && request.auth.uid == resource.data.uid
+        && (
+          // Orphan: the dispute is already gone, so there is no tally left to
+          // keep consistent — just drop the vote.
+          !exists(/databases/$(database)/documents/disputes/$(resource.data.disputeId))
+          // Nothing to subtract: the counter this verdict fed is already at
+          // zero (Admin-SDK close-out, or a dispute that was deleted and
+          // re-raised from a zeroed tally). Blocking the delete here would
+          // strand the vote doc forever. Not a stuffing vector — re-voting
+          // from a zeroed base still only ever contributes a single +1.
+          || (resource.data.verdict == 'land'
+              && get(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.get('landVotes', 0) <= 0)
+          || (resource.data.verdict == 'bail'
+              && get(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.get('bailVotes', 0) <= 0)
+          // The normal path: the SAME write must decrement the counter this
+          // verdict incremented. A 'bail' vote can only ever pull bailVotes
+          // down — never landVotes.
+          || (resource.data.verdict == 'land'
+              && getAfter(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.landVotes
+                 == get(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.get('landVotes', 0) - 1)
+          || (resource.data.verdict == 'bail'
+              && getAfter(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.bailVotes
+                 == get(/databases/$(database)/documents/disputes/$(resource.data.disputeId)).data.get('bailVotes', 0) - 1)
+        );
+    }
   }
 }

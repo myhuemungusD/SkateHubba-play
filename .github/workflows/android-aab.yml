@@ -15,13 +15,18 @@ on:
       - 'capacitor.config.ts'
     tags:
       - 'v*'
+
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build Signed AAB
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: 'npm'
@@ -31,14 +36,19 @@ jobs:
       # both the VITE_APP_VERSION env below and the Gradle args later.
       - name: Resolve Android version
         id: version
+        # github.ref and github.run_number are routed through env rather than
+        # interpolated straight into the script: a tag push carries the tag name
+        # in github.ref, and tag names can contain shell metacharacters.
+        env:
+          REF: ${{ github.ref }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           # versionCode: monotonically increasing workflow run number. Play Store
           # requires each uploaded artifact to have a unique, increasing code.
-          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "code=${RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           # versionName: if this build was triggered by a v*.*.* tag, strip the
           # leading 'v' and use that. Otherwise leave empty so build.gradle
           # falls back to package.json.version.
-          REF="${{ github.ref }}"
           if [[ "$REF" == refs/tags/v* ]]; then
             NAME="${REF#refs/tags/v}"
             echo "name=$NAME" >> "$GITHUB_OUTPUT"
@@ -68,40 +78,51 @@ jobs:
           VITE_GIT_SHA: ${{ github.sha }}
       - name: Sync Capacitor
         run: npx cap sync android
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
         with:
           distribution: 'temurin'
           java-version: '21'
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
       - name: Decode keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > android/app/skatehubba-upload.keystore
       - name: Build signed AAB
         working-directory: android
+        # All dynamic values (version outputs, signing secrets, workspace path)
+        # are surfaced as env vars instead of being interpolated into the script,
+        # keeping tag-derived values and secrets out of the command text.
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          KEYSTORE_FILE: ${{ github.workspace }}/android/app/skatehubba-upload.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          VERBOSE: ${{ inputs.verbose }}
         run: |
           GRADLE_ARGS=(
             bundleRelease
-            -PversionCode=${{ steps.version.outputs.code }}
-            -Pandroid.injected.signing.store.file=${{ github.workspace }}/android/app/skatehubba-upload.keystore
-            -Pandroid.injected.signing.store.password=${{ secrets.KEYSTORE_PASSWORD }}
-            -Pandroid.injected.signing.key.alias=${{ secrets.KEY_ALIAS }}
-            -Pandroid.injected.signing.key.password=${{ secrets.KEY_PASSWORD }}
+            -PversionCode="${VERSION_CODE}"
+            -Pandroid.injected.signing.store.file="${KEYSTORE_FILE}"
+            -Pandroid.injected.signing.store.password="${KEYSTORE_PASSWORD}"
+            -Pandroid.injected.signing.key.alias="${KEY_ALIAS}"
+            -Pandroid.injected.signing.key.password="${KEY_PASSWORD}"
           )
-          if [ -n "${{ steps.version.outputs.name }}" ]; then
-            GRADLE_ARGS+=(-PversionName=${{ steps.version.outputs.name }})
+          if [ -n "${VERSION_NAME}" ]; then
+            GRADLE_ARGS+=(-PversionName="${VERSION_NAME}")
           fi
           # --stacktrace is cheap and surfaces the failing task + cause
           # on any failure. --info is opt-in via workflow_dispatch because
           # it produces tens of thousands of lines per build — useful for
           # debugging, harmful as default noise on every push to main.
           GRADLE_ARGS+=(--stacktrace)
-          if [ "${{ inputs.verbose }}" = "true" ]; then
+          if [ "${VERBOSE}" = "true" ]; then
             GRADLE_ARGS+=(--info)
           fi
           ./gradlew "${GRADLE_ARGS[@]}"
       - name: Upload AAB
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: skatehubba-release
           path: android/app/build/outputs/bundle/release/app-release.aab
