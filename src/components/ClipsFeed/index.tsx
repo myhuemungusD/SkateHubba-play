@@ -1,17 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlreadyUpvotedError,
-  fetchClipUpvoteState,
-  fetchClipsFeed,
-  upvoteClip,
-  type ClipDoc,
-  type ClipUpvoteState,
-  type ClipsFeedSort,
-} from "../../services/clips";
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from "react";
+import type { ClipDoc } from "../../services/clips";
+import type { GameDoc } from "../../services/games";
+import { judgeRuleSetTrick, resolveDispute } from "../../services/games";
 import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
+import { captureException } from "../../lib/sentry";
 import { parseFirebaseError } from "../../utils/helpers";
-import { useBlockedUsers } from "../../hooks/useBlockedUsers";
 import type { UserProfile } from "../../services/users";
 
 // ReportModal pulls in submitReport + REPORT_REASON_LABELS + useFocusTrap +
@@ -21,268 +15,155 @@ import type { UserProfile } from "../../services/users";
 // the modal is already state-gated; the brief import delay (~50ms on
 // warm cache) happens AFTER the user has tapped, so it's invisible.
 const ReportModal = lazy(() => import("../ReportModal").then((m) => ({ default: m.ReportModal })));
-import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedSkeleton } from "./ClipsFeedStates";
+import { ClipsFeedEmpty, ClipsFeedError, ClipsFeedExhausted, ClipsFeedSkeleton } from "./ClipsFeedStates";
 import { ClipsFeedHeader } from "./ClipsFeedHeader";
 import { NextClipPrefetcher } from "./NextClipPrefetcher";
+import { RulingCard } from "./RulingCard";
 import { SpotlightCard } from "./SpotlightCard";
-import { copyForError, errorCodeFor } from "./utils";
-
-const PAGE_SIZE = 12;
+import { selectPendingRulings, type PendingRuling } from "./pendingRulings";
+import { useClipsFeedController } from "./useClipsFeedController";
 
 export interface ClipsFeedProps {
   profile: UserProfile;
+  /**
+   * The viewer's games, straight from the lobby subscription (which already
+   * merges the judge slice). Used to derive the ruling lane without a
+   * second listener. Optional so the feed degrades to clips-only if a
+   * caller has no game context.
+   */
+  games?: readonly GameDoc[];
   /** Navigate to a player's public profile. */
   onViewPlayer: (uid: string) => void;
   /** Kick off a challenge flow against a username — used by the "Challenge" CTA. */
   onChallengeUser: (username: string) => void;
+  /** Open the full game screen for a disputed turn. */
+  onOpenGame?: (gameId: string) => void;
 }
 
 /**
- * Community clips spotlight, embedded inside the Lobby.
+ * The lobby feed. Two lanes, in priority order:
  *
- * Shows one landed-trick clip at a time, ordered by `sort` (Top by default —
- * `upvoteCount` desc with most-recent as tiebreak; or New — reverse-chrono).
- * The video plays through once (no loop, no auto-advance); when it ends, the
- * viewer picks REPLAY or NEXT TRICK. Upvote, challenge-user, and report
- * controls stay visible on the action row below the video.
+ *  1. **Rulings** — disputes waiting on THIS viewer as the nominated referee
+ *     (`disputable`: did the matcher land it? / `setReview`: was the set
+ *     clean?). Both videos play inline and the call is cast without leaving
+ *     the lobby; the ruling routes through the same transactional services
+ *     the game screen uses. Derived from the games the lobby already
+ *     subscribes to, so the lane costs no extra reads and clears itself on
+ *     the next snapshot.
  *
- * Page is refetched transparently when the viewer exhausts it with NEXT
- * TRICK or flips the Top/New toggle.
+ *  2. **Community clips** — landed tricks from across the app, one at a time,
+ *     ordered by `sort` (Top: `upvoteCount` desc; New: reverse-chrono).
+ *     Thumbs up records a vote; thumbs down withdraws yours (if any) and
+ *     passes the clip for the session. Challenge and report sit alongside.
  */
-export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedProps) {
-  const [sort, setSort] = useState<ClipsFeedSort>("top");
-  const [pool, setPool] = useState<ClipDoc[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [errorCode, setErrorCode] = useState<string | null>(null);
+export function ClipsFeed({ profile, games, onViewPlayer, onChallengeUser, onOpenGame }: ClipsFeedProps) {
+  const c = useClipsFeedController(profile.uid);
+
   const [reportTarget, setReportTarget] = useState<ClipDoc | null>(null);
-  const [reportedClipIds, setReportedClipIds] = useState<ReadonlySet<string>>(new Set());
-  const [upvoteState, setUpvoteState] = useState<ReadonlyMap<string, ClipUpvoteState>>(new Map());
-  const [upvotingIds, setUpvotingIds] = useState<ReadonlySet<string>>(new Set());
+  // Games ruled on in this session. The snapshot drops them from the lane a
+  // beat later; this hides the card immediately so a decisive second tap
+  // can't land on a stale card.
+  const [ruledGameIds, setRuledGameIds] = useState<ReadonlySet<string>>(new Set());
+  const [rulingGameId, setRulingGameId] = useState<string | null>(null);
+  const [rulingError, setRulingError] = useState<{ gameId: string; message: string } | null>(null);
+  const rulingInFlightRef = useRef(false);
 
-  const blockedUids = useBlockedUsers(profile.uid);
+  const rulings = useMemo(() => {
+    if (!games || games.length === 0) return [];
+    return selectPendingRulings(games, profile.uid, Date.now()).filter((r) => !ruledGameIds.has(r.gameId));
+  }, [games, profile.uid, ruledGameIds]);
 
-  // Guard against setState-after-unmount during fetch races.
-  const mountedRef = useRef(true);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
+  const handleRule = useCallback(async (ruling: PendingRuling, accept: boolean) => {
+    // Ruling is a game-state mutation; a double-tap must never fire two
+    // transactions. The ref latches synchronously, ahead of any re-render.
+    if (rulingInFlightRef.current) return;
+    rulingInFlightRef.current = true;
+    setRulingGameId(ruling.gameId);
+    setRulingError(null);
+    try {
+      if (ruling.kind === "dispute") {
+        await resolveDispute(ruling.gameId, accept);
+      } else {
+        await judgeRuleSetTrick(ruling.gameId, accept);
+      }
+      trackEvent("clip_ruling_cast", { gameId: ruling.gameId, kind: ruling.kind, accept, from: "feed" });
+      setRuledGameIds((prev) => {
+        const next = new Set(prev);
+        next.add(ruling.gameId);
+        return next;
+      });
+    } catch (err) {
+      logger.warn("clips_feed_ruling_failed", { gameId: ruling.gameId, error: parseFirebaseError(err) });
+      captureException(err, { extra: { context: "clipsFeedRuling", gameId: ruling.gameId, accept } });
+      setRulingError({
+        gameId: ruling.gameId,
+        message: err instanceof Error ? err.message : "Couldn't submit your ruling — try again.",
+      });
+    } finally {
+      rulingInFlightRef.current = false;
+      setRulingGameId(null);
+    }
   }, []);
 
-  // Mirror `upvotingIds` and `upvoteState` in refs so handlers can read
-  // their latest values without listing them as useCallback deps. Keeping
-  // these out of the deps is what lets React.memo on SpotlightCard /
-  // ClipActions actually skip renders — a callback identity that flips on
-  // every map mutation would defeat the memo and cascade into the video
-  // subtree on every upvote tap.
-  const upvotingIdsRef = useRef<ReadonlySet<string>>(upvotingIds);
-  useEffect(() => {
-    upvotingIdsRef.current = upvotingIds;
-  }, [upvotingIds]);
-  const upvoteStateRef = useRef<ReadonlyMap<string, ClipUpvoteState>>(upvoteState);
-  useEffect(() => {
-    upvoteStateRef.current = upvoteState;
-  }, [upvoteState]);
-  // sortRef lets handleUpvote tag analytics with the active sort without
-  // rebuilding the callback when the user toggles Top/New.
-  const sortRef = useRef<ClipsFeedSort>(sort);
-  useEffect(() => {
-    sortRef.current = sort;
-  }, [sort]);
+  const handleOpenGame = useCallback((gameId: string) => onOpenGame?.(gameId), [onOpenGame]);
 
-  // Hydrate upvote state for a freshly-loaded pool. The service reads the
-  // denormalized `upvoteCount` directly off the clip docs and batches the
-  // viewer's vote-doc check into a single `where(__name__, in, [...])`
-  // query — at PAGE_SIZE=12 this is 1 read total instead of 24. Own clips
-  // are filtered inside the service since self-upvote is rule-rejected.
-  // Best-effort: page-wide failure leaves the seeded count + not-upvoted
-  // state in place so the UI still renders accurate vote counts.
-  const hydrateUpvotes = useCallback(
-    async (pageClips: readonly ClipDoc[]) => {
-      if (pageClips.length === 0) return;
-      try {
-        const map = await fetchClipUpvoteState(profile.uid, pageClips);
-        if (!mountedRef.current) return;
-        setUpvoteState((prev) => {
-          const next = new Map(prev);
-          for (const [id, state] of map) {
-            // Race guard: don't clobber an optimistic upvote with the
-            // pre-vote hydrated snapshot.
-            const existing = prev.get(id);
-            if (existing?.alreadyUpvoted || upvotingIdsRef.current.has(id)) continue;
-            next.set(id, state);
-          }
-          return next;
-        });
-      } catch (err) {
-        logger.warn("clips_feed_upvote_hydrate_failed", { error: parseFirebaseError(err) });
-      }
-    },
-    [profile.uid],
-  );
-
-  const loadPool = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setErrorCode(null);
-    try {
-      const page = await fetchClipsFeed(null, PAGE_SIZE, sort);
-      if (!mountedRef.current) return;
-      setPool(page.clips);
-      setCurrentIndex(0);
-      // Hydration is fire-and-forget — spotlight renders immediately,
-      // upvote counts pop in once the batch resolves.
-      void hydrateUpvotes(page.clips);
-    } catch (err) {
-      const code = errorCodeFor(err);
-      logger.warn("clips_feed_load_failed", { code, error: parseFirebaseError(err) });
-      if (mountedRef.current) {
-        setError(copyForError(code));
-        setErrorCode(code ?? null);
-      }
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [hydrateUpvotes, sort]);
-
-  useEffect(() => {
-    loadPool();
-  }, [loadPool]);
-
-  // Filter blocked users + reported clips out on the client.
-  const visibleClips = useMemo(
-    () => pool.filter((c) => !blockedUids.has(c.playerUid) && !reportedClipIds.has(c.id)),
-    [pool, blockedUids, reportedClipIds],
-  );
-
-  const safeIndex = visibleClips.length === 0 ? 0 : Math.min(currentIndex, visibleClips.length - 1);
-  const currentClip = visibleClips[safeIndex];
-  // The clip the viewer will see if they tap NEXT TRICK. We hand its URL
-  // to NextClipPrefetcher so the bytes start arriving in browser cache
-  // while the current clip is still playing.
-  const nextClip = safeIndex + 1 < visibleClips.length ? visibleClips[safeIndex + 1] : null;
-
-  const handleNext = useCallback(() => {
-    if (safeIndex + 1 >= visibleClips.length) {
-      // Page exhausted — refetch with the current sort.
-      void loadPool();
-      return;
-    }
-    setCurrentIndex(safeIndex + 1);
-  }, [safeIndex, visibleClips.length, loadPool]);
-
-  const handleUpvote = useCallback(
-    async (clip: ClipDoc) => {
-      if (clip.playerUid === profile.uid) return;
-      // Read the latest state from refs so this callback's identity stays
-      // stable across upvote-map / upvotingIds mutations. Otherwise every
-      // tap would re-create the function and bust SpotlightCard's memo.
-      const current = upvoteStateRef.current.get(clip.id) ?? { count: 0, alreadyUpvoted: false };
-      if (current.alreadyUpvoted || upvotingIdsRef.current.has(clip.id)) return;
-
-      setUpvotingIds((prev) => {
-        const next = new Set(prev);
-        next.add(clip.id);
-        return next;
-      });
-      const optimistic: ClipUpvoteState = { count: current.count + 1, alreadyUpvoted: true };
-      setUpvoteState((prev) => {
-        const next = new Map(prev);
-        next.set(clip.id, optimistic);
-        return next;
-      });
-
-      try {
-        const nextCount = await upvoteClip(profile.uid, clip.id);
-        if (!mountedRef.current) return;
-        // Fire on success so AlreadyUpvotedError replays don't double-count.
-        // trackEvent is consent-gated inside services/analytics — callers
-        // don't need to gate again.
-        trackEvent("clip_upvoted", { clipId: clip.id, fromSort: sortRef.current, newCount: nextCount });
-        setUpvoteState((prev) => {
-          const next = new Map(prev);
-          next.set(clip.id, { count: nextCount, alreadyUpvoted: true });
-          return next;
-        });
-      } catch (err) {
-        if (err instanceof AlreadyUpvotedError) return;
-        logger.warn("clips_feed_upvote_failed", { clipId: clip.id, error: parseFirebaseError(err) });
-        if (!mountedRef.current) return;
-        // Only restore the pre-tap snapshot if state still matches what we
-        // optimistically set. If a sort-toggle re-hydration replaced our entry
-        // with an authoritative server snapshot mid-flight, leave it alone —
-        // rolling back would regress the UI to a value the server has since
-        // moved past.
-        setUpvoteState((prev) => {
-          const cur = prev.get(clip.id);
-          if (!cur || cur.count !== optimistic.count || cur.alreadyUpvoted !== optimistic.alreadyUpvoted) {
-            return prev;
-          }
-          const next = new Map(prev);
-          next.set(clip.id, current);
-          return next;
-        });
-      } finally {
-        if (mountedRef.current) {
-          setUpvotingIds((prev) => {
-            const next = new Set(prev);
-            next.delete(clip.id);
-            return next;
-          });
-        }
-      }
-    },
-    [profile.uid],
-  );
-
-  const handleSortChange = useCallback(
-    (next: ClipsFeedSort) => {
-      if (next === sort) return;
-      // Track engagement with the toggle itself — clip_upvoted.fromSort tells
-      // us where votes happen, this tells us whether viewers actually toggle.
-      trackEvent("clips_sort_changed", { from: sort, to: next });
-      setSort(next);
-    },
-    [sort],
-  );
-
+  const { currentClip, nextClip } = c;
   const isOwnClip = currentClip ? currentClip.playerUid === profile.uid : false;
-  const upvote: ClipUpvoteState = currentClip
-    ? (upvoteState.get(currentClip.id) ?? { count: 0, alreadyUpvoted: false })
-    : { count: 0, alreadyUpvoted: false };
-  const isUpvoting = currentClip ? upvotingIds.has(currentClip.id) : false;
-  const upvoteDisabled = isOwnClip || upvote.alreadyUpvoted || isUpvoting;
 
   return (
     <section className="mb-6" aria-label="Community feed">
+      {rulings.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-3">
+            <h3 className="font-display text-[11px] tracking-[0.2em] text-amber-400">NEEDS YOUR CALL</h3>
+            <span className="px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 font-display text-[10px] text-amber-400 leading-none tabular-nums">
+              {rulings.length}
+            </span>
+          </div>
+          <div className="flex flex-col gap-3">
+            {rulings.map((ruling) => (
+              <RulingCard
+                key={ruling.gameId}
+                ruling={ruling}
+                submitting={rulingGameId === ruling.gameId}
+                error={rulingError?.gameId === ruling.gameId ? rulingError.message : null}
+                onRule={handleRule}
+                onOpenGame={handleOpenGame}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <ClipsFeedHeader
-        sort={sort}
-        onSortChange={handleSortChange}
+        sort={c.sort}
+        onSortChange={c.handleSortChange}
         // Lock the toggle during a load so rapid taps don't queue concurrent
         // fetches (the latest would still win, but it wastes reads + flickers).
-        disabled={loading}
-        position={visibleClips.length > 0 ? { index: safeIndex, total: visibleClips.length } : undefined}
+        disabled={c.loading}
+        position={c.visibleClips.length > 0 ? { index: c.safeIndex, total: c.visibleClips.length } : undefined}
       />
 
-      {error && !loading && <ClipsFeedError error={error} errorCode={errorCode} onRetry={loadPool} />}
+      {c.error && !c.loading && <ClipsFeedError error={c.error} errorCode={c.errorCode} onRetry={c.loadPool} />}
 
-      {loading && <ClipsFeedSkeleton />}
+      {c.loading && <ClipsFeedSkeleton />}
 
-      {!loading && !error && !currentClip && <ClipsFeedEmpty />}
+      {!c.loading &&
+        !c.error &&
+        !currentClip &&
+        (c.exhausted ? <ClipsFeedExhausted onReload={c.loadPool} /> : <ClipsFeedEmpty />)}
 
-      {!loading && currentClip && (
+      {!c.loading && currentClip && (
         <>
           <SpotlightCard
             clip={currentClip}
             isOwnClip={isOwnClip}
-            upvote={upvote}
-            upvoteDisabled={upvoteDisabled}
+            upvote={c.upvoteFor(currentClip.id)}
+            voting={c.isVoting(currentClip.id)}
             onViewPlayer={onViewPlayer}
-            onNext={handleNext}
-            onUpvote={handleUpvote}
+            onNext={c.handleNext}
+            onUpvote={c.handleUpvote}
+            onDownvote={c.handleDownvote}
             onChallenge={onChallengeUser}
             onReport={setReportTarget}
           />
@@ -305,12 +186,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
             clipId={reportTarget.id}
             onClose={() => setReportTarget(null)}
             onSubmitted={() => {
-              const reportedId = reportTarget.id;
-              setReportedClipIds((prev) => {
-                const next = new Set(prev);
-                next.add(reportedId);
-                return next;
-              });
+              c.dismissClip(reportTarget.id);
               setReportTarget(null);
             }}
           />

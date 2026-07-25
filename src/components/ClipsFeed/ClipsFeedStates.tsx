@@ -55,6 +55,26 @@ export function ClipsFeedSkeleton() {
   );
 }
 
+/**
+ * Shown when the page loaded clips but every one of them was filtered out
+ * on the client — blocked author, reported, or thumbed down this session.
+ * Distinct from {@link ClipsFeedEmpty} ("no clips exist yet"): here there IS
+ * more to see, so the affordance is a refetch rather than an invitation to
+ * go film something.
+ */
+export function ClipsFeedExhausted({ onReload }: { onReload: () => void }) {
+  return (
+    <div className="flex flex-col items-center py-10 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30">
+      <FilmIcon size={24} className="mb-3 text-faint" />
+      <p className="font-body text-sm text-dim">That&apos;s everything in this batch.</p>
+      <p className="font-body text-xs text-faint mt-1 mb-3">Pull in more clips from the feed.</p>
+      <Btn onClick={onReload} variant="secondary">
+        Load more clips
+      </Btn>
+    </div>
+  );
+}
+
 export function ClipsFeedEmpty() {
   return (
     <div className="flex flex-col items-center py-10 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30">

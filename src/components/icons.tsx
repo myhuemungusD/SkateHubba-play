@@ -125,6 +125,36 @@ export function FlameIcon(props: IconProps) {
   );
 }
 
+export function ThumbsUpIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M7 22V11" />
+      <path d="M14 2 11 9v2H7v11h9.5a2 2 0 0 0 2-1.7l1.4-8A2 2 0 0 0 18 10h-4l.7-4.6A2.6 2.6 0 0 0 12.1 2z" />
+    </SvgIcon>
+  );
+}
+
+export function ThumbsDownIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M7 2v11" />
+      <path d="M14 22l-3-7v-2H7V2h9.5a2 2 0 0 1 2 1.7l1.4 8A2 2 0 0 1 18 14h-4l.7 4.6A2.6 2.6 0 0 1 12.1 22z" />
+    </SvgIcon>
+  );
+}
+
+export function GavelIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="m14.5 12.5-8 8a2.12 2.12 0 1 1-3-3l8-8" />
+      <path d="m16 16 6-6" />
+      <path d="m8 8 6-6" />
+      <path d="m9 7 8 8" />
+      <path d="m21 11-8-8" />
+    </SvgIcon>
+  );
+}
+
 export function TrophyIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>

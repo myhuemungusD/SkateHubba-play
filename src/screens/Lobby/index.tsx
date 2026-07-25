@@ -49,7 +49,7 @@ export function Lobby({
   gamesLoading = false,
   onViewPlayer,
 }: Props) {
-  const c = useLobbyController({ profile, games, onDownloadData });
+  const c = useLobbyController({ profile, games, onDownloadData, onOpenGame });
   const emailVerified = user?.emailVerified ?? false;
 
   return (
@@ -70,7 +70,15 @@ export function Lobby({
       </div>
 
       <div className="px-5 pt-7 max-w-lg mx-auto">
-        <ClipsFeed profile={profile} onViewPlayer={onViewPlayer ?? (() => {})} onChallengeUser={onChallengeUser} />
+        {/* `games` feeds the ruling lane — it already carries the judge
+            slice from subscribeToUserGames, so no extra listener is needed. */}
+        <ClipsFeed
+          profile={profile}
+          games={games}
+          onViewPlayer={onViewPlayer ?? (() => {})}
+          onChallengeUser={onChallengeUser}
+          onOpenGame={c.openGameById}
+        />
 
         <div className="mb-7">
           <h1 className="font-display text-fluid-4xl leading-none text-white tracking-wide">Your Games</h1>

@@ -13,6 +13,8 @@ interface Args {
   profile: UserProfile;
   games: GameDoc[];
   onDownloadData?: () => Promise<void>;
+  /** Screen-level game navigation, wrapped as `openGameById` below. */
+  onOpenGame?: (g: GameDoc) => void;
 }
 
 export interface LobbyController {
@@ -42,6 +44,10 @@ export interface LobbyController {
     onBlur: (e: FocusEvent<HTMLElement>) => void;
   };
 
+  /** Open a game by id — for callers that only hold the id (the feed's
+   *  ruling cards). No-ops when the id isn't in the subscribed set. */
+  openGameById: (gameId: string) => void;
+
   showDeleteModal: boolean;
   openDeleteModal: () => void;
   closeDeleteModal: () => void;
@@ -51,7 +57,7 @@ export interface LobbyController {
   handleDownload: () => Promise<void>;
 }
 
-export function useLobbyController({ profile, games, onDownloadData }: Args): LobbyController {
+export function useLobbyController({ profile, games, onDownloadData, onOpenGame }: Args): LobbyController {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [downloadingData, setDownloadingData] = useState(false);
   const [downloadError, setDownloadError] = useState("");
@@ -143,6 +149,14 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
     [],
   );
 
+  const openGameById = useCallback(
+    (gameId: string) => {
+      const game = games.find((g) => g.id === gameId);
+      if (game) onOpenGame?.(game);
+    },
+    [games, onOpenGame],
+  );
+
   const openDeleteModal = useCallback(() => setShowDeleteModal(true), []);
   const closeDeleteModal = useCallback(() => setShowDeleteModal(false), []);
 
@@ -178,6 +192,7 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
     theirLetters,
     turnLabel,
     cardButtonProps,
+    openGameById,
     showDeleteModal,
     openDeleteModal,
     closeDeleteModal,
