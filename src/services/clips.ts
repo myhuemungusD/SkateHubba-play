@@ -22,7 +22,14 @@ export { writeLandedClipsInTransaction } from "./clips.writes";
 
 export { fetchClipsFeed, _resetTopIndexCircuitBreaker } from "./clips.feed";
 
-export { AlreadyUpvotedError, SelfUpvoteError, fetchClipUpvoteState, upvoteClip } from "./clips.upvotes";
+export {
+  AlreadyUpvotedError,
+  NotUpvotedError,
+  SelfUpvoteError,
+  fetchClipUpvoteState,
+  removeUpvote,
+  upvoteClip,
+} from "./clips.upvotes";
 export type { ClipUpvoteState, ClipForUpvoteHydration } from "./clips.upvotes";
 
 export { deleteUserClips, deleteUserClipVotes } from "./clips.cascade";

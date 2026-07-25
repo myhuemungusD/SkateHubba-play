@@ -7,7 +7,7 @@
  * vote docs.
  */
 
-import { doc, documentId, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { deleteDoc, doc, documentId, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
@@ -39,6 +39,19 @@ export class SelfUpvoteError extends Error {
   constructor(public readonly clipId: string) {
     super(`self_upvote:${clipId}`);
     this.name = "SelfUpvoteError";
+  }
+}
+
+/**
+ * Thrown by `removeUpvote` when the caller has no vote on the target clip.
+ * The feed's thumbs-down control converts this into a plain "pass" (advance
+ * to the next clip) rather than an error toast — a viewer thumbing down a
+ * clip they never upvoted is a no-op on the server, not a failure.
+ */
+export class NotUpvotedError extends Error {
+  constructor(public readonly clipId: string) {
+    super(`not_upvoted:${clipId}`);
+    this.name = "NotUpvotedError";
   }
 }
 
@@ -209,6 +222,77 @@ export async function upvoteClip(uid: string, clipId: string): Promise<number> {
     const code = (err as { code?: string }).code;
     if (code === "permission-denied") throw new AlreadyUpvotedError(clipId);
     throw err;
+  }
+
+  return nextCount;
+}
+
+/**
+ * Withdraw the caller's upvote on a clip and return the resulting count.
+ *
+ * The inverse of {@link upvoteClip}, and the write behind the feed's
+ * thumbs-down control: thumbs-down on a clip you previously thumbed up
+ * takes the vote back. The `clips` update rule already sanctions this exact
+ * shape — a `-1` delta paired with the vote doc existing before and NOT
+ * existing after the write — so no rules change was needed to enable it;
+ * only this service function was missing.
+ *
+ * Throws `NotUpvotedError` when there is no vote to withdraw. Callers treat
+ * that as a no-op (the UI simply advances to the next clip).
+ *
+ * Aggregate-drift edge case: if a clip's `upvoteCount` is already 0 while a
+ * vote doc exists (only reachable through out-of-band admin edits or a
+ * legacy pre-aggregate clip whose vote predates the backfill), decrementing
+ * would write -1 and be rejected by the rule's `upvoteCount >= 0` guard,
+ * stranding the vote doc forever. In that case we delete the vote on its own
+ * — the owner-only `clipVotes` delete rule permits it — and leave the count
+ * at 0, which is already the correct floor value.
+ */
+export async function removeUpvote(uid: string, clipId: string): Promise<number> {
+  const db = requireDb();
+  const voteRef = doc(db, "clipVotes", clipVoteId(uid, clipId));
+  const clipRef = doc(db, "clips", clipId);
+
+  let nextCount = 0;
+  let orphanedVote = false;
+
+  await runTransaction(db, async (tx) => {
+    // Reset per-attempt: runTransaction may replay the callback on contention,
+    // and a stale `orphanedVote` from an aborted attempt would misroute the
+    // post-transaction cleanup below.
+    orphanedVote = false;
+
+    const [existing, clipSnap] = await Promise.all([tx.get(voteRef), tx.get(clipRef)]);
+    if (!existing.exists()) throw new NotUpvotedError(clipId);
+
+    const raw = clipSnap.exists() ? (clipSnap.data() as { upvoteCount?: unknown }).upvoteCount : 0;
+    const currentCount = typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : 0;
+
+    if (currentCount <= 0 || !clipSnap.exists()) {
+      // Nothing legal to decrement (see the drift note above), or the clip
+      // was deleted out from under the vote. Drop the vote doc after the
+      // transaction so the write set stays a single legal operation.
+      orphanedVote = true;
+      nextCount = 0;
+      return;
+    }
+
+    nextCount = currentCount - 1;
+    tx.delete(voteRef);
+    // Literal (not `increment(-1)`) for the same reason as upvoteClip: it
+    // lets us return the authoritative post-write count without a re-read,
+    // and it is the shape the -1 branch of the clips update rule matches.
+    tx.update(clipRef, { upvoteCount: nextCount });
+  });
+
+  if (orphanedVote) {
+    try {
+      await deleteDoc(voteRef);
+    } catch (err) {
+      // Best-effort: the count is already at its floor, so a failed cleanup
+      // leaves the UI correct and merely keeps a stale vote doc around.
+      logger.warn("clip_upvote_orphan_vote_delete_failed", { clipId, error: parseFirebaseError(err) });
+    }
   }
 
   return nextCount;

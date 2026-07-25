@@ -10,17 +10,20 @@ export interface SpotlightCardProps {
   clip: ClipDoc;
   isOwnClip: boolean;
   upvote: ClipUpvoteState;
-  upvoteDisabled: boolean;
+  /** True while this clip's vote write is in flight — locks both thumbs. */
+  voting: boolean;
   onViewPlayer: (uid: string) => void;
   onNext: () => void;
   onUpvote: (clip: ClipDoc) => void;
+  onDownvote: (clip: ClipDoc) => void;
   onChallenge: (username: string) => void;
   onReport: (clip: ClipDoc) => void;
 }
 
 /**
  * The lobby's "Featured Clip" surface — author chip, role badge, video,
- * trick name, and the action row (upvote / challenge / report).
+ * trick name, and the action row (thumbs up / thumbs down / challenge /
+ * report).
  *
  * Pure presentation: data + handlers in, JSX out. Lives next to ClipsFeed
  * so the parent stays inside the 250 LOC component budget.
@@ -35,10 +38,11 @@ export const SpotlightCard = memo(function SpotlightCard({
   clip,
   isOwnClip,
   upvote,
-  upvoteDisabled,
+  voting,
   onViewPlayer,
   onNext,
   onUpvote,
+  onDownvote,
   onChallenge,
   onReport,
 }: SpotlightCardProps) {
@@ -89,8 +93,9 @@ export const SpotlightCard = memo(function SpotlightCard({
         clip={clip}
         isOwnClip={isOwnClip}
         upvote={upvote}
-        upvoteDisabled={upvoteDisabled}
+        voting={voting}
         onUpvote={onUpvote}
+        onDownvote={onDownvote}
         onChallenge={onChallenge}
         onReport={onReport}
       />
