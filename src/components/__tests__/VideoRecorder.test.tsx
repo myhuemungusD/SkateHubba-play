@@ -434,8 +434,9 @@ describe("VideoRecorder", () => {
   it("shows the crosshair only while the camera is live", async () => {
     render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
 
-    // Idle: no crosshair
+    // Idle: no crosshair, no instruction bubble
     expect(screen.queryByTestId("camera-crosshair")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("crosshair-instruction")).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByText(/Open Camera/));
     await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
@@ -445,10 +446,16 @@ describe("VideoRecorder", () => {
     expect(crosshair).toHaveAttribute("aria-hidden", "true");
     expect(crosshair).toHaveClass("pointer-events-none");
 
-    // Recording: still present
+    // Preview: instruction bubble present and readable by screen readers
+    const instruction = screen.getByTestId("crosshair-instruction");
+    expect(instruction).toHaveTextContent(/crosshair is aiming/i);
+    expect(instruction).not.toHaveAttribute("aria-hidden");
+
+    // Recording: crosshair stays, instruction bubble clears the frame
     await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     expect(screen.getByTestId("camera-crosshair")).toBeInTheDocument();
+    expect(screen.queryByTestId("crosshair-instruction")).not.toBeInTheDocument();
 
     // Done: gone
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
