@@ -19,13 +19,33 @@ function setupMockStream() {
   return { mockStop, mockStream };
 }
 
+// Helper to stub navigator.permissions.query with per-name states
+function setupMockPermissions(states: Record<string, PermissionState> | "throws" | "missing") {
+  if (states === "missing") {
+    Object.defineProperty(navigator, "permissions", { writable: true, configurable: true, value: undefined });
+    return vi.fn();
+  }
+  const query =
+    states === "throws"
+      ? vi.fn().mockImplementation(() => {
+          throw new TypeError("unsupported permission name");
+        })
+      : vi.fn().mockImplementation(({ name }: { name: string }) => Promise.resolve({ state: states[name] }));
+  Object.defineProperty(navigator, "permissions", { writable: true, configurable: true, value: { query } });
+  return query;
+}
+
+const originalPermissions = Object.getOwnPropertyDescriptor(navigator, "permissions");
+
 beforeEach(() => {
   vi.clearAllMocks();
   setupMockStream();
+  setupMockPermissions("missing");
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  if (originalPermissions) Object.defineProperty(navigator, "permissions", originalPermissions);
 });
 
 describe("VideoRecorder", () => {
@@ -472,6 +492,72 @@ describe("VideoRecorder", () => {
     await userEvent.click(screen.getByLabelText("Enable fisheye"));
     expect(screen.getByLabelText("Disable fisheye")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("camera-crosshair")).toBeInTheDocument();
+  });
+
+  it("auto-opens the camera on mount when camera and mic are already granted", async () => {
+    const query = setupMockPermissions({ camera: "granted", microphone: "granted" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith({ name: "camera" });
+    expect(query).toHaveBeenCalledWith({ name: "microphone" });
+  });
+
+  it("does not auto-open when only one of camera/mic is granted", async () => {
+    setupMockPermissions({ camera: "granted", microphone: "prompt" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText("Tap to open camera")).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByText(/Allow camera & mic once/)).toBeInTheDocument();
+  });
+
+  it("does not auto-open when permission is denied", async () => {
+    setupMockPermissions({ camera: "denied", microphone: "denied" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Allow camera & mic once/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("stays idle without crashing when permissions.query throws", async () => {
+    setupMockPermissions("throws");
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Allow camera & mic once/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByText(/Open Camera/)).toBeInTheDocument();
+  });
+
+  it("stays idle when navigator.permissions is unavailable", async () => {
+    setupMockPermissions("missing");
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Open Camera/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("opens the camera once when autoOpen and permission are both set", async () => {
+    setupMockPermissions({ camera: "granted", microphone: "granted" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" autoOpen />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument());
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows the Safari-specific permission tip on iOS Safari", async () => {
+    const ua = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Safari/604.1",
+    });
+
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    expect(screen.getByText(/Website Settings → Camera: Allow/)).toBeInTheDocument();
+    expect(screen.queryByText(/Allow camera & mic once/)).not.toBeInTheDocument();
+
+    if (ua) Object.defineProperty(navigator, "userAgent", ua);
   });
 
   it("cleans up on unmount (revokes blob URL and stops tracks)", async () => {

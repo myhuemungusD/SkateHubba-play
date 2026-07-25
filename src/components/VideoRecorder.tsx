@@ -8,6 +8,32 @@ import { parseFirebaseError } from "../utils/helpers";
 
 const MAX_RECORDING_SECONDS = 60;
 
+// The Permissions API doesn't list "camera"/"microphone" in the DOM lib's
+// PermissionName union, and Safari/Firefox throw a TypeError for names they
+// don't support. Any failure (including a missing navigator.permissions) is
+// treated as "not granted" so we never assume access we don't have.
+type MediaPermissionName = "camera" | "microphone";
+
+async function queryMediaPermission(name: MediaPermissionName): Promise<PermissionState | "unknown"> {
+  try {
+    const status = await navigator.permissions.query({ name: name as PermissionName });
+    return status.state;
+  } catch {
+    return "unknown";
+  }
+}
+
+async function hasGrantedCameraAndMic(): Promise<boolean> {
+  const [camera, microphone] = await Promise.all([queryMediaPermission("camera"), queryMediaPermission("microphone")]);
+  return camera === "granted" && microphone === "granted";
+}
+
+function isIOSSafari(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /iPad|iPhone|iPod/.test(ua) && /Safari/.test(ua) && !/Chrome|CriOS|FxiOS/.test(ua);
+}
+
 export function VideoRecorder({
   onRecorded,
   label,
@@ -36,6 +62,7 @@ export function VideoRecorder({
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [permissionGranted, setPermissionGranted] = useState(false);
 
   // Fisheye state
   const [fisheyeOn, setFisheyeOn] = useState(false);
@@ -221,8 +248,24 @@ export function VideoRecorder({
 
   const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- openCamera is async (awaits getUserMedia before setState), not a synchronous setState
-    if (autoOpenRef.current && !isNative) openCamera();
+    if (isNative) return;
+    if (autoOpenRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- openCamera is async (awaits getUserMedia before setState), not a synchronous setState
+      openCamera();
+      return;
+    }
+    // Camera + mic already granted → the browser shows no prompt, so open the
+    // stream without making the user tap. Anything else (prompt/denied/unknown)
+    // waits for a user gesture so we never trigger an unsolicited prompt.
+    let cancelled = false;
+    void hasGrantedCameraAndMic().then((granted) => {
+      if (cancelled || !granted) return;
+      setPermissionGranted(true);
+      openCamera();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [openCamera, isNative]);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
@@ -300,6 +343,13 @@ export function VideoRecorder({
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <FilmIcon size={48} className="opacity-30 text-subtle" />
             <span className="font-body text-sm text-subtle">Tap to open camera</span>
+            {!permissionGranted && (
+              <span className="font-body text-xs text-subtle px-4 text-center">
+                {isIOSSafari()
+                  ? 'Tip: in Safari choose "Allow" — or aA → Website Settings → Camera: Allow to stop repeat prompts'
+                  : "Allow camera & mic once — we won't ask again"}
+              </span>
+            )}
           </div>
         )}
 
