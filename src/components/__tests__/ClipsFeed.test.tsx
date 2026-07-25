@@ -4,16 +4,13 @@ import userEvent from "@testing-library/user-event";
 import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
 import type { ClipDoc } from "../../services/clips";
-import type { GameDoc } from "../../services/games";
-import { activeGame } from "../../__tests__/harness/mockFactories";
+import { deferred } from "../../__tests__/harness/deferred";
 
 const {
   mockFetchClipsFeed,
   mockFetchClipUpvoteState,
   mockUpvoteClip,
   mockRemoveUpvote,
-  mockResolveDispute,
-  mockJudgeRuleSetTrick,
   mockTrackEvent,
   MockAlreadyUpvotedError,
   MockNotUpvotedError,
@@ -38,8 +35,6 @@ const {
     mockFetchClipUpvoteState: vi.fn(),
     mockUpvoteClip: vi.fn(),
     mockRemoveUpvote: vi.fn(),
-    mockResolveDispute: vi.fn(),
-    mockJudgeRuleSetTrick: vi.fn(),
     mockTrackEvent: vi.fn(),
     MockAlreadyUpvotedError,
     MockNotUpvotedError,
@@ -58,18 +53,20 @@ vi.mock("../../services/clips", () => ({
   NotUpvotedError: MockNotUpvotedError,
 }));
 
-vi.mock("../../services/games", () => ({
-  resolveDispute: (...args: unknown[]) => mockResolveDispute(...args),
-  judgeRuleSetTrick: (...args: unknown[]) => mockJudgeRuleSetTrick(...args),
-  // The ruling lane calls this to reject pending/declined judge invites.
-  isJudgeActive: (g: { judgeId?: string | null; judgeStatus?: string | null }) =>
-    !!g.judgeId && g.judgeStatus === "accepted",
-}));
-
-vi.mock("../../lib/sentry", () => ({ captureException: vi.fn() }));
-
 vi.mock("../../services/analytics", () => ({
   trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+}));
+
+// The dispute lane sits above the spotlight and fetches on mount. These
+// tests are about the clips lane, so it stays empty (and renders nothing);
+// DisputeLane.test.tsx owns its behavior.
+vi.mock("../../services/disputes", () => ({
+  fetchOpenDisputes: () => Promise.resolve([]),
+  fetchDisputeViewerState: () => Promise.resolve(new Map()),
+  castDisputeVerdict: () => Promise.resolve({ land: 0, bail: 0 }),
+  AlreadyRuledError: class AlreadyRuledError extends Error {},
+  OwnDisputeError: class OwnDisputeError extends Error {},
+  DisputeClosedError: class DisputeClosedError extends Error {},
 }));
 
 vi.mock("../../hooks/useBlockedUsers", () => ({
@@ -114,17 +111,6 @@ function makeClip(overrides: Partial<ClipDoc> = {}): ClipDoc {
   };
 }
 
-/** Manually-resolvable promise for deterministic interleaving. */
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 /**
  * Shared preamble for the upvote tests: render the feed with one hydrated
  * clip at `initialCount` and the named upvote outcome staged on the mock,
@@ -164,6 +150,13 @@ describe("ClipsFeed", () => {
     mockFetchClipsFeed.mockImplementation(() => new Promise(() => {}));
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     expect(screen.getByRole("status", { name: /loading clips/i })).toBeInTheDocument();
+  });
+
+  it("renders no dispute lane when nothing is waiting on the community", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    expect(screen.queryByText("SETTLE IT")).not.toBeInTheDocument();
   });
 
   it("renders the empty state when the page comes back empty", async () => {
@@ -743,157 +736,6 @@ describe("ClipsFeed", () => {
     }
   });
 });
-/* ── Ruling lane (disputes awaiting THIS viewer's call) ───────────── */
-
-describe("ClipsFeed — ruling lane", () => {
-  /**
-   * A dispute awaiting THIS viewer's ruling. Built on the shared
-   * `activeGame` factory so the game-doc shape lives in one place.
-   */
-  function makeGame(overrides: Partial<GameDoc> = {}): GameDoc {
-    return activeGame({
-      id: "g9",
-      player1Username: "alice",
-      player2Username: "bob",
-      currentTurn: profile.uid,
-      phase: "disputable",
-      currentSetter: "u1",
-      currentTrickName: "Nollie Heel",
-      currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/set.webm?alt=media",
-      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/match.webm?alt=media",
-      turnDeadline: { toMillis: () => Date.now() + 3_600_000 } as GameDoc["turnDeadline"],
-      turnNumber: 4,
-      judgeId: profile.uid,
-      judgeUsername: "viewer",
-      judgeStatus: "accepted",
-      ...overrides,
-    });
-  }
-
-  /** Render the feed with an empty clip pool so only the ruling lane shows. */
-  function renderWithGames(games: GameDoc[], onOpenGame = vi.fn()) {
-    mockFetchClipsFeed.mockResolvedValueOnce([]);
-    render(
-      <ClipsFeed
-        profile={profile}
-        games={games}
-        onViewPlayer={vi.fn()}
-        onChallengeUser={vi.fn()}
-        onOpenGame={onOpenGame}
-      />,
-    );
-    return { user: userEvent.setup(), onOpenGame };
-  }
-
-  async function mountWithRuling(game: GameDoc = makeGame(), onOpenGame = vi.fn()) {
-    const handles = renderWithGames([game], onOpenGame);
-    await screen.findByRole("article", { name: /ruling needed on Nollie Heel/i });
-    return handles;
-  }
-
-  it("surfaces a dispute the viewer must rule on, with both videos", async () => {
-    await mountWithRuling();
-
-    expect(screen.getByText(/NEEDS YOUR CALL/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /LANDED/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /MISSED/i })).toBeInTheDocument();
-    expect(screen.getByLabelText(/alice's Nollie Heel video/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/bob's attempt video/i)).toBeInTheDocument();
-  });
-
-  it("shows the Call-BS wording and CLEAN/SKETCHY buttons in setReview", async () => {
-    renderWithGames([makeGame({ phase: "setReview" })]);
-
-    expect(await screen.findByText(/CALL BS — YOUR RULING/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /CLEAN/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /SKETCHY/i })).toBeInTheDocument();
-    // No attempt exists yet in setReview — only the set video renders.
-    expect(screen.queryByLabelText(/bob's attempt video/i)).not.toBeInTheDocument();
-  });
-
-  it("LANDED resolves the dispute with accept=true and clears the card", async () => {
-    mockResolveDispute.mockResolvedValueOnce({ gameOver: false, winner: null });
-    const { user } = await mountWithRuling();
-
-    await user.click(screen.getByRole("button", { name: /LANDED/i }));
-
-    await waitFor(() => expect(mockResolveDispute).toHaveBeenCalledWith("g9", true));
-    await waitFor(() => expect(screen.queryByText(/NEEDS YOUR CALL/i)).not.toBeInTheDocument());
-    expect(mockTrackEvent).toHaveBeenCalledWith("clip_ruling_cast", {
-      gameId: "g9",
-      kind: "dispute",
-      accept: true,
-      from: "feed",
-    });
-  });
-
-  it("MISSED resolves the dispute with accept=false", async () => {
-    mockResolveDispute.mockResolvedValueOnce({ gameOver: false, winner: null });
-    const { user } = await mountWithRuling();
-
-    await user.click(screen.getByRole("button", { name: /MISSED/i }));
-
-    await waitFor(() => expect(mockResolveDispute).toHaveBeenCalledWith("g9", false));
-  });
-
-  it("routes a setReview ruling to judgeRuleSetTrick, not resolveDispute", async () => {
-    mockJudgeRuleSetTrick.mockResolvedValueOnce(undefined);
-    const { user } = renderWithGames([makeGame({ phase: "setReview" })]);
-    await screen.findByRole("button", { name: /SKETCHY/i });
-
-    await user.click(screen.getByRole("button", { name: /SKETCHY/i }));
-
-    await waitFor(() => expect(mockJudgeRuleSetTrick).toHaveBeenCalledWith("g9", false));
-    expect(mockResolveDispute).not.toHaveBeenCalled();
-  });
-
-  it("surfaces a failed ruling and leaves the card in place to retry", async () => {
-    mockResolveDispute.mockRejectedValueOnce(new Error("Not in disputable phase"));
-    const { user } = await mountWithRuling();
-
-    await user.click(screen.getByRole("button", { name: /LANDED/i }));
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Not in disputable phase");
-    expect(screen.getByRole("button", { name: /LANDED/i })).toBeInTheDocument();
-  });
-
-  it("fires only one transaction when the ruling is double-tapped", async () => {
-    const gate = deferred<{ gameOver: boolean; winner: string | null }>();
-    mockResolveDispute.mockReturnValueOnce(gate.promise);
-    const { user } = await mountWithRuling();
-
-    const landed = screen.getByRole("button", { name: /LANDED/i });
-    await user.click(landed);
-    await user.click(landed);
-
-    expect(mockResolveDispute).toHaveBeenCalledTimes(1);
-    gate.resolve({ gameOver: false, winner: null });
-  });
-
-  it("opens the full game from the ruling card", async () => {
-    const { user, onOpenGame } = await mountWithRuling();
-
-    await user.click(screen.getByRole("button", { name: /open the full game/i }));
-
-    expect(onOpenGame).toHaveBeenCalledWith("g9");
-  });
-
-  it("shows no ruling lane when the viewer is a player rather than the judge", async () => {
-    renderWithGames([makeGame({ judgeId: "someone-else", currentTurn: "u2" })]);
-
-    await waitFor(() => expect(screen.getByText(/No clips yet\./i)).toBeInTheDocument());
-    expect(screen.queryByText(/NEEDS YOUR CALL/i)).not.toBeInTheDocument();
-  });
-
-  it("renders clips-only when no games are supplied", async () => {
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-
-    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
-    expect(screen.queryByText(/NEEDS YOUR CALL/i)).not.toBeInTheDocument();
-  });
-});
-
 /* ── Thumbs down ──────────────────────────────────────────────────── */
 
 describe("ClipsFeed — thumbs down", () => {
