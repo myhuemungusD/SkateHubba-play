@@ -62,7 +62,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - Auto-forfeit on expired turns (client-triggered — see known gaps)
 - Nudge system with rate limiting
 - Spot map (Mapbox GL + Firestore `spots` collection, challenge flow integration)
-- Clip feed embedded in lobby (Featured Clip card + scrollable feed with per-clip upvote and top-clip autoplay)
+- Clip feed embedded in lobby — two lanes: pending referee rulings (disputes and Call-BS reviews awaiting the viewer, ruled inline) above the community clip spotlight (thumbs up / thumbs down, Top/New toggle, autoplay)
 - Persistent bottom tab bar (Home / Map / Me)
 - Verified pro profiles with gold treatment
 - Public player profiles with game history

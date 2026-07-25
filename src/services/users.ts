@@ -17,6 +17,7 @@ import { requireAuth, requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips, deleteUserClipVotes } from "./clips";
+import { deleteUserDisputeVotes, deleteUserDisputes } from "./disputes";
 import { deleteAvatar } from "./avatars";
 import { deleteUserNotifications } from "./notifications";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
@@ -351,11 +352,17 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   await Promise.all(nonActiveGameIds.map((gameId) => deleteDoc(doc(db, "games", gameId))));
 
   // Phase 3: Scrub clips authored by this user from the feed AND the votes
-  // they cast on other users' clips. Best-effort — the owner-delete rules in
-  // firestore.rules only allow deleting your own clips/votes, so this runs
-  // before the auth/profile teardown. Both are independent best-effort scrubs,
-  // so run them in parallel.
-  await Promise.all([deleteUserClips(uid), deleteUserClipVotes(uid)]);
+  // they cast on other users' clips, plus the same pair for community
+  // disputes (disputes they raised + verdicts they ruled). Best-effort — the
+  // owner-delete rules in firestore.rules only allow deleting your own
+  // docs, so this runs before the auth/profile teardown. All four are
+  // independent best-effort scrubs, so run them in parallel.
+  await Promise.all([
+    deleteUserClips(uid),
+    deleteUserClipVotes(uid),
+    deleteUserDisputes(uid),
+    deleteUserDisputeVotes(uid),
+  ]);
 
   // Phase 3b: Scrub the cross-readable FCM-token mirror and the user's
   // received notifications. Both are owner-deletable in firestore.rules
