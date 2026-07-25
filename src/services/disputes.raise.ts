@@ -97,9 +97,10 @@ export async function raiseDispute(gameId: string, turnNumber: number): Promise<
     const blocker = disputeBlocker(turn, uid);
     if (blocker) throw new Error(blocker);
     // A null blocker proves `turn` exists and carries a non-empty
-    // matchVideoUrl, but TS can't see through the helper. Narrowing cast
-    // (never `as any`) rather than a redundant re-check, which would be an
-    // unreachable branch the coverage gate could never satisfy.
+    // matchVideoUrl, but TS can't see through the helper. This is a
+    // narrowing cast to a concrete shape — not an escape hatch — chosen
+    // over a redundant re-check, which would be an unreachable branch the
+    // coverage gate could never satisfy.
     const disputable = turn as TurnRecord & { matchVideoUrl: string };
 
     // Denormalized so the feed renders a dispute card without reading the
