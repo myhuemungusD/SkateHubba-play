@@ -526,6 +526,130 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
 });
 
 /* ────────────────────────────────────────────
+ * removeUpvote() write shapes (src/services/clips.upvotes.ts)
+ *
+ * The un-upvote service emits exactly two write sets. Both are covered
+ * here so a future rules edit can't silently break the withdraw path:
+ *
+ *   1. happy path — tx { delete clipVotes/{uid}_{clipId}; update clip
+ *      upvoteCount = prev - 1 }  (already covered above)
+ *   2. drift path — a bare `deleteDoc(clipVotes/{uid}_{clipId})` with NO
+ *      clip update, taken when the count is already 0 / missing /
+ *      non-numeric, or the clip doc is gone. This exercises the
+ *      clipVotes delete rule standalone.
+ *
+ * Plus the atomicity property the service depends on: when the clip
+ * update is rejected, the paired vote delete must NOT land, or the
+ * user's vote is destroyed while the count stays inflated.
+ * ──────────────────────────────────────────── */
+
+describe("clipVotes — standalone delete (removeUpvote drift path)", () => {
+  const VOTER_UID = "voter-uid";
+
+  function voteDocRef(ctx: RulesTestContext, voterUid: string, clipId: string) {
+    return doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`);
+  }
+
+  async function seedVote(clipId: string, voterUid: string): Promise<void> {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`), {
+        uid: voterUid,
+        clipId,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+    });
+  }
+
+  it("the voter CAN delete their own vote doc alone when the count is already 0", async () => {
+    // Drift path: upvoteCount is at its floor, so removeUpvote skips the
+    // clip update entirely and issues a bare vote delete.
+    const id = await seedClip({ upvoteCount: 0 });
+    await seedVote(id, VOTER_UID);
+    const voter = testEnv.authenticatedContext(VOTER_UID, { email_verified: true });
+    await assertSucceeds(deleteDoc(voteDocRef(voter, VOTER_UID, id)));
+  });
+
+  it("the voter CAN delete their own vote doc alone when the clip doc no longer exists", async () => {
+    const id = deterministicId();
+    await seedVote(id, VOTER_UID);
+    const voter = testEnv.authenticatedContext(VOTER_UID, { email_verified: true });
+    await assertSucceeds(deleteDoc(voteDocRef(voter, VOTER_UID, id)));
+  });
+
+  it("a user CANNOT delete someone else's vote doc", async () => {
+    const id = await seedClip();
+    await seedVote(id, VOTER_UID);
+    const other = testEnv.authenticatedContext("other-uid", { email_verified: true });
+    await assertFails(deleteDoc(voteDocRef(other, VOTER_UID, id)));
+  });
+
+  it("anonymous users CANNOT delete a vote doc", async () => {
+    const id = await seedClip();
+    await seedVote(id, VOTER_UID);
+    await assertFails(deleteDoc(voteDocRef(asAnonymous(), VOTER_UID, id)));
+  });
+});
+
+describe("clips — un-upvote atomicity (rejected update must not strand the vote)", () => {
+  const VOTER_UID = "voter-uid";
+
+  function voteDocRef(ctx: RulesTestContext, voterUid: string, clipId: string) {
+    return doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`);
+  }
+
+  it("an unverified user's un-upvote is rejected WHOLE — the vote doc survives", async () => {
+    // The clips update rule gates on email_verified but the clipVotes
+    // delete rule does not. If the two writes were evaluated (or applied)
+    // independently, the vote would vanish while upvoteCount stayed high.
+    const id = await seedClip({ upvoteCount: 1 });
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "clipVotes", `${VOTER_UID}_${id}`), {
+        uid: VOTER_UID,
+        clipId: id,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+    });
+    const unverified = testEnv.authenticatedContext(VOTER_UID, { email_verified: false });
+    await assertFails(
+      runTransaction(unverified.firestore(), async (tx) => {
+        await tx.get(clipRef(unverified, id));
+        tx.delete(voteDocRef(unverified, VOTER_UID, id));
+        tx.update(clipRef(unverified, id), { upvoteCount: 0 });
+      }),
+    );
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const snap = await getDoc(doc(ctx.firestore(), "clipVotes", `${VOTER_UID}_${id}`));
+      if (!snap.exists()) throw new Error("vote doc was stranded-deleted despite the rejected clip update");
+    });
+  });
+
+  it("a -1 on a LEGACY clip lacking upvoteCount is rejected (0 - 1 < 0)", async () => {
+    // Why removeUpvote must treat a missing count as the drift path rather
+    // than decrementing: the rule defaults the field to 0, so -1 trips the
+    // `upvoteCount >= 0` floor and the whole transaction fails.
+    const id = deterministicId();
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      const legacy = makeValidClip();
+      delete (legacy as Record<string, unknown>).upvoteCount;
+      await setDoc(doc(ctx.firestore(), "clips", id), legacy);
+      await setDoc(doc(ctx.firestore(), "clipVotes", `${VOTER_UID}_${id}`), {
+        uid: VOTER_UID,
+        clipId: id,
+        createdAt: new Date(Date.now() - 60_000),
+      });
+    });
+    const voter = testEnv.authenticatedContext(VOTER_UID, { email_verified: true });
+    await assertFails(
+      runTransaction(voter.firestore(), async (tx) => {
+        await tx.get(clipRef(voter, id));
+        tx.delete(voteDocRef(voter, VOTER_UID, id));
+        tx.update(clipRef(voter, id), { upvoteCount: -1 });
+      }),
+    );
+  });
+});
+
+/* ────────────────────────────────────────────
  * DELETE (owner-only, backs account-deletion cascade)
  * ──────────────────────────────────────────── */
 
