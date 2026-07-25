@@ -62,7 +62,10 @@ export const DisputeCard = memo(function DisputeCard({
         <h2 className="font-display text-xl text-white tracking-wide leading-tight">{dispute.trickName}</h2>
         <p className="font-body text-sm text-muted mt-1">
           @{dispute.matcherUsername} says they landed @{dispute.setterUsername}&apos;s trick.{" "}
-          <span className="text-white/80">Did they?</span>
+          {/* nowrap: the question is the call to action — letting it break
+              across lines orphans "they?" and buries the ask. Two words, so
+              it can never overflow a card this wide. */}
+          <span className="text-white/80 whitespace-nowrap">Did they?</span>
         </p>
       </div>
 
