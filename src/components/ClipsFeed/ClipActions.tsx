@@ -1,48 +1,77 @@
 import { memo } from "react";
 import type { ClipDoc, ClipUpvoteState } from "../../services/clips";
-import { ChevronRightIcon, FlagIcon, FlameIcon } from "../icons";
+import { ChevronRightIcon, FlagIcon, ThumbsDownIcon, ThumbsUpIcon } from "../icons";
 
 export interface ClipActionsProps {
   clip: ClipDoc;
   isOwnClip: boolean;
   upvote: ClipUpvoteState;
-  upvoteDisabled: boolean;
+  /** True while this clip's vote write is in flight — locks both thumbs. */
+  voting: boolean;
   onUpvote: (clip: ClipDoc) => void;
+  onDownvote: (clip: ClipDoc) => void;
   onChallenge: (username: string) => void;
   onReport: (clip: ClipDoc) => void;
 }
 
+/**
+ * Action row under a community clip: thumbs up / thumbs down, challenge,
+ * report.
+ *
+ * Thumbs down is the inverse of thumbs up, not a separate negative tally:
+ * on a clip you upvoted it withdraws the vote (`removeUpvote`); on one you
+ * haven't it simply passes — the clip is skipped for the rest of the
+ * session. There is no downvoteCount in the data model, so a "dislike"
+ * counter would be a schema + rules change; passing keeps the control
+ * honest about what it actually does.
+ */
 export const ClipActions = memo(function ClipActions({
   clip,
   isOwnClip,
   upvote,
-  upvoteDisabled,
+  voting,
   onUpvote,
+  onDownvote,
   onChallenge,
   onReport,
 }: ClipActionsProps) {
   return (
     <div className="px-4 pt-3 pb-4 flex items-center gap-2">
       {!isOwnClip && (
-        <button
-          type="button"
-          onClick={() => onUpvote(clip)}
-          disabled={upvoteDisabled}
-          aria-pressed={upvote.alreadyUpvoted}
-          aria-label={
-            upvote.alreadyUpvoted
-              ? `Upvoted · ${upvote.count}`
-              : `Upvote clip by @${clip.playerUsername} · current count ${upvote.count}`
-          }
-          className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 border transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed active:scale-[0.97] ${
-            upvote.alreadyUpvoted
-              ? "border-brand-orange/40 bg-brand-orange/15 text-brand-orange"
-              : "border-border bg-surface/60 text-white/90 hover:border-brand-orange/30 hover:bg-brand-orange/5"
-          }`}
-        >
-          <FlameIcon size={14} className={upvote.alreadyUpvoted ? "text-brand-orange" : "text-brand-orange/80"} />
-          <span className="font-display text-xs tracking-wider tabular-nums">{upvote.count}</span>
-        </button>
+        <div role="group" aria-label="Rate this clip" className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => onUpvote(clip)}
+            disabled={voting || upvote.alreadyUpvoted}
+            aria-pressed={upvote.alreadyUpvoted}
+            aria-label={
+              upvote.alreadyUpvoted
+                ? `Thumbs up given · ${upvote.count}`
+                : `Thumbs up clip by @${clip.playerUsername} · current count ${upvote.count}`
+            }
+            className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-3.5 border transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed active:scale-[0.97] ${
+              upvote.alreadyUpvoted
+                ? "border-brand-orange/40 bg-brand-orange/15 text-brand-orange"
+                : "border-border bg-surface/60 text-white/90 hover:border-brand-orange/30 hover:bg-brand-orange/5"
+            }`}
+          >
+            <ThumbsUpIcon size={14} className={upvote.alreadyUpvoted ? "text-brand-orange" : "text-brand-orange/80"} />
+            <span className="font-display text-xs tracking-wider tabular-nums">{upvote.count}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => onDownvote(clip)}
+            disabled={voting}
+            aria-label={
+              upvote.alreadyUpvoted
+                ? `Take back your thumbs up on @${clip.playerUsername}'s clip`
+                : `Thumbs down — skip @${clip.playerUsername}'s clip`
+            }
+            className="min-h-[44px] inline-flex items-center justify-center rounded-xl px-3.5 border border-border bg-surface/60 text-white/70 hover:border-white/25 hover:bg-white/[0.04] hover:text-white transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed active:scale-[0.97]"
+          >
+            <ThumbsDownIcon size={14} />
+          </button>
+        </div>
       )}
       {!isOwnClip && (
         <button
