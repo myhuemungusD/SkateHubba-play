@@ -19,6 +19,60 @@ function setupMockStream() {
   return { mockStop, mockStream };
 }
 
+// A chunk large enough to clear the recorder's 1KB "failed recording" guard.
+function bigChunk(type = "video/webm"): Blob {
+  return new Blob(["v".repeat(2048)], { type });
+}
+
+type RecorderProbe = { options: MediaRecorderOptions | undefined; start: ReturnType<typeof vi.fn> };
+
+// Installs a MediaRecorder mock that records its constructor options and emits a
+// single configurable chunk on stop(). Returns a restore() for the original.
+function installRecorderMock(cfg: {
+  supported: (mime: string) => boolean;
+  instanceMimeType: string;
+  chunk: () => Blob;
+}): { restore: () => void; instances: RecorderProbe[] } {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const original = g.MediaRecorder;
+  const instances: RecorderProbe[] = [];
+  class MockMR {
+    static isTypeSupported = vi.fn().mockImplementation(cfg.supported);
+    mimeType = cfg.instanceMimeType;
+    ondataavailable: ((e: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+    state = "inactive";
+    start = vi.fn().mockImplementation(function (this: MockMR) {
+      this.state = "recording";
+    });
+    stop = vi.fn().mockImplementation(function (this: MockMR) {
+      this.state = "inactive";
+      this.ondataavailable?.({ data: cfg.chunk() });
+      this.onstop?.();
+    });
+    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+      instances.push({ options, start: this.start });
+    }
+  }
+  g.MediaRecorder = MockMR;
+  return {
+    restore: () => {
+      g.MediaRecorder = original;
+    },
+    instances,
+  };
+}
+
+// Drives the recorder through open → record → stop with the current mock.
+async function recordOnce(onRecorded: (blob: Blob | null) => void): Promise<void> {
+  render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+  await userEvent.click(screen.getByText(/Open Camera/));
+  await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+  await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+}
+
 // Helper to stub navigator.permissions.query with per-name states
 function setupMockPermissions(states: Record<string, PermissionState> | "throws" | "missing") {
   if (states === "missing") {
@@ -164,7 +218,7 @@ describe("VideoRecorder", () => {
         this.state = "inactive";
         // Simulate data being available before stop
         if (this.ondataavailable) {
-          this.ondataavailable({ data: new Blob(["video-data"], { type: "video/webm" }) });
+          this.ondataavailable({ data: bigChunk() });
         }
         this.onstop?.();
       });
@@ -299,7 +353,7 @@ describe("VideoRecorder", () => {
       });
       stop = vi.fn().mockImplementation(function (this: Vp9MR) {
         this.state = "inactive";
-        if (this.ondataavailable) this.ondataavailable({ data: new Blob(["x"], { type: "video/webm" }) });
+        if (this.ondataavailable) this.ondataavailable({ data: bigChunk() });
         this.onstop?.();
       });
     }
@@ -329,7 +383,7 @@ describe("VideoRecorder", () => {
       });
       stop = vi.fn().mockImplementation(function (this: WebmMR) {
         this.state = "inactive";
-        if (this.ondataavailable) this.ondataavailable({ data: new Blob(["x"], { type: "video/webm" }) });
+        if (this.ondataavailable) this.ondataavailable({ data: bigChunk() });
         this.onstop?.();
       });
     }
@@ -345,6 +399,72 @@ describe("VideoRecorder", () => {
     await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
 
     (globalThis as any).MediaRecorder = originalMR;
+  });
+
+  it("labels the blob with the recorder's own mimeType (iOS Safari MP4)", async () => {
+    const { restore, instances } = installRecorderMock({
+      supported: (mime) => mime === "video/mp4",
+      instanceMimeType: "video/mp4;codecs=avc1.4d002a",
+      chunk: () => bigChunk("video/mp4"),
+    });
+
+    const onRecorded = vi.fn();
+    await recordOnce(onRecorded);
+
+    const blob = onRecorded.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe("video/mp4");
+    // MP4 is negotiated when the WebM variants are unsupported
+    expect(instances[0].options).toEqual({ mimeType: "video/mp4" });
+    restore();
+  });
+
+  it("falls back to video/webm when the recorder reports no mimeType", async () => {
+    const { restore, instances } = installRecorderMock({
+      supported: () => false,
+      instanceMimeType: "",
+      chunk: () => bigChunk(),
+    });
+
+    const onRecorded = vi.fn();
+    await recordOnce(onRecorded);
+
+    const blob = onRecorded.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe("video/webm");
+    // No supported container → constructed without options
+    expect(instances[0].options).toBeUndefined();
+    restore();
+  });
+
+  it("starts the recorder with a 1000ms timeslice", async () => {
+    const { restore, instances } = installRecorderMock({
+      supported: (mime) => mime === "video/webm",
+      instanceMimeType: "video/webm",
+      chunk: () => bigChunk(),
+    });
+
+    await recordOnce(vi.fn());
+
+    expect(instances[0].start).toHaveBeenCalledWith(1000);
+    restore();
+  });
+
+  it("rejects a tiny recording with a retryable error instead of handing it to the caller", async () => {
+    const { restore } = installRecorderMock({
+      supported: (mime) => mime === "video/webm",
+      instanceMimeType: "video/webm",
+      chunk: () => new Blob(["tiny"], { type: "video/webm" }),
+    });
+
+    const onRecorded = vi.fn();
+    await recordOnce(onRecorded);
+
+    expect(onRecorded).toHaveBeenCalledWith(null);
+    expect(screen.getByText("Recording failed on this device. Please try again.")).toBeInTheDocument();
+    expect(screen.getByText("Retry Camera")).toBeInTheDocument();
+    // Back to idle — no done state, no playback element
+    expect(screen.queryByText(/✓ Recorded/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Your recorded trick video")).not.toBeInTheDocument();
+    restore();
   });
 
   it("startRec surfaces camera error and stays in preview when stream is null", async () => {

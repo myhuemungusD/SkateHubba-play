@@ -131,7 +131,12 @@ export function VideoRecorder({
     // Determine the stream to record: fisheye canvas + audio, or raw camera
     let recordStream = streamRef.current;
     /* v8 ignore start -- captureStream + fisheye canvas requires real browser; not available in JSDOM */
-    if (fisheyeOn && fisheyeCanvasRef.current) {
+    if (fisheyeOn && fisheyeCanvasRef.current && isIOSSafari()) {
+      // WebGL canvas capture + MediaRecorder is unreliable on iOS Safari and
+      // commonly yields black/empty files. Keep fisheye as a live preview only
+      // and record the raw camera stream instead.
+      logger.warn("fisheye_record_unsupported", { hint: "recording raw stream on iOS Safari" });
+    } else if (fisheyeOn && fisheyeCanvasRef.current) {
       try {
         const canvasStream = fisheyeCanvasRef.current.captureStream(30);
         // Add audio tracks from the camera stream to the canvas stream
@@ -152,7 +157,11 @@ export function VideoRecorder({
       ? "video/webm;codecs=vp9"
       : MediaRecorder.isTypeSupported("video/webm")
         ? "video/webm"
-        : "";
+        : // iOS Safari records MP4, never WebM. Ask for it explicitly so we get a
+          // real container instead of relying on the UA default.
+          MediaRecorder.isTypeSupported("video/mp4")
+          ? "video/mp4"
+          : "";
     const mr = new MediaRecorder(recordStream, mimeType ? { mimeType } : undefined);
     mr.ondataavailable = (e) => {
       /* v8 ignore start -- MediaRecorder ondataavailable requires real browser */
@@ -160,10 +169,26 @@ export function VideoRecorder({
       /* v8 ignore stop */
     };
     mr.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: "video/webm" });
+      // Label the blob with what the recorder actually produced — iOS Safari
+      // emits MP4, and a mislabelled blob plays back black and uploads with the
+      // wrong extension. Strip any ";codecs=..." suffix so the type is a plain
+      // container MIME that storage can classify.
+      const blobType = (mr.mimeType || mimeType || "video/webm").split(";")[0].trim() || "video/webm";
+      const blob = new Blob(chunksRef.current, { type: blobType });
       if (blob.size === 0) {
         setState("done");
         onRecorded(null);
+        return;
+      }
+      if (blob.size <= 1024) {
+        // Too small to be a real clip; uploading would fail later with a
+        // confusing "Video is too small" message. Surface it here instead.
+        logger.warn("recording_too_small", { size: blob.size, mimeType: blobType });
+        setCameraError("Recording failed on this device. Please try again.");
+        setState("idle");
+        onRecorded(null);
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        fisheyeStreamRef.current = null;
         return;
       }
       const url = URL.createObjectURL(blob);
@@ -175,7 +200,9 @@ export function VideoRecorder({
       fisheyeStreamRef.current = null;
     };
     mrRef.current = mr;
-    mr.start();
+    // Flush a chunk every second: iOS Safari can otherwise materialise nothing
+    // at stop() for short clips, producing an empty/tiny file.
+    mr.start(1000);
     setState("recording");
     setSeconds(0);
     timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);

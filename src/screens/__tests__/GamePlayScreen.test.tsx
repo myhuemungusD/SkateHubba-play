@@ -91,7 +91,8 @@ class DataProducingMR {
   stop = vi.fn().mockImplementation(function (this: DataProducingMR) {
     this.state = "inactive";
     if (this.ondataavailable) {
-      this.ondataavailable({ data: new Blob(["video-data"], { type: "video/webm" }) });
+      // >1KB so it clears the recorder's "too small to be a real clip" guard.
+      this.ondataavailable({ data: new Blob(["v".repeat(2048)], { type: "video/webm" }) });
     }
     this.onstop?.();
   });
