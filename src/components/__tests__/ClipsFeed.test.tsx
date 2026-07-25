@@ -5,6 +5,7 @@ import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
 import type { ClipDoc } from "../../services/clips";
 import type { GameDoc } from "../../services/games";
+import { activeGame } from "../../__tests__/harness/mockFactories";
 
 const {
   mockFetchClipsFeed,
@@ -745,48 +746,49 @@ describe("ClipsFeed", () => {
 /* ── Ruling lane (disputes awaiting THIS viewer's call) ───────────── */
 
 describe("ClipsFeed — ruling lane", () => {
+  /**
+   * A dispute awaiting THIS viewer's ruling. Built on the shared
+   * `activeGame` factory so the game-doc shape lives in one place.
+   */
   function makeGame(overrides: Partial<GameDoc> = {}): GameDoc {
-    return {
+    return activeGame({
       id: "g9",
-      player1Uid: "p1",
-      player2Uid: "p2",
       player1Username: "alice",
       player2Username: "bob",
-      p1Letters: 0,
-      p2Letters: 0,
-      status: "active",
       currentTurn: profile.uid,
       phase: "disputable",
-      currentSetter: "p1",
+      currentSetter: "u1",
       currentTrickName: "Nollie Heel",
       currentTrickVideoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/set.webm?alt=media",
       matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/x/o/match.webm?alt=media",
       turnDeadline: { toMillis: () => Date.now() + 3_600_000 } as GameDoc["turnDeadline"],
       turnNumber: 4,
-      winner: null,
-      createdAt: null,
-      updatedAt: null,
       judgeId: profile.uid,
       judgeUsername: "viewer",
       judgeStatus: "accepted",
       ...overrides,
-    };
+    });
   }
 
-  async function mountWithRuling(game: GameDoc = makeGame(), onOpenGame = vi.fn()) {
-    const user = userEvent.setup();
+  /** Render the feed with an empty clip pool so only the ruling lane shows. */
+  function renderWithGames(games: GameDoc[], onOpenGame = vi.fn()) {
     mockFetchClipsFeed.mockResolvedValueOnce([]);
     render(
       <ClipsFeed
         profile={profile}
-        games={[game]}
+        games={games}
         onViewPlayer={vi.fn()}
         onChallengeUser={vi.fn()}
         onOpenGame={onOpenGame}
       />,
     );
+    return { user: userEvent.setup(), onOpenGame };
+  }
+
+  async function mountWithRuling(game: GameDoc = makeGame(), onOpenGame = vi.fn()) {
+    const handles = renderWithGames([game], onOpenGame);
     await screen.findByRole("article", { name: /ruling needed on Nollie Heel/i });
-    return { user, onOpenGame };
+    return handles;
   }
 
   it("surfaces a dispute the viewer must rule on, with both videos", async () => {
@@ -800,15 +802,7 @@ describe("ClipsFeed — ruling lane", () => {
   });
 
   it("shows the Call-BS wording and CLEAN/SKETCHY buttons in setReview", async () => {
-    mockFetchClipsFeed.mockResolvedValueOnce([]);
-    render(
-      <ClipsFeed
-        profile={profile}
-        games={[makeGame({ phase: "setReview" })]}
-        onViewPlayer={vi.fn()}
-        onChallengeUser={vi.fn()}
-      />,
-    );
+    renderWithGames([makeGame({ phase: "setReview" })]);
 
     expect(await screen.findByText(/CALL BS — YOUR RULING/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /CLEAN/i })).toBeInTheDocument();
@@ -844,16 +838,7 @@ describe("ClipsFeed — ruling lane", () => {
 
   it("routes a setReview ruling to judgeRuleSetTrick, not resolveDispute", async () => {
     mockJudgeRuleSetTrick.mockResolvedValueOnce(undefined);
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([]);
-    render(
-      <ClipsFeed
-        profile={profile}
-        games={[makeGame({ phase: "setReview" })]}
-        onViewPlayer={vi.fn()}
-        onChallengeUser={vi.fn()}
-      />,
-    );
+    const { user } = renderWithGames([makeGame({ phase: "setReview" })]);
     await screen.findByRole("button", { name: /SKETCHY/i });
 
     await user.click(screen.getByRole("button", { name: /SKETCHY/i }));
@@ -894,15 +879,7 @@ describe("ClipsFeed — ruling lane", () => {
   });
 
   it("shows no ruling lane when the viewer is a player rather than the judge", async () => {
-    mockFetchClipsFeed.mockResolvedValueOnce([]);
-    render(
-      <ClipsFeed
-        profile={profile}
-        games={[makeGame({ judgeId: "someone-else", currentTurn: "p2" })]}
-        onViewPlayer={vi.fn()}
-        onChallengeUser={vi.fn()}
-      />,
-    );
+    renderWithGames([makeGame({ judgeId: "someone-else", currentTurn: "u2" })]);
 
     await waitFor(() => expect(screen.getByText(/No clips yet\./i)).toBeInTheDocument());
     expect(screen.queryByText(/NEEDS YOUR CALL/i)).not.toBeInTheDocument();

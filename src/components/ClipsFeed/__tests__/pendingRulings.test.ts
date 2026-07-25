@@ -1,36 +1,33 @@
 import { describe, expect, it } from "vitest";
 import { selectPendingRulings } from "../pendingRulings";
 import type { GameDoc } from "../../../services/games";
+import { activeGame } from "../../../__tests__/harness/mockFactories";
 
 const NOW = 1_700_000_000_000;
 const JUDGE = "judge-uid";
 
+/**
+ * A game in a phase that needs THIS viewer's ruling. Built on the shared
+ * `activeGame` factory so the game-doc shape stays defined in one place.
+ */
 function makeGame(overrides: Partial<GameDoc> = {}): GameDoc {
-  return {
+  return activeGame({
     id: "g1",
-    player1Uid: "p1",
-    player2Uid: "p2",
     player1Username: "alice",
     player2Username: "bob",
-    p1Letters: 0,
-    p2Letters: 0,
-    status: "active",
     currentTurn: JUDGE,
     phase: "disputable",
-    currentSetter: "p1",
+    currentSetter: "u1",
     currentTrickName: "Kickflip",
     currentTrickVideoUrl: "https://firebasestorage.googleapis.com/set.webm",
     matchVideoUrl: "https://firebasestorage.googleapis.com/match.webm",
     turnDeadline: { toMillis: () => NOW + 3_600_000 } as GameDoc["turnDeadline"],
     turnNumber: 3,
-    winner: null,
-    createdAt: null,
-    updatedAt: null,
     judgeId: JUDGE,
     judgeUsername: "ref",
     judgeStatus: "accepted",
     ...overrides,
-  };
+  });
 }
 
 describe("selectPendingRulings", () => {
@@ -62,7 +59,7 @@ describe("selectPendingRulings", () => {
   });
 
   it("resolves setter/matcher usernames from currentSetter, not player order", () => {
-    const rulings = selectPendingRulings([makeGame({ currentSetter: "p2" })], JUDGE, NOW);
+    const rulings = selectPendingRulings([makeGame({ currentSetter: "u2" })], JUDGE, NOW);
 
     expect(rulings[0]?.setterUsername).toBe("bob");
     expect(rulings[0]?.matcherUsername).toBe("alice");
@@ -78,7 +75,7 @@ describe("selectPendingRulings", () => {
     ["the judge invite is only pending", { judgeStatus: "pending" as const }],
     ["the judge declined", { judgeStatus: "declined" as const }],
     ["no judge was nominated", { judgeId: null, judgeStatus: null }],
-    ["it is not the judge's turn", { currentTurn: "p2" }],
+    ["it is not the judge's turn", { currentTurn: "u2" }],
     ["the phase needs no ruling (setting)", { phase: "setting" as const }],
     ["the phase needs no ruling (matching)", { phase: "matching" as const }],
   ])("excludes a game when %s", (_label, overrides) => {
