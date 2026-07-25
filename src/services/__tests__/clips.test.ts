@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, onTestFinished } from "vitest";
 
 /* ── mock firebase/firestore ────────────────── */
 const {
@@ -66,13 +66,18 @@ import {
   deleteUserClips,
   deleteUserClipVotes,
   upvoteClip,
+  removeUpvote,
   fetchClipUpvoteState,
   AlreadyUpvotedError,
+  NotUpvotedError,
   SelfUpvoteError,
   _resetTopIndexCircuitBreaker,
   type LandedClipContext,
   type ClipsFeedCursor,
 } from "../clips";
+// Not mocked: the orphan-cleanup path logs through the real logger, so the
+// test spies on the exported object to assert the event name it emits.
+import { logger } from "../logger";
 
 /* ── Helpers ────────────────────────────────── */
 
@@ -1179,5 +1184,171 @@ describe("fetchClipUpvoteState", () => {
     // Spot-check: every clip got an entry, all default to not-upvoted.
     expect(map.size).toBe(35);
     expect(map.get("c34")).toEqual({ count: 34, alreadyUpvoted: false });
+  });
+});
+
+/* ── removeUpvote ──────────────────────────────── */
+
+describe("removeUpvote", () => {
+  type RemoveTx = {
+    get: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
+    update: ReturnType<typeof vi.fn>;
+  };
+
+  /**
+   * On-disk state of the clip doc as the in-transaction read sees it.
+   * "missing" models a clip deleted out from under a live vote; the object
+   * form models a live doc carrying whatever `upvoteCount` value happens to
+   * be stored — including drifted or corrupt ones.
+   */
+  type ClipDisk = "missing" | { upvoteCount?: unknown };
+
+  /** Per-attempt view of the two docs the transaction reads together. */
+  type Attempt = { vote: boolean; clip: ClipDisk };
+
+  /**
+   * Drive `mockRunTransaction` for removeUpvote. The service reads the vote
+   * doc and the clip doc in one `Promise.all`, so the stub answers by the
+   * ref's `__path` prefix (produced by the firestore mockDoc helper).
+   *
+   * Passing more than one attempt replays the callback the way the real
+   * `runTransaction` does under contention: each replay gets a fresh tx stub
+   * and may observe different disk state. That is what makes the
+   * per-attempt `orphanedVote` reset observable.
+   */
+  function wireTx(attempts: ReadonlyArray<Attempt>): { txs: () => RemoveTx[] } {
+    const seen: RemoveTx[] = [];
+    mockRunTransaction.mockImplementationOnce(async (_db: unknown, cb: (tx: unknown) => Promise<void>) => {
+      for (const attempt of attempts) {
+        const tx: RemoveTx = {
+          get: vi.fn().mockImplementation(async (ref: { __path?: string }) => {
+            const path = ref.__path ?? "";
+            if (path.startsWith("clipVotes/")) return { exists: () => attempt.vote };
+            if (path.startsWith("clips/")) {
+              const disk = attempt.clip;
+              if (disk === "missing") return { exists: () => false };
+              return { exists: () => true, data: () => disk };
+            }
+            throw new Error(`Unexpected ref path in tx.get: ${path}`);
+          }),
+          delete: vi.fn(),
+          update: vi.fn(),
+        };
+        seen.push(tx);
+        await cb(tx);
+      }
+    });
+    return { txs: () => seen };
+  }
+
+  /** Single-attempt shorthand — the uncontended case every test but one uses. */
+  function wireAttempt(vote: boolean, clip: ClipDisk): { txs: () => RemoveTx[] } {
+    return wireTx([{ vote, clip }]);
+  }
+
+  it("deletes the vote and writes the decremented literal count in the same transaction", async () => {
+    const cap = wireTx([{ vote: true, clip: { upvoteCount: 5 } }]);
+
+    const count = await removeUpvote("me", "g1_2_set");
+
+    // Post-write count comes from the in-tx read — no follow-up aggregate query.
+    expect(count).toBe(4);
+    expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clipVotes", "me_g1_2_set");
+    expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "clips", "g1_2_set");
+
+    const [tx] = cap.txs();
+    expect((tx.delete.mock.calls[0][0] as { __path: string }).__path).toBe("clipVotes/me_g1_2_set");
+    // Literal (not increment(-1)) — the shape the -1 branch of the clips rule
+    // matches, paired with the vote doc no longer existing after the write.
+    expect(tx.update).toHaveBeenCalledWith({ __path: "clips/g1_2_set", id: "g1_2_set" }, { upvoteCount: 4 });
+    // The vote is removed inside the transaction; no out-of-band delete.
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
+
+  it("takes the count to exactly 0 when withdrawing the clip's only upvote", async () => {
+    // Boundary between the decrement path and the drift path: current = 1 is
+    // the smallest value that may still be decremented legally.
+    const cap = wireAttempt(true, { upvoteCount: 1 });
+
+    await expect(removeUpvote("me", "g1_2_set")).resolves.toBe(0);
+
+    const [tx] = cap.txs();
+    expect(tx.update).toHaveBeenCalledWith(expect.anything(), { upvoteCount: 0 });
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
+
+  it("throws NotUpvotedError without writing anything when the caller has no vote", async () => {
+    const cap = wireAttempt(false, { upvoteCount: 4 });
+
+    const err: unknown = await removeUpvote("me", "g1_2_set").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(NotUpvotedError);
+    // Callers key off the clipId to advance the feed past the un-upvoted clip.
+    expect((err as NotUpvotedError).clipId).toBe("g1_2_set");
+    expect((err as Error).message).toBe("not_upvoted:g1_2_set");
+
+    const [tx] = cap.txs();
+    expect(tx.delete).not.toHaveBeenCalled();
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
+
+  it.each<{ label: string; clip: ClipDisk }>([
+    { label: "already at the 0 floor", clip: { upvoteCount: 0 } },
+    { label: "drifted negative", clip: { upvoteCount: -3 } },
+    { label: "non-numeric", clip: { upvoteCount: "broken" } },
+    { label: "NaN", clip: { upvoteCount: NaN } },
+    { label: "absent (legacy pre-backfill clip)", clip: {} },
+    { label: "unreadable because the clip doc is gone", clip: "missing" },
+  ])("returns 0 and cleans the vote up after the transaction when the count is $label", async ({ clip }) => {
+    const cap = wireAttempt(true, clip);
+
+    await expect(removeUpvote("me", "g1_2_set")).resolves.toBe(0);
+
+    // Nothing inside the transaction: a -1 write would be rejected by the
+    // rule's `upvoteCount >= 0` guard and strand the vote doc forever.
+    const [tx] = cap.txs();
+    expect(tx.update).not.toHaveBeenCalled();
+    expect(tx.delete).not.toHaveBeenCalled();
+    // The stranded vote is dropped on its own — permitted by the owner-only
+    // clipVotes delete rule — leaving the count at its correct floor.
+    expect(mockDeleteDoc).toHaveBeenCalledTimes(1);
+    expect((mockDeleteDoc.mock.calls[0][0] as { __path: string }).__path).toBe("clipVotes/me_g1_2_set");
+  });
+
+  it("still resolves 0 and logs when the out-of-band vote cleanup is rejected", async () => {
+    // Best-effort cleanup: the count is already at its floor, so a failed
+    // delete leaves the UI correct and merely keeps a stale vote doc around.
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+    mockDeleteDoc.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    wireAttempt(true, { upvoteCount: 0 });
+
+    await expect(removeUpvote("me", "g1_2_set")).resolves.toBe(0);
+
+    expect(warn).toHaveBeenCalledWith(
+      "clip_upvote_orphan_vote_delete_failed",
+      expect.objectContaining({ clipId: "g1_2_set" }),
+    );
+  });
+
+  it("re-evaluates the orphan flag on each transaction attempt (contention replay)", async () => {
+    // runTransaction replays its callback when the read set is contended.
+    // Attempt 1 sees a drifted 0 count (orphan path); the retry sees the
+    // healthy count written by whoever won the race. A stale orphan flag
+    // leaking across attempts would delete a vote doc that the successful
+    // attempt already removed transactionally — and would do it after a
+    // legitimate decrement, silently dropping a live vote.
+    const cap = wireTx([
+      { vote: true, clip: { upvoteCount: 0 } },
+      { vote: true, clip: { upvoteCount: 2 } },
+    ]);
+
+    await expect(removeUpvote("me", "g1_2_set")).resolves.toBe(1);
+
+    const [, retry] = cap.txs();
+    expect(retry.delete).toHaveBeenCalledTimes(1);
+    expect(retry.update).toHaveBeenCalledWith(expect.anything(), { upvoteCount: 1 });
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
   });
 });

@@ -98,6 +98,13 @@ vi.mock("../clips", () => ({
   deleteUserClipVotes: (...args: unknown[]) => mockDeleteUserClipVotes(...args),
 }));
 
+const mockDeleteUserDisputes = vi.fn().mockResolvedValue(undefined);
+const mockDeleteUserDisputeVotes = vi.fn().mockResolvedValue(undefined);
+vi.mock("../disputes", () => ({
+  deleteUserDisputes: (...args: unknown[]) => mockDeleteUserDisputes(...args),
+  deleteUserDisputeVotes: (...args: unknown[]) => mockDeleteUserDisputeVotes(...args),
+}));
+
 /* ── mock notifications + pushDispatch (deleteUserData Phase 3b scrub) ─ */
 const mockDeleteUserNotifications = vi.fn().mockResolvedValue(undefined);
 vi.mock("../notifications", () => ({
@@ -495,6 +502,10 @@ describe("users service", () => {
       // Votes the user cast are scrubbed in the same phase (GDPR erasure) —
       // also before the auth/profile teardown so the owner-delete rule matches.
       expect(mockDeleteUserClipVotes).toHaveBeenCalledWith("u1");
+      // Community disputes get the same pair of scrubs in the same phase:
+      // the disputes this user raised and the verdicts they cast on others.
+      expect(mockDeleteUserDisputes).toHaveBeenCalledWith("u1");
+      expect(mockDeleteUserDisputeVotes).toHaveBeenCalledWith("u1");
       // Profile + private profile doc + username deleted via batch.
       // Three deletes since the public/private split: the private
       // users/{uid}/private/profile doc holds the sensitive fields

@@ -4,26 +4,42 @@ import userEvent from "@testing-library/user-event";
 import { ClipsFeed } from "../ClipsFeed";
 import type { UserProfile } from "../../services/users";
 import type { ClipDoc } from "../../services/clips";
+import { deferred } from "../../__tests__/harness/deferred";
 
-const { mockFetchClipsFeed, mockFetchClipUpvoteState, mockUpvoteClip, mockTrackEvent, MockAlreadyUpvotedError } =
-  vi.hoisted(() => {
-    class MockAlreadyUpvotedError extends Error {
-      constructor(public readonly clipId: string) {
-        super(`already_upvoted:${clipId}`);
-        this.name = "AlreadyUpvotedError";
-      }
+const {
+  mockFetchClipsFeed,
+  mockFetchClipUpvoteState,
+  mockUpvoteClip,
+  mockRemoveUpvote,
+  mockTrackEvent,
+  MockAlreadyUpvotedError,
+  MockNotUpvotedError,
+} = vi.hoisted(() => {
+  class MockAlreadyUpvotedError extends Error {
+    constructor(public readonly clipId: string) {
+      super(`already_upvoted:${clipId}`);
+      this.name = "AlreadyUpvotedError";
     }
-    // The shim below lets tests queue plain `[clip, clip]` arrays instead
-    // of `{ clips, cursor }` page objects — kept compact so the test bodies
-    // stay focused on behavior, not Firestore page shape.
-    return {
-      mockFetchClipsFeed: vi.fn(),
-      mockFetchClipUpvoteState: vi.fn(),
-      mockUpvoteClip: vi.fn(),
-      mockTrackEvent: vi.fn(),
-      MockAlreadyUpvotedError,
-    };
-  });
+  }
+  class MockNotUpvotedError extends Error {
+    constructor(public readonly clipId: string) {
+      super(`not_upvoted:${clipId}`);
+      this.name = "NotUpvotedError";
+    }
+  }
+  // The shim below lets tests queue plain `[clip, clip]` arrays instead
+  // of `{ clips, cursor }` page objects — kept compact so the test bodies
+  // stay focused on behavior, not Firestore page shape.
+  return {
+    mockFetchClipsFeed: vi.fn(),
+    mockFetchClipUpvoteState: vi.fn(),
+    mockUpvoteClip: vi.fn(),
+    mockRemoveUpvote: vi.fn(),
+    mockTrackEvent: vi.fn(),
+    MockAlreadyUpvotedError,
+    MockNotUpvotedError,
+  };
+});
 
 vi.mock("../../services/clips", () => ({
   fetchClipsFeed: async (...args: unknown[]) => {
@@ -32,11 +48,25 @@ vi.mock("../../services/clips", () => ({
   },
   fetchClipUpvoteState: (...args: unknown[]) => mockFetchClipUpvoteState(...args),
   upvoteClip: (...args: unknown[]) => mockUpvoteClip(...args),
+  removeUpvote: (...args: unknown[]) => mockRemoveUpvote(...args),
   AlreadyUpvotedError: MockAlreadyUpvotedError,
+  NotUpvotedError: MockNotUpvotedError,
 }));
 
 vi.mock("../../services/analytics", () => ({
   trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+}));
+
+// The dispute lane sits above the spotlight and fetches on mount. These
+// tests are about the clips lane, so it stays empty (and renders nothing);
+// DisputeLane.test.tsx owns its behavior.
+vi.mock("../../services/disputes", () => ({
+  fetchOpenDisputes: () => Promise.resolve([]),
+  fetchDisputeViewerState: () => Promise.resolve(new Map()),
+  castDisputeVerdict: () => Promise.resolve({ land: 0, bail: 0 }),
+  AlreadyRuledError: class AlreadyRuledError extends Error {},
+  OwnDisputeError: class OwnDisputeError extends Error {},
+  DisputeClosedError: class DisputeClosedError extends Error {},
 }));
 
 vi.mock("../../hooks/useBlockedUsers", () => ({
@@ -81,17 +111,6 @@ function makeClip(overrides: Partial<ClipDoc> = {}): ClipDoc {
   };
 }
 
-/** Manually-resolvable promise for deterministic interleaving. */
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 /**
  * Shared preamble for the upvote tests: render the feed with one hydrated
  * clip at `initialCount` and the named upvote outcome staged on the mock,
@@ -116,7 +135,7 @@ async function mountWithUpvoteSetup(
   render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
   await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
   const upvoteBtn = await screen.findByRole("button", {
-    name: /Upvote clip by @alice · current count 2/i,
+    name: /Thumbs up clip by @alice · current count 2/i,
   });
   return { user, upvoteBtn };
 }
@@ -131,6 +150,13 @@ describe("ClipsFeed", () => {
     mockFetchClipsFeed.mockImplementation(() => new Promise(() => {}));
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     expect(screen.getByRole("status", { name: /loading clips/i })).toBeInTheDocument();
+  });
+
+  it("renders no dispute lane when nothing is waiting on the community", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    expect(screen.queryByText("SETTLE IT")).not.toBeInTheDocument();
   });
 
   it("renders the empty state when the page comes back empty", async () => {
@@ -252,7 +278,7 @@ describe("ClipsFeed", () => {
     await user.click(upvoteBtn);
 
     // Wait for the optimistic state to settle so we don't false-pass on timing.
-    await waitFor(() => expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: /Thumbs up given · 3/i })).toBeInTheDocument());
     expect(mockTrackEvent).not.toHaveBeenCalled();
   });
 
@@ -349,7 +375,7 @@ describe("ClipsFeed", () => {
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Upvote clip by @alice · current count 4/i })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: /Thumbs up clip by @alice · current count 4/i })).toBeInTheDocument(),
     );
   });
 
@@ -366,8 +392,8 @@ describe("ClipsFeed", () => {
     await user.click(upvoteBtn);
 
     expect(mockUpvoteClip).toHaveBeenCalledWith(profile.uid, "g1_2_set");
-    await waitFor(() => expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /Thumbs up given · 3/i })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Thumbs up given · 3/i })).toBeDisabled();
   });
 
   it("rolls back the optimistic upvote on a non-AlreadyUpvotedError failure", async () => {
@@ -376,7 +402,7 @@ describe("ClipsFeed", () => {
     await user.click(upvoteBtn);
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: /Thumbs up clip by @alice · current count 2/i })).toBeEnabled(),
     );
   });
 
@@ -392,19 +418,17 @@ describe("ClipsFeed", () => {
     const upvote = deferred<number>();
     const hydrationAfterToggle = deferred<Map<string, { count: number; alreadyUpvoted: boolean }>>();
 
-    mockFetchClipsFeed
-      .mockResolvedValueOnce([makeClip()])
-      .mockResolvedValueOnce([makeClip()]);
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]).mockResolvedValueOnce([makeClip()]);
     mockFetchClipUpvoteState
       .mockResolvedValueOnce(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]))
       .mockReturnValueOnce(hydrationAfterToggle.promise);
     mockUpvoteClip.mockReturnValueOnce(upvote.promise);
 
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-    await screen.findByRole("button", { name: /Upvote clip by @alice · current count 2/i });
+    await screen.findByRole("button", { name: /Thumbs up clip by @alice · current count 2/i });
 
-    await user.click(screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeInTheDocument());
+    await user.click(screen.getByRole("button", { name: /Thumbs up clip by @alice · current count 2/i }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Thumbs up given · 3/i })).toBeInTheDocument());
 
     // Flip sort — triggers a new pool load + a new hydration that is
     // intentionally left pending so the upvote rejection lands first.
@@ -416,7 +440,7 @@ describe("ClipsFeed", () => {
       await Promise.resolve();
     });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i })).toBeEnabled(),
+      expect(screen.getByRole("button", { name: /Thumbs up clip by @alice · current count 2/i })).toBeEnabled(),
     );
 
     // Hydration finally resolves — it should not crash the test and the
@@ -424,9 +448,7 @@ describe("ClipsFeed", () => {
     await act(async () => {
       hydrationAfterToggle.resolve(new Map([["g1_2_set", { count: 2, alreadyUpvoted: false }]]));
     });
-    expect(
-      screen.getByRole("button", { name: /Upvote clip by @alice · current count 2/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Thumbs up clip by @alice · current count 2/i })).toBeInTheDocument();
   });
 
   it("keeps the optimistic upvoted state when the server already had our vote", async () => {
@@ -434,8 +456,8 @@ describe("ClipsFeed", () => {
 
     await user.click(upvoteBtn);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: /Upvoted · 3/i })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole("button", { name: /Thumbs up given · 3/i })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Thumbs up given · 3/i })).toBeDisabled();
   });
 
   it("renders the spotlight video with autoplay/muted attributes and a tap-to-unmute affordance", async () => {
@@ -506,16 +528,18 @@ describe("ClipsFeed", () => {
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
-    const upvoteBtn = await screen.findByRole("button", { name: /Upvote clip by @alice · current count 0/i });
+    const upvoteBtn = await screen.findByRole("button", { name: /Thumbs up clip by @alice · current count 0/i });
     await user.click(upvoteBtn);
-    await waitFor(() => expect(screen.getByRole("button", { name: /Upvoted · 6/i })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: /Thumbs up given · 6/i })).toBeInTheDocument());
 
     hydration.resolve(new Map([["g1_2_set", { count: 4, alreadyUpvoted: false }]]));
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(screen.getByRole("button", { name: /Upvoted · 6/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Upvote clip by @alice · current count 4/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Thumbs up given · 6/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Thumbs up clip by @alice · current count 4/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a Replay + Next Trick overlay when the spotlight clip ends", async () => {
@@ -710,5 +734,90 @@ describe("ClipsFeed", () => {
     } finally {
       globalThis.IntersectionObserver = originalIO;
     }
+  });
+});
+/* ── Thumbs down ──────────────────────────────────────────────────── */
+
+describe("ClipsFeed — thumbs down", () => {
+  it("withdraws the viewer's vote when they had thumbed the clip up", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip(), makeClip({ id: "g1_3_set", trickName: "Backside 180" })]);
+    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 5, alreadyUpvoted: true }]]));
+    mockRemoveUpvote.mockResolvedValueOnce(4);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    const down = await screen.findByRole("button", { name: /take back your thumbs up/i });
+
+    await user.click(down);
+
+    await waitFor(() => expect(mockRemoveUpvote).toHaveBeenCalledWith("me", "g1_2_set"));
+    expect(mockTrackEvent).toHaveBeenCalledWith("clip_upvote_withdrawn", {
+      clipId: "g1_2_set",
+      fromSort: "top",
+      newCount: 4,
+    });
+    // The clip also leaves the feed — the next one takes the spotlight.
+    await waitFor(() => expect(screen.getByText("Backside 180")).toBeInTheDocument());
+  });
+
+  it("passes without a write when the viewer never thumbed the clip up", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip(), makeClip({ id: "g1_3_set", trickName: "Backside 180" })]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    const down = await screen.findByRole("button", { name: /thumbs down — skip/i });
+
+    await user.click(down);
+
+    await waitFor(() => expect(screen.getByText("Backside 180")).toBeInTheDocument());
+    expect(mockRemoveUpvote).not.toHaveBeenCalled();
+    expect(mockTrackEvent).toHaveBeenCalledWith("clip_passed", { clipId: "g1_2_set", fromSort: "top" });
+  });
+
+  it("rolls the count back when the withdrawal fails", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip(), makeClip({ id: "g1_3_set", trickName: "Backside 180" })]);
+    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 5, alreadyUpvoted: true }]]));
+    mockRemoveUpvote.mockRejectedValueOnce(new Error("network"));
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    const down = await screen.findByRole("button", { name: /take back your thumbs up/i });
+
+    await user.click(down);
+
+    await waitFor(() => expect(mockRemoveUpvote).toHaveBeenCalled());
+    expect(mockTrackEvent).not.toHaveBeenCalledWith("clip_upvote_withdrawn", expect.anything());
+  });
+
+  it("swallows NotUpvotedError — the server already agrees there is no vote", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip(), makeClip({ id: "g1_3_set", trickName: "Backside 180" })]);
+    mockFetchClipUpvoteState.mockResolvedValueOnce(new Map([["g1_2_set", { count: 5, alreadyUpvoted: true }]]));
+    mockRemoveUpvote.mockRejectedValueOnce(new MockNotUpvotedError("g1_2_set"));
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /take back your thumbs up/i }));
+
+    await waitFor(() => expect(screen.getByText("Backside 180")).toBeInTheDocument());
+    expect(mockTrackEvent).not.toHaveBeenCalledWith("clip_upvote_withdrawn", expect.anything());
+  });
+
+  it("offers a reload once every clip in the batch has been passed", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /thumbs down — skip/i }));
+
+    expect(await screen.findByText(/that's everything in this batch/i)).toBeInTheDocument();
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ id: "g2_1_set", trickName: "Tre Flip" })]);
+    await user.click(screen.getByRole("button", { name: /load more clips/i }));
+
+    await waitFor(() => expect(screen.getByText("Tre Flip")).toBeInTheDocument());
+  });
+
+  it("hides both thumbs on the viewer's own clip", async () => {
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ playerUid: "me", playerUsername: "viewer" })]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
+    expect(screen.queryByRole("group", { name: /rate this clip/i })).not.toBeInTheDocument();
   });
 });
