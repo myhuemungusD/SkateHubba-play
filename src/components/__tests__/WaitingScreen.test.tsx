@@ -12,10 +12,15 @@ vi.mock("../../utils/helpers", () => ({
 
 const mockSendNudge = vi.fn();
 const mockCanNudge = vi.fn();
+// Server-truth cooldown lookup. Defaults to "no cooldown" so existing tests keep
+// exercising the localStorage fast-path they were written against.
+const mockServerCooldown = vi.fn<(...args: unknown[]) => Promise<number>>(() => Promise.resolve(0));
 
 vi.mock("../../services/nudge", () => ({
   sendNudge: (...args: unknown[]) => mockSendNudge(...args),
   canNudge: (...args: unknown[]) => mockCanNudge(...args),
+  getServerNudgeCooldownMs: (...args: unknown[]) => mockServerCooldown(...args),
+  NUDGE_COOLDOWN_MS: 60 * 60 * 1000,
 }));
 
 vi.mock("../../services/analytics", () => ({
@@ -161,7 +166,7 @@ describe("WaitingScreen", () => {
     render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
     // When nudge not available due to cooldown (not sent state), just check disabled button
     expect(screen.getByText("Nudge Sent")).toBeDisabled();
-    expect(screen.getByText("They'll get a push notification")).toBeInTheDocument();
+    expect(screen.getByText("They'll get pinged in a few minutes")).toBeInTheDocument();
   });
 
   it("shows last turn clip in setting phase when available", () => {
@@ -495,5 +500,63 @@ describe("WaitingScreen", () => {
 
     await waitFor(() => expect(screen.getByText("Reported")).toBeInTheDocument());
     expect(screen.getByText("Reported")).toBeDisabled();
+  });
+});
+
+describe("WaitingScreen — nudge routing and cooldown reconciliation", () => {
+  const onBack = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockCanNudge.mockReturnValue(true);
+    mockServerCooldown.mockResolvedValue(0);
+    mockSendNudge.mockResolvedValue(undefined);
+  });
+
+  it.each(["disputable", "setReview"] as const satisfies readonly GameDoc["phase"][])(
+    "hides the Nudge button while the game is waiting on the judge (phase %s)",
+    (phase) => {
+      // The nudge always targets the OPPONENT. During judge phases the screen
+      // says "Waiting on @judge", so offering it poked the wrong player and
+      // burned the sender's 1-hour cooldown.
+      render(
+        <WaitingScreen
+          game={makeGame({ phase, judgeId: "j1", judgeUsername: "judgey" })}
+          profile={profile}
+          onBack={onBack}
+        />,
+      );
+      expect(screen.queryByText("Nudge")).not.toBeInTheDocument();
+    },
+  );
+
+  it("still offers the Nudge button during a normal player turn", () => {
+    render(<WaitingScreen game={makeGame({ phase: "setting" })} profile={profile} onBack={onBack} />);
+    expect(screen.getByText("Nudge")).toBeInTheDocument();
+  });
+
+  it("disables the button when the server reports an active cooldown this device cannot see", async () => {
+    // Cross-device desync: localStorage on THIS device says the user may nudge.
+    mockCanNudge.mockReturnValue(true);
+    mockServerCooldown.mockResolvedValue(30 * 60 * 1000);
+
+    render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+
+    expect(await screen.findByText("Nudge Sent")).toBeDisabled();
+  });
+
+  it("leaves the button enabled when the server reports no cooldown", async () => {
+    render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+    await waitFor(() => expect(mockServerCooldown).toHaveBeenCalled());
+    expect(screen.getByText("Nudge")).not.toBeDisabled();
+  });
+
+  it("does not re-enable a button the local cooldown already disabled", async () => {
+    mockCanNudge.mockReturnValue(false);
+    mockServerCooldown.mockResolvedValue(0);
+
+    render(<WaitingScreen game={makeGame()} profile={profile} onBack={onBack} />);
+    await waitFor(() => expect(mockServerCooldown).toHaveBeenCalled());
+    expect(screen.getByText("Nudge Sent")).toBeDisabled();
   });
 });

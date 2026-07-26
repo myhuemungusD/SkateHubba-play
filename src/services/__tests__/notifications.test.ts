@@ -10,8 +10,10 @@ const mockBatchCommit = vi.fn<AnyMock>(() => Promise.resolve(undefined));
 const mockBatchSet = vi.fn<AnyMock>((ref: unknown, data: unknown) => {
   batchSetCalls.push({ ref, data });
 });
+const mockBatchDelete = vi.fn<AnyMock>(() => undefined);
 const mockWriteBatch = vi.fn<AnyMock>(() => ({
   set: mockBatchSet,
+  delete: mockBatchDelete,
   commit: mockBatchCommit,
 }));
 const mockCollection = vi.fn((...args: unknown[]) => args[1]);
@@ -75,6 +77,16 @@ beforeEach(() => {
   batchSetCalls.length = 0;
   _resetNotificationRateLimit();
 });
+
+/** Build a resolved server Timestamp stub at `ms`. */
+function ts(ms: number): { toMillis: () => number } {
+  return { toMillis: () => ms };
+}
+
+/** Build a page snapshot for the paginated deleteUserNotifications loop. */
+function page(refs: string[]): { empty: boolean; size: number; docs: { ref: string }[] } {
+  return { empty: refs.length === 0, size: refs.length, docs: refs.map((ref) => ({ ref })) };
+}
 
 function findLimitSet(): BatchSetCall | undefined {
   // doc(db, "notification_limits", "...") returns the args array via the mock,
@@ -335,23 +347,52 @@ describe("deleteNotification", () => {
 });
 
 describe("deleteUserNotifications", () => {
-  it("queries and deletes all notifications for a user", async () => {
-    const mockDocs = [{ ref: "ref1" }, { ref: "ref2" }];
-    mockGetDocs.mockResolvedValueOnce({ docs: mockDocs });
-    mockDeleteDoc.mockResolvedValue(undefined);
+  it("deletes a short page in one batch and stops", async () => {
+    mockGetDocs.mockResolvedValueOnce(page(["ref1", "ref2"]));
 
     await deleteUserNotifications("user123");
 
     expect(mockGetDocs).toHaveBeenCalledTimes(1);
-    expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
-    expect(mockDeleteDoc).toHaveBeenCalledWith("ref1");
-    expect(mockDeleteDoc).toHaveBeenCalledWith("ref2");
+    expect(mockWriteBatch).toHaveBeenCalledTimes(1);
+    expect(mockBatchDelete).toHaveBeenCalledWith("ref1");
+    expect(mockBatchDelete).toHaveBeenCalledWith("ref2");
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+    // The old implementation fired one deleteDoc per doc in parallel.
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
+
+  it("keeps paginating while pages come back full", async () => {
+    // A full page (500) means there may be more; a short page ends the loop.
+    const full = Array.from({ length: 500 }, (_, i) => `ref${i}`);
+    mockGetDocs.mockResolvedValueOnce(page(full)).mockResolvedValueOnce(page(["tail"]));
+
+    await deleteUserNotifications("user123");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+    expect(mockWriteBatch).toHaveBeenCalledTimes(2);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops immediately on an exactly-full page followed by an empty one", async () => {
+    const full = Array.from({ length: 500 }, (_, i) => `ref${i}`);
+    mockGetDocs.mockResolvedValueOnce(page(full)).mockResolvedValueOnce(page([]));
+
+    await deleteUserNotifications("user123");
+
+    expect(mockGetDocs).toHaveBeenCalledTimes(2);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
   });
 
   it("handles empty result set", async () => {
-    mockGetDocs.mockResolvedValueOnce({ docs: [] });
+    mockGetDocs.mockResolvedValueOnce(page([]));
     await deleteUserNotifications("user123");
-    expect(mockDeleteDoc).not.toHaveBeenCalled();
+    expect(mockWriteBatch).not.toHaveBeenCalled();
+  });
+
+  it("caps each page at the 500-op writeBatch limit", async () => {
+    mockGetDocs.mockResolvedValueOnce(page([]));
+    await deleteUserNotifications("user123");
+    expect(mockLimit).toHaveBeenCalledWith(500);
   });
 });
 
@@ -576,7 +617,13 @@ describe("subscribeToNotifications", () => {
           type: "added",
           doc: {
             id: "n1",
-            data: () => ({ type: "your_turn", title: "Your Turn!", body: "vs @bob", gameId: "g1" }),
+            data: () => ({
+              type: "your_turn",
+              title: "Your Turn!",
+              body: "vs @bob",
+              gameId: "g1",
+              createdAt: ts(1_000),
+            }),
           },
         },
       ],
@@ -588,13 +635,14 @@ describe("subscribeToNotifications", () => {
       title: "Your Turn!",
       body: "vs @bob",
       gameId: "g1",
+      createdAtMs: 1_000,
     });
     // markNotificationRead is no longer called by the subscription —
     // the caller is responsible for marking read when the user sees it.
     expect(mockUpdateDoc).not.toHaveBeenCalled();
   });
 
-  it("caps tracked IDs at 50 to prevent unbounded growth", () => {
+  it("keeps emitting new docs after the tracked-id set is trimmed", () => {
     const onNotification = vi.fn();
     let snapshotHandler: (snap: unknown) => void = () => {};
     mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
@@ -605,13 +653,16 @@ describe("subscribeToNotifications", () => {
     subscribeToNotifications("u1", onNotification);
 
     // Seed with 49 existing IDs
-    const seedDocs = Array.from({ length: 49 }, (_, i) => ({ id: `seed${i}` }));
+    const seedDocs = Array.from({ length: 49 }, (_, i) => ({ id: `seed${i}`, data: () => ({ createdAt: ts(i) }) }));
     snapshotHandler({ docs: seedDocs, docChanges: () => [] });
 
     // Add 3 new docs to push past 50
     const changes = Array.from({ length: 3 }, (_, i) => ({
       type: "added",
-      doc: { id: `new${i}`, data: () => ({ type: "your_turn", title: "T", body: "B", gameId: `g${i}` }) },
+      doc: {
+        id: `new${i}`,
+        data: () => ({ type: "your_turn", title: "T", body: "B", gameId: `g${i}`, createdAt: ts(1_000 + i) }),
+      },
     }));
     snapshotHandler({ docs: [], docChanges: () => changes });
 
@@ -627,13 +678,13 @@ describe("subscribeToNotifications", () => {
     });
 
     subscribeToNotifications("u1", onNotification);
-    snapshotHandler({ docs: [{ id: "existing1" }], docChanges: () => [] });
+    snapshotHandler({ docs: [{ id: "existing1", data: () => ({ createdAt: ts(9_000) }) }], docChanges: () => [] });
 
     snapshotHandler({
       docs: [],
       docChanges: () => [
-        { type: "modified", doc: { id: "m1", data: () => ({}) } },
-        { type: "added", doc: { id: "existing1", data: () => ({}) } },
+        { type: "modified", doc: { id: "m1", data: () => ({ createdAt: ts(9_000) }) } },
+        { type: "added", doc: { id: "existing1", data: () => ({ createdAt: ts(9_000) }) } },
       ],
     });
 
@@ -656,7 +707,7 @@ describe("subscribeToNotifications", () => {
       docChanges: () => [
         {
           type: "added",
-          doc: { id: "n1", data: () => ({ type: null, title: null, body: null, gameId: "g1" }) },
+          doc: { id: "n1", data: () => ({ type: null, title: null, body: null, gameId: "g1", createdAt: ts(1_000) }) },
         },
       ],
     });
@@ -667,6 +718,7 @@ describe("subscribeToNotifications", () => {
       title: "SkateHubba",
       body: "",
       gameId: "g1",
+      createdAtMs: 1_000,
     });
   });
 
@@ -684,7 +736,10 @@ describe("subscribeToNotifications", () => {
     handler.getHandler()({
       docs: [{ id: "n1" }],
       docChanges: () => [
-        { type: "added", doc: { id: "n1", data: () => ({ type: "t", title: "T", body: "B", gameId: "g" }) } },
+        {
+          type: "added",
+          doc: { id: "n1", data: () => ({ type: "t", title: "T", body: "B", gameId: "g", createdAt: ts(1_000) }) },
+        },
       ],
     });
     expect(onNotification).toHaveBeenCalledWith({
@@ -693,6 +748,7 @@ describe("subscribeToNotifications", () => {
       title: "T",
       body: "B",
       gameId: "g",
+      createdAtMs: 1_000,
     });
   });
 
@@ -707,5 +763,172 @@ describe("subscribeToNotifications", () => {
     errorHandler(new Error("permission-denied"));
 
     // Error handler should not throw — it logs via logger.warn
+  });
+});
+
+describe("subscribeToNotifications seed + watermark", () => {
+  function subscribe(onNotification = vi.fn(), onSeed = vi.fn()) {
+    let handler: (snap: unknown) => void = () => {};
+    mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
+      handler = cb;
+      return vi.fn();
+    });
+    subscribeToNotifications("u1", onNotification, onSeed);
+    return { fire: (snap: unknown) => handler(snap), onNotification, onSeed };
+  }
+
+  /** A doc stub usable both as a snapshot doc and inside a docChanges entry. */
+  function docStub(id: string, createdAtMs: number | null, overrides: Record<string, unknown> = {}) {
+    return {
+      id,
+      data: () => ({
+        type: "new_challenge",
+        title: "New Challenge!",
+        body: "@bob challenged you",
+        gameId: `game_${id}`,
+        createdAt: createdAtMs === null ? null : ts(createdAtMs),
+        ...overrides,
+      }),
+    };
+  }
+
+  it("hands the initial snapshot to onSeed without toasting any of it", () => {
+    const { fire, onNotification, onSeed } = subscribe();
+    fire({ docs: [docStub("a", 3_000), docStub("b", 2_000)], docChanges: () => [] });
+
+    expect(onNotification).not.toHaveBeenCalled();
+    expect(onSeed).toHaveBeenCalledTimes(1);
+    expect(onSeed.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ firestoreId: "a", createdAtMs: 3_000, type: "new_challenge" }),
+      expect.objectContaining({ firestoreId: "b", createdAtMs: 2_000 }),
+    ]);
+  });
+
+  it("still delivers the first notification when the seed was empty", () => {
+    // Highest-risk regression in the watermark change: a brand-new user with
+    // zero unread must not have their very first notification swallowed.
+    const { fire, onNotification, onSeed } = subscribe();
+    fire({ docs: [], docChanges: () => [] });
+    expect(onSeed).toHaveBeenCalledWith([]);
+
+    fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub("first", 1) }] });
+    expect(onNotification).toHaveBeenCalledWith(expect.objectContaining({ firestoreId: "first" }));
+  });
+
+  it("does not toast a stale doc that slides into the window when one is marked read", () => {
+    // The >10-unread bug: seeded docs are never toasted so they are never
+    // marked read; past the limit(10) window, marking a newer one read pulls an
+    // older doc in as an `added` change. It must stay silent.
+    const { fire, onNotification } = subscribe();
+    fire({ docs: [docStub("newest", 5_000), docStub("mid", 4_000)], docChanges: () => [] });
+
+    fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub("ancient", 900) }] });
+
+    expect(onNotification).not.toHaveBeenCalled();
+  });
+
+  it("toasts a genuinely new doc that arrives after the seed", () => {
+    const { fire, onNotification } = subscribe();
+    fire({ docs: [docStub("seeded", 5_000)], docChanges: () => [] });
+
+    fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub("fresh", 6_000) }] });
+
+    expect(onNotification).toHaveBeenCalledWith(expect.objectContaining({ firestoreId: "fresh" }));
+  });
+
+  it("toasts a doc sharing the watermark millisecond", () => {
+    // Two senders can land in the same millisecond; `>=` keeps both audible.
+    const { fire, onNotification } = subscribe();
+    fire({ docs: [docStub("seeded", 5_000)], docChanges: () => [] });
+
+    fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub("tie", 5_000) }] });
+
+    expect(onNotification).toHaveBeenCalledWith(expect.objectContaining({ firestoreId: "tie" }));
+  });
+
+  it("ignores a doc whose server timestamp has not resolved, without moving the watermark", () => {
+    const { fire, onNotification } = subscribe();
+    fire({ docs: [docStub("seeded", 1_000)], docChanges: () => [] });
+
+    fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub("pending", null) }] });
+    expect(onNotification).not.toHaveBeenCalled();
+
+    // Watermark must still be 1_000, so a later real doc at 1_500 surfaces.
+    fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub("real", 1_500) }] });
+    expect(onNotification).toHaveBeenCalledTimes(1);
+    expect(onNotification).toHaveBeenCalledWith(expect.objectContaining({ firestoreId: "real" }));
+  });
+
+  it("emits a given doc only once even if re-added", () => {
+    const { fire, onNotification } = subscribe();
+    fire({ docs: [], docChanges: () => [] });
+
+    const change = { type: "added", doc: docStub("dupe", 2_000) };
+    fire({ docs: [], docChanges: () => [change] });
+    fire({ docs: [], docChanges: () => [change] });
+
+    expect(onNotification).toHaveBeenCalledTimes(1);
+  });
+
+  it("never toasts a seeded doc, even if it is re-delivered as added", () => {
+    const { fire, onNotification } = subscribe();
+    fire({ docs: [docStub("seeded", 7_000)], docChanges: () => [] });
+
+    fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub("seeded", 7_000) }] });
+
+    expect(onNotification).not.toHaveBeenCalled();
+  });
+
+  it("calls onSeed exactly once per subscription", () => {
+    const { fire, onSeed } = subscribe();
+    fire({ docs: [docStub("a", 1_000)], docChanges: () => [] });
+    fire({ docs: [], docChanges: () => [] });
+    expect(onSeed).toHaveBeenCalledTimes(1);
+  });
+
+  it("works without an onSeed callback", () => {
+    let handler: (snap: unknown) => void = () => {};
+    mockOnSnapshot.mockImplementationOnce((_q: unknown, cb: (snap: unknown) => void) => {
+      handler = cb;
+      return vi.fn();
+    });
+    const onNotification = vi.fn();
+    subscribeToNotifications("u1", onNotification);
+
+    expect(() => handler({ docs: [docStub("a", 1_000)], docChanges: () => [] })).not.toThrow();
+    handler({ docs: [], docChanges: () => [{ type: "added", doc: docStub("b", 2_000) }] });
+    expect(onNotification).toHaveBeenCalledWith(expect.objectContaining({ firestoreId: "b" }));
+  });
+
+  it("trims the emitted-id set past its bound and keeps delivering", () => {
+    // The bound exists so a long-lived tab cannot grow the set without limit.
+    // Trimming is only safe because the watermark moves forward monotonically —
+    // assert both: the trim happens AND nothing regresses into re-toasting.
+    const { fire, onNotification } = subscribe();
+    fire({ docs: [], docChanges: () => [] });
+
+    for (let i = 1; i <= 210; i++) {
+      fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub(`n${i}`, i) }] });
+    }
+    expect(onNotification).toHaveBeenCalledTimes(210);
+
+    // An id evicted by the trim must still not re-toast — the watermark (210)
+    // is now far ahead of its createdAt.
+    fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub("n1", 1) }] });
+    expect(onNotification).toHaveBeenCalledTimes(210);
+
+    // ...and a genuinely newer doc still gets through.
+    fire({ docs: [], docChanges: () => [{ type: "added", doc: docStub("fresh", 999) }] });
+    expect(onNotification).toHaveBeenCalledTimes(211);
+  });
+
+  it("treats a missing createdAt as unresolved rather than epoch zero", () => {
+    const { fire, onNotification } = subscribe();
+    fire({ docs: [], docChanges: () => [] });
+    fire({
+      docs: [],
+      docChanges: () => [{ type: "added", doc: { id: "no-ts", data: () => ({ gameId: "g" }) } }],
+    });
+    expect(onNotification).not.toHaveBeenCalled();
   });
 });

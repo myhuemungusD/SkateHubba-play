@@ -1,0 +1,89 @@
+# Drain Push Dispatch (push courier)
+#
+# Why this exists:
+#   /push_dispatch is the queue the app writes an OS-level push into. It was
+#   supposed to be drained by the `firebase/firestore-send-fcm` Firebase
+#   Extension -- but that extension does not exist in the registry, so nothing
+#   ever consumed the queue and no push was ever delivered. The endpoint at
+#   /api/cron/drain-push-dispatch is the real consumer; this workflow is its
+#   clock.
+#
+#   The schedule lives here rather than in vercel.json `crons` for the same
+#   reason sweep-expired-turns.yml does: Vercel's Hobby plan caps cron frequency
+#   at once per day, which also blocks every PR preview deploy with "Hobby
+#   accounts are limited to daily cron jobs". Until the project moves to a paid
+#   Vercel plan, GitHub Actions hosts the schedule and just calls the
+#   Vercel-hosted endpoint over HTTPS.
+#
+# Secret setup (operator action required):
+#   The endpoint authenticates via `Authorization: Bearer ${CRON_SECRET}` using a
+#   constant-time compare. This is the SAME secret sweep-expired-turns.yml uses,
+#   so if that workflow is already green there is nothing new to add. Otherwise:
+#   the value in the Vercel project env as CRON_SECRET must also exist in this
+#   repo under Settings -> Secrets and variables -> Actions, named `CRON_SECRET`.
+#   If the values drift, every run here will 401.
+#
+# Cadence:
+#   Every 5 minutes, tighter than the 15-minute sweep. Push latency is felt
+#   directly by the user ("it's your turn" arriving 15 minutes late is a worse
+#   product than a turn forfeiting 15 minutes late), and the endpoint is cheap
+#   when the queue is empty -- one indexed query returning zero docs.
+#
+# Scheduling caveats:
+#   GitHub Actions `schedule` triggers are best-effort. During platform load runs
+#   can be delayed by several minutes or skipped entirely. That is acceptable
+#   here because the endpoint is a drain, not a deadline: a delayed run sends the
+#   same backlog a moment later, and the endpoint's own 24h TTL is what prevents
+#   a genuinely stale push from ever waking a device. `workflow_dispatch` is
+#   included so an operator can force a drain from the Actions UI.
+
+name: Drain Push Dispatch (push courier)
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel an in-flight drain if a newer one starts. This is load-bearing beyond
+# saving runner minutes: the endpoint deletes a dispatch doc only AFTER FCM
+# accepts the send, so two overlapping runs reading the same head of the queue
+# could double-send. Serialising the schedule keeps duplicates to the genuine
+# crash-between-send-and-delete case.
+concurrency:
+  group: drain-push-dispatch
+  cancel-in-progress: true
+
+jobs:
+  drain:
+    name: Call /api/cron/drain-push-dispatch
+    # Skip on forks so a fork owner does not get 401 failure emails every
+    # 5 minutes from a schedule trigger they never wanted. Forks can still
+    # trigger this manually via workflow_dispatch after setting their own
+    # CRON_SECRET if they want to test against a fork-owned endpoint.
+    if: github.repository == 'myhuemungusD/SkateHubba-play'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Invoke drain endpoint
+        # `shell: bash` is load-bearing: it tells GitHub to run the step with
+        # `bash --noprofile --norc -eo pipefail`. Without an explicit shell the
+        # default is `bash -e {0}` (no pipefail), and the trailing
+        # `| tee /dev/stderr` would mask curl's exit status with tee's
+        # always-success status -- a drifted CRON_SECRET (401) or endpoint 5xx
+        # would silently keep this workflow green while nothing gets delivered.
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 240 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -w "\nHTTP %{http_code} in %{time_total}s\n" \
+            https://skatehubba.com/api/cron/drain-push-dispatch \
+            | tee /dev/stderr

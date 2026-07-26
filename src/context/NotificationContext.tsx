@@ -1,7 +1,12 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, useMemo, type ReactNode } from "react";
 import { playChime, isSoundEnabled, setSoundEnabled, type ChimeType } from "../services/sounds";
 import { playHaptic, type HapticType } from "../services/haptics";
-import { deleteNotification, deleteUserNotifications, markNotificationRead } from "../services/notifications";
+import {
+  deleteNotification,
+  deleteUserNotifications,
+  markNotificationRead,
+  type NotificationEvent,
+} from "../services/notifications";
 import { TOAST_DURATION } from "../constants/ui";
 
 /** Chime → haptic mapping. `general` falls back to the lightweight toast pulse. */
@@ -29,6 +34,13 @@ export interface AppNotification {
   gameId?: string;
   /** Firestore document ID — present when the notification originated from a Firestore doc */
   firestoreId?: string;
+  /**
+   * The underlying `/notifications` doc `type` (e.g. "game_won"), when known.
+   * Carried so `hydrate` can recognise a server doc as the same event a local
+   * watcher already surfaced. `chime` is not a substitute — it is lossy
+   * (judge_invite collapses to "general").
+   */
+  sourceType?: string;
 }
 
 interface NotifyOpts {
@@ -38,6 +50,7 @@ interface NotifyOpts {
   chime?: ChimeType;
   gameId?: string;
   firestoreId?: string;
+  sourceType?: string;
 }
 
 interface NotificationContextValue {
@@ -47,6 +60,8 @@ interface NotificationContextValue {
   /** Increments each time a new notification arrives — use as React key for animations */
   notifyKey: number;
   notify: (opts: NotifyOpts) => void;
+  /** Merge server-side unread notifications into the bell. Silent — see below. */
+  hydrate: (events: NotificationEvent[]) => void;
   dismissToast: (id: string) => void;
   markRead: (id: string) => void;
   markAllRead: () => void;
@@ -137,6 +152,7 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
       chime: opts.chime,
       gameId: opts.gameId,
       firestoreId: opts.firestoreId,
+      sourceType: opts.sourceType,
     };
 
     // Add to persistent notifications
@@ -161,6 +177,58 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
       toastTimers.current.delete(n.id);
     }, TOAST_DURATION);
     toastTimers.current.set(n.id, timer);
+  }, []);
+
+  /**
+   * Merge the server's unread notifications into the bell.
+   *
+   * The bell used to be backed ONLY by `skate_notifs_${uid}` in localStorage,
+   * so anything that arrived while the app was closed existed on the server and
+   * nowhere else: a challenge received overnight left no in-app trace, and
+   * signing in on a second device showed an empty bell.
+   *
+   * Silent by contract — no chime, no haptic, no toast, and no `notifyKey` bump.
+   * These are not arrivals; the user was away when they happened, and the key
+   * drives the bell's arrival animation.
+   *
+   * Idempotent: the listener re-seeds on every resubscribe (uid change,
+   * remount), so this runs repeatedly with overlapping data.
+   */
+  const hydrate = useCallback((events: NotificationEvent[]) => {
+    if (events.length === 0) return;
+    setNotifications((prev) => {
+      const byFirestoreId = new Set(prev.map((n) => n.firestoreId).filter(Boolean));
+      // Locally-generated entries have no firestoreId. `useGameCompletionWatcher`
+      // produces exactly one per game from the games snapshot, so a server doc
+      // for the same (gameId, type) is that same event arriving by the other
+      // channel — not a second notification. Server-vs-server duplicates can't
+      // reach this branch: they always differ by firestoreId.
+      const localKeys = new Set(
+        prev.filter((n) => !n.firestoreId && n.gameId && n.sourceType).map((n) => `${n.gameId}:${n.sourceType}`),
+      );
+
+      const additions: AppNotification[] = [];
+      for (const evt of events) {
+        if (byFirestoreId.has(evt.firestoreId)) continue;
+        if (localKeys.has(`${evt.gameId}:${evt.type}`)) continue;
+        byFirestoreId.add(evt.firestoreId);
+        additions.push({
+          id: `n_${evt.firestoreId}`,
+          type: "game_event",
+          title: evt.title,
+          message: evt.body,
+          timestamp: evt.createdAtMs || Date.now(),
+          read: false,
+          chime: undefined,
+          gameId: evt.gameId,
+          firestoreId: evt.firestoreId,
+          sourceType: evt.type,
+        });
+      }
+      if (additions.length === 0) return prev;
+
+      return [...prev, ...additions].sort((a, b) => b.timestamp - a.timestamp).slice(0, MAX_STORED);
+    });
   }, []);
 
   const dismissToast = useCallback((id: string) => {
@@ -244,6 +312,7 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
       unreadCount,
       notifyKey,
       notify,
+      hydrate,
       dismissToast,
       markRead,
       markAllRead,
@@ -258,6 +327,7 @@ export function NotificationProvider({ uid, children }: { uid: string | null; ch
       unreadCount,
       notifyKey,
       notify,
+      hydrate,
       dismissToast,
       markRead,
       markAllRead,

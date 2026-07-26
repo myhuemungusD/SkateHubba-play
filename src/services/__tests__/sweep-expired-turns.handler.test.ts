@@ -40,39 +40,8 @@ vi.mock("firebase-admin/firestore", () => ({
 }));
 
 import handler from "../../../api/cron/sweep-expired-turns";
+import { makeRes, makeReq, VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
 import { makeGameDoc, makeDeadline } from "./turnForfeit.test-helpers";
-
-/** A response double that records the status code and JSON body. */
-function makeRes() {
-  const out: { code?: number; body?: unknown } = {};
-  const res = {
-    status(code: number) {
-      out.code = code;
-      return res;
-    },
-    json(body: unknown) {
-      out.body = body;
-    },
-  };
-  return { res, out };
-}
-
-interface ReqOpts {
-  authorization?: string;
-  query?: Record<string, string | string[] | undefined>;
-  url?: string;
-}
-function makeReq(opts: ReqOpts = {}) {
-  const headers: Record<string, string | string[] | undefined> = {};
-  if (opts.authorization !== undefined) headers.authorization = opts.authorization;
-  return { method: "GET", headers, query: opts.query, url: opts.url };
-}
-
-const VALID_SA = JSON.stringify({
-  project_id: "demo",
-  client_email: "svc@demo.iam.gserviceaccount.com",
-  private_key: "-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n",
-});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -133,7 +102,7 @@ describe("sweep handler auth (fail-closed)", () => {
 
   it("proceeds past auth with the correct token", async () => {
     process.env.CRON_SECRET = "s3cret";
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SA;
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
     getAppsMock.mockReturnValue([]);
     initializeAppMock.mockReturnValue({ name: "app" });
     // No candidate games → handler returns a clean 200 summary, no writes.
@@ -239,7 +208,7 @@ function rawGame(overrides: Record<string, unknown>): Record<string, unknown> {
 describe("sweep handler dry-run (never writes)", () => {
   beforeEach(() => {
     process.env.CRON_SECRET = "s3cret";
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SA;
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
     getAppsMock.mockReturnValue([]);
     initializeAppMock.mockReturnValue({ name: "app" });
   });
@@ -286,15 +255,13 @@ describe("sweep handler dry-run (never writes)", () => {
 
 /** Pull the in-tx "your_turn" notification writes out of captured tx.set calls. */
 function adminYourTurnNotifs(txSet: ReturnType<typeof vi.fn>): Array<Record<string, unknown>> {
-  return txSet.mock.calls
-    .map((c) => c[1] as Record<string, unknown>)
-    .filter((d) => d.type === "your_turn");
+  return txSet.mock.calls.map((c) => c[1] as Record<string, unknown>).filter((d) => d.type === "your_turn");
 }
 
 describe("sweep handler your_turn notification (server always notifies)", () => {
   beforeEach(() => {
     process.env.CRON_SECRET = "s3cret";
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SA;
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
     getAppsMock.mockReturnValue([]);
     initializeAppMock.mockReturnValue({ name: "app" });
   });
@@ -308,7 +275,13 @@ describe("sweep handler your_turn notification (server always notifies)", () => 
   function expectOneAdminMatcherNotification(txSet: ReturnType<typeof vi.fn>): void {
     const notifs = adminYourTurnNotifs(txSet);
     expect(notifs).toHaveLength(1);
-    expect(notifs[0]).toMatchObject({ senderUid: "p1", recipientUid: "p2", type: "your_turn", read: false, gameId: "g1" });
+    expect(notifs[0]).toMatchObject({
+      senderUid: "p1",
+      recipientUid: "p2",
+      type: "your_turn",
+      read: false,
+      gameId: "g1",
+    });
   }
 
   it("disputeAccept: always writes the your_turn notification to the matcher", async () => {

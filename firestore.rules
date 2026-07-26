@@ -1470,7 +1470,12 @@ service cloud.firestore {
         // the rule rejects. Mirrors the /reports pattern (H-R2).
         && getAfter(/databases/$(database)/documents/nudge_limits/$(request.auth.uid + '_' + request.resource.data.gameId)).data.lastNudgedAt == request.time;
 
-      // Only the Admin SDK (Cloud Function) can update delivered status
+      // Immutable. `delivered` is a vestigial field: it was to be flipped by an
+      // onNudgeCreated Cloud Function that was removed with the functions/
+      // package, and nothing writes it now. Nudge delivery is observable via
+      // the recipient's /nudges listener and the /push_dispatch queue instead.
+      // Kept on the doc (and required == false on create) only because changing
+      // the shape would need a rules + client migration for no benefit.
       allow update: if false;
 
       // Sender or recipient can read nudges
@@ -1707,8 +1712,26 @@ service cloud.firestore {
         && request.resource.data.recipientUid is string
         && request.resource.data.recipientUid != request.auth.uid
         && request.resource.data.gameId is string
-        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite']
-        // ── Extension payload shape ──
+        // 'nudge' is push-only — it has NO /notifications feed entry (nudges
+        // live in /nudges with their own 1-hour cooldown) but it is the one
+        // event that is useless without waking an offline device. Adding it
+        // here opens no new amplification surface: a nudge dispatch still needs
+        // the sender to be a participant, still needs tokens.hasOnly(<mirror>),
+        // still needs the companion push_dispatch_limits write, and the
+        // originating /nudges write is bounded by /nudge_limits at 1 per hour
+        // per (sender, game) — an order of magnitude tighter than the 5s
+        // dispatch cooldown. Deliberately NOT added to /notifications or
+        // /notification_limits: the in-app feed schema stays as it is.
+        //
+        // Note this rule does not require games.status == 'active' the way the
+        // /nudges create rule does. That asymmetry is intentional and safe: the
+        // dispatch doc can only exist if the sender already wrote a /nudges doc
+        // that passed the active-game check, and the other push types
+        // (game_won / game_lost) are by definition emitted for a game that is
+        // no longer active. Adding an active-game requirement here would break
+        // game-over pushes.
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite', 'nudge']
+        // ── Dispatch payload shape ──
         && request.resource.data.notification is map
         && request.resource.data.notification.title is string
         && request.resource.data.notification.title.size() <= 80
@@ -1801,7 +1824,10 @@ service cloud.firestore {
         // can look it up by shape (request.auth.uid + '_' + recipientUid
         // + '_' + gameId + '_' + type).
         && limitId == (request.auth.uid + '_' + request.resource.data.recipientUid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)
-        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite']
+        // Keep in lockstep with the /push_dispatch create allowlist above — a
+        // type accepted there but rejected here could never satisfy that rule's
+        // companion-write check, silently killing that push type.
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite', 'nudge']
         // lastSentAt server-pinned: a client-supplied timestamp would let
         // them seed a stale anchor and immediately satisfy the cooldown
         // on the very next update. Same back-date defence as

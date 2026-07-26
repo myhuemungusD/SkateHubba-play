@@ -7,26 +7,37 @@
  * device that hasn't loaded the app in hours or days. That requires the
  * FCM HTTP API, which is OAuth2-gated and cannot be called from a client.
  *
- * The dispatcher is the `firebase/firestore-send-fcm` Firebase Extension
- * (configured in `extensions/firestore-send-fcm.env` and `firebase.json`).
- * It triggers on creates in /push_dispatch/{id}, reads `tokens`, `notification`,
- * and `data` from the doc, calls the FCM API server-side, and cleans up
- * stale tokens on `messaging/registration-token-not-registered`.
+ * The dispatcher is `api/cron/drain-push-dispatch.ts` — a serverless endpoint
+ * driven by a GitHub Actions schedule every ~5 minutes. It reads the oldest
+ * /push_dispatch docs, sends them via the FCM API with admin credentials,
+ * prunes tokens FCM reports dead, and deletes what it processed.
+ *
+ * It replaced a `firebase/firestore-send-fcm` Firebase Extension that this file
+ * used to name as the dispatcher. That extension does not exist in the Firebase
+ * Extensions registry and never did, so /push_dispatch had no consumer at all:
+ * every doc written here was validated, rate-limited, and then left to rot. If
+ * you are tempted to move this back onto an extension, verify the extension
+ * actually exists on extensions.dev first.
+ *
+ * Delivery is therefore near-real-time-ish, not instant: a push lands within
+ * about five minutes of the game action, and GitHub's schedule triggers are
+ * best-effort so it can be longer under platform load. That is an accepted
+ * trade for an async game with 24h turn deadlines.
  *
  * Why a SEPARATE collection from /notifications:
  *  - /notifications carries user-visible feed entries. Schema is stable
  *    (recipientUid + title + body + read flag) and consumed by the in-app
- *    listener. Pushing the extension's wire format (tokens, notification,
+ *    listener. Pushing the dispatcher's wire format (tokens, notification,
  *    data) into the same doc would couple two unrelated lifecycles.
- *  - /push_dispatch is fire-and-forget. The extension processes the doc and
- *    can be configured to delete-on-success. Notifications are NOT deleted
+ *  - /push_dispatch is fire-and-forget. The drain endpoint deletes each doc
+ *    once FCM accepts it. Notifications are NOT deleted
  *    on read — they persist in the feed until the user clears them.
  *
  * Tokens live at /pushTargets/{uid} — a mirror of users/{uid}/private/profile
  * .fcmTokens that's READABLE by signed-in users. The mirror exists because
  * tokens cannot stay owner-only AND be embeddable in a dispatch doc by a
  * sender. The privacy regression is bounded: FCM tokens alone cannot be
- * abused without server credentials (the extension owns the only legitimate
+ * abused without server credentials (the drain endpoint owns the only legitimate
  * dispatch surface), and the /push_dispatch create rule still requires the
  * sender to be a game participant — so a leaked token can't be turned into
  * an attack vector by another authenticated user.
@@ -42,10 +53,22 @@ import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import type { NotificationDocType } from "./notifications";
 
+/**
+ * Types that may be pushed to a device.
+ *
+ * Wider than {@link NotificationDocType} because "nudge" is push-only: a nudge
+ * has no /notifications feed entry (it lives in its own /nudges collection with
+ * its own 1-hour cooldown), but it absolutely needs to wake an offline device —
+ * poking an opponent who already has the app open is the one case where the
+ * feature is pointless. Keep this union in lockstep with the `type in [...]`
+ * allowlists on /push_dispatch and /push_dispatch_limits in firestore.rules.
+ */
+export type PushDispatchType = NotificationDocType | "nudge";
+
 export interface PushDispatchParams {
   senderUid: string;
   recipientUid: string;
-  type: NotificationDocType;
+  type: PushDispatchType;
   title: string;
   body: string;
   gameId: string;
@@ -64,9 +87,9 @@ export interface PushDispatchParams {
 export const PUSH_TARGETS_COLLECTION = "pushTargets" as const;
 
 /**
- * Collection path the Firebase Extension watches. Matches the value of
- * COLLECTION_PATH in extensions/firestore-send-fcm.env — if you rename
- * one, rename the other in lockstep.
+ * Collection path the drain endpoint reads. Matches PUSH_DISPATCH_COLLECTION in
+ * api/cron/drain-push-dispatch.ts — if you rename one, rename the other in
+ * lockstep, and update the /push_dispatch match block in firestore.rules.
  */
 export const PUSH_DISPATCH_COLLECTION = "push_dispatch" as const;
 
@@ -113,13 +136,13 @@ export async function getRecipientPushTokens(uid: string): Promise<string[]> {
  * Cap on tokens per dispatch doc. Matches the per-user fcmTokens cap in
  * firestore.rules (≤10) so the worst-case fan-out is bounded: even if the
  * recipient signed in on every device they own, one game event triggers
- * at most 10 FCM API calls via the extension.
+ * at most 10 FCM sends per drained doc.
  */
 const MAX_TOKENS_PER_DISPATCH = 10;
 
 /**
  * Hard caps on user-visible strings, mirrored on the /push_dispatch create
- * rule. The extension forwards these verbatim to FCM; without caps a
+ * rule. The drain endpoint forwards these verbatim to FCM; without caps a
  * malicious sender could wedge multi-megabyte payloads through and burn
  * the recipient's quota.
  */
@@ -131,17 +154,17 @@ function truncate(value: string, max: number): string {
 }
 
 /**
- * Build the dispatch doc shape consumed by `firebase/firestore-send-fcm`.
- * The extension reads `tokens`, `notification.{title,body}`, and `data` —
- * everything else (senderUid, recipientUid, gameId, type) is metadata used
- * by firestore.rules to enforce write permissions and rate limits.
+ * Build the dispatch doc shape consumed by the drain endpoint. It reads
+ * `tokens`, `notification.{title,body}`, and `data` — everything else
+ * (senderUid, recipientUid, gameId, type) is metadata used by firestore.rules
+ * to enforce write permissions and rate limits.
  *
  * `data.gameId` is what the service worker's notificationclick handler
  * (public/firebase-messaging-sw.js) reads to deep-link into the right game.
  */
 function buildDispatchDoc(params: PushDispatchParams, tokens: string[]): Record<string, unknown> {
   return {
-    // Extension contract
+    // Drain-endpoint contract
     tokens,
     notification: {
       title: truncate(params.title, MAX_TITLE_LEN),

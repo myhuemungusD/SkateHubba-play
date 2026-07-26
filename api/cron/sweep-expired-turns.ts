@@ -306,7 +306,7 @@ async function sweepOneGame(db: Firestore, gameId: string, nowMs: number, dryRun
 /**
  * Fire the OS-level push for a server-written notification, AFTER the game tx
  * committed. Reads the recipient's token mirror and writes a /push_dispatch doc
- * the firestore-send-fcm extension drains. Best-effort: no tokens → no-op; any
+ * api/cron/drain-push-dispatch.ts drains. Best-effort: no tokens → no-op; any
  * failure is logged and swallowed so push health never fails the sweep.
  */
 async function dispatchAdminPush(

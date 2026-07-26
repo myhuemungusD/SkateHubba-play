@@ -76,7 +76,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - App Check via reCAPTCHA v3 when key is set
 - Sentry with PII scrubbing, ErrorBoundary, `withRetry` across reads
 - PostHog with consent gating; Vercel Analytics + Speed Insights
-- Service worker for FCM background messages, with the `firestore-send-fcm` extension as the managed sender (see §4.4)
+- Service worker for FCM background messages, with a cron-driven drain endpoint as the sender (see §4.4)
 - Onboarding tutorial overlays (`HubzMascot`, `MascotBubble`, `SpotlightOverlay`, `TutorialOverlay`)
 - Capacitor Android project initialized; iOS scaffolded; Fastlane scaffolded
 
@@ -164,15 +164,23 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ### 4.4 Push & background work
 
-Push dispatch is shipped via the `firestore-send-fcm` Firebase Extension. The extension provisions a managed Cloud Run worker we configure but do not author; it listens to the `/push_dispatch` Firestore collection and sends FCM/APNS on the team's behalf. Three collections cooperate:
+Push dispatch is served by `api/cron/drain-push-dispatch.ts`, a Vercel serverless endpoint invoked every five minutes by `.github/workflows/drain-push-dispatch.yml`. It reads the oldest `/push_dispatch` docs, sends them through the FCM API with admin credentials, prunes tokens FCM reports dead, and deletes what it processed.
 
-- **`/push_dispatch/{id}`** — the extension's trigger. Each create carries `tokens`, `notification.{title,body}`, `data.{gameId,type,click_action}`, plus rules metadata (`senderUid`, `recipientUid`, `gameId`, `type`). Authored by `src/services/pushDispatch.ts:buildDispatchDoc`.
+This replaced a `firebase/firestore-send-fcm` Firebase Extension that earlier revisions of this charter described as shipped. **That extension does not exist.** `extensions.dev` returns HTTP 404 for `firebase/firestore-send-fcm` while `firebase/firestore-send-email` at the identical URL shape returns 200, the registry lists no FCM extension at all, and no local `extensions/firestore-send-fcm/` manifest was ever generated. `/push_dispatch` consequently had no consumer: every dispatch doc the client and the sweep cron wrote was validated, rate-limited, and then left to rot, and no OS-level push was ever delivered. The collection also accumulated without bound, since its rules set `allow update, delete: if false` on the assumption the extension would delete-on-success.
+
+Three collections cooperate:
+
+- **`/push_dispatch/{id}`** — the drain endpoint's queue. Each create carries `tokens`, `notification.{title,body}`, `data.{gameId,type,click_action}`, plus rules metadata (`senderUid`, `recipientUid`, `gameId`, `type`). Authored by `src/services/pushDispatch.ts:buildDispatchDoc`.
 - **`/push_dispatch_limits/{senderUid_recipientUid_gameId_type}`** — server-side 5s cooldown anchor. The `/push_dispatch` create rule requires this companion doc to commit in the same `writeBatch` with `lastSentAt == request.time`, and the limits-doc update rule enforces the cooldown. Without the batch, the create rule's `getAfter()` check fails.
 - **`/pushTargets/{uid}`** — cross-readable mirror of the recipient's FCM tokens. Owner-only on write, signed-in-readable so a sender can embed tokens in the dispatch doc. Cap of 10 tokens, mirrored by `MAX_TOKENS_PER_DISPATCH` in `pushDispatch.ts` so worst-case fan-out is bounded.
 
-Dispatches fire from a post-transaction outbox (`createPushDispatchOutbox` / `drainPushDispatchOutbox`) — never from inside a `runTransaction` callback, so retries don't re-stage and a failed push never rolls back the game write. The extension config lives in `extensions/firestore-send-fcm.env` (collection name, TTL, named database, region must all stay in lockstep with `pushDispatch.ts` and `firestore.rules`).
+Dispatches fire from a post-transaction outbox (`createPushDispatchOutbox` / `drainPushDispatchOutbox`) — never from inside a `runTransaction` callback, so retries don't re-stage and a failed push never rolls back the game write.
 
-The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — extensions do not touch that path, so the gate remains in force against application-authored Cloud Functions. As of 2026-07 the gate is an allowlist: it permits exactly the maintainer-approved stats close-out file set (see §4.14) and hard-fails any other `functions/src/` addition. Reintroducing further authored functions still requires maintainer sign-off.
+Delivery semantics of the drain: **at-least-once**. A dispatch doc is deleted only after FCM accepts the send, so an invocation killed between send and delete re-sends on the next run — a duplicate push is a better failure than a dropped one. Docs older than 24h are deleted unsent (preserving the TTL the old extension config carried) so a stale "your turn" never wakes a phone the day after the turn auto-forfeited. The `concurrency` group on the workflow serialises runs so overlapping schedules cannot double-send. Because the schedule is best-effort GitHub Actions, push latency is roughly five minutes rather than instant — an accepted trade for an async game with 24h turn deadlines.
+
+Types permitted on the push path are `your_turn`, `new_challenge`, `game_won`, `game_lost`, `judge_invite`, and `nudge`. `nudge` is push-only — it has no `/notifications` feed entry — and is bounded far harder than the generic 5s dispatch cooldown by the 1-hour `/nudge_limits` window on the originating `/nudges` write.
+
+The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — the drain endpoint lives under `api/`, alongside the auto-referee sweep, so the gate remains in force against application-authored Cloud Functions. As of 2026-07 the gate is an allowlist: it permits exactly the maintainer-approved stats close-out file set (see §4.14) and hard-fails any other `functions/src/` addition. Reintroducing further authored functions still requires maintainer sign-off.
 
 Auto-forfeit (`forfeitExpiredTurn`) remains client-triggered; closing that gap is tracked in §9.2.
 
@@ -316,7 +324,7 @@ screenshots/
 ### 4.14 Prohibited
 
 - Custom backend / API server (no Express, no Next.js routes, no Vercel serverless functions for app logic)
-- Application-authored Cloud Functions in PRs (CI rejects new code under `functions/src/`; reintroduction requires maintainer sign-off and a tightened gate). Two approved exceptions exist. (1) The `firestore-send-fcm` Firebase Extension: it provisions a Cloud Run dispatcher we configure but do not author, and its files live under `extensions/`, outside the `functions/src/` gate. (2) The **stats close-out function** under `functions/src/` — maintainer-approved 2026-07 under exactly the sign-off + tightened-gate procedure this bullet defines. It moved win/loss stat writes server-side after a client-side stats-replay path corrupted production win/loss counters. The tightened gate (`verify-no-cloud-functions` in `pr-gate.yml`) pins its exact file set — `functions/src/index.ts`, `functions/src/index.test.ts`, `functions/src/applyGameStats.ts`, `functions/src/applyGameStats.test.ts` — and hard-fails any other `functions/src/` addition; the `build-functions` job type-checks, builds, and tests it on every PR that touches `functions/**`.
+- Application-authored Cloud Functions in PRs (CI rejects new code under `functions/src/`; reintroduction requires maintainer sign-off and a tightened gate). Two approved exceptions exist. (1) The `api/cron/**` serverless endpoints — the auto-referee sweep and the push drain — which live outside the `functions/src/` gate and were signed off as referee/courier roles that write only transitions a client could legally have written itself. (2) The **stats close-out function** under `functions/src/` — maintainer-approved 2026-07 under exactly the sign-off + tightened-gate procedure this bullet defines. It moved win/loss stat writes server-side after a client-side stats-replay path corrupted production win/loss counters. The tightened gate (`verify-no-cloud-functions` in `pr-gate.yml`) pins its exact file set — `functions/src/index.ts`, `functions/src/index.test.ts`, `functions/src/applyGameStats.ts`, `functions/src/applyGameStats.test.ts` — and hard-fails any other `functions/src/` addition; the `build-functions` job type-checks, builds, and tests it on every PR that touches `functions/**`.
 - PostgreSQL / Neon / Drizzle (Firestore is the datastore — final)
 - React Native / Expo (Capacitor wraps the PWA — final)
 - Redux / Zustand / MobX / TanStack Query (Context + hooks is sufficient)
@@ -445,10 +453,10 @@ CI failures override deadlines.
 
 ### 9.2 Known tech debt (May 2026)
 
-1. **P0 — Auto-forfeit is client-triggered only.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. Needs a server-side sweep; the `firestore-send-fcm` extension (§4.4) only handles push delivery and does not cover this path.
+1. **P0 — Auto-forfeit is client-triggered only.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. `api/cron/sweep-expired-turns.ts` plus `.github/workflows/sweep-expired-turns.yml` exist to close this; confirm the schedule is actually green before treating it as resolved. The push drain (§4.4) does not cover this path.
 2. **P1 — Firestore backups not running.** Run `firebase-infra-setup.yml` on `workflow_dispatch`.
 3. **P1 — Storage video lifecycle not enforced.** Same workflow.
-4. **P2 — Stale FCM token pruning.** `/pushTargets/{uid}.tokens` is capped at 10 but never pruned. The extension issues up to 10 calls per dispatch, most landing on `messaging/registration-token-not-registered` for revoked devices. Tracked as `PERF-2` in `docs/NOTIFICATION_AUDIT.md`.
+4. **~~P2 — Stale FCM token pruning.~~** Resolved. `api/cron/drain-push-dispatch.ts` removes any token FCM rejects with `registration-token-not-registered` / `invalid-registration-token` from both `/pushTargets/{uid}.tokens` and `users/{uid}/private/profile.fcmTokens`. Tracked as `PERF-2` in `docs/NOTIFICATION_AUDIT.md`.
 5. **P2 — Username reservation TTL.** Deleted account's username locked forever.
 6. **P2 — `subscribeToMyGames` 50-game cap with no cursor** (DEC-003). Fine until ~50 concurrent games per user.
 7. **P3 — Captions on user-uploaded videos** (a11y A2).
