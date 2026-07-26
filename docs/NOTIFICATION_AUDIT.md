@@ -1,8 +1,8 @@
 # Notification System Audit
 
 **Date:** 2026-04-16
-**Last updated:** 2026-05-20 (reconciled with shipped `firestore-send-fcm` dispatcher)
-**Scope:** All notification paths — Firestore rules, the `firestore-send-fcm` extension dispatcher, client services, UI components, push (FCM), test coverage
+**Last updated:** 2026-07-25 (the `firestore-send-fcm` dispatcher was found not to exist; replaced with a cron drain)
+**Scope:** All notification paths — Firestore rules, the push dispatcher, client services, UI components, push (FCM), test coverage
 
 ---
 
@@ -11,7 +11,7 @@
 The notification system has three delivery channels:
 
 1. **Firestore real-time** — Client writes to `/notifications`, recipient's `onSnapshot` listener surfaces in-app toasts
-2. **FCM push** — Historically served by application-authored Cloud Functions (`onGameUpdated`, `onGameCreated`, `onNudgeCreated`); those were removed with the `functions/` package. Background push is now dispatched by the `firestore-send-fcm` Firebase Extension (managed Cloud Run worker, not authored Cloud Functions). Clients collect FCM tokens via `src/services/fcm.ts` and write dispatch jobs to `/push_dispatch` via `src/services/pushDispatch.ts`; the extension consumes that collection and sends FCM/APNS. See `extensions/firestore-send-fcm.env` for configuration and `firestore.rules` for the create contract.
+2. **FCM push** — Historically served by application-authored Cloud Functions (`onGameUpdated`, `onGameCreated`, `onNudgeCreated`); those were removed with the `functions/` package. A `firestore-send-fcm` Firebase Extension was then documented as the replacement dispatcher — see **BUG-3** below; it never existed, and for that entire period no OS-level push was delivered at all. Background push is now dispatched by `api/cron/drain-push-dispatch.ts`, a Vercel serverless endpoint on a five-minute GitHub Actions schedule. Clients collect FCM tokens via `src/services/fcm.ts` and write dispatch jobs to `/push_dispatch` via `src/services/pushDispatch.ts`; the drain endpoint consumes that collection, sends via the FCM API with admin credentials, prunes dead tokens, and deletes what it processed. See `firestore.rules` for the create contract.
 3. **Client-side game watchers** — `GameNotificationWatcher` detects game state changes from the existing games `onSnapshot` and fires local toasts
 
 Deduplication logic in `GameNotificationWatcher` suppresses FCM foreground messages for types already covered by Firestore watchers.
@@ -130,7 +130,113 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 
 ---
 
+### BUG-3 (Critical): The declared push dispatcher does not exist — no OS push was ever delivered
+
+**Status:** Resolved (2026-07-25).
+
+**Files:**
+
+- `firebase.json` — declared `"extensions": { "firestore-send-fcm": "firebase/firestore-send-fcm@0.1.16" }`
+- `extensions/firestore-send-fcm.env` — configuration for a non-existent extension
+- `src/services/pushDispatch.ts` — writes `/push_dispatch` docs
+- `docs/CHARTER.md` §4.4 — described the extension as shipped
+
+**Problem:** `firebase/firestore-send-fcm` is not a real Firebase Extension. `extensions.dev` returns HTTP 404 for it, while `firebase/firestore-send-email` at the identical URL shape returns 200; a registry search surfaces no FCM extension whatsoever. No local `extensions/firestore-send-fcm/` manifest directory had ever been generated (only the hand-written `.env`), and `functions/src/index.ts` exports only `onGameCompleted`. Nothing anywhere consumed `/push_dispatch`.
+
+**Impact:**
+
+- Every `/push_dispatch` doc was authored, validated against the create rule, rate-limited by its companion `/push_dispatch_limits` write — and then never read. Zero OS-level pushes were delivered for the entire period the extension was believed to be live.
+- `/push_dispatch` accumulated without bound: its rules set `allow update, delete: if false` on the assumption the extension would delete-on-success, so there is no client-side cleanup path either.
+- `firebase deploy` (without `--only`) would fail on the phantom extension block.
+
+**Recommended fix:** Implemented as `api/cron/drain-push-dispatch.ts`, following the approved `api/cron/sweep-expired-turns.ts` pattern (bearer `CRON_SECRET`, `firebase-admin`, named `skatehubba` database), scheduled by `.github/workflows/drain-push-dispatch.yml` every five minutes. Delivery is at-least-once: a doc is deleted only after FCM accepts the send. Docs older than 24h are dropped unsent, preserving the old `TTL=86400` semantics. The `extensions` block and `.env` were removed.
+
+**Operator follow-up:** the endpoint is unit-tested but has never run against production FCM. `VITE_FIREBASE_VAPID_KEY` must be set in the Vercel environment — without it `fcm.ts` logs `vapid_key_missing` and no device ever registers a token, so the queue stays empty regardless. The `CRON_SECRET` repo secret must match the Vercel value.
+
+---
+
+### BUG-4 (High): Nudges had no delivery path to an offline device
+
+**Status:** Resolved (2026-07-25).
+
+**Files:**
+
+- `src/services/nudge.ts`
+- `src/components/waiting/WaitingActions.tsx`
+- `firestore.rules` — `/push_dispatch` and `/push_dispatch_limits` type allowlists
+
+**Problem:** A nudge wrote only to `/nudges`, which is delivered exclusively by the recipient's `subscribeToNudges` listener. It therefore reached a user only if their tab was already open — precisely the user who does not need nudging. Meanwhile `WaitingActions.tsx` rendered "They'll get a push notification" on success, which was false.
+
+**Impact:** The feature's entire purpose (poke an idle opponent) did not work, and the UI actively misinformed the sender.
+
+**Recommended fix:** `sendNudge` now fires `dispatchPushNotification` with `type: "nudge"` after the batch commits, and `'nudge'` was added to the type allowlists on `/push_dispatch` and `/push_dispatch_limits`. It is deliberately NOT a valid `/notifications` type — the in-app feed schema is unchanged. The existing 1-hour `/nudge_limits` cooldown bounds abuse far tighter than the generic 5s dispatch cooldown, so no new amplification surface is opened. Copy updated to reflect the real ~5-minute latency.
+
+---
+
+### BUG-5 (High): Offline-delivered notifications never reached the bell, and stale ones toasted as new
+
+**Status:** Resolved (2026-07-25).
+
+**Files:**
+
+- `src/services/notifications.ts` — `subscribeToNotifications`
+- `src/context/NotificationContext.tsx` — new `hydrate`
+- `src/components/GameNotificationWatcher.tsx`
+
+**Problem:** Two coupled defects.
+
+1. The bell was backed only by `skate_notifs_${uid}` in localStorage. `subscribeToNotifications` swallowed its entire first snapshot to avoid seed-toasting, and nothing else read those docs — so a challenge received while the app was closed left no in-app record, and a fresh device showed an empty bell despite unread docs on the server.
+2. Because seeded docs are never toasted they are never marked read, so unread count grew monotonically across sessions. Past 10 unread, docs ranked 11+ sat outside the `read == false ORDER BY createdAt DESC LIMIT 10` window and were absent from the dedupe set; marking a toasted notification read pulled one in as an `added` change, which then toasted — with a chime — for a challenge from days ago.
+
+**Impact:** Challenges received offline were invisible in-app; active users were periodically chimed for stale events.
+
+**Recommended fix:** `subscribeToNotifications` gained an `onSeed` callback that hands the initial snapshot to a new silent `hydrate` on `NotificationContext` (no chime, no haptic, no toast, no `notifyKey` bump, idempotent across resubscribes). Toast eligibility now compares each added doc's `createdAt` against a monotonic high-water mark taken at seed time, so an older doc entering the window is a no-op regardless of how it got there. `subscribeToNudges` was analysed and deliberately left alone — `/nudges` docs are never updated or deleted, so its window cannot pull an old doc back in.
+
+---
+
+### BUG-6 (Medium): Nudge button poked the wrong player during judge phases
+
+**Status:** Resolved (2026-07-25).
+
+**Files:**
+
+- `src/components/WaitingScreen.tsx`
+- `src/components/waiting/useWaitingScreen.ts`
+
+**Problem:** `useWaitingScreen` correctly rendered "Waiting on @judge" when `phase` was `disputable` or `setReview`, but the Nudge button was gated only on `game.status === "active" && !isJudge`, and `handleNudge` always targeted `opponentUid`. Status is still `active` during those phases, so the write succeeded.
+
+**Impact:** The opponent — who was not holding anything up — got poked, and the sender's 1-hour cooldown for that game was consumed for nothing.
+
+**Recommended fix:** `isJudgeTurn` is now exposed from the hook and folded into the button's visibility, so the control is hidden (not merely disabled) while the game is blocked on the judge.
+
+---
+
+### BUG-7 (Medium): Nudge cooldown was device-local and leaked raw Firebase error text
+
+**Status:** Resolved (2026-07-25).
+
+**Files:**
+
+- `src/services/nudge.ts`
+- `src/components/waiting/useWaitingScreen.ts`
+
+**Problem:** `canNudge` read only `localStorage`. A nudge sent from another device left this device believing the button was available; the write was then rejected by the `/nudge_limits` rule and `useWaitingScreen` rendered `err.message` verbatim — "Missing or insufficient permissions." — to the user.
+
+**Impact:** Confusing, alarming error copy on an entirely expected code path.
+
+**Recommended fix:** New `getServerNudgeCooldownMs` reads the `/nudge_limits` anchor (the sender may read their own limit doc, so no new rules surface) and reconciles the button state after the initial localStorage-driven render. `sendNudge` now maps a `permission-denied` rejection to the same "You can only nudge once per hour per game" copy the local guard uses, and anything else to a generic message — raw Firebase strings never reach the UI.
+
+---
+
+### PERF-3 (Low): `deleteUserNotifications` issued an unbounded parallel delete burst
+
+**Status:** Resolved (2026-07-25). The function fetched every matching doc and fired one `deleteDoc` per doc concurrently; with no TTL on `/notifications` (see PERF-1) a long-lived account made `clearAll` a thousand-write burst. Now paginates at the 500-op `writeBatch` limit until a short page ends the loop.
+
+---
+
 ### PERF-2 (Low): FCM token array grows without proactive cleanup
+
+**Status:** Resolved (2026-07-25). `api/cron/drain-push-dispatch.ts` removes any token FCM rejects with `messaging/registration-token-not-registered` or `messaging/invalid-registration-token` from BOTH `/pushTargets/{uid}.tokens` and `users/{uid}/private/profile.fcmTokens`, keeping the mirror and the canonical list in lockstep. Pruning is scoped to the dispatch doc's own `recipientUid`, and the `/push_dispatch` create rule's `tokens.hasOnly(<recipient mirror>)` check guarantees those tokens genuinely belong to that user — a crafted dispatch doc cannot make the drain mutate someone else's device list. Transient failure codes (quota, server-unavailable) never prune.
 
 **Files:**
 

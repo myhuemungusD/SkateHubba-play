@@ -237,7 +237,7 @@ describe("push_dispatch — immutability + reads", () => {
     );
   });
 
-  it("attack: nobody can delete a committed dispatch doc (Extension cleans up via Admin SDK)", async () => {
+  it("attack: nobody can delete a committed dispatch doc (the drain endpoint cleans up via Admin SDK)", async () => {
     await commitDispatch(asUser(SENDER_UID).firestore());
     const { deleteDoc } = await import("firebase/firestore");
     await assertFails(deleteDoc(doc(asUser(SENDER_UID).firestore(), "push_dispatch", DISPATCH_ID)));
@@ -248,5 +248,77 @@ describe("push_dispatch — immutability + reads", () => {
     await assertSucceeds(getDoc(doc(asUser(SENDER_UID).firestore(), "push_dispatch", DISPATCH_ID)));
     await assertSucceeds(getDoc(doc(asUser(RECIPIENT_UID).firestore(), "push_dispatch", DISPATCH_ID)));
     await assertFails(getDoc(doc(asUser(OUTSIDER_UID).firestore(), "push_dispatch", DISPATCH_ID)));
+  });
+});
+
+describe("push_dispatch — nudge type", () => {
+  /** A nudge dispatch: same shape, type "nudge", no /notifications counterpart. */
+  function nudgeDispatch(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      type: "nudge",
+      notification: { title: "You got nudged!", body: "@alice is waiting for your move" },
+      data: { gameId: GAME_ID, type: "nudge", click_action: `/?game=${GAME_ID}` },
+      ...overrides,
+    };
+  }
+
+  it("legitimate: a player can dispatch a nudge to their opponent with the companion limits doc", async () => {
+    await assertSucceeds(commitDispatch(asUser(SENDER_UID).firestore(), nudgeDispatch()));
+  });
+
+  it("attack: a nudge dispatch WITHOUT the companion limits write is denied", async () => {
+    await assertFails(commitDispatch(asUser(SENDER_UID).firestore(), nudgeDispatch(), { skipLimit: true }));
+  });
+
+  it("attack: an outsider cannot dispatch a nudge", async () => {
+    await assertFails(commitDispatch(asUser(OUTSIDER_UID).firestore(), nudgeDispatch({ senderUid: OUTSIDER_UID })));
+  });
+
+  it("attack: a nudge cannot embed a token missing from the recipient's mirror", async () => {
+    await assertFails(
+      commitDispatch(asUser(SENDER_UID).firestore(), nudgeDispatch({ tokens: ["attacker-controlled-token"] })),
+    );
+  });
+
+  it("attack: a nudge cannot target the sender themselves", async () => {
+    await assertFails(commitDispatch(asUser(SENDER_UID).firestore(), nudgeDispatch({ recipientUid: SENDER_UID })));
+  });
+
+  it("attack: a back-dated nudge limits doc cannot satisfy the companion-write check", async () => {
+    await assertFails(
+      commitDispatch(asUser(SENDER_UID).firestore(), nudgeDispatch(), {
+        limitOverrides: { lastSentAt: new Date(0) },
+      }),
+    );
+  });
+
+  it("attack: a mismatched limits-doc id cannot satisfy the companion-write check", async () => {
+    await assertFails(
+      commitDispatch(asUser(SENDER_UID).firestore(), nudgeDispatch(), {
+        limitId: limitKey(SENDER_UID, RECIPIENT_UID, GAME_ID, "your_turn"),
+      }),
+    );
+  });
+
+  it("attack: 'nudge' is NOT a valid /notifications type — the in-app feed schema is unchanged", async () => {
+    const fs = asUser(SENDER_UID).firestore();
+    const batch = writeBatch(fs);
+    batch.set(doc(fs, "notifications", "notif-nudge"), {
+      senderUid: SENDER_UID,
+      recipientUid: RECIPIENT_UID,
+      type: "nudge",
+      title: "You got nudged!",
+      body: "@alice is waiting for your move",
+      gameId: GAME_ID,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+    batch.set(doc(fs, "notification_limits", `${SENDER_UID}_${GAME_ID}_nudge`), {
+      senderUid: SENDER_UID,
+      gameId: GAME_ID,
+      type: "nudge",
+      lastSentAt: serverTimestamp(),
+    });
+    await assertFails(batch.commit());
   });
 });

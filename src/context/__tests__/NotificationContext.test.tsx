@@ -539,3 +539,167 @@ describe("cleanup", () => {
     });
   });
 });
+
+describe("hydrate", () => {
+  /** Minimal NotificationEvent factory matching the services contract. */
+  function evt(overrides: Partial<Record<string, unknown>> = {}) {
+    return {
+      firestoreId: "fs1",
+      type: "new_challenge",
+      title: "New Challenge!",
+      body: "@bob challenged you",
+      gameId: "g1",
+      createdAtMs: 1_000,
+      ...overrides,
+    } as Parameters<ReturnType<typeof useNotifications>["hydrate"]>[0][number];
+  }
+
+  it("adds server notifications to the bell as unread", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.hydrate([evt()]);
+    });
+
+    expect(result.current.notifications).toHaveLength(1);
+    expect(result.current.notifications[0]).toMatchObject({
+      title: "New Challenge!",
+      message: "@bob challenged you",
+      gameId: "g1",
+      firestoreId: "fs1",
+      sourceType: "new_challenge",
+      read: false,
+    });
+    expect(result.current.unreadCount).toBe(1);
+  });
+
+  it("is silent — no chime, no haptic, no toast, no notifyKey bump", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+    const keyBefore = result.current.notifyKey;
+
+    act(() => {
+      result.current.hydrate([evt()]);
+    });
+
+    expect(mockPlayChime).not.toHaveBeenCalled();
+    expect(mockPlayHaptic).not.toHaveBeenCalled();
+    expect(result.current.toasts).toHaveLength(0);
+    expect(result.current.notifyKey).toBe(keyBefore);
+  });
+
+  it("is idempotent across repeated calls with overlapping data", () => {
+    // The listener re-seeds on every resubscribe (uid change, remount).
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.hydrate([evt()]);
+    });
+    act(() => {
+      result.current.hydrate([evt(), evt({ firestoreId: "fs2", createdAtMs: 2_000 })]);
+    });
+
+    expect(result.current.notifications).toHaveLength(2);
+  });
+
+  /** Reproduce what useGameCompletionWatcher emits for a won game. */
+  function notifyLocalWin(result: { current: ReturnType<typeof useNotifications> }, gameId: string) {
+    act(() => {
+      result.current.notify({
+        type: "success",
+        title: "You Won!",
+        message: "vs @bob",
+        chime: "game_won",
+        gameId,
+        sourceType: "game_won",
+      });
+    });
+  }
+
+  it("does not duplicate a completion already surfaced locally by the games watcher", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    notifyLocalWin(result, "g1");
+    act(() => {
+      result.current.hydrate([evt({ firestoreId: "fs9", type: "game_won", gameId: "g1" })]);
+    });
+
+    expect(result.current.notifications).toHaveLength(1);
+    expect(result.current.notifications[0].firestoreId).toBeUndefined();
+  });
+
+  it("keeps a distinct server notification for a different game", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    notifyLocalWin(result, "g1");
+    act(() => {
+      result.current.hydrate([evt({ firestoreId: "fs9", type: "game_won", gameId: "g2" })]);
+    });
+
+    expect(result.current.notifications).toHaveLength(2);
+  });
+
+  it("does not suppress a server doc against a local entry of a different type", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.notify({
+        type: "game_event",
+        title: "Nudge",
+        message: "poke",
+        chime: "nudge",
+        gameId: "g1",
+      });
+    });
+    act(() => {
+      result.current.hydrate([evt({ gameId: "g1", type: "your_turn" })]);
+    });
+
+    expect(result.current.notifications).toHaveLength(2);
+  });
+
+  it("orders the merged list newest-first", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.hydrate([
+        evt({ firestoreId: "old", createdAtMs: 1_000 }),
+        evt({ firestoreId: "new", createdAtMs: 5_000 }),
+      ]);
+    });
+
+    expect(result.current.notifications.map((n) => n.firestoreId)).toEqual(["new", "old"]);
+  });
+
+  it("falls back to now when the server timestamp is unresolved", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.hydrate([evt({ createdAtMs: 0 })]);
+    });
+
+    expect(result.current.notifications[0].timestamp).toBeGreaterThan(0);
+  });
+
+  it("caps the merged list at MAX_STORED", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+
+    act(() => {
+      result.current.hydrate(
+        Array.from({ length: 60 }, (_, i) => evt({ firestoreId: `fs${i}`, createdAtMs: 1_000 + i })),
+      );
+    });
+
+    expect(result.current.notifications).toHaveLength(50);
+  });
+
+  it("no-ops on an empty list", () => {
+    const { result } = renderHook(() => useNotifications(), { wrapper });
+    const before = result.current.notifications;
+
+    act(() => {
+      result.current.hydrate([]);
+    });
+
+    expect(result.current.notifications).toBe(before);
+  });
+});

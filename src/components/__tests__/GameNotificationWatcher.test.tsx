@@ -18,6 +18,7 @@ function fcmPayload(overrides: Partial<MessagePayload>): MessagePayload {
 /* ── Mocks ─────────────────────────────────── */
 
 const mockNotify = vi.fn();
+const mockHydrate = vi.fn();
 let mockUser: { uid: string; displayName: string } | null = { uid: "u1", displayName: "Alice" };
 
 const mockActiveProfile = { uid: "u1", username: "alice", stance: "Regular", createdAt: null, emailVerified: true };
@@ -37,7 +38,7 @@ vi.mock("../../context/GameContext", () => ({
 }));
 
 vi.mock("../../context/NotificationContext", () => ({
-  useNotifications: vi.fn(() => ({ notify: mockNotify })),
+  useNotifications: vi.fn(() => ({ notify: mockNotify, hydrate: mockHydrate })),
 }));
 
 const mockNudgeUnsub = vi.fn();
@@ -126,7 +127,7 @@ describe("GameNotificationWatcher", () => {
 describe("notifications collection listener", () => {
   it("subscribes with the user uid", () => {
     render(<GameNotificationWatcher />);
-    expect(vi.mocked(subscribeToNotifications)).toHaveBeenCalledWith("u1", expect.any(Function));
+    expect(vi.mocked(subscribeToNotifications)).toHaveBeenCalledWith("u1", expect.any(Function), mockHydrate);
   });
 
   it.each([
@@ -137,7 +138,7 @@ describe("notifications collection listener", () => {
   ])("maps type %s → chime %s", (type, expectedChime) => {
     render(<GameNotificationWatcher />);
     const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
-    cb!({ firestoreId: "fs1", type, title: "T", body: "B", gameId: "g1" });
+    cb!({ firestoreId: "fs1", type, title: "T", body: "B", gameId: "g1", createdAtMs: 1_000 });
 
     expect(mockNotify).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -147,6 +148,7 @@ describe("notifications collection listener", () => {
         chime: expectedChime,
         gameId: "g1",
         firestoreId: "fs1",
+        sourceType: type,
       }),
     );
   });
@@ -156,7 +158,7 @@ describe("notifications collection listener", () => {
     (type) => {
       render(<GameNotificationWatcher />);
       const cb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[1];
-      cb!({ firestoreId: "fs1", type, title: "T", body: "B", gameId: "g1" });
+      cb!({ firestoreId: "fs1", type, title: "T", body: "B", gameId: "g1", createdAtMs: 1_000 });
       expect(mockNotify).not.toHaveBeenCalled();
     },
   );
@@ -201,6 +203,7 @@ describe("game completion watcher", () => {
       message: "vs @bob",
       chime: "game_won",
       gameId: "g1",
+      sourceType: "game_won",
     });
   });
 
@@ -217,6 +220,7 @@ describe("game completion watcher", () => {
       message: "vs @bob",
       chime: "game_lost",
       gameId: "g1",
+      sourceType: "game_lost",
     });
   });
 
@@ -234,6 +238,7 @@ describe("game completion watcher", () => {
       message: "vs @bob",
       chime: "game_won",
       gameId: "g1",
+      sourceType: "game_won",
     });
   });
 
@@ -250,6 +255,7 @@ describe("game completion watcher", () => {
       message: "vs @bob",
       chime: "game_lost",
       gameId: "g1",
+      sourceType: "game_lost",
     });
   });
 
@@ -521,5 +527,25 @@ describe("cleanup", () => {
     const { unmount } = render(<GameNotificationWatcher />);
     unmount();
     expect(sw.removeEventListener).toHaveBeenCalledWith("message", expect.any(Function));
+  });
+});
+
+describe("notification seed → bell hydration", () => {
+  it("passes the context hydrate as the seed callback", () => {
+    render(<GameNotificationWatcher />);
+    const seedCb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[2];
+    expect(seedCb).toBe(mockHydrate);
+  });
+
+  it("hydrates completed-game docs that the toast path suppresses", () => {
+    // LOCALLY_HANDLED_NOTIFICATION_TYPES stops game_won/game_lost being TOASTED
+    // twice. It must not stop them reaching the bell.
+    render(<GameNotificationWatcher />);
+    const seedCb = vi.mocked(subscribeToNotifications).mock.calls[0]?.[2];
+    const seeded = [{ firestoreId: "fs1", type: "game_lost", title: "T", body: "B", gameId: "g1", createdAtMs: 1_000 }];
+    seedCb!(seeded);
+
+    expect(mockHydrate).toHaveBeenCalledWith(seeded);
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 });

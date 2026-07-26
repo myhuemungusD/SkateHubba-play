@@ -54,6 +54,7 @@ const FIRESTORE_HANDLED_FCM_TYPES = new Set([
 const LOCALLY_HANDLED_NOTIFICATION_TYPES = new Set(["game_won", "game_lost"]);
 
 type Notify = ReturnType<typeof useNotifications>["notify"];
+type Hydrate = ReturnType<typeof useNotifications>["hydrate"];
 
 /**
  * Subscribe to /notifications docs and surface them as toasts.
@@ -63,21 +64,31 @@ type Notify = ReturnType<typeof useNotifications>["notify"];
  * `services/games.{create,match,judge}.ts`), so the watcher does not need
  * to diff game state for those events.
  */
-function useNotificationDocListener(uid: string | null, gated: boolean, notify: Notify) {
+function useNotificationDocListener(uid: string | null, gated: boolean, notify: Notify, hydrate: Hydrate) {
   useEffect(() => {
     if (!uid || !gated) return;
-    return subscribeToNotifications(uid, (notif) => {
-      if (LOCALLY_HANDLED_NOTIFICATION_TYPES.has(notif.type)) return;
-      notify({
-        type: "game_event",
-        title: notif.title,
-        message: notif.body,
-        chime: CHIME_BY_TYPE[notif.type] ?? "general",
-        gameId: notif.gameId,
-        firestoreId: notif.firestoreId,
-      });
-    });
-  }, [uid, gated, notify]);
+    return subscribeToNotifications(
+      uid,
+      (notif) => {
+        if (LOCALLY_HANDLED_NOTIFICATION_TYPES.has(notif.type)) return;
+        notify({
+          type: "game_event",
+          title: notif.title,
+          message: notif.body,
+          chime: CHIME_BY_TYPE[notif.type] ?? "general",
+          gameId: notif.gameId,
+          firestoreId: notif.firestoreId,
+          sourceType: notif.type,
+        });
+      },
+      // Seed → bell, never toast. Note this deliberately does NOT apply
+      // LOCALLY_HANDLED_NOTIFICATION_TYPES: that set exists to stop a completion
+      // being TOASTED twice (once here, once by useGameCompletionWatcher). A
+      // finished game still belongs in the bell, and hydrate's own dedupe
+      // handles the overlap with a locally-surfaced completion.
+      hydrate,
+    );
+  }, [uid, gated, notify, hydrate]);
 }
 
 /** Subscribe to /nudges docs and surface them as toasts. */
@@ -155,6 +166,7 @@ function useGameCompletionWatcher(uid: string | null, games: GameDoc[], activeGa
           message: `vs @${opponentName}`,
           chime: won ? "game_won" : "game_lost",
           gameId: g.id,
+          sourceType: won ? "game_won" : "game_lost",
         });
       }
 
@@ -238,7 +250,7 @@ function useFcmForegroundBridge(uid: string | null, notify: Notify) {
 export function GameNotificationWatcher() {
   const { user, activeProfile } = useAuthContext();
   const { games, activeGame } = useGameContext();
-  const { notify } = useNotifications();
+  const { notify, hydrate } = useNotifications();
 
   const uid = user?.uid ?? null;
   // /nudges and /notifications reads require the user's profile doc to exist
@@ -246,7 +258,7 @@ export function GameNotificationWatcher() {
   // prevents permission-denied snapshots during signup.
   const profileGated = activeProfile != null;
 
-  useNotificationDocListener(uid, profileGated, notify);
+  useNotificationDocListener(uid, profileGated, notify, hydrate);
   useNudgeListener(uid, profileGated, notify);
   useGameCompletionWatcher(uid, games, activeGame, notify);
   useServiceWorkerDeepLink(uid);

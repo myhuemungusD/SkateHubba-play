@@ -33,7 +33,7 @@ export function WaitingActions({
           </Btn>
           {nudgeError && <p className="font-body text-xs text-brand-red mt-2 text-center">{nudgeError}</p>}
           {nudgeStatus === "sent" && (
-            <p className="font-body text-xs text-muted mt-2 text-center">They&apos;ll get a push notification</p>
+            <p className="font-body text-xs text-muted mt-2 text-center">They&apos;ll get pinged in a few minutes</p>
           )}
           {!nudgeAvailable && nudgeStatus !== "sent" && (
             <p className="font-body text-xs text-faint mt-2 text-center">Nudge available every hour</p>

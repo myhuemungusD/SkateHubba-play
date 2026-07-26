@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
-import { canNudge, sendNudge } from "../../services/nudge";
+import { canNudge, getServerNudgeCooldownMs, sendNudge } from "../../services/nudge";
 
 export type NudgeStatus = "idle" | "pending" | "sent" | "error";
 
 export interface WaitingScreenState {
   // Derived role / phase booleans
   isJudge: boolean;
+  /** True while the game is blocked on the judge, not on a player. */
+  isJudgeTurn: boolean;
   // Derived player-centric values
   myLetters: number;
   theirLetters: number;
@@ -44,6 +46,24 @@ export function useWaitingScreen(game: GameDoc, profile: UserProfile): WaitingSc
       }
     }, 60_000);
     return () => clearInterval(id);
+  }, [game.id, profile.uid]);
+
+  // Reconcile the local (localStorage) cooldown against the server anchor.
+  //
+  // `canNudge` above only sees THIS device. Nudge from your phone, then open the
+  // web app, and the button renders enabled — the write is then rejected by the
+  // /nudge_limits rule. The initial state still comes from localStorage so there
+  // is no flash of an enabled button on the common path; this effect corrects it
+  // once the server answers. A failed lookup resolves to 0 and changes nothing.
+  useEffect(() => {
+    let cancelled = false;
+    void getServerNudgeCooldownMs(game.id, profile.uid).then((remainingMs) => {
+      if (cancelled || remainingMs <= 0) return;
+      setNudgeStatus((prev) => (prev === "idle" ? "sent" : prev));
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [game.id, profile.uid]);
 
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
@@ -99,6 +119,7 @@ export function useWaitingScreen(game: GameDoc, profile: UserProfile): WaitingSc
 
   return {
     isJudge,
+    isJudgeTurn,
     myLetters,
     theirLetters,
     opponentName,

@@ -41,7 +41,12 @@ export function WaitingScreen({ game, profile, onBack }: { game: GameDoc; profil
         )}
 
         <WaitingActions
-          showNudge={game.status === "active" && !state.isJudge}
+          // Also hidden while the game is waiting on the JUDGE: the nudge always
+          // targets the opponent, so offering it here poked someone who wasn't
+          // holding anything up (and burned the sender's 1-hour cooldown) while
+          // the screen said "Waiting on @judge". Hidden rather than disabled —
+          // there is no action to take, and a dead button invites a support ticket.
+          showNudge={game.status === "active" && !state.isJudge && !state.isJudgeTurn}
           nudgeStatus={state.nudgeStatus}
           nudgeError={state.nudgeError}
           nudgeAvailable={state.nudgeAvailable}

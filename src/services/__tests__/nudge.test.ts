@@ -23,24 +23,37 @@ const mockDoc = vi.fn<AnyMock>((..._args) => {
 });
 const mockCollection = vi.fn<AnyMock>((..._args) => _args[1]);
 const mockServerTimestamp = vi.fn(() => "SERVER_TS");
+const mockGetDoc = vi.fn<AnyMock>(() => Promise.resolve({ exists: () => false, data: () => undefined }));
 
 vi.mock("firebase/firestore", () => ({
   collection: (...args: unknown[]) => mockCollection(...args),
   doc: (...args: unknown[]) => mockDoc(...args),
+  getDoc: (...args: unknown[]) => mockGetDoc(...args),
   serverTimestamp: () => mockServerTimestamp(),
   writeBatch: (...args: unknown[]) => mockWriteBatch(...args),
 }));
 
 vi.mock("../../firebase");
 
+const mockDispatchPush = vi.fn<AnyMock>(() => Promise.resolve(undefined));
+vi.mock("../pushDispatch", () => ({
+  dispatchPushNotification: (...args: unknown[]) => mockDispatchPush(...args),
+}));
+
 /* ── tests ───────────────────────────────────── */
 
-import { sendNudge, canNudge } from "../nudge";
+import { sendNudge, canNudge, getServerNudgeCooldownMs, NUDGE_COOLDOWN_MS } from "../nudge";
+
+/** Build a rejection shaped like a FirebaseError (a `code` field, not just a message). */
+function firebaseError(code: string): Error & { code: string } {
+  return Object.assign(new Error(`FIREBASE: ${code}`), { code });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   batchSetCalls.length = 0;
   localStorage.clear();
+  mockGetDoc.mockResolvedValue({ exists: () => false, data: () => undefined });
 });
 
 describe("canNudge", () => {
@@ -111,8 +124,96 @@ describe("sendNudge", () => {
   });
 
   it("does not record localStorage timestamp when batch commit fails", async () => {
-    mockBatchCommit.mockRejectedValueOnce(new Error("permission-denied"));
-    await expect(sendNudge(params)).rejects.toThrow("permission-denied");
+    mockBatchCommit.mockRejectedValueOnce(firebaseError("permission-denied"));
+    await expect(sendNudge(params)).rejects.toThrow("once per hour");
     expect(localStorage.getItem("nudge_u1_g1")).toBeNull();
+  });
+
+  it("maps a rules rejection to the cooldown copy, never the raw Firebase string", async () => {
+    // A cross-device cooldown collision is the overwhelmingly likely
+    // permission-denied here: localStorage on THIS device says the user may
+    // nudge, /nudge_limits on the server disagrees.
+    mockBatchCommit.mockRejectedValueOnce(firebaseError("permission-denied"));
+    await expect(sendNudge(params)).rejects.toThrow("You can only nudge once per hour per game");
+  });
+
+  it("maps a non-permission failure to the generic copy", async () => {
+    mockBatchCommit.mockRejectedValueOnce(firebaseError("unavailable"));
+    await expect(sendNudge(params)).rejects.toThrow("Couldn't send nudge. Try again.");
+  });
+
+  it("maps a non-object rejection to the generic copy", async () => {
+    mockBatchCommit.mockRejectedValueOnce("boom");
+    await expect(sendNudge(params)).rejects.toThrow("Couldn't send nudge. Try again.");
+  });
+
+  it("dispatches an OS push after the batch commits", async () => {
+    await sendNudge(params);
+    expect(mockDispatchPush).toHaveBeenCalledWith({
+      senderUid: "u1",
+      recipientUid: "u2",
+      type: "nudge",
+      title: "You got nudged!",
+      body: "@sk8r is waiting for your move",
+      gameId: "g1",
+    });
+  });
+
+  it("does not dispatch a push when the batch commit fails", async () => {
+    mockBatchCommit.mockRejectedValueOnce(firebaseError("permission-denied"));
+    await expect(sendNudge(params)).rejects.toThrow();
+    expect(mockDispatchPush).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch a push when the local cooldown blocks the send", async () => {
+    localStorage.setItem("nudge_u1_g1", String(Date.now()));
+    await expect(sendNudge(params)).rejects.toThrow();
+    expect(mockDispatchPush).not.toHaveBeenCalled();
+  });
+
+  it("resolves even when the push dispatch rejects — delivery never blocks the nudge", async () => {
+    mockDispatchPush.mockRejectedValueOnce(new Error("dispatch exploded"));
+    await expect(sendNudge(params)).resolves.toBeUndefined();
+    expect(localStorage.getItem("nudge_u1_g1")).not.toBeNull();
+  });
+});
+
+describe("getServerNudgeCooldownMs", () => {
+  it("returns 0 when no limit doc exists", async () => {
+    await expect(getServerNudgeCooldownMs("g1", "u1")).resolves.toBe(0);
+  });
+
+  it("returns the remaining window when still cooling down", async () => {
+    const halfAgo = Date.now() - NUDGE_COOLDOWN_MS / 2;
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ lastNudgedAt: { toMillis: () => halfAgo } }),
+    });
+    const remaining = await getServerNudgeCooldownMs("g1", "u1");
+    expect(remaining).toBeGreaterThan(0);
+    expect(remaining).toBeLessThanOrEqual(NUDGE_COOLDOWN_MS / 2);
+  });
+
+  it("returns 0 once the window has elapsed", async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({ lastNudgedAt: { toMillis: () => Date.now() - NUDGE_COOLDOWN_MS - 1 } }),
+    });
+    await expect(getServerNudgeCooldownMs("g1", "u1")).resolves.toBe(0);
+  });
+
+  it("returns 0 when lastNudgedAt has not resolved yet", async () => {
+    mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ lastNudgedAt: null }) });
+    await expect(getServerNudgeCooldownMs("g1", "u1")).resolves.toBe(0);
+  });
+
+  it("returns 0 when the read throws — a transient error must not brick the button", async () => {
+    mockGetDoc.mockRejectedValueOnce(firebaseError("unavailable"));
+    await expect(getServerNudgeCooldownMs("g1", "u1")).resolves.toBe(0);
+  });
+
+  it("reads the deterministic senderUid_gameId limit doc", async () => {
+    await getServerNudgeCooldownMs("g1", "u1");
+    expect(mockGetDoc).toHaveBeenCalledWith("nudge_limits/u1_g1");
   });
 });
