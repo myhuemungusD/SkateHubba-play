@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { blockUser, unblockUser } from "../../services/blocking";
+import { ratedWinRate } from "../../constants/stats";
 import { usePlayerProfile } from "../../hooks/usePlayerProfile";
 
 export interface OpponentRecord {
@@ -24,7 +25,16 @@ export interface ProfileStats {
   wins: number;
   losses: number;
   total: number;
-  winRate: number;
+  /**
+   * Whole-percent win rate, or `null` when the player has not yet played
+   * `MIN_RATED_GAMES`. Null is rendered as a neutral placeholder — a
+   * provisional record must not be shown as "100%" or "0%".
+   */
+  winRate: number | null;
+  /** Consecutive wins ending now. 0 for legacy docs predating the counter. */
+  currentWinStreak: number;
+  /** Lifetime best streak. 0 for legacy docs predating the counter. */
+  bestWinStreak: number;
   vsYouWins: number;
   vsYouLosses: number;
   vsYouTotal: number;
@@ -107,7 +117,9 @@ export function usePlayerProfileController({
     const wins = profile?.wins ?? 0;
     const losses = profile?.losses ?? 0;
     const total = wins + losses;
-    const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+    const winRate = ratedWinRate(wins, losses);
+    const currentWinStreak = profile?.currentWinStreak ?? 0;
+    const bestWinStreak = profile?.bestWinStreak ?? 0;
 
     let vsYouWins = 0;
     let vsYouLosses = 0;
@@ -126,6 +138,8 @@ export function usePlayerProfileController({
       losses,
       total,
       winRate,
+      currentWinStreak,
+      bestWinStreak,
       vsYouWins,
       vsYouLosses,
       vsYouTotal: vsYouWins + vsYouLosses,

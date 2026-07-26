@@ -18,8 +18,26 @@ const GAME_PATH = `games/${GAME_ID}`;
 const P1_PATH = `users/${P1}`;
 const P2_PATH = `users/${P2}`;
 
-const WIN_INCREMENT = { wins: { __increment: 1 } };
-const LOSS_INCREMENT = { losses: { __increment: 1 } };
+/**
+ * Expected winner payload. `wins`/`gamesPlayed` are relative increments, while
+ * the streak fields are absolute values computed from the profile snapshot —
+ * so the caller states the streak it expects to land on.
+ */
+function winPayload(currentWinStreak: number, bestWinStreak: number): Record<string, unknown> {
+  return {
+    wins: { __increment: 1 },
+    gamesPlayed: { __increment: 1 },
+    currentWinStreak,
+    bestWinStreak,
+  };
+}
+
+/** Expected loser payload. A loss always zeroes the run and never touches `bestWinStreak`. */
+const LOSS_INCREMENT = {
+  losses: { __increment: 1 },
+  gamesPlayed: { __increment: 1 },
+  currentWinStreak: 0,
+};
 
 interface DocRef {
   path: string;
@@ -92,7 +110,9 @@ describe("applyGameStats", () => {
     expect(result).toBe("applied");
     expect(update).toHaveBeenCalledTimes(3);
     expect(update).toHaveBeenCalledWith({ path: GAME_PATH }, { statsApplied: true });
-    expect(update).toHaveBeenCalledWith({ path: P1_PATH }, WIN_INCREMENT);
+    // Neither profile carries streak fields yet (pre-Tier-1 docs), so the
+    // winner's run starts at 1 and sets an equal best.
+    expect(update).toHaveBeenCalledWith({ path: P1_PATH }, winPayload(1, 1));
     expect(update).toHaveBeenCalledWith({ path: P2_PATH }, LOSS_INCREMENT);
     // Flag write precedes the counter writes (reads-before-writes ordering).
     expect(updatedPaths()[0]).toBe(GAME_PATH);
@@ -109,8 +129,64 @@ describe("applyGameStats", () => {
 
     expect(result).toBe("applied");
     expect(update).toHaveBeenCalledWith({ path: GAME_PATH }, { statsApplied: true });
-    expect(update).toHaveBeenCalledWith({ path: P2_PATH }, WIN_INCREMENT);
+    expect(update).toHaveBeenCalledWith({ path: P2_PATH }, winPayload(1, 1));
     expect(update).toHaveBeenCalledWith({ path: P1_PATH }, LOSS_INCREMENT);
+  });
+
+  // ── Tier-1 streak counters ──
+  // currentWinStreak is written absolutely (not incremented) because
+  // bestWinStreak has to compare against the resulting value, so these cases
+  // pin the arithmetic rather than trusting a FieldValue sentinel.
+  describe("win streaks", () => {
+    it("extends a running streak and raises the lifetime best with it", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame(),
+        [P1_PATH]: { wins: 3, losses: 1, currentWinStreak: 3, bestWinStreak: 3 },
+        [P2_PATH]: { wins: 0, losses: 5 },
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith({ path: P1_PATH }, winPayload(4, 4));
+    });
+
+    it("extends a streak without disturbing a higher lifetime best", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame(),
+        [P1_PATH]: { wins: 9, losses: 4, currentWinStreak: 1, bestWinStreak: 7 },
+        [P2_PATH]: { wins: 0, losses: 5 },
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith({ path: P1_PATH }, winPayload(2, 7));
+    });
+
+    it("zeroes the loser's run but preserves their lifetime best", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame(),
+        [P1_PATH]: { wins: 3, losses: 1 },
+        [P2_PATH]: { wins: 6, losses: 5, currentWinStreak: 6, bestWinStreak: 6 },
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      // bestWinStreak is absent from the loser payload entirely — a loss must
+      // never rewrite a high-water mark.
+      expect(update).toHaveBeenCalledWith({ path: P2_PATH }, LOSS_INCREMENT);
+    });
+
+    it("treats a corrupted non-numeric streak as zero instead of producing NaN", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame(),
+        [P1_PATH]: { wins: 3, losses: 1, currentWinStreak: "four", bestWinStreak: null },
+        [P2_PATH]: { wins: 0, losses: 5 },
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith({ path: P1_PATH }, winPayload(1, 1));
+    });
   });
 
   it("is idempotent: already-applied games perform zero writes", async () => {
