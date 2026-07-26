@@ -19,13 +19,87 @@ function setupMockStream() {
   return { mockStop, mockStream };
 }
 
+// A chunk large enough to clear the recorder's 1KB "failed recording" guard.
+function bigChunk(type = "video/webm"): Blob {
+  return new Blob(["v".repeat(2048)], { type });
+}
+
+type RecorderProbe = { options: MediaRecorderOptions | undefined; start: ReturnType<typeof vi.fn> };
+
+// Installs a MediaRecorder mock that records its constructor options and emits a
+// single configurable chunk on stop(). Returns a restore() for the original.
+function installRecorderMock(cfg: {
+  supported: (mime: string) => boolean;
+  instanceMimeType: string;
+  chunk: () => Blob;
+}): { restore: () => void; instances: RecorderProbe[] } {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const original = g.MediaRecorder;
+  const instances: RecorderProbe[] = [];
+  class MockMR {
+    static isTypeSupported = vi.fn().mockImplementation(cfg.supported);
+    mimeType = cfg.instanceMimeType;
+    ondataavailable: ((e: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+    state = "inactive";
+    start = vi.fn().mockImplementation(function (this: MockMR) {
+      this.state = "recording";
+    });
+    stop = vi.fn().mockImplementation(function (this: MockMR) {
+      this.state = "inactive";
+      this.ondataavailable?.({ data: cfg.chunk() });
+      this.onstop?.();
+    });
+    constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+      instances.push({ options, start: this.start });
+    }
+  }
+  g.MediaRecorder = MockMR;
+  return {
+    restore: () => {
+      g.MediaRecorder = original;
+    },
+    instances,
+  };
+}
+
+// Drives the recorder through open → record → stop with the current mock.
+async function recordOnce(onRecorded: (blob: Blob | null) => void): Promise<void> {
+  render(<VideoRecorder onRecorded={onRecorded} label="Land It" />);
+  await userEvent.click(screen.getByText(/Open Camera/));
+  await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+  await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+}
+
+// Helper to stub navigator.permissions.query with per-name states
+function setupMockPermissions(states: Record<string, PermissionState> | "throws" | "missing") {
+  if (states === "missing") {
+    Object.defineProperty(navigator, "permissions", { writable: true, configurable: true, value: undefined });
+    return vi.fn();
+  }
+  const query =
+    states === "throws"
+      ? vi.fn().mockImplementation(() => {
+          throw new TypeError("unsupported permission name");
+        })
+      : vi.fn().mockImplementation(({ name }: { name: string }) => Promise.resolve({ state: states[name] }));
+  Object.defineProperty(navigator, "permissions", { writable: true, configurable: true, value: { query } });
+  return query;
+}
+
+const originalPermissions = Object.getOwnPropertyDescriptor(navigator, "permissions");
+
 beforeEach(() => {
   vi.clearAllMocks();
   setupMockStream();
+  setupMockPermissions("missing");
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  if (originalPermissions) Object.defineProperty(navigator, "permissions", originalPermissions);
 });
 
 describe("VideoRecorder", () => {
@@ -144,7 +218,7 @@ describe("VideoRecorder", () => {
         this.state = "inactive";
         // Simulate data being available before stop
         if (this.ondataavailable) {
-          this.ondataavailable({ data: new Blob(["video-data"], { type: "video/webm" }) });
+          this.ondataavailable({ data: bigChunk() });
         }
         this.onstop?.();
       });
@@ -279,7 +353,7 @@ describe("VideoRecorder", () => {
       });
       stop = vi.fn().mockImplementation(function (this: Vp9MR) {
         this.state = "inactive";
-        if (this.ondataavailable) this.ondataavailable({ data: new Blob(["x"], { type: "video/webm" }) });
+        if (this.ondataavailable) this.ondataavailable({ data: bigChunk() });
         this.onstop?.();
       });
     }
@@ -309,7 +383,7 @@ describe("VideoRecorder", () => {
       });
       stop = vi.fn().mockImplementation(function (this: WebmMR) {
         this.state = "inactive";
-        if (this.ondataavailable) this.ondataavailable({ data: new Blob(["x"], { type: "video/webm" }) });
+        if (this.ondataavailable) this.ondataavailable({ data: bigChunk() });
         this.onstop?.();
       });
     }
@@ -325,6 +399,72 @@ describe("VideoRecorder", () => {
     await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
 
     (globalThis as any).MediaRecorder = originalMR;
+  });
+
+  it("labels the blob with the recorder's own mimeType (iOS Safari MP4)", async () => {
+    const { restore, instances } = installRecorderMock({
+      supported: (mime) => mime === "video/mp4",
+      instanceMimeType: "video/mp4;codecs=avc1.4d002a",
+      chunk: () => bigChunk("video/mp4"),
+    });
+
+    const onRecorded = vi.fn();
+    await recordOnce(onRecorded);
+
+    const blob = onRecorded.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe("video/mp4");
+    // MP4 is negotiated when the WebM variants are unsupported
+    expect(instances[0].options).toEqual({ mimeType: "video/mp4" });
+    restore();
+  });
+
+  it("falls back to video/webm when the recorder reports no mimeType", async () => {
+    const { restore, instances } = installRecorderMock({
+      supported: () => false,
+      instanceMimeType: "",
+      chunk: () => bigChunk(),
+    });
+
+    const onRecorded = vi.fn();
+    await recordOnce(onRecorded);
+
+    const blob = onRecorded.mock.calls[0][0] as Blob;
+    expect(blob.type).toBe("video/webm");
+    // No supported container → constructed without options
+    expect(instances[0].options).toBeUndefined();
+    restore();
+  });
+
+  it("starts the recorder with a 1000ms timeslice", async () => {
+    const { restore, instances } = installRecorderMock({
+      supported: (mime) => mime === "video/webm",
+      instanceMimeType: "video/webm",
+      chunk: () => bigChunk(),
+    });
+
+    await recordOnce(vi.fn());
+
+    expect(instances[0].start).toHaveBeenCalledWith(1000);
+    restore();
+  });
+
+  it("rejects a tiny recording with a retryable error instead of handing it to the caller", async () => {
+    const { restore } = installRecorderMock({
+      supported: (mime) => mime === "video/webm",
+      instanceMimeType: "video/webm",
+      chunk: () => new Blob(["tiny"], { type: "video/webm" }),
+    });
+
+    const onRecorded = vi.fn();
+    await recordOnce(onRecorded);
+
+    expect(onRecorded).toHaveBeenCalledWith(null);
+    expect(screen.getByText("Recording failed on this device. Please try again.")).toBeInTheDocument();
+    expect(screen.getByText("Retry Camera")).toBeInTheDocument();
+    // Back to idle — no done state, no playback element
+    expect(screen.queryByText(/✓ Recorded/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Your recorded trick video")).not.toBeInTheDocument();
+    restore();
   });
 
   it("startRec surfaces camera error and stays in preview when stream is null", async () => {
@@ -472,6 +612,72 @@ describe("VideoRecorder", () => {
     await userEvent.click(screen.getByLabelText("Enable fisheye"));
     expect(screen.getByLabelText("Disable fisheye")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("camera-crosshair")).toBeInTheDocument();
+  });
+
+  it("auto-opens the camera on mount when camera and mic are already granted", async () => {
+    const query = setupMockPermissions({ camera: "granted", microphone: "granted" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith({ name: "camera" });
+    expect(query).toHaveBeenCalledWith({ name: "microphone" });
+  });
+
+  it("does not auto-open when only one of camera/mic is granted", async () => {
+    setupMockPermissions({ camera: "granted", microphone: "prompt" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText("Tap to open camera")).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByText(/Allow camera & mic once/)).toBeInTheDocument();
+  });
+
+  it("does not auto-open when permission is denied", async () => {
+    setupMockPermissions({ camera: "denied", microphone: "denied" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Allow camera & mic once/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("stays idle without crashing when permissions.query throws", async () => {
+    setupMockPermissions("throws");
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Allow camera & mic once/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByText(/Open Camera/)).toBeInTheDocument();
+  });
+
+  it("stays idle when navigator.permissions is unavailable", async () => {
+    setupMockPermissions("missing");
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Open Camera/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("opens the camera once when autoOpen and permission are both set", async () => {
+    setupMockPermissions({ camera: "granted", microphone: "granted" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" autoOpen />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument());
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+  });
+
+  it("shows the Safari-specific permission tip on iOS Safari", async () => {
+    const ua = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Safari/604.1",
+    });
+
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    expect(screen.getByText(/Website Settings → Camera: Allow/)).toBeInTheDocument();
+    expect(screen.queryByText(/Allow camera & mic once/)).not.toBeInTheDocument();
+
+    if (ua) Object.defineProperty(navigator, "userAgent", ua);
   });
 
   it("cleans up on unmount (revokes blob URL and stops tracks)", async () => {

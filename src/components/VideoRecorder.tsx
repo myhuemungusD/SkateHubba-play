@@ -8,6 +8,32 @@ import { parseFirebaseError } from "../utils/helpers";
 
 const MAX_RECORDING_SECONDS = 60;
 
+// The Permissions API doesn't list "camera"/"microphone" in the DOM lib's
+// PermissionName union, and Safari/Firefox throw a TypeError for names they
+// don't support. Any failure (including a missing navigator.permissions) is
+// treated as "not granted" so we never assume access we don't have.
+type MediaPermissionName = "camera" | "microphone";
+
+async function queryMediaPermission(name: MediaPermissionName): Promise<PermissionState | "unknown"> {
+  try {
+    const status = await navigator.permissions.query({ name: name as PermissionName });
+    return status.state;
+  } catch {
+    return "unknown";
+  }
+}
+
+async function hasGrantedCameraAndMic(): Promise<boolean> {
+  const [camera, microphone] = await Promise.all([queryMediaPermission("camera"), queryMediaPermission("microphone")]);
+  return camera === "granted" && microphone === "granted";
+}
+
+function isIOSSafari(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  return /iPad|iPhone|iPod/.test(ua) && /Safari/.test(ua) && !/Chrome|CriOS|FxiOS/.test(ua);
+}
+
 export function VideoRecorder({
   onRecorded,
   label,
@@ -36,6 +62,7 @@ export function VideoRecorder({
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [permissionGranted, setPermissionGranted] = useState(false);
 
   // Fisheye state
   const [fisheyeOn, setFisheyeOn] = useState(false);
@@ -104,7 +131,12 @@ export function VideoRecorder({
     // Determine the stream to record: fisheye canvas + audio, or raw camera
     let recordStream = streamRef.current;
     /* v8 ignore start -- captureStream + fisheye canvas requires real browser; not available in JSDOM */
-    if (fisheyeOn && fisheyeCanvasRef.current) {
+    if (fisheyeOn && fisheyeCanvasRef.current && isIOSSafari()) {
+      // WebGL canvas capture + MediaRecorder is unreliable on iOS Safari and
+      // commonly yields black/empty files. Keep fisheye as a live preview only
+      // and record the raw camera stream instead.
+      logger.warn("fisheye_record_unsupported", { hint: "recording raw stream on iOS Safari" });
+    } else if (fisheyeOn && fisheyeCanvasRef.current) {
       try {
         const canvasStream = fisheyeCanvasRef.current.captureStream(30);
         // Add audio tracks from the camera stream to the canvas stream
@@ -125,7 +157,11 @@ export function VideoRecorder({
       ? "video/webm;codecs=vp9"
       : MediaRecorder.isTypeSupported("video/webm")
         ? "video/webm"
-        : "";
+        : // iOS Safari records MP4, never WebM. Ask for it explicitly so we get a
+          // real container instead of relying on the UA default.
+          MediaRecorder.isTypeSupported("video/mp4")
+          ? "video/mp4"
+          : "";
     const mr = new MediaRecorder(recordStream, mimeType ? { mimeType } : undefined);
     mr.ondataavailable = (e) => {
       /* v8 ignore start -- MediaRecorder ondataavailable requires real browser */
@@ -133,10 +169,26 @@ export function VideoRecorder({
       /* v8 ignore stop */
     };
     mr.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: "video/webm" });
+      // Label the blob with what the recorder actually produced — iOS Safari
+      // emits MP4, and a mislabelled blob plays back black and uploads with the
+      // wrong extension. Strip any ";codecs=..." suffix so the type is a plain
+      // container MIME that storage can classify.
+      const blobType = (mr.mimeType || mimeType || "video/webm").split(";")[0].trim() || "video/webm";
+      const blob = new Blob(chunksRef.current, { type: blobType });
       if (blob.size === 0) {
         setState("done");
         onRecorded(null);
+        return;
+      }
+      if (blob.size <= 1024) {
+        // Too small to be a real clip; uploading would fail later with a
+        // confusing "Video is too small" message. Surface it here instead.
+        logger.warn("recording_too_small", { size: blob.size, mimeType: blobType });
+        setCameraError("Recording failed on this device. Please try again.");
+        setState("idle");
+        onRecorded(null);
+        streamRef.current?.getTracks().forEach((t) => t.stop());
+        fisheyeStreamRef.current = null;
         return;
       }
       const url = URL.createObjectURL(blob);
@@ -148,7 +200,9 @@ export function VideoRecorder({
       fisheyeStreamRef.current = null;
     };
     mrRef.current = mr;
-    mr.start();
+    // Flush a chunk every second: iOS Safari can otherwise materialise nothing
+    // at stop() for short clips, producing an empty/tiny file.
+    mr.start(1000);
     setState("recording");
     setSeconds(0);
     timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
@@ -221,8 +275,24 @@ export function VideoRecorder({
 
   const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- openCamera is async (awaits getUserMedia before setState), not a synchronous setState
-    if (autoOpenRef.current && !isNative) openCamera();
+    if (isNative) return;
+    if (autoOpenRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- openCamera is async (awaits getUserMedia before setState), not a synchronous setState
+      openCamera();
+      return;
+    }
+    // Camera + mic already granted → the browser shows no prompt, so open the
+    // stream without making the user tap. Anything else (prompt/denied/unknown)
+    // waits for a user gesture so we never trigger an unsolicited prompt.
+    let cancelled = false;
+    void hasGrantedCameraAndMic().then((granted) => {
+      if (cancelled || !granted) return;
+      setPermissionGranted(true);
+      openCamera();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [openCamera, isNative]);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
@@ -300,6 +370,13 @@ export function VideoRecorder({
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <FilmIcon size={48} className="opacity-30 text-subtle" />
             <span className="font-body text-sm text-subtle">Tap to open camera</span>
+            {!permissionGranted && (
+              <span className="font-body text-xs text-subtle px-4 text-center">
+                {isIOSSafari()
+                  ? 'Tip: in Safari choose "Allow" — or aA → Website Settings → Camera: Allow to stop repeat prompts'
+                  : "Allow camera & mic once — we won't ask again"}
+              </span>
+            )}
           </div>
         )}
 
