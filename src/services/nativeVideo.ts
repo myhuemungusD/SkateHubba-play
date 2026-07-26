@@ -19,7 +19,7 @@ import {
   VideoRecorderQuality,
   type VideoRecorderPreviewFrame,
 } from "@capacitor-community/video-recorder";
-import { MAX_VIDEO_DURATION_MS } from "../constants/video";
+import { MAX_VIDEO_DURATION_MS, VIDEO_BITS_PER_SECOND } from "../constants/video";
 import { addBreadcrumb } from "../lib/sentry";
 
 /** True when the app is running inside a Capacitor native shell. */
@@ -71,35 +71,127 @@ const PREVIEW_FRAME: VideoRecorderPreviewFrame = {
  * is always true. Rejects on permission denial, user cancel, or when the
  * plugin fails to return a file URI.
  *
+ * Abort timing matters and is handled in two distinct ways:
+ *   • DURING WARM-UP (before `startRecording()` resolves) the take is
+ *     cancelled outright — there are no frames to keep — and this rejects
+ *     with an AbortError. The listener is attached BEFORE `initialize()`
+ *     rather than after, because `addEventListener("abort", …)` on a signal
+ *     that already fired never runs: the caller's UI shows a working "Stop"
+ *     button from the moment it flips to `recording`, which is well before
+ *     the camera is ready (an OS permission dialog can sit for tens of
+ *     seconds on first launch). Registering late dropped those aborts
+ *     permanently — `AbortController.abort()` is a no-op once already
+ *     aborted, so every later tap was dead too, the clip ran the full cap
+ *     and was submitted anyway, and the unmount path could not release the
+ *     camera at all.
+ *   • AFTER recording has started, abort means "stop and keep the take":
+ *     the clip captured so far is returned normally.
+ *
  * @param signal optional AbortSignal — fires `.abort()` to stop recording
- *               early (e.g. a UI "Stop" button). If already aborted the
- *               function rejects before initializing the camera.
+ *               early (e.g. a UI "Stop" button). Honoured at any point,
+ *               including before this function is called.
+ * @param onRecordingStarted invoked exactly once, immediately after frames
+ *               begin being captured and the duration cap is armed. Callers
+ *               use it to start their elapsed-time UI so the on-screen clock
+ *               cannot lead the real recording by the warm-up latency. Never
+ *               invoked when the take is aborted during warm-up.
  */
-export async function recordNativeVideo(signal?: AbortSignal): Promise<NativeVideoResult> {
+export async function recordNativeVideo(
+  signal?: AbortSignal,
+  onRecordingStarted?: () => void,
+): Promise<NativeVideoResult> {
   if (signal?.aborted) {
     throw new DOMException("Recording cancelled", "AbortError");
   }
 
-  let initialized = false;
+  // Teardown decision for `initialize()`. Only an outright rejection (e.g. a
+  // permission denial) proves no capture session exists — that is the one case
+  // where destroy() would be teardown of nothing. A resolved initialize
+  // obviously needs releasing, and so does one we raced away from on abort:
+  // we cannot know whether it went on to open the device, and a redundant
+  // destroy() is swallowed and breadcrumbed whereas a skipped one strands the
+  // camera for the rest of the session.
+  let initializeRejected = false;
   let autoStopTimer: ReturnType<typeof setTimeout> | null = null;
   let onAbort: (() => void) | null = null;
 
-  try {
-    await VideoRecorder.initialize({
-      camera: VideoRecorderCamera.BACK,
-      quality: VideoRecorderQuality.MAX_720P,
-      autoShow: true,
-      previewFrames: [PREVIEW_FRAME],
-    });
-    initialized = true;
+  // Resolves as soon as an abort arrives, whenever that is. Created before
+  // `initialize()` so a warm-up abort is captured rather than lost, and
+  // consumed by whichever phase is currently in flight.
+  let abortedDuringWarmUp = false;
+  let signalWarmUpAbort: (() => void) | null = null;
+  const warmUpAborted = new Promise<void>((resolve) => {
+    signalWarmUpAbort = resolve;
+  });
+  if (signal) {
+    onAbort = () => {
+      abortedDuringWarmUp = true;
+      signalWarmUpAbort?.();
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
 
-    await VideoRecorder.startRecording();
+  /**
+   * Race a warm-up step against the abort. `Promise.race` leaves the losing
+   * plugin call running, which is why `destroy()` in the `finally` block is
+   * load-bearing: it tears the capture session down even when we walked away
+   * from a still-pending `initialize()`.
+   */
+  const raceAbort = async (step: Promise<unknown>): Promise<void> => {
+    await Promise.race([step, warmUpAborted]);
+    if (abortedDuringWarmUp) {
+      throw new DOMException("Recording cancelled", "AbortError");
+    }
+  };
+
+  try {
+    // Mark BEFORE the call, not after it resolves: an abort mid-`initialize()`
+    // walks away from a capture session that may already be live, and keying
+    // teardown off completion would leak exactly the camera handle this
+    // function exists to protect.
+    await raceAbort(
+      VideoRecorder.initialize({
+        camera: VideoRecorderCamera.BACK,
+        // 1080p matches the 1080x1920 the web MediaRecorder path requests, so
+        // a clip looks the same on either platform.
+        quality: VideoRecorderQuality.MAX_1080P,
+        // Left unset, the plugin encodes at a 3 Mbps default hardcoded in its
+        // native sources — well below what the web path asks for, so the same
+        // trick came out visibly softer on native. Pass the shared constant so
+        // neither platform has a quality advantage. See the ceiling arithmetic
+        // in src/constants/video.ts.
+        videoBitrate: VIDEO_BITS_PER_SECOND,
+        autoShow: true,
+        previewFrames: [PREVIEW_FRAME],
+      }).catch((err: unknown) => {
+        initializeRejected = true;
+        throw err;
+      }),
+    );
+
+    await raceAbort(VideoRecorder.startRecording());
+
+    // Frames are now being captured. From here an abort means "stop and keep
+    // what we have" rather than "cancel", so retire the warm-up handler and
+    // let the duration race below take over.
+    if (signal && onAbort) {
+      signal.removeEventListener("abort", onAbort);
+      onAbort = null;
+    }
+
+    onRecordingStarted?.();
 
     // Stop recording on whichever fires first: an external abort (UI stop
     // button) or the hard duration cap. The plugin exposes no native
     // max-duration option, and a runaway recording could blow past the
     // 50 MB Storage rule ceiling, so we enforce both here.
     await new Promise<void>((resolve) => {
+      // An abort that landed in the gap between retiring the warm-up handler
+      // and arming this one would otherwise wait out the full cap.
+      if (signal?.aborted) {
+        resolve();
+        return;
+      }
       autoStopTimer = setTimeout(resolve, MAX_VIDEO_DURATION_MS);
       if (signal) {
         onAbort = () => resolve();
@@ -140,7 +232,7 @@ export async function recordNativeVideo(signal?: AbortSignal): Promise<NativeVid
     if (signal && onAbort) {
       signal.removeEventListener("abort", onAbort);
     }
-    if (initialized) {
+    if (!initializeRejected) {
       // Release the native camera + preview layer. Swallow errors here —
       // a failure to tear down shouldn't mask the real error (if any)
       // that's already propagating out of the try block. Breadcrumb so

@@ -1,12 +1,20 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useRef, useEffect } from "react";
 import { Btn } from "./ui/Btn";
-import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon } from "./icons";
+import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
 import { FisheyeRenderer } from "./FisheyeRenderer";
-import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
-import { logger } from "../services/logger";
-import { parseFirebaseError } from "../utils/helpers";
+import { useMediaRecorder } from "../hooks/useMediaRecorder";
+import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
 
-const MAX_RECORDING_SECONDS = 60;
+/**
+ * Seconds of lead-in for the "Auto-stop in Ns" warning. The old 60s cap warned
+ * 10s out; at the shared 20s cap that same absolute lead-in would nag for half
+ * the take, so it scales down with the cap.
+ */
+const AUTO_STOP_WARNING_SECONDS = 5;
+
+/** Shared classes for the viewfinder chrome toggles — 44px touch target. */
+const CHROME_BTN =
+  "w-11 h-11 inline-flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
 
 export function VideoRecorder({
   onRecorded,
@@ -19,216 +27,45 @@ export function VideoRecorder({
   autoOpen?: boolean;
   doneLabel?: string;
 }) {
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
-  const videoCallbackRef = useCallback((el: HTMLVideoElement | null) => {
-    videoRef.current = el;
-    setVideoEl(el);
-  }, []);
-  const mrRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
-  const timerRef = useRef<number>(0);
-  const maxTimerRef = useRef<number>(0);
-  const blobUrlRef = useRef<string | null>(null);
-
-  const [state, setState] = useState<"idle" | "preview" | "recording" | "done">("idle");
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);
-  const [seconds, setSeconds] = useState(0);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-
-  // Fisheye state
-  const [fisheyeOn, setFisheyeOn] = useState(false);
-  const fisheyeCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const fisheyeStreamRef = useRef<MediaStream | null>(null);
-
-  const handleFisheyeCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
-    fisheyeCanvasRef.current = canvas;
-  }, []);
-
-  const openCamera = useCallback(async () => {
-    setCameraError(null);
-    // Stop any existing tracks before acquiring a new stream
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
-        audio: true,
-      });
-      streamRef.current = stream;
-      /* v8 ignore start -- DOM ref assignment; videoRef always null in JSDOM tests */
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        void videoRef.current.play();
-      }
-      /* v8 ignore stop */
-      setState("preview");
-    } catch (err) {
-      const isPermission =
-        err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
-      const msg = parseFirebaseError(err);
-      // Platform-specific recovery hint. iOS Safari requires users to toggle
-      // the permission in system Settings (the in-app re-prompt is permanent
-      // after the first denial); desktop Chrome/Firefox allow re-granting from
-      // the URL bar. We tailor the copy so users know *where* to look.
-      let permissionHint = "Check your browser permissions and try again.";
-      if (typeof navigator !== "undefined") {
-        const ua = navigator.userAgent || "";
-        const isIOS = /iPad|iPhone|iPod/.test(ua);
-        const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS/.test(ua);
-        if (isIOS) {
-          permissionHint = "Open Settings → Safari → Camera and allow access, then reload.";
-        } else if (isSafari) {
-          permissionHint = "Click the camera icon in Safari's address bar and allow access.";
-        } else {
-          permissionHint = "Tap the lock/camera icon in your address bar and allow access.";
-        }
-      }
-      setCameraError(isPermission ? `Camera access denied. ${permissionHint}` : `Camera unavailable: ${msg}`);
-      logger.warn("camera_access_failed", { error: msg });
-    }
-  }, []);
-
-  const startRec = useCallback(() => {
-    if (!streamRef.current) {
-      // Camera open silently failed (no stream acquired) — surface the error
-      // and stay in pre-record state instead of pretending to record without
-      // a MediaRecorder, max-timer, or onRecorded callback.
-      setCameraError("Camera unavailable: no active stream. Please reopen the camera.");
-      logger.warn("start_rec_without_stream", {});
-      return;
-    }
-
-    chunksRef.current = [];
-
-    // Determine the stream to record: fisheye canvas + audio, or raw camera
-    let recordStream = streamRef.current;
-    /* v8 ignore start -- captureStream + fisheye canvas requires real browser; not available in JSDOM */
-    if (fisheyeOn && fisheyeCanvasRef.current) {
-      try {
-        const canvasStream = fisheyeCanvasRef.current.captureStream(30);
-        // Add audio tracks from the camera stream to the canvas stream
-        const audioTracks = streamRef.current.getAudioTracks();
-        for (const track of audioTracks) {
-          canvasStream.addTrack(track);
-        }
-        fisheyeStreamRef.current = canvasStream;
-        recordStream = canvasStream;
-      } catch {
-        // captureStream not supported — fall back to raw stream
-        logger.warn("capture_stream_unsupported", { hint: "recording without fisheye" });
-      }
-    }
-    /* v8 ignore stop */
-
-    const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
-      ? "video/webm;codecs=vp9"
-      : MediaRecorder.isTypeSupported("video/webm")
-        ? "video/webm"
-        : "";
-    const mr = new MediaRecorder(recordStream, mimeType ? { mimeType } : undefined);
-    mr.ondataavailable = (e) => {
-      /* v8 ignore start -- MediaRecorder ondataavailable requires real browser */
-      if (e.data.size > 0) chunksRef.current.push(e.data);
-      /* v8 ignore stop */
-    };
-    mr.onstop = () => {
-      const blob = new Blob(chunksRef.current, { type: "video/webm" });
-      if (blob.size === 0) {
-        setState("done");
-        onRecorded(null);
-        return;
-      }
-      const url = URL.createObjectURL(blob);
-      blobUrlRef.current = url;
-      setBlobUrl(url);
-      setState("done");
-      onRecorded(blob);
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      fisheyeStreamRef.current = null;
-    };
-    mrRef.current = mr;
-    mr.start();
-    setState("recording");
-    setSeconds(0);
-    timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
-    // Auto-stop at max duration
-    /* v8 ignore start -- auto-stop timer requires real MediaRecorder; not exercisable in JSDOM */
-    maxTimerRef.current = window.setTimeout(() => {
-      clearInterval(timerRef.current);
-      if (mrRef.current?.state === "recording") {
-        mrRef.current.stop();
-      }
-    }, MAX_RECORDING_SECONDS * 1000);
-    /* v8 ignore stop */
-  }, [onRecorded, fisheyeOn]);
-
-  const stopRec = useCallback(() => {
-    clearInterval(timerRef.current);
-    clearTimeout(maxTimerRef.current);
-    if (mrRef.current?.state === "recording") {
-      mrRef.current.stop();
-    } else {
-      setState("done");
-      onRecorded(null);
-    }
-  }, [onRecorded]);
-
-  useEffect(() => {
-    return () => {
-      clearInterval(timerRef.current);
-      clearTimeout(maxTimerRef.current);
-      // If we unmount mid-recording, stop the MediaRecorder after detaching its
-      // handlers — otherwise onstop fires post-unmount and setState warns.
-      const mr = mrRef.current;
-      if (mr && mr.state === "recording") {
-        mr.ondataavailable = null;
-        mr.onstop = null;
-        try {
-          mr.stop();
-        } catch {
-          // Already stopped / not started; safe to ignore.
-        }
-      }
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      fisheyeStreamRef.current = null;
-      if (blobUrlRef.current) URL.revokeObjectURL(blobUrlRef.current);
-    };
-  }, []);
-
-  // --- Native (Capacitor) recording path ---
-  const isNative = isNativePlatform();
-
-  const handleNativeRecord = useCallback(async () => {
-    setCameraError(null);
-    try {
-      const result = await recordNativeVideo();
-      const url = URL.createObjectURL(result.blob);
-      blobUrlRef.current = url;
-      setBlobUrl(url);
-      setState("done");
-      onRecorded(result.blob);
-    } catch (err) {
-      const msg = parseFirebaseError(err);
-      if (msg.toLowerCase().includes("cancel")) {
-        // User cancelled — stay on idle
-        return;
-      }
-      setCameraError(`Native camera error: ${msg}`);
-      logger.warn("native_camera_failed", { error: msg });
-    }
-  }, [onRecorded]);
+  const {
+    state,
+    blobUrl,
+    seconds,
+    cameraError,
+    isNative,
+    facingMode,
+    setVideoRef,
+    videoEl,
+    fisheyeOn,
+    toggleFisheye,
+    setFisheyeCanvas,
+    openCamera,
+    flipCamera,
+    startRec,
+    stopRec,
+    startNativeRec,
+    stopNativeRec,
+  } = useMediaRecorder(onRecorded);
 
   const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- openCamera is async (awaits getUserMedia before setState), not a synchronous setState
-    if (autoOpenRef.current && !isNative) openCamera();
+    // openCamera is async (it awaits getUserMedia before any setState), so this
+    // is not a synchronous set-state-in-effect. Native has its own entry point.
+    if (autoOpenRef.current && !isNative) void openCamera();
   }, [openCamera, isNative]);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
 
-  const showFisheyeToggle = state === "preview" || state === "recording";
+  // Fisheye and camera-flip are PRE-RECORD decisions on a one-take recorder.
+  // Mid-recording the fisheye toggle destroyed the take (turning it off unmounts
+  // FisheyeRenderer, killing the very canvas MediaRecorder is capturing; turning
+  // it on changed the preview but not the output) and a device swap would strand
+  // the recorder on a stopped stream. The fisheye *overlay* still renders while
+  // recording — the user must keep seeing the framing they're filming; only the
+  // interactive controls go away.
+  const showChromeToggles = state === "preview";
   const showFisheyeOverlay = fisheyeOn && (state === "preview" || state === "recording");
+  const secondsLeft = MAX_VIDEO_DURATION_SECONDS - seconds;
 
   return (
     <div className="w-full flex flex-col items-center gap-4">
@@ -248,7 +85,7 @@ export function VideoRecorder({
         ) : (
           <>
             <video
-              ref={videoCallbackRef}
+              ref={setVideoRef}
               className={`w-full h-full object-cover ${showFisheyeOverlay ? "invisible" : ""}`}
               muted
               playsInline
@@ -259,7 +96,7 @@ export function VideoRecorder({
                 videoEl={videoEl}
                 active={true}
                 strength={2.0}
-                onCanvas={handleFisheyeCanvas}
+                onCanvas={setFisheyeCanvas}
                 className="absolute inset-0 w-full h-full object-cover"
               />
             )}
@@ -305,20 +142,35 @@ export function VideoRecorder({
 
         {state !== "done" && (
           <div className="absolute top-4 right-4 flex items-center gap-2">
-            {showFisheyeToggle && (
-              <button
-                type="button"
-                onClick={() => setFisheyeOn((v) => !v)}
-                aria-label={fisheyeOn ? "Disable fisheye" : "Enable fisheye"}
-                aria-pressed={fisheyeOn}
-                className={`w-11 h-11 inline-flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
-                  fisheyeOn
-                    ? "bg-purple-500/90 shadow-[0_0_12px_rgba(147,51,234,0.4)]"
-                    : "bg-black/60 hover:bg-black/80 backdrop-blur-sm"
-                }`}
-              >
-                <FisheyeIcon size={18} className="text-white" />
-              </button>
+            {showChromeToggles && (
+              <>
+                <button
+                  type="button"
+                  onClick={flipCamera}
+                  aria-label={facingMode === "environment" ? "Switch to front camera" : "Switch to rear camera"}
+                  aria-pressed={facingMode === "user"}
+                  className={`${CHROME_BTN} ${
+                    facingMode === "user"
+                      ? "bg-brand-orange/90 shadow-[0_0_12px_rgba(255,107,0,0.4)]"
+                      : "bg-black/60 hover:bg-black/80 backdrop-blur-sm"
+                  }`}
+                >
+                  <FlipCameraIcon size={18} className="text-white" />
+                </button>
+                <button
+                  type="button"
+                  onClick={toggleFisheye}
+                  aria-label={fisheyeOn ? "Disable fisheye" : "Enable fisheye"}
+                  aria-pressed={fisheyeOn}
+                  className={`${CHROME_BTN} ${
+                    fisheyeOn
+                      ? "bg-purple-500/90 shadow-[0_0_12px_rgba(147,51,234,0.4)]"
+                      : "bg-black/60 hover:bg-black/80 backdrop-blur-sm"
+                  }`}
+                >
+                  <FisheyeIcon size={18} className="text-white" />
+                </button>
+              </>
             )}
             <div className="bg-brand-orange/90 px-2.5 py-1 rounded-md">
               <span className="font-display text-[11px] text-white tracking-[0.1em]">ONE TAKE</span>
@@ -339,7 +191,7 @@ export function VideoRecorder({
 
       {/* Controls */}
       {state === "idle" && !cameraError && (
-        <Btn onClick={isNative ? handleNativeRecord : openCamera} variant="secondary">
+        <Btn onClick={isNative ? startNativeRec : openCamera} variant="secondary">
           <CameraIcon size={16} className="inline -mt-0.5" /> {isNative ? "Record Video" : "Open Camera"}
         </Btn>
       )}
@@ -350,13 +202,11 @@ export function VideoRecorder({
       )}
       {state === "recording" && (
         <>
-          <Btn onClick={stopRec} variant="danger" className="text-2xl py-5 animate-rec-ring">
+          <Btn onClick={isNative ? stopNativeRec : stopRec} variant="danger" className="text-2xl py-5 animate-rec-ring">
             <StopIcon size={16} className="inline -mt-0.5" /> Stop Recording
           </Btn>
-          {seconds >= MAX_RECORDING_SECONDS - 10 && MAX_RECORDING_SECONDS - seconds > 0 && (
-            <span className="font-body text-xs text-brand-red animate-pulse">
-              Auto-stop in {MAX_RECORDING_SECONDS - seconds}s
-            </span>
+          {seconds >= MAX_VIDEO_DURATION_SECONDS - AUTO_STOP_WARNING_SECONDS && secondsLeft > 0 && (
+            <span className="font-body text-xs text-brand-red animate-pulse">Auto-stop in {secondsLeft}s</span>
           )}
         </>
       )}

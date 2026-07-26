@@ -2,14 +2,45 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { VideoRecorder } from "../VideoRecorder";
+import { MAX_VIDEO_DURATION_MS, MAX_VIDEO_DURATION_SECONDS } from "../../constants/video";
+
+/**
+ * Mirrors `AUTO_STOP_WARNING_SECONDS` in VideoRecorder.tsx, which is a module
+ * private. The warning renders for the last N seconds of the take.
+ */
+const AUTO_STOP_WARNING_SECONDS = 5;
+
+/**
+ * One second INTO the auto-stop warning window, derived from the shared cap so
+ * a future cap change moves this with it instead of silently landing past the
+ * window (which is exactly how this test rotted when the cap went 60s → 20s).
+ */
+const INSIDE_WARNING_WINDOW_MS = (MAX_VIDEO_DURATION_SECONDS - AUTO_STOP_WARNING_SECONDS + 1) * 1000;
+
+/**
+ * A `MediaStreamTrack`-shaped fake. Real tracks always carry the event-target
+ * pair and `getSettings()`; a fake missing them lets production code that calls
+ * them ship broken, so the fake mirrors the full surface the hook touches.
+ */
+function mockTrack(kind: "video" | "audio", stop: () => void) {
+  return {
+    stop,
+    kind,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    getSettings: () => ({ frameRate: 30 }),
+  };
+}
 
 // Helper to set up a proper mock stream that enables MediaRecorder code path
 function setupMockStream() {
   const mockStop = vi.fn();
+  const video = mockTrack("video", mockStop);
+  const audio = mockTrack("audio", mockStop);
   const mockStream = {
-    getTracks: () => [{ stop: mockStop }],
-    getVideoTracks: () => [{ stop: mockStop }],
-    getAudioTracks: () => [{ stop: mockStop }],
+    getTracks: () => [video, audio],
+    getVideoTracks: () => [video],
+    getAudioTracks: () => [audio],
   };
   Object.defineProperty(navigator, "mediaDevices", {
     writable: true,
@@ -172,7 +203,7 @@ describe("VideoRecorder", () => {
     (globalThis as any).MediaRecorder = originalMR;
   });
 
-  it("auto-stops recording at MAX_RECORDING_SECONDS", async () => {
+  it("auto-stops recording at the shared MAX_VIDEO_DURATION cap", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
 
     // Use a MediaRecorder that tracks state properly
@@ -204,9 +235,9 @@ describe("VideoRecorder", () => {
       await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     });
 
-    // Advance past MAX_RECORDING_SECONDS (60s) to trigger auto-stop
+    // Advance to the shared cap exactly — the auto-stop timer fires on it.
     act(() => {
-      vi.advanceTimersByTime(60000);
+      vi.advanceTimersByTime(MAX_VIDEO_DURATION_MS);
     });
 
     await waitFor(() => {
@@ -267,13 +298,23 @@ describe("VideoRecorder", () => {
     await waitFor(() => expect(screen.getByText("✓ Sent!")).toBeInTheDocument());
   });
 
-  it("uses video/webm;codecs=vp9 mime type when isTypeSupported returns true for vp9", async () => {
+  it("constructs the recorder with the most-preferred supported codec", async () => {
+    // The candidate the hook prefers first. This must stay in sync with
+    // MIME_CANDIDATES[0] in src/hooks/useMediaRecorder.ts — an `isTypeSupported`
+    // stub that matches nothing silently degrades this into a test that only
+    // proves recording completes, which is how it previously passed while
+    // asserting nothing about codec selection at all.
+    const PREFERRED = "video/webm;codecs=vp9,opus";
     const originalMR = (globalThis as any).MediaRecorder;
+    const seenOptions: (MediaRecorderOptions | undefined)[] = [];
     class Vp9MR {
-      static isTypeSupported = vi.fn().mockImplementation((mime: string) => mime === "video/webm;codecs=vp9");
+      static isTypeSupported = vi.fn().mockImplementation((mime: string) => mime === PREFERRED);
       ondataavailable: ((e: { data: Blob }) => void) | null = null;
       onstop: (() => void) | null = null;
       state = "inactive";
+      constructor(_stream: MediaStream, options?: MediaRecorderOptions) {
+        seenOptions.push(options);
+      }
       start = vi.fn().mockImplementation(function (this: Vp9MR) {
         this.state = "recording";
       });
@@ -293,6 +334,9 @@ describe("VideoRecorder", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
     await waitFor(() => expect(screen.getByText(/Recorded/)).toBeInTheDocument());
+
+    expect(seenOptions).toHaveLength(1);
+    expect(seenOptions[0]?.mimeType).toBe(PREFERRED);
 
     (globalThis as any).MediaRecorder = originalMR;
   });
@@ -373,13 +417,20 @@ describe("VideoRecorder", () => {
       await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     });
 
-    // Advance to 51 seconds (within 10s of MAX_RECORDING_SECONDS=60)
+    // Two seconds short of the window: elapsed timer runs, no warning yet.
     act(() => {
-      vi.advanceTimersByTime(51000);
+      vi.advanceTimersByTime(INSIDE_WARNING_WINDOW_MS - 2000);
     });
+    expect(screen.queryByText(/Auto-stop in/)).not.toBeInTheDocument();
 
+    // Cross into the window: the warning counts down the remaining seconds.
+    const elapsed = INSIDE_WARNING_WINDOW_MS / 1000;
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.getByText(`0:${elapsed}`)).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByText(/Auto-stop in/)).toBeInTheDocument();
+      expect(screen.getByText(`Auto-stop in ${MAX_VIDEO_DURATION_SECONDS - elapsed}s`)).toBeInTheDocument();
     });
   });
 

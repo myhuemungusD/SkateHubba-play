@@ -9,12 +9,27 @@ vi.mock("firebase/messaging", () => ({
 }));
 
 // Mock navigator.mediaDevices with a fake stream so VideoRecorder enters
-// preview state normally. The stream has no real tracks but satisfies the API.
+// preview state normally. The stream carries no real media, but each track
+// mirrors the full MediaStreamTrack surface production code is entitled to
+// assume: a real track ALWAYS has the event-target pair and getSettings().
+// A thinner fake pushes defensive `typeof x === "function"` guards into
+// production code purely to survive tests.
 const mockStop = vi.fn();
+function fakeTrack(kind: "video" | "audio") {
+  return {
+    stop: mockStop,
+    kind,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    getSettings: () => ({ frameRate: 30 }),
+  };
+}
+const fakeVideoTrack = fakeTrack("video");
+const fakeAudioTrack = fakeTrack("audio");
 const mockStream = {
-  getTracks: () => [{ stop: mockStop }],
-  getVideoTracks: () => [{ stop: mockStop }],
-  getAudioTracks: () => [{ stop: mockStop }],
+  getTracks: () => [fakeVideoTrack, fakeAudioTrack],
+  getVideoTracks: () => [fakeVideoTrack],
+  getAudioTracks: () => [fakeAudioTrack],
 };
 Object.defineProperty(globalThis.navigator, "mediaDevices", {
   writable: true,
@@ -25,8 +40,11 @@ Object.defineProperty(globalThis.navigator, "mediaDevices", {
 });
 
 // Stub MediaRecorder (not needed in demo mode, but prevents ReferenceError if accessed).
+// `mimeType` is spec-guaranteed on every real instance and is what the capture
+// hook reads to stamp the finished blob, so the fake reports one too.
 class MockMediaRecorder {
   static isTypeSupported = vi.fn().mockReturnValue(false);
+  mimeType = "video/webm";
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
   start = vi.fn();
