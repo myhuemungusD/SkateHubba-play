@@ -276,6 +276,18 @@ export function FisheyeIcon(props: IconProps) {
   );
 }
 
+export function FlipCameraIcon(props: IconProps) {
+  return (
+    <SvgIcon {...props}>
+      <path d="M20 5h-3.5l-1.5-2h-6L7.5 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z" />
+      <path d="M9 12.5a3 3 0 0 1 5.2-2" />
+      <path d="M15 12.5a3 3 0 0 1-5.2 2" />
+      <polyline points="14.2 7.6 14.2 10.5 11.3 10.5" />
+      <polyline points="9.8 17.4 9.8 14.5 12.7 14.5" />
+    </SvgIcon>
+  );
+}
+
 export function HomeIcon(props: IconProps) {
   return (
     <SvgIcon {...props}>

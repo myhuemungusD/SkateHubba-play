@@ -19,7 +19,7 @@ import {
   VideoRecorderQuality,
   type VideoRecorderPreviewFrame,
 } from "@capacitor-community/video-recorder";
-import { MAX_VIDEO_DURATION_MS } from "../constants/video";
+import { MAX_VIDEO_DURATION_MS, VIDEO_BITS_PER_SECOND } from "../constants/video";
 import { addBreadcrumb } from "../lib/sentry";
 
 /** True when the app is running inside a Capacitor native shell. */
@@ -88,10 +88,14 @@ export async function recordNativeVideo(signal?: AbortSignal): Promise<NativeVid
     await VideoRecorder.initialize({
       camera: VideoRecorderCamera.BACK,
       // 1080p matches the 1080x1920 the web MediaRecorder path requests, so a
-      // clip looks the same on either platform. Safe against the 50 MB Storage
-      // ceiling: both plugin backends cap encoding at their 3 Mbps default
-      // bitrate regardless of preset, so a full-length clip lands near 8 MB.
+      // clip looks the same on either platform.
       quality: VideoRecorderQuality.MAX_1080P,
+      // Left unset, the plugin encodes at a 3 Mbps default hardcoded in its
+      // native sources — well below what the web path asks for, so the same
+      // trick came out visibly softer on native. Pass the shared constant so
+      // neither platform has a quality advantage. See the ceiling arithmetic
+      // in src/constants/video.ts.
+      videoBitrate: VIDEO_BITS_PER_SECOND,
       autoShow: true,
       previewFrames: [PREVIEW_FRAME],
     });
