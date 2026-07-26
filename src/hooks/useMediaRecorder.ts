@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { MAX_VIDEO_DURATION_MS, VIDEO_BITS_PER_SECOND } from "../constants/video";
+import { MAX_VIDEO_DURATION_MS, MAX_VIDEO_DURATION_SECONDS, VIDEO_BITS_PER_SECOND } from "../constants/video";
 import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -192,6 +192,9 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
   const trackEndedCleanupRef = useRef<(() => void) | null>(null);
   const nativeAbortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
+  // Bumped on every openCamera call so a late-resolving older acquisition can
+  // tell it has been superseded. See openCamera for why this is load-bearing.
+  const acquireGenerationRef = useRef(0);
 
   const [state, setState] = useState<CaptureState>("idle");
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
@@ -212,11 +215,32 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
   const facingModeRef = useRef<FacingMode>("environment");
   const [facingMode, setFacingMode] = useState<FacingMode>("environment");
 
-  /** Stop the live camera/mic tracks and detach their `ended` guard. */
+  /**
+   * Stop the live camera/mic tracks and detach their `ended` guard.
+   *
+   * Clearing `streamRef` is part of the contract, not tidiness: `startRec`
+   * gates on `!streamRef.current`, so leaving a stopped stream reachable let
+   * that guard pass and built a MediaRecorder over dead tracks. That is
+   * exactly what happened when a re-acquire failed — `openCamera` stops the
+   * old stream before awaiting, so a rejected `getUserMedia` (flipping to a
+   * camera that doesn't exist, permission revoked between attempts, device
+   * busy) left the previous, now-stopped stream in place while the UI still
+   * read "preview".
+   */
   const stopTracks = useCallback(() => {
     trackEndedCleanupRef.current?.();
     trackEndedCleanupRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }, []);
+
+  /**
+   * Stop a stream we acquired but are not going to use — a late arrival from a
+   * superseded `openCamera`, or one that resolved after unmount. It was never
+   * assigned to `streamRef`, so `stopTracks` cannot reach it.
+   */
+  const stopOrphanStream = useCallback((stream: MediaStream) => {
+    stream.getTracks().forEach((t) => t.stop());
   }, []);
 
   /**
@@ -274,16 +298,40 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
     [discardRecorder, stopTracks],
   );
 
+  /**
+   * Acquire the camera. Safe to call concurrently with itself.
+   *
+   * `openCamera` is re-entrant — the flip button and "Retry Camera" stay
+   * mounted and clickable for the whole `getUserMedia` wait (which includes
+   * the OS permission dialog), and the `autoOpen` effect can race a user tap.
+   * Without a guard, two overlapping calls both clear the pre-await teardown
+   * before either stream exists, so whichever resolves LAST wins `streamRef`
+   * and the other is orphaned while still live — unreachable by `stopTracks`
+   * or the unmount cleanup, both of which walk only `streamRef`. That left a
+   * camera and mic hot for the rest of the session: recording indicator lit,
+   * battery draining, device held against other apps.
+   *
+   * A generation counter makes the newest call authoritative; any older one
+   * that resolves late stops the stream it acquired and returns without
+   * touching state. The same check covers unmount-during-acquisition, which
+   * otherwise assigned a live stream into a dead component whose cleanup had
+   * already run against a null `streamRef`.
+   */
   const openCamera = useCallback(async (): Promise<void> => {
     setCameraError(null);
     // Stop any existing tracks (and detach their `ended` guard) before
     // acquiring a new stream — also the re-acquire path used by flipCamera.
     stopTracks();
+    const generation = ++acquireGenerationRef.current;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: videoConstraints(facingModeRef.current),
         audio: AUDIO_CONSTRAINTS,
       });
+      if (generation !== acquireGenerationRef.current || !mountedRef.current) {
+        stopOrphanStream(stream);
+        return;
+      }
       streamRef.current = stream;
       watchTrackEnded(stream);
       /* v8 ignore start -- DOM ref assignment; videoRef always null in JSDOM tests */
@@ -294,13 +342,18 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
       /* v8 ignore stop */
       setState("preview");
     } catch (err) {
+      if (generation !== acquireGenerationRef.current || !mountedRef.current) return;
       const isPermission =
         err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
       const msg = parseFirebaseError(err);
       setCameraError(isPermission ? `Camera access denied. ${permissionHint()}` : `Camera unavailable: ${msg}`);
+      // The previous stream was stopped before the await and `stopTracks`
+      // cleared `streamRef`, so there is no camera to return to — send the
+      // user back to idle rather than leaving a "preview" that cannot record.
+      setState("idle");
       logger.warn("camera_access_failed", { error: msg });
     }
-  }, [stopTracks, watchTrackEnded]);
+  }, [stopTracks, stopOrphanStream, watchTrackEnded]);
 
   /**
    * Swap between the rear and selfie camera. Pre-record only (see the toggle's
@@ -423,6 +476,15 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
    * button) behaves identically. Previously it stayed in `idle` for the whole
    * take: the user tapped "Record Video", stared at "Tap to open camera" for
    * the full duration, then the UI jumped straight to done with no way to stop.
+   *
+   * State flips to `recording` synchronously — the Stop button must exist
+   * during camera warm-up, and `recordNativeVideo` honours an abort that
+   * arrives then — but the elapsed timer deliberately does NOT start here. It
+   * starts from the service's `onRecordingStarted` callback, once frames are
+   * actually being captured. Starting it synchronously made the on-screen
+   * clock lead the real take by the whole plugin startup (an OS permission
+   * dialog on first launch is 10+ seconds), so the "Auto-stop in Ns" warning
+   * fired far too early and then vanished while the camera was still rolling.
    */
   const startNativeRec = useCallback(async (): Promise<void> => {
     setCameraError(null);
@@ -430,9 +492,18 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
     nativeAbortRef.current = controller;
     setState("recording");
     setSeconds(0);
-    timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);
     try {
-      const result = await recordNativeVideo(controller.signal);
+      const result = await recordNativeVideo(controller.signal, () => {
+        /* v8 ignore next -- guards an unmount that lands inside the plugin callback */
+        if (!mountedRef.current) return;
+        // Cap the displayed count: the interval outlives the recording itself
+        // (stopRecording + fetch + destroy all run after the cap fires), and
+        // without this the REC chip ticked past the limit — 0:21, 0:22, 0:23…
+        timerRef.current = window.setInterval(
+          () => setSeconds((s) => (s < MAX_VIDEO_DURATION_SECONDS ? s + 1 : s)),
+          1000,
+        );
+      });
       clearInterval(timerRef.current);
       /* v8 ignore next -- unmount-during-native-capture race; no native shell in JSDOM */
       if (!mountedRef.current) return;

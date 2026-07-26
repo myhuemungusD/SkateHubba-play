@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useMediaRecorder, type MediaRecorderController } from "../useMediaRecorder";
 import { isNativePlatform, recordNativeVideo, type NativeVideoResult } from "../../services/nativeVideo";
-import { VIDEO_BITS_PER_SECOND } from "../../constants/video";
+import { MAX_VIDEO_DURATION_SECONDS, VIDEO_BITS_PER_SECOND } from "../../constants/video";
 
 /* ────────────────────────────────────────────
  * Hook-level tests for the capture controller.
@@ -388,11 +388,13 @@ describe("useMediaRecorder", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     mockIsNativePlatform.mockReturnValue(true);
     let capturedSignal: AbortSignal | undefined;
+    let started: (() => void) | undefined;
     let finish: (result: NativeVideoResult) => void = () => undefined;
     mockRecordNativeVideo.mockImplementation(
-      (signal) =>
+      (signal, onRecordingStarted) =>
         new Promise<NativeVideoResult>((resolve) => {
           capturedSignal = signal;
+          started = onRecordingStarted;
           finish = resolve;
         }),
     );
@@ -404,11 +406,27 @@ describe("useMediaRecorder", () => {
       void view.result.current.startNativeRec();
     });
     // Previously the native take sat in "idle" with no timer and no Stop button.
+    // State must flip synchronously so Stop exists during camera warm-up.
     expect(view.result.current.state).toBe("recording");
     expect(capturedSignal).toBeInstanceOf(AbortSignal);
 
+    // The clock must NOT run during warm-up. It used to, so the on-screen
+    // elapsed time led the real take by the whole plugin startup — 10+ seconds
+    // behind an OS permission dialog on first launch.
+    act(() => vi.advanceTimersByTime(4000));
+    expect(view.result.current.seconds).toBe(0);
+
+    // Frames start: the service invokes onRecordingStarted, and only now does
+    // the displayed clock begin.
+    act(() => started?.());
     act(() => vi.advanceTimersByTime(3000));
     expect(view.result.current.seconds).toBe(3);
+
+    // The interval outlives the recording (stopRecording + fetch + destroy all
+    // run after the cap), so the displayed count must saturate rather than tick
+    // past the limit the way it used to — 0:21, 0:22, 0:23…
+    act(() => vi.advanceTimersByTime((MAX_VIDEO_DURATION_SECONDS + 10) * 1000));
+    expect(view.result.current.seconds).toBe(MAX_VIDEO_DURATION_SECONDS);
 
     act(() => view.result.current.stopNativeRec());
     expect(capturedSignal?.aborted).toBe(true);
@@ -451,4 +469,130 @@ describe("useMediaRecorder", () => {
       expect(view.onRecorded).not.toHaveBeenCalled();
     });
   }
+
+  describe("concurrent acquisition", () => {
+    /**
+     * Two overlapping acquisitions used to leave one camera live forever: both
+     * cleared the pre-await teardown before either stream existed, so whichever
+     * resolved LAST won `streamRef` and the other became unreachable — neither
+     * `stopTracks` nor the unmount cleanup could see it, because both walk only
+     * `streamRef`. Real trigger: double-tapping the flip button, which stays
+     * mounted and clickable for the whole getUserMedia wait.
+     */
+    it("stops the superseded stream when an older acquisition resolves last", async () => {
+      const first = { video: fakeTrack("video"), audio: fakeTrack("audio") };
+      const second = { video: fakeTrack("video"), audio: fakeTrack("audio") };
+      let resolveFirst: (s: unknown) => void = () => undefined;
+      let resolveSecond: (s: unknown) => void = () => undefined;
+      mockGetUserMedia
+        .mockImplementationOnce(() => new Promise((r) => (resolveFirst = r)))
+        .mockImplementationOnce(() => new Promise((r) => (resolveSecond = r)));
+
+      const view = mountRecorder();
+      act(() => {
+        void view.result.current.openCamera();
+        void view.result.current.openCamera();
+      });
+
+      // Newest call wins regardless of resolution order: resolve #2 first, then
+      // the superseded #1.
+      await act(async () => {
+        resolveSecond(fakeStream([second.video], [second.audio]));
+      });
+      await act(async () => {
+        resolveFirst(fakeStream([first.video], [first.audio]));
+      });
+
+      // The late arrival must be fully released — camera AND mic.
+      expect(first.video.stop).toHaveBeenCalled();
+      expect(first.audio.stop).toHaveBeenCalled();
+      // ...and must not have displaced the live stream.
+      expect(second.video.stop).not.toHaveBeenCalled();
+      expect(view.result.current.state).toBe("preview");
+
+      // Unmount must still reach the surviving stream.
+      act(() => view.unmount());
+      expect(second.video.stop).toHaveBeenCalled();
+      expect(second.audio.stop).toHaveBeenCalled();
+    });
+
+    /**
+     * Unmounting mid-acquisition ran the cleanup while `streamRef` was still
+     * null — nothing to stop — and the in-flight promise then handed a live
+     * camera to a dead component. The setter path mounts with `autoOpen`, so
+     * acquisition begins the instant the recorder appears.
+     */
+    it("releases a stream that arrives after unmount", async () => {
+      const late = { video: fakeTrack("video"), audio: fakeTrack("audio") };
+      let resolveLate: (s: unknown) => void = () => undefined;
+      mockGetUserMedia.mockImplementationOnce(() => new Promise((r) => (resolveLate = r)));
+
+      const view = mountRecorder();
+      act(() => {
+        void view.result.current.openCamera();
+      });
+      act(() => view.unmount());
+
+      await act(async () => {
+        resolveLate(fakeStream([late.video], [late.audio]));
+      });
+
+      expect(late.video.stop).toHaveBeenCalled();
+      expect(late.audio.stop).toHaveBeenCalled();
+    });
+
+    /**
+     * The failure path needs the same staleness guard as the success path:
+     * a user who navigates away while the permission dialog is up, then taps
+     * Deny, would otherwise setState on an unmounted hook and surface an error
+     * banner belonging to a screen that no longer exists.
+     */
+    it("stays quiet when a rejected acquisition lands after unmount", async () => {
+      let rejectLate: (e: unknown) => void = () => undefined;
+      mockGetUserMedia.mockImplementationOnce(() => new Promise((_r, reject) => (rejectLate = reject)));
+
+      const view = mountRecorder();
+      act(() => {
+        void view.result.current.openCamera();
+      });
+      act(() => view.unmount());
+
+      // Must not throw an unhandled rejection or warn about setState-after-unmount.
+      await act(async () => {
+        rejectLate(new DOMException("Not allowed", "NotAllowedError"));
+      });
+    });
+
+    /**
+     * `openCamera` stops the old stream before awaiting, so a rejected
+     * re-acquire left a STOPPED stream reachable while the UI still read
+     * "preview". `startRec` gates on `!streamRef.current`, so that guard passed
+     * and built a MediaRecorder over dead tracks.
+     */
+    it("does not record over dead tracks after a failed re-acquire", async () => {
+      const live = fakeTrack("video");
+      mockGetUserMedia
+        .mockResolvedValueOnce(fakeStream([live]))
+        .mockRejectedValueOnce(new DOMException("Device in use", "NotReadableError"));
+
+      const view = mountRecorder();
+      await openCamera(view);
+      expect(view.result.current.state).toBe("preview");
+
+      // Flip to a camera that fails to open.
+      await act(async () => {
+        view.result.current.flipCamera();
+      });
+
+      expect(live.stop).toHaveBeenCalled();
+      expect(view.result.current.cameraError).toMatch(/Camera unavailable/);
+      // Recoverable: back to idle rather than a "preview" that cannot record.
+      expect(view.result.current.state).toBe("idle");
+
+      FakeRecorder.latest = null;
+      act(() => view.result.current.startRec());
+      expect(FakeRecorder.latest).toBeNull();
+      expect(view.result.current.cameraError).toMatch(/no active stream/);
+    });
+  });
 });

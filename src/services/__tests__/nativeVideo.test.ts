@@ -297,6 +297,119 @@ describe("nativeVideo service", () => {
     });
   });
 
+  describe("recordNativeVideo — abort during camera warm-up", () => {
+    /**
+     * The caller flips its UI to "recording" and renders a working Stop button
+     * synchronously, long before the camera is ready — an OS permission dialog
+     * on first launch sits for tens of seconds. The abort listener used to be
+     * registered only AFTER initialize() and startRecording() both resolved,
+     * and addEventListener("abort", …) on an already-fired signal never runs,
+     * so those taps were dropped. Worse, they were dropped permanently:
+     * AbortController.abort() is a no-op once aborted, so every later tap died
+     * too, the clip ran the full cap and was submitted anyway, and the unmount
+     * path could not release the camera at all.
+     */
+    it("cancels the take when abort fires while initialize() is still pending", async () => {
+      let releaseInitialize: () => void = () => undefined;
+      mockInitialize.mockImplementation(() => new Promise<void>((r) => (releaseInitialize = r)));
+
+      const controller = new AbortController();
+      const pending = recordNativeVideo(controller.signal);
+      await vi.advanceTimersByTimeAsync(0);
+
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+
+      // Never started capturing, so there is no take to keep.
+      expect(mockStartRecording).not.toHaveBeenCalled();
+      expect(mockStopRecording).not.toHaveBeenCalled();
+      // We walked away from a still-running initialize and cannot know whether
+      // it went on to open the device — tear down rather than strand it.
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
+
+      releaseInitialize();
+    });
+
+    it("cancels the take when abort fires between initialize() and startRecording()", async () => {
+      let releaseStart: () => void = () => undefined;
+      mockStartRecording.mockImplementation(() => new Promise<void>((r) => (releaseStart = r)));
+
+      const controller = new AbortController();
+      const pending = recordNativeVideo(controller.signal);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(mockInitialize).toHaveBeenCalledTimes(1);
+
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+
+      expect(mockStopRecording).not.toHaveBeenCalled();
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
+
+      releaseStart();
+    });
+
+    it("invokes onRecordingStarted once, only after frames begin", async () => {
+      const fakeBlob = new Blob(["data"], { type: "video/mp4" });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
+
+      let releaseStart: () => void = () => undefined;
+      mockStartRecording.mockImplementation(() => new Promise<void>((r) => (releaseStart = r)));
+      const onRecordingStarted = vi.fn();
+
+      const pending = recordNativeVideo(undefined, onRecordingStarted);
+      await vi.advanceTimersByTimeAsync(0);
+      // Still warming up — the caller's clock must not have started.
+      expect(onRecordingStarted).not.toHaveBeenCalled();
+
+      releaseStart();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(onRecordingStarted).toHaveBeenCalledTimes(1);
+
+      await flushAutoStop();
+      await pending;
+      expect(onRecordingStarted).toHaveBeenCalledTimes(1);
+    });
+
+    /**
+     * A caller may abort from inside `onRecordingStarted` itself — that is the
+     * one moment an abort can land between retiring the warm-up handler and
+     * arming the duration-race handler. Without the already-aborted check in
+     * the race promise, no listener would ever fire and the take would sit out
+     * the full cap before stopping.
+     */
+    it("stops immediately when the start callback aborts the take", async () => {
+      const fakeBlob = new Blob(["data"], { type: "video/mp4" });
+      mockStopRecording.mockResolvedValue({ videoUrl: "file:///tmp/v.mp4" });
+      mockFetch.mockResolvedValue({ blob: (): Promise<Blob> => Promise.resolve(fakeBlob) });
+
+      const controller = new AbortController();
+      const pending = recordNativeVideo(controller.signal, () => controller.abort());
+
+      // No timer advance at all: if the abort were missed, this would hang
+      // until the duration cap instead of resolving here.
+      await expect(pending).resolves.toMatchObject({ mimeType: "video/mp4" });
+      expect(mockStopRecording).toHaveBeenCalledTimes(1);
+      expect(mockDestroy).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not invoke onRecordingStarted when the take is aborted during warm-up", async () => {
+      let releaseInitialize: () => void = () => undefined;
+      mockInitialize.mockImplementation(() => new Promise<void>((r) => (releaseInitialize = r)));
+      const onRecordingStarted = vi.fn();
+
+      const controller = new AbortController();
+      const pending = recordNativeVideo(controller.signal, onRecordingStarted);
+      await vi.advanceTimersByTimeAsync(0);
+
+      controller.abort();
+      await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+      expect(onRecordingStarted).not.toHaveBeenCalled();
+
+      releaseInitialize();
+    });
+  });
+
   describe("recordNativeVideo — destroy() breadcrumb", () => {
     it("breadcrumbs when destroy() throws on the happy-path teardown", async () => {
       const fakeBlob = new Blob(["data"], { type: "video/mp4" });
