@@ -18,6 +18,7 @@ export const TRICK_CATEGORIES = [
   { id: "any", label: "Anything Goes" },
   { id: "flip", label: "Flip Tricks" },
   { id: "grind", label: "Rails & Ledges" },
+  { id: "gap", label: "Gaps & Stairs" },
   { id: "air", label: "Airs & Grabs" },
   { id: "manual", label: "Manuals" },
   { id: "oldschool", label: "Old School" },

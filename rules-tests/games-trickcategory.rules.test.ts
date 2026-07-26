@@ -24,6 +24,7 @@ const VALID_CATEGORIES = [
   "any",
   "flip",
   "grind",
+  "gap",
   "air",
   "manual",
   "oldschool",
