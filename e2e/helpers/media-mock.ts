@@ -21,7 +21,17 @@ export const MEDIA_MOCK_SCRIPT = `
   'use strict';
 
   // ── Fake MediaStream ──────────────────────────────────────────────────────
-  const fakeTrack = { stop: () => {}, kind: 'video', enabled: true };
+  // Mirrors the full MediaStreamTrack surface: every real track exposes the
+  // event-target pair (the app listens for 'ended' to detect a revoked camera)
+  // and getSettings() (read for the canvas capture frame rate).
+  const fakeTrack = {
+    stop: () => {},
+    kind: 'video',
+    enabled: true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    getSettings: () => ({ frameRate: 30 }),
+  };
   const fakeStream = {
     getTracks: () => [fakeTrack],
     getVideoTracks: () => [fakeTrack],
@@ -51,12 +61,17 @@ export const MEDIA_MOCK_SCRIPT = `
   // ── Fake MediaRecorder ────────────────────────────────────────────────────
   class FakeMediaRecorder {
     state = 'inactive';
+    mimeType = 'video/webm';
     ondataavailable = null;
     onstop = null;
     _pendingTimer = null;
 
-    constructor(_stream, _options) {
-      // no-op: we ignore the stream and options
+    constructor(_stream, options) {
+      // Real MediaRecorder always reports the container/codec it settled on,
+      // and the app derives the finished blob's type from it. Echoing the
+      // requested type keeps the E2E path on the real blob-typing logic
+      // instead of the "older browser" fallback.
+      this.mimeType = (options && options.mimeType) || 'video/webm';
     }
 
     start() {
