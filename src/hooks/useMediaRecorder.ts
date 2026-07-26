@@ -111,7 +111,7 @@ function recordedBlobType(mr: MediaRecorder, chunks: Blob[]): string {
 
 /** Safely read the first video track — the stream may be absent entirely. */
 function firstVideoTrack(stream: MediaStream | null): MediaStreamTrack | undefined {
-  if (!stream || typeof stream.getVideoTracks !== "function") return undefined;
+  if (!stream) return undefined;
   return stream.getVideoTracks()[0];
 }
 
@@ -121,7 +121,7 @@ function firstVideoTrack(stream: MediaStream | null): MediaStreamTrack | undefin
  */
 function captureFrameRate(stream: MediaStream | null): number {
   const track = firstVideoTrack(stream);
-  if (!track || typeof track.getSettings !== "function") return FALLBACK_CAPTURE_FPS;
+  if (!track) return FALLBACK_CAPTURE_FPS;
   return track.getSettings().frameRate ?? FALLBACK_CAPTURE_FPS;
 }
 
@@ -254,7 +254,7 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
   const watchTrackEnded = useCallback(
     (stream: MediaStream | null) => {
       const track = firstVideoTrack(stream);
-      if (!track || typeof track.addEventListener !== "function") return;
+      if (!track) return;
       /* v8 ignore start -- real MediaStreamTrack events cannot be produced in JSDOM */
       const handleEnded = () => {
         // Ignore a stale listener left over from a stream we already replaced,
