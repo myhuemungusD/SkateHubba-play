@@ -87,7 +87,11 @@ export async function recordNativeVideo(signal?: AbortSignal): Promise<NativeVid
   try {
     await VideoRecorder.initialize({
       camera: VideoRecorderCamera.BACK,
-      quality: VideoRecorderQuality.MAX_720P,
+      // 1080p matches the 1080x1920 the web MediaRecorder path requests, so a
+      // clip looks the same on either platform. Safe against the 50 MB Storage
+      // ceiling: both plugin backends cap encoding at their 3 Mbps default
+      // bitrate regardless of preset, so a full-length clip lands near 8 MB.
+      quality: VideoRecorderQuality.MAX_1080P,
       autoShow: true,
       previewFrames: [PREVIEW_FRAME],
     });

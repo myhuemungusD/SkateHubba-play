@@ -107,7 +107,7 @@ describe("nativeVideo service", () => {
       expect(mockInitialize).toHaveBeenCalledWith(
         expect.objectContaining({
           camera: 1, // BACK
-          quality: 1, // MAX_720P
+          quality: 2, // MAX_1080P
           autoShow: true,
         }),
       );
@@ -287,7 +287,7 @@ describe("nativeVideo service", () => {
       await vi.advanceTimersByTimeAsync(0);
       expect(mockStopRecording).not.toHaveBeenCalled();
 
-      // Fire the abort well before the 10s duration cap — recording should
+      // Fire the abort well before the duration cap — recording should
       // stop early as soon as the abort event handler runs.
       controller.abort();
       await pending;
