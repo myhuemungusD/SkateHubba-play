@@ -231,3 +231,87 @@ describe("users/{uid} owner stats — benign writes that don't change stats SUCC
     );
   });
 });
+
+// Creation is the other way a counter could be forged: without a zero-seed
+// guard a brand-new signup could mint itself a streak and a games history in
+// its very first write, before any game exists to justify them.
+describe("users/{uid} create — Tier-1 counters must start at zero", () => {
+  const TIER_1_COUNTERS = ["gamesPlayed", "currentWinStreak", "bestWinStreak"] as const;
+
+  function newProfile(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return { uid: ALICE_UID, username: "alice", stance: "Regular", ...extra };
+  }
+
+  it.each(TIER_1_COUNTERS)("denied: cannot create a profile with a non-zero %s", async (field) => {
+    await assertFails(setDoc(doc(asAlice().firestore(), "users", ALICE_UID), newProfile({ [field]: 7 })));
+  });
+
+  it.each(TIER_1_COUNTERS)("succeeds: creating with %s explicitly zeroed", async (field) => {
+    await assertSucceeds(setDoc(doc(asAlice().firestore(), "users", ALICE_UID), newProfile({ [field]: 0 })));
+  });
+
+  it("succeeds: creating with the counters absent entirely (the normal client path)", async () => {
+    await assertSucceeds(setDoc(doc(asAlice().firestore(), "users", ALICE_UID), newProfile()));
+  });
+});
+
+// The Tier-1 counters (gamesPlayed / currentWinStreak / bestWinStreak) are
+// written by the same server-only path as wins/losses, so they need the same
+// lockdown. A self-granted streak is exactly as forgeable as a self-granted
+// win if the backstop list misses a name.
+describe("users/{uid} Tier-1 stat counters — client writes are DENIED", () => {
+  const TIER_1_COUNTERS = ["gamesPlayed", "currentWinStreak", "bestWinStreak"] as const;
+
+  it.each(TIER_1_COUNTERS)("denied: owner CANNOT seed %s on a doc without it", async (field) => {
+    await seed();
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 1 }));
+  });
+
+  it.each(TIER_1_COUNTERS)("denied: owner CANNOT inflate a stored %s", async (field) => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        wins: 2,
+        losses: 2,
+        [field]: 2,
+      });
+    });
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 99 }));
+  });
+
+  it("denied: owner CANNOT smuggle a streak bump alongside a benign stance edit", async () => {
+    await seed({ aliceWins: 3, aliceLosses: 1 });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+        currentWinStreak: 10,
+        bestWinStreak: 10,
+      }),
+    );
+  });
+
+  it("succeeds: re-writing Tier-1 counters to their SAME stored value is not a diff", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        wins: 4,
+        losses: 1,
+        gamesPlayed: 5,
+        currentWinStreak: 2,
+        bestWinStreak: 3,
+      });
+    });
+    await assertSucceeds(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+        gamesPlayed: 5,
+        currentWinStreak: 2,
+        bestWinStreak: 3,
+      }),
+    );
+  });
+});

@@ -18,6 +18,13 @@ import { ProfileSkeleton } from "./components/ProfileSkeleton";
 import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
 import { AchievementsRibbon } from "./components/AchievementsRibbon";
 import { AddedSpotsPlaceholder } from "./components/AddedSpotsPlaceholder";
+import { WinStreakBanner } from "./components/WinStreakBanner";
+
+/**
+ * Streak length before the banner appears. A "1 win streak" is just a win —
+ * the banner should mark a run worth bragging about, not fire after every game.
+ */
+const MIN_DISPLAYED_WIN_STREAK = 2;
 
 interface Props {
   viewedUid: string;
@@ -51,7 +58,6 @@ interface Props {
  *     fidelity; future PRs wire them to real data.
  *
  * Deferred until their respective counters ship on main:
- *   - Win-streak badge (needs currentWinStreak)
  *   - XP / level (currently placeholder L1 via LevelChip)
  */
 export function PlayerProfileScreen({
@@ -195,6 +201,10 @@ export function PlayerProfileScreen({
           />
         )}
 
+        {c.stats.currentWinStreak >= MIN_DISPLAYED_WIN_STREAK && (
+          <WinStreakBanner currentStreak={c.stats.currentWinStreak} />
+        )}
+
         <ProfileStatsGrid
           stats={c.stats}
           isOwnProfile={isOwnProfile}
@@ -202,7 +212,10 @@ export function PlayerProfileScreen({
           onTileTap={handleTileTap}
         />
 
-        <AchievementsRibbon />
+        {/* Placeholder surfaces stay on the owner's profile only — advertising
+            unbuilt features on someone else's public profile is noise to every
+            visitor but the owner. Matches AddedSpotsPlaceholder's gating. */}
+        {isOwnProfile && <AchievementsRibbon />}
 
         {isOwnProfile && <AddedSpotsPlaceholder />}
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ProfileStats } from "../usePlayerProfileController";
+import { MIN_RATED_GAMES } from "../../../constants/stats";
 import { useReducedMotion } from "../../../hooks/useReducedMotion";
 
 /**
@@ -60,12 +61,19 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
           ariaLabel={`Lifetime losses: ${stats.losses}`}
           onTap={onTileTap}
         />
+        {/* A rate over fewer than MIN_RATED_GAMES games is noise dressed as a
+            fact (1-0 reads "100%"), so it stays a dash until the floor is met.
+            The aria-label says why rather than announcing a bare "dash". */}
         <StatTile
           name="winRate"
           label="Win Rate %"
           value={stats.winRate}
           suffix="%"
-          ariaLabel={`Win rate: ${stats.winRate} percent`}
+          ariaLabel={
+            stats.winRate === null
+              ? `Win rate: not enough games yet, ${MIN_RATED_GAMES} needed`
+              : `Win rate: ${stats.winRate} percent`
+          }
           onTap={onTileTap}
         />
       </Row>
@@ -127,12 +135,16 @@ function Row({ cols, testid, children }: { cols: string; testid: string; childre
 interface StatTileProps {
   name: StatTileName;
   label: string;
-  value: number;
+  /** `null` renders the unavailable placeholder instead of a number. */
+  value: number | null;
   suffix?: string;
   /** Pre-computed final-value label — must NOT change as the count-up runs. */
   ariaLabel: string;
   onTap?: (name: StatTileName) => void;
 }
+
+/** Shown when a stat exists but isn't meaningful yet (e.g. rate below the floor). */
+const UNAVAILABLE = "—";
 
 /**
  * Individual stat tile. The visible number tweens from 0 → `value` over
@@ -148,7 +160,10 @@ function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatTileProp
   // react-hooks/set-state-in-effect lint rule rejects that pattern.
   const [tweenValue, setTweenValue] = useState(0);
   const startedAt = useRef<number | null>(null);
-  const display = reducedMotion ? value : tweenValue;
+  // A null stat has nothing to count up to; `numericValue` keeps the tween
+  // effect's dependency stable while the render branch below shows a dash.
+  const numericValue = value ?? 0;
+  const display = reducedMotion ? numericValue : tweenValue;
 
   useEffect(() => {
     if (reducedMotion) {
@@ -161,7 +176,7 @@ function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatTileProp
       const progress = Math.min(1, (ts - startedAt.current) / duration);
       // ease-out cubic
       const eased = 1 - Math.pow(1 - progress, 3);
-      setTweenValue(Math.round(value * eased));
+      setTweenValue(Math.round(numericValue * eased));
       if (progress < 1) {
         frame = requestAnimationFrame(start);
       }
@@ -171,7 +186,7 @@ function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatTileProp
       if (frame !== null) cancelAnimationFrame(frame);
       startedAt.current = null;
     };
-  }, [reducedMotion, value]);
+  }, [reducedMotion, numericValue]);
 
   const handleClick = () => onTap?.(name);
 
@@ -183,8 +198,14 @@ function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatTileProp
       className="text-left rounded-2xl glass-card p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
     >
       <p className="font-display text-2xl text-white leading-none tabular-nums">
-        {formatCompact(display)}
-        {suffix}
+        {value === null ? (
+          <span className="text-subtle">{UNAVAILABLE}</span>
+        ) : (
+          <>
+            {formatCompact(display)}
+            {suffix}
+          </>
+        )}
       </p>
       <p className="font-body text-[10px] uppercase tracking-wider text-subtle mt-2">{label}</p>
     </button>

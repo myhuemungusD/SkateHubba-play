@@ -1,6 +1,18 @@
 # Player Stats Audit — Current State & Roadmap
 
-Status: **Audit + recommendation, captured 2026-07-24.** Companion to `IDEAS_PRO_SKATER_PRIZE.md` (trick difficulty/ratings depend on the Tier 2 aggregation below). No implementation committed; Tier 2+ needs maintainer sign-off on the CI allowlist scope.
+Status: **Tier 1 implemented 2026-07-26.** Original audit captured 2026-07-24. Companion to `IDEAS_PRO_SKATER_PRIZE.md` (trick difficulty/ratings depend on the Tier 2 aggregation below). Tier 2+ still needs maintainer sign-off on the CI allowlist scope.
+
+## Shipped since the original audit
+
+- **Tier 1 counters live**: `gamesPlayed`, `currentWinStreak`, `bestWinStreak` are written by `applyGameStats` inside the existing close-out transaction. Streaks are absolute writes (not `FieldValue.increment`) because `bestWinStreak` compares against the resulting current streak — safe because the transaction reads the profile doc first. A loss zeroes `currentWinStreak` and never touches `bestWinStreak`.
+- **`WinStreakBanner` wired** — it was dead code awaiting a counter. Renders at a streak of 2+; a "1 win streak" is just a win.
+- **Win-rate floor** (`src/constants/stats.ts`, `MIN_RATED_GAMES = 5`): rates below the floor render as a dash, not "100%" or "0%". Shared by the profile grid and the leaderboard so the two can't disagree.
+- **Leaderboard no longer sorts on raw wins** — gap 5 below. Rated players rank by win rate; provisional players rank after them by volume. The query still pulls by `wins` (Firestore can't order by a computed rate), over-fetching 4× the display size as a candidate pool. This is a heuristic, not a true global rate ranking — that needs a stored rating (Tier 3).
+- **Achievements ribbon gated to the owner's own profile** — 12 locked "???" tiles advertising unbuilt features were rendering on every player's public profile.
+
+### Deliberately not tracked
+
+`forfeitLosses` and `lastGameAt` were both proposed in Tier 1 below and were **rejected**. `users/{uid}` is `allow read: if isSignedIn()`, so any field on that doc is readable by every signed-in account — declining to render it in the UI does not make it private. A public quit-counter is socially punitive, and a public last-active timestamp is an activity-pattern leak in an app that already ships blocking and reporting. If either is ever needed, it belongs in `users/{uid}/private/*`.
 
 ---
 
@@ -32,13 +44,13 @@ Everything else surfaced as a "stat" is derived client-side per viewer from game
 
 All incrementable inside the existing `applyGameStats` transaction; no new infrastructure.
 
-| Field | Update rule | Unblocks |
-| --- | --- | --- |
-| `currentWinStreak` | winner +1, loser reset to 0 | `WinStreakBanner` |
-| `bestWinStreak` | `max(best, current)` on win | profile badge |
-| `gamesPlayed` | +1 both players (or derive wins+losses) | win-rate everywhere |
-| `forfeitLosses` | +1 loser when status is `forfeit` | distinguishes quit vs. beaten |
-| `lastGameAt` | server timestamp both players | activity/recency features |
+| Field              | Update rule                             | Unblocks                      | Status                                        |
+| ------------------ | --------------------------------------- | ----------------------------- | --------------------------------------------- |
+| `currentWinStreak` | winner +1, loser reset to 0             | `WinStreakBanner`             | ✅ shipped                                    |
+| `bestWinStreak`    | `max(best, current)` on win             | profile badge                 | ✅ shipped                                    |
+| `gamesPlayed`      | +1 both players (or derive wins+losses) | win-rate everywhere           | ✅ shipped                                    |
+| `forfeitLosses`    | +1 loser when status is `forfeit`       | distinguishes quit vs. beaten | ❌ rejected — public shame metric, see above  |
+| `lastGameAt`       | server timestamp both players           | activity/recency features     | ❌ rejected — public presence leak, see above |
 
 ### Tier 2 — trick-level, folded out of `turnHistory` at close-out
 
