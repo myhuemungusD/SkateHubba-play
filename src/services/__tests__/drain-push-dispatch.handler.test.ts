@@ -155,6 +155,10 @@ beforeEach(() => {
 
 afterEach(() => {
   warnSpy.mockRestore();
+  // The mangled-env regression below imports a fresh module instance; clear
+  // the registry so no future dynamic import inherits its populated
+  // module-scope cache and short-circuits the init path vacuously.
+  vi.resetModules();
 });
 
 describe("auth", () => {
@@ -212,6 +216,32 @@ describe("init", () => {
     await handler(makeReq({ authorization: AUTH }), res);
     expect(h.initializeAppMock).toHaveBeenCalled();
     expect(out.code).toBe(200);
+  });
+
+  it("initializes despite a hand-paste-mangled private_key (2026-07-27 outage)", async () => {
+    // The production shape: pretty-printed service account whose `\n`
+    // escapes all became real newlines in the Vercel dashboard paste.
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = JSON.stringify(JSON.parse(VALID_SERVICE_ACCOUNT), null, 2).replace(
+      /\\n/g,
+      "\n",
+    );
+    h.getAppsMock.mockReturnValue([]);
+    h.initializeAppMock.mockReturnValue({ __app: "new" });
+    h.getFirestoreMock.mockReturnValue(makeDb([], rec));
+    // The module caches its admin app after the first init; a fresh module
+    // instance is the only way to exercise the init path again mid-file.
+    vi.resetModules();
+    const { default: freshHandler } = await import("../../../api/cron/drain-push-dispatch");
+    const { res, out } = makeRes();
+    await freshHandler(makeReq({ authorization: AUTH }), res);
+    expect(out.code).toBe(200);
+    // The credential handed to cert() must carry the repaired PEM —
+    // real newlines, exactly as Google's file encodes them.
+    const sa = h.certMock.mock.calls.at(-1)?.[0] as { privateKey: string };
+    expect(sa.privateKey).toBe("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n");
+    // The repair must announce itself — a silently absorbed misconfiguration
+    // would outlive everyone's memory of this outage.
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("service_account_json_repaired"));
   });
 });
 

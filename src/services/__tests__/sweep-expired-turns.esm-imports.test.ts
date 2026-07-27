@@ -23,7 +23,12 @@ import ts from "typescript";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../../..");
-const ENTRYPOINT = resolve(REPO_ROOT, "api/cron/sweep-expired-turns.ts");
+// Every cron entrypoint Vercel loads as ESM — each one's relative-import
+// closure gets the same guard. Drain joined when the shared service-account
+// parser gave it its first relative import.
+const ENTRYPOINTS = ["api/cron/sweep-expired-turns.ts", "api/cron/drain-push-dispatch.ts"].map((p) =>
+  resolve(REPO_ROOT, p),
+);
 
 /** Strip the repo-root prefix so failure output is short and copy-pastable. */
 const rel = (file: string): string => {
@@ -152,37 +157,42 @@ function walkRelativeGraph(entry: string): WalkResult {
   return { graph, unresolvable };
 }
 
-describe("sweep cron ESM cold-start guard", () => {
-  it("every relative import in the traced runtime graph ends in a Node-resolvable extension", () => {
-    // Guard against a silent entrypoint rename: readFileSync would otherwise
-    // surface as a raw ENOENT with no context.
-    expect(
-      existsSync(ENTRYPOINT),
-      `Cron entrypoint not found at ${rel(ENTRYPOINT)} — update ENTRYPOINT if it was moved.`,
-    ).toBe(true);
+describe.each(ENTRYPOINTS.map((entry) => ({ entry, name: rel(entry) })))(
+  "cron ESM cold-start guard: $name",
+  ({ entry }) => {
+    it("every relative import in the traced runtime graph ends in a Node-resolvable extension", () => {
+      // Guard against a silent entrypoint rename: readFileSync would otherwise
+      // surface as a raw ENOENT with no context.
+      expect(
+        existsSync(entry),
+        `Cron entrypoint not found at ${rel(entry)} — update ENTRYPOINTS if it was moved.`,
+      ).toBe(true);
 
-    const { graph, unresolvable } = walkRelativeGraph(ENTRYPOINT);
+      const { graph, unresolvable } = walkRelativeGraph(entry);
 
-    // Sanity: the walker actually recursed through the transitive graph. A
-    // shallower walk would let the offender assertion below trivially pass on
-    // the subgraph the fix already covers. The floor is deliberately loose so
-    // legitimate graph contractions don't force a churn edit here — tighten it
-    // only if the walker regresses in a way this doesn't catch.
-    expect(graph.size).toBeGreaterThanOrEqual(4);
+      // Sanity: the walker actually recursed through the transitive graph. A
+      // shallower walk would let the offender assertion below trivially pass
+      // on the subgraph the fix already covers. The floor is deliberately
+      // loose so legitimate graph contractions don't force a churn edit here.
+      // Sweep pulls the shared game mappers (4+ files); drain's runtime graph
+      // is just itself plus the service-account parser.
+      const floor = entry.endsWith("sweep-expired-turns.ts") ? 4 : 2;
+      expect(graph.size).toBeGreaterThanOrEqual(floor);
 
-    // Fail loudly on a specifier whose target source couldn't be located —
-    // otherwise a bad refactor would show up as an opaque ENOENT in CI.
-    expect(unresolvable).toEqual([]);
+      // Fail loudly on a specifier whose target source couldn't be located —
+      // otherwise a bad refactor would show up as an opaque ENOENT in CI.
+      expect(unresolvable).toEqual([]);
 
-    const offenders: Array<{ file: string; specifier: string }> = [];
-    for (const [file, specifiers] of graph) {
-      for (const spec of specifiers) {
-        if (!NODE_RESOLVABLE_EXTENSIONS.has(extname(spec))) {
-          offenders.push({ file: rel(file), specifier: spec });
+      const offenders: Array<{ file: string; specifier: string }> = [];
+      for (const [file, specifiers] of graph) {
+        for (const spec of specifiers) {
+          if (!NODE_RESOLVABLE_EXTENSIONS.has(extname(spec))) {
+            offenders.push({ file: rel(file), specifier: spec });
+          }
         }
       }
-    }
 
-    expect(offenders).toEqual([]);
-  });
-});
+      expect(offenders).toEqual([]);
+    });
+  },
+);

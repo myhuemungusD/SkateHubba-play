@@ -100,13 +100,9 @@ describe("sweep handler auth (fail-closed)", () => {
     expect(getFirestoreMock).not.toHaveBeenCalled();
   });
 
-  it("proceeds past auth with the correct token", async () => {
-    process.env.CRON_SECRET = "s3cret";
-    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
-    getAppsMock.mockReturnValue([]);
-    initializeAppMock.mockReturnValue({ name: "app" });
-    // No candidate games → handler returns a clean 200 summary, no writes.
-    const db = {
+  /** A db whose game query returns nothing — init succeeds, sweep is a no-op. */
+  function makeEmptyDb() {
+    return {
       collection: vi.fn(() => ({
         where: vi.fn().mockReturnThis(),
         orderBy: vi.fn().mockReturnThis(),
@@ -115,6 +111,15 @@ describe("sweep handler auth (fail-closed)", () => {
       })),
       runTransaction: vi.fn(),
     };
+  }
+
+  it("proceeds past auth with the correct token", async () => {
+    process.env.CRON_SECRET = "s3cret";
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
+    getAppsMock.mockReturnValue([]);
+    initializeAppMock.mockReturnValue({ name: "app" });
+    // No candidate games → handler returns a clean 200 summary, no writes.
+    const db = makeEmptyDb();
     getFirestoreMock.mockReturnValue(db);
 
     const { res, out } = makeRes();
@@ -124,6 +129,36 @@ describe("sweep handler auth (fail-closed)", () => {
     expect(getFirestoreMock).toHaveBeenCalledTimes(1);
     expect(db.runTransaction).not.toHaveBeenCalled();
     expect(out.body).toMatchObject({ scanned: 0, forfeited: 0, dryRun: false });
+  });
+
+  it("initializes from a hand-paste-mangled service account (2026-07-27 outage)", async () => {
+    process.env.CRON_SECRET = "s3cret";
+    // The production shape: every `\n` escape in the pretty-printed value
+    // expanded to a real newline by the Vercel dashboard paste. Sweep reads
+    // the same env var as drain and was down for the same reason — this is
+    // the regression that keeps its half of the fix from being reverted.
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = JSON.stringify(JSON.parse(VALID_SERVICE_ACCOUNT), null, 2).replace(
+      /\\n/g,
+      "\n",
+    );
+    getAppsMock.mockReturnValue([]);
+    initializeAppMock.mockReturnValue({ name: "app" });
+    getFirestoreMock.mockReturnValue(makeEmptyDb());
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    // The module caches its admin app after first init; a fresh instance is
+    // the only way to exercise the init path again mid-file.
+    vi.resetModules();
+    const { default: freshHandler } = await import("../../../api/cron/sweep-expired-turns");
+    const { res, out } = makeRes();
+    await freshHandler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.code).toBe(200);
+    const sa = h.certMock.mock.calls.at(-1)?.[0] as { privateKey: string };
+    expect(sa.privateKey).toBe("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("service_account_json_repaired"));
+    warn.mockRestore();
+    vi.resetModules();
   });
 });
 
