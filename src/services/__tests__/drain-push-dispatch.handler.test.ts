@@ -155,6 +155,10 @@ beforeEach(() => {
 
 afterEach(() => {
   warnSpy.mockRestore();
+  // The mangled-env regression below imports a fresh module instance; clear
+  // the registry so no future dynamic import inherits its populated
+  // module-scope cache and short-circuits the init path vacuously.
+  vi.resetModules();
 });
 
 describe("auth", () => {
@@ -235,6 +239,9 @@ describe("init", () => {
     // real newlines, exactly as Google's file encodes them.
     const sa = h.certMock.mock.calls.at(-1)?.[0] as { privateKey: string };
     expect(sa.privateKey).toBe("-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n");
+    // The repair must announce itself — a silently absorbed misconfiguration
+    // would outlive everyone's memory of this outage.
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("service_account_json_repaired"));
   });
 });
 

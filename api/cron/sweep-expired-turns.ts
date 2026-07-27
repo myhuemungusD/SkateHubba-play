@@ -79,9 +79,16 @@ function getAdminFirestore(): Firestore {
       if (!raw) {
         throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not set");
       }
-      // Tolerates the hand-paste mangle (real newlines inside private_key)
-      // and throws on anything unparseable or missing a required field.
-      const serviceAccount: ServiceAccount = parseServiceAccountJson(raw);
+      // Tolerates known hand-paste damage (expanded \n escapes, smart
+      // quotes) and throws on anything unparseable or missing a field.
+      const { account, repaired } = parseServiceAccountJson(raw);
+      if (repaired) {
+        // Expected error path: the stored env value is damaged but
+        // recoverable. Announce it on every cold start so the
+        // misconfiguration gets fixed instead of silently absorbed forever.
+        console.warn(JSON.stringify({ event: "service_account_json_repaired" }));
+      }
+      const serviceAccount: ServiceAccount = account;
       cachedApp = initializeApp({ credential: cert(serviceAccount) });
     }
   }
