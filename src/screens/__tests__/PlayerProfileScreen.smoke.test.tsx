@@ -150,12 +150,49 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
     expect(screen.getByTestId("added-spots-placeholder")).toBeInTheDocument();
   });
 
-  it("hides the added-spots placeholder on another player's profile", () => {
+  it("hides both unbuilt-feature placeholders on another player's profile", () => {
+    // Neither placeholder belongs on someone else's public profile: a visitor
+    // has no use for 12 locked "???" tiles advertising features that don't
+    // exist yet. Both are owner-only until their real data ships.
     withOpponentFetch();
     render(<PlayerProfileScreen {...props} viewedUid="u2" isOwnProfile={false} />);
     expect(screen.queryByTestId("added-spots-placeholder")).not.toBeInTheDocument();
-    // The achievements ribbon, by contrast, renders for everyone.
+    expect(screen.queryByTestId("achievements-ribbon")).not.toBeInTheDocument();
+  });
+
+  it("shows both placeholders on the viewer's own profile", () => {
+    render(<PlayerProfileScreen {...props} />);
+    expect(screen.getByTestId("added-spots-placeholder")).toBeInTheDocument();
     expect(screen.getByTestId("achievements-ribbon")).toBeInTheDocument();
+  });
+
+  // ── Win-rate floor ──────────────────────────────────
+
+  it("withholds the win rate for a profile below the rated-games floor", () => {
+    // The viewer fixture has no wins/losses at all. Showing "0%" here would
+    // assert something untrue about a player who has simply never played.
+    render(<PlayerProfileScreen {...props} />);
+    expect(screen.getByLabelText(/win rate: not enough games yet/i)).toBeInTheDocument();
+  });
+
+  it("shows a real win rate once the profile clears the floor", () => {
+    // Opponent fixture is 10-3 → 13 games, comfortably rated. 10/13 ≈ 77%.
+    withOpponentFetch();
+    render(<PlayerProfileScreen {...props} viewedUid="u2" isOwnProfile={false} />);
+    expect(screen.getByLabelText("Win rate: 77 percent")).toBeInTheDocument();
+  });
+
+  // ── Win-streak banner ───────────────────────────────
+
+  it("shows the win-streak banner once a run reaches two games", () => {
+    render(<PlayerProfileScreen {...props} currentUserProfile={{ ...viewerProfile, currentWinStreak: 3 }} />);
+    expect(screen.getByRole("status", { name: "3 game win streak" })).toBeInTheDocument();
+  });
+
+  it("hides the win-streak banner for a single win", () => {
+    // A "1 win streak" is just a win — the banner marks a run, not a result.
+    render(<PlayerProfileScreen {...props} currentUserProfile={{ ...viewerProfile, currentWinStreak: 1 }} />);
+    expect(screen.queryByRole("status", { name: /win streak/i })).not.toBeInTheDocument();
   });
 
   // ── Avatar rendering ────────────────────────────────

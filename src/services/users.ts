@@ -14,6 +14,7 @@ import {
   type FieldValue,
 } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
+import { ratedWinRate } from "../constants/stats";
 import { withRetry } from "../utils/retry";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips, deleteUserClipVotes } from "./clips";
@@ -48,6 +49,12 @@ export interface UserProfile {
    */
   wins?: number;
   losses?: number;
+  /** Completed games (wins + losses). Server-written; absent on pre-Tier-1 docs. */
+  gamesPlayed?: number;
+  /** Consecutive wins ending now — reset to 0 on any loss. Server-written. */
+  currentWinStreak?: number;
+  /** Lifetime high-water mark for {@link currentWinStreak}. Server-written. */
+  bestWinStreak?: number;
   /** Whether this user is a verified pro. Only settable via Admin SDK / Firebase console. */
   isVerifiedPro?: boolean;
   /** UID of the user or admin who granted verified-pro status. */
@@ -458,27 +465,48 @@ export async function getUidByUsername(username: string): Promise<string | null>
   return typeof data.uid === "string" ? data.uid : null;
 }
 
+/** Profiles returned to the leaderboard UI. */
+const LEADERBOARD_SIZE = 50;
+
 /**
- * Fetch user profiles for the leaderboard, sorted by wins descending.
- * Falls back to client-side sorting since existing users may lack the wins field.
- * Capped at 50 to keep payload and read costs low.
+ * Candidate pool fetched before ranking. Firestore cannot order by a computed
+ * win rate, so the query still pulls by raw `wins` and the rate ranking happens
+ * client-side. Over-fetching 4× the displayed size gives an efficient, high
+ * win-rate player room to surface even though they trail the grinders on raw
+ * win count. It is a heuristic, not a true global rate ranking — a genuinely
+ * global one needs a stored rating field, which is Tier 3.
+ */
+const LEADERBOARD_CANDIDATE_POOL = LEADERBOARD_SIZE * 4;
+
+/**
+ * Fetch user profiles for the leaderboard, ranked by win rate rather than raw
+ * win count — a 50-200 record should not outrank 20-0.
+ *
+ * Players below the `MIN_RATED_GAMES` floor are ranked after every rated player
+ * instead of being dropped, so a new account still appears (ordered by wins)
+ * without a 1-0 record taking the top slot.
  */
 export async function getLeaderboard(): Promise<UserProfile[]> {
-  const q = query(collection(requireDb(), "users"), orderBy("wins", "desc"), limit(50));
+  const q = query(collection(requireDb(), "users"), orderBy("wins", "desc"), limit(LEADERBOARD_CANDIDATE_POOL));
   const snap = await withRetry(() => getDocs(q));
   const profiles = snap.docs.map((d) => d.data() as UserProfile);
 
-  return profiles.sort((a, b) => {
-    const aWins = a.wins ?? 0;
-    const bWins = b.wins ?? 0;
-    if (bWins !== aWins) return bWins - aWins;
-    const aTotal = aWins + (a.losses ?? 0);
-    const bTotal = bWins + (b.losses ?? 0);
-    const aRate = aTotal > 0 ? aWins / aTotal : 0;
-    const bRate = bTotal > 0 ? bWins / bTotal : 0;
-    if (bRate !== aRate) return bRate - aRate;
-    return a.username.localeCompare(b.username);
-  });
+  return profiles
+    .sort((a, b) => {
+      const aRate = ratedWinRate(a.wins, a.losses);
+      const bRate = ratedWinRate(b.wins, b.losses);
+
+      // Rated players outrank provisional ones regardless of raw win count.
+      if ((aRate === null) !== (bRate === null)) return aRate === null ? 1 : -1;
+      if (aRate !== null && bRate !== null && aRate !== bRate) return bRate - aRate;
+
+      // Within a tier (equal rate, or both provisional) volume breaks the tie,
+      // then username for a stable, deterministic order.
+      const winDelta = (b.wins ?? 0) - (a.wins ?? 0);
+      if (winDelta !== 0) return winDelta;
+      return a.username.localeCompare(b.username);
+    })
+    .slice(0, LEADERBOARD_SIZE);
 }
 
 /**

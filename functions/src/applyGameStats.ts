@@ -24,6 +24,16 @@ interface GameStatsFields {
 }
 
 /**
+ * Coerce a stored counter to a usable number. Profiles created before a given
+ * counter shipped simply lack the field, and a corrupted doc could hold a
+ * non-number — both read as 0 so a legacy player's first completed game starts
+ * their streak at 1 rather than producing NaN.
+ */
+function counter(raw: unknown): number {
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : 0;
+}
+
+/**
  * Idempotently apply win/loss counters for a terminal game.
  *
  * The `statsApplied` flag re-checked *inside* the transaction is the real
@@ -74,13 +84,30 @@ export async function applyGameStats(db: Firestore, gameId: string): Promise<App
     tx.update(gameRef, { statsApplied: true });
 
     if (winnerSnap.exists) {
-      tx.update(winnerRef, { wins: FieldValue.increment(1) });
+      // Streaks are written as absolute values rather than increments because
+      // bestWinStreak needs the resulting current streak to compare against.
+      // That is safe here: the transaction read winnerRef, so a concurrent
+      // write to the same profile aborts and retries this whole block.
+      const nextStreak = counter(winnerSnap.data()?.currentWinStreak) + 1;
+      const nextBest = Math.max(counter(winnerSnap.data()?.bestWinStreak), nextStreak);
+      tx.update(winnerRef, {
+        wins: FieldValue.increment(1),
+        gamesPlayed: FieldValue.increment(1),
+        currentWinStreak: nextStreak,
+        bestWinStreak: nextBest,
+      });
     } else {
       console.warn(`applyGameStats: winner profile ${winner} missing; skipping win increment for game ${gameId}`);
     }
 
     if (loserSnap.exists) {
-      tx.update(loserRef, { losses: FieldValue.increment(1) });
+      // A loss ends the run outright. bestWinStreak is deliberately untouched —
+      // it is a lifetime high-water mark, not a current-form number.
+      tx.update(loserRef, {
+        losses: FieldValue.increment(1),
+        gamesPlayed: FieldValue.increment(1),
+        currentWinStreak: 0,
+      });
     } else {
       console.warn(`applyGameStats: loser profile ${loser} missing; skipping loss increment for game ${gameId}`);
     }

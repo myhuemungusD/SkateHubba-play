@@ -194,6 +194,12 @@ service cloud.firestore {
         // by injecting arbitrary stats at profile creation time)
         && (!('wins' in request.resource.data) || request.resource.data.wins == 0)
         && (!('losses' in request.resource.data) || request.resource.data.losses == 0)
+        // Tier-1 stat counters (server-written by applyGameStats) get the same
+        // zero-seed treatment: a signup must not mint a streak or games-played
+        // history for itself.
+        && (!('gamesPlayed' in request.resource.data) || request.resource.data.gamesPlayed == 0)
+        && (!('currentWinStreak' in request.resource.data) || request.resource.data.currentWinStreak == 0)
+        && (!('bestWinStreak' in request.resource.data) || request.resource.data.bestWinStreak == 0)
         // Pro fields are admin-only — clients cannot set them at creation
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
@@ -257,18 +263,20 @@ service cloud.firestore {
         //   email, emailVerified, dob, parentalConsent, fcmTokens —
         //     legacy sensitive fields; once moved to /private they must
         //     never reappear or be re-written on the public doc.
-        //   wins, losses, lastStatsGameId — stats are written exclusively
-        //     server-side (applyGameStats Cloud Function + the one-time
-        //     admin backfill); clients may never modify them. affectedKeys()
-        //     only contains fields whose VALUE changes, so legacy docs still
-        //     carrying lastStatsGameId keep working for benign profile edits
+        //   wins, losses, lastStatsGameId, gamesPlayed, currentWinStreak,
+        //     bestWinStreak — stats are written exclusively server-side
+        //     (applyGameStats Cloud Function + the one-time admin backfill);
+        //     clients may never modify them. affectedKeys() only contains
+        //     fields whose VALUE changes, so legacy docs still carrying
+        //     lastStatsGameId keep working for benign profile edits
         //     (stance/avatar) that don't touch it.
         && !(request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['uid', 'username', 'createdAt',
                      'isVerifiedPro', 'verifiedBy', 'verifiedAt',
                      'email', 'emailVerified', 'dob', 'parentalConsent',
                      'fcmTokens',
-                     'wins', 'losses', 'lastStatsGameId']))
+                     'wins', 'losses', 'lastStatsGameId',
+                     'gamesPlayed', 'currentWinStreak', 'bestWinStreak']))
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid

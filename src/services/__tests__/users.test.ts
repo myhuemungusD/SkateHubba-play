@@ -787,8 +787,9 @@ describe("users service", () => {
   });
 
   describe("getLeaderboard", () => {
-    it("returns profiles sorted by wins descending", async () => {
+    it("ranks rated players by win rate, provisional players last", async () => {
       const profiles = [
+        // 3 games — below the 5-game floor, so provisional regardless of rate.
         { uid: "u1", username: "alice", wins: 2, losses: 1, createdAt: null, emailVerified: true, stance: "regular" },
         { uid: "u2", username: "bob", wins: 5, losses: 0, createdAt: null, emailVerified: true, stance: "goofy" },
         { uid: "u3", username: "charlie", wins: 2, losses: 3, createdAt: null, emailVerified: true, stance: "regular" },
@@ -797,9 +798,61 @@ describe("users service", () => {
 
       const result = await getLeaderboard();
 
-      expect(result[0].username).toBe("bob"); // 5 wins
-      expect(result[1].username).toBe("alice"); // 2 wins, 66% rate
-      expect(result[2].username).toBe("charlie"); // 2 wins, 40% rate
+      expect(result.map((p) => p.username)).toEqual([
+        "bob", // rated: 5-0 = 100%
+        "charlie", // rated: 2-3 = 40%
+        "alice", // provisional: only 3 games
+      ]);
+    });
+
+    it("keeps a rated player ahead of a provisional one when listed first", async () => {
+      // Mirror of the case above with the input order flipped, so the
+      // comparator is exercised in both argument orders.
+      const profiles = [
+        { uid: "u1", username: "rated", wins: 5, losses: 0, createdAt: null, emailVerified: true, stance: "regular" },
+        { uid: "u2", username: "prov", wins: 3, losses: 0, createdAt: null, emailVerified: true, stance: "goofy" },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getLeaderboard();
+
+      expect(result.map((p) => p.username)).toEqual(["rated", "prov"]);
+    });
+
+    it("breaks an identical win rate by game volume", async () => {
+      // Both are 100% and both are rated, so neither rate branch decides it —
+      // the deeper run of wins does.
+      const profiles = [
+        { uid: "u1", username: "alice", wins: 6, losses: 0, createdAt: null, emailVerified: true, stance: "regular" },
+        { uid: "u2", username: "bob", wins: 12, losses: 0, createdAt: null, emailVerified: true, stance: "goofy" },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getLeaderboard();
+
+      expect(result.map((p) => p.username)).toEqual(["bob", "alice"]);
+    });
+
+    it("does not let raw win volume outrank a better win rate", async () => {
+      // The regression this sort exists to fix: under the old
+      // `orderBy('wins')` ranking, 50-200 (20%) outranked 20-0 (100%).
+      const profiles = [
+        {
+          uid: "u1",
+          username: "grinder",
+          wins: 50,
+          losses: 200,
+          createdAt: null,
+          emailVerified: true,
+          stance: "regular",
+        },
+        { uid: "u2", username: "ripper", wins: 20, losses: 0, createdAt: null, emailVerified: true, stance: "goofy" },
+      ];
+      mockGetDocs.mockResolvedValueOnce({ docs: profiles.map((p) => ({ data: () => p })) });
+
+      const result = await getLeaderboard();
+
+      expect(result.map((p) => p.username)).toEqual(["ripper", "grinder"]);
     });
 
     it("defaults missing wins/losses to 0 and sorts alphabetically as tiebreaker", async () => {
