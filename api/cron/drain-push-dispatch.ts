@@ -46,6 +46,7 @@ import { timingSafeEqual } from "node:crypto";
 import { cert, getApps, initializeApp, type App, type ServiceAccount } from "firebase-admin/app";
 import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
+import { parseServiceAccountJson } from "./_serviceAccount.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -125,22 +126,9 @@ function getAdminApp(): App {
       if (!raw) {
         throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not set");
       }
-      // Google emits snake_case keys; admin's ServiceAccount type is camelCase.
-      // Map explicitly so the typed credential is exact and we fail loudly if
-      // a required field is missing.
-      const parsed = JSON.parse(raw) as {
-        project_id?: string;
-        client_email?: string;
-        private_key?: string;
-      };
-      if (!parsed.project_id || !parsed.client_email || !parsed.private_key) {
-        throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is missing required fields");
-      }
-      const serviceAccount: ServiceAccount = {
-        projectId: parsed.project_id,
-        clientEmail: parsed.client_email,
-        privateKey: parsed.private_key,
-      };
+      // Tolerates the hand-paste mangle (real newlines inside private_key)
+      // and throws on anything unparseable or missing a required field.
+      const serviceAccount: ServiceAccount = parseServiceAccountJson(raw);
       cachedApp = initializeApp({ credential: cert(serviceAccount) });
     }
   }
