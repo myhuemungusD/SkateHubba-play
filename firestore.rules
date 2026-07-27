@@ -659,7 +659,7 @@ service cloud.firestore {
         // thereafter (legacy clients omit it, so presence stays optional).
         && (
           !('trickCategory' in request.resource.data)
-          || request.resource.data.trickCategory in ['any', 'flip', 'grind', 'air', 'manual', 'oldschool',
+          || request.resource.data.trickCategory in ['any', 'flip', 'grind', 'gap', 'air', 'manual', 'oldschool',
                                                       'flatground', 'switch', 'flatbar', 'transition', 'team2v2', 'custom']
         )
         // Optional customRules (challenger free-text, only meaningful when

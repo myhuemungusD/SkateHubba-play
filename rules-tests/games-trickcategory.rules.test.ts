@@ -24,6 +24,7 @@ const VALID_CATEGORIES = [
   "any",
   "flip",
   "grind",
+  "gap",
   "air",
   "manual",
   "oldschool",
@@ -68,6 +69,30 @@ describe("games rules — trickCategory invariants", () => {
     it("rejects a null trickCategory", async () => {
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P1_UID), "g1");
       await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: null })));
+    });
+  });
+
+  // The category belongs to whoever STARTS the game. Creation is the only
+  // write that may author it (immutability covers the rest, below), and the
+  // create rule pins player1Uid == request.auth.uid — so the challenger is
+  // structurally the only account that can choose one. These lock that in:
+  // it is the game's starter, not a fixed player slot, who picks.
+  describe("create — only the game's starter authors the category", () => {
+    it("rejects the opponent authoring a category on a game they do not start", async () => {
+      // Bob writes a doc naming Alice as player1 (the challenger) while
+      // choosing the category himself — denied by the player1Uid pin.
+      const ref = fx.gameDoc(fx.authedContext(getEnv(), P2_UID), "g1");
+      await assertFails(setDoc(ref, fx.makeValidGame(OPTS, { trickCategory: "gap" })));
+    });
+
+    it("accepts the opponent choosing a category on a game they start themselves", async () => {
+      // Same two accounts, roles reversed (the rematch shape): Bob now starts
+      // the game, so the pick is his. Proves the constraint tracks the starter
+      // rather than pinning the choice to one player.
+      const ref = fx.gameDoc(fx.authedContext(getEnv(), P2_UID), "g1");
+      await assertSucceeds(
+        setDoc(ref, fx.makeValidGame({ player1Uid: P2_UID, player2Uid: P1_UID }, { trickCategory: "gap" })),
+      );
     });
   });
 
