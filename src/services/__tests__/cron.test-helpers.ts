@@ -41,6 +41,8 @@ export interface ReqOpts {
   authorization?: string;
   query?: Record<string, string | string[] | undefined>;
   url?: string;
+  /** HTTP verb. Defaults to "GET" (the only verb the cron platform issues). */
+  method?: string;
 }
 
 export interface CronRequestDouble {
@@ -54,7 +56,7 @@ export interface CronRequestDouble {
 export function makeReq(opts: ReqOpts = {}): CronRequestDouble {
   const headers: Record<string, string | string[] | undefined> = {};
   if (opts.authorization !== undefined) headers.authorization = opts.authorization;
-  return { method: "GET", headers, query: opts.query, url: opts.url };
+  return { method: opts.method ?? "GET", headers, query: opts.query, url: opts.url };
 }
 
 /** A structurally-valid service account. Never a real key. */

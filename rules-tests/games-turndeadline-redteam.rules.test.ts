@@ -115,6 +115,37 @@ async function seedGame(overrides: Record<string, unknown> = {}): Promise<void> 
   });
 }
 
+// The match-resolution and expired-auto-accept branches both reset play to a
+// fresh setting turn: trick + match fields cleared, updatedAt bumped. They
+// share that tail and differ in the rotation/letter fields plus the
+// turnDeadline value each test probes — callers pass those via `fields`
+// (turnDeadline is intentionally required, never defaulted, since it is the
+// field under test).
+function resetToSettingUpdate(fields: Record<string, unknown>): Record<string, unknown> {
+  return {
+    phase: "setting",
+    currentTrickName: null,
+    currentTrickVideoUrl: null,
+    matchVideoUrl: null,
+    updatedAt: serverTimestamp(),
+    ...fields,
+  };
+}
+
+// Missed-match resolution: the matcher (P2) admits a miss and takes their own
+// letter; the setter keeps the role and the turn advances (games.match.ts 320).
+// The rotation/letter fields are fixed for this branch, so each test passes
+// ONLY the turnDeadline it probes — keeping the two call sites (attack year-9999
+// vs legit 24h) from sharing enough lines to trip check:test-dup.
+const missedMatchUpdate = (turnDeadline: unknown) =>
+  resetToSettingUpdate({ p2Letters: 1, currentTurn: P1_UID, turnNumber: 2, turnDeadline });
+
+// Expired-dispute auto-accept: roles rotate to the matcher (P2), the turn
+// advances (turnForfeit.shared.ts disputeAccept; seed turnNumber 1 → 2). Again
+// the only per-test variable is the turnDeadline under test.
+const autoAcceptUpdate = (turnDeadline: unknown) =>
+  resetToSettingUpdate({ currentTurn: P2_UID, currentSetter: P2_UID, turnNumber: 2, turnDeadline });
+
 beforeAll(async () => {
   setLogLevel("error");
   testEnv = await initializeTestEnvironment({
@@ -193,21 +224,9 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         currentTrickName: "kickflip",
         currentTrickVideoUrl: VALID_TRICK_URL,
       });
-      await assertFails(
-        updateDoc(gameRef(asP2()), {
-          p2Letters: 1, // matcher admits miss → +1 letter
-          phase: "setting",
-          currentTurn: P1_UID,
-          // Missed-continues advances turnNumber (games.match.ts 320) so the
-          // write fails ONLY on the year-9999 turnDeadline, not the P0 pin.
-          turnNumber: 2,
-          currentTrickName: null,
-          currentTrickVideoUrl: null,
-          matchVideoUrl: null,
-          turnDeadline: farFutureDeadline(),
-          updatedAt: serverTimestamp(),
-        }),
-      );
+      // The ONLY invalid field is the year-9999 turnDeadline; the rest of the
+      // missed-resolution write is production-shaped inside missedMatchUpdate.
+      await assertFails(updateDoc(gameRef(asP2()), missedMatchUpdate(farFutureDeadline())));
     });
 
     it("legitimate: matcher CAN submit a missed attempt with a 24h deadline", async () => {
@@ -218,20 +237,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         currentTrickName: "kickflip",
         currentTrickVideoUrl: VALID_TRICK_URL,
       });
-      await assertSucceeds(
-        updateDoc(gameRef(asP2()), {
-          p2Letters: 1,
-          phase: "setting",
-          currentTurn: P1_UID,
-          // Missed-continues advances turnNumber by 1 (games.match.ts 320).
-          turnNumber: 2,
-          currentTrickName: null,
-          currentTrickVideoUrl: null,
-          matchVideoUrl: null,
-          turnDeadline: validFutureDeadline(),
-          updatedAt: serverTimestamp(),
-        }),
-      );
+      await assertSucceeds(updateDoc(gameRef(asP2()), missedMatchUpdate(validFutureDeadline())));
     });
   });
 
@@ -344,18 +350,9 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         judgeStatus: "accepted",
         turnDeadline: new Date(Date.now() - 60_000),
       });
-      await assertFails(
-        updateDoc(gameRef(asP1()), {
-          phase: "setting",
-          currentTurn: P2_UID,
-          currentSetter: P2_UID,
-          currentTrickName: null,
-          currentTrickVideoUrl: null,
-          matchVideoUrl: null,
-          turnDeadline: farFutureDeadline(),
-          updatedAt: serverTimestamp(),
-        }),
-      );
+      // Production-shaped role swap + turn advance inside autoAcceptUpdate, so
+      // the ONLY invalid field is the year-9999 turnDeadline the cap rejects.
+      await assertFails(updateDoc(gameRef(asP1()), autoAcceptUpdate(farFutureDeadline())));
     });
 
     it("legitimate: auto-accept CAN set a 24h-ahead turnDeadline", async () => {
@@ -368,18 +365,7 @@ describe("games.turnDeadline — red-team against unbounded-future lockout", () 
         judgeStatus: "accepted",
         turnDeadline: new Date(Date.now() - 60_000),
       });
-      await assertSucceeds(
-        updateDoc(gameRef(asP1()), {
-          phase: "setting",
-          currentTurn: P2_UID,
-          currentSetter: P2_UID,
-          currentTrickName: null,
-          currentTrickVideoUrl: null,
-          matchVideoUrl: null,
-          turnDeadline: validFutureDeadline(),
-          updatedAt: serverTimestamp(),
-        }),
-      );
+      await assertSucceeds(updateDoc(gameRef(asP1()), autoAcceptUpdate(validFutureDeadline())));
     });
   });
 

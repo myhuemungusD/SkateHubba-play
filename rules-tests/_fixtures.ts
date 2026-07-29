@@ -122,6 +122,49 @@ export function settingToMatchingUpdate(
 }
 
 /**
+ * A resolution update that returns play to an active setting turn: status back
+ * to `active`, phase to `setting`, no winner, a fresh bounded turnDeadline and
+ * a bumped updatedAt. Shared by the judge dispute-resolution and expired-
+ * dispute auto-accept branches, which converge on this base and differ only in
+ * the rotation/letter fields the caller overrides (currentSetter / currentTurn
+ * / turnNumber / p1Letters / p2Letters). Callers that probe the turnDeadline
+ * cap override `turnDeadline` directly.
+ */
+export function activeSettingUpdate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    status: "active",
+    phase: "setting",
+    winner: null,
+    turnDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+/**
+ * A valid, moderation-active /clips doc payload. The clipVotes red-team suites
+ * each seed an owned clip to vote against; the only fields that vary between
+ * them are gameId / turnNumber / playerUid (the owner), which callers pass via
+ * `overrides`. Everything else (username, trick, video, spot, moderation) is
+ * boilerplate that would otherwise be copy-pasted.
+ */
+export function makeClip(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    gameId: "game",
+    turnNumber: 1,
+    role: "set",
+    playerUid: "owner",
+    playerUsername: "alice",
+    trickName: "tre flip",
+    videoUrl: "https://example.com/clip.webm",
+    spotId: null,
+    createdAt: serverTimestamp(),
+    moderationStatus: "active",
+    ...overrides,
+  };
+}
+
+/**
  * Seed a terminated /games doc whose `winner` field is pre-populated. Used by
  * the stats red-team tests that need a genuine terminal game to prove that a
  * client stat write is denied EVEN when a real game outcome exists (stats are

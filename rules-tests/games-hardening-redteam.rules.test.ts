@@ -283,6 +283,28 @@ describe("games update — matchVideoUrl bucket pin", () => {
   const ATTACKER_BUCKET_URL =
     "https://firebasestorage.googleapis.com/v0/b/attacker-project.firebasestorage.app/o/match.webm";
 
+  // The honor-system landed and expired-auto-accept branches both rotate roles
+  // to the matcher (P2), advance the turn to 4, and carry matchVideoUrl through
+  // a fresh deadline. They diverge only in the letter tallies, so both payload
+  // builders below delegate here and pass their own letters.
+  function rotateToSettingPayload(fields: {
+    p1Letters: number;
+    p2Letters: number;
+    matchVideoUrl: unknown;
+  }): Record<string, unknown> {
+    return {
+      p1Letters: fields.p1Letters,
+      p2Letters: fields.p2Letters,
+      phase: "setting",
+      currentSetter: P2_UID,
+      currentTurn: P2_UID,
+      turnNumber: 4,
+      matchVideoUrl: fields.matchVideoUrl,
+      turnDeadline: FUTURE_DEADLINE(),
+      updatedAt: serverTimestamp(),
+    };
+  }
+
   describe("match-resolution branch (matcher submits landed attempt, honor system)", () => {
     async function seedMatchingPhase(): Promise<void> {
       await seedGame(makeMatchingGame({ p2Letters: 0 }));
@@ -294,17 +316,7 @@ describe("games update — matchVideoUrl bucket pin", () => {
     // carries the recorded attempt. The seed's currentSetter is P1 /
     // turnNumber 3, so the legitimate write rotates to P2 / turnNumber 4.
     function landedPayload(matchVideoUrl: unknown): Record<string, unknown> {
-      return {
-        p1Letters: 0,
-        p2Letters: 0,
-        phase: "setting",
-        currentSetter: P2_UID,
-        currentTurn: P2_UID,
-        turnNumber: 4,
-        matchVideoUrl,
-        turnDeadline: FUTURE_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      };
+      return rotateToSettingPayload({ p1Letters: 0, p2Letters: 0, matchVideoUrl });
     }
 
     it("rejects matcher writing an attacker-hosted matchVideoUrl", async () => {
@@ -392,15 +404,12 @@ describe("games update — matchVideoUrl bucket pin", () => {
     }
 
     function autoAcceptPayload(matchVideoUrl: unknown): Record<string, unknown> {
-      return {
-        p1Letters: 0,
-        p2Letters: 4,
-        phase: "setting",
-        currentTurn: P2_UID,
-        matchVideoUrl,
-        turnDeadline: FUTURE_DEADLINE(),
-        updatedAt: serverTimestamp(),
-      };
+      // Auto-accept = matcher's "landed" stands, roles swap (turnForfeit.
+      // shared.ts disputeAccept branch): currentSetter ROTATES to the matcher
+      // (P2), currentTurn follows, turnNumber +1. The seed's currentSetter is
+      // P1 / turnNumber 3, so the write rotates to P2 / turnNumber 4. Letters
+      // unchanged (landed).
+      return rotateToSettingPayload({ p1Letters: 0, p2Letters: 4, matchVideoUrl });
     }
 
     it("rejects auto-accept that swaps in an attacker-hosted matchVideoUrl", async () => {

@@ -334,6 +334,15 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
     return;
   }
 
+  // Auth-first, then verb: this endpoint mutates game state, so reject any
+  // non-GET method (the Vercel/GitHub Actions cron calls it with GET). Kept
+  // after the auth check so the allowed verb is never disclosed to
+  // unauthenticated callers.
+  if (req.method && req.method !== "GET") {
+    res.status(405).json({ error: "method_not_allowed" });
+    return;
+  }
+
   const dryRun = isDryRun(req);
   const summary: SweepSummary = { scanned: 0, forfeited: 0, skipped: 0, errors: 0, dryRun };
 
