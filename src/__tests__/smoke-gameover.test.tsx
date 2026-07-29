@@ -100,6 +100,8 @@ describe("Smoke: Game Over", () => {
     await renderVerifiedLobby([game]);
     withGameSub(game);
     games.refs.createGame.mockResolvedValueOnce("game2");
+    // Rematch sources the opponent handle from their authoritative profile.
+    users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
 
     await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
 
@@ -204,6 +206,7 @@ describe("Smoke: Game Over", () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
     // Make createGame hang to show loading state
     games.refs.createGame.mockImplementation(() => new Promise(() => {}));
+    users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
     await renderVerifiedLobby([game]);
     withGameSub(game);
 
@@ -235,6 +238,7 @@ describe("Smoke: Game Over", () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
     const newGame = activeGame({ id: "game2" });
     games.refs.createGame.mockResolvedValueOnce("game2");
+    users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
     await renderVerifiedLobby([game]);
     withGameSub(game);
 
@@ -259,6 +263,8 @@ describe("Smoke: Game Over", () => {
       player2Username: "sk8r",
     });
     games.refs.createGame.mockResolvedValueOnce("rematch1");
+    // Opponent (u1's rival) is player1 here; sourced from their authoritative profile.
+    users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
     games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
       cb(game);
       return vi.fn();

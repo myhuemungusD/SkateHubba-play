@@ -620,6 +620,21 @@ service cloud.firestore {
             && request.resource.data.statsApplied == resource.data.statsApplied);
     }
 
+    // ── judgeUsername is bound at create, immutable on every update ──
+    // The create rule binds judgeUsername to the judge's authoritative
+    // users/{judgeId}.username (username-impersonation guard). Judge
+    // assignment only ever happens at create — no update path legitimately
+    // rewrites it (accept/decline flips only judgeStatus) — so every /games
+    // update branch pins it to its stored value here. Presence-tolerant
+    // (mirrors the judgeId pins) so honor-system games (judgeUsername null)
+    // and any legacy doc that predates the field both pass. Reads no
+    // documents — plain field comparison — so it adds negligible node cost.
+    function judgeUsernameUnchanged() {
+      return (!('judgeUsername' in resource.data) && !('judgeUsername' in request.resource.data))
+        || ('judgeUsername' in resource.data && 'judgeUsername' in request.resource.data
+            && request.resource.data.judgeUsername == resource.data.judgeUsername);
+    }
+
     // ── Games ──
     match /games/{gameId} {
       // Players AND the nominated judge can read the game document.
@@ -700,6 +715,26 @@ service cloud.firestore {
           !('judgeStatus' in request.resource.data)
           || (request.resource.data.judgeId == null && request.resource.data.judgeStatus == null)
           || (request.resource.data.judgeId != null && request.resource.data.judgeStatus == 'pending')
+        )
+        // ── Username impersonation guard (audit MEDIUM) ──
+        // The denormalized username fields fan out into turnHistory, clips,
+        // and disputes, so a create that stamps an arbitrary/victim handle
+        // would let that handle masquerade across the app. Bind each to the
+        // authoritative users/{uid}.username. player1Uid == auth.uid (pinned
+        // above) so this get() reuses the already-fetched users/{auth.uid}
+        // (+0 reads); player2 is one read; the judge one more when present —
+        // well under the 10-document access ceiling for this rule.
+        && request.resource.data.player1Username ==
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
+        && request.resource.data.player2Username ==
+             get(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)).data.username
+        // judgeUsername binds only when a judge is nominated; honor-system
+        // games carry judgeId == null and store judgeUsername null (no get).
+        && (
+          !('judgeId' in request.resource.data)
+          || request.resource.data.judgeId == null
+          || request.resource.data.judgeUsername ==
+               get(/databases/$(database)/documents/users/$(request.resource.data.judgeId)).data.username
         )
         // Rate limit: at most one game creation per 30 seconds per user.
         // Checks the user's lastGameCreatedAt field — if it doesn't exist
@@ -857,6 +892,7 @@ service cloud.firestore {
           (!('turnHistory' in resource.data) && !('turnHistory' in request.resource.data))
           || request.resource.data.turnHistory == resource.data.turnHistory
         )
+        && judgeUsernameUnchanged()
         && statsAppliedUnchanged();
 
       // ── Match resolution (matcher submits an attempt) ──
@@ -963,6 +999,7 @@ service cloud.firestore {
         // this PR's matchVideoUrl `.matches()` pin are both present. Accepted
         // set is unchanged — see the helper for the per-outcome rationale.
         && matchResolutionPinsOk(resource.data, request.resource.data)
+        && judgeUsernameUnchanged()
         && statsAppliedUnchanged();
 
       // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
@@ -1064,6 +1101,7 @@ service cloud.firestore {
         // TurnRecord with judgedBy set. Same 1-per-write + ≤200 ceiling
         // the match-resolution branch enforces.
         && turnHistoryGrowthOk()
+        && judgeUsernameUnchanged()
         && statsAppliedUnchanged();
 
       // ── Call BS resolution (judge rules on set trick in setReview phase) ──
@@ -1132,6 +1170,7 @@ service cloud.firestore {
         // append a TurnRecord noting the invalidated set. Same cap as the
         // other resolution branches.
         && turnHistoryGrowthOk()
+        && judgeUsernameUnchanged()
         && statsAppliedUnchanged();
 
       // ── Judge invite accept / decline ──
@@ -1182,6 +1221,7 @@ service cloud.firestore {
           || ('customRules' in resource.data && 'customRules' in request.resource.data
               && request.resource.data.customRules == resource.data.customRules)
         )
+        && judgeUsernameUnchanged()
         && statsAppliedUnchanged();
 
       // Either player can forfeit the current-turn player's expired turn
@@ -1229,6 +1269,7 @@ service cloud.firestore {
         // helper also accepts the "unchanged" shape for callers that don't
         // append (forward-compat).
         && turnHistoryGrowthOk()
+        && judgeUsernameUnchanged()
         && statsAppliedUnchanged();
 
       // ── Expired dispute auto-accept ──
@@ -1295,6 +1336,7 @@ service cloud.firestore {
         // turnHistory growth bound — auto-accept writes a TurnRecord for
         // the expired dispute. Same 1-per-write + ≤200 ceiling.
         && turnHistoryGrowthOk()
+        && judgeUsernameUnchanged()
         && statsAppliedUnchanged();
 
       // ── Expired setReview auto-clear ──
@@ -1345,6 +1387,7 @@ service cloud.firestore {
         // the helper to enforce the absolute 200-entry ceiling and block
         // any sneaky append.
         && turnHistoryGrowthOk()
+        && judgeUsernameUnchanged()
         && statsAppliedUnchanged();
 
       // Players may delete their own non-active games (account deletion flow)

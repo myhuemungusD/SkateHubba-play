@@ -1,4 +1,4 @@
-import { doc, setDoc, runTransaction, serverTimestamp, Timestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, runTransaction, serverTimestamp, Timestamp } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
 import {
   normalizeTrickCategory,
@@ -79,12 +79,30 @@ export async function createGame(
     typeof judgeUsername === "string" &&
     judgeUsername.length > 0;
 
+  // Security (impersonation defense): Firestore rules bind the game doc's
+  // `player1Username` to the challenger's authoritative `users/{uid}.username`.
+  // Read it from the caller's OWN profile rather than trusting the passed
+  // display string, so an honest create always stamps the real handle and can
+  // never be abused to impersonate someone else. `challengerUid` is the
+  // authenticated caller (rules enforce caller === player1Uid), so this reads
+  // the caller's own always-readable doc. Fall back to the supplied value only
+  // when the profile has no username yet — a state the rules reject anyway, so
+  // no spoofed value can ever satisfy the write.
+  const challengerProfileSnap = await withRetry(() => getDoc(doc(requireDb(), "users", challengerUid)));
+  const challengerProfile = challengerProfileSnap.exists()
+    ? (challengerProfileSnap.data() as { username?: string })
+    : null;
+  const authoritativeChallengerUsername =
+    typeof challengerProfile?.username === "string" && challengerProfile.username.length > 0
+      ? challengerProfile.username
+      : challengerUsername;
+
   const deadline = Timestamp.fromMillis(Date.now() + TURN_DURATION_MS);
 
   const gameData = {
     player1Uid: challengerUid,
     player2Uid: opponentUid,
-    player1Username: challengerUsername,
+    player1Username: authoritativeChallengerUsername,
     player2Username: opponentUsername,
     p1Letters: 0,
     p2Letters: 0,
@@ -167,8 +185,8 @@ export async function createGame(
     type: "new_challenge",
     title: "New Challenge!",
     body: headline
-      ? `@${challengerUsername} challenged you to S.K.A.T.E. — ${headline}`
-      : `@${challengerUsername} challenged you to S.K.A.T.E.`,
+      ? `@${authoritativeChallengerUsername} challenged you to S.K.A.T.E. — ${headline}`
+      : `@${authoritativeChallengerUsername} challenged you to S.K.A.T.E.`,
     gameId: newGameId,
   });
   // Notify the referee (if any) that they've been nominated (best-effort).
@@ -181,7 +199,7 @@ export async function createGame(
       recipientUid: judgeUid,
       type: "judge_invite",
       title: "You've been asked to referee",
-      body: `@${challengerUsername} vs @${opponentUsername} — accept to rule on disputes`,
+      body: `@${authoritativeChallengerUsername} vs @${opponentUsername} — accept to rule on disputes`,
       gameId: newGameId,
     });
   }

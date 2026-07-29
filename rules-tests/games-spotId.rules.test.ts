@@ -22,7 +22,7 @@ const VALID_SPOT_ID = "11111111-2222-3333-4444-555555555555";
 const OTHER_SPOT_ID = "22222222-3333-4444-5555-666666666666";
 const OPTS = { player1Uid: P1_UID, player2Uid: P2_UID };
 
-const getEnv = fx.setupRulesTestEnv(PROJECT_ID);
+const getEnv = fx.setupRulesTestEnv(PROJECT_ID, fx.seedGameProfiles);
 
 describe("games rules — spotId invariants", () => {
   describe("create", () => {

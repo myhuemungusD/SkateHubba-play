@@ -37,7 +37,7 @@ const VALID_CATEGORIES = [
 ] as const;
 const OPTS = { player1Uid: P1_UID, player2Uid: P2_UID };
 
-const getEnv = fx.setupRulesTestEnv(PROJECT_ID);
+const getEnv = fx.setupRulesTestEnv(PROJECT_ID, fx.seedGameProfiles);
 
 describe("games rules — trickCategory invariants", () => {
   describe("create", () => {
@@ -90,8 +90,17 @@ describe("games rules — trickCategory invariants", () => {
       // the game, so the pick is his. Proves the constraint tracks the starter
       // rather than pinning the choice to one player.
       const ref = fx.gameDoc(fx.authedContext(getEnv(), P2_UID), "g1");
+      // Roles reversed: P2 (bob) is now the challenger, so the denormalized
+      // usernames must track the authoritative roster (p2-bob→"bob",
+      // p1-alice→"alice") the username-impersonation guard binds against.
       await assertSucceeds(
-        setDoc(ref, fx.makeValidGame({ player1Uid: P2_UID, player2Uid: P1_UID }, { trickCategory: "gap" })),
+        setDoc(
+          ref,
+          fx.makeValidGame(
+            { player1Uid: P2_UID, player2Uid: P1_UID, player1Username: "bob", player2Username: "alice" },
+            { trickCategory: "gap" },
+          ),
+        ),
       );
     });
   });

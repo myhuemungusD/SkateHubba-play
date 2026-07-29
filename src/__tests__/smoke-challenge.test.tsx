@@ -36,11 +36,28 @@ async function goToChallenge() {
   await screen.findByPlaceholderText("their_handle");
 }
 
+/**
+ * Render the verified lobby, open the challenge screen, type an opponent handle
+ * and submit. Callers configure the relevant service mocks beforehand and then
+ * assert on the DISTINCT outcome. Returns nothing — each test owns its assertion.
+ */
+async function renderAndSendChallenge(opponentName: string) {
+  await renderVerifiedLobby([]);
+  await goToChallenge();
+  const input = await screen.findByPlaceholderText("their_handle");
+  await userEvent.type(input, opponentName);
+  await userEvent.click(screen.getByText(/Send Challenge/));
+}
+
 describe("Smoke: Challenge", () => {
   it("navigates to challenge screen and sends a challenge", async () => {
     await renderVerifiedLobby([]);
     withGameSub(activeGame());
     users.refs.getUidByUsername.mockResolvedValueOnce("u2");
+    // Security: createGame's player2Username is bound by Firestore rules to the
+    // opponent's authoritative users/{uid}.username. startChallenge must pass
+    // THIS value, not the (possibly stale) handle the challenger typed.
+    users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival_real" });
     games.refs.createGame.mockResolvedValueOnce("game1");
 
     await goToChallenge();
@@ -54,7 +71,8 @@ describe("Smoke: Challenge", () => {
 
     await waitFor(() => {
       expect(users.refs.getUidByUsername).toHaveBeenCalledWith("rival");
-      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival", {
+      // Authoritative "rival_real" is passed, not the typed "rival".
+      expect(games.refs.createGame).toHaveBeenCalledWith("u1", "sk8r", "u2", "rival_real", {
         challengerIsVerifiedPro: undefined,
         opponentIsVerifiedPro: undefined,
         spotId: null,
@@ -92,6 +110,21 @@ describe("Smoke: Challenge", () => {
     await waitFor(() => {
       expect(screen.getByText(/@ghost doesn't exist yet/)).toBeInTheDocument();
     });
+  });
+
+  it("challenge is rejected when opponent has no authoritative username", async () => {
+    // Opponent resolves to a uid but their profile has no username to bind
+    // against (missing / renamed). startChallenge must NOT fall back to the
+    // typed handle — it throws so no impersonation-prone write is attempted.
+    users.refs.getUidByUsername.mockResolvedValueOnce("u2");
+    users.refs.getUserProfile.mockResolvedValueOnce(null);
+
+    await renderAndSendChallenge("rival");
+
+    await waitFor(() => {
+      expect(screen.getByText("Cannot challenge this player.")).toBeInTheDocument();
+    });
+    expect(games.refs.createGame).not.toHaveBeenCalled();
   });
 
   it("challenge disables send button with short username", async () => {
@@ -138,6 +171,7 @@ describe("Smoke: Challenge", () => {
 
   it("challenge screen shows error when createGame fails", async () => {
     users.refs.getUidByUsername.mockResolvedValueOnce("u2");
+    users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
     games.refs.createGame.mockRejectedValueOnce(new Error("Network error"));
     await renderVerifiedLobby([]);
 
@@ -172,6 +206,7 @@ describe("Smoke: Challenge", () => {
 
   it("challenge shows fallback error when onSend throws non-Error", async () => {
     users.refs.getUidByUsername.mockResolvedValueOnce("u2");
+    users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
     games.refs.createGame.mockRejectedValueOnce("string error");
     await renderVerifiedLobby([]);
 
@@ -200,13 +235,8 @@ describe("Smoke: Challenge", () => {
 
   it("challenge input is locked during loading", async () => {
     users.refs.getUidByUsername.mockImplementation(() => new Promise(() => {})); // hang
-    await renderVerifiedLobby([]);
 
-    await goToChallenge();
-
-    const input = await screen.findByPlaceholderText("their_handle");
-    await userEvent.type(input, "rival");
-    await userEvent.click(screen.getByText(/Send Challenge/));
+    await renderAndSendChallenge("rival");
 
     // Loading state — button shows "Finding..."
     await waitFor(() => {

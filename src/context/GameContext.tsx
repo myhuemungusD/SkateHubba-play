@@ -177,7 +177,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
   );
 
   const startChallenge = useCallback(
-    async (opponentUid: string, opponentUsername: string, options?: StartChallengeOptions) => {
+    // `_opponentUsername` (the caller-supplied display handle) is intentionally
+    // ignored: the opponent's handle is now sourced from their authoritative
+    // users/{uid}.username below so it can never be spoofed. The positional
+    // param is kept for API compatibility with the GameContextValue signature.
+    async (opponentUid: string, _opponentUsername: string, options?: StartChallengeOptions) => {
       /* v8 ignore start -- null guard unreachable in tests; button disabled when user/profile is null */
       if (!user || !activeProfile) return;
       /* v8 ignore stop */
@@ -195,14 +199,42 @@ export function GameProvider({ children }: { children: ReactNode }) {
         throw new Error("Cannot challenge this player.");
       }
       const opponentProfile = await getUserProfile(opponentUid);
-      const gameId = await createGame(user.uid, activeProfile.username, opponentUid, opponentUsername, {
+      // Security (impersonation defense): Firestore rules bind the game doc's
+      // player2Username / judgeUsername to those users' authoritative
+      // users/{uid}.username. Pass each user's real handle from their own
+      // profile — never the (possibly stale) display string the caller
+      // supplied — so an honest create always stamps the true handle and can
+      // never be abused to impersonate a third party.
+      const opponentAuthUsername = opponentProfile?.username;
+      if (!opponentAuthUsername) {
+        // No authoritative handle to bind against (missing / renamed profile).
+        // Surface the same clean error as the block check above rather than
+        // send a write the rules are guaranteed to reject.
+        throw new Error("Cannot challenge this player.");
+      }
+      // Resolve the referee's authoritative handle the same way. If the judge
+      // profile has no username to bind against, drop the nomination to the
+      // honor system rather than fail the whole challenge — mirrors createGame,
+      // which silently drops an invalid judge instead of rejecting the create.
+      let judgeAuthUid = judgeUid;
+      let judgeAuthUsername = judgeUsername;
+      if (judgeUid) {
+        const judgeProfile = await getUserProfile(judgeUid);
+        if (judgeProfile?.username) {
+          judgeAuthUsername = judgeProfile.username;
+        } else {
+          judgeAuthUid = null;
+          judgeAuthUsername = null;
+        }
+      }
+      const gameId = await createGame(user.uid, activeProfile.username, opponentUid, opponentAuthUsername, {
         challengerIsVerifiedPro: activeProfile.isVerifiedPro,
-        opponentIsVerifiedPro: opponentProfile?.isVerifiedPro,
+        opponentIsVerifiedPro: opponentProfile.isVerifiedPro,
         spotId,
         trickCategory,
         customRules,
-        judgeUid,
-        judgeUsername,
+        judgeUid: judgeAuthUid,
+        judgeUsername: judgeAuthUsername,
       });
       analytics.gameCreated(gameId);
       const shell = newGameShell(
@@ -210,10 +242,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
         user.uid,
         activeProfile.username,
         opponentUid,
-        opponentUsername,
+        opponentAuthUsername,
         spotId,
-        judgeUid,
-        judgeUsername,
+        judgeAuthUid,
+        judgeAuthUsername,
         trickCategory,
         customRules,
       );
@@ -225,7 +257,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       // come from the notification provider's mapping.
       notify({
         type: "success",
-        title: `Challenge sent to @${opponentUsername}`,
+        title: `Challenge sent to @${opponentAuthUsername}`,
         message: "Record your trick to lock it in.",
         gameId,
       });

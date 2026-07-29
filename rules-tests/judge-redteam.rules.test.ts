@@ -82,8 +82,20 @@ afterAll(async () => {
   await testEnv?.cleanup();
 });
 
+async function seedUser(uid: string, username: string): Promise<void> {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "users", uid), { username });
+  });
+}
+
 beforeEach(async () => {
   await testEnv.clearFirestore();
+  // The create rule binds player1Username/player2Username/judgeUsername to
+  // the authoritative users/{uid}.username, so create-path tests need these
+  // profiles seeded with the handles the payload claims.
+  await seedUser(P1_UID, "alice");
+  await seedUser(P2_UID, "bob");
+  await seedUser(JUDGE_UID, "charlie");
 });
 
 describe("judge accept — red-team against player self-accept", () => {
@@ -119,6 +131,47 @@ describe("judge accept — red-team against player self-accept", () => {
     await assertSucceeds(
       updateDoc(doc(asJudge().firestore(), "games", GAME_ID), {
         judgeStatus: "accepted",
+      }),
+    );
+  });
+});
+
+// ── judgeUsername impersonation guard (audit MEDIUM) ──
+// judgeUsername is denormalized onto the game for display (referee badge,
+// game-over screen, dispute UI). Pre-guard it was NEITHER bound at create
+// NOR pinned on update, so a challenger could stamp a victim's handle as the
+// referee, and later writes could rewrite it. The create rule now binds it to
+// users/{judgeId}.username; every update branch pins it immutable.
+describe("judge username binding — create", () => {
+  it("rejects a forged judgeUsername (≠ users/{judgeId}.username)", async () => {
+    await assertFails(
+      setDoc(doc(asP1().firestore(), "games", GAME_ID), makeGameWithJudge({ judgeUsername: "victim" })),
+    );
+  });
+
+  it("permits a create whose judgeUsername matches the judge's profile", async () => {
+    await assertSucceeds(setDoc(doc(asP1().firestore(), "games", GAME_ID), makeGameWithJudge()));
+  });
+
+  it("permits an honor-system create (judgeId null, judgeUsername null — no bind)", async () => {
+    await assertSucceeds(
+      setDoc(
+        doc(asP1().firestore(), "games", GAME_ID),
+        makeGameWithJudge({ judgeId: null, judgeStatus: null, judgeUsername: null }),
+      ),
+    );
+  });
+});
+
+describe("judge username binding — immutable on update", () => {
+  it("rejects the judge rewriting judgeUsername while accepting the invite", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "games", GAME_ID), makeGameWithJudge());
+    });
+    await assertFails(
+      updateDoc(doc(asJudge().firestore(), "games", GAME_ID), {
+        judgeStatus: "accepted",
+        judgeUsername: "victim",
       }),
     );
   });
