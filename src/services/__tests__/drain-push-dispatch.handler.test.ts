@@ -189,6 +189,34 @@ describe("auth", () => {
   });
 });
 
+describe("method guard (405, checked after auth)", () => {
+  it("rejects an authorized non-GET request with 405 and drains nothing", async () => {
+    // Valid config on purpose: the verb guard must short-circuit BEFORE any
+    // admin init / query, so a POST can never delete or prune anything.
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: AUTH, method: "POST" }), res);
+    expect(out.code).toBe(405);
+    expect(out.body).toEqual({ error: "method_not_allowed" });
+    expect(h.getFirestoreMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 (not 405) for an unauthenticated non-GET — verb not disclosed", async () => {
+    // Auth-first ordering: a missing bearer on a POST must surface as 401, never
+    // leak that the allowed method is GET.
+    const { res, out } = makeRes();
+    await handler(makeReq({ method: "POST" }), res);
+    expect(out.code).toBe(401);
+    expect(h.getFirestoreMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 (not 405) for a blank-bearer non-GET", async () => {
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "", method: "DELETE" }), res);
+    expect(out.code).toBe(401);
+    expect(h.getFirestoreMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("init", () => {
   it("500s when the service account env is missing", async () => {
     delete process.env.FIREBASE_SERVICE_ACCOUNT_JSON;

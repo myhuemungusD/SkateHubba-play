@@ -24,6 +24,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, setDoc, serverTimestamp, setLogLevel } from "firebase/firestore";
+import { makeClip } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-clipvotes-redteam";
 
@@ -71,18 +72,14 @@ async function seedClipAndGame(): Promise<void> {
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-    await setDoc(doc(ctx.firestore(), "clips", CLIP_ID), {
-      gameId: GAME_ID,
-      turnNumber: TURN_NUMBER,
-      role: "set",
-      playerUid: P1_UID,
-      playerUsername: "alice",
-      trickName: "tre flip",
-      videoUrl: "https://example.com/clip.webm",
-      spotId: null,
-      createdAt: serverTimestamp(),
-      moderationStatus: "active",
-    });
+    await setDoc(
+      doc(ctx.firestore(), "clips", CLIP_ID),
+      makeClip({
+        gameId: GAME_ID,
+        turnNumber: TURN_NUMBER,
+        playerUid: P1_UID,
+      }),
+    );
   });
 }
 

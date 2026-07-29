@@ -584,6 +584,19 @@ service cloud.firestore {
           ));
     }
 
+    // ── Expired-dispute auto-accept role/turn pins (audit HIGH: turn seize) ──
+    // Auto-accept means the matcher's "landed" call stands and roles swap —
+    // currentSetter rotates to the matcher (the setter's opponent), currentTurn
+    // follows, turnNumber +1 (verified against turnForfeit.shared.ts's
+    // disputeAccept branch and the honor-system-landed arm of
+    // matchResolutionPinsOk). Without these pins either participant could seize
+    // the setter role out of rotation in this same write.
+    function autoAcceptRolePinsOk(cur, nxt) {
+      return nxt.currentSetter == opponentUid(cur, cur.currentSetter)
+        && nxt.currentTurn == nxt.currentSetter
+        && nxt.turnNumber == cur.turnNumber + 1;
+    }
+
     // ── statsApplied is server-only (stats fan-out lockdown) ──
     // `statsApplied` on a game doc is written EXCLUSIVELY by the
     // applyGameStats Cloud Function (admin SDK, bypasses these rules): it
@@ -916,11 +929,17 @@ service cloud.firestore {
           // No letter change (landed path, both honor + judge)
           (request.resource.data.p1Letters == resource.data.p1Letters
            && request.resource.data.p2Letters == resource.data.p2Letters)
-          // Missed — exactly one player gets +1
-          || (request.resource.data.p1Letters == resource.data.p1Letters + 1
+          // Missed — the MATCHER (== resource.data.currentTurn) takes exactly
+          // one letter; the opponent's letters stay unchanged. The +1 is bound
+          // to the current-turn player so a losing matcher cannot assign their
+          // missed letter to the opponent and forge a win via the completion
+          // branch below (audit CRITICAL: win forgery).
+          || (resource.data.currentTurn == resource.data.player1Uid
+              && request.resource.data.p1Letters == resource.data.p1Letters + 1
               && request.resource.data.p2Letters == resource.data.p2Letters)
-          || (request.resource.data.p1Letters == resource.data.p1Letters
-              && request.resource.data.p2Letters == resource.data.p2Letters + 1)
+          || (resource.data.currentTurn == resource.data.player2Uid
+              && request.resource.data.p2Letters == resource.data.p2Letters + 1
+              && request.resource.data.p1Letters == resource.data.p1Letters)
         )
         // ── matchVideoUrl bucket pin (audit P2) ──
         // The matcher writes their attempt video here. Without this pin a
@@ -1002,14 +1021,19 @@ service cloud.firestore {
         && request.resource.data.turnDeadline is timestamp
         && request.resource.data.turnDeadline > request.time
         && request.resource.data.turnDeadline < request.time + duration.value(48, 'h')
-        // Letters: accept (no change) or dispute (one player +1)
+        // Letters: accept (no change) or overrule (the disputed turn's MATCHER
+        // takes exactly one letter). The matcher is always the setter's
+        // opponent — pin the +1 to opponentUid(currentSetter) so a colluding
+        // judge cannot pile letters onto a targeted player (audit HIGH).
         && (
           (request.resource.data.p1Letters == resource.data.p1Letters
            && request.resource.data.p2Letters == resource.data.p2Letters)
-          || (request.resource.data.p1Letters == resource.data.p1Letters + 1
+          || (opponentUid(resource.data, resource.data.currentSetter) == resource.data.player1Uid
+              && request.resource.data.p1Letters == resource.data.p1Letters + 1
               && request.resource.data.p2Letters == resource.data.p2Letters)
-          || (request.resource.data.p1Letters == resource.data.p1Letters
-              && request.resource.data.p2Letters == resource.data.p2Letters + 1)
+          || (opponentUid(resource.data, resource.data.currentSetter) == resource.data.player2Uid
+              && request.resource.data.p2Letters == resource.data.p2Letters + 1
+              && request.resource.data.p1Letters == resource.data.p1Letters)
         )
         // ── matchVideoUrl bucket pin (audit P2) ──
         // Mirrors the match-resolution branch: dispute resolution can flip
@@ -1249,6 +1273,10 @@ service cloud.firestore {
         && request.resource.data.status == 'active'
         && request.resource.data.phase == 'setting'
         && request.resource.data.winner == null
+        // Turn-order pins (audit HIGH: turn seize) — see autoAcceptRolePinsOk.
+        // Without these either participant could seize the setter role out of
+        // rotation in this same write.
+        && autoAcceptRolePinsOk(resource.data, request.resource.data)
         // turnDeadline must be a fresh, bounded future timestamp. This path
         // fires only after the OLD deadline expired, but the NEW deadline
         // written here is what governs the next turn — so it needs the same
@@ -2146,7 +2174,11 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         // Vote target must exist — prevents orphaned votes on clips that
         // were deleted between client-side discovery and the write.
-        && exists(/databases/$(database)/documents/clips/$(request.resource.data.clipId));
+        && exists(/databases/$(database)/documents/clips/$(request.resource.data.clipId))
+        // Server-enforced no self-upvote (audit MEDIUM): a clip's owner cannot
+        // create a vote doc for their own clip to inflate feed ranking. The
+        // service-layer SelfUpvoteError is UX only.
+        && get(/databases/$(database)/documents/clips/$(request.resource.data.clipId)).data.playerUid != request.auth.uid;
 
       allow update: if false;
 

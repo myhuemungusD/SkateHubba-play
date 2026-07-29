@@ -162,6 +162,39 @@ describe("sweep handler auth (fail-closed)", () => {
   });
 });
 
+describe("sweep handler method guard (405, checked after auth)", () => {
+  it("rejects an authorized non-GET request with 405 and performs no sweep", async () => {
+    process.env.CRON_SECRET = "s3cret";
+    // Valid config on purpose: proves the verb guard short-circuits BEFORE any
+    // admin init / query, so a POST can never trigger a state mutation.
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret", method: "POST" }), res);
+    expect(out.code).toBe(405);
+    expect(out.body).toEqual({ error: "method_not_allowed" });
+    expect(getFirestoreMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 (not 405) for an unauthenticated non-GET — verb not disclosed", async () => {
+    // Auth-first ordering: a missing bearer on a POST must surface as 401, never
+    // leak that the allowed method is GET.
+    process.env.CRON_SECRET = "s3cret";
+    const { res, out } = makeRes();
+    await handler(makeReq({ method: "POST" }), res);
+    expect(out.code).toBe(401);
+    expect(out.body).toEqual({ error: "unauthorized" });
+    expect(getFirestoreMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 (not 405) for a blank-bearer non-GET", async () => {
+    process.env.CRON_SECRET = "s3cret";
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "", method: "DELETE" }), res);
+    expect(out.code).toBe(401);
+    expect(getFirestoreMock).not.toHaveBeenCalled();
+  });
+});
+
 /** Build an expired, active game doc + a tx whose get() returns it. */
 function expiredGameSnapshot() {
   // Reuse the shared forfeit fixture (already expired, active, p1's turn) so the
