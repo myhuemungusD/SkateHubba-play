@@ -1,6 +1,20 @@
 import { Btn } from "../ui/Btn";
 import { DisputeCard } from "./DisputeCard";
 import { useDisputeLaneController } from "./useDisputeLaneController";
+import { TURN_DURATION_MS } from "../../services/turnDuration";
+import type { Dispute } from "../../types/dispute";
+
+/**
+ * The community vote window closes 24h after the dispute was raised. The
+ * dispute doc carries no explicit deadline field (that lives on the frozen
+ * game, which non-players can't read), so it's derived from `createdAt` — the
+ * same instant `raiseDispute` stamps the game's `reviewDeadline`. Null when the
+ * server timestamp hasn't resolved yet (offline write), so the card omits it.
+ */
+function voteDeadline(dispute: Dispute): number | null {
+  const created = dispute.createdAt?.toMillis?.();
+  return created ? created + TURN_DURATION_MS : null;
+}
 
 /**
  * The top lane of the lobby feed: tricks whose landing is in dispute,
@@ -59,6 +73,7 @@ export function DisputeLane({ viewerUid }: { viewerUid: string }) {
               ownVerdict={viewer.ownVerdict}
               canVote={viewer.canVote}
               voting={c.isVoting(dispute.id)}
+              deadline={voteDeadline(dispute)}
               onVerdict={c.handleVerdict}
             />
           );

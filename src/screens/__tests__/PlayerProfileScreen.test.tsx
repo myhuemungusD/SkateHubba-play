@@ -51,6 +51,29 @@ describe("PlayerProfileScreen", () => {
     expect(screen.getByText("Win Rate %")).toBeInTheDocument();
   });
 
+  it("shows the four public dispute counters, defaulting missing fields to 0", () => {
+    render(<PlayerProfileScreen {...baseProps} />);
+    expect(screen.getByLabelText("Tricks of yours disputed: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tricks you disputed: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Disputes you got right: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Disputes you got wrong: 0")).toBeInTheDocument();
+  });
+
+  it("reads dispute counters straight off the profile doc", () => {
+    const currentUserProfile = {
+      ...baseProps.currentUserProfile,
+      tricksDisputed: 4,
+      disputesRaised: 3,
+      disputesRight: 2,
+      disputesWrong: 1,
+    };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByLabelText("Tricks of yours disputed: 4")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tricks you disputed: 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("Disputes you got right: 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("Disputes you got wrong: 1")).toBeInTheDocument();
+  });
+
   it("shows empty game history message for own profile", () => {
     render(<PlayerProfileScreen {...baseProps} />);
     expect(screen.getByText("No games played yet")).toBeInTheDocument();

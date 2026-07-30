@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import {
   acceptJudgeInvite,
+  acceptLanded,
   callBSOnSetTrick,
   declineJudgeInvite,
   failSetTrick,
@@ -12,6 +13,7 @@ import {
   setTrick,
   submitMatchAttempt,
 } from "../../services/games";
+import { canRaiseDispute, raiseDispute } from "../../services/disputes";
 import { uploadVideo, type UploadProgress as UploadProgressData } from "../../services/storage";
 import type { UserProfile } from "../../services/users";
 import { captureException } from "../../lib/sentry";
@@ -48,6 +50,16 @@ export interface GamePlayController {
   isDisputeReviewer: boolean;
   isSetTrickReviewer: boolean;
   isJudgeInvitePending: boolean;
+  /** Setter of a frozen landed claim — sees Accept / Dispute (pendingReview). */
+  isPendingReviewSetter: boolean;
+  /** Claimer waiting on the setter's accept/dispute decision (pendingReview). */
+  isPendingReviewMatcher: boolean;
+  /** Either player while the dispute is out to the community (communityReview). */
+  isCommunityReview: boolean;
+  /** True in any frozen review phase — routes off the plain waiting screen. */
+  isInReview: boolean;
+  /** Gate for the Dispute affordance — false once the claim can't be disputed. */
+  canDispute: boolean;
 
   opponentName: string;
   opponentUid: string;
@@ -74,6 +86,11 @@ export interface GamePlayController {
 
   callBSSubmitting: boolean;
   handleCallBS: () => Promise<void>;
+
+  reviewSubmitting: boolean;
+  lastReviewAction: "accept" | "dispute" | null;
+  handleAcceptLanded: () => Promise<void>;
+  handleRaiseDispute: () => Promise<void>;
 
   judgeActionSubmitting: boolean;
   handleJudgeAccept: () => Promise<void>;
@@ -105,6 +122,13 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
 
   useEffect(() => {
     if (forfeitChecked || game.status !== "active") return;
+    // A frozen review phase pins the (possibly-expired) turnDeadline; firing a
+    // forfeit here would be a wasted, rules-rejected write against a game the
+    // dispute referee — not the turn sweep — is responsible for advancing.
+    if (game.phase === "pendingReview" || game.phase === "communityReview") {
+      setForfeitChecked(true);
+      return;
+    }
     const deadline = game.turnDeadline?.toMillis?.() ?? 0;
     if (deadline > 0 && Date.now() >= deadline) {
       // Pass the acting user's uid so forfeitExpiredTurn can skip the
@@ -118,7 +142,7 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
       });
     }
     setForfeitChecked(true);
-  }, [game.id, game.status, forfeitChecked, game.turnDeadline, profile.uid]);
+  }, [game.id, game.status, game.phase, forfeitChecked, game.turnDeadline, profile.uid]);
 
   const isPlayer = game.player1Uid === profile.uid || game.player2Uid === profile.uid;
   const isJudge = !!game.judgeId && game.judgeId === profile.uid;
@@ -129,6 +153,15 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
   const isDisputeReviewer = isJudge && game.phase === "disputable" && game.currentTurn === profile.uid;
   const isSetTrickReviewer = isJudge && game.phase === "setReview" && game.currentTurn === profile.uid;
   const isJudgeInvitePending = isJudge && game.judgeStatus === "pending" && game.status === "active";
+
+  // Binding community dispute (honor-system games): a landed claim freezes the
+  // game in pendingReview until the setter accepts or escalates, then in
+  // communityReview until the crowd (or the referee, on expiry) resolves it.
+  const isPendingReviewSetter = isPlayer && game.phase === "pendingReview" && game.currentSetter === profile.uid;
+  const isPendingReviewMatcher = isPlayer && game.phase === "pendingReview" && game.reviewFor === profile.uid;
+  const isCommunityReview = isPlayer && game.phase === "communityReview";
+  const isInReview = isPendingReviewSetter || isPendingReviewMatcher || isCommunityReview;
+  const canDispute = canRaiseDispute(game, profile.uid);
 
   const [disputeSubmitting, setDisputeSubmitting] = useState(false);
   const [lastDisputeAction, setLastDisputeAction] = useState<boolean | null>(null);
@@ -191,6 +224,46 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
       callBSSubmittedRef.current = false;
     } finally {
       setCallBSSubmitting(false);
+    }
+  }, [game.id]);
+
+  // Accept / Dispute on a frozen landed claim (pendingReview). One ref guards
+  // BOTH actions: once the setter commits to accepting or disputing, neither
+  // button can fire again until a failure re-arms it (mirrors the dispute /
+  // judge-action retry semantics elsewhere in this controller).
+  const [reviewActionSubmitting, setReviewActionSubmitting] = useState(false);
+  const [lastReviewAction, setLastReviewAction] = useState<"accept" | "dispute" | null>(null);
+  const reviewSubmittedRef = useRef(false);
+  const handleAcceptLanded = useCallback(async () => {
+    if (reviewSubmittedRef.current) return;
+    reviewSubmittedRef.current = true;
+    setLastReviewAction("accept");
+    setReviewActionSubmitting(true);
+    setError("");
+    try {
+      await acceptLanded(game.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to accept the landed claim");
+      captureException(err, { extra: { context: "acceptLanded", gameId: game.id } });
+      reviewSubmittedRef.current = false;
+    } finally {
+      setReviewActionSubmitting(false);
+    }
+  }, [game.id]);
+  const handleRaiseDispute = useCallback(async () => {
+    if (reviewSubmittedRef.current) return;
+    reviewSubmittedRef.current = true;
+    setLastReviewAction("dispute");
+    setReviewActionSubmitting(true);
+    setError("");
+    try {
+      await raiseDispute(game.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to send the call to the community");
+      captureException(err, { extra: { context: "raiseDispute", gameId: game.id } });
+      reviewSubmittedRef.current = false;
+    } finally {
+      setReviewActionSubmitting(false);
     }
   }, [game.id]);
 
@@ -357,7 +430,11 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
 
   const myLetters = game.player1Uid === profile.uid ? game.p1Letters : game.p2Letters;
   const theirLetters = game.player1Uid === profile.uid ? game.p2Letters : game.p1Letters;
-  const deadline = game.turnDeadline?.toMillis?.() || Date.now() + 86400000;
+  // In a frozen review phase the turnDeadline is pinned (often already past);
+  // the live countdown is the review window, so surface that instead.
+  const inReviewPhase = game.phase === "pendingReview" || game.phase === "communityReview";
+  const deadline =
+    (inReviewPhase ? game.reviewDeadline?.toMillis?.() : game.turnDeadline?.toMillis?.()) || Date.now() + 86400000;
 
   const dismissError = useCallback(() => setError(""), []);
   const openReport = useCallback(() => setShowReport(true), []);
@@ -391,6 +468,11 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     isDisputeReviewer,
     isSetTrickReviewer,
     isJudgeInvitePending,
+    isPendingReviewSetter,
+    isPendingReviewMatcher,
+    isCommunityReview,
+    isInReview,
+    canDispute,
     opponentName,
     opponentUid,
     opponentIsPro,
@@ -411,6 +493,10 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     handleRuleSetTrick,
     callBSSubmitting,
     handleCallBS,
+    reviewSubmitting: reviewActionSubmitting,
+    lastReviewAction,
+    handleAcceptLanded,
+    handleRaiseDispute,
     judgeActionSubmitting,
     handleJudgeAccept,
     handleJudgeDecline,

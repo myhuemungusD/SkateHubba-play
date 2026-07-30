@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { GavelIcon } from "../icons";
+import { Timer } from "../Timer";
 import { isFirebaseStorageUrl } from "../../utils/helpers";
 import { landShare, totalVotes, type Dispute, type DisputeTally, type DisputeVerdict } from "../../types/dispute";
 
@@ -12,6 +13,8 @@ export interface DisputeCardProps {
   canVote: boolean;
   /** True while this dispute's verdict write is in flight — locks both buttons. */
   voting: boolean;
+  /** Vote-window close time (ms), or null when unknown. Derived from the dispute. */
+  deadline: number | null;
   onVerdict: (dispute: Dispute, verdict: DisputeVerdict) => void;
 }
 
@@ -39,6 +42,7 @@ export const DisputeCard = memo(function DisputeCard({
   ownVerdict,
   canVote,
   voting,
+  deadline,
   onVerdict,
 }: DisputeCardProps) {
   const showButtons = canVote && ownVerdict === null;
@@ -68,6 +72,13 @@ export const DisputeCard = memo(function DisputeCard({
           <span className="text-white/80 whitespace-nowrap">Did they?</span>
         </p>
       </div>
+
+      {deadline !== null && (
+        <div className="px-4 pt-3 flex items-center gap-2">
+          <span className="font-body text-[11px] text-faint">Voting closes in</span>
+          <Timer deadline={deadline} />
+        </div>
+      )}
 
       <div className="px-4 pt-3">
         {attemptUrl ? (
@@ -115,10 +126,10 @@ export const DisputeCard = memo(function DisputeCard({
             type="button"
             onClick={() => onVerdict(dispute, "land")}
             disabled={voting}
-            aria-label={`Land — @${dispute.matcherUsername} made it`}
+            aria-label={`Make — @${dispute.matcherUsername} made it`}
             className="flex-1 min-h-[44px] flex flex-col items-center justify-center rounded-xl font-display text-sm tracking-wider bg-brand-green/15 border border-brand-green/40 text-brand-green hover:bg-brand-green/25 active:scale-[0.97] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-green"
           >
-            <span>LAND</span>
+            <span>MAKE</span>
             <span className="font-body text-[10px] tracking-normal text-brand-green/70">They made it</span>
           </button>
           <button
@@ -157,7 +168,7 @@ function DisputeTallyMeter({ tally, ownVerdict }: { tally: DisputeTally; ownVerd
             ownVerdict === "land" ? "text-brand-green" : "text-brand-green/70"
           }`}
         >
-          LAND {tally.land}
+          MAKE {tally.land}
         </span>
         <span
           className={`font-display text-[11px] tracking-[0.15em] tabular-nums ${
@@ -170,7 +181,7 @@ function DisputeTallyMeter({ tally, ownVerdict }: { tally: DisputeTally; ownVerd
 
       <div
         role="img"
-        aria-label={`${tally.land} land, ${tally.bail} bail — ${total} ${total === 1 ? "call" : "calls"} in`}
+        aria-label={`${tally.land} make, ${tally.bail} bail — ${total} ${total === 1 ? "call" : "calls"} in`}
         className="h-2 w-full rounded-full bg-brand-red/40 overflow-hidden border border-white/[0.06]"
       >
         {/* motion-safe: the meter snaps rather than slides for viewers who
@@ -193,7 +204,7 @@ function DisputeTallyMeter({ tally, ownVerdict }: { tally: DisputeTally; ownVerd
                 : "text-brand-red border-brand-red/40 bg-brand-red/10"
             }`}
           >
-            YOUR CALL · {ownVerdict === "land" ? "LAND" : "BAIL"}
+            YOUR CALL · {ownVerdict === "land" ? "MAKE" : "BAIL"}
           </span>
         )}
       </div>
