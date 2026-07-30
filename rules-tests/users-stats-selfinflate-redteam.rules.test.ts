@@ -315,3 +315,89 @@ describe("users/{uid} Tier-1 stat counters — client writes are DENIED", () => 
     );
   });
 });
+
+// Binding-dispute Phase 2 adds four public counters written EXCLUSIVELY by the
+// dispute referee (Admin SDK): tricksDisputed / disputesRaised / disputesRight /
+// disputesWrong. A self-granted dispute record is exactly as forgeable as a
+// self-granted win if the create zero-seed or the update backstop misses a name,
+// so they get the identical lockdown as the Tier-1 counters above.
+describe("users/{uid} dispute stat counters — client writes are DENIED", () => {
+  const DISPUTE_COUNTERS = ["tricksDisputed", "disputesRaised", "disputesRight", "disputesWrong"] as const;
+
+  it.each(DISPUTE_COUNTERS)("denied: cannot create a profile with a non-zero %s", async (field) => {
+    await assertFails(
+      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        [field]: 7,
+      }),
+    );
+  });
+
+  it.each(DISPUTE_COUNTERS)("succeeds: creating with %s explicitly zeroed", async (field) => {
+    await assertSucceeds(
+      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        [field]: 0,
+      }),
+    );
+  });
+
+  it.each(DISPUTE_COUNTERS)("denied: owner CANNOT seed %s on a doc without it", async (field) => {
+    await seed();
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 1 }));
+  });
+
+  it.each(DISPUTE_COUNTERS)("denied: owner CANNOT inflate a stored %s", async (field) => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        wins: 2,
+        losses: 2,
+        [field]: 2,
+      });
+    });
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 99 }));
+  });
+
+  it("denied: owner CANNOT smuggle a disputesRight bump alongside a benign stance edit", async () => {
+    await seed({ aliceWins: 3, aliceLosses: 1 });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+        disputesRight: 10,
+        disputesWrong: 0,
+      }),
+    );
+  });
+
+  it("succeeds: re-writing dispute counters to their SAME stored value is not a diff", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        wins: 4,
+        losses: 1,
+        tricksDisputed: 3,
+        disputesRaised: 2,
+        disputesRight: 1,
+        disputesWrong: 1,
+      });
+    });
+    await assertSucceeds(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+        tricksDisputed: 3,
+        disputesRaised: 2,
+        disputesRight: 1,
+        disputesWrong: 1,
+      }),
+    );
+  });
+});
