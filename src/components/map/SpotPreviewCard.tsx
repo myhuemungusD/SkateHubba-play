@@ -1,5 +1,5 @@
 import { useRef, useCallback, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { X, Navigation, BadgeCheck, ImageOff, Flag } from "lucide-react";
 import type { Spot } from "../../types/spot";
 import { useFocusTrap } from "../../hooks/useFocusTrap";

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { ChevronLeft, MapPin, Send } from "lucide-react";
 import type { Spot, SpotComment } from "../types/spot";
 import { getSpot, getSpotComments, addSpotComment } from "../services/spots";

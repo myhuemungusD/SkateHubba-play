@@ -11,7 +11,7 @@
  */
 import { vi } from "vitest";
 import { render, screen, waitFor, act, type RenderResult } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import userEvent from "@testing-library/user-event";
 import App from "../App";
 import * as fixtures from "./harness/mockFactories";
