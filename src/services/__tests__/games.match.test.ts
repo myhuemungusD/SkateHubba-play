@@ -5,6 +5,8 @@ import { installGamesTestBeforeEach, makeGameSnap, makeNotFoundSnap, baseGame, m
 
 import { setTrick, failSetTrick, submitMatchAttempt, acceptLanded, _turnActionMapSize } from "../games";
 import { auth } from "../../firebase";
+import { toGameDoc } from "../games.mappers";
+import { decidePendingReviewExpiry, type DisputeGameUpdate } from "../dispute.resolution.shared";
 
 installGamesTestBeforeEach();
 
@@ -358,6 +360,21 @@ describe("games service", () => {
       (auth as unknown as { currentUser: { uid: string } | null }).currentUser = uid ? { uid } : null;
     }
 
+    // Maps the SDK-agnostic decision to the game-doc key set acceptLanded must
+    // persist: `*Ms` collapses to its Timestamp field, `appendTurnRecord` to
+    // `turnHistory`, plus the caller-stamped `updatedAt`. Loop-driven (not a
+    // hand-listed field map) so it derives the expected keys from whatever the
+    // helper actually emits — a new or renamed helper field shifts this set.
+    function expectedGameWriteKeys(update: DisputeGameUpdate): string[] {
+      const rename: Record<string, string> = { turnDeadlineMs: "turnDeadline", appendTurnRecord: "turnHistory" };
+      const keys = new Set<string>(["updatedAt"]);
+      for (const [k, v] of Object.entries(update)) {
+        if (v === undefined) continue;
+        keys.add(rename[k] ?? k);
+      }
+      return [...keys].sort();
+    }
+
     it("performs the deferred honor swap and writes the deferred clip + notification", async () => {
       signIn("p1"); // the frozen setter accepts
       mockTxGet.mockResolvedValueOnce(makeGameSnap(pendingReviewGame));
@@ -393,6 +410,47 @@ describe("games service", () => {
       const notif = mockTxSetCalls.find((c) => (c.data as { title?: string }).title === "Trick Landed!");
       expect(notif?.data.senderUid).toBe("p1");
       expect(notif?.data.recipientUid).toBe("p2");
+    });
+
+    // PARITY GUARD: acceptLanded hand-assembles its tx.update from the shared
+    // decidePendingReviewExpiry decision, exactly as the dispute referee does
+    // via toAdminDisputeUpdate (see resolve-expired-disputes.parity.test.ts).
+    // This locks the manual accept's game-doc write to the helper's output so
+    // it can never silently drift from the timed auto-accept if the helper
+    // gains or renames a field.
+    it("writes exactly what decidePendingReviewExpiry produces (parity with the timed auto-accept)", async () => {
+      const NOW = 1_700_000_000_000;
+      const nowSpy = vi.spyOn(Date, "now").mockReturnValue(NOW);
+      signIn("p1");
+      const snap = makeGameSnap(pendingReviewGame);
+      mockTxGet.mockResolvedValueOnce(snap);
+
+      await acceptLanded("g1");
+
+      // The SAME helper + nowMs the referee feeds through toAdminDisputeUpdate.
+      const decision = decidePendingReviewExpiry(toGameDoc(snap), NOW);
+      const updates = mockTxUpdate.mock.calls[0][1];
+
+      // Key-set parity: acceptLanded writes no game-doc field the decision
+      // omits, and drops none the decision yields (updatedAt is caller-stamped).
+      // Derived generically from the decision, so a new/renamed field fails here.
+      expect(Object.keys(updates).sort()).toEqual(expectedGameWriteKeys(decision));
+
+      // Field-for-field: every persisted game-state value equals the decision's.
+      expect(updates.phase).toBe(decision.phase);
+      expect(updates.currentSetter).toBe(decision.currentSetter);
+      expect(updates.currentTurn).toBe(decision.currentTurn);
+      expect(updates.turnNumber).toBe(decision.turnNumber);
+      expect(updates.p1Letters).toBe(decision.p1Letters);
+      expect(updates.p2Letters).toBe(decision.p2Letters);
+      expect(updates.reviewFor).toBe(decision.reviewFor);
+      expect(updates.reviewDeadline).toBe(decision.reviewDeadline);
+      // turnDeadline is the decision's *Ms materialized via the web SDK Timestamp.
+      expect((updates.turnDeadline as { _ms: number })._ms).toBe(decision.turnDeadlineMs);
+      // turnHistory is the decision's TurnRecord wrapped in the web SDK arrayUnion.
+      expect(updates.turnHistory).toEqual({ _arrayUnion: [decision.appendTurnRecord] });
+
+      nowSpy.mockRestore();
     });
 
     it("falls back to 'Trick' when the frozen trick name is null", async () => {

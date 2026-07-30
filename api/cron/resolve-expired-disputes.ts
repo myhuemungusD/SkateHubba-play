@@ -252,22 +252,38 @@ interface ResolveNotification {
  * from the game-state write's `currentTurn` (whoever must act next); the sender
  * is that player's opponent. Returns `null` for a terminal (game-complete) bail
  * — nobody's turn is next, exactly like the sweep's plain-forfeit branch.
+ *
+ * `communityResolved` distinguishes the two passes: a communityReview
+ * resolution really was decided by the crowd, but a pendingReview auto-accept
+ * simply lapsed un-disputed — its copy must not claim "the community weighed
+ * in" when no dispute was ever raised.
  */
-function buildResolveNotification(game: GameDoc, update: DisputeGameUpdate): ResolveNotification | null {
+function buildResolveNotification(
+  game: GameDoc,
+  update: DisputeGameUpdate,
+  communityResolved: boolean,
+): ResolveNotification | null {
   if (update.status === "complete" || update.currentTurn === undefined) return null;
   const recipientUid = update.currentTurn;
   const senderUid = opponentOf(game, recipientUid);
   const trickName = game.currentTrickName || "Trick";
   // matching = tie/retry (matcher re-attempts); setting = a turn advanced.
+  // A tie/retry only arises from a community vote, never from an auto-accept.
   const retry = update.phase === "matching";
+  let body: string;
+  if (retry) {
+    body = `The community was split on ${trickName} — re-attempt it.`;
+  } else if (communityResolved) {
+    body = `The community weighed in. It's your turn — ${trickName}.`;
+  } else {
+    body = `Your landed claim went unchallenged — it's your turn — ${trickName}.`;
+  }
   return {
     senderUid,
     recipientUid,
     type: "your_turn",
     title: retry ? "Rematch!" : "Your Turn!",
-    body: retry
-      ? `The community was split on ${trickName} — re-attempt it.`
-      : `The community weighed in. It's your turn — ${trickName}.`,
+    body,
   };
 }
 
@@ -366,7 +382,7 @@ async function resolvePendingReview(
     tx.update(gameRef, toAdminDisputeUpdate(update));
     writeLandedClips(tx, db, game, matcherUid);
 
-    const n = buildResolveNotification(game, update);
+    const n = buildResolveNotification(game, update, false);
     if (n) writeNotification(tx, db, game, "pending_expiry", n);
 
     return { resolved: true, push: n };
@@ -462,7 +478,7 @@ async function resolveCommunityReview(
       { merge: true },
     );
 
-    const n = buildResolveNotification(game, decision.gameUpdate);
+    const n = buildResolveNotification(game, decision.gameUpdate, true);
     if (n) writeNotification(tx, db, game, `dispute_${decision.verdict}`, n);
 
     return { resolved: true, push: n };
