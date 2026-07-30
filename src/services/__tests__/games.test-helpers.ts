@@ -11,6 +11,7 @@ import { _resetNotificationRateLimit } from "../notifications";
 const hoisted = vi.hoisted(() => ({
   mockAddDoc: vi.fn(),
   mockSetDoc: vi.fn().mockResolvedValue(undefined),
+  mockGetDoc: vi.fn(),
   mockGetDocs: vi.fn(),
   mockRunTransaction: vi.fn(),
   mockOnSnapshot: vi.fn(),
@@ -33,6 +34,7 @@ const hoisted = vi.hoisted(() => ({
 const {
   mockAddDoc,
   mockSetDoc,
+  mockGetDoc,
   mockGetDocs,
   mockRunTransaction,
   mockOnSnapshot,
@@ -52,6 +54,7 @@ const {
 export {
   mockAddDoc,
   mockSetDoc,
+  mockGetDoc,
   mockGetDocs,
   mockRunTransaction,
   mockOnSnapshot,
@@ -75,6 +78,7 @@ vi.mock("firebase/firestore", () => ({
   doc: hoisted.mockDoc,
   addDoc: hoisted.mockAddDoc,
   setDoc: hoisted.mockSetDoc,
+  getDoc: hoisted.mockGetDoc,
   getDocs: hoisted.mockGetDocs,
   runTransaction: hoisted.mockRunTransaction,
   query: hoisted.mockQuery,
@@ -110,6 +114,12 @@ export function installGamesTestBeforeEach(): void {
     // silently skips the notification write, making rate-limit assertions flaky.
     _resetNotificationRateLimit();
     mockSetDoc.mockResolvedValue(undefined);
+    // createGame reads the challenger's authoritative `users/{uid}` profile to
+    // source `player1Username` (impersonation defense). Default the read to a
+    // profile whose username matches the honest test callers ("alice") so the
+    // stamped value is unchanged for every existing test. Tests that exercise
+    // the authoritative-sourcing behavior override this per-call.
+    mockGetDoc.mockResolvedValue({ exists: () => true, data: () => ({ username: "alice" }) });
     mockBatchCommit.mockResolvedValue(undefined);
     // writeBatch() returns a fresh batch object on each call. The factory wires
     // .set / .commit through the same hoisted spies so tests can introspect them.

@@ -79,6 +79,27 @@ export function authedContext(env: RulesTestEnvironment, uid: string): RulesTest
   return env.authenticatedContext(uid, { email_verified: true });
 }
 
+/**
+ * Seed the standard player/judge profile roster used by game-create tests.
+ *
+ * The games create rule now binds player1Username / player2Username /
+ * judgeUsername to the authoritative users/{uid}.username (the
+ * username-impersonation guard). A create that names alice/bob/charlie/carol
+ * therefore only succeeds when those profiles exist with the matching handle,
+ * so any suite that creates a game THROUGH the rule must seed them first.
+ * Usernames match makeValidGame's defaults. Seeded under the rules-disabled
+ * admin context; safe to wire as the `perTestSetup` for a game suite.
+ */
+export async function seedGameProfiles(env: RulesTestEnvironment): Promise<void> {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(doc(db, "users", "p1-alice"), { username: "alice" });
+    await setDoc(doc(db, "users", "p2-bob"), { username: "bob" });
+    await setDoc(doc(db, "users", "j-charlie"), { username: "charlie" });
+    await setDoc(doc(db, "users", "judge-carol"), { username: "carol" });
+  });
+}
+
 /** DocumentReference to a /games doc for the given context. */
 export function gameDoc(ctx: RulesTestContext, gameId: string): DocumentReference {
   return doc(ctx.firestore(), "games", gameId);

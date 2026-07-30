@@ -38,7 +38,15 @@ const PROJECT_ID = "demo-skatehubba-rules-games-statsapplied-redteam";
 const ALICE_UID = "alice-uid";
 const BOB_UID = "bob-uid";
 
-const getEnv = setupRulesTestEnv(PROJECT_ID);
+// The create rule binds player1Username/player2Username to the authoritative
+// users/{uid}.username, so the create-path control needs these players'
+// profiles seeded with the handles makeValidGame defaults to (alice/bob).
+const getEnv = setupRulesTestEnv(PROJECT_ID, async (env) => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "users", ALICE_UID), { username: "alice" });
+    await setDoc(doc(ctx.firestore(), "users", BOB_UID), { username: "bob" });
+  });
+});
 
 describe("games CREATE — statsApplied cannot be forged at creation", () => {
   it("denied: create a game with statsApplied:true", async () => {

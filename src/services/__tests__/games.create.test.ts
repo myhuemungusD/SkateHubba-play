@@ -11,6 +11,7 @@ import {
   mockBatchSet,
   mockTxUpdate,
   mockTxGet,
+  mockGetDoc,
 } from "./games.test-helpers";
 
 // F10: spy on Sentry breadcrumbs so the force-refresh test can assert the
@@ -144,6 +145,50 @@ describe("games service", () => {
       expect(docData.status).toBe("active");
       expect(docData.phase).toBe("setting");
       expect(docData.currentSetter).toBe("p1");
+    });
+
+    // Impersonation defense: Firestore rules bind `player1Username` to the
+    // challenger's authoritative `users/{uid}.username`. createGame must stamp
+    // the value read from the caller's own profile — NOT the display string it
+    // was handed — so an honest create always satisfies the rule and a spoofed
+    // arg can never impersonate another handle.
+    it("stamps player1Username from the caller's authoritative profile, not the passed arg", async () => {
+      mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ username: "alice_real" }) });
+      // Caller passes a spoofed display string; the authoritative read wins.
+      await createGame("p1", "spoofed_handle", "p2", "bob");
+
+      // The profile read targets the challenger's own users/{uid} doc.
+      const readRef = mockGetDoc.mock.calls[0][0] as { __path?: string };
+      expect(readRef.__path).toBe("users/p1");
+
+      const docData = gameSetDocCall();
+      expect(docData.player1Username).toBe("alice_real");
+      expect(docData.player1Username).not.toBe("spoofed_handle");
+    });
+
+    it("uses the authoritative username in the challenge notification body", async () => {
+      mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ username: "alice_real" }) });
+      await createGame("p1", "spoofed_handle", "p2", "bob");
+      const notif = mockBatchSet.mock.calls.map((c) => c[1]).find((d) => d && "body" in d);
+      expect(notif?.body).toContain("@alice_real");
+      expect(notif?.body).not.toContain("spoofed_handle");
+    });
+
+    it("falls back to the supplied username when the profile has no username yet", async () => {
+      // A profile doc that exists but lacks a username (mid-onboarding). The
+      // rules reject such a create anyway, but the service must not throw — it
+      // stamps the best value it has and lets the backend be the backstop.
+      mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({}) });
+      await createGame("p1", "alice", "p2", "bob");
+      const docData = gameSetDocCall();
+      expect(docData.player1Username).toBe("alice");
+    });
+
+    it("falls back to the supplied username when the profile doc is missing", async () => {
+      mockGetDoc.mockResolvedValueOnce({ exists: () => false });
+      await createGame("p1", "alice", "p2", "bob");
+      const docData = gameSetDocCall();
+      expect(docData.player1Username).toBe("alice");
     });
 
     it("uses a client-generated deterministic id — retrying is idempotent", async () => {

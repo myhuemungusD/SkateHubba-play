@@ -164,6 +164,13 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await testEnv.clearFirestore();
+  // The create rule binds player1Username/player2Username to the
+  // authoritative users/{uid}.username, so the create-path test needs the
+  // players' profiles seeded with the matching handles.
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "users", P1_UID), { username: "alice" });
+    await setDoc(doc(ctx.firestore(), "users", P2_UID), { username: "bob" });
+  });
 });
 
 describe("games.turnDeadline — red-team against unbounded-future lockout", () => {

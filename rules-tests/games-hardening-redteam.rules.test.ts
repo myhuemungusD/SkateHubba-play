@@ -119,6 +119,12 @@ async function seedBlock(blockerUid: string, blockedUid: string): Promise<void> 
   });
 }
 
+async function seedUser(uid: string, username: string): Promise<void> {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "users", uid), { username });
+  });
+}
+
 beforeAll(async () => {
   setLogLevel("error");
   testEnv = await initializeTestEnvironment({
@@ -137,6 +143,11 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await testEnv.clearFirestore();
+  // The create rule binds player1Username/player2Username to the
+  // authoritative users/{uid}.username; positive creates need the players'
+  // profiles seeded with the handles the payload claims (alice/bob).
+  await seedUser(P1_UID, "alice");
+  await seedUser(P2_UID, "bob");
 });
 
 describe("games create — blocked_users invariant", () => {
@@ -152,6 +163,34 @@ describe("games create — blocked_users invariant", () => {
 
   it("permits when neither side has blocked the other", async () => {
     await assertSucceeds(setDoc(gameRef(asP1(), "g-blocked-3"), makeCreatePayload()));
+  });
+});
+
+// ── Username impersonation guard (audit MEDIUM) ──
+// The create rule now binds player1Username / player2Username to the
+// authoritative users/{uid}.username. Pre-guard, a client could stamp an
+// arbitrary/victim handle into either field, which then denormalized into
+// turnHistory, clips, and disputes as that victim's name. The players'
+// profiles (alice/bob) are seeded in beforeEach; the honest payload names
+// match, forged handles must not.
+describe("games create — username impersonation guard", () => {
+  it("rejects a forged player1Username (≠ users/{auth.uid}.username)", async () => {
+    await assertFails(setDoc(gameRef(asP1(), "g-forge-p1"), makeCreatePayload({ player1Username: "victim" })));
+  });
+
+  it("rejects a forged player2Username (≠ users/{player2Uid}.username)", async () => {
+    await assertFails(setDoc(gameRef(asP1(), "g-forge-p2"), makeCreatePayload({ player2Username: "victim" })));
+  });
+
+  it("permits when both usernames match the authoritative profiles", async () => {
+    await assertSucceeds(setDoc(gameRef(asP1(), "g-honest"), makeCreatePayload()));
+  });
+
+  it("rejects a create when the challenger has no profile doc to bind against", async () => {
+    // No users/{auth.uid} doc → the username get() resolves to null and the
+    // bind fails closed. A game cannot exist without an authoritative handle.
+    await testEnv.clearFirestore();
+    await assertFails(setDoc(gameRef(asP1(), "g-noprofile"), makeCreatePayload()));
   });
 });
 
