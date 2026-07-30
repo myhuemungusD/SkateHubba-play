@@ -200,6 +200,14 @@ service cloud.firestore {
         && (!('gamesPlayed' in request.resource.data) || request.resource.data.gamesPlayed == 0)
         && (!('currentWinStreak' in request.resource.data) || request.resource.data.currentWinStreak == 0)
         && (!('bestWinStreak' in request.resource.data) || request.resource.data.bestWinStreak == 0)
+        // Binding-dispute stat counters (server-written by the dispute referee)
+        // get the same zero-seed treatment — a signup must not mint a dispute
+        // history for itself. Written exclusively server-side; see the update
+        // backstop below.
+        && (!('tricksDisputed' in request.resource.data) || request.resource.data.tricksDisputed == 0)
+        && (!('disputesRaised' in request.resource.data) || request.resource.data.disputesRaised == 0)
+        && (!('disputesRight' in request.resource.data) || request.resource.data.disputesRight == 0)
+        && (!('disputesWrong' in request.resource.data) || request.resource.data.disputesWrong == 0)
         // Pro fields are admin-only — clients cannot set them at creation
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
@@ -264,9 +272,11 @@ service cloud.firestore {
         //     legacy sensitive fields; once moved to /private they must
         //     never reappear or be re-written on the public doc.
         //   wins, losses, lastStatsGameId, gamesPlayed, currentWinStreak,
-        //     bestWinStreak — stats are written exclusively server-side
-        //     (applyGameStats Cloud Function + the one-time admin backfill);
-        //     clients may never modify them. affectedKeys() only contains
+        //     bestWinStreak, tricksDisputed, disputesRaised, disputesRight,
+        //     disputesWrong — stats are written exclusively server-side
+        //     (applyGameStats Cloud Function + the one-time admin backfill for
+        //     win/streak counters; the dispute referee for the four dispute
+        //     counters); clients may never modify them. affectedKeys() only contains
         //     fields whose VALUE changes, so legacy docs still carrying
         //     lastStatsGameId keep working for benign profile edits
         //     (stance/avatar) that don't touch it.
@@ -276,7 +286,8 @@ service cloud.firestore {
                      'email', 'emailVerified', 'dob', 'parentalConsent',
                      'fcmTokens',
                      'wins', 'losses', 'lastStatsGameId',
-                     'gamesPlayed', 'currentWinStreak', 'bestWinStreak']))
+                     'gamesPlayed', 'currentWinStreak', 'bestWinStreak',
+                     'tricksDisputed', 'disputesRaised', 'disputesRight', 'disputesWrong']))
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
@@ -553,12 +564,44 @@ service cloud.firestore {
           // Honor system + landed — roles swap; currentSetter ROTATES to the
           // matcher, currentTurn follows, turnNumber +1, letters unchanged,
           // judge must NOT be active.
+          //
+          // ── BACKWARD-COMPAT: today's client still uses this instant-swap arm.
+          // The binding-dispute rollout (Phase 2) ADDS the pendingReview freeze
+          // arm below alongside it; this instant-swap arm is intentionally LEFT
+          // UNCHANGED so the current production client (which resolves a landed
+          // claim by swapping roles immediately) keeps working through the
+          // rules auto-deploy. FUTURE follow-up — once the new freeze-first
+          // client has fully rolled out — remove THIS arm to make the freeze
+          // mandatory. Do NOT remove it now.
           || (nxt.phase == 'setting'
               && nxt.p1Letters == cur.p1Letters
               && nxt.p2Letters == cur.p2Letters
               && nxt.currentSetter == opponentUid(cur, cur.currentSetter)
               && nxt.currentTurn == nxt.currentSetter
               && nxt.turnNumber == cur.turnNumber + 1
+              && !judgeActive(cur))
+          // Honor system + landed, BINDING-DISPUTE FREEZE (Phase 2) — NEW arm.
+          // Instead of the instant swap above, the matcher's landed submission
+          // FREEZES the game in pendingReview so the setter gets a 24h
+          // accept/dispute window (resolved by the pendingReview allow-update
+          // branch below). NOTHING resolves on this write: currentSetter,
+          // currentTurn, turnNumber, letters and turnHistory are ALL pinned
+          // unchanged (no TurnRecord appended — the turn is not over).
+          // reviewFor names the matcher (opponent of the current setter, which
+          // in matching phase is cur.currentTurn); reviewDeadline is a fresh
+          // future timestamp (the 24h accept window). Honor-only: judge must
+          // NOT be active. matchVideoUrl is bucket-pinned by matchVideoUrlOk in
+          // the enclosing rule; statsApplied by statsAppliedUnchanged().
+          || (nxt.phase == 'pendingReview'
+              && nxt.reviewFor == opponentUid(cur, cur.currentSetter)
+              && nxt.currentSetter == cur.currentSetter
+              && nxt.currentTurn == cur.currentTurn
+              && nxt.turnNumber == cur.turnNumber
+              && nxt.p1Letters == cur.p1Letters
+              && nxt.p2Letters == cur.p2Letters
+              && nxt.turnHistory == cur.turnHistory
+              && nxt.reviewDeadline is timestamp
+              && nxt.reviewDeadline > request.time
               && !judgeActive(cur))
           // Judge-active landed→disputable OR Call BS→setReview — letters
           // unchanged, currentSetter + turnNumber UNCHANGED, currentTurn → judge.
@@ -999,6 +1042,127 @@ service cloud.firestore {
         // this PR's matchVideoUrl `.matches()` pin are both present. Accepted
         // set is unchanged — see the helper for the per-outcome rationale.
         && matchResolutionPinsOk(resource.data, request.resource.data)
+        && judgeUsernameUnchanged()
+        && statsAppliedUnchanged();
+
+      // ── Pending-review resolution (honor-system binding dispute, Phase 2) ──
+      // A matcher's landed claim now freezes the game in `pendingReview` (see
+      // the pendingReview arm of matchResolutionPinsOk above) instead of
+      // instantly swapping roles. From the frozen state ONLY the SETTER — the
+      // player whose trick was matched, i.e. resource.data.currentSetter — has
+      // two legal moves, and this branch is the ONLY client write out of
+      // pendingReview:
+      //   (a) ACCEPT  → setting        : the deferred honor swap. Roles rotate
+      //       to the matcher, currentTurn follows, turnNumber +1, ONE landed
+      //       TurnRecord appended, review fields cleared. Identical net effect
+      //       to today's instant honor-landed resolution, just deferred.
+      //   (b) DISPUTE → communityReview: hand the call to the crowd. Roles,
+      //       turnNumber, letters and turnHistory ALL stay frozen; reviewFor
+      //       keeps naming the matcher; reviewDeadline is reset to a fresh vote
+      //       window. The dispute doc (disputes/{gameId}_{turnNumber}) is
+      //       created in the SAME transaction — its create rule binds to this
+      //       still-pendingReview game state (Gap A closure, see /disputes).
+      // The matcher is the CLAIMANT and can never self-resolve their own claim.
+      //
+      // FREEZE NOTE: `communityReview` has NO allow-update branch anywhere in
+      // this file, so once a game reaches it NO client can move letters, turn,
+      // roles, phase, winner or status — the game is frozen until the admin
+      // referee (Admin SDK, bypasses these rules) resolves it. That absence IS
+      // the enforcement; do not add a client communityReview branch.
+      allow update: if isSignedIn()
+        && isPlayer(resource.data)
+        && resource.data.status == 'active'
+        && resource.data.phase == 'pendingReview'
+        // Only the setter of the frozen turn may accept or dispute.
+        && request.auth.uid == resource.data.currentSetter
+        // Rate limit — new updatedAt pinned to request.time so a stale value
+        // can't keep the 2s cooldown permanently satisfied (same pattern as
+        // every other game-update branch).
+        && 'updatedAt' in request.resource.data
+        && request.resource.data.updatedAt == request.time
+        && (
+          !('updatedAt' in resource.data)
+          || resource.data.updatedAt == null
+          || request.time > resource.data.updatedAt + duration.value(2, 's')
+        )
+        // Identity immutable
+        && request.resource.data.player1Uid == resource.data.player1Uid
+        && request.resource.data.player2Uid == resource.data.player2Uid
+        && request.resource.data.player1Username == resource.data.player1Username
+        && request.resource.data.player2Username == resource.data.player2Username
+        // spotId immutable
+        && (
+          (!('spotId' in resource.data) && !('spotId' in request.resource.data))
+          || ('spotId' in resource.data && 'spotId' in request.resource.data
+              && request.resource.data.spotId == resource.data.spotId)
+        )
+        // trickCategory immutable (mirrors spotId)
+        && (
+          (!('trickCategory' in resource.data) && !('trickCategory' in request.resource.data))
+          || ('trickCategory' in resource.data && 'trickCategory' in request.resource.data
+              && request.resource.data.trickCategory == resource.data.trickCategory)
+        )
+        // customRules immutable (pairs with trickCategory)
+        && (
+          (!('customRules' in resource.data) && !('customRules' in request.resource.data))
+          || ('customRules' in resource.data && 'customRules' in request.resource.data
+              && request.resource.data.customRules == resource.data.customRules)
+        )
+        // Judge identity/status immutable (honor-system games carry nulls)
+        && (
+          (!('judgeId' in resource.data) && !('judgeId' in request.resource.data))
+          || ('judgeId' in resource.data && 'judgeId' in request.resource.data
+              && request.resource.data.judgeId == resource.data.judgeId)
+        )
+        && (
+          (!('judgeStatus' in resource.data) && !('judgeStatus' in request.resource.data))
+          || ('judgeStatus' in resource.data && 'judgeStatus' in request.resource.data
+              && request.resource.data.judgeStatus == resource.data.judgeStatus)
+        )
+        // The frozen claim's clip is canonical — matchVideoUrl stays bucket-
+        // pinned (unchanged/null/project-bucket) across both moves.
+        && matchVideoUrlOk(request.resource.data.matchVideoUrl, resource.data.matchVideoUrl)
+        && request.resource.data.status == 'active'
+        && request.resource.data.winner == null
+        && (
+          // (a) ACCEPT → setting: the deferred honor swap. Roles rotate to the
+          // matcher (opponent of the current setter), currentTurn follows,
+          // turnNumber +1, letters unchanged, review fields cleared, and a
+          // fresh bounded turnDeadline governs the resumed turn. The single
+          // appended landed TurnRecord is bounded by turnHistoryGrowthOk below.
+          (request.resource.data.phase == 'setting'
+            && request.resource.data.p1Letters == resource.data.p1Letters
+            && request.resource.data.p2Letters == resource.data.p2Letters
+            && request.resource.data.currentSetter == opponentUid(resource.data, resource.data.currentSetter)
+            && request.resource.data.currentTurn == request.resource.data.currentSetter
+            && request.resource.data.turnNumber == resource.data.turnNumber + 1
+            && (!('reviewFor' in request.resource.data) || request.resource.data.reviewFor == null)
+            && (!('reviewDeadline' in request.resource.data) || request.resource.data.reviewDeadline == null)
+            && request.resource.data.turnDeadline is timestamp
+            && request.resource.data.turnDeadline > request.time
+            && request.resource.data.turnDeadline < request.time + duration.value(48, 'h'))
+          ||
+          // (b) DISPUTE → communityReview: the game STAYS frozen. Roles,
+          // turnNumber, letters and turnHistory are all pinned unchanged;
+          // reviewFor keeps naming the matcher; reviewDeadline is reset to a
+          // fresh future vote window. turnDeadline is pinned unchanged (it is
+          // NOT a play deadline while frozen — the phase gate, not the
+          // deadline, keeps the forfeit sweep off this game).
+          (request.resource.data.phase == 'communityReview'
+            && request.resource.data.p1Letters == resource.data.p1Letters
+            && request.resource.data.p2Letters == resource.data.p2Letters
+            && request.resource.data.currentSetter == resource.data.currentSetter
+            && request.resource.data.currentTurn == resource.data.currentTurn
+            && request.resource.data.turnNumber == resource.data.turnNumber
+            && request.resource.data.reviewFor == resource.data.reviewFor
+            && request.resource.data.turnHistory == resource.data.turnHistory
+            && request.resource.data.turnDeadline == resource.data.turnDeadline
+            && request.resource.data.reviewDeadline is timestamp
+            && request.resource.data.reviewDeadline > request.time)
+        )
+        // turnHistory growth bound — accept appends exactly one landed record;
+        // dispute leaves it unchanged (pinned above). Same +1 / ≤200 ceiling.
+        && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged();
 
@@ -2263,29 +2427,23 @@ service cloud.firestore {
         // Only the setter of the disputed turn may raise it — never the
         // matcher (they'd be disputing their own claim), never the judge.
         //
-        // ── KNOWN GAP: role self-assertion ──
-        // This proves the WRITER is who they claim to be; it does NOT prove
-        // they set the trick on `turnNumber`. Once the turn has resolved,
-        // `currentSetter`/`turnNumber` on the game have already moved on, and
-        // `turnHistory` cannot be indexed by turn from inside rules, so there
-        // is nothing server-side left to bind against. The matcher can
-        // therefore invert the roles and raise a dispute over their OWN claim
-        // (src/services/disputes.raise.ts blocks this client-side only —
-        // which is an affordance, not authorization).
-        //
-        // This is survivable TODAY only because the crowd verdict is
-        // non-binding on game state: it decides nothing but what a card
-        // displays, so the blast radius is feed spam, not corrupted letters
-        // or turn order. It MUST be closed before the verdict is ever made
-        // binding (see src/types/dispute.ts — that flip is a deliberate
-        // separate step).
-        //
-        // Recommended fix: have the game park in a pending state where
-        // `currentSetter` and `turnNumber` still name the disputed turn while
-        // the setter decides. This rule then binds both
-        // (`setterUid == game.currentSetter && turnNumber == game.turnNumber`)
-        // and the gap closes with no client cooperation required.
+        // ── Gap A (role self-assertion) — CLOSED (binding-dispute Phase 2) ──
+        // Previously the rule could only assert `setterUid == request.auth.uid`
+        // (the WRITER is who they claim) but had nothing server-side to prove
+        // that uid actually set the trick on `turnNumber` — so the matcher
+        // could invert the roles and dispute their OWN claim. That was
+        // survivable only while the verdict was non-binding. Now the verdict is
+        // binding, so the gap is CLOSED by the freeze: a landed claim parks the
+        // game in `pendingReview` with `currentSetter`/`turnNumber` still naming
+        // the disputed turn, so the rule binds the disputer to the real frozen
+        // setter of the real frozen turn. All three reads below hit the SAME
+        // game doc already fetched by isParticipant()/the player pins — Firestore
+        // dedupes identical document accesses, so this adds ZERO to the
+        // document-access budget (one /games get total for the whole rule).
         && request.resource.data.setterUid == request.auth.uid
+        && get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.phase == 'pendingReview'
+        && request.resource.data.setterUid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.currentSetter
+        && request.resource.data.turnNumber == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.turnNumber
         && request.resource.data.matcherUid is string
         && request.resource.data.matcherUid != request.resource.data.setterUid
         && request.resource.data.setterUsername is string
@@ -2312,8 +2470,11 @@ service cloud.firestore {
             || (request.resource.data.spotId is string
                 && request.resource.data.spotId.size() <= 64))
         && request.resource.data.createdAt == request.time
-        // A dispute always opens accepting verdicts; 'closed' is a
-        // server-side close-out transition, not a client starting state.
+        // A dispute always opens accepting verdicts. The close-out
+        // (open → 'resolved', plus the referee's verdict/resolutionApplied
+        // fields) is an Admin-SDK-only transition — a client can only ever seed
+        // 'open' here, and the update rule below denies any status/verdict
+        // write, so clients can never resolve a dispute.
         && request.resource.data.status == 'open'
         && request.resource.data.moderationStatus == 'active'
         // Tallies are read directly for the meter, so they must start empty.
@@ -2411,29 +2572,29 @@ service cloud.firestore {
           )
         );
 
-      // Only the setter who raised the dispute can retract it. Backs the
-      // account-deletion cascade and lets a user scrub their own call.
+      // ── Gap B (delete + re-raise wipes an unfavourable tally) — CLOSED ──
+      // (binding-dispute Phase 2). Previously the setter could delete their own
+      // dispute and re-raise from a zeroed tally to wipe an unfavourable vote.
+      // Survivable only while the verdict was non-binding; now that a verdict
+      // writes real letters/turn order, that reset is a forgery vector, so the
+      // client delete is REMOVED entirely. The dispute lifecycle is now
+      // Admin-SDK-only: the server referee's `open → resolved` close-out (not a
+      // client delete) ends a dispute, and the deterministic id already caps it
+      // at one dispute per turn.
       //
-      // ── KNOWN GAP: delete + re-raise wipes an unfavourable tally ──
-      // The doc id is deterministic and create requires the tallies to seed
-      // at 0, so a setter losing the vote can delete and re-raise to reset
-      // the board. It is self-limiting (the previous round's verdict docs
-      // survive, so those voters are permanently locked out by the +1
-      // branch's !exists() guard) and it is visible (the tally drops to
-      // zero in the feed), but it is real.
+      // Erasure is unaffected on the VOTE side: the account-deletion cascade
+      // reaps a user's verdicts through the /disputeVotes owner-delete rule
+      // (services/disputes.cascade.ts → deleteUserDisputeVotes), which still
+      // carries its paired tally decrement and is NOT touched here.
       //
-      // Deliberately NOT closed by restricting delete to non-open disputes:
-      // that would strand a deleted user's dispute on the feed forever, the
-      // same erasure gap the update rule's -1 branch exists to avoid.
-      //
-      // Like the role self-assertion gap on create, this is survivable only
-      // because the crowd verdict is currently non-binding on game state —
-      // it costs feed spam, not letters or turn order. Both MUST be closed
-      // before the verdict is ever made binding; the fix here is a
-      // server-side close-out that freezes the dispute rather than a client
-      // delete.
-      allow delete: if isSignedIn()
-        && request.auth.uid == resource.data.setterUid;
+      // COORDINATION (firebase-engineer): services/disputes.cascade.ts →
+      // deleteUserDisputes (client deleteDoc of dispute docs raised by the
+      // departing user) now fails closed. It is best-effort / non-blocking
+      // (Promise.allSettled, warn-and-swallow) so account deletion still
+      // succeeds, but raised-dispute docs must instead be reaped server-side by
+      // the referee. Rework that function out of the client cascade when the
+      // referee lands (Phase 4).
+      allow delete: if false;
     }
 
     // ── Dispute verdicts ──

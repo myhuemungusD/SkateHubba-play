@@ -18,11 +18,16 @@
 import { vi } from "vitest";
 
 const hoisted = vi.hoisted(() => {
-  /** Minimal Timestamp stand-in — services only ever call `toMillis()`. */
+  /** Minimal Timestamp stand-in — services call `toMillis()` and, on the
+   * write path, the `Timestamp.fromMillis(ms)` static (e.g. raiseDispute's
+   * reviewDeadline). */
   class FakeTimestamp {
     constructor(public _ms: number) {}
     toMillis() {
       return this._ms;
+    }
+    static fromMillis(ms: number): FakeTimestamp {
+      return new FakeTimestamp(ms);
     }
   }
   return {

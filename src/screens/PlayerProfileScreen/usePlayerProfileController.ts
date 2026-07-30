@@ -38,6 +38,19 @@ export interface ProfileStats {
   vsYouWins: number;
   vsYouLosses: number;
   vsYouTotal: number;
+  /**
+   * Binding community-dispute counters. Public, server-written by the dispute
+   * referee; 0 for docs predating the feature. See
+   * docs/DISPUTE_BINDING_DESIGN.md §2.
+   */
+  /** This user's landed claims that got disputed. */
+  tricksDisputed: number;
+  /** Disputes this user initiated. */
+  disputesRaised: number;
+  /** Of raised disputes, the ones the community upheld (bail verdict). */
+  disputesRight: number;
+  /** Of raised disputes, the ones the community overturned (land verdict). */
+  disputesWrong: number;
 }
 
 interface Args {
@@ -143,6 +156,10 @@ export function usePlayerProfileController({
       vsYouWins,
       vsYouLosses,
       vsYouTotal: vsYouWins + vsYouLosses,
+      tricksDisputed: profile?.tricksDisputed ?? 0,
+      disputesRaised: profile?.disputesRaised ?? 0,
+      disputesRight: profile?.disputesRight ?? 0,
+      disputesWrong: profile?.disputesWrong ?? 0,
     };
   }, [profile, completedGames, currentUserProfile.uid]);
 

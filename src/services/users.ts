@@ -55,6 +55,14 @@ export interface UserProfile {
   currentWinStreak?: number;
   /** Lifetime high-water mark for {@link currentWinStreak}. Server-written. */
   bestWinStreak?: number;
+  /** # of this user's landed claims that were disputed. Written to the claimer by the dispute referee (admin SDK). Server-written. */
+  tricksDisputed?: number;
+  /** # of disputes this user initiated. Written to the disputer by the dispute referee (admin SDK). Server-written. */
+  disputesRaised?: number;
+  /** Of raised disputes, count the community sided with (bail verdict). Server-written. */
+  disputesRight?: number;
+  /** Of raised disputes, count the community sided against (land verdict). Server-written. */
+  disputesWrong?: number;
   /** Whether this user is a verified pro. Only settable via Admin SDK / Firebase console. */
   isVerifiedPro?: boolean;
   /** UID of the user or admin who granted verified-pro status. */

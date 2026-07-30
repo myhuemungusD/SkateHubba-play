@@ -13,6 +13,9 @@ const mockCallBS = vi.fn();
 const mockJudgeRuleSetTrick = vi.fn();
 const mockAcceptJudgeInvite = vi.fn();
 const mockDeclineJudgeInvite = vi.fn();
+const mockAcceptLanded = vi.fn();
+const mockRaiseDispute = vi.fn();
+const mockCanRaiseDispute = vi.fn();
 
 vi.mock("../../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
@@ -24,8 +27,14 @@ vi.mock("../../services/games", () => ({
   judgeRuleSetTrick: (...args: unknown[]) => mockJudgeRuleSetTrick(...args),
   acceptJudgeInvite: (...args: unknown[]) => mockAcceptJudgeInvite(...args),
   declineJudgeInvite: (...args: unknown[]) => mockDeclineJudgeInvite(...args),
+  acceptLanded: (...args: unknown[]) => mockAcceptLanded(...args),
   isJudgeActive: (game: { judgeId?: string | null; judgeStatus?: string | null }) =>
     !!game.judgeId && game.judgeStatus === "accepted",
+}));
+
+vi.mock("../../services/disputes", () => ({
+  raiseDispute: (...args: unknown[]) => mockRaiseDispute(...args),
+  canRaiseDispute: (...args: unknown[]) => mockCanRaiseDispute(...args),
 }));
 
 vi.mock("../../services/storage", () => ({
@@ -71,7 +80,11 @@ function makeGame(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Default: a landed claim is disputable unless a test says otherwise.
+  mockCanRaiseDispute.mockReturnValue(true);
+});
 
 afterEach(() => {
   (globalThis as unknown as Record<string, unknown>).MediaRecorder = OriginalMR;
@@ -1076,5 +1089,93 @@ describe("GamePlayScreen", () => {
     render(<GamePlayScreen game={game} profile={judgeProfile} onBack={vi.fn()} />);
 
     expect(screen.queryByLabelText("Report opponent")).not.toBeInTheDocument();
+  });
+
+  // ── Binding community dispute (honor-system pendingReview / communityReview) ──
+
+  function makePendingReviewGame(overrides: Record<string, unknown> = {}) {
+    return makeGame({
+      phase: "pendingReview",
+      currentSetter: "u1", // u1 is the setter who accepts/disputes
+      currentTurn: "u2", // pinned matcher
+      reviewFor: "u2", // u2 claimed the landed trick
+      currentTrickName: "Kickflip",
+      matchVideoUrl: "https://firebasestorage.googleapis.com/v0/b/test/o/match.webm",
+      reviewDeadline: { toMillis: () => Date.now() + 86400000 },
+      ...overrides,
+    });
+  }
+
+  it("shows the setter Accept/Dispute surface with the matcher's attempt in pendingReview", () => {
+    render(<GamePlayScreen game={makePendingReviewGame()} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText("THEY CLAIM THEY LANDED")).toBeInTheDocument();
+    expect(screen.getByText(/@rival says they matched your Kickflip/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/rival's match attempt video/)).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Accept the landed claim or dispute it" })).toBeInTheDocument();
+    expect(screen.getByText("Accept")).toBeInTheDocument();
+    expect(screen.getByText("Dispute")).toBeInTheDocument();
+  });
+
+  it("calls acceptLanded when the setter accepts the landed claim", async () => {
+    mockAcceptLanded.mockResolvedValueOnce(undefined);
+    render(<GamePlayScreen game={makePendingReviewGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Accept"));
+    await waitFor(() => expect(mockAcceptLanded).toHaveBeenCalledWith("game1"));
+  });
+
+  it("calls raiseDispute when the setter disputes the landed claim", async () => {
+    mockRaiseDispute.mockResolvedValueOnce(undefined);
+    render(<GamePlayScreen game={makePendingReviewGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Dispute"));
+    await waitFor(() => expect(mockRaiseDispute).toHaveBeenCalledWith("game1"));
+  });
+
+  it("hides the Dispute button when the claim can no longer be disputed", () => {
+    mockCanRaiseDispute.mockReturnValue(false);
+    render(<GamePlayScreen game={makePendingReviewGame()} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText("Accept")).toBeInTheDocument();
+    expect(screen.queryByText("Dispute")).not.toBeInTheDocument();
+  });
+
+  it("re-arms the setter surface after a failed accept so it can retry", async () => {
+    mockAcceptLanded.mockRejectedValueOnce(new Error("Network error"));
+    mockAcceptLanded.mockResolvedValueOnce(undefined);
+    render(<GamePlayScreen game={makePendingReviewGame()} profile={profile} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText("Accept"));
+    await waitFor(() => expect(screen.getByText("Network error")).toBeInTheDocument());
+
+    await userEvent.click(screen.getByText("Retry"));
+    await waitFor(() => expect(mockAcceptLanded).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows the matcher a read-only waiting surface during pendingReview", () => {
+    const p2Profile = { ...profile, uid: "u2", username: "rival" };
+    render(<GamePlayScreen game={makePendingReviewGame()} profile={p2Profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText("AWAITING THEIR CALL")).toBeInTheDocument();
+    expect(screen.getByText(/Waiting for @sk8r to accept or dispute your landed claim/)).toBeInTheDocument();
+    expect(screen.queryByText("Accept")).not.toBeInTheDocument();
+    expect(screen.queryByText("Dispute")).not.toBeInTheDocument();
+  });
+
+  it("shows both players a frozen community-review surface", () => {
+    const game = makePendingReviewGame({ phase: "communityReview" });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(screen.getByText("UNDER COMMUNITY REVIEW")).toBeInTheDocument();
+    expect(screen.getByText(/The community is deciding/)).toBeInTheDocument();
+    expect(screen.queryByText("Accept")).not.toBeInTheDocument();
+  });
+
+  it("does not fire a forfeit for a frozen game with a lapsed turnDeadline", () => {
+    const game = makePendingReviewGame({ turnDeadline: { toMillis: () => Date.now() - 1000 } });
+    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+
+    expect(mockForfeitExpiredTurn).not.toHaveBeenCalled();
   });
 });

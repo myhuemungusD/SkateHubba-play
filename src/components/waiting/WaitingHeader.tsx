@@ -95,19 +95,23 @@ export function WaitingHeader({
         </div>
       )}
       <p className="font-body text-sm text-muted mb-2">
-        {game.phase === "disputable"
-          ? game.judgeUsername
-            ? `Referee is reviewing the match call.`
-            : "They're reviewing your match attempt."
-          : game.phase === "setReview"
-            ? `Referee is ruling clean or sketchy on the set.`
-            : game.phase === "setting"
-              ? isJudge
-                ? `@${activePlayerUsername} is setting a trick.`
-                : "They're setting a trick for you to match."
-              : isJudge
-                ? `@${activePlayerUsername} is attempting the match.`
-                : "They're attempting to match your trick."}
+        {game.phase === "communityReview"
+          ? "This trick is under community review."
+          : game.phase === "pendingReview"
+            ? "They're deciding whether to accept or dispute the landed claim."
+            : game.phase === "disputable"
+              ? game.judgeUsername
+                ? `Referee is reviewing the match call.`
+                : "They're reviewing your match attempt."
+              : game.phase === "setReview"
+                ? `Referee is ruling clean or sketchy on the set.`
+                : game.phase === "setting"
+                  ? isJudge
+                    ? `@${activePlayerUsername} is setting a trick.`
+                    : "They're setting a trick for you to match."
+                  : isJudge
+                    ? `@${activePlayerUsername} is attempting the match.`
+                    : "They're attempting to match your trick."}
       </p>
       <Timer deadline={deadline} />
     </>

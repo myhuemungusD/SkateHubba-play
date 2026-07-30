@@ -15,10 +15,16 @@ export type GameStatus = "active" | "complete" | "forfeit";
  *  - matching: matcher attempts, or (if judge active) optionally "calls BS"
  *  - setReview: judge reviews a "Call BS" on the set trick (only with active judge)
  *  - disputable: judge reviews matcher's "landed" claim (only with active judge)
+ *  - pendingReview: honor-system landed claim awaiting the opponent's 24h
+ *    accept/dispute decision. FREEZES the game (no rules update branch matches).
+ *  - communityReview: a dispute was raised on a landed claim; awaiting the 24h
+ *    community vote. Also FREEZES the game until the referee closes it out.
  *
  * The honor-system path (no judge) never enters setReview or disputable.
+ * The pendingReview/communityReview phases are honor-system only (the binding
+ * community-dispute flow) and never occur on the judge path.
  */
-export type GamePhase = "setting" | "matching" | "setReview" | "disputable";
+export type GamePhase = "setting" | "matching" | "setReview" | "disputable" | "pendingReview" | "communityReview";
 
 /** Judge nomination acceptance state. `null` means no judge was ever nominated. */
 export type JudgeStatus = "pending" | "accepted" | "declined" | null;
@@ -106,6 +112,20 @@ export interface GameDoc {
    * (matcher claimed landed). Null otherwise.
    */
   judgeReviewFor?: string | null;
+  /**
+   * UID of the claimer (matcher) whose honor-system "landed" claim is under
+   * review (pendingReview: opponent accept/dispute window; communityReview:
+   * community vote window). Mirrors {@link judgeReviewFor}. Optional/nullable so
+   * pre-feature docs are unaffected; server-cleared when the review resolves.
+   */
+  reviewFor?: string | null;
+  /**
+   * Deadline of the current review phase (accept window in pendingReview, vote
+   * window in communityReview). Distinct from {@link turnDeadline} so the
+   * existing turn-forfeit sweep never touches a frozen game. Optional/nullable
+   * so pre-feature docs are unaffected; server-cleared when the review resolves.
+   */
+  reviewDeadline?: Timestamp | null;
 }
 
 /** Parse a Firestore document snapshot into a typed GameDoc. */
