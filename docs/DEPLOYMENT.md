@@ -256,15 +256,23 @@ Vercel does **not** redeploy on env-var changes. After adding `VITE_MAPBOX_TOKEN
 
 ## Cron Endpoints Runbook
 
-Two scheduled GitHub Actions workflows call Vercel serverless endpoints with
-admin credentials. When their configuration drifts, turn expiry and push
-delivery both stop — silently from the player's point of view. This section
-exists because exactly that happened on 2026-07-27 (~24h outage).
+Three scheduled GitHub Actions workflows call Vercel serverless endpoints with
+admin credentials. When their configuration drifts, turn expiry, push
+delivery, and dispute resolution all stop — silently from the player's point
+of view (a game whose landed claim is under review stays frozen forever if
+the dispute referee never runs). This section exists because exactly that
+happened to the first two on 2026-07-27 (~24h outage).
 
-| Endpoint                        | Workflow                                    | Schedule | Job                                |
-| ------------------------------- | ------------------------------------------- | -------- | ---------------------------------- |
-| `/api/cron/sweep-expired-turns` | `.github/workflows/sweep-expired-turns.yml` | \*/15min | Auto-forfeits expired turns        |
-| `/api/cron/drain-push-dispatch` | `.github/workflows/drain-push-dispatch.yml` | \*/5min  | Delivers queued push notifications |
+| Endpoint                             | Workflow                                         | Schedule | Job                                      |
+| ------------------------------------ | ------------------------------------------------ | -------- | ---------------------------------------- |
+| `/api/cron/sweep-expired-turns`      | `.github/workflows/sweep-expired-turns.yml`      | \*/15min | Auto-forfeits expired turns              |
+| `/api/cron/drain-push-dispatch`      | `.github/workflows/drain-push-dispatch.yml`      | \*/5min  | Delivers queued push notifications       |
+| `/api/cron/resolve-expired-disputes` | `.github/workflows/resolve-expired-disputes.yml` | \*/15min | Resolves trick-dispute reviews and votes |
+
+All three endpoints share the same auth (`CRON_SECRET` bearer), the same
+service-account parser (`api/cron/_serviceAccount.ts`), and the same
+`?dryRun=1` no-side-effects probe, so every pitfall and failure signature
+below applies to each of them identically.
 
 ### The two secrets
 
