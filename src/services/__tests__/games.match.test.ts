@@ -1,9 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 
 // prettier-ignore
-import { installGamesTestBeforeEach, makeGameSnap, makeNotFoundSnap, baseGame, mockTxUpdate, mockTxGet } from "./games.test-helpers";
+import { installGamesTestBeforeEach, makeGameSnap, makeNotFoundSnap, baseGame, mockTxUpdate, mockTxGet, mockTxSetCalls } from "./games.test-helpers";
 
-import { setTrick, failSetTrick, submitMatchAttempt, _turnActionMapSize } from "../games";
+import { setTrick, failSetTrick, submitMatchAttempt, acceptLanded, _turnActionMapSize } from "../games";
+import { auth } from "../../firebase";
 
 installGamesTestBeforeEach();
 
@@ -183,7 +184,7 @@ describe("games service", () => {
       judgeStatus: "accepted",
     };
 
-    it("honor-system landed — matcher becomes next setter immediately", async () => {
+    it("honor-system landed — FREEZES into pendingReview (no swap, clip or notification yet)", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
 
       const result = await submitMatchAttempt("g1", "https://vid.url/match.webm", true);
@@ -191,16 +192,19 @@ describe("games service", () => {
       expect(result.gameOver).toBe(false);
       expect(result.winner).toBeNull();
       const updates = mockTxUpdate.mock.calls[0][1];
-      // No judge → no disputable. Roles swap, matcher becomes setter.
-      expect(updates.phase).toBe("setting");
-      expect(updates.currentSetter).toBe("p2");
-      expect(updates.currentTurn).toBe("p2");
-      expect(updates.turnNumber).toBe(2);
+      // No judge → the claim FREEZES pending the setter's 24h accept/dispute.
+      expect(updates.phase).toBe("pendingReview");
+      expect(updates.reviewFor).toBe("p2"); // matcher
+      expect(updates.reviewDeadline).toBeDefined();
       expect(updates.matchVideoUrl).toBe("https://vid.url/match.webm");
-      // Turn history recorded with landed=true
-      const record = updates.turnHistory._arrayUnion[0];
-      expect(record.landed).toBe(true);
-      expect(record.letterTo).toBeNull();
+      // Roles/turn/letters/turnHistory stay pinned — nothing written for them.
+      expect(updates.currentSetter).toBeUndefined();
+      expect(updates.currentTurn).toBeUndefined();
+      expect(updates.turnNumber).toBeUndefined();
+      expect(updates.turnHistory).toBeUndefined();
+      // The landed clip and the "Trick Landed" notification are DEFERRED to
+      // acceptLanded / resolution — nothing is written to the feed here.
+      expect(mockTxSetCalls).toHaveLength(0);
     });
 
     it("judge-active landed — enters disputable phase routed to judge, no letters change", async () => {
@@ -221,25 +225,16 @@ describe("games service", () => {
       expect(updates.turnHistory).toBeUndefined();
     });
 
-    it("judge nominated but not accepted — still honor system", async () => {
+    it("judge nominated but not accepted — still honor system, freezes to pendingReview", async () => {
       const pendingJudgeGame = { ...matchingGameWithJudge, judgeStatus: "pending" };
       mockTxGet.mockResolvedValueOnce(makeGameSnap(pendingJudgeGame));
 
       await submitMatchAttempt("g1", "https://vid.url/match.webm", true);
 
       const updates = mockTxUpdate.mock.calls[0][1];
-      // Pending judge doesn't activate dispute path.
-      expect(updates.phase).toBe("setting");
-      expect(updates.currentSetter).toBe("p2");
-    });
-
-    it("honor-system landed uses 'Trick' fallback when currentTrickName is null", async () => {
-      const noTrickName = { ...matchingGame, currentTrickName: null };
-      mockTxGet.mockResolvedValueOnce(makeGameSnap(noTrickName));
-      await submitMatchAttempt("g1", null, true);
-      const updates = mockTxUpdate.mock.calls[0][1];
-      const record = updates.turnHistory._arrayUnion[0];
-      expect(record.trickName).toBe("Trick");
+      // Pending judge doesn't activate the judge dispute path → honor freeze.
+      expect(updates.phase).toBe("pendingReview");
+      expect(updates.reviewFor).toBe("p2");
     });
 
     it("missed — matcher gets a letter, setter stays", async () => {
@@ -344,6 +339,117 @@ describe("games service", () => {
       await expect(submitMatchAttempt("g1", null, false)).rejects.toThrow(
         "Please wait before submitting another action",
       );
+    });
+  });
+
+  describe("acceptLanded", () => {
+    const pendingReviewGame = {
+      ...baseGame,
+      phase: "pendingReview",
+      currentSetter: "p1",
+      currentTurn: "p2",
+      currentTrickName: "Kickflip",
+      currentTrickVideoUrl: "https://vid.url/set.webm",
+      matchVideoUrl: "https://vid.url/match.webm",
+      reviewFor: "p2",
+    };
+
+    function signIn(uid: string | null): void {
+      (auth as unknown as { currentUser: { uid: string } | null }).currentUser = uid ? { uid } : null;
+    }
+
+    it("performs the deferred honor swap and writes the deferred clip + notification", async () => {
+      signIn("p1"); // the frozen setter accepts
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(pendingReviewGame));
+
+      await acceptLanded("g1");
+
+      const updates = mockTxUpdate.mock.calls[0][1];
+      // Deferred honor swap — identical net effect to the old instant swap:
+      // matcher (p2) becomes setter, turn advances, no letter, review cleared.
+      expect(updates).toMatchObject({
+        phase: "setting",
+        currentSetter: "p2",
+        currentTurn: "p2",
+        turnNumber: 2,
+        p1Letters: 0,
+        p2Letters: 0,
+        reviewFor: null,
+        reviewDeadline: null,
+      });
+      expect(updates.turnDeadline).toBeDefined();
+      const record = updates.turnHistory._arrayUnion[0];
+      expect(record).toMatchObject({
+        turnNumber: 1,
+        trickName: "Kickflip",
+        setterUid: "p1",
+        matcherUid: "p2",
+        landed: true,
+        letterTo: null,
+      });
+
+      // The deferred "Trick Landed" notification now fires — sender is the
+      // setter (caller), recipient is the matcher (the no-self-notify rule).
+      const notif = mockTxSetCalls.find((c) => (c.data as { title?: string }).title === "Trick Landed!");
+      expect(notif?.data.senderUid).toBe("p1");
+      expect(notif?.data.recipientUid).toBe("p2");
+    });
+
+    it("falls back to 'Trick' when the frozen trick name is null", async () => {
+      signIn("p1");
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...pendingReviewGame, currentTrickName: null }));
+
+      await acceptLanded("g1");
+
+      const record = mockTxUpdate.mock.calls[0][1].turnHistory._arrayUnion[0];
+      expect(record.trickName).toBe("Trick");
+    });
+
+    it("carries the game's spotId onto the deferred landed clips", async () => {
+      signIn("p1");
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...pendingReviewGame, spotId: "spot-9" }));
+
+      await acceptLanded("g1");
+
+      const matchClip = mockTxSetCalls.find((c) => (c.data as { role?: string }).role === "match");
+      expect(matchClip?.data.spotId).toBe("spot-9");
+    });
+
+    it("throws when nobody is signed in", async () => {
+      signIn(null);
+      await expect(acceptLanded("g1")).rejects.toThrow(/signed in/);
+    });
+
+    it("throws when the game is not found", async () => {
+      signIn("p1");
+      mockTxGet.mockResolvedValueOnce(makeNotFoundSnap());
+      await expect(acceptLanded("g1")).rejects.toThrow("Game not found");
+    });
+
+    it("throws when the game is already over", async () => {
+      signIn("p1");
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...pendingReviewGame, status: "complete" }));
+      await expect(acceptLanded("g1")).rejects.toThrow("Game is already over");
+    });
+
+    it("throws when the game isn't in pendingReview", async () => {
+      signIn("p1");
+      mockTxGet.mockResolvedValueOnce(makeGameSnap({ ...pendingReviewGame, phase: "matching" }));
+      await expect(acceptLanded("g1")).rejects.toThrow("No landed claim is awaiting review");
+    });
+
+    it("throws when the caller isn't the frozen setter (matcher can't accept own claim)", async () => {
+      signIn("p2");
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(pendingReviewGame));
+      await expect(acceptLanded("g1")).rejects.toThrow("Only the setter can accept the landed claim");
+    });
+
+    it("throws when called again within the turn action cooldown period", async () => {
+      signIn("p1");
+      mockTxGet.mockResolvedValueOnce(makeGameSnap(pendingReviewGame));
+      await acceptLanded("g1");
+
+      await expect(acceptLanded("g1")).rejects.toThrow("Please wait before submitting another action");
     });
   });
 });

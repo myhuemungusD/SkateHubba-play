@@ -32,7 +32,7 @@ import { auth } from "../../firebase";
 // Not mocked: the swallowed-failure paths log through the real logger, so
 // the tests spy on the exported object to assert the event names emitted.
 import { logger } from "../logger";
-import type { TurnRecord } from "../games.mappers";
+import type { GameDoc } from "../games.mappers";
 
 /* ── Helpers ────────────────────────────────── */
 
@@ -56,12 +56,17 @@ const TURN_IDENTITY = {
   matchVideoUrl: "https://example.com/match.webm",
 } as const;
 
-function turn(overrides: Partial<TurnRecord> = {}): TurnRecord {
+/** The frozen-game fields the binding-dispute gate reasons about. */
+type GateShape = Pick<GameDoc, "status" | "phase" | "currentSetter" | "reviewFor" | "matchVideoUrl">;
+
+/** A game frozen in `pendingReview` after a landed claim — the disputable state. */
+function gate(overrides: Partial<GateShape> = {}): GateShape {
   return {
-    ...TURN_IDENTITY,
-    landed: true,
-    letterTo: null,
-    judgedBy: null,
+    status: "active",
+    phase: "pendingReview",
+    currentSetter: "setter",
+    reviewFor: "matcher",
+    matchVideoUrl: "https://example.com/match.webm",
     ...overrides,
   };
 }
@@ -107,27 +112,34 @@ beforeEach(() => {
 /* ── canRaiseDispute (the setter-facing UI gate) ─────────────── */
 
 describe("canRaiseDispute", () => {
-  it("is true for the setter of a landed turn that has a match video", () => {
-    expect(canRaiseDispute(turn(), "setter")).toBe(true);
+  it("is true for the frozen setter of a pendingReview game with a matcher + match video", () => {
+    expect(canRaiseDispute(gate(), "setter")).toBe(true);
   });
 
-  it("is false when the turn hasn't been recorded yet", () => {
-    expect(canRaiseDispute(undefined, "setter")).toBe(false);
+  it("is false once the game is over", () => {
+    expect(canRaiseDispute(gate({ status: "complete" }), "setter")).toBe(false);
   });
 
-  it("is false for anyone who isn't the setter of that turn", () => {
-    // The matcher can't send their own claim to the crowd, and neither can
-    // an uninvolved viewer.
-    expect(canRaiseDispute(turn(), "matcher")).toBe(false);
-    expect(canRaiseDispute(turn(), "stranger")).toBe(false);
+  it("is false when the game isn't frozen in pendingReview", () => {
+    // Only the freeze exposes a disputable claim — every other phase is either
+    // mid-play or already resolved.
+    expect(canRaiseDispute(gate({ phase: "setting" }), "setter")).toBe(false);
+    expect(canRaiseDispute(gate({ phase: "matching" }), "setter")).toBe(false);
+    expect(canRaiseDispute(gate({ phase: "communityReview" }), "setter")).toBe(false);
   });
 
-  it("is false when the matcher admitted a miss (no claim to judge)", () => {
-    expect(canRaiseDispute(turn({ landed: false }), "setter")).toBe(false);
+  it("is false for anyone who isn't the frozen setter", () => {
+    // The matcher can't dispute their own claim, and neither can a viewer.
+    expect(canRaiseDispute(gate(), "matcher")).toBe(false);
+    expect(canRaiseDispute(gate(), "stranger")).toBe(false);
+  });
+
+  it("is false when the frozen claim names no matcher", () => {
+    expect(canRaiseDispute(gate({ reviewFor: null }), "setter")).toBe(false);
   });
 
   it("is false when there is no match video for the community to watch", () => {
-    expect(canRaiseDispute(turn({ matchVideoUrl: null }), "setter")).toBe(false);
+    expect(canRaiseDispute(gate({ matchVideoUrl: null }), "setter")).toBe(false);
   });
 });
 
@@ -138,32 +150,51 @@ describe("raiseDispute", () => {
     return {
       player1Uid: "setter",
       player2Uid: "matcher",
+      player1Username: "alice",
+      player2Username: "bob",
       status: "active",
+      phase: "pendingReview",
+      currentSetter: "setter",
+      currentTurn: "matcher",
+      reviewFor: "matcher",
+      turnNumber: 3,
+      currentTrickName: "tre flip",
+      currentTrickVideoUrl: "https://example.com/set.webm",
+      matchVideoUrl: "https://example.com/match.webm",
       spotId: "spot-1",
-      turnHistory: [turn()],
       ...overrides,
     };
   }
 
-  it("writes the dispute doc with a deterministic id and the denormalized turn fields", async () => {
+  it("flips the frozen game to communityReview and creates the dispute from frozen state", async () => {
     const cap = captureTxOnce({
       games: { exists: true, data: gameData() },
       disputes: { exists: false },
     });
 
-    await raiseDispute("g1", 3);
+    await raiseDispute("g1");
 
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "games", "g1");
+    // turnNumber is sourced from the frozen game, not an argument.
     expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "disputes", "g1_3");
 
     const tx = cap.observed();
+
+    // 1) game flip pendingReview → communityReview, roles/turn/letters pinned.
+    expect(tx.update).toHaveBeenCalledTimes(1);
+    const [gameRef, gameUpdate] = tx.update.mock.calls[0];
+    expect((gameRef as { __path: string }).__path).toBe("games/g1");
+    expect(gameUpdate).toMatchObject({ phase: "communityReview", updatedAt: "SERVER_TS" });
+    expect((gameUpdate as { reviewDeadline: unknown }).reviewDeadline).toBeInstanceOf(FakeTimestamp);
+
+    // 2) dispute doc denormalized from the FROZEN game (NOT turnHistory).
     expect(tx.set).toHaveBeenCalledTimes(1);
     const [ref, payload] = tx.set.mock.calls[0];
     expect((ref as { __path: string }).__path).toBe("disputes/g1_3");
     expect(payload).toEqual({
       gameId: "g1",
-      // Same identity the turn record carried in — this asserts the raise
-      // path denormalizes every field onto the dispute doc unchanged.
+      // The frozen game's fields match TURN_IDENTITY exactly — asserting the
+      // spread proves the raise denormalizes every field off the frozen state.
       ...TURN_IDENTITY,
       spotId: "spot-1",
       createdAt: "SERVER_TS",
@@ -174,30 +205,45 @@ describe("raiseDispute", () => {
     });
   });
 
-  it("never writes to the game doc — the turn resolution is untouched", async () => {
-    // The whole point of this iteration: raising a dispute records a doc and
-    // nothing else. No letters, no phase change, no turn advance.
+  it("sources usernames from the players when the frozen setter is player2", async () => {
+    // Exercises the opposite arm of the setter/matcher username ternaries.
+    signIn("matcher"); // "matcher" is player2Uid — the frozen setter here
     const cap = captureTxOnce({
-      games: { exists: true, data: gameData() },
+      games: {
+        exists: true,
+        data: gameData({ currentSetter: "matcher", currentTurn: "setter", reviewFor: "setter" }),
+      },
       disputes: { exists: false },
     });
 
-    await raiseDispute("g1", 3);
+    await raiseDispute("g1");
 
-    const tx = cap.observed();
-    expect(tx.update).not.toHaveBeenCalled();
-    expect(tx.delete).not.toHaveBeenCalled();
-    expect(tx.set).toHaveBeenCalledTimes(1);
-    expect((tx.set.mock.calls[0][0] as { __path: string }).__path).not.toContain("games/");
+    expect(cap.observed().set.mock.calls[0][1]).toMatchObject({
+      setterUid: "matcher",
+      setterUsername: "bob",
+      matcherUid: "setter",
+      matcherUsername: "alice",
+    });
   });
 
-  it("coerces a null setVideoUrl and a missing spotId to null", async () => {
+  it("falls back to 'Trick' when the frozen trick name is empty", async () => {
     const cap = captureTxOnce({
-      games: { exists: true, data: gameData({ spotId: undefined, turnHistory: [turn({ setVideoUrl: null })] }) },
+      games: { exists: true, data: gameData({ currentTrickName: null }) },
       disputes: { exists: false },
     });
 
-    await raiseDispute("g1", 3);
+    await raiseDispute("g1");
+
+    expect(cap.observed().set.mock.calls[0][1]).toMatchObject({ trickName: "Trick" });
+  });
+
+  it("coerces a null set video and a missing spotId to null", async () => {
+    const cap = captureTxOnce({
+      games: { exists: true, data: gameData({ currentTrickVideoUrl: null, spotId: undefined }) },
+      disputes: { exists: false },
+    });
+
+    await raiseDispute("g1");
 
     const [, payload] = cap.observed().set.mock.calls[0];
     expect(payload).toMatchObject({ setVideoUrl: null, spotId: null });
@@ -205,68 +251,71 @@ describe("raiseDispute", () => {
 
   it("throws when nobody is signed in (no transaction is opened)", async () => {
     signIn(null);
-    await expect(raiseDispute("g1", 3)).rejects.toThrow(/signed in/);
+    await expect(raiseDispute("g1")).rejects.toThrow(/signed in/);
     expect(mockRunTransaction).not.toHaveBeenCalled();
   });
 
   it("throws when the game doc is missing", async () => {
     captureTxOnce({ games: { exists: false }, disputes: { exists: false } });
-    await expect(raiseDispute("g1", 3)).rejects.toThrow("Game not found");
+    await expect(raiseDispute("g1")).rejects.toThrow("Game not found");
   });
 
   it("throws rather than overwriting an existing dispute (idempotent id)", async () => {
     // Re-raising would reset a live tally — the one way a setter could
-    // launder an unfavourable crowd verdict.
+    // launder an unfavourable crowd verdict. The game must not flip either.
     const cap = captureTxOnce({
       games: { exists: true, data: gameData() },
       disputes: { exists: true, data: validDisputeData() },
     });
 
-    await expect(raiseDispute("g1", 3)).rejects.toThrow(/already been sent to the community/);
+    await expect(raiseDispute("g1")).rejects.toThrow(/already been sent to the community/);
     expect(cap.observed().set).not.toHaveBeenCalled();
+    expect(cap.observed().update).not.toHaveBeenCalled();
   });
 
-  it("throws when the game has no turnHistory at all", async () => {
-    captureTxOnce({
-      games: { exists: true, data: gameData({ turnHistory: undefined }) },
+  it("throws when the game is already over", async () => {
+    const cap = captureTxOnce({
+      games: { exists: true, data: gameData({ status: "complete" }) },
       disputes: { exists: false },
     });
-    await expect(raiseDispute("g1", 3)).rejects.toThrow(/hasn't finished yet/);
+    await expect(raiseDispute("g1")).rejects.toThrow(/already over/i);
+    expect(cap.observed().update).not.toHaveBeenCalled();
   });
 
-  it("throws when the requested turn isn't in turnHistory yet", async () => {
-    captureTxOnce({
-      games: { exists: true, data: gameData({ turnHistory: [turn({ turnNumber: 2 })] }) },
+  it("throws when the game is not frozen in pendingReview", async () => {
+    const cap = captureTxOnce({
+      games: { exists: true, data: gameData({ phase: "setting" }) },
       disputes: { exists: false },
     });
-    await expect(raiseDispute("g1", 9)).rejects.toThrow(/hasn't finished yet/);
+    await expect(raiseDispute("g1")).rejects.toThrow(/no landed claim awaiting review/i);
+    expect(cap.observed().update).not.toHaveBeenCalled();
   });
 
-  it("throws when the caller isn't the setter of that turn", async () => {
+  it("throws when the caller isn't the frozen setter", async () => {
     signIn("matcher");
     const cap = captureTxOnce({
       games: { exists: true, data: gameData() },
       disputes: { exists: false },
     });
 
-    await expect(raiseDispute("g1", 3)).rejects.toThrow(/Only the setter/);
+    await expect(raiseDispute("g1")).rejects.toThrow(/Only the setter/);
     expect(cap.observed().set).not.toHaveBeenCalled();
   });
 
-  it("throws when the matcher admitted a miss", async () => {
+  it("throws when the frozen claim names no matcher", async () => {
     captureTxOnce({
-      games: { exists: true, data: gameData({ turnHistory: [turn({ landed: false })] }) },
+      games: { exists: true, data: gameData({ reviewFor: null }) },
       disputes: { exists: false },
     });
-    await expect(raiseDispute("g1", 3)).rejects.toThrow(/Only a landed claim/);
+    await expect(raiseDispute("g1")).rejects.toThrow(/no matcher/i);
   });
 
-  it("throws when the turn has no match video", async () => {
+  it("throws when the frozen claim has no match video", async () => {
     captureTxOnce({
-      games: { exists: true, data: gameData({ turnHistory: [turn({ matchVideoUrl: null })] }) },
+      games: { exists: true, data: gameData({ matchVideoUrl: null }) },
       disputes: { exists: false },
     });
-    await expect(raiseDispute("g1", 3)).rejects.toThrow(/no match video/);
+    await expect(raiseDispute("g1")).rejects.toThrow(/no match video/);
   });
 
   it("propagates a malformed game doc from toGameDoc", async () => {
@@ -274,7 +323,7 @@ describe("raiseDispute", () => {
       games: { exists: true, data: { player1Uid: 42 } },
       disputes: { exists: false },
     });
-    await expect(raiseDispute("g1", 3)).rejects.toThrow(/Malformed game document/);
+    await expect(raiseDispute("g1")).rejects.toThrow(/Malformed game document/);
   });
 });
 

@@ -26,9 +26,11 @@ const REPO_ROOT = resolve(HERE, "../../..");
 // Every cron entrypoint Vercel loads as ESM — each one's relative-import
 // closure gets the same guard. Drain joined when the shared service-account
 // parser gave it its first relative import.
-const ENTRYPOINTS = ["api/cron/sweep-expired-turns.ts", "api/cron/drain-push-dispatch.ts"].map((p) =>
-  resolve(REPO_ROOT, p),
-);
+const ENTRYPOINTS = [
+  "api/cron/sweep-expired-turns.ts",
+  "api/cron/drain-push-dispatch.ts",
+  "api/cron/resolve-expired-disputes.ts",
+].map((p) => resolve(REPO_ROOT, p));
 
 /** Strip the repo-root prefix so failure output is short and copy-pastable. */
 const rel = (file: string): string => {
