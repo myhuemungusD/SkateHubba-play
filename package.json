@@ -1,6 +1,16 @@
 {
   "name": "skatehubba-play",
   "version": "1.1.0",
+  "description": "The first async game of S.K.A.T.E. you can play with anyone — record a trick, send it, they match it or take a letter.",
+  "license": "MIT",
+  "homepage": "https://skatehubba.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/myhuemungusD/SkateHubba-play.git"
+  },
+  "bugs": {
+    "url": "https://github.com/myhuemungusD/SkateHubba-play/issues"
+  },
   "private": true,
   "type": "module",
   "packageManager": "npm@10.9.7",
