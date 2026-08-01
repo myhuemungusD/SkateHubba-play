@@ -1,0 +1,78 @@
+# Resolve Expired Disputes (dispute referee cron)
+#
+# Why this exists:
+#   The dispute referee endpoint at /api/cron/resolve-expired-disputes needs to
+#   run every ~15 minutes to drive the two timed transitions of the binding
+#   community trick-dispute feature (docs/DISPUTE_BINDING_DESIGN.md §3.3/§3.4):
+#     (a) pendingReview expiry  -> the deferred honor swap (auto-accept), and
+#     (b) communityReview expiry -> tally the votes and apply the binding verdict
+#         plus the four public dispute stats.
+#   Same hosting story as sweep-expired-turns: Vercel's Hobby plan caps cron
+#   frequency at once per day (and that cap also blocks every PR preview deploy),
+#   so GitHub Actions hosts the schedule and just calls the Vercel-hosted
+#   endpoint over HTTPS until the project moves to a paid Vercel plan.
+#
+# Secret setup (operator action required):
+#   The endpoint authenticates via `Authorization: Bearer ${CRON_SECRET}` using a
+#   constant-time compare. The SAME value that lives in the Vercel project env as
+#   CRON_SECRET must also be in this repo under Settings -> Secrets and variables
+#   -> Actions -> `CRON_SECRET`. If the values drift, every run here will 401.
+#   This referee reuses the SAME CRON_SECRET as the sweep referee — no new secret.
+#
+# Scheduling caveats:
+#   GitHub Actions `schedule` triggers are best-effort and can be delayed or
+#   skipped under platform load. That is acceptable here because the 24h review
+#   windows dwarf the 15-minute cadence -- a late run just closes a review a few
+#   minutes later. `workflow_dispatch` is included for ad hoc operator runs.
+#
+# NOTE: this file is a `.github/workflows/**` change. Per CLAUDE.md + pr-gate.yml
+# it requires maintainer sign-off before merge (treat as a security change).
+
+name: Resolve Expired Disputes (dispute referee)
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel an in-flight run if a newer one starts. Endpoint writes are idempotent
+# (each game is re-read + re-checked inside its own admin transaction, and the
+# dispute doc's resolutionApplied flag gates the stat writes), so overlap is
+# correctness-safe -- this just saves runner minutes.
+concurrency:
+  group: resolve-expired-disputes
+  cancel-in-progress: true
+
+jobs:
+  resolve:
+    name: Call /api/cron/resolve-expired-disputes
+    # Skip on forks so a fork owner does not get 401 failure emails every 15
+    # minutes from a schedule trigger they never wanted. Forks can still trigger
+    # this manually via workflow_dispatch after setting their own CRON_SECRET.
+    if: github.repository == 'myhuemungusD/SkateHubba-play'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Invoke resolve endpoint
+        # `shell: bash` is load-bearing: it runs the step with
+        # `bash --noprofile --norc -eo pipefail`. Without an explicit shell the
+        # default is `bash -e {0}` (no pipefail), and the trailing
+        # `| tee /dev/stderr` would mask curl's exit status with tee's
+        # always-success status -- a drifted CRON_SECRET (401) or endpoint 5xx
+        # would silently keep this workflow green while nothing gets resolved.
+        shell: bash
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 240 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -w "\nHTTP %{http_code} in %{time_total}s\n" \
+            https://skatehubba.com/api/cron/resolve-expired-disputes \
+            | tee /dev/stderr

@@ -79,6 +79,14 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "turnDeadline", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "games",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "phase", "order": "ASCENDING" },
+        { "fieldPath": "reviewDeadline", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

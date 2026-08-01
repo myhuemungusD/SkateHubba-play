@@ -57,7 +57,7 @@ describe("games service", () => {
       expect(notif?.title).toBe("Your Turn to Set!");
     });
 
-    it("submitMatchAttempt (honor-system landed) stages the setter notification in-tx", async () => {
+    it("submitMatchAttempt (honor-system landed) FREEZES without staging any notification", async () => {
       const matching = {
         ...baseGame,
         phase: "matching",
@@ -68,10 +68,10 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(matching));
       await submitMatchAttempt("g1", null, true);
 
-      // Exactly one in-tx notification, targeting the former setter.
-      expect(mockTxSetCalls).toHaveLength(1);
-      const notif = findInTxNotification("your_turn", "p1");
-      expect(notif?.title).toBe("Trick Landed!");
+      // The claim now freezes into pendingReview; the "Trick Landed"
+      // notification is deferred to acceptLanded (covered in games.match.test),
+      // so nothing is staged in this transaction.
+      expect(mockTxSetCalls).toHaveLength(0);
     });
 
     it("submitMatchAttempt (missed, game over) stages a game_won notification in-tx", async () => {

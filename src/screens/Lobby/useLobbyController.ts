@@ -107,6 +107,13 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
       if (g.phase === "disputable" || g.phase === "setReview") {
         return g.judgeUsername ? `Referee @${g.judgeUsername} reviewing` : "Under review";
       }
+      // Binding community dispute (honor-system): the game is frozen on a
+      // landed claim. currentTurn still points at the matcher, so guard these
+      // before the isMyTurn branch below to avoid a misleading "Your turn".
+      if (g.phase === "communityReview") return "Under community review";
+      if (g.phase === "pendingReview") {
+        return g.currentSetter === profile.uid ? "Review their landed claim" : "Under review";
+      }
       if (isMyTurn(g)) {
         if (g.phase === "matching") return `Match: ${trick}`;
         return "Your turn to set";
@@ -114,7 +121,7 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
       if (g.phase === "matching") return `Matching: ${trick}`;
       return "They're setting a trick";
     },
-    [isJudge, isPlayer, isMyTurn],
+    [isJudge, isPlayer, isMyTurn, profile.uid],
   );
 
   const cardButtonProps = useCallback(

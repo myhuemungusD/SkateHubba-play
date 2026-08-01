@@ -254,6 +254,86 @@ Vercel does **not** redeploy on env-var changes. After adding `VITE_MAPBOX_TOKEN
 
 ---
 
+## Cron Endpoints Runbook
+
+Three scheduled GitHub Actions workflows call Vercel serverless endpoints with
+admin credentials. When their configuration drifts, turn expiry, push
+delivery, and dispute resolution all stop — silently from the player's point
+of view (a game whose landed claim is under review stays frozen forever if
+the dispute referee never runs). This section exists because exactly that
+happened to the first two on 2026-07-27 (~24h outage).
+
+| Endpoint                             | Workflow                                         | Schedule | Job                                      |
+| ------------------------------------ | ------------------------------------------------ | -------- | ---------------------------------------- |
+| `/api/cron/sweep-expired-turns`      | `.github/workflows/sweep-expired-turns.yml`      | \*/15min | Auto-forfeits expired turns              |
+| `/api/cron/drain-push-dispatch`      | `.github/workflows/drain-push-dispatch.yml`      | \*/5min  | Delivers queued push notifications       |
+| `/api/cron/resolve-expired-disputes` | `.github/workflows/resolve-expired-disputes.yml` | \*/15min | Resolves trick-dispute reviews and votes |
+
+All three endpoints share the same auth (`CRON_SECRET` bearer), the same
+service-account parser (`api/cron/_serviceAccount.ts`), and the same
+`?dryRun=1` no-side-effects probe, so every pitfall and failure signature
+below applies to each of them identically.
+
+### The two secrets
+
+| Name                            | Set in                                                                                                             | Read by                                      |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| `CRON_SECRET`                   | **Both**: Vercel env (Production) AND GitHub → Settings → Secrets and variables → Actions → **Repository secrets** | Endpoint auth (bearer check) + workflow curl |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Vercel env (Production) only                                                                                       | firebase-admin init in both endpoints        |
+
+Pitfalls, each observed in production:
+
+- `CRON_SECRET` must be a GitHub **repository** secret. An _environment_
+  secret is invisible to these jobs (they declare no `environment:`) and
+  resolves to empty — the run log shows `CRON_SECRET:` blank instead of
+  `***`, and the endpoint 401s.
+- The two `CRON_SECRET` values must match byte-for-byte. A trailing space or
+  newline from a copy-paste fails identically to a wrong value.
+- `FIREBASE_SERVICE_ACCOUNT_JSON` is the **entire** service-account file
+  (Firebase Console → Project settings → Service accounts → Generate new
+  private key), pasted as a **single line**. Collapse it first so a clipboard
+  cannot mangle the `\n` escapes inside `private_key`:
+
+  ```bash
+  jq -c . ~/Downloads/service-account.json | pbcopy
+  ```
+
+  The parser (`api/cron/_serviceAccount.ts`) repairs known paste damage
+  (expanded newlines, smart quotes, CRLF) and logs a
+  `service_account_json_repaired` warning when it does — treat that warning
+  as "re-paste the value properly", not as normal operation.
+
+- Vercel binds env vars at **deploy time**. After adding or changing either
+  value, redeploy production (Deployments → "…" → Redeploy) or the running
+  build keeps the old value and nothing appears to have changed.
+
+### Verify after any change
+
+Force a run instead of waiting for the schedule: Actions → the workflow →
+Re-run jobs (or workflow_dispatch). Green + `HTTP 200` with a JSON summary
+means the full chain works. To exercise an endpoint without side effects:
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" \
+  "https://skatehubba.com/api/cron/drain-push-dispatch?dryRun=1"
+```
+
+### Failure signatures
+
+| Response                                             | Meaning                                                                    |
+| ---------------------------------------------------- | -------------------------------------------------------------------------- |
+| `401 unauthorized` + blank `CRON_SECRET:` in run log | GitHub can't see the secret (wrong scope/name)                             |
+| `401 unauthorized` + `CRON_SECRET: ***` in run log   | Values differ between GitHub and Vercel, or Vercel not redeployed          |
+| `500 init_failed … is not set`                       | `FIREBASE_SERVICE_ACCOUNT_JSON` missing from the **running** deployment    |
+| `500 init_failed … [value diagnostics: …]`           | Value unparseable beyond repair — the counts describe the paste damage     |
+| `500 init_failed … implausible <field>`              | Paste damage in `project_id`/`client_email`/PEM that repair won't guess at |
+| `service_account_json_repaired` warning, run green   | Working, but the stored value is damaged — re-paste it cleanly             |
+
+Both workflows also skip on forks and fail loudly rather than masking curl
+errors — see the comments in the workflow files before changing them.
+
+---
+
 ## Rolling Back
 
 ### Roll back a code deployment

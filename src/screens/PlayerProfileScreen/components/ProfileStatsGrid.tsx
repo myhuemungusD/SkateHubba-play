@@ -40,7 +40,18 @@ interface Props {
   onTileTap?: (statName: StatTileName) => void;
 }
 
-export type StatTileName = "wins" | "losses" | "winRate" | "totalGames" | "vsYouWins" | "vsYouLosses" | "vsYouTotal";
+export type StatTileName =
+  | "wins"
+  | "losses"
+  | "winRate"
+  | "totalGames"
+  | "vsYouWins"
+  | "vsYouLosses"
+  | "vsYouTotal"
+  | "tricksDisputed"
+  | "disputesRaised"
+  | "disputesRight"
+  | "disputesWrong";
 
 export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTileTap }: Props) {
   return (
@@ -85,6 +96,43 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
           label="Total Games"
           value={stats.total}
           ariaLabel={`Total games: ${stats.total}`}
+          onTap={onTileTap}
+        />
+      </Row>
+
+      {/* Disputes section — public binding-dispute counters, shown on every
+          profile. Two raw counts, then the right/wrong split of the disputes
+          this player raised. */}
+      <p className="font-display text-[10px] tracking-[0.2em] text-amber-400 mb-2.5 mt-2 animate-fade-in">DISPUTES</p>
+      <Row testid="disputes-row" cols="grid-cols-2">
+        <StatTile
+          name="tricksDisputed"
+          label="Tricks of yours disputed"
+          value={stats.tricksDisputed}
+          ariaLabel={`Tricks of yours disputed: ${stats.tricksDisputed}`}
+          onTap={onTileTap}
+        />
+        <StatTile
+          name="disputesRaised"
+          label="Tricks you disputed"
+          value={stats.disputesRaised}
+          ariaLabel={`Tricks you disputed: ${stats.disputesRaised}`}
+          onTap={onTileTap}
+        />
+      </Row>
+      <Row testid="disputes-record-row" cols="grid-cols-2">
+        <StatTile
+          name="disputesRight"
+          label="Right"
+          value={stats.disputesRight}
+          ariaLabel={`Disputes you got right: ${stats.disputesRight}`}
+          onTap={onTileTap}
+        />
+        <StatTile
+          name="disputesWrong"
+          label="Wrong"
+          value={stats.disputesWrong}
+          ariaLabel={`Disputes you got wrong: ${stats.disputesWrong}`}
           onTap={onTileTap}
         />
       </Row>

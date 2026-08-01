@@ -1,120 +1,146 @@
 /**
  * Setter-facing trigger: send a matcher's honor-system "I landed it" claim to
- * the community instead of accepting it.
+ * the community — the BINDING community trick-dispute (Phase 3).
  *
- * NOT BINDING ON GAME STATE. `raiseDispute` reads the game doc and writes a
- * `disputes/{gameId}_{turnNumber}` document — nothing else. It never writes
- * letters, never advances `turnNumber`, never touches `phase`, `currentTurn`
- * or `turnHistory`. The turn has already resolved on the honor system by the
- * time a dispute can be raised, and it stays resolved exactly as it is today.
- * The crowd verdict is recorded and displayed only.
+ * A landed claim no longer resolves instantly. `submitMatchAttempt` FREEZES the
+ * game in `pendingReview`, naming the matcher in `reviewFor` while
+ * `currentSetter`/`turnNumber` still point at the disputed turn. From that
+ * frozen state the setter either accepts (`acceptLanded`) or raises a binding
+ * dispute here.
  *
- * That is also why this is a *post-hoc* hook rather than a branch inside
- * `submitMatchAttempt`: the dispute sources its denormalized fields from the
- * already-appended `turnHistory` record, so `submitMatchAttempt` needed no
- * change at all and the honor-system resolution path is bit-for-bit
- * unchanged.
+ * `raiseDispute` is now binding on game state. In ONE transaction it:
+ *   1. flips the frozen game `pendingReview → communityReview`, opening a 24h
+ *      vote window (`reviewDeadline`) while pinning roles, turn, letters and
+ *      turnHistory unchanged, and
+ *   2. creates the `disputes/{gameId}_{turnNumber}` doc (status 'open',
+ *      tallies 0), sourcing every denormalized field from the FROZEN game state
+ *      — NOT from turnHistory, because the disputed turn is not in history yet.
+ *
+ * The community's majority vote is resolved later by the admin "dispute
+ * referee" (Phase 4), which writes letters, turn order and the public stats.
+ *
+ * Gap A (role self-assertion) is closed by the freeze: the `disputes` create
+ * rule binds `setterUid == game.currentSetter && turnNumber == game.turnNumber
+ * && game.phase == 'pendingReview'`, so only the real frozen setter of the real
+ * frozen turn can raise. See docs/DISPUTE_BINDING_DESIGN.md §3 and §5.
  */
 
-import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
+import { doc, runTransaction, serverTimestamp, Timestamp } from "firebase/firestore";
 import { requireAuth, requireDb } from "../firebase";
-import { toGameDoc, type TurnRecord } from "./games.mappers";
+import { toGameDoc, type GameDoc } from "./games.mappers";
+import { TURN_DURATION_MS } from "./turnDuration";
 import { disputeId } from "./disputes.mappers";
 
+/** The frozen-game fields the dispute gate reasons about. */
+type DisputeGate = Pick<GameDoc, "status" | "phase" | "currentSetter" | "reviewFor" | "matchVideoUrl">;
+
 /**
- * Single source of truth for dispute eligibility, in the order the setter
- * would hit the failures. Returns a user-facing message, or null when the
- * turn may be sent to the community.
+ * Single source of truth for dispute eligibility, in the order the setter would
+ * hit the failures. Returns a user-facing message, or null when the frozen
+ * claim may be sent to the community.
  *
  * Shared by {@link canRaiseDispute} (the UI's affordance gate) and
  * {@link raiseDispute} (the client-side write guard) so the button and the
  * write can never disagree about what is disputable.
  *
- * NOT authoritative. Firestore rules cannot verify who set turn N — the
- * `setterUid == request.auth.uid` check on the create only proves the caller
- * isn't impersonating someone else. Everything below (the turn exists, it was
- * landed, it has a match video, and the caller really is that turn's setter)
- * is client-side defence-in-depth over data the server does not re-derive.
+ * The binding flow gates on the FROZEN game state (not a turnHistory record):
+ * the game must still be parked in `pendingReview` and the caller must be the
+ * frozen setter. The Firestore rules re-derive the same setter/turn binding
+ * against the live game doc (Gap A closure), so unlike the old post-hoc hook
+ * these checks are backed server-side — they are surfaced here for a clean
+ * error rather than a raw permission-denied.
  */
-function disputeBlocker(turn: TurnRecord | undefined, uid: string): string | null {
-  if (!turn) return "That turn hasn't finished yet.";
-  if (turn.setterUid !== uid) return "Only the setter can send this call to the community.";
-  // A matcher who admits a miss has already taken the letter — there is no
-  // claim to judge. Only a "landed" claim can go to the crowd.
-  if (!turn.landed) return "Only a landed claim can be sent to the community.";
-  if (!turn.matchVideoUrl) return "There's no match video for the community to judge.";
+function disputeBlocker(game: DisputeGate, uid: string): string | null {
+  if (game.status !== "active") return "This game is already over.";
+  if (game.phase !== "pendingReview") return "There's no landed claim awaiting review.";
+  if (game.currentSetter !== uid) return "Only the setter can send this call to the community.";
+  if (!game.reviewFor) return "This claim has no matcher for the community to judge.";
+  if (!game.matchVideoUrl) return "There's no match video for the community to judge.";
   return null;
 }
 
 /**
- * True when `uid` may send this completed turn to the community.
+ * True when `uid` may send this frozen landed claim to the community.
  *
- * Pure predicate over a `TurnRecord` — no reads, no writes. This is the gate
- * the setter's "Send to the community" affordance should render against.
- * It deliberately does NOT know whether a dispute already exists for the
- * turn; that check needs a read and is enforced inside `raiseDispute`, which
- * throws rather than silently overwriting.
+ * Pure predicate over the frozen game state — no reads, no writes. This is the
+ * gate the setter's "Send to the community" affordance should render against.
+ * It deliberately does NOT know whether a dispute already exists for the turn;
+ * that check needs a read and is enforced inside {@link raiseDispute}, which
+ * throws rather than silently overwriting a live tally.
  */
-export function canRaiseDispute(turn: TurnRecord | undefined, uid: string): boolean {
-  return disputeBlocker(turn, uid) === null;
+export function canRaiseDispute(game: DisputeGate, uid: string): boolean {
+  return disputeBlocker(game, uid) === null;
 }
 
 /**
- * Send a completed, honor-system-landed turn to the community for judgement.
+ * Raise a BINDING community dispute on the frozen honor-system landed claim.
  *
- * `runTransaction` because this reads game state (CLAUDE.md: game reads and
- * the write that depends on them are transactional, no exceptions) and
- * because the create must observe an authoritative "does this dispute
- * already exist" read. The transaction's only write is the dispute doc — the
- * game doc is read-only here.
+ * `runTransaction` because the game flip and the dispute create must be atomic
+ * (a half-applied dispute — game flipped but no doc, or vice versa — would
+ * corrupt the freeze) and because the create must observe an authoritative
+ * "does this dispute already exist" read.
  *
- * The doc id is deterministic (`{gameId}_{turnNumber}`), so a transaction
- * retry re-runs the exists check rather than duplicating a dispute. An
- * existing doc throws instead of overwriting: re-raising would reset a live
- * tally, which is the one way a setter could launder an unfavourable crowd
- * verdict. Overwrite protection is genuinely enforced server-side (the
- * disputes rule allows create only when the doc doesn't already exist); the
- * turn-eligibility checks below are not — see `disputeBlocker`.
+ * The doc id is deterministic (`{gameId}_{turnNumber}`), so a transaction retry
+ * re-runs the exists check rather than duplicating a dispute. An existing doc
+ * throws instead of overwriting: re-raising would reset a live tally, the one
+ * way a setter could launder an unfavourable crowd verdict. Overwrite
+ * protection is genuinely enforced server-side (the disputes rule allows create
+ * only when the doc doesn't already exist).
+ *
+ * The turn number is taken from the frozen game state — there is no turn to
+ * select, only the single claim currently under review.
  */
-export async function raiseDispute(gameId: string, turnNumber: number): Promise<void> {
+export async function raiseDispute(gameId: string): Promise<void> {
   const uid = requireAuth().currentUser?.uid;
   if (!uid) throw new Error("You must be signed in to send a call to the community.");
 
   const db = requireDb();
   const gameRef = doc(db, "games", gameId);
-  const disputeRef = doc(db, "disputes", disputeId(gameId, turnNumber));
 
   await runTransaction(db, async (tx) => {
-    // Both reads issued together so the transaction's read phase costs a
-    // single round-trip (same shape as `upvoteClip`).
-    const [gameSnap, existing] = await Promise.all([tx.get(gameRef), tx.get(disputeRef)]);
+    const gameSnap = await tx.get(gameRef);
     if (!gameSnap.exists()) throw new Error("Game not found");
-    if (existing.exists()) throw new Error("This turn has already been sent to the community.");
 
     const game = toGameDoc(gameSnap);
-    const turn = (game.turnHistory ?? []).find((t) => t.turnNumber === turnNumber);
-
-    const blocker = disputeBlocker(turn, uid);
+    const blocker = disputeBlocker(game, uid);
     if (blocker) throw new Error(blocker);
-    // A null blocker proves `turn` exists and carries a non-empty
-    // matchVideoUrl, but TS can't see through the helper. This is a
-    // narrowing cast to a concrete shape — not an escape hatch — chosen
-    // over a redundant re-check, which would be an unreachable branch the
-    // coverage gate could never satisfy.
-    const disputable = turn as TurnRecord & { matchVideoUrl: string };
 
-    // Denormalized so the feed renders a dispute card without reading the
-    // game doc (which non-players cannot read).
+    // A null blocker proves the game is frozen in pendingReview with a matcher
+    // and a match video — narrow the two nullable fields for the writes below.
+    const matcherUid = game.reviewFor as string;
+    const matchVideoUrl = game.matchVideoUrl as string;
+
+    // Second read must precede any write. The deterministic id binds to the
+    // frozen turnNumber — the same coordinate the create rule re-checks.
+    const disputeRef = doc(db, "disputes", disputeId(gameId, game.turnNumber));
+    const existing = await tx.get(disputeRef);
+    if (existing.exists()) throw new Error("This turn has already been sent to the community.");
+
+    const setterUsername = game.currentSetter === game.player1Uid ? game.player1Username : game.player2Username;
+    const matcherUsername = matcherUid === game.player1Uid ? game.player1Username : game.player2Username;
+
+    // 1) Flip pendingReview → communityReview: open the vote window. Roles,
+    // turn, letters, turnHistory, reviewFor and turnDeadline all stay pinned
+    // (the rules' communityReview arm enforces exactly this).
+    tx.update(gameRef, {
+      phase: "communityReview",
+      reviewDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
+      updatedAt: serverTimestamp(),
+    });
+
+    // 2) Create the dispute doc from the FROZEN game state (not turnHistory —
+    // the disputed turn is not in history yet). Denormalized so the feed renders
+    // a dispute card without reading the game doc (non-players cannot read it).
     tx.set(disputeRef, {
       gameId,
-      turnNumber,
-      trickName: disputable.trickName,
-      setterUid: disputable.setterUid,
-      setterUsername: disputable.setterUsername,
-      matcherUid: disputable.matcherUid,
-      matcherUsername: disputable.matcherUsername,
-      setVideoUrl: disputable.setVideoUrl ?? null,
-      matchVideoUrl: disputable.matchVideoUrl,
+      turnNumber: game.turnNumber,
+      trickName: game.currentTrickName || "Trick",
+      setterUid: game.currentSetter,
+      setterUsername,
+      matcherUid,
+      matcherUsername,
+      setVideoUrl: game.currentTrickVideoUrl ?? null,
+      matchVideoUrl,
       spotId: game.spotId ?? null,
       createdAt: serverTimestamp(),
       status: "open",

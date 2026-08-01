@@ -15,7 +15,7 @@ export { forfeitExpiredTurn, _resetCreateGameRateLimit, _turnActionMapSize } fro
 
 export { createGame, acceptJudgeInvite, declineJudgeInvite } from "./games.create";
 
-export { setTrick, failSetTrick, submitMatchAttempt } from "./games.match";
+export { setTrick, failSetTrick, submitMatchAttempt, acceptLanded } from "./games.match";
 
 export { callBSOnSetTrick, judgeRuleSetTrick, resolveDispute } from "./games.judge";
 

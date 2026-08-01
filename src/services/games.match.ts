@@ -1,5 +1,5 @@
 import { doc, runTransaction, serverTimestamp, Timestamp, arrayUnion } from "firebase/firestore";
-import { requireDb } from "../firebase";
+import { requireAuth, requireDb } from "../firebase";
 import { analytics } from "./analytics";
 import { metrics } from "./logger";
 import { writeNotificationInTx } from "./notifications";
@@ -7,6 +7,7 @@ import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOut
 import { writeLandedClipsInTransaction } from "./clips";
 import { toGameDoc, isJudgeActive, type TurnRecord } from "./games.mappers";
 import { TURN_DURATION_MS, getOpponent, checkTurnActionRate, recordTurnAction } from "./games.turns";
+import { decidePendingReviewExpiry } from "./dispute.resolution.shared";
 
 /* ────────────────────────────────────────────
  * Set a trick (setter's turn)
@@ -203,74 +204,32 @@ export async function submitMatchAttempt(
         };
       }
 
-      // Honor system → matcher's call stands immediately, roles swap.
-      const nextSetter = matcherUid;
-      const turnRecord: TurnRecord = {
-        turnNumber: game.turnNumber,
-        trickName: game.currentTrickName || "Trick",
-        setterUid: game.currentSetter,
-        setterUsername,
-        matcherUid,
-        matcherUsername: matcherUsernameVal,
-        setVideoUrl: game.currentTrickVideoUrl,
-        matchVideoUrl,
-        landed: true,
-        letterTo: null,
-        judgedBy: null,
-      };
-
+      // Honor system → FREEZE the game into pendingReview. The matcher's
+      // "landed" claim is NOT resolved here: it now faces the setter's 24h
+      // accept/dispute decision (docs/DISPUTE_BINDING_DESIGN.md §3.3).
+      // currentSetter/currentTurn/turnNumber/letters/turnHistory stay pinned
+      // (nothing is written for them). The landed clips and the "Trick Landed"
+      // notification are DEFERRED to acceptLanded / the referee resolution — a
+      // claim that later BAILS must not leave a landed clip or a premature
+      // "you landed" notification behind. reviewFor names the matcher;
+      // reviewDeadline opens the accept window.
       tx.update(gameRef, {
+        phase: "pendingReview",
+        reviewFor: matcherUid,
+        reviewDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
         matchVideoUrl,
-        phase: "setting",
-        currentSetter: nextSetter,
-        currentTurn: nextSetter,
-        turnDeadline: Timestamp.fromMillis(Date.now() + TURN_DURATION_MS),
-        turnNumber: game.turnNumber + 1,
-        turnHistory: arrayUnion(turnRecord),
-        p1Letters: game.p1Letters,
-        p2Letters: game.p2Letters,
         updatedAt: serverTimestamp(),
       });
 
-      // Denormalize into the clips feed. Honor-system landed → both set and
-      // match are confirmed landed clips.
-      writeLandedClipsInTransaction(tx, {
-        gameId,
-        turnNumber: game.turnNumber,
-        trickName: game.currentTrickName || "Trick",
-        setterUid: game.currentSetter,
-        setterUsername,
-        matcherUid,
-        matcherUsername: matcherUsernameVal,
-        setVideoUrl: game.currentTrickVideoUrl,
-        matchVideoUrl,
-        matcherLanded: true,
-        spotId: game.spotId ?? null,
-      });
-
-      // Honor-system landed: previous setter is next matcher — let them know.
-      writeNotificationInTx(
-        tx,
-        {
-          senderUid: matcherUid,
-          recipientUid: game.currentSetter,
-          type: "your_turn",
-          title: "Trick Landed!",
-          body: `@${matcherUsernameVal} landed your trick. Your turn to match.`,
-          gameId,
-        },
-        pushOutbox,
-      );
-
       return {
-        outcome: "landed_honor" as const,
+        outcome: "pending_review" as const,
         gameOver: false,
         winner: null,
         setterUid: game.currentSetter,
         matcherUid,
         setterUsername,
         matcherUsername: matcherUsernameVal,
-        nextSetter,
+        nextSetter: game.currentSetter,
         turnNumber: game.turnNumber,
       };
     }
@@ -393,4 +352,94 @@ export async function submitMatchAttempt(
   }
 
   return { gameOver: result.gameOver, winner: result.winner };
+}
+
+/* ────────────────────────────────────────────
+ * Accept a frozen honor-system "landed" claim (setter-only)
+ *
+ * From `pendingReview`, the setter accepts the matcher's landed claim,
+ * performing the deferred honor swap. The game-state write is computed by the
+ * shared `decidePendingReviewExpiry` helper so it is byte-identical to what the
+ * dispute referee writes when the 24h accept window lapses — the manual accept
+ * and the timed auto-accept can never diverge. The landed clips and the
+ * "Trick Landed" notification (deferred out of `submitMatchAttempt` so a later
+ * BAIL leaves nothing behind) are written HERE, atomically with the swap.
+ * ──────────────────────────────────────────── */
+
+export async function acceptLanded(gameId: string): Promise<void> {
+  const uid = requireAuth().currentUser?.uid;
+  if (!uid) throw new Error("You must be signed in to accept a landed claim.");
+
+  checkTurnActionRate(gameId);
+  const gameRef = doc(requireDb(), "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
+
+  await runTransaction(requireDb(), async (tx) => {
+    resetPushDispatchOutbox(pushOutbox);
+    const snap = await tx.get(gameRef);
+    if (!snap.exists()) throw new Error("Game not found");
+
+    const game = toGameDoc(snap);
+    if (game.status !== "active") throw new Error("Game is already over");
+    if (game.phase !== "pendingReview") throw new Error("No landed claim is awaiting review");
+    if (game.currentSetter !== uid) throw new Error("Only the setter can accept the landed claim");
+
+    // Same decision the referee applies on accept-window expiry — reuse it so
+    // the manual accept and the timed auto-accept stay in lockstep.
+    const decision = decidePendingReviewExpiry(game, Date.now());
+    // decidePendingReviewExpiry always yields the honor-swap shape, so
+    // turnDeadlineMs and appendTurnRecord are guaranteed present.
+    const record = decision.appendTurnRecord as TurnRecord;
+
+    tx.update(gameRef, {
+      phase: decision.phase,
+      currentSetter: decision.currentSetter,
+      currentTurn: decision.currentTurn,
+      turnNumber: decision.turnNumber,
+      turnDeadline: Timestamp.fromMillis(decision.turnDeadlineMs as number),
+      p1Letters: decision.p1Letters,
+      p2Letters: decision.p2Letters,
+      turnHistory: arrayUnion(record),
+      reviewFor: decision.reviewFor,
+      reviewDeadline: decision.reviewDeadline,
+      updatedAt: serverTimestamp(),
+    });
+
+    // NOW denormalize the confirmed landed clips (deferred out of the freeze).
+    // Every field is sourced from the shared decision's TurnRecord so the clip
+    // content can never drift from the resolved turn.
+    writeLandedClipsInTransaction(tx, {
+      gameId,
+      turnNumber: record.turnNumber,
+      trickName: record.trickName,
+      setterUid: record.setterUid,
+      setterUsername: record.setterUsername,
+      matcherUid: record.matcherUid,
+      matcherUsername: record.matcherUsername,
+      setVideoUrl: record.setVideoUrl,
+      matchVideoUrl: record.matchVideoUrl,
+      matcherLanded: true,
+      spotId: game.spotId ?? null,
+    });
+
+    // NOW send the "Trick Landed" notification. The setter (caller) is the
+    // sender and the matcher — who becomes the next setter — is the recipient.
+    // Unlike the old instant-swap path (called by the matcher, notifying the
+    // setter), the accept is called BY the setter, so the /notifications
+    // no-self-notify rule forces the recipient to be the matcher.
+    writeNotificationInTx(
+      tx,
+      {
+        senderUid: record.setterUid,
+        recipientUid: record.matcherUid,
+        type: "your_turn",
+        title: "Trick Landed!",
+        body: `You landed! Set a trick for @${record.setterUsername}`,
+        gameId,
+      },
+      pushOutbox,
+    );
+  });
+  void drainPushDispatchOutbox(pushOutbox);
+  recordTurnAction(gameId);
 }

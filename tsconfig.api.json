@@ -21,6 +21,7 @@
   "include": [
     "api",
     "src/services/turnForfeit.shared.ts",
+    "src/services/dispute.resolution.shared.ts",
     "src/services/turnDuration.ts",
     "src/services/games.mappers.ts",
     "src/constants/trickCategories.ts"

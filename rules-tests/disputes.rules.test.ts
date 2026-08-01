@@ -47,8 +47,25 @@ const DISPUTE_ID = `${GAME_ID}_${TURN_NUMBER}`;
 const PINNED_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/match.webm";
 const PINNED_SET_URL = "https://firebasestorage.googleapis.com/v0/b/sk8hub-d7806.firebasestorage.app/o/set.webm";
 
+// Gap A closure (binding-dispute Phase 2): the /disputes create rule now binds
+// the disputer to the REAL frozen turn — the backing game must be parked in
+// `pendingReview` with currentSetter == the raiser (P1) and turnNumber ==
+// TURN_NUMBER, or every legitimate raise is (correctly) denied. Seed that
+// frozen state so the create-path positives exercise only the field under test.
 const getEnv = setupRulesTestEnv("demo-skatehubba-rules-disputes", async (env) => {
-  await seedValidGame(env, GAME_ID, { player1Uid: P1_UID, player2Uid: P2_UID });
+  await seedValidGame(
+    env,
+    GAME_ID,
+    { player1Uid: P1_UID, player2Uid: P2_UID },
+    {
+      phase: "pendingReview",
+      currentSetter: P1_UID,
+      currentTurn: P2_UID,
+      turnNumber: TURN_NUMBER,
+      reviewFor: P2_UID,
+      reviewDeadline: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    },
+  );
 });
 
 function makeValidDispute(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -189,23 +206,39 @@ describe("disputes — create", () => {
     await assertFails(setDoc(disputeRef(as(P2_UID)), makeValidDispute()));
   });
 
-  // ── KNOWN GAP — role self-assertion (documented, not silently ignored) ──
-  // `setterUid == request.auth.uid` proves the WRITER is who they say they
-  // are, but nothing on the game doc proves that this uid actually set the
-  // trick on `turnNumber`. Once the turn has resolved, `currentSetter` and
-  // `turnNumber` have already moved on, and `turnHistory` cannot be indexed
-  // by turn from inside rules. So player2 can invert the roles and raise a
-  // dispute over their OWN claim — a griefing vector bounded to the two
-  // players of one game and one doc per turn (the deterministic id means
-  // squatting it also blocks the real setter).
-  //
-  // Closing this needs a service-side handle: either the game parks in a
-  // pending phase where `currentSetter`/`turnNumber` still name the disputed
-  // turn (then bind both here), or the dispute create rides in the same
-  // transaction that resolves the turn. Flip this to assertFails the moment
-  // one of those lands.
-  it("KNOWN GAP: the matcher CAN currently flip the roles to name themselves setter", async () => {
-    await assertSucceeds(setDoc(disputeRef(as(P2_UID)), makeValidDispute({ setterUid: P2_UID, matcherUid: P1_UID })));
+  // ── Gap A (role self-assertion) — CLOSED (binding-dispute Phase 2) ──
+  // The freeze parks the game in `pendingReview` with currentSetter/turnNumber
+  // still naming the disputed turn, so the create rule now binds
+  // setterUid == game.currentSetter && turnNumber == game.turnNumber &&
+  // game.phase == 'pendingReview'. The matcher (P2) inverting the roles to name
+  // THEMSELVES setter no longer works: P2 != game.currentSetter (P1).
+  it("Gap A CLOSED: the matcher CANNOT flip the roles to name themselves setter", async () => {
+    await assertFails(setDoc(disputeRef(as(P2_UID)), makeValidDispute({ setterUid: P2_UID, matcherUid: P1_UID })));
+  });
+
+  it("Gap A: the REAL frozen setter (currentSetter of a pendingReview game) CAN raise", async () => {
+    // The positive control for the binding: same P1 setter, correct turn, game
+    // frozen — this is the one identity the rule now trusts.
+    await assertSucceeds(setDoc(disputeRef(as(P1_UID)), makeValidDispute()));
+  });
+
+  it("Gap A: a dispute naming the WRONG turnNumber is DENIED even from the real setter", async () => {
+    // Game is frozen on TURN_NUMBER (4); a dispute over turn 5 (id + payload)
+    // fails the turnNumber == game.turnNumber bind.
+    await assertFails(setDoc(disputeRef(as(P1_UID), `${GAME_ID}_5`), makeValidDispute({ turnNumber: 5 })));
+  });
+
+  it("Gap A: a dispute against a game NOT in pendingReview is DENIED", async () => {
+    // Re-seed the backing game back to normal setting play (unfrozen). The
+    // real setter's raise must now be rejected — there is no frozen turn to
+    // bind against.
+    await seedValidGame(
+      getEnv(),
+      GAME_ID,
+      { player1Uid: P1_UID, player2Uid: P2_UID },
+      { phase: "setting", currentSetter: P1_UID, turnNumber: TURN_NUMBER },
+    );
+    await assertFails(setDoc(disputeRef(as(P1_UID)), makeValidDispute()));
   });
 
   it("a non-participant stranger CANNOT raise a dispute", async () => {
@@ -550,10 +583,21 @@ describe("disputes — tally decrement (paired vote-doc delete only)", () => {
  * DELETE
  * ──────────────────────────────────────────── */
 
-describe("disputes — delete (raiser only)", () => {
-  it("the setter who raised the dispute CAN delete it (deletion cascade)", async () => {
+describe("disputes — delete is CLOSED to all clients (Gap B)", () => {
+  // Gap B (delete + re-raise resets a live tally) — CLOSED. The client delete
+  // is removed entirely now that verdicts are binding; the referee's
+  // open → resolved close-out replaces it. Erasure of a user's VERDICTS still
+  // works via the /disputeVotes owner-delete (see the disputeVotes suite).
+  it("the setter who raised the dispute CANNOT delete it (client delete removed)", async () => {
     await seedDispute();
-    await assertSucceeds(deleteDoc(disputeRef(as(P1_UID))));
+    await assertFails(deleteDoc(disputeRef(as(P1_UID))));
+  });
+
+  it("Gap B: a setter losing the vote CANNOT delete-and-reset a live tally", async () => {
+    // The exact re-raise reset vector: a dispute with a live, unfavourable
+    // tally cannot be wiped by its raiser.
+    await seedDispute({ landVotes: 0, bailVotes: 5 });
+    await assertFails(deleteDoc(disputeRef(as(P1_UID))));
   });
 
   it("the matcher CANNOT delete a dispute over their claim", async () => {

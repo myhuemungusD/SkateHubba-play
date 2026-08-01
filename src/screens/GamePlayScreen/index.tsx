@@ -17,11 +17,20 @@ import { MatcherInstructionBanner } from "./components/MatcherInstructionBanner"
 import { MatcherTrickViewer } from "./components/MatcherTrickViewer";
 import { SetterDecisionPanel } from "./components/SetterDecisionPanel";
 import { MatcherDecisionPanel } from "./components/MatcherDecisionPanel";
+import { PendingReviewPanel } from "./components/PendingReviewPanel";
+import { ReviewStatusPanel } from "./components/ReviewStatusPanel";
 
 export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profile: UserProfile; onBack: () => void }) {
   const c = useGamePlayController(game, profile);
 
-  if (!c.isSetter && !c.isMatcher && !c.isDisputeReviewer && !c.isSetTrickReviewer && !c.isJudgeInvitePending) {
+  if (
+    !c.isSetter &&
+    !c.isMatcher &&
+    !c.isDisputeReviewer &&
+    !c.isSetTrickReviewer &&
+    !c.isJudgeInvitePending &&
+    !c.isInReview
+  ) {
     return <WaitingScreen game={game} profile={profile} onBack={onBack} />;
   }
 
@@ -142,6 +151,28 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
             error={c.error}
             onRule={c.handleRuleSetTrick}
           />
+        )}
+
+        {c.isPendingReviewSetter && (
+          <PendingReviewPanel
+            game={game}
+            matcherUsername={c.matcherUsername}
+            canDispute={c.canDispute}
+            deadline={c.deadline}
+            submitting={c.reviewSubmitting}
+            lastReviewAction={c.lastReviewAction}
+            error={c.error}
+            onAccept={c.handleAcceptLanded}
+            onDispute={c.handleRaiseDispute}
+          />
+        )}
+
+        {c.isPendingReviewMatcher && (
+          <ReviewStatusPanel kind="pending-matcher" opponentUsername={c.opponentName} deadline={c.deadline} />
+        )}
+
+        {c.isCommunityReview && (
+          <ReviewStatusPanel kind="community" opponentUsername={c.opponentName} deadline={c.deadline} />
         )}
 
         {c.isJudgeInvitePending && (

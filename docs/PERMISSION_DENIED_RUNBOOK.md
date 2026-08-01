@@ -24,6 +24,10 @@ without an App Check header. Firebase Console → App Check → APIs → Cloud
 Firestore → flip **Enforcement** to **Unenforced**. (Re-enforce only after
 turning client-side App Check back on AND verifying the reCAPTCHA allowlist.)
 
+**Planning a re-enablement?** Follow the staged runbook in
+[`docs/APPCHECK_ROLLOUT.md`](./APPCHECK_ROLLOUT.md) — it supersedes the
+three-step summary below with explicit preflight, abort criteria and rollback.
+
 **To turn App Check back on** once reCAPTCHA + enforcement are verified healthy:
 
 1. Vercel Dashboard → `play` project → **Settings → Environment Variables**.
