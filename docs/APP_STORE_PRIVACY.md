@@ -1,5 +1,8 @@
 # App Store Privacy Questionnaire — Delta Per Release
 
+> Full evidence-based draft answers for both consoles live in
+> [`docs/STORE_PRIVACY_ANSWERS.md`](./STORE_PRIVACY_ANSWERS.md).
+
 This file tracks the App Store Connect / Google Play Data Safety
 questionnaire updates required when a release changes what data
 SkateHubba collects, processes, or stores. Update on every PR that
