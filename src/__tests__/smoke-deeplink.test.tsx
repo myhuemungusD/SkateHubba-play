@@ -13,7 +13,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, type RenderResult } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import App from "../App";
 import { verifiedUser, testProfile } from "./smoke-helpers";
 import type { UserProfile } from "../services/users";

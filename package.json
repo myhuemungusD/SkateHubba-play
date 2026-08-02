@@ -34,30 +34,30 @@
   },
   "dependencies": {
     "@capacitor-community/video-recorder": "^7.5.0",
-    "@capacitor-firebase/app-check": "^8.2.0",
-    "@capacitor-firebase/authentication": "^8.2.0",
-    "@capacitor/android": "^8.2.0",
-    "@capacitor/camera": "^8.2.0",
+    "@capacitor-firebase/app-check": "^8.3.0",
+    "@capacitor-firebase/authentication": "^8.3.0",
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/camera": "^8.2.1",
     "@capacitor/core": "^8.2.0",
     "@capacitor/haptics": "^8.0.2",
-    "@capacitor/ios": "^8.2.0",
+    "@capacitor/ios": "^8.4.2",
     "@capacitor/keyboard": "^8.0.4",
-    "@capacitor/push-notifications": "^8.0.3",
-    "@capacitor/splash-screen": "^8.0.1",
-    "@sentry/capacitor": "4.0.0",
-    "@sentry/react": "10.43.0",
+    "@capacitor/push-notifications": "^8.1.2",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@sentry/capacitor": "4.2.0",
+    "@sentry/react": "10.60.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
-    "firebase": "^12.11.0",
-    "firebase-admin": "^14.0.0",
-    "lucide-react": "^1.8.0",
-    "mapbox-gl": "^3.21.0",
+    "firebase": "^12.16.0",
+    "firebase-admin": "^14.2.0",
+    "lucide-react": "^1.27.0",
+    "mapbox-gl": "^3.27.0",
     "nsfwjs": "^4.3.0",
-    "posthog-js": "^1.369.2",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "react-router-dom": "^7.18.1",
-    "zod": "^4.3.6"
+    "posthog-js": "^1.407.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-router": "^8.3.0",
+    "zod": "^4.4.3"
   },
   "overrides": {
     "@grpc/grpc-js": "^1.14.4",
@@ -73,15 +73,9 @@
     "@hono/node-server": "^2.0.5",
     "protobufjs": "^7.5.8",
     "tmp": "^0.2.6",
-    "@capacitor/cli": {
-      "brace-expansion": "^5.0.7"
-    },
-    "@typescript-eslint/typescript-estree": {
-      "brace-expansion": "^5.0.7"
-    },
-    "cacache": {
-      "brace-expansion": "^5.0.7"
-    }
+    "brace-expansion": "^5.0.9",
+    "minimatch": "^10.1.1",
+    "re2": "^1.25.2"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
@@ -93,9 +87,9 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/mapbox-gl": "^3.4.1",
+    "@types/mapbox-gl": "^3.5.0",
     "@types/node": "^26.1.1",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.0",

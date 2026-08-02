@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter } from "react-router";
 import { Settings } from "../Settings";
 import { NotificationProvider } from "../../context/NotificationContext";
 import { SOCIAL_LINKS } from "../../constants/socialLinks";

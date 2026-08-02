@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router";
 import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
 import { HomeIcon, MapPinIcon, UserIcon } from "./icons";
 

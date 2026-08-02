@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react";
-import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router-dom";
+import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuthContext } from "./context/AuthContext";
