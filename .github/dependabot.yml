@@ -15,6 +15,16 @@ updates:
       # into the next feat/fix release.
       prefix: chore
       include: scope
+    # `@sentry/capacitor` declares an EXACT peerOptional pin on `@sentry/react`
+    # (4.2.0 → `@sentry/react@10.60.0`), so any independent bump of
+    # `@sentry/react` makes `npm ci` fail with ERESOLVE and the PR is
+    # unmergeable by construction. Observed on PR #488, which bumped
+    # `@sentry/react` to 10.69.0 while no `@sentry/capacitor` release accepted
+    # it. `@sentry/react` must therefore move only in lockstep with a
+    # `@sentry/capacitor` release — bump the pair by hand when Sentry ships one
+    # (this also covers the tracked v3→v4 Capacitor migration, AUDIT_2026-05 F9).
+    ignore:
+      - dependency-name: "@sentry/react"
     groups:
       production-dependencies:
         dependency-type: production
