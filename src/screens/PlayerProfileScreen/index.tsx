@@ -40,6 +40,17 @@ interface Props {
   onViewPlayer?: (uid: string) => void;
   /** Set of UIDs the current user has blocked (for block/unblock UI). */
   blockedUids?: Set<string>;
+  /**
+   * Called when the user taps "ADD A SPOT" on their own profile. Omit and the
+   * CTA renders disabled rather than dead — see AddedSpotsPlaceholder.
+   */
+  onAddSpot?: () => void;
+  /**
+   * Refetches the signed-in user's profile, backing pull-to-refresh on the
+   * own-profile view. Omit and the gesture still resolves, just without a
+   * refetch (the pre-wiring behaviour).
+   */
+  onRefreshProfile?: () => Promise<void>;
 }
 
 /**
@@ -53,9 +64,11 @@ interface Props {
  *   - 96px avatar with optional custom image + pencil-edit overlay (own profile).
  *   - Pull-to-refresh on own profile.
  *   - "Share my profile" button on own profile (`navigator.share` with
- *     clipboard fallback). Shares a deep-link to `/profile/{uid}`.
- *   - AchievementsRibbon + AddedSpotsPlaceholder placeholders for layout
- *     fidelity; future PRs wire them to real data.
+ *     clipboard fallback). Shares a deep-link to `/player/{uid}`.
+ *   - AddedSpotsPlaceholder — empty state whose CTA navigates to the map;
+ *     the spot *list* still awaits the spot-check-in PR's real data.
+ *   - AchievementsRibbon — placeholder for layout fidelity; a future PR
+ *     wires it to real achievement data.
  *
  * Deferred until their respective counters ship on main:
  *   - XP / level (currently placeholder L1 via LevelChip)
@@ -70,6 +83,8 @@ export function PlayerProfileScreen({
   onChallenge,
   onViewPlayer,
   blockedUids,
+  onAddSpot,
+  onRefreshProfile,
 }: Props) {
   const c = usePlayerProfileController({
     viewedUid,
@@ -110,15 +125,33 @@ export function PlayerProfileScreen({
     [viewedUid],
   );
 
-  // PTR-no-op for own profile — refreshing the local profile snapshot is
-  // a no-op at this layer because the snapshot is owned by GameContext.
-  // Kept as `async () => undefined` so the gesture visually resolves
-  // without a reload loop.
-  const ptr = usePullToRefresh(async () => undefined);
+  // The own-profile snapshot comes from a ONE-TIME `getUserProfile` read at
+  // auth time, not a live listener — so it goes stale, and this gesture used
+  // to animate without refetching anything. That matters more now that
+  // wins/losses are incremented server-side by applyGameStats after a game
+  // ends: without a refetch the user has no way to see their own new record.
+  // `onRefreshProfile` stays optional so an unwired caller keeps the old
+  // resolve-immediately behaviour rather than crashing.
+  const ptr = usePullToRefresh(async () => {
+    await onRefreshProfile?.();
+  });
+
+  // The map/add-spot flow already exists at `/map`, so the CTA no longer
+  // needs to sit disabled. The spot *list* above it still awaits the
+  // spot-check-in PR's `spotsAddedCount` data, but the button now does the
+  // thing its label promises instead of being an inert affordance.
+  const handleAddSpot = useCallback(() => {
+    if (!onAddSpot) return;
+    trackEvent("profile_add_a_spot_tapped", { uid: hashUid(currentUserProfile.uid) });
+    onAddSpot();
+  }, [onAddSpot, currentUserProfile.uid]);
 
   const [shareCopiedAt, setShareCopiedAt] = useState<number | null>(null);
   const handleShareProfile = useCallback(async () => {
-    const url = `${window.location.origin}/profile/${currentUserProfile.uid}`;
+    // `/player/:uid` is the public profile route. `/profile` is the
+    // profile-*setup* route and matches exactly, so `/profile/{uid}` fell
+    // through to `*` and redirected every shared link to /404.
+    const url = `${window.location.origin}/player/${currentUserProfile.uid}`;
     trackEvent("profile_share_my_profile_tapped", { uid: hashUid(currentUserProfile.uid) });
     const payload: ShareData = {
       title: `@${currentUserProfile.username} on SkateHubba`,
@@ -217,7 +250,7 @@ export function PlayerProfileScreen({
             visitor but the owner. Matches AddedSpotsPlaceholder's gating. */}
         {isOwnProfile && <AchievementsRibbon />}
 
-        {isOwnProfile && <AddedSpotsPlaceholder />}
+        {isOwnProfile && <AddedSpotsPlaceholder onAddSpot={onAddSpot ? handleAddSpot : undefined} />}
 
         <OpponentList
           opponents={c.opponents}

@@ -139,6 +139,8 @@ function PlayerProfileRoute({
   onChallenge,
   onViewPlayer,
   blockedUids,
+  onAddSpot,
+  onRefreshProfile,
 }: {
   currentUserProfile: import("./services/users").UserProfile;
   ownGames: import("./services/games").GameDoc[];
@@ -147,6 +149,8 @@ function PlayerProfileRoute({
   onChallenge: (uid: string, username: string) => void;
   onViewPlayer: (uid: string) => void;
   blockedUids: Set<string>;
+  onAddSpot: () => void;
+  onRefreshProfile: () => Promise<void>;
 }) {
   const { uid } = useParams<{ uid: string }>();
   if (!uid) return <Navigate to="/lobby" replace />;
@@ -165,6 +169,8 @@ function PlayerProfileRoute({
       onChallenge={isOwn ? undefined : onChallenge}
       onViewPlayer={onViewPlayer}
       blockedUids={blockedUids}
+      onAddSpot={onAddSpot}
+      onRefreshProfile={onRefreshProfile}
     />
   );
 }
@@ -492,6 +498,8 @@ function AppRoutes() {
                     onChallenge={(_uid, username) => directChallenge(username)}
                     onViewPlayer={nav.navigateToPlayer}
                     blockedUids={blockedUids}
+                    onAddSpot={() => nav.setScreen("map")}
+                    onRefreshProfile={auth.refreshProfile}
                   />
                 ) : (
                   <Navigate to="/" replace />
