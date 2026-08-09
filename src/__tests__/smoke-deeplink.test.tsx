@@ -16,9 +16,10 @@
  * observable by rendering the real route table.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen, type RenderResult } from "@testing-library/react";
+import { act, render, screen, waitFor, type RenderResult } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import App from "../App";
 import { verifiedUser, testProfile } from "./smoke-helpers";
 import type { UserProfile } from "../services/users";
@@ -142,5 +143,61 @@ describe("Smoke: /record own-profile affordances", () => {
     await renderAt("/record");
     await screen.findByRole("button", { name: /add a spot/i });
     expect(screen.queryByLabelText(/^Level /)).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A shared /spots/<id> link opened by someone who isn't signed in.
+ *
+ * Two independent mechanisms redirect that visitor — the route element's
+ * signed-out <Navigate>, and NavigationContext's auth router (which only
+ * started seeing this URL once /spots/:id got a screen identity). Only the
+ * real route table renders both at once, which is what makes this an
+ * App-level spec: it pins that they agree on a destination rather than
+ * fighting over the URL, and that the spot id outlives the round trip.
+ */
+describe("Smoke: /spots/:id deep link survives the auth bounce", () => {
+  const SPOT_ID = "11111111-2222-3333-4444-555555555555";
+  const DETAIL_KEY = "skate.pendingSpotDetail";
+
+  it("bounces a signed-out visitor to a single settled URL, then restores the spot", async () => {
+    sessionStorage.clear();
+    mocks.auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+
+    // Fresh element per pass — re-rendering the identical element object makes
+    // React bail out of reconciliation, so the auth change would never land.
+    const tree = (): ReactElement => (
+      <MemoryRouter initialEntries={[`/spots/${SPOT_ID}`]}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+    let view!: RenderResult;
+    await act(async () => {
+      view = render(tree());
+    });
+
+    // One settled destination, not a ping-pong between "/auth" and "/".
+    expect(screen.getByTestId("location").textContent).toBe("/");
+    expect(sessionStorage.getItem(DETAIL_KEY)).toBe(SPOT_ID);
+
+    // Sign-in resolves: the auth router would normally land them on /lobby.
+    mocks.auth.refs.useAuth.mockReturnValue({
+      loading: false,
+      user: verifiedUser,
+      profile: testProfile as UserProfile,
+      refreshProfile: vi.fn(),
+    });
+    await act(async () => {
+      view.rerender(tree());
+    });
+
+    // The restore navigation is a router transition into a React.lazy route,
+    // so the URL only commits once the chunk resolves — poll rather than
+    // asserting on the first paint.
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(`/spots/${SPOT_ID}`);
+    });
+    expect(sessionStorage.getItem(DETAIL_KEY)).toBeNull();
   });
 });

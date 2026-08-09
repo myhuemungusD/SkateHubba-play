@@ -16,8 +16,38 @@ import { logger } from "../services/logger";
  * Without this the query string is discarded by the bounce and the shared
  * link is effectively broken for logged-out recipients.
  */
-const PENDING_SPOT_KEY = "skate.pendingChallengeSpot";
+const PENDING_CHALLENGE_SPOT_KEY = "skate.pendingChallengeSpot";
+/**
+ * Same mechanism for a shared /spots/<uuid> link, kept under its own key.
+ * The two restore to *different* destinations (/challenge?spot= vs
+ * /spots/<id>), so overloading one key would silently land the recipient on
+ * the wrong screen.
+ */
+const PENDING_SPOT_DETAIL_KEY = "skate.pendingSpotDetail";
 const SPOT_ID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SPOT_DETAIL_PREFIX = "/spots/";
+
+/**
+ * Consume both pending deep-link stashes and return the path to restore, or
+ * null when nothing is pending. Both keys are cleared on every call so a
+ * stale stash from an abandoned bounce can't leak into a later sign-in.
+ * The challenge link wins if both are somehow present.
+ */
+function takePendingDeepLink(): string | null {
+  let challengeSpot: string | null = null;
+  let spotDetail: string | null = null;
+  try {
+    challengeSpot = sessionStorage.getItem(PENDING_CHALLENGE_SPOT_KEY);
+    spotDetail = sessionStorage.getItem(PENDING_SPOT_DETAIL_KEY);
+    if (challengeSpot) sessionStorage.removeItem(PENDING_CHALLENGE_SPOT_KEY);
+    if (spotDetail) sessionStorage.removeItem(PENDING_SPOT_DETAIL_KEY);
+  } catch {
+    // Best-effort read; private mode, disabled storage, etc.
+  }
+  if (challengeSpot && SPOT_ID_SHAPE.test(challengeSpot)) return `/challenge?spot=${challengeSpot}`;
+  if (spotDetail && SPOT_ID_SHAPE.test(spotDetail)) return `${SPOT_DETAIL_PREFIX}${spotDetail}`;
+  return null;
+}
 
 export type Screen =
   | "landing"
@@ -30,6 +60,7 @@ export type Screen =
   | "record"
   | "player"
   | "map"
+  | "spotdetail"
   | "privacy"
   | "terms"
   | "datadeletion"
@@ -47,6 +78,7 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   record: "/record",
   player: "/player",
   map: "/map",
+  spotdetail: "/spots",
   privacy: "/privacy",
   terms: "/terms",
   datadeletion: "/data-deletion",
@@ -61,6 +93,8 @@ const PATH_TO_SCREEN: Record<string, Screen> = Object.fromEntries(
 export function pathToScreen(pathname: string): Screen {
   // Handle dynamic /player/:uid route
   if (pathname.startsWith("/player/")) return "player";
+  // Handle dynamic /spots/:id route
+  if (pathname.startsWith(SPOT_DETAIL_PREFIX)) return "spotdetail";
   return PATH_TO_SCREEN[pathname] ?? "notfound";
 }
 
@@ -139,6 +173,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       if (s === "player") {
         throw new Error("setScreen('player') is not supported — use navigateToPlayer(uid) instead");
       }
+      // Same story for "spotdetail" (/spots/:id): the bare /spots path isn't
+      // routed, so dispatching to it would fall through to the 404 catch-all.
+      if (s === "spotdetail") {
+        throw new Error("setScreen('spotdetail') is not supported — navigate to /spots/<id> instead");
+      }
       const path = screenToPath(s);
       navigate(path);
     },
@@ -194,12 +233,24 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         return;
       }
       // Stash a /challenge?spot=<uuid> param before the bounce so we can
-      // restore it after the user authenticates. See PENDING_SPOT_KEY docs.
+      // restore it after the user authenticates. See the key docs above.
       if (currentScreen === "challenge") {
         const spot = new URLSearchParams(location.search).get("spot");
         if (spot && SPOT_ID_SHAPE.test(spot)) {
           try {
-            sessionStorage.setItem(PENDING_SPOT_KEY, spot);
+            sessionStorage.setItem(PENDING_CHALLENGE_SPOT_KEY, spot);
+          } catch {
+            // Private-mode Safari can throw — best-effort persistence only.
+          }
+        }
+      }
+      // Same for a shared /spots/<uuid> link — the id lives in the path
+      // rather than the query, and restores to the spot page, not /challenge.
+      if (currentScreen === "spotdetail") {
+        const spotId = location.pathname.slice(SPOT_DETAIL_PREFIX.length);
+        if (SPOT_ID_SHAPE.test(spotId)) {
+          try {
+            sessionStorage.setItem(PENDING_SPOT_DETAIL_KEY, spotId);
           } catch {
             // Private-mode Safari can throw — best-effort persistence only.
           }
@@ -226,20 +277,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       from: currentScreen,
       to: next,
     });
-    // If we're about to land the freshly-authenticated user on /lobby and
-    // we have a pending challenge spot stashed from a pre-auth shared link,
-    // consume it and redirect to /challenge?spot=<uuid> instead.
+    // If we're about to land the freshly-authenticated user on /lobby and a
+    // pre-auth shared link was stashed on the bounce, consume it and redirect
+    // to the original destination instead.
     if (next === "lobby") {
-      let pending: string | null = null;
-      try {
-        pending = sessionStorage.getItem(PENDING_SPOT_KEY);
-        if (pending) sessionStorage.removeItem(PENDING_SPOT_KEY);
-      } catch {
-        // Best-effort read; private mode, disabled storage, etc.
-      }
-      if (pending && SPOT_ID_SHAPE.test(pending)) {
-        logger.debug("auth_router_restored_pending_spot", { uid: user.uid, spot: pending });
-        navigate(`/challenge?spot=${pending}`, { replace: true });
+      const pendingPath = takePendingDeepLink();
+      if (pendingPath) {
+        logger.debug("auth_router_restored_pending_spot", { uid: user.uid, to: pendingPath });
+        navigate(pendingPath, { replace: true });
         return;
       }
     }
