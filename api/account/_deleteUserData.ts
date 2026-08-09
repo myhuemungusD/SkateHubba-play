@@ -59,6 +59,15 @@ const BATCH_CHUNK = 400;
  */
 const PAGE_SIZE = 500;
 
+/** Concurrent Storage deletes. Bounded so a large account can't self-DoS on GCS limits. */
+const STORAGE_DELETE_CONCURRENCY = 20;
+
+/** Attempts per Storage object before giving up (transient codes only). */
+const STORAGE_RETRY_ATTEMPTS = 3;
+
+/** Base backoff between Storage retries; doubles per attempt. */
+const STORAGE_RETRY_BASE_MS = 200;
+
 /** Per-collection counts, returned to the caller for logging and the response body. */
 export interface DeletionSummary {
   games: number;
@@ -69,7 +78,11 @@ export interface DeletionSummary {
   disputeVotes: number;
   notifications: number;
   pushTargets: number;
+  pushDispatch: number;
+  nudges: number;
+  reports: number;
   achievements: number;
+  blockedUsers: number;
   avatarObjects: number;
   usernameReleased: boolean;
 }
@@ -92,7 +105,11 @@ function emptySummary(): DeletionSummary {
     disputeVotes: 0,
     notifications: 0,
     pushTargets: 0,
+    pushDispatch: 0,
+    nudges: 0,
+    reports: 0,
     achievements: 0,
+    blockedUsers: 0,
     avatarObjects: 0,
     usernameReleased: false,
   };
@@ -118,6 +135,52 @@ async function scanAll(base: Query): Promise<FirebaseFirestore.QueryDocumentSnap
   }
 }
 
+/**
+ * Delete a user's votes from `voteCollection`, decrementing the denormalized
+ * tally on each parent document in the same transaction.
+ *
+ * Both vote collections in this codebase share the shape: the vote names its
+ * parent by id, and the parent carries a count that ranking reads. Deleting the
+ * vote without the decrement permanently inflates that count, so the pair has
+ * to be atomic. `fieldFor` picks which counter to decrement (clips have one;
+ * disputes have one per verdict) and returns null when the vote is unusable.
+ */
+async function deleteVotes(
+  db: Firestore,
+  voteCollection: string,
+  parentCollection: string,
+  parentIdField: string,
+  fieldFor: (data: Record<string, unknown>) => string | null,
+  uid: string,
+): Promise<number> {
+  const votes = await scanAll(db.collection(voteCollection).where("uid", "==", uid));
+  for (const voteDoc of votes) {
+    const data = voteDoc.data() as Record<string, unknown>;
+    const rawId = data[parentIdField];
+    const parentId = typeof rawId === "string" && rawId.length > 0 ? rawId : null;
+    const field = fieldFor(data);
+    await db.runTransaction(async (tx) => {
+      // No usable parent or counter — drop the vote, skip the tally.
+      if (parentId === null || field === null) {
+        tx.delete(voteDoc.ref);
+        return;
+      }
+      const parentRef = db.collection(parentCollection).doc(parentId);
+      const parentSnap = await tx.get(parentRef);
+      tx.delete(voteDoc.ref);
+      // Parent already gone: nothing left to keep consistent.
+      if (!parentSnap.exists) return;
+      const current = (parentSnap.data() as Record<string, unknown>)[field];
+      const count = typeof current === "number" && Number.isFinite(current) ? current : 0;
+      // Never write a negative count — a drifted or zero aggregate has nothing
+      // to subtract.
+      if (count <= 0) return;
+      tx.update(parentRef, { [field]: count - 1 });
+    });
+  }
+  return votes.length;
+}
+
 /** Delete refs in chunked batches, staying under the 500-write ceiling. */
 async function deleteRefs(db: Firestore, refs: FirebaseFirestore.DocumentReference[]): Promise<number> {
   for (let i = 0; i < refs.length; i += BATCH_CHUNK) {
@@ -129,13 +192,25 @@ async function deleteRefs(db: Firestore, refs: FirebaseFirestore.DocumentReferen
 }
 
 /**
- * Read the account's username so the reservation in `/usernames` can be
- * released. Derived from the profile document rather than accepted from the
- * request body: the caller must never be able to name which reservation to
- * free, or one account could release another's username.
+ * Read the account's username so the reservation in `/usernames` can be released.
+ *
+ * SECURITY: reading this from the profile is NOT sufficient on its own, and the
+ * reservation must never be deleted on the strength of this value alone.
+ * `firestore.rules` lets any signed-in user create `users/{uid}` with any
+ * format-valid username and does NOT require that a matching reservation is
+ * actually held (`match /users/{uid}`, `allow create`). So an attacker can sign
+ * up, write `users/{attacker}` claiming a victim's username without ever
+ * reserving it, and then invoke deletion. The client cascade was safe from this
+ * by accident: `usernames/{name}` delete requires
+ * `resource.data.uid == request.auth.uid`, so the batch was simply rejected.
+ * Admin credentials bypass that rule, which turns an accidental safeguard into
+ * a username-hijack primitive.
+ *
+ * The ownership check therefore lives in `releaseUsername` below, and this
+ * function returns a *candidate* only.
  *
  * Returns null when the profile is already gone (a resumed run), in which case
- * the reservation was either freed on the previous attempt or was never held.
+ * the reservation was either freed on the previous attempt or never held.
  */
 export async function readUsername(db: Firestore, uid: string): Promise<string | null> {
   const snap = await db.collection("users").doc(uid).get();
@@ -147,6 +222,30 @@ export async function readUsername(db: Firestore, uid: string): Promise<string |
 }
 
 /**
+ * Release `usernames/{candidate}` only if it is genuinely held by `uid`.
+ *
+ * Read and delete happen in one transaction so another account cannot claim the
+ * reservation between the ownership check and the delete — otherwise the
+ * check would pass against the old holder and the delete would land on the new
+ * one, reintroducing the hijack through a narrower window.
+ *
+ * Returns true when a reservation was actually released.
+ */
+async function releaseUsername(db: Firestore, uid: string, candidate: string): Promise<boolean> {
+  const ref = db.collection("usernames").doc(candidate);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    // Not held at all (resumed run, or never reserved) — nothing to release.
+    if (!snap.exists) return false;
+    // Held by someone else: the profile was claiming a username it never owned.
+    // Leave the real owner's reservation alone.
+    if ((snap.data() as Record<string, unknown> | undefined)?.uid !== uid) return false;
+    tx.delete(ref);
+    return true;
+  });
+}
+
+/**
  * Delete every object under a Storage prefix.
  *
  * `deleteFiles` paginates internally. A missing prefix is not an error — it
@@ -155,8 +254,40 @@ export async function readUsername(db: Firestore, uid: string): Promise<string |
 async function deletePrefix(deps: CascadeDeps, prefix: string): Promise<number> {
   const bucket = deps.storage.bucket(deps.bucketName);
   const [files] = await bucket.getFiles({ prefix });
-  await Promise.all(files.map((f) => f.delete({ ignoreNotFound: true })));
+  // Bounded fan-out. A heavy account (many finished games x turns) can hold
+  // hundreds of objects; firing every delete at once invites GCS rate limits,
+  // and because this phase runs first, a single 429 would abort the cascade
+  // before any Firestore document is touched — every retry replaying the same
+  // burst. Chunking keeps a big account deletable.
+  for (let i = 0; i < files.length; i += STORAGE_DELETE_CONCURRENCY) {
+    const chunk = files.slice(i, i + STORAGE_DELETE_CONCURRENCY);
+    await Promise.all(chunk.map((f) => withStorageRetry(() => f.delete({ ignoreNotFound: true }))));
+  }
   return files.length;
+}
+
+/**
+ * Retry a Storage operation through transient GCS failures.
+ *
+ * Deliberately narrow: only rate-limit and availability codes retry. A
+ * permissions or bad-bucket failure must still throw, because silently
+ * continuing would erase the Firestore records while leaving the binaries —
+ * the exact privacy failure this cascade exists to prevent.
+ */
+async function withStorageRetry<T>(op: () => Promise<T>): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < STORAGE_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await op();
+    } catch (err) {
+      lastErr = err;
+      const code = (err as { code?: unknown } | null)?.code;
+      const retryable = code === 429 || code === 500 || code === 502 || code === 503 || code === 504;
+      if (!retryable || attempt === STORAGE_RETRY_ATTEMPTS - 1) throw err;
+      await new Promise((r) => setTimeout(r, STORAGE_RETRY_BASE_MS * 2 ** attempt));
+    }
+  }
+  throw lastErr;
 }
 
 /**
@@ -221,39 +352,31 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
     disputes.map((d) => d.ref),
   );
 
-  summary.clipVotes = await deleteRefs(
-    db,
-    (await scanAll(db.collection("clipVotes").where("uid", "==", uid))).map((d) => d.ref),
-  );
+  // Clip upvotes carry a denormalized `upvoteCount` on the parent clip that
+  // drives the feed's `top` sort, so — exactly like dispute votes below — each
+  // vote is removed transactionally with its decrement. Deleting the vote docs
+  // alone would permanently inflate the ranking of every clip a deleted account
+  // ever upvoted.
+  summary.clipVotes = await deleteVotes(db, "clipVotes", "clips", "clipId", () => "upvoteCount", uid);
 
-  // Dispute votes carry a tally on the parent dispute, so each one is removed
-  // transactionally with its decrement — deleting the vote alone would leave
-  // the dispute advertising a verdict count that no longer has votes behind it.
-  // Guards mirror `deleteUserDisputeVotes`: an unusable disputeId/verdict still
-  // gets the vote deleted (just untargetable for the tally), a dispute that is
-  // already gone needs no decrement, and a non-positive count is never driven
-  // negative.
-  for (const voteDoc of await scanAll(db.collection("disputeVotes").where("uid", "==", uid))) {
-    const data = voteDoc.data() as { disputeId?: unknown; verdict?: unknown };
-    const disputeId = typeof data.disputeId === "string" && data.disputeId.length > 0 ? data.disputeId : null;
-    const verdict = data.verdict === "land" || data.verdict === "bail" ? data.verdict : null;
-    await db.runTransaction(async (tx) => {
-      if (disputeId === null || verdict === null) {
-        tx.delete(voteDoc.ref);
-        return;
-      }
-      const disputeRef = db.collection("disputes").doc(disputeId);
-      const disputeSnap = await tx.get(disputeRef);
-      tx.delete(voteDoc.ref);
-      if (!disputeSnap.exists) return;
-      const field = verdict === "land" ? "landVotes" : "bailVotes";
-      const current = (disputeSnap.data() as Record<string, unknown>)[field];
-      const count = typeof current === "number" && Number.isFinite(current) ? current : 0;
-      if (count <= 0) return;
-      tx.update(disputeRef, { [field]: count - 1 });
-    });
-    summary.disputeVotes += 1;
-  }
+  // Dispute votes are the same shape, but the field depends on which way the
+  // vote went. Guards mirror `deleteUserDisputeVotes`: an unusable target id or
+  // verdict still gets the vote deleted (just untargetable for the tally), a
+  // parent that is already gone needs no decrement, and a non-positive count is
+  // never driven negative.
+  summary.disputeVotes = await deleteVotes(
+    db,
+    "disputeVotes",
+    "disputes",
+    "disputeId",
+    (data) => {
+      const verdict = data.verdict;
+      if (verdict === "land") return "landVotes";
+      if (verdict === "bail") return "bailVotes";
+      return null;
+    },
+    uid,
+  );
 
   // ── Phase 3b: device identifiers and received notifications ──
   // `pushTargets/{uid}` is the cross-readable FCM-token mirror. FCM tokens are
@@ -267,20 +390,54 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
     (await scanAll(db.collection("notifications").where("recipientUid", "==", uid))).map((d) => d.ref),
   );
 
+  // Queued push dispatches embed the recipient's FCM tokens, so an undrained
+  // queue would keep device identifiers alive past erasure. The client cascade
+  // never covered these — it couldn't, since /push_dispatch is write-only to
+  // clients — which is one of the gaps admin credentials close.
+  summary.pushDispatch = await deleteRefs(
+    db,
+    (await scanAll(db.collection("push_dispatch").where("recipientUid", "==", uid))).map((d) => d.ref),
+  );
+
+  // Nudges name both parties directly and are classified as the subject's
+  // personal data by the GDPR export (`userData.ts`), so both directions go.
+  const [nudgesSent, nudgesReceived] = await Promise.all([
+    scanAll(db.collection("nudges").where("senderUid", "==", uid)),
+    scanAll(db.collection("nudges").where("recipientUid", "==", uid)),
+  ]);
+  const nudgeRefs = new Map<string, FirebaseFirestore.DocumentReference>();
+  for (const d of [...nudgesSent, ...nudgesReceived]) nudgeRefs.set(d.id, d.ref);
+  summary.nudges = await deleteRefs(db, [...nudgeRefs.values()]);
+
+  // Reports this user filed. Reports filed *against* them are deliberately
+  // kept: those are another user's submission and part of the moderation
+  // record, and erasing them on request would make abuse reports removable by
+  // the reported party.
+  summary.reports = await deleteRefs(
+    db,
+    (await scanAll(db.collection("reports").where("reporterUid", "==", uid))).map((d) => d.ref),
+  );
+
   // ── Phase 4: identity surface, atomically ──
   // Achievements, the private profile doc (email / DOB / parental consent), the
   // public profile, and the username reservation go in one batch so the whole
   // identity surface survives or vanishes together.
   const achievements = await scanAll(db.collection("users").doc(uid).collection("achievements"));
+  // The reservation is released first and separately, because it is the one
+  // delete here that needs an ownership check (see `releaseUsername`) and so
+  // cannot ride along in an unconditional batch.
+  summary.usernameReleased = username !== null && (await releaseUsername(db, uid, username));
+
+  const blocked = await scanAll(db.collection("users").doc(uid).collection("blocked_users"));
   const identityRefs: FirebaseFirestore.DocumentReference[] = [
     ...achievements.map((d) => d.ref),
+    ...blocked.map((d) => d.ref),
     db.collection("users").doc(uid).collection("private").doc(PRIVATE_PROFILE_DOC_ID),
     db.collection("users").doc(uid),
   ];
-  if (username) identityRefs.push(db.collection("usernames").doc(username));
   await deleteRefs(db, identityRefs);
   summary.achievements = achievements.length;
-  summary.usernameReleased = username !== null;
+  summary.blockedUsers = blocked.length;
 
   // ── Phase 5: avatar binaries ──
   // Three extensions because `avatars.ts` may have written any of them.

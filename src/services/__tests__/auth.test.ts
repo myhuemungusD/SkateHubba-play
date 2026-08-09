@@ -10,9 +10,7 @@ const mockSignOut = vi.fn().mockResolvedValue(undefined);
 const mockSendReset = vi.fn().mockResolvedValue(undefined);
 const mockSendVerify = vi.fn().mockResolvedValue(undefined);
 const mockOnAuthStateChanged = vi.fn();
-const mockDeleteUser = vi.fn().mockResolvedValue(undefined);
 const mockGetRedirectResult = vi.fn();
-const mockDeleteUserData = vi.fn().mockResolvedValue(undefined);
 const mockCaptureException = vi.fn();
 
 vi.mock("firebase/auth", () => ({
@@ -22,16 +20,15 @@ vi.mock("firebase/auth", () => ({
   sendPasswordResetEmail: (...args: unknown[]) => mockSendReset(...args),
   sendEmailVerification: (...args: unknown[]) => mockSendVerify(...args),
   onAuthStateChanged: (...args: unknown[]) => mockOnAuthStateChanged(...args),
-  deleteUser: (...args: unknown[]) => mockDeleteUser(...args),
   getRedirectResult: (...args: unknown[]) => mockGetRedirectResult(...args),
   GoogleAuthProvider: vi.fn(),
   signInWithPopup: vi.fn(),
   signInWithRedirect: vi.fn(),
 }));
 
-vi.mock("../users", () => ({
-  deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
-}));
+/* ── mock global fetch (deleteAccount talks to /api/account/delete) ── */
+const mockFetch = vi.fn();
+vi.stubGlobal("fetch", mockFetch);
 
 vi.mock("../../lib/sentry", () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -40,15 +37,6 @@ vi.mock("../../lib/sentry", () => ({
   setUser: vi.fn(),
   initSentry: vi.fn(),
 }));
-
-// Collapse retry delays so the orphan-cleanup retry test doesn't sleep.
-vi.mock("../../utils/retry", async () => {
-  const actual = await vi.importActual<typeof import("../../utils/retry")>("../../utils/retry");
-  return {
-    ...actual,
-    withRetry: <T>(fn: () => Promise<T>) => actual.withRetry(fn, 3, 0),
-  };
-});
 
 vi.mock("../../firebase");
 
@@ -69,6 +57,56 @@ beforeEach(() => {
   vi.clearAllMocks();
   (auth as unknown as { currentUser: unknown }).currentUser = null;
 });
+
+/* ── deleteAccount helpers ──────────────────── */
+
+/** Endpoint contract shared with `api/account/delete.ts`. */
+const DELETE_PATH = "/api/account/delete";
+const ID_TOKEN = "id-token-abc";
+/** Distinct from ID_TOKEN so a substring search for it is meaningful. */
+const TARGET_UID = "uid-under-test";
+
+/** Install a stand-in signed-in user and return it for assertions. */
+function signInAs(uid: string): { uid: string; getIdToken: ReturnType<typeof vi.fn> } {
+  const user = { uid, getIdToken: vi.fn().mockResolvedValue(ID_TOKEN) };
+  (auth as unknown as { currentUser: unknown }).currentUser = user;
+  return user;
+}
+
+interface FakeResponse {
+  ok: boolean;
+  status?: number;
+  body?: unknown;
+  /** Simulate a body that isn't JSON (HTML error page, empty 204, …). */
+  unparsable?: boolean;
+}
+
+/** Queue the response the delete endpoint will return. */
+function serverResponds({ ok, status, body, unparsable }: FakeResponse): void {
+  mockFetch.mockResolvedValue({
+    ok,
+    status: status ?? (ok ? 200 : 400),
+    json: unparsable
+      ? vi.fn().mockRejectedValue(new SyntaxError("Unexpected token < in JSON at position 0"))
+      : vi.fn().mockResolvedValue(body ?? {}),
+  });
+}
+
+/** The single outbound request, asserted to be exactly one. */
+function deleteRequest(): [string, RequestInit] {
+  expect(mockFetch).toHaveBeenCalledTimes(1);
+  return mockFetch.mock.calls[0] as [string, RequestInit];
+}
+
+/** Await a rejection and hand back the error with its `code`/`cause` typed. */
+async function rejectionOf(promise: Promise<unknown>): Promise<Error & { code?: string; cause?: unknown }> {
+  return await promise.then(
+    () => {
+      throw new Error("expected deleteAccount to reject, but it resolved");
+    },
+    (err: unknown) => err as Error & { code?: string; cause?: unknown },
+  );
+}
 
 /* ── Tests ──────────────────────────────────── */
 
@@ -317,100 +355,162 @@ describe("auth service", () => {
   });
 
   describe("deleteAccount", () => {
+    beforeEach(() => {
+      // clearAllMocks() wipes call history but leaves queued implementations,
+      // so reset the fetch stub outright. Default: the happy path, which every
+      // case that isn't specifically about the response can rely on.
+      mockFetch.mockReset();
+      serverResponds({ ok: true, body: { authDeleted: true } });
+    });
+
     it("throws when no user is signed in", async () => {
       (auth as unknown as { currentUser: unknown }).currentUser = null;
-      await expect(deleteAccount("u1", "sk8r")).rejects.toThrow("Not signed in");
-      expect(mockDeleteUser).not.toHaveBeenCalled();
-      expect(mockDeleteUserData).not.toHaveBeenCalled();
+      await expect(deleteAccount("u1")).rejects.toThrow("Not signed in");
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it("refuses to run when the signed-in uid does not match the requested uid", async () => {
-      const mockUser = { uid: "u1" };
-      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
-      await expect(deleteAccount("different", "sk8r")).rejects.toThrow(/uid does not match/);
-      expect(mockDeleteUser).not.toHaveBeenCalled();
-      expect(mockDeleteUserData).not.toHaveBeenCalled();
+      signInAs("u1");
+      // Identity drift mid-delete must never reach the server.
+      await expect(deleteAccount("different")).rejects.toThrow(/uid does not match/);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it("deletes Firebase Auth FIRST, then wipes Firestore data (reverse order)", async () => {
-      const mockUser = { uid: "u1" };
-      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
-      const order: string[] = [];
-      mockDeleteUser.mockImplementationOnce(async () => {
-        order.push("auth");
-      });
-      mockDeleteUserData.mockImplementationOnce(async () => {
-        order.push("firestore");
-      });
-
-      await deleteAccount("u1", "sk8r");
-
-      expect(order).toEqual(["auth", "firestore"]);
-      expect(mockDeleteUser).toHaveBeenCalledWith(mockUser);
-      expect(mockDeleteUserData).toHaveBeenCalledWith("u1", "sk8r");
+    it("POSTs to the erasure endpoint with the ID token as a bearer credential", async () => {
+      const user = signInAs("u1");
+      await deleteAccount("u1");
+      const [url, init] = deleteRequest();
+      expect(user.getIdToken).toHaveBeenCalled();
+      expect(url).toBe(DELETE_PATH);
+      expect(init.method).toBe("POST");
+      expect(init.headers).toEqual({ Authorization: `Bearer ${ID_TOKEN}` });
     });
 
-    it("rethrows auth/requires-recent-login WITHOUT touching Firestore", async () => {
-      const mockUser = { uid: "u1" };
-      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
-      const recentErr = Object.assign(new Error("needs reauth"), {
-        code: "auth/requires-recent-login",
-      });
-      mockDeleteUser.mockRejectedValueOnce(recentErr);
+    it("sends no uid and no username on the wire", async () => {
+      // Security property: the server derives identity solely from the verified
+      // token. If the client could name the account — or the username
+      // reservation to release — a caller could aim erasure at someone else.
+      signInAs(TARGET_UID);
+      await deleteAccount(TARGET_UID);
+      const [url, init] = deleteRequest();
+      expect(init.body).toBeUndefined();
+      expect(url).toBe(DELETE_PATH); // no query string either
+      expect(Object.keys(init.headers as Record<string, string>)).toEqual(["Authorization"]);
+      expect(JSON.stringify([url, init])).not.toContain(TARGET_UID);
+    });
 
-      await expect(deleteAccount("u1", "sk8r")).rejects.toBe(recentErr);
+    it("prefixes the request with VITE_APP_URL when one is configured", async () => {
+      vi.stubEnv("VITE_APP_URL", "https://skatehubba.test");
+      try {
+        signInAs("u1");
+        await deleteAccount("u1");
+        expect(deleteRequest()[0]).toBe(`https://skatehubba.test${DELETE_PATH}`);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
 
-      // Critical invariant: Firestore must not be touched on auth-delete failure
-      // — otherwise the next login sees a stripped profile.
-      expect(mockDeleteUserData).not.toHaveBeenCalled();
+    it("clears the local session once the server confirms erasure", async () => {
+      signInAs("u1");
+      await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
+      expect(mockSignOut).toHaveBeenCalledWith(auth);
       expect(mockCaptureException).not.toHaveBeenCalled();
     });
 
-    it("rethrows generic deleteUser errors WITHOUT touching Firestore", async () => {
-      const mockUser = { uid: "u1" };
-      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
-      const authErr = new Error("network down");
-      mockDeleteUser.mockRejectedValueOnce(authErr);
-
-      await expect(deleteAccount("u1", "sk8r")).rejects.toBe(authErr);
-      expect(mockDeleteUserData).not.toHaveBeenCalled();
+    it("resolves when the success body is not JSON", async () => {
+      // 204, or a body mangled by a proxy. The erasure still happened, so a
+      // body-parsing detail must not become a user-facing failure.
+      signInAs("u1");
+      serverResponds({ ok: true, unparsable: true });
+      // An absent flag is not the same as an explicit `false` — only the server
+      // saying so should hold the pending-delete marker open.
+      await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
+      expect(mockSignOut).toHaveBeenCalledWith(auth);
       expect(mockCaptureException).not.toHaveBeenCalled();
     });
 
-    it("returns success when deleteUserData throws after Auth is deleted (orphan is logged, not thrown)", async () => {
-      const mockUser = { uid: "u1" };
-      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
-      const firestoreErr = new Error("network timeout");
-      mockDeleteUserData.mockRejectedValue(firestoreErr); // fails every retry
-
-      // Does NOT throw — from the user's perspective, the account is gone.
-      await expect(deleteAccount("u1", "sk8r")).resolves.toBeUndefined();
-
-      expect(mockDeleteUser).toHaveBeenCalledWith(mockUser);
-      // withRetry attempts up to 3 times on transient errors.
-      expect(mockDeleteUserData).toHaveBeenCalledTimes(3);
+    it("resolves but alerts Sentry when the data is erased and the Auth user survives", async () => {
+      signInAs("u1");
+      serverResponds({ ok: true, body: { authDeleted: false } });
+      // Reported to the caller, which keeps the pending-delete marker set so
+      // the "Finish deletion" affordance stays reachable for the orphaned
+      // Auth record.
+      await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: false });
+      expect(mockSignOut).toHaveBeenCalledWith(auth);
       expect(mockCaptureException).toHaveBeenCalledWith(
-        firestoreErr,
+        expect.objectContaining({ message: expect.stringContaining("Auth user survived") }),
+        expect.objectContaining({ level: "warning", extra: expect.objectContaining({ uid: "u1" }) }),
+      );
+    });
+
+    it("still resolves when clearing the local session fails", async () => {
+      // The server already killed the session; a failed local signOut is
+      // cosmetic and must not tell the user their data is still there.
+      signInAs("u1");
+      mockSignOut.mockRejectedValueOnce(new Error("storage unavailable"));
+      await expect(deleteAccount("u1")).resolves.toEqual({ authDeleted: true });
+    });
+
+    it("throws a retryable network code when the request never reaches the server", async () => {
+      signInAs("u1");
+      const netErr = new TypeError("Failed to fetch");
+      mockFetch.mockRejectedValue(netErr);
+      const err = await rejectionOf(deleteAccount("u1"));
+      expect(err.code).toBe("account-delete/network");
+      expect(err.cause).toBe(netErr);
+      // Nothing was deleted, so the session must survive for the retry.
+      expect(mockSignOut).not.toHaveBeenCalled();
+    });
+
+    // Both codes have the same remedy — re-authenticate — and AuthContext has a
+    // single branch on the Firebase code plus a "Finish deletion" affordance.
+    it.each(["requires_recent_login", "invalid_token"])(
+      "maps server code %s to auth/requires-recent-login",
+      async (serverCode) => {
+        signInAs("u1");
+        serverResponds({ ok: false, status: 401, body: { code: serverCode, message: "Sign in again to continue." } });
+        const err = await rejectionOf(deleteAccount("u1"));
+        expect(err.code).toBe("auth/requires-recent-login");
+        expect(err.message).toBe("Sign in again to continue.");
+        expect(mockSignOut).not.toHaveBeenCalled();
+        // Expected, user-recoverable outcome — not an outage signal.
+        expect(mockCaptureException).not.toHaveBeenCalled();
+      },
+    );
+
+    it("namespaces an unrecognised server code and reports it to Sentry", async () => {
+      signInAs("u1");
+      serverResponds({ ok: false, status: 500, body: { code: "erase_failed", message: "Erasure stalled." } });
+      const err = await rejectionOf(deleteAccount("u1"));
+      expect(err.code).toBe("account-delete/erase_failed");
+      expect(err.message).toBe("Erasure stalled.");
+      expect(mockSignOut).not.toHaveBeenCalled();
+      expect(mockCaptureException).toHaveBeenCalledWith(
+        expect.objectContaining({ message: expect.stringContaining("erase_failed") }),
         expect.objectContaining({
           level: "error",
-          extra: expect.objectContaining({
-            context: expect.stringContaining("orphaned"),
-            uid: "u1",
-            username: "sk8r",
-          }),
+          extra: expect.objectContaining({ uid: "u1", status: 500, serverCode: "erase_failed" }),
         }),
       );
     });
 
-    it("retries deleteUserData on transient failure, succeeds without Sentry", async () => {
-      const mockUser = { uid: "u1" };
-      (auth as unknown as { currentUser: unknown }).currentUser = mockUser;
-      mockDeleteUserData.mockRejectedValueOnce(new Error("transient 503")).mockResolvedValueOnce(undefined);
+    it("falls back to a generic code and message when the error body is not JSON", async () => {
+      signInAs("u1");
+      serverResponds({ ok: false, status: 502, unparsable: true });
+      const err = await rejectionOf(deleteAccount("u1"));
+      expect(err.code).toBe("account-delete/unknown");
+      expect(err.message).toMatch(/Could not delete your account/);
+    });
 
-      await expect(deleteAccount("u1", "sk8r")).resolves.toBeUndefined();
-
-      expect(mockDeleteUserData).toHaveBeenCalledTimes(2);
-      expect(mockCaptureException).not.toHaveBeenCalled();
+    it("ignores non-string code and message fields in the error body", async () => {
+      // A proxy or a future server version can return anything. The thrown code
+      // must stay a usable string, not "account-delete/[object Object]", and
+      // the message must never be a raw object rendered into the UI.
+      signInAs("u1");
+      serverResponds({ ok: false, status: 500, body: { code: 42, message: { detail: "nope" } } });
+      const err = await rejectionOf(deleteAccount("u1"));
+      expect(err.code).toBe("account-delete/unknown");
+      expect(err.message).toMatch(/Could not delete your account/);
     });
   });
 

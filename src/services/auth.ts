@@ -370,7 +370,7 @@ class CodedError extends Error {
  * release. For the same reason there is no uid parameter on the wire — the
  * server derives identity solely from the verified ID token.
  */
-export async function deleteAccount(uid: string): Promise<void> {
+export async function deleteAccount(uid: string): Promise<{ authDeleted: boolean }> {
   const user = requireAuth().currentUser;
   if (!user) throw new Error("Not signed in");
   if (user.uid !== uid) {
@@ -382,7 +382,23 @@ export async function deleteAccount(uid: string): Promise<void> {
   logger.info("delete_account_attempt", { uid });
 
   const idToken = await user.getIdToken();
-  const base = import.meta.env.VITE_APP_URL || "";
+
+  // On the web a relative URL is correct and same-origin, so CORS never engages.
+  // On native it is not: the Capacitor webview origin is `capacitor://localhost`
+  // (iOS) / `https://localhost` (Android), so a relative path resolves to the
+  // webview itself and there is no API there. `window.location.origin` is the
+  // same dead end. The deployed origin must be supplied at build time, and if
+  // it wasn't, failing here is far better than firing a request that cannot
+  // succeed — this is the App-Store-required delete flow.
+  const configuredBase = import.meta.env.VITE_APP_URL || "";
+  if (!configuredBase && Capacitor.isNativePlatform()) {
+    logger.error("delete_account_missing_app_url", { uid });
+    throw new CodedError(
+      "account-delete/misconfigured",
+      "Account deletion is unavailable in this build. Please contact support.",
+    );
+  }
+  const base = configuredBase;
 
   let res: Response;
   try {
@@ -416,10 +432,14 @@ export async function deleteAccount(uid: string): Promise<void> {
   }
 
   const result = (await res.json().catch(() => null)) as { authDeleted?: unknown } | null;
-  if (result?.authDeleted === false) {
+  const authDeleted = result?.authDeleted !== false;
+  if (!authDeleted) {
     // Data is erased but the Auth record survived. Not a user-facing failure —
     // there is nothing left to protect — but it must not pass silently, because
-    // a sign-in would land in profile setup with no explanation.
+    // a sign-in would land in profile setup with no explanation. The caller
+    // keeps the pending-delete marker on this result so the retry affordance
+    // stays reachable; a retry re-runs the (now empty) cascade and deletes the
+    // Auth record.
     logger.warn("delete_account_auth_survived", { uid });
     captureException(new Error("account data erased but Auth user survived"), {
       level: "warning",
@@ -433,7 +453,8 @@ export async function deleteAccount(uid: string): Promise<void> {
     logger.warn("delete_account_signout_failed", { uid, error: parseFirebaseError(err) });
   });
 
-  logger.info("delete_account_success", { uid });
+  logger.info("delete_account_success", { uid, authDeleted });
+  return { authDeleted };
 }
 
 /**

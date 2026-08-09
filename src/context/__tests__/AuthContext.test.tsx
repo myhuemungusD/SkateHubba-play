@@ -286,7 +286,7 @@ describe("handleDeleteAccount", () => {
       authErr,
       expect.objectContaining({
         extra: expect.objectContaining({
-          context: expect.stringContaining("Auth deletion bounced"),
+          context: expect.stringContaining("erasure did not run"),
           uid: "u1",
           username: "sk8r",
         }),
@@ -316,7 +316,7 @@ describe("handleDeleteAccount", () => {
   });
 
   it("does NOT capture Sentry on fully successful delete", async () => {
-    mockDeleteAccount.mockResolvedValueOnce(undefined);
+    mockDeleteAccount.mockResolvedValueOnce({ authDeleted: true });
 
     const { triggerDelete } = renderWithTrigger(profile);
     const thrown = await triggerDelete();
@@ -353,8 +353,8 @@ describe("handleDeleteAccount", () => {
 
     await pending;
 
-    // deleteAccount was called with the *original* uid/username, not the mutated one.
-    expect(mockDeleteAccount).toHaveBeenCalledWith("u1", "sk8r");
+    // deleteAccount was called with the *original* uid, not the mutated one.
+    expect(mockDeleteAccount).toHaveBeenCalledWith("u1");
     expect(mockCaptureException).toHaveBeenCalledWith(
       authErr,
       expect.objectContaining({
@@ -406,7 +406,7 @@ describe("handleDeleteAccount", () => {
     });
 
     it("clears sessionStorage on fully successful first-attempt delete", async () => {
-      mockDeleteAccount.mockResolvedValueOnce(undefined);
+      mockDeleteAccount.mockResolvedValueOnce({ authDeleted: true });
 
       const { triggerDelete } = renderWithTrigger(profile);
       const thrown = await triggerDelete();
@@ -419,13 +419,16 @@ describe("handleDeleteAccount", () => {
       );
     });
 
-    it("resume with null activeProfile + matching pending uid bails safely (no username to wipe)", async () => {
+    it("resume with null activeProfile + matching pending uid completes the deletion", async () => {
       // Post-bounce / post-sign-in state: sessionStorage still holds the
-      // pending uid, useAuth reports the SAME user but no profile. With the
-      // reverse order (Auth-first), no Firestore wipe has happened so the
-      // username reservation is still there. We need the username to delete
-      // it — without a profile reload we can't safely proceed. Bail with a
-      // warn; the user will re-trigger once their profile loads.
+      // pending uid, useAuth reports the SAME user but no profile.
+      //
+      // This used to bail, because the client needed the username to release
+      // the reservation and there was no profile left to read it from. That
+      // was a dead end: it is also the state left behind when erasure
+      // succeeded but the Auth delete failed, so the orphaned Auth record
+      // could never be cleaned up from the UI. The server derives the
+      // username itself now, so the retry needs nothing but the uid.
       sessionStorage.setItem(STORAGE_KEY, "u1");
       mockUseAuth.mockReturnValue({
         loading: false,
@@ -460,10 +463,12 @@ describe("handleDeleteAccount", () => {
       });
 
       expect(thrown).toBeNull();
-      expect(mockDeleteAccount).not.toHaveBeenCalled();
+      // Proceeds on the uid alone — no profile required.
+      expect(mockDeleteAccount).toHaveBeenCalledWith("u1");
+      // Still never from the client: erasure is the server's job.
       expect(mockDeleteUserData).not.toHaveBeenCalled();
-      // Flag remains until the profile reloads and a fresh attempt runs.
-      expect(sessionStorage.getItem(STORAGE_KEY)).toBe("u1");
+      // Completed, so the marker is retired and the banner stops offering it.
+      expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
     });
 
     it("retry early-returns when pending uid does not match current user", async () => {

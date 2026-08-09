@@ -120,12 +120,12 @@ describe("Smoke: Account & Sign Out", () => {
     expect(authSvc.refs.deleteAccount).not.toHaveBeenCalled();
   });
 
-  it("successful delete calls deleteAccount with uid+username and navigates to landing", async () => {
-    // Reverse-order invariant: deleteAccount (which internally runs Auth
-    // deletion FIRST, then Firestore wipe) is the single call site from
-    // AuthContext. If Auth deletion fails we never touch Firestore — the
-    // profile is preserved for retry. deleteUserData is NOT called directly
-    // from AuthContext anymore; it's called from inside deleteAccount.
+  it("successful delete calls deleteAccount with uid only and navigates to landing", async () => {
+    // deleteAccount is the single call site from AuthContext; it delegates to
+    // the server, which erases data first and deletes the Auth user last. If it
+    // throws, nothing was erased and the profile is preserved for retry.
+    // deleteUserData is NOT called from AuthContext. The username is not passed
+    // — the server reads it from the profile it is deleting.
     authSvc.refs.deleteAccount.mockImplementationOnce(async () => {
       // Simulate Firebase sign-out after auth account deletion
       asSignedOut();
@@ -139,7 +139,7 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(screen.getByText("Delete Forever"));
 
     await waitFor(() => {
-      expect(authSvc.refs.deleteAccount).toHaveBeenCalledWith("u1", "sk8r");
+      expect(authSvc.refs.deleteAccount).toHaveBeenCalledWith("u1");
       // After deletion, app navigates to landing
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
     });
@@ -207,7 +207,7 @@ describe("Smoke: Account & Sign Out", () => {
     //      exposes a "Finish" affordance; tapping it re-runs the full
     //      reverse-order deleteAccount and the flag is cleared.
     sessionStorage.setItem("skate.pendingDeleteUid", "u1");
-    authSvc.refs.deleteAccount.mockResolvedValueOnce(undefined);
+    authSvc.refs.deleteAccount.mockResolvedValueOnce({ authDeleted: true });
     asUnverifiedUser();
     withGames([]);
     await renderApp();
@@ -216,9 +216,9 @@ describe("Smoke: Account & Sign Out", () => {
     await userEvent.click(finishBtn);
 
     await waitFor(() => {
-      expect(authSvc.refs.deleteAccount).toHaveBeenCalledWith("u1", "sk8r");
+      expect(authSvc.refs.deleteAccount).toHaveBeenCalledWith("u1");
     });
-    // AuthContext no longer calls deleteUserData directly — it's inside deleteAccount.
+    // AuthContext no longer calls deleteUserData directly — the server does it.
     expect(users.refs.deleteUserData).not.toHaveBeenCalled();
     expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBeNull();
   });
@@ -276,6 +276,7 @@ describe("Smoke: Account & Sign Out", () => {
     // deleteAccount now.
     authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError()).mockImplementationOnce(async () => {
       asSignedOut();
+      return { authDeleted: true };
     });
 
     asUnverifiedUser();

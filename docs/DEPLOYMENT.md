@@ -305,10 +305,12 @@ below applies to each of them identically.
 > same root cause and the same fix as the cron `init_failed` below.
 >
 > Unlike the crons it also needs Storage access, to delete game videos and the
-> avatar. If the service account lacks Storage permissions, or the bucket name
-> is non-default (see `FIREBASE_STORAGE_BUCKET` above), the Firestore erasure
-> still succeeds but the binaries survive — which is a privacy-policy problem,
-> not just a cleanup one. There is no `?dryRun=1` here: the operation is
+> avatar. Storage is Phase 1 of the cascade, so if the service account lacks
+> Storage permissions or the bucket name is wrong (see `FIREBASE_STORAGE_BUCKET`
+> above), the listing throws before any Firestore write and **nothing** is
+> erased — the endpoint returns `500 erasure_failed` and the account is left
+> completely intact. Symptom to look for: deletions failing for every user, not
+> partially-deleted accounts. There is no `?dryRun=1` here: the operation is
 > irreversible by design and must never be triggered casually.
 
 ### The two secrets

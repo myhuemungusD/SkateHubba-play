@@ -160,10 +160,11 @@ function getAdminApp(): App {
       cachedApp = initializeApp({ credential: cert(serviceAccount), storageBucket: cachedBucketName });
     }
   }
-  // Fail loudly rather than erasing with an empty bucket name: `getFiles` on a
-  // bad bucket surfaces as "no objects found", so the Firestore rows would
-  // vanish while every video and avatar quietly survived — the precise privacy
-  // failure this endpoint exists to prevent.
+  // Resolve the bucket up front rather than discovering the problem mid-cascade.
+  // A wrong bucket makes GCS throw NotFound on the first listing, which aborts
+  // erasure in Phase 1 — before any Firestore write — so the account is left
+  // fully intact rather than half-deleted. Catching it here turns that into a
+  // clear init_failed instead of an erasure_failed with a confusing cause.
   if (!cachedBucketName) throw new Error("Storage bucket name could not be resolved");
   return cachedApp;
 }
@@ -254,6 +255,22 @@ export default async function handler(req: ApiRequest, res: ApiResponse): Promis
 
   // ── Erasure, then Auth ──
   log("account_delete_attempt", { uid });
+
+  // Revoke first. The caller stays signed in for the whole cascade (seconds to
+  // minutes), so without this the client can re-create what has just been
+  // deleted — a push re-registration on app resume rewrites `pushTargets/{uid}`
+  // after the cascade removed it, and the record is then orphaned when the Auth
+  // user goes. Revocation does not impede the admin cascade, which uses
+  // service-account credentials rather than the caller's token.
+  //
+  // Best-effort: a revocation failure must not block erasure, which is the
+  // stronger privacy guarantee of the two.
+  try {
+    await getAuth(app).revokeRefreshTokens(uid);
+  } catch (err) {
+    log("account_delete_revoke_failed", { uid, error: err instanceof Error ? err.message : String(err) });
+  }
+
   let summary: DeletionSummary;
   try {
     summary = await deleteUserDataAsAdmin(
