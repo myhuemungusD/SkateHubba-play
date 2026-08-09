@@ -180,7 +180,16 @@ service cloud.firestore {
     // at the security boundary; the TS constants exist so the UI can reject
     // invalid input before a round-trip. Update BOTH when changing limits.
     match /users/{uid} {
-      allow read: if isSignedIn();
+      // Split read into get/list deliberately. `get` is public so a shared
+      // `/player/{uid}` link resolves for a signed-OUT visitor — the link
+      // already carries the uid, and this doc holds only fields that are
+      // safe to expose (see the public/private split note above). `list`
+      // stays signed-in: a public `read` would cover BOTH verbs and let an
+      // anonymous client enumerate every account in the app. The only
+      // production list queries are getPlayerDirectory / getLeaderboard in
+      // src/services/users.ts, both of which run signed-in.
+      allow get: if true;
+      allow list: if isSignedIn();
       allow create: if isOwner(uid)
         // One profile per UID — prevent a race condition from overwriting an existing profile
         && !exists(/databases/$(database)/documents/users/$(uid))

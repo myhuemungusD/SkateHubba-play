@@ -96,6 +96,31 @@ Firebase Console → Firestore → Rules tab → check the "Published rules" tim
 
 Firebase Console → Firestore → Rules → Rules Playground lets you simulate reads and writes against your rules before publishing them.
 
+### Required check before publishing the public-profile rule
+
+`users/{uid}` is `get`-able by anyone (so a shared `/player/{uid}` link resolves
+for a signed-out visitor). Firestore rules **cannot filter fields** — they allow
+or deny the whole document — so that rule is only safe while no public user doc
+still carries a sensitive field inline. The May 2026 public/private split moved
+`email`, `emailVerified`, `dob`, `parentalConsent`, and `fcmTokens` into the
+owner-only `users/{uid}/private/profile`, but a doc the backfill missed would
+become **world-readable** the moment these rules publish — including the date of
+birth of a minor, which is the worst case in the whole schema.
+
+Run the scan against production first. It exits non-zero if anything is left:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
+node scripts/migrate-users-private.mjs --verify
+```
+
+`verify: scanned=<n> offending=0` (exit 0) is the go signal. Any `LEAK <uid> still
+has: …` line means **do not publish** — re-run the migration
+(`node scripts/migrate-users-private.mjs`, idempotent and resumable) and scan again.
+
+This check is cheap and worth repeating on every rules deploy that touches the
+`users` read path, not just the first one.
+
 ---
 
 ## Cloud Functions Deployment

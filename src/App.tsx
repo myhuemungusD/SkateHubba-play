@@ -130,7 +130,14 @@ function NotificationAuthBridge({ children }: { children: ReactNode }) {
   return <NotificationProvider uid={auth.user?.uid ?? null}>{children}</NotificationProvider>;
 }
 
-/** Wrapper that extracts :uid from URL params and renders PlayerProfileScreen. */
+/**
+ * Wrapper that extracts :uid from URL params and renders PlayerProfileScreen.
+ *
+ * `currentUserProfile` is nullable because `/player/:uid` is a public share
+ * surface — a logged-out visitor must be able to open a shared profile link
+ * (see PUBLIC_SCREENS in NavigationContext). PlayerProfileScreen withholds
+ * every viewer-scoped affordance when it's absent.
+ */
 function PlayerProfileRoute({
   currentUserProfile,
   ownGames,
@@ -141,8 +148,9 @@ function PlayerProfileRoute({
   blockedUids,
   onAddSpot,
   onRefreshProfile,
+  onSignUp,
 }: {
-  currentUserProfile: import("./services/users").UserProfile;
+  currentUserProfile: import("./services/users").UserProfile | null;
   ownGames: import("./services/games").GameDoc[];
   onOpenGame: (g: import("./services/games").GameDoc) => void;
   onBack: () => void;
@@ -151,11 +159,12 @@ function PlayerProfileRoute({
   blockedUids: Set<string>;
   onAddSpot: () => void;
   onRefreshProfile: () => Promise<void>;
+  onSignUp: () => void;
 }) {
   const { uid } = useParams<{ uid: string }>();
-  if (!uid) return <Navigate to="/lobby" replace />;
+  if (!uid) return <Navigate to={currentUserProfile ? "/lobby" : "/"} replace />;
 
-  const isOwn = uid === currentUserProfile.uid;
+  const isOwn = uid === currentUserProfile?.uid;
 
   return (
     <PlayerProfileScreen
@@ -171,6 +180,7 @@ function PlayerProfileRoute({
       blockedUids={blockedUids}
       onAddSpot={onAddSpot}
       onRefreshProfile={onRefreshProfile}
+      onSignUp={onSignUp}
     />
   );
 }
@@ -488,24 +498,28 @@ function AppRoutes() {
               }
             />
 
+            {/* Public: a shared profile link has to open for someone without
+                an account, or it can never bring them in. No auth guard here
+                — "player" is in PUBLIC_SCREENS so the auth router leaves it
+                alone too, and both mechanisms have to agree. */}
             <Route
               path="/player/:uid"
               element={
-                auth.activeProfile ? (
-                  <PlayerProfileRoute
-                    currentUserProfile={auth.activeProfile}
-                    ownGames={game.games}
-                    onOpenGame={game.openGame}
-                    onBack={() => nav.setScreen("lobby")}
-                    onChallenge={(_uid, username) => directChallenge(username)}
-                    onViewPlayer={nav.navigateToPlayer}
-                    blockedUids={blockedUids}
-                    onAddSpot={nav.navigateToMapWithAddSpot}
-                    onRefreshProfile={auth.refreshProfile}
-                  />
-                ) : (
-                  <Navigate to="/" replace />
-                )
+                <PlayerProfileRoute
+                  currentUserProfile={auth.activeProfile}
+                  ownGames={game.games}
+                  onOpenGame={game.openGame}
+                  onBack={() => nav.setScreen(auth.activeProfile ? "lobby" : "landing")}
+                  onChallenge={(_uid, username) => directChallenge(username)}
+                  onViewPlayer={nav.navigateToPlayer}
+                  blockedUids={blockedUids}
+                  onAddSpot={nav.navigateToMapWithAddSpot}
+                  onRefreshProfile={auth.refreshProfile}
+                  onSignUp={() => {
+                    nav.setAuthMode("signup");
+                    nav.setScreen("auth");
+                  }}
+                />
               }
             />
 
@@ -552,7 +566,10 @@ function AppRoutes() {
         </Suspense>
       </main>
 
-      <BottomNav />
+      {/* Every tab behind this nav is auth-gated. `/player/:uid` is now
+          reachable signed-out, so without this check a visitor would get a
+          tab bar whose three destinations all bounce them straight back. */}
+      {auth.activeProfile && <BottomNav />}
       <ConsentBanner onNav={nav.setScreen} />
       {analyticsAllowed && (
         <>

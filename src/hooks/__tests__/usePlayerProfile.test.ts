@@ -87,6 +87,24 @@ describe("usePlayerProfile", () => {
     expect(mockFetchPlayerCompletedGames).toHaveBeenCalledWith("u1", "viewer1");
   });
 
+  it("skips the games query when includeGames is false but still loads the profile", async () => {
+    // Signed-out visitor on a shared /player/:uid link: users/{uid} is
+    // publicly readable, games are not. Firing the query anyway would be a
+    // guaranteed permission-denied round trip on the app's share surface.
+    mockGetUserProfile.mockResolvedValue(fakeProfile);
+
+    const { result } = renderHook(() => usePlayerProfile("u1", undefined, false));
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.profile).toEqual(fakeProfile);
+    expect(result.current.games).toEqual([]);
+    expect(result.current.error).toBeNull();
+    expect(mockFetchPlayerCompletedGames).not.toHaveBeenCalled();
+  });
+
   it("sets error when profile is not found", async () => {
     mockGetUserProfile.mockResolvedValue(null);
     mockFetchPlayerCompletedGames.mockResolvedValue([]);

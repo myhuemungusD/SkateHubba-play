@@ -102,11 +102,23 @@ export function screenToPath(screen: Screen): string {
   return SCREEN_TO_PATH[screen];
 }
 
-/** Screens that don't require authentication. */
+/**
+ * Screens that don't require authentication.
+ *
+ * "player" is public because `/player/:uid` is the app's share surface — a
+ * profile link handed to someone without an account has to open, or it can
+ * never bring them in. `users/{uid}` is publicly `get`-able, so the shareable
+ * content (avatar, username, stance, verified-pro, stat tiles) renders
+ * without a session; everything that needs an identity (challenge, block,
+ * game history) is withheld by PlayerProfileScreen. Guarding this in one
+ * place isn't enough — the `/player/:uid` route guard in App.tsx has to allow
+ * the signed-out render too, or the two mechanisms fight.
+ */
 const PUBLIC_SCREENS: ReadonlySet<Screen> = new Set([
   "landing",
   "auth",
   "map",
+  "player",
   "privacy",
   "terms",
   "datadeletion",
