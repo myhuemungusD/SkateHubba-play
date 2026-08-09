@@ -533,7 +533,12 @@ function AppRoutes() {
             />
 
             <Route path="/map" element={auth.user ? <MapPage /> : <Navigate to="/auth" replace />} />
-            <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/auth" replace />} />
+            {/* Signed-out target is "/" (not "/auth") to match the auth
+              router's bounce for gated screens — /spots/:id now resolves to
+              the "spotdetail" screen, so both mechanisms fire and must agree
+              on a destination or they fight over the URL. The auth router
+              stashes the spot id before bouncing and restores it post-login. */}
+            <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/" replace />} />
 
             {/* /feed used to live as its own route + tab — it's now embedded in
               the lobby. Redirect lingering deep-links so old shares still land. */}
