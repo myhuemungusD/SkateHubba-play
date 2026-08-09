@@ -289,7 +289,7 @@ SkateHubba-play/
 ### 4.11 Firestore collections
 
 ```
-users/{uid}                          — public profile, stance, stats, emailVerified
+users/{uid}                          — public profile, stance, stats, avatar URL
 users/{uid}/private/profile          — owner-only: fcmTokens, sensitive flags
 usernames/{username}                 — uid reservation mapping
 games/{gameId}                       — full game state, turns, scores, timers
