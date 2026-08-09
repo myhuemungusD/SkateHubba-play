@@ -30,6 +30,10 @@ const ENTRYPOINTS = [
   "api/cron/sweep-expired-turns.ts",
   "api/cron/drain-push-dispatch.ts",
   "api/cron/resolve-expired-disputes.ts",
+  // Not a cron, but the same Vercel Node ESM loader and the same failure mode:
+  // it reaches across directories for the shared service-account parser, so a
+  // dropped extension there crashes account deletion at cold start.
+  "api/account/delete.ts",
 ].map((p) => resolve(REPO_ROOT, p));
 
 /** Strip the repo-root prefix so failure output is short and copy-pastable. */

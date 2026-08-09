@@ -67,7 +67,9 @@ export function createAuthServiceMocks(): AuthServiceMocks {
     signInWithGoogle: vi.fn(),
     // Default to a resolved null so AuthContext's mount effect doesn't throw.
     resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
-    deleteAccount: vi.fn(),
+    // Resolves with the server's report. AuthContext reads `authDeleted`
+    // to decide whether to clear the pending-delete marker.
+    deleteAccount: vi.fn().mockResolvedValue({ authDeleted: true }),
   };
   return {
     refs,

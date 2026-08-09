@@ -289,22 +289,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const handleDeleteAccount = useCallback(async () => {
     if (!activeProfile) {
-      // Recovery path: the user bounced off auth/requires-recent-login on a
-      // previous attempt, signed out and back in. Auth is still alive; no
-      // Firestore data was touched (reverse order: auth deletion runs first,
-      // Firestore second). We need the username to wipe the reservation, so
-      // if the profile didn't reload there's nothing safe to do here — the
-      // retry falls through to a plain sign-out from the user's perspective.
+      // Recovery path, and it is now genuinely recoverable. Two ways to land
+      // here: the user bounced off auth/requires-recent-login and signed back
+      // in, or a previous attempt erased the data but failed to delete the Auth
+      // record — which leaves a signed-in user with no profile doc.
+      //
+      // This used to give up, because the client needed the username to release
+      // the reservation and there was no profile left to read it from. The
+      // server derives the username itself now, so a retry needs nothing but
+      // the uid, and the remaining cascade re-runs as a no-op before deleting
+      // the Auth user. Bailing here was what stranded the orphaned Auth record.
       const pending = readPendingDeleteUid();
       if (!pending || !user || pending !== user.uid) {
         return;
       }
-      // We still have the pending marker but no profile doc to read the
-      // username from. Without the username we can't clean up the username
-      // reservation. Clear the flag and bail — the user will need to
-      // re-trigger from the account screen once their profile reloads, or
-      // contact support if the profile is permanently gone.
-      logger.warn("delete_account_pending_retry_no_profile", { uid: pending });
+      logger.info("delete_account_pending_retry_without_profile", { uid: pending });
+      await deleteAccount(pending);
+      clearPendingDeleteUid();
+      setPendingDeleteUid(null);
       return;
     }
     // Snapshot identity once: the flow spans multiple async boundaries and
@@ -328,18 +330,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void unregisterPushToken(uid).catch((err: unknown) => {
       logger.warn("delete_account_push_scrub_failed", { uid, message: parseFirebaseError(err) });
     });
+    let result: { authDeleted: boolean };
     try {
-      // deleteAccount runs Auth deletion FIRST, then Firestore wipe with
-      // retry. Any throw here means Auth deletion failed and NO Firestore
-      // data was touched — the user's profile is intact and the flow can
-      // be retried cleanly after re-auth.
-      await deleteAccount(uid, username);
+      // deleteAccount delegates to the server, which erases the data with
+      // admin credentials and deletes the Auth user LAST. Any throw here
+      // means the erasure did not happen and the account is untouched — the
+      // profile is intact and the flow can be retried cleanly (server-side
+      // phases are idempotent, so a retry resumes rather than double-deletes).
+      // The username is not passed: the server reads it from the profile it is
+      // deleting, so a caller can never name another user's reservation.
+      result = await deleteAccount(uid);
     } catch (err) {
       const code = getErrorCode(err);
       logger.error("delete_account_auth_failed", { uid, code });
       captureException(err, {
         extra: {
-          context: "deleteAccount failed — Auth deletion bounced, Firestore data preserved",
+          context: "deleteAccount failed — erasure did not run, account left intact",
           uid,
           username,
           code,
@@ -357,9 +363,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     logger.info("delete_account_auth_done", { uid });
     metrics.accountDeleted(uid);
-    clearPendingDeleteUid();
-    setPendingDeleteUid(null);
-    logger.info("delete_account_pending_retry_cleared", { uid, reason: "first_attempt_success" });
+    // The data is gone either way. Only clear the pending marker once the Auth
+    // record is gone too — if it survived, keeping the marker is what leaves
+    // the "Finish deletion" affordance reachable so the orphaned Auth record
+    // can still be cleaned up by the user rather than only by an operator.
+    if (result.authDeleted) {
+      clearPendingDeleteUid();
+      setPendingDeleteUid(null);
+      logger.info("delete_account_pending_retry_cleared", { uid, reason: "first_attempt_success" });
+    } else {
+      logger.warn("delete_account_pending_retry_held", { uid, reason: "auth_record_survived" });
+    }
     setActiveProfile(null);
   }, [activeProfile, user]);
 

@@ -232,6 +232,26 @@ VITE_APP_URL         — Set to https://skatehubba.com in production.
 
 VITE_USE_EMULATORS   — Development only. Do NOT set this in Vercel.
                        Setting it in production will cause Firebase connections to fail.
+
+FIREBASE_STORAGE_BUCKET
+                     — Server-side only (no VITE_ prefix — never exposed to the
+                       browser). Overrides the Storage bucket used by
+                       `api/account/delete.ts` when erasing a deleted user's
+                       videos and avatar. Defaults to
+                       `${project_id}.firebasestorage.app`, derived from
+                       FIREBASE_SERVICE_ACCOUNT_JSON — the same convention
+                       `infra/storage-lifecycle.sh` uses. Only set this if the
+                       bucket was created under the older `.appspot.com`
+                       naming, in which case erasure would silently find no
+                       objects to delete.
+
+ACCOUNT_DELETE_ALLOWED_ORIGIN
+                     — Server-side only. Adds one extra origin to the CORS
+                       allowlist on `POST /api/account/delete`. Not needed for
+                       the web app (same-origin) or for the built native apps
+                       (the Capacitor origins are already allowlisted). Useful
+                       when testing the native delete flow against a preview
+                       deployment from a non-standard origin.
 ```
 
 ### Vercel scoping
@@ -273,6 +293,25 @@ All three endpoints share the same auth (`CRON_SECRET` bearer), the same
 service-account parser (`api/cron/_serviceAccount.ts`), and the same
 `?dryRun=1` no-side-effects probe, so every pitfall and failure signature
 below applies to each of them identically.
+
+> **A fourth admin endpoint exists but is NOT a cron:**
+> `POST /api/account/delete` erases a user's data with admin credentials and
+> then deletes their Auth record. It is called by the app, not by a workflow,
+> and it does **not** use `CRON_SECRET` — it authenticates the end user with a
+> Firebase ID token (verified with `checkRevoked`, plus a 5-minute
+> recent-sign-in requirement). It shares only the service-account parser and
+> therefore the `FIREBASE_SERVICE_ACCOUNT_JSON` dependency: if that env var is
+> missing or malformed, account deletion returns `500 init_failed` with the
+> same root cause and the same fix as the cron `init_failed` below.
+>
+> Unlike the crons it also needs Storage access, to delete game videos and the
+> avatar. Storage is Phase 1 of the cascade, so if the service account lacks
+> Storage permissions or the bucket name is wrong (see `FIREBASE_STORAGE_BUCKET`
+> above), the listing throws before any Firestore write and **nothing** is
+> erased — the endpoint returns `500 erasure_failed` and the account is left
+> completely intact. Symptom to look for: deletions failing for every user, not
+> partially-deleted accounts. There is no `?dryRun=1` here: the operation is
+> irreversible by design and must never be triggered casually.
 
 ### The two secrets
 
