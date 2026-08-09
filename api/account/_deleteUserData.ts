@@ -383,6 +383,10 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   // device identifiers and therefore personal data, and the mirror is readable
   // by every signed-in user — an orphaned doc would leave a uid→device map
   // exposed after erasure, which is precisely what this cascade exists to close.
+  // Deleted blind rather than read-then-deleted: a doc that isn't there is a
+  // no-op, and one saved read per deletion is worth more than an exact count.
+  // The summary field therefore reports "attempted", not "found" — it reaches
+  // the response body, so don't read it as evidence a mirror existed.
   await db.collection("pushTargets").doc(uid).delete();
   summary.pushTargets = 1;
   summary.notifications = await deleteRefs(
@@ -418,10 +422,13 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
     (await scanAll(db.collection("reports").where("reporterUid", "==", uid))).map((d) => d.ref),
   );
 
-  // ── Phase 4: identity surface, atomically ──
-  // Achievements, the private profile doc (email / DOB / parental consent), the
-  // public profile, and the username reservation go in one batch so the whole
-  // identity surface survives or vanishes together.
+  // ── Phase 4: identity surface ──
+  // Achievements, blocked_users, the private profile doc (email / DOB /
+  // parental consent) and the public profile go together, so in the ordinary
+  // case the whole identity surface vanishes in a single commit. Past
+  // BATCH_CHUNK refs it necessarily splits across commits — harmless, because
+  // this phase runs last and the run is resumable, but it is not the atomic
+  // guarantee the single-batch shape suggests.
   const achievements = await scanAll(db.collection("users").doc(uid).collection("achievements"));
   // The reservation is released first and separately, because it is the one
   // delete here that needs an ownership check (see `releaseUsername`) and so
