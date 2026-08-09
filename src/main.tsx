@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router";
 import { Capacitor } from "@capacitor/core";
 import { initSentry, captureException, addBreadcrumb } from "./lib/sentry";
-import { initPosthog } from "./lib/posthog";
+import { initPosthogOnConsent } from "./lib/posthog";
 import App from "./App";
 import "./index.css";
 
@@ -79,20 +79,20 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   });
 }
 
-// Initialise PostHog only when a project API key is provided. Safe to fire-
-// and-forget: the wrapper no-ops until the dynamic import resolves, and all
-// events queued against it during that window are dropped rather than
-// bursting a boot-time network request.
+// Arm PostHog. It does NOT start here — `initPosthogOnConsent` defers the
+// actual `posthog.init()` until the visitor accepts the consent banner. See
+// that function for why gating events alone was not enough.
 if (import.meta.env.VITE_POSTHOG_KEY) {
-  void initPosthog({
-    apiKey: String(import.meta.env.VITE_POSTHOG_KEY),
-    host: import.meta.env.VITE_POSTHOG_HOST ? String(import.meta.env.VITE_POSTHOG_HOST) : undefined,
-    release: APP_RELEASE,
-  }).catch((err) => {
+  initPosthogOnConsent(
+    {
+      apiKey: String(import.meta.env.VITE_POSTHOG_KEY),
+      host: import.meta.env.VITE_POSTHOG_HOST ? String(import.meta.env.VITE_POSTHOG_HOST) : undefined,
+      release: APP_RELEASE,
+    },
     // PostHog init failures (network, quota, bad key) must never break the
     // app — Sentry gets the breadcrumb, the rest of the app carries on.
-    captureException(err, { extra: { context: "initPosthog" } });
-  });
+    (err) => captureException(err, { extra: { context: "initPosthog" } }),
+  );
 }
 
 // Catch unhandled promise rejections that escape try/catch blocks and report

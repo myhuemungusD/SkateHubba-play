@@ -11,6 +11,7 @@
  * behave identically at startup.
  */
 import type { PostHog, PostHogConfig } from "posthog-js";
+import { isAnalyticsAllowed, subscribeConsent } from "./consent";
 
 let sdk: PostHog | null = null;
 
@@ -53,6 +54,56 @@ export async function initPosthog(config: PosthogInitConfig): Promise<void> {
     instance.register({ app_version: config.release });
   }
   sdk = instance;
+}
+
+/**
+ * Start PostHog once — and only once — the visitor has accepted the consent
+ * banner. Returns an unsubscribe function so a caller (or a test) can drop the
+ * pending listener; it is a no-op if consent was already granted.
+ *
+ * WHY GATING EVENTS WAS NOT ENOUGH: `trackEvent` and `posthogIdentify` already
+ * refuse to emit without consent, which made it look as though nothing reached
+ * PostHog beforehand. It did. `posthog.init()` immediately mints a
+ * `distinct_id`, persists it to `localStorage`, and contacts PostHog — a
+ * remote-config fetch, then `POST /flags/` carrying that id and the timezone
+ * (and implicitly the IP and User-Agent), repeating every ~5 minutes. None of
+ * that is event capture, so none of it is suppressed by `autocapture: false`,
+ * `capture_pageview: false`, or `respect_dnt`; those govern events only. So a
+ * pseudonymous identifier was created and phoned home for every visitor before
+ * they answered the banner — and it survived them explicitly declining.
+ *
+ * The privacy policy states PostHog "only runs after you accept the consent
+ * banner" (`PrivacyPolicy.tsx` §5 and §8). Deferring `init` is what makes that
+ * sentence true of PostHog itself, not merely of the events we send it.
+ *
+ * Deferring rather than passing `opt_out_capturing_by_default` is deliberate:
+ * that flag suppresses capture but still initialises, so the identifier would
+ * still be minted and persisted.
+ */
+export function initPosthogOnConsent(config: PosthogInitConfig, onError: (err: unknown) => void): () => void {
+  const start = (): void => {
+    // Fire-and-forget: callers never await analytics bootstrap.
+    void initPosthog(config).catch(onError);
+  };
+
+  if (isAnalyticsAllowed()) {
+    // Returning visitor who already accepted — no banner will be shown, so
+    // there is nothing to wait for.
+    start();
+    return () => {};
+  }
+
+  // Wait for a decision. `subscribeConsent` also fires on the cross-tab
+  // `storage` event, so accepting in one tab starts analytics in the others
+  // without a reload. A decline leaves the subscription in place so the user
+  // can still change their mind later in the same session; `initPosthog` is
+  // idempotent, so a duplicate notification cannot double-initialise.
+  const unsubscribe = subscribeConsent(() => {
+    if (!isAnalyticsAllowed()) return;
+    unsubscribe();
+    start();
+  });
+  return unsubscribe;
 }
 
 /** Record an analytics event. No-op until initPosthog resolves. */

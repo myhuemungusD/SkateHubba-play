@@ -89,4 +89,95 @@ describe("posthog wrapper", () => {
     resetIdentity();
     expect(posthogInstance.reset).toHaveBeenCalledTimes(1);
   });
+
+  // ── Consent gate ──────────────────────────────────
+  //
+  // The property under test is that `posthog.init()` itself does not run before
+  // consent — not merely that events are suppressed. Init is what mints and
+  // persists a `distinct_id` and starts contacting PostHog, so an assertion on
+  // `capture` would pass while the real leak continued.
+
+  describe("initPosthogOnConsent", () => {
+    const CONSENT_KEY = "sh_analytics_consent";
+    const onError = vi.fn();
+
+    beforeEach(() => {
+      localStorage.clear();
+      onError.mockReset();
+    });
+
+    it("does not initialise PostHog while consent is unanswered", async () => {
+      const { initPosthogOnConsent } = await import("../posthog");
+      initPosthogOnConsent({ apiKey: "phc_test" }, onError);
+      // Give any stray microtask a chance to run before asserting absence.
+      await Promise.resolve();
+      expect(posthogInstance.init).not.toHaveBeenCalled();
+    });
+
+    it("does not initialise PostHog when consent is declined", async () => {
+      const { initPosthogOnConsent } = await import("../posthog");
+      const { writeConsent } = await import("../consent");
+      initPosthogOnConsent({ apiKey: "phc_test" }, onError);
+      writeConsent("declined");
+      await Promise.resolve();
+      expect(posthogInstance.init).not.toHaveBeenCalled();
+    });
+
+    it("initialises immediately for a returning visitor who already accepted", async () => {
+      localStorage.setItem(CONSENT_KEY, "accepted");
+      const { initPosthogOnConsent } = await import("../posthog");
+      const unsubscribe = initPosthogOnConsent({ apiKey: "phc_test" }, onError);
+      await vi.waitFor(() => expect(posthogInstance.init).toHaveBeenCalledTimes(1));
+      // Nothing was subscribed on this path, but the caller can't know that —
+      // the returned handle must still be safe to call.
+      expect(() => unsubscribe()).not.toThrow();
+    });
+
+    it("initialises when consent is granted later in the session", async () => {
+      const { initPosthogOnConsent } = await import("../posthog");
+      const { writeConsent } = await import("../consent");
+      initPosthogOnConsent({ apiKey: "phc_test" }, onError);
+      expect(posthogInstance.init).not.toHaveBeenCalled();
+
+      writeConsent("accepted");
+      await vi.waitFor(() => expect(posthogInstance.init).toHaveBeenCalledTimes(1));
+    });
+
+    it("initialises only once when consent flips decline -> accept -> decline -> accept", async () => {
+      const { initPosthogOnConsent } = await import("../posthog");
+      const { writeConsent } = await import("../consent");
+      initPosthogOnConsent({ apiKey: "phc_test" }, onError);
+
+      writeConsent("declined");
+      writeConsent("accepted");
+      writeConsent("declined");
+      writeConsent("accepted");
+
+      await vi.waitFor(() => expect(posthogInstance.init).toHaveBeenCalledTimes(1));
+    });
+
+    it("stops listening once unsubscribed, so a later accept does not start it", async () => {
+      const { initPosthogOnConsent } = await import("../posthog");
+      const { writeConsent } = await import("../consent");
+      const unsubscribe = initPosthogOnConsent({ apiKey: "phc_test" }, onError);
+      unsubscribe();
+
+      writeConsent("accepted");
+      await Promise.resolve();
+      expect(posthogInstance.init).not.toHaveBeenCalled();
+    });
+
+    it("routes an init failure to the error handler instead of rejecting", async () => {
+      localStorage.setItem(CONSENT_KEY, "accepted");
+      const boom = new Error("network down");
+      posthogInstance.init.mockImplementationOnce(() => {
+        throw boom;
+      });
+      const { initPosthogOnConsent } = await import("../posthog");
+      // Must not throw synchronously, and must not produce an unhandled
+      // rejection — analytics can never break app boot.
+      expect(() => initPosthogOnConsent({ apiKey: "phc_test" }, onError)).not.toThrow();
+      await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(boom));
+    });
+  });
 });
