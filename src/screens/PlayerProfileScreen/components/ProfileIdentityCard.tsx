@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { ProUsername } from "../../../components/ProUsername";
 import { AvatarPicker } from "../../../components/AvatarPicker";
-import { LevelChip } from "../../../components/LevelChip";
 import { getAvatarFallbackUrl } from "../../../services/avatars";
 
 /**
@@ -9,14 +8,18 @@ import { getAvatarFallbackUrl } from "../../../services/avatars";
  *
  * Visible changes from the pre-PR-C version:
  *   - Avatar grew from 56px (`w-14`) to 96px (`w-24`) for hero presentation.
- *   - Level chip displayed inline next to the username — placeholder L1 until
- *     PR-E activates `feature.profile_xp` and writes real `level`.
  *   - Pencil-edit overlay (PR-B) preserved; only renders on own profile.
  *   - Fallback chain (PR-B) preserved: `profileImageUrl` → first-letter
  *     circle → `getAvatarFallbackUrl()` SVG.
  *
  * The pencil button uses the same focus-visible / contrast tokens as the
  * pre-PR-C version so existing accessibility coverage (audit D5) still holds.
+ *
+ * A LevelChip used to render inline next to the username. It was removed
+ * because it was dead three times over: `LevelChip` hard-codes L1 and ignores
+ * its prop, this card was never passed a `level`, and `UserProfile` has no
+ * `level` field to pass. `LevelChip` is kept in `src/components/` for the
+ * eventual XP system — re-add it here when there is a real level to show.
  */
 interface Props {
   username: string;
@@ -28,8 +31,6 @@ interface Props {
   isOwnProfile?: boolean;
   /** UID of the profile being viewed — required for AvatarPicker upload target. */
   uid?: string;
-  /** Profile level (1..30); defaults to 1 when undefined. PR-E populates. */
-  level?: number;
   /** Fired after a successful upload so the parent can refresh state. */
   onAvatarUpdated?: (url: string) => void;
 }
@@ -41,7 +42,6 @@ export function ProfileIdentityCard({
   profileImageUrl,
   isOwnProfile = false,
   uid,
-  level,
   onAvatarUpdated,
 }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -112,7 +112,6 @@ export function ProfileIdentityCard({
           <h1 className="font-display text-3xl text-white leading-none tracking-wide">
             <ProUsername username={username} isVerifiedPro={isVerifiedPro} />
           </h1>
-          <LevelChip level={level ?? 1} />
         </div>
         <p className="font-body text-xs text-muted mt-2 capitalize">{stance}</p>
       </div>

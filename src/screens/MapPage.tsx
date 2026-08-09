@@ -1,4 +1,5 @@
 import { Component, useCallback, useEffect, useState, type ReactNode, type ErrorInfo } from "react";
+import { useSearchParams } from "react-router";
 import { SpotMap } from "../components/map/SpotMap";
 import { useGameContext } from "../context/GameContext";
 import { analytics } from "../services/analytics";
@@ -86,12 +87,29 @@ export function MapPage() {
   // session, GameContext, and analytics session through the retry.
   const [retryKey, setRetryKey] = useState(0);
 
+  // `/map?add=1` (see NavigationContext.navigateToMapWithAddSpot) asks for the
+  // Add Spot sheet to be open on arrival. SpotMap only reads this at mount, so
+  // clearing the param below cannot close the sheet the user is already
+  // filling in — it just stops a refresh or a Back navigation from reopening
+  // it, and keeps the retry remount from resurrecting a dismissed sheet.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const autoOpenAddSpot = searchParams.get("add") === "1";
+
   useEffect(() => {
     // Top of the map funnel — fires once per mount, including direct URL
     // visits. Downstream funnel events (spot_previewed, challenge_from_spot)
     // are fired by their respective components.
     analytics.mapViewed();
   }, []);
+
+  useEffect(() => {
+    if (!autoOpenAddSpot) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete("add");
+    // `replace` so the consumed param doesn't leave a history entry the Back
+    // button would bounce off of.
+    setSearchParams(next, { replace: true });
+  }, [autoOpenAddSpot, searchParams, setSearchParams]);
 
   const handleRetry = useCallback(() => {
     setRetryKey((n) => n + 1);
@@ -104,6 +122,7 @@ export function MapPage() {
         activeGameSpotId={activeGame?.spotId ?? undefined}
         onSpotSelect={(spot) => analytics.spotPreviewed(spot.id)}
         onRetry={handleRetry}
+        autoOpenAddSpot={autoOpenAddSpot}
       />
     </MapErrorBoundary>
   );

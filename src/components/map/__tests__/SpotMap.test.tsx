@@ -39,6 +39,21 @@ vi.mock("../../../firebase", () => ({
   default: null,
 }));
 
+// Stub the Add Spot sheet: the real one calls useAuthContext and would need an
+// AuthProvider (plus the Firebase chain this file deliberately severs) just to
+// mount. These specs assert SpotMap's own open/closed wiring, not the sheet's
+// internals — those belong to AddSpotSheet.test.tsx. The stub keeps the same
+// dialog role + accessible name so the queries stay honest.
+vi.mock("../AddSpotSheet", () => ({
+  AddSpotSheet: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Add a spot">
+      <button type="button" aria-label="Close" onClick={onClose}>
+        close
+      </button>
+    </div>
+  ),
+}));
+
 // Logger + Sentry are mocked so the missing-token / map-loaded / load-timeout
 // assertions have spies to inspect. `vi.hoisted` is required because
 // `vi.mock` factories are hoisted above all top-level variables — a plain
@@ -175,6 +190,48 @@ describe("SpotMap", () => {
     );
     // The Add-Spot FAB is always present.
     expect(screen.getByLabelText("Add a spot")).toBeInTheDocument();
+  });
+
+  // The Add Spot sheet's open/closed state is local to this component, so
+  // `autoOpenAddSpot` is the only external entry point into it — MapPage sets
+  // it from `/map?add=1`, which is what the profile's "ADD A SPOT" CTA routes
+  // to. Without this prop that CTA can only ever dump the user on a bare map.
+  it("keeps the Add Spot sheet closed by default", () => {
+    render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("dialog", { name: "Add a spot" })).not.toBeInTheDocument();
+  });
+
+  it("opens the Add Spot sheet on mount when autoOpenAddSpot is set", () => {
+    render(
+      <MemoryRouter>
+        <SpotMap autoOpenAddSpot />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("dialog", { name: "Add a spot" })).toBeInTheDocument();
+  });
+
+  it("lets the user dismiss an auto-opened sheet without it springing back", async () => {
+    // MapPage clears `?add=1` right after mount, which re-renders SpotMap with
+    // `autoOpenAddSpot=false`. That must not be able to reopen — nor must the
+    // dismissed sheet reappear on the next render.
+    const { rerender } = render(
+      <MemoryRouter>
+        <SpotMap autoOpenAddSpot />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog", { name: "Add a spot" })).not.toBeInTheDocument();
+
+    rerender(
+      <MemoryRouter>
+        <SpotMap autoOpenAddSpot={false} />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByRole("dialog", { name: "Add a spot" })).not.toBeInTheDocument();
   });
 
   it("forwards the MAP_STYLE resolved by lib/mapbox into mapbox-gl's Map constructor", async () => {

@@ -393,6 +393,12 @@ export interface AnalyticsRefs {
   signInFailure: Mock;
   signUpAttempt: Mock;
   signUpFailure: Mock;
+  // PlayerProfileScreen fires these on mount / stat-tile tap. Without them the
+  // screen throws into the route ErrorBoundary, which renders BottomNav-adjacent
+  // chrome convincingly enough that route-level assertions can pass over a
+  // screen that never actually rendered.
+  profileViewed: Mock;
+  profileStatTileTapped: Mock;
 }
 
 export interface AnalyticsMocks {
@@ -411,6 +417,8 @@ export interface AnalyticsMocks {
       signInFailure: Mock;
       signUpAttempt: Mock;
       signUpFailure: Mock;
+      profileViewed: Mock;
+      profileStatTileTapped: Mock;
     };
   };
 }
@@ -429,6 +437,8 @@ export function createAnalyticsMocks(): AnalyticsMocks {
     signInFailure: vi.fn(),
     signUpAttempt: vi.fn(),
     signUpFailure: vi.fn(),
+    profileViewed: vi.fn(),
+    profileStatTileTapped: vi.fn(),
   };
   return {
     refs,
@@ -446,6 +456,8 @@ export function createAnalyticsMocks(): AnalyticsMocks {
         signInFailure: refs.signInFailure,
         signUpAttempt: refs.signUpAttempt,
         signUpFailure: refs.signUpFailure,
+        profileViewed: refs.profileViewed,
+        profileStatTileTapped: refs.profileStatTileTapped,
       },
     },
   };

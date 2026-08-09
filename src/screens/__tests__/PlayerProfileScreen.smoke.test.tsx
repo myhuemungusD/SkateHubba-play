@@ -146,12 +146,18 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
 
   // ── Placeholder sections — visibility rules ─────────
 
-  it("shows the achievements ribbon on the viewer's own profile", () => {
+  it("does not render the achievements ribbon on the viewer's own profile", () => {
+    // The ribbon is 12 grayscale "???" tiles that can never unlock: there is
+    // no `users/{uid}/achievements` collection to subscribe to. Shipping it
+    // on a live profile just advertises an unfinished product. The component
+    // and its own spec are kept so re-enabling is a one-line change.
     render(<PlayerProfileScreen {...props} />);
-    expect(screen.getByTestId("achievements-ribbon")).toBeInTheDocument();
+    expect(screen.queryByTestId("achievements-ribbon")).not.toBeInTheDocument();
   });
 
-  it("renders the added-spots placeholder only on the viewer's own profile", () => {
+  it("renders the added-spots placeholder on the viewer's own profile", () => {
+    // Kept (unlike the ribbon) because its CTA is a real, working action —
+    // it opens the map's Add Spot sheet. Only the list below it is empty.
     render(<PlayerProfileScreen {...props} />);
     expect(screen.getByTestId("added-spots-placeholder")).toBeInTheDocument();
   });
@@ -177,19 +183,13 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
   });
 
   it("hides both unbuilt-feature placeholders on another player's profile", () => {
-    // Neither placeholder belongs on someone else's public profile: a visitor
-    // has no use for 12 locked "???" tiles advertising features that don't
-    // exist yet. Both are owner-only until their real data ships.
+    // The added-spots CTA is owner-only (a visitor can't add spots "for" you),
+    // and the achievements ribbon is now hidden everywhere. Retained as the
+    // regression guard for the other-player surface specifically.
     withOpponentFetch();
     render(<PlayerProfileScreen {...props} viewedUid="u2" isOwnProfile={false} />);
     expect(screen.queryByTestId("added-spots-placeholder")).not.toBeInTheDocument();
     expect(screen.queryByTestId("achievements-ribbon")).not.toBeInTheDocument();
-  });
-
-  it("shows both placeholders on the viewer's own profile", () => {
-    render(<PlayerProfileScreen {...props} />);
-    expect(screen.getByTestId("added-spots-placeholder")).toBeInTheDocument();
-    expect(screen.getByTestId("achievements-ribbon")).toBeInTheDocument();
   });
 
   // ── Win-rate floor ──────────────────────────────────

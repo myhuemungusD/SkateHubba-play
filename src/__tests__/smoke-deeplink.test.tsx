@@ -10,10 +10,15 @@
  *
  * These tests pin the behavior: a direct deep-link with a fully-resolved
  * auth user must render the requested screen, not bounce.
+ *
+ * The second describe reuses the same route-level harness to pin the props
+ * `App.tsx` hands the own-profile route — a different bug class, but one only
+ * observable by rendering the real route table.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { act, render, screen, type RenderResult } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
+import userEvent from "@testing-library/user-event";
 import App from "../App";
 import { verifiedUser, testProfile } from "./smoke-helpers";
 import type { UserProfile } from "../services/users";
@@ -33,12 +38,19 @@ vi.mock("../services/fcm", () => mocks.fcm.module);
 vi.mock("../services/blocking", () => mocks.blocking.module);
 vi.mock("../services/analytics", () => mocks.analytics.module);
 
+/** Surfaces the live URL so route-level navigation can be asserted on. */
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
+}
+
 async function renderAt(initialPath: string): Promise<RenderResult> {
   let result!: RenderResult;
   await act(async () => {
     result = render(
       <MemoryRouter initialEntries={[initialPath]}>
         <App />
+        <LocationProbe />
       </MemoryRouter>,
     );
   });
@@ -58,17 +70,21 @@ function activeNavTab(): string | null {
   return link?.getAttribute("aria-label") ?? null;
 }
 
-describe("Smoke: direct-URL deep-linking", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mocks.auth.refs.useAuth.mockReturnValue({
-      loading: false,
-      user: verifiedUser,
-      profile: testProfile as UserProfile,
-      refreshProfile: vi.fn(),
-    });
+// Both describes need the same fully-resolved auth user — a signed-in account
+// with a profile already loaded, which is the precondition for any route in
+// this file to render rather than bounce. Declared once at file scope so the
+// two blocks can't drift apart.
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.auth.refs.useAuth.mockReturnValue({
+    loading: false,
+    user: verifiedUser,
+    profile: testProfile as UserProfile,
+    refreshProfile: vi.fn(),
   });
+});
 
+describe("Smoke: direct-URL deep-linking", () => {
   it("loads /record directly without bouncing to /lobby", async () => {
     await renderAt("/record");
     // The "Me" tab being active proves NavigationContext resolved the URL
@@ -91,5 +107,40 @@ describe("Smoke: direct-URL deep-linking", () => {
     await renderAt("/lobby");
     expect(activeNavTab()).toBe("Home");
     expect(await screen.findByText("Your Games")).toBeInTheDocument();
+  });
+});
+
+/**
+ * `/record` is the own-profile surface behind BottomNav's "Me" tab — the one
+ * users actually reach. It rendered PlayerProfileScreen without `onAddSpot` or
+ * `onRefreshProfile`, so the "ADD A SPOT" CTA sat permanently disabled and the
+ * pull-to-refresh gesture animated without refetching anything, even though
+ * `/player/:uid` passed both. Prop wiring on a route is only observable
+ * through the real route table, hence an App-level spec.
+ */
+describe("Smoke: /record own-profile affordances", () => {
+  it("renders ADD A SPOT as an enabled control, not an inert affordance", async () => {
+    await renderAt("/record");
+    expect(await screen.findByRole("button", { name: /add a spot/i })).toBeEnabled();
+  });
+
+  it("routes ADD A SPOT to the map with the Add Spot sheet requested", async () => {
+    await renderAt("/record");
+    await userEvent.click(await screen.findByRole("button", { name: /add a spot/i }));
+    // `?add=1` is the whole point: plain /map leaves the sheet shut because
+    // its open state is local to SpotMap.
+    expect(screen.getByTestId("location").textContent).toBe("/map?add=1");
+  });
+
+  it("does not render the achievements ribbon", async () => {
+    await renderAt("/record");
+    await screen.findByRole("button", { name: /add a spot/i });
+    expect(screen.queryByTestId("achievements-ribbon")).not.toBeInTheDocument();
+  });
+
+  it("does not render a level indicator", async () => {
+    await renderAt("/record");
+    await screen.findByRole("button", { name: /add a spot/i });
+    expect(screen.queryByLabelText(/^Level /)).not.toBeInTheDocument();
   });
 });

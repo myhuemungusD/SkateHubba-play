@@ -55,20 +55,20 @@ function renderWithAvatarUrl(profileImageUrl: string) {
 }
 
 describe("ProfileIdentityCard", () => {
-  it("renders username, stance, and level chip", () => {
-    // LevelChip is a placeholder that always renders L1 regardless of the
-    // caller-supplied level — see LevelChip.tsx docstring. The prop is still
-    // accepted to keep the call-site shape stable for the eventual real
-    // level system.
-    render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" level={7} />);
+  it("renders username and stance", () => {
+    render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" />);
     expect(screen.getByText("@rider")).toBeInTheDocument();
     expect(screen.getByText("regular")).toBeInTheDocument();
-    expect(screen.getByLabelText("Level 1")).toBeInTheDocument();
   });
 
-  it("defaults level to 1 when undefined", () => {
+  it("renders no level indicator", () => {
+    // The chip was dead three ways: LevelChip hard-codes L1 and ignores its
+    // prop, this card was never passed a level, and UserProfile has no level
+    // field. Every account rendered an identical, meaningless "L1". It stays
+    // off the card until a real XP system exists to populate it.
     render(<ProfileIdentityCard username="rider" isVerifiedPro={false} stance="regular" />);
-    expect(screen.getByLabelText("Level 1")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Level /)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^L\d+$/)).not.toBeInTheDocument();
   });
 
   it("renders the first-letter initial when no profileImageUrl is provided", () => {

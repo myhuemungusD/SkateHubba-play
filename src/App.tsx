@@ -479,6 +479,8 @@ function AppRoutes() {
                     onOpenGame={game.openGame}
                     onBack={() => nav.setScreen("lobby")}
                     onViewPlayer={nav.navigateToPlayer}
+                    onAddSpot={nav.navigateToMapWithAddSpot}
+                    onRefreshProfile={auth.refreshProfile}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -498,7 +500,7 @@ function AppRoutes() {
                     onChallenge={(_uid, username) => directChallenge(username)}
                     onViewPlayer={nav.navigateToPlayer}
                     blockedUids={blockedUids}
-                    onAddSpot={() => nav.setScreen("map")}
+                    onAddSpot={nav.navigateToMapWithAddSpot}
                     onRefreshProfile={auth.refreshProfile}
                   />
                 ) : (
