@@ -25,7 +25,20 @@
     { "source": "/logonew.png", "destination": "/og-image.png", "permanent": true },
     { "source": "/logoblack.png", "destination": "/favicon.ico", "permanent": true }
   ],
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "rewrites": [
+    {
+      "source": "/player/:uid",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": "(?i).*(facebookexternalhit|Facebot|Twitterbot|Slackbot|Slack-ImgProxy|Discordbot|WhatsApp|LinkedInBot|TelegramBot|Pinterest|redditbot|Applebot|Googlebot|bingbot|DuckDuckBot|Iframely|SkypeUriPreview|vkShare|embedly|Mastodon|Bluesky).*"
+        }
+      ],
+      "destination": "/api/player-meta?uid=:uid"
+    },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
   "headers": [
     {
       "source": "/assets/(.*)",
