@@ -113,7 +113,13 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
       await userEvent.click(screen.getByTestId("share-my-profile-button"));
 
       await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
-      expect(share.mock.calls[0][0]).toMatchObject({ url: expect.stringContaining("/profile/me") });
+      // Must be `/player/:uid` — the public profile route. `/profile` is the
+      // profile-setup route and matches exactly, so a `/profile/{uid}` link
+      // redirects to /404. Asserted as a full path, not `stringContaining`,
+      // so a regression back to the broken route cannot pass.
+      expect(share.mock.calls[0][0]).toMatchObject({
+        url: `${window.location.origin}/player/me`,
+      });
       // uid is hashed before it reaches analytics — raw Firebase uids never
       // leave the app (privacy sweep; matches every other analytics call site).
       expect(trackEventMock).toHaveBeenCalledWith("profile_share_my_profile_tapped", { uid: hashUid("me") });
@@ -127,7 +133,7 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
       render(<PlayerProfileScreen {...props} />);
       await userEvent.click(screen.getByTestId("share-my-profile-button"));
 
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/profile/me")));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/player/me`));
       expect(await screen.findByText("LINK COPIED")).toBeInTheDocument();
     });
 
@@ -148,6 +154,26 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
   it("renders the added-spots placeholder only on the viewer's own profile", () => {
     render(<PlayerProfileScreen {...props} />);
     expect(screen.getByTestId("added-spots-placeholder")).toBeInTheDocument();
+  });
+
+  it("routes ADD A SPOT to the caller's map navigation", async () => {
+    // The CTA used to render permanently disabled because the screen never
+    // passed `onAddSpot` down, even though the map/add-spot flow already
+    // existed. Guards the wiring, not just the markup.
+    const onAddSpot = vi.fn();
+    render(<PlayerProfileScreen {...props} onAddSpot={onAddSpot} />);
+    const cta = screen.getByRole("button", { name: /add a spot/i });
+    expect(cta).toBeEnabled();
+    await userEvent.click(cta);
+    expect(onAddSpot).toHaveBeenCalledTimes(1);
+    expect(trackEventMock).toHaveBeenCalledWith("profile_add_a_spot_tapped", {
+      uid: hashUid("me"),
+    });
+  });
+
+  it("disables ADD A SPOT when the caller supplies no map navigation", () => {
+    render(<PlayerProfileScreen {...props} />);
+    expect(screen.getByRole("button", { name: /add a spot/i })).toBeDisabled();
   });
 
   it("hides both unbuilt-feature placeholders on another player's profile", () => {

@@ -27,8 +27,16 @@ export interface UploadProgress {
  * App Store reviewers exercise the cancel button on a 50 MB upload, so
  * the contract here is non-optional.
  */
-/** Minimum upload size (1 KB) — must match storage.rules */
-const MIN_UPLOAD_BYTES = 1024;
+/**
+ * Minimum upload size (1 KB) — must match storage.rules.
+ *
+ * Defined in `src/constants/video.ts` and re-exported here so the capture path
+ * can share it without importing this module (which would pull the Firebase SDK
+ * into the recorder). Re-exported rather than redeclared so the uploader and the
+ * recorder can never drift apart.
+ */
+export { MIN_UPLOAD_BYTES } from "../constants/video";
+import { MIN_UPLOAD_BYTES } from "../constants/video";
 /** Maximum upload size (50 MB) — must match storage.rules */
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 /**

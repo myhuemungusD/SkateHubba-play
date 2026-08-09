@@ -4,13 +4,16 @@
  * (`users/{uid}.spotsAddedCount` / `checkInsCount`) is already reserved per
  * plan §3.1.
  *
- * The CTA is intentionally inert in PR-C — the parent screen wires `onAddSpot`
- * to the map screen navigation when the spot-check-in PR ships. Until then
- * tapping the button surfaces a no-op (`onAddSpot` defaults to undefined and
- * the button is disabled to keep the affordance honest).
+ * The CTA is live: the parent screen passes `onAddSpot` to navigate to the map
+ * screen, which already supports adding a spot. The prop stays optional so the
+ * component can still render as a pure empty state (and so an unwired caller
+ * gets a visibly disabled button rather than a dead-looking live one).
  */
 interface Props {
-  /** Called when the user taps the CTA. Wired in the future spot-check-in PR. */
+  /**
+   * Called when the user taps the CTA. Omit to render the button disabled —
+   * the affordance stays honest when there is nowhere to send the user.
+   */
   onAddSpot?: () => void;
 }
 

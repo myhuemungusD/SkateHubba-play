@@ -5,6 +5,15 @@ import { VideoRecorder } from "../VideoRecorder";
 import { MAX_VIDEO_DURATION_MS, MAX_VIDEO_DURATION_SECONDS } from "../../constants/video";
 
 /**
+ * Payload for a chunk representing a *real* take. The recorder rejects any
+ * blob at or below MIN_UPLOAD_BYTES (1 KB) as a failed encode — the iOS Safari
+ * failure mode where the encoder emits a non-empty but unusable file — so a
+ * handful of bytes would drive every "successful recording" test down the
+ * rejection path instead.
+ */
+const CLIP_BYTES = "video-data".padEnd(2048, ".");
+
+/**
  * Mirrors `AUTO_STOP_WARNING_SECONDS` in VideoRecorder.tsx, which is a module
  * private. The warning renders for the last N seconds of the take.
  */
@@ -175,7 +184,7 @@ describe("VideoRecorder", () => {
         this.state = "inactive";
         // Simulate data being available before stop
         if (this.ondataavailable) {
-          this.ondataavailable({ data: new Blob(["video-data"], { type: "video/webm" }) });
+          this.ondataavailable({ data: new Blob([CLIP_BYTES], { type: "video/webm" }) });
         }
         this.onstop?.();
       });
@@ -320,7 +329,7 @@ describe("VideoRecorder", () => {
       });
       stop = vi.fn().mockImplementation(function (this: Vp9MR) {
         this.state = "inactive";
-        if (this.ondataavailable) this.ondataavailable({ data: new Blob(["x"], { type: "video/webm" }) });
+        if (this.ondataavailable) this.ondataavailable({ data: new Blob([CLIP_BYTES], { type: "video/webm" }) });
         this.onstop?.();
       });
     }
@@ -353,7 +362,7 @@ describe("VideoRecorder", () => {
       });
       stop = vi.fn().mockImplementation(function (this: WebmMR) {
         this.state = "inactive";
-        if (this.ondataavailable) this.ondataavailable({ data: new Blob(["x"], { type: "video/webm" }) });
+        if (this.ondataavailable) this.ondataavailable({ data: new Blob([CLIP_BYTES], { type: "video/webm" }) });
         this.onstop?.();
       });
     }

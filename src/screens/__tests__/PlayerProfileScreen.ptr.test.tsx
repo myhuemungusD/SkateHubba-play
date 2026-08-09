@@ -80,13 +80,34 @@ describe("PlayerProfileScreen — pull-to-refresh integration", () => {
     const el = getScrollContainer();
     pullPastTrigger(el);
     fireEvent.pointerUp(el);
-    // The own-profile onRefresh is an async no-op; once its promise settles the
-    // hook resets and the indicator unmounts (neither committed nor refreshing
-    // copy remains).
+    // With no onRefreshProfile supplied the gesture still settles; once its
+    // promise resolves the hook resets and the indicator unmounts (neither
+    // committed nor refreshing copy remains).
     await waitFor(() => {
       expect(screen.queryByText("Refreshing…")).not.toBeInTheDocument();
     });
     expect(screen.queryByText("Release to refresh")).not.toBeInTheDocument();
+  });
+
+  it("refetches the signed-in user's profile when the gesture completes", async () => {
+    // The gesture used to animate without refetching anything, so a user whose
+    // wins/losses had just been incremented server-side by applyGameStats had
+    // no way to pull their own new record into a one-time-read profile.
+    const onRefreshProfile = vi.fn().mockResolvedValue(undefined);
+    render(<PlayerProfileScreen {...baseProps} onRefreshProfile={onRefreshProfile} />);
+    const el = getScrollContainer();
+    pullPastTrigger(el);
+    fireEvent.pointerUp(el);
+    await waitFor(() => expect(onRefreshProfile).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not refetch when the pull never crosses the trigger threshold", async () => {
+    const onRefreshProfile = vi.fn().mockResolvedValue(undefined);
+    render(<PlayerProfileScreen {...baseProps} onRefreshProfile={onRefreshProfile} />);
+    const el = getScrollContainer();
+    fireEvent.pointerUp(el);
+    await waitFor(() => expect(screen.queryByText("Refreshing…")).not.toBeInTheDocument());
+    expect(onRefreshProfile).not.toHaveBeenCalled();
   });
 
   it("does not wire PTR on another player's profile", () => {
