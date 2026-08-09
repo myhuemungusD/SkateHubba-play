@@ -27,10 +27,29 @@ subcollection `users/{uid}/private/*` below.
 | `createdAt`         | `Timestamp` | Server timestamp at profile creation                                                                                                               |
 | `wins`              | `number`    | Denormalized leaderboard win count. **Server-maintained** — written only by the stats close-out Cloud Function (Admin SDK); clients are read-only  |
 | `losses`            | `number`    | Denormalized leaderboard loss count. **Server-maintained** — written only by the stats close-out Cloud Function (Admin SDK); clients are read-only |
+| `gamesPlayed`       | `number`    | Completed games (wins + losses). **Server-maintained** by the stats close-out function; absent on pre-Tier-1 docs                                  |
+| `currentWinStreak`  | `number`    | Consecutive wins ending now — reset to 0 on any loss. **Server-maintained**                                                                        |
+| `bestWinStreak`     | `number`    | Lifetime high-water mark for `currentWinStreak`. **Server-maintained**                                                                             |
+| `tricksDisputed`    | `number`    | Landed claims of theirs that were disputed. Written by the dispute referee (Admin SDK)                                                             |
+| `disputesRaised`    | `number`    | Disputes this user initiated. Written by the dispute referee (Admin SDK)                                                                           |
+| `disputesRight`     | `number`    | Of those raised, how many the community sided with (bail verdict). Written by the dispute referee                                                  |
+| `disputesWrong`     | `number`    | Of those raised, how many the community sided against (land verdict). Written by the dispute referee                                               |
+| `profileImageUrl`   | `string`    | Avatar download URL, pinned to this project's bucket and the owning uid by both the client guard and the rule. `null` clears it                    |
 | `lastGameCreatedAt` | `Timestamp` | Server timestamp of last game creation (rate limiting)                                                                                             |
+| `lastSpotCreatedAt` | `Timestamp` | Server timestamp of last spot creation (rate limiting)                                                                                             |
 | `isVerifiedPro`     | `boolean`   | Admin-only — clients cannot set or modify                                                                                                          |
 | `verifiedBy`        | `string`    | Admin-only — grantor of verified-pro status                                                                                                        |
 | `verifiedAt`        | `Timestamp` | Admin-only — when verified-pro was granted                                                                                                         |
+
+> **Keep this table complete.** Firestore rules cannot filter fields — they
+> allow or deny whole documents — so any field written here is exposed to
+> whoever can read the doc. The rules guard the five sensitive names with a
+> _denylist_, not an allowlist, so a new field is permitted by default. This
+> table is the only place the full shape is written down; when it drifts, a
+> reviewer checking "is this doc safe to expose" has nothing accurate to check
+> against. `lastGameCreatedAt` and `lastSpotCreatedAt` are not on the
+> `UserProfile` TypeScript interface — reading the interface alone will miss
+> them.
 
 **Constraints (enforced by Firestore rules):**
 
