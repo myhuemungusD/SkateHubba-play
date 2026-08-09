@@ -1,5 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { MAX_VIDEO_DURATION_MS, MAX_VIDEO_DURATION_SECONDS, VIDEO_BITS_PER_SECOND } from "../constants/video";
+import {
+  MAX_VIDEO_DURATION_MS,
+  MAX_VIDEO_DURATION_SECONDS,
+  MIN_UPLOAD_BYTES,
+  VIDEO_BITS_PER_SECOND,
+} from "../constants/video";
 import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -41,6 +46,33 @@ const MIME_CANDIDATES = [
 
 /** Canvas capture rate used when the camera track won't report its own fps. */
 const FALLBACK_CAPTURE_FPS = 30;
+
+/**
+ * Interval passed to `MediaRecorder.start()`, forcing a `dataavailable` chunk
+ * every second.
+ *
+ * Without a timeslice the recorder is free to hold the entire take in its
+ * internal buffer and emit it as one blob at `stop()`. iOS Safari regularly
+ * materialises nothing at all that way for short clips, producing an empty or
+ * near-empty file. Flushing on a fixed cadence means chunks exist by the time
+ * we stop, whatever the platform decides to do.
+ */
+const RECORDER_TIMESLICE_MS = 1000;
+
+/**
+ * True on iOS Safari (including iPadOS), where WebGL-canvas `captureStream`
+ * into MediaRecorder is unreliable and commonly yields black or near-empty
+ * files. Chrome/Firefox on iOS are excluded — they are WebKit shells but do
+ * not exhibit the same capture path.
+ */
+function isIOSSafari(): boolean {
+  // No `typeof navigator` guard: this is only reached from startRec, which runs
+  // after getUserMedia has already resolved — navigator provably exists there.
+  const ua = navigator.userAgent || "";
+  const isIOS = /iPad|iPhone|iPod/.test(ua);
+  const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS/.test(ua);
+  return isIOS && isSafari;
+}
 
 /**
  * Mic constraints. Voice-call DSP is tuned for speech and is destructive to
@@ -381,7 +413,14 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
     // Determine the stream to record: fisheye canvas + audio, or raw camera.
     let recordStream = streamRef.current;
     /* v8 ignore start -- captureStream + fisheye canvas requires real browser; not available in JSDOM */
-    if (fisheyeOn && fisheyeCanvasRef.current) {
+    if (fisheyeOn && fisheyeCanvasRef.current && isIOSSafari()) {
+      // Recording the WebGL canvas is unreliable here and produces black or
+      // near-empty files. Keep fisheye as a live *preview* effect and record
+      // the raw camera stream, so an iPhone user gets a real clip rather than
+      // an unplayable one. Logged so the telemetry shows how often the effect
+      // silently degrades.
+      logger.warn("fisheye_record_unsupported", { hint: "recording raw stream on iOS Safari" });
+    } else if (fisheyeOn && fisheyeCanvasRef.current) {
       try {
         const canvasStream = fisheyeCanvasRef.current.captureStream(captureFrameRate(streamRef.current));
         // Add audio tracks from the camera stream to the canvas stream
@@ -419,6 +458,18 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
         onRecorded(null);
         return;
       }
+      if (blob.size <= MIN_UPLOAD_BYTES) {
+        // A non-empty but unusably small take — the failure mode iOS Safari
+        // produces when the encoder yields almost nothing. Uploading it would
+        // be rejected by storage.rules and surface "Video is too small to
+        // upload" long after the user left the camera. Fail here instead, on
+        // the recording screen, where "try again" actually means something.
+        logger.warn("recording_too_small", { size: blob.size, mimeType: blob.type });
+        setCameraError("Recording failed on this device. Please try again.");
+        setState("idle");
+        onRecorded(null);
+        return;
+      }
       const url = URL.createObjectURL(blob);
       blobUrlRef.current = url;
       setBlobUrl(url);
@@ -441,7 +492,7 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
     };
     /* v8 ignore stop */
     mrRef.current = mr;
-    mr.start();
+    mr.start(RECORDER_TIMESLICE_MS);
     setState("recording");
     setSeconds(0);
     timerRef.current = window.setInterval(() => setSeconds((s) => s + 1), 1000);

@@ -104,7 +104,10 @@ class DataProducingMR {
   stop = vi.fn().mockImplementation(function (this: DataProducingMR) {
     this.state = "inactive";
     if (this.ondataavailable) {
-      this.ondataavailable({ data: new Blob(["video-data"], { type: "video/webm" }) });
+      // Must exceed MIN_UPLOAD_BYTES (1 KB): the recorder rejects anything at
+      // or below that as a failed encode, so a short fixture would make every
+      // "records and uploads" case here take the rejection path instead.
+      this.ondataavailable({ data: new Blob(["video-data".padEnd(2048, ".")], { type: "video/webm" }) });
     }
     this.onstop?.();
   });
