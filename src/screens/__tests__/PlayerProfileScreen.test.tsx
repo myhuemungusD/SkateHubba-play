@@ -139,6 +139,17 @@ describe("PlayerProfileScreen", () => {
     expect(screen.getByText("Player not found")).toBeInTheDocument();
   });
 
+  it("still requests games for a signed-in viewer", () => {
+    // Counterpart to the signed-out case in PlayerProfileScreen.signedout.test.tsx,
+    // which asserts `includeGames: false`. Pinning the signed-in shape too is what
+    // makes that pair meaningful: without this, flipping the default to `false`
+    // would silently strip game history from every signed-in profile view and the
+    // signed-out test would keep passing.
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile, games: [buildCompletedGame()] }));
+    render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
+    expect(mockUsePlayerProfile).toHaveBeenCalledWith("u2", "me", true);
+  });
+
   it("renders other player's profile with correct header", () => {
     mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile, games: [buildCompletedGame()] }));
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
