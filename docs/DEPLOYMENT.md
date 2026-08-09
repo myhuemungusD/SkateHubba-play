@@ -72,9 +72,22 @@ You don't need to do anything manually for code changes. Vercel picks up `main` 
 
 ## Firebase Rules Deployment
 
-Rules changes are **not** part of the Vercel pipeline. This is intentional — rules are a security boundary and should be deployed deliberately after review.
+Rules changes are **not** part of the Vercel pipeline — but they are **not manual either**.
 
-After any change to `firestore.rules` or `storage.rules`:
+> **They deploy automatically on merge to `main`.**
+> `.github/workflows/firebase-rules-deploy.yml` triggers on any push to `main`
+> touching `firestore.rules`, `firestore.indexes.json`, `storage.rules`,
+> `firebase.json`, or `.firebaserc`. A daily `cron` re-deploys from `main` as a
+> freshness guard, so a hand-rollback in the Firebase console is reverted within
+> 24 hours — the fix for a bad rule is a revert commit, not a console edit.
+>
+> This paragraph previously claimed rules were deployed by hand. That was stale
+> and actively dangerous: it invited safety checks to be written as runbook
+> prose for a pipeline with no human in it. Any gate that matters belongs in the
+> workflow (see the PII scan below), not here.
+
+The commands below are for a **deliberate out-of-band deploy** — a rollback, a
+first-time setup, or a deploy from a branch. Routine changes need none of it:
 
 ```bash
 firebase use sk8hub-d7806
@@ -96,30 +109,48 @@ Firebase Console → Firestore → Rules tab → check the "Published rules" tim
 
 Firebase Console → Firestore → Rules → Rules Playground lets you simulate reads and writes against your rules before publishing them.
 
-### Required check before publishing the public-profile rule
+### PII scan gate (enforced in CI — you do not run this by hand)
 
-`users/{uid}` is `get`-able by anyone (so a shared `/player/{uid}` link resolves
-for a signed-out visitor). Firestore rules **cannot filter fields** — they allow
-or deny the whole document — so that rule is only safe while no public user doc
-still carries a sensitive field inline. The May 2026 public/private split moved
-`email`, `emailVerified`, `dob`, `parentalConsent`, and `fcmTokens` into the
-owner-only `users/{uid}/private/profile`, but a doc the backfill missed would
-become **world-readable** the moment these rules publish — including the date of
-birth of a minor, which is the worst case in the whole schema.
+`users/{uid}` is `get`-able by anyone, so a shared `/player/{uid}` link resolves
+for a signed-out visitor. Firestore rules **cannot filter fields** — they allow
+or deny whole documents — so that rule is only safe while no public user doc
+still carries a sensitive field inline. The public/private split moved `email`,
+`emailVerified`, `dob`, `parentalConsent`, and `fcmTokens` into the owner-only
+`users/{uid}/private/profile`; a doc the backfill missed would become
+**world-readable** the moment those rules publish, including the date of birth
+of a minor.
 
-Run the scan against production first. It exits non-zero if anything is left:
+Because rules deploy automatically, this is a **step in the deploy job**
+(`Scan production for residual PII on public user docs`), not something to
+remember. It runs `scripts/migrate-users-private.mjs --verify` against the
+production project and exits non-zero on any residual field, failing the job
+before `firebase deploy` runs.
+
+It fails closed in two ways worth knowing:
+
+- **No Workload Identity Federation, no deploy.** The legacy `FIREBASE_TOKEN`
+  cannot authenticate the Admin SDK, so the scan could not read production. A
+  skipped scan is not a passed scan, so the job errors instead of proceeding.
+- **Any `LEAK <uid> still has: …` line fails the job.** Re-run the migration
+  (`node scripts/migrate-users-private.mjs`, idempotent and resumable), then
+  re-run the workflow.
+
+To run it yourself against production — worth doing before opening a rules PR,
+so you find out early rather than at deploy time:
 
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
 node scripts/migrate-users-private.mjs --verify
 ```
 
-`verify: scanned=<n> offending=0` (exit 0) is the go signal. Any `LEAK <uid> still
-has: …` line means **do not publish** — re-run the migration
-(`node scripts/migrate-users-private.mjs`, idempotent and resumable) and scan again.
+`verify: scanned=<n> offending=0` (exit 0) is the go signal.
 
-This check is cheap and worth repeating on every rules deploy that touches the
-`users` read path, not just the first one.
+**Known limitation, not yet closed:** the scan checks a _denylist_ of five known
+field names. `users/{uid}` create/update rules likewise deny those five rather
+than allowlisting known-good keys, so a sixth field written by a future code
+path would be world-readable and neither the rules nor this scan would catch it.
+Tracked as follow-up; the fix is `keys().hasOnly([...])` on the create/update
+rules plus an allowlist-based scan.
 
 ---
 

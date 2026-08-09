@@ -159,6 +159,40 @@ jobs:
           workload_identity_provider: ${{ secrets.FIREBASE_WIF_PROVIDER }}
           service_account: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
 
+      # ── PII gate — must pass before any rules reach production ──
+      # `users/{uid}` is publicly `get`-able so a shared /player/{uid} link
+      # resolves for a signed-out visitor. Firestore rules cannot filter
+      # fields — they allow or deny whole documents — so that rule is only
+      # safe while no public user doc still carries a sensitive field inline.
+      # The public/private split moved email/dob/parentalConsent/fcmTokens to
+      # the owner-only subcollection; a doc the backfill missed would become
+      # world-readable the moment these rules publish, including the date of
+      # birth of a minor.
+      #
+      # This lives here, and not in a runbook, because rules deploy
+      # AUTOMATICALLY on merge to main (see the `on: push` trigger above). A
+      # documented manual step cannot gate an automated deploy — there is no
+      # human in the loop to perform it. The scan exits non-zero on any
+      # residual field, which fails the job before `firebase deploy` runs.
+      - name: Scan production for residual PII on public user docs
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.project.outputs.project_id }}
+        run: |
+          set -euo pipefail
+          # Fail closed: without Application Default Credentials the scan
+          # cannot read production, and an unrun scan must never be mistaken
+          # for a clean one.
+          if [ "${{ steps.creds.outputs.method }}" != "wif" ]; then
+            echo "::error::Rules deploy requires Workload Identity Federation so the PII scan can read production."
+            echo "The legacy FIREBASE_TOKEN cannot authenticate the Admin SDK, so the scan would be skipped —"
+            echo "and a skipped scan is not a passed scan. Configure FIREBASE_WIF_PROVIDER +"
+            echo "FIREBASE_WIF_SERVICE_ACCOUNT, or run 'node scripts/migrate-users-private.mjs --verify'"
+            echo "by hand and re-run this workflow with dry_run=true to deploy deliberately."
+            exit 1
+          fi
+          node scripts/migrate-users-private.mjs --verify
+
       - name: Deploy rules and indexes
         id: deploy
         if: ${{ github.event.inputs.dry_run != 'true' }}
