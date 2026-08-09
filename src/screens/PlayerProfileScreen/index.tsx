@@ -53,7 +53,7 @@ interface Props {
  *   - 96px avatar with optional custom image + pencil-edit overlay (own profile).
  *   - Pull-to-refresh on own profile.
  *   - "Share my profile" button on own profile (`navigator.share` with
- *     clipboard fallback). Shares a deep-link to `/profile/{uid}`.
+ *     clipboard fallback). Shares a deep-link to `/player/{uid}`.
  *   - AchievementsRibbon + AddedSpotsPlaceholder placeholders for layout
  *     fidelity; future PRs wire them to real data.
  *
@@ -118,7 +118,10 @@ export function PlayerProfileScreen({
 
   const [shareCopiedAt, setShareCopiedAt] = useState<number | null>(null);
   const handleShareProfile = useCallback(async () => {
-    const url = `${window.location.origin}/profile/${currentUserProfile.uid}`;
+    // Must match the `/player/:uid` route in App.tsx. `/profile` is the
+    // profile-SETUP route and takes no uid param, so `/profile/{uid}` fell
+    // through to the `*` catch-all and every shared link landed on /404.
+    const url = `${window.location.origin}/player/${currentUserProfile.uid}`;
     trackEvent("profile_share_my_profile_tapped", { uid: hashUid(currentUserProfile.uid) });
     const payload: ShareData = {
       title: `@${currentUserProfile.username} on SkateHubba`,

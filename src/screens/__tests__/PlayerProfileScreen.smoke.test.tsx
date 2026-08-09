@@ -113,7 +113,12 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
       await userEvent.click(screen.getByTestId("share-my-profile-button"));
 
       await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
-      expect(share.mock.calls[0][0]).toMatchObject({ url: expect.stringContaining("/profile/me") });
+      // Exact URL, not `stringContaining` — the bug this guards against was a
+      // share link pointing at `/profile/{uid}`, which is not a route (`/profile`
+      // is profile-setup and takes no param) and fell through to the `*` →
+      // /404 catch-all. A substring assertion would still pass on a path that
+      // merely contains the uid, so pin the whole thing to the real route.
+      expect(share.mock.calls[0][0]).toMatchObject({ url: `${window.location.origin}/player/me` });
       // uid is hashed before it reaches analytics — raw Firebase uids never
       // leave the app (privacy sweep; matches every other analytics call site).
       expect(trackEventMock).toHaveBeenCalledWith("profile_share_my_profile_tapped", { uid: hashUid("me") });
@@ -127,7 +132,7 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
       render(<PlayerProfileScreen {...props} />);
       await userEvent.click(screen.getByTestId("share-my-profile-button"));
 
-      await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining("/profile/me")));
+      await waitFor(() => expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/player/me`));
       expect(await screen.findByText("LINK COPIED")).toBeInTheDocument();
     });
 
