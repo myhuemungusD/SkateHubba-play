@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
-import { render } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { act, render } from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router";
 import { Component, type ReactNode } from "react";
 import { useNavigationContext, NavigationProvider } from "../NavigationContext";
 import { AuthProvider } from "../AuthContext";
@@ -43,6 +43,12 @@ class ErrorCatcher extends Component<{ children: ReactNode }, { error: Error | n
   }
 }
 
+/** Surfaces the live URL so navigation helpers can be asserted on directly. */
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
+}
+
 describe("useNavigationContext", () => {
   it("throws when used outside NavigationProvider", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -79,6 +85,37 @@ describe("useNavigationContext", () => {
     );
 
     expect(getByTestId("screen").textContent).toBe("landing");
+  });
+
+  it("navigateToMapWithAddSpot routes to /map?add=1 so the Add Spot sheet opens on arrival", () => {
+    // setScreen('map') lands on a bare map: the sheet's open state is local to
+    // SpotMap with no other external entry point, which is exactly why the
+    // profile's "ADD A SPOT" CTA used to be a dead end. The param is the
+    // contract MapPage reads — mirrors navigateToChallengeWithSpot's ?spot=.
+    function TestComponent() {
+      const ctx = useNavigationContext();
+      return (
+        <button type="button" data-testid="go" onClick={ctx.navigateToMapWithAddSpot}>
+          go
+        </button>
+      );
+    }
+
+    const { getByTestId } = render(
+      <MemoryRouter initialEntries={["/map"]}>
+        <AuthProvider>
+          <NavigationProvider>
+            <TestComponent />
+            <LocationProbe />
+          </NavigationProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    act(() => {
+      getByTestId("go").click();
+    });
+    expect(getByTestId("location").textContent).toBe("/map?add=1");
   });
 
   it("setScreen('player') throws — callers must go through navigateToPlayer(uid)", () => {

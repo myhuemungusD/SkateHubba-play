@@ -1,13 +1,17 @@
 /**
- * Empty state for the "Spots you've added" section. Placeholder until the
- * future spot-check-in PR wires real spot data; the schema slot
- * (`users/{uid}.spotsAddedCount` / `checkInsCount`) is already reserved per
- * plan §3.1.
+ * Empty state for the "Spots you've added" section.
  *
- * The CTA is live: the parent screen passes `onAddSpot` to navigate to the map
- * screen, which already supports adding a spot. The prop stays optional so the
- * component can still render as a pure empty state (and so an unwired caller
- * gets a visibly disabled button rather than a dead-looking live one).
+ * The *list* is still a placeholder: nothing on `users/{uid}` counts a user's
+ * added spots today (`UserProfile` has no `spotsAddedCount` / `checkInsCount`
+ * field, and no such field is written anywhere), so there is no data to
+ * enumerate. Populating this section needs that counter — or a query over
+ * `spots` by author — to land first.
+ *
+ * The CTA, by contrast, is live: the parent screen passes `onAddSpot`, which
+ * routes to `/map?add=1` and opens the Add Spot sheet on arrival. The prop
+ * stays optional so the component can still render as a pure empty state (and
+ * so an unwired caller gets a visibly disabled button rather than a
+ * dead-looking live one).
  */
 interface Props {
   /**

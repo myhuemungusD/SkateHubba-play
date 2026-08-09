@@ -16,7 +16,6 @@ import { ProfileHeader } from "./components/ProfileHeader";
 import { ProfileIdentityCard } from "./components/ProfileIdentityCard";
 import { ProfileSkeleton } from "./components/ProfileSkeleton";
 import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
-import { AchievementsRibbon } from "./components/AchievementsRibbon";
 import { AddedSpotsPlaceholder } from "./components/AddedSpotsPlaceholder";
 import { WinStreakBanner } from "./components/WinStreakBanner";
 
@@ -65,13 +64,18 @@ interface Props {
  *   - Pull-to-refresh on own profile.
  *   - "Share my profile" button on own profile (`navigator.share` with
  *     clipboard fallback). Shares a deep-link to `/player/{uid}`.
- *   - AddedSpotsPlaceholder — empty state whose CTA navigates to the map;
- *     the spot *list* still awaits the spot-check-in PR's real data.
- *   - AchievementsRibbon — placeholder for layout fidelity; a future PR
- *     wires it to real achievement data.
+ *   - AddedSpotsPlaceholder — empty state whose CTA opens the map with the
+ *     Add Spot sheet already open; the spot *list* still awaits real data.
  *
- * Deferred until their respective counters ship on main:
- *   - XP / level (currently placeholder L1 via LevelChip)
+ * Deliberately NOT rendered until real data exists to back them. Rendering a
+ * placeholder on a live profile reads as an unfinished product, so these stay
+ * off the screen rather than shipping as visible stubs. Both components are
+ * kept (with their tests) so re-enabling them is a one-line change:
+ *   - AchievementsRibbon — 12 locked "???" tiles. There is no
+ *     `users/{uid}/achievements` collection, so every tile is permanently
+ *     locked. Re-render it once achievements are actually granted.
+ *   - LevelChip (in ProfileIdentityCard) — hard-coded "L1"; `UserProfile` has
+ *     no `level` field and there is no XP system. Re-add it with the XP work.
  */
 export function PlayerProfileScreen({
   viewedUid,
@@ -245,11 +249,9 @@ export function PlayerProfileScreen({
           onTileTap={handleTileTap}
         />
 
-        {/* Placeholder surfaces stay on the owner's profile only — advertising
-            unbuilt features on someone else's public profile is noise to every
-            visitor but the owner. Matches AddedSpotsPlaceholder's gating. */}
-        {isOwnProfile && <AchievementsRibbon />}
-
+        {/* Owner-only: advertising an unbuilt feature on someone else's public
+            profile is noise to every visitor but the owner. AchievementsRibbon
+            used to sit here too — see this file's docstring for why it doesn't. */}
         {isOwnProfile && <AddedSpotsPlaceholder onAddSpot={onAddSpot ? handleAddSpot : undefined} />}
 
         <OpponentList

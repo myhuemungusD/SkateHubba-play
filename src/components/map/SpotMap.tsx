@@ -34,9 +34,19 @@ interface SpotMapProps {
    * (auth session, GameContext, analytics session).
    */
   onRetry?: () => void;
+  /**
+   * Open the Add Spot sheet immediately on mount. Set by MapPage when the
+   * user arrived via `/map?add=1` (e.g. the profile's "ADD A SPOT" CTA) so
+   * they land on the form rather than having to hunt for the FAB.
+   *
+   * Read once, as the initial value of `isAddingSpot` — later prop changes
+   * are deliberately ignored so MapPage clearing the query param cannot slam
+   * the sheet shut underneath the user.
+   */
+  autoOpenAddSpot?: boolean;
 }
 
-export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProps) {
+export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSpot = false }: SpotMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,7 +54,7 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry }: SpotMapProp
   const { spots, setSpots, fetchSpots } = useSpotsInBounds();
   const [filters, setFilters] = useState<SpotFilters>(DEFAULT_SPOT_FILTERS);
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
-  const [isAddingSpot, setIsAddingSpot] = useState(false);
+  const [isAddingSpot, setIsAddingSpot] = useState(autoOpenAddSpot);
 
   const {
     userLocation,

@@ -93,6 +93,17 @@ export interface NavigationContextValue {
    * of a raw `navigate()` call.
    */
   navigateToChallengeWithSpot: (spotId: string) => void;
+  /**
+   * Navigate to the map with the Add Spot sheet already open, via the
+   * `?add=1` query param MapPage reads. Exists for the same reason as
+   * `navigateToChallengeWithSpot`: `setScreen('map')` only routes to `/map`,
+   * and the sheet's open/closed state is local to SpotMap with no other
+   * external entry point — so the profile's "ADD A SPOT" CTA would otherwise
+   * dump the user on a bare map and make them find the FAB themselves.
+   * MapPage consumes and clears the param on mount so a refresh or a Back
+   * navigation doesn't reopen the sheet.
+   */
+  navigateToMapWithAddSpot: () => void;
   authMode: "signup" | "signin";
   setAuthMode: (m: "signup" | "signin") => void;
   ageGateDob: string | null;
@@ -148,6 +159,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     },
     [navigate],
   );
+
+  const navigateToMapWithAddSpot = useCallback(() => {
+    navigate(`${SCREEN_TO_PATH.map}?add=1`);
+  }, [navigate]);
 
   const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
   const [ageGateDob, setAgeGateDob] = useState<string | null>(null);
@@ -253,6 +268,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     setScreen,
     navigateToPlayer,
     navigateToChallengeWithSpot,
+    navigateToMapWithAddSpot,
     authMode,
     setAuthMode,
     ageGateDob,
