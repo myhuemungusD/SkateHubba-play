@@ -329,11 +329,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.warn("delete_account_push_scrub_failed", { uid, message: parseFirebaseError(err) });
     });
     try {
-      // deleteAccount runs Auth deletion FIRST, then Firestore wipe with
-      // retry. Any throw here means Auth deletion failed and NO Firestore
-      // data was touched — the user's profile is intact and the flow can
-      // be retried cleanly after re-auth.
-      await deleteAccount(uid, username);
+      // deleteAccount delegates to the server, which erases the data with
+      // admin credentials and deletes the Auth user LAST. Any throw here
+      // means the erasure did not happen and the account is untouched — the
+      // profile is intact and the flow can be retried cleanly (server-side
+      // phases are idempotent, so a retry resumes rather than double-deletes).
+      // The username is not passed: the server reads it from the profile it is
+      // deleting, so a caller can never name another user's reservation.
+      await deleteAccount(uid);
     } catch (err) {
       const code = getErrorCode(err);
       logger.error("delete_account_auth_failed", { uid, code });

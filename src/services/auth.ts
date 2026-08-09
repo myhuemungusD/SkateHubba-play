@@ -5,7 +5,6 @@ import {
   sendPasswordResetEmail,
   sendEmailVerification,
   onAuthStateChanged,
-  deleteUser,
   GoogleAuthProvider,
   signInWithCredential,
   signInWithPopup,
@@ -19,8 +18,6 @@ import { FirebaseAuthentication } from "@capacitor-firebase/authentication";
 import { auth, requireAuth, isEmulatorMode } from "../firebase";
 import { captureException } from "../lib/sentry";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
-import { withRetry } from "../utils/retry";
-import { deleteUserData } from "./users";
 import { logger } from "./logger";
 
 export type AuthUser = User;
@@ -322,76 +319,120 @@ export async function signInWithGoogle(): Promise<User | null> {
   }
 }
 
+/** Server-side erasure endpoint. See `api/account/delete.ts`. */
+const ACCOUNT_DELETE_PATH = "/api/account/delete";
+
 /**
- * Permanently delete the currently signed-in Firebase Auth account AND its
- * Firestore data, in that order.
+ * Error carrying a `code`, so `getErrorCode` can branch on it exactly as it
+ * does for a real Firebase Auth error.
+ */
+class CodedError extends Error {
+  readonly code: string;
+  constructor(code: string, message: string, cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.code = code;
+  }
+}
+
+/**
+ * Permanently delete the signed-in account by delegating to the server.
  *
- * Order matters: deleting the Auth record FIRST means that if
- * auth/requires-recent-login fires, no Firestore data has been touched yet —
- * the caller can ask the user to re-authenticate and retry cleanly, with the
- * profile still intact. Wiping Firestore first would leave a "reverse orphan"
- * (data gone, Auth alive) and force the user to re-create their username on
- * next sign-in.
+ * WHY THIS IS NOT DONE ON THE CLIENT: it cannot be. The previous implementation
+ * called `deleteUser(user)` first and then wiped Firestore from the client.
+ * `deleteUser` internally clears the refresh token and calls `signOut`, so the
+ * cascade ran with `auth.currentUser === null` and a null token. Every rule on
+ * that path requires `request.auth != null`, so the first query failed
+ * `permission-denied` before a single document was deleted — and because
+ * `permission-denied` is classified permanent by `withRetry`, there was one
+ * attempt and no retry. The failure was then swallowed so the user was told
+ * deletion succeeded. In practice every account deletion orphaned all of the
+ * user's personal data.
+ *
+ * Flipping the order client-side does not fix it either: wiping Firestore first
+ * and then bouncing on `auth/requires-recent-login` leaves a live Auth account
+ * with no profile. Both client orderings are broken, which is why erasure moved
+ * behind an admin-credentialed endpoint that deletes data first and the Auth
+ * user last.
  *
  * Contract:
- *  1. `deleteUser(user)` runs first. Any failure (including
- *     auth/requires-recent-login, network, etc.) is rethrown to the caller;
- *     no Firestore writes have happened at that point.
- *  2. `deleteUserData(uid, username)` runs only after Auth is gone. It is
- *     wrapped in `withRetry` because the Auth token is already revoked — a
- *     transient network blip is the only recoverable failure. If it still
- *     fails after retries, the Firestore data is orphaned (known cleanup
- *     state, not a login blocker) and we log + captureException with
- *     severity=error so operators can trigger manual cleanup. We do NOT
- *     throw back to the caller — from the user's perspective, the account
- *     is gone.
+ *  - Resolves only when the server has erased the data. The Auth user is gone
+ *    too in the normal case; if only the final Auth delete failed the data is
+ *    still gone, so this still resolves and the local session is cleared.
+ *  - Throws `auth/requires-recent-login` when the sign-in is too old, so the
+ *    existing re-auth affordance keeps working unchanged. Note a forced token
+ *    refresh does not help — `auth_time` reflects the original sign-in, which
+ *    is exactly the property the recency check is testing.
+ *  - Throws on any other failure. The account is untouched and the flow is
+ *    safe to retry; every phase server-side is idempotent.
+ *
+ * The username is intentionally NOT sent: the server reads it from the profile
+ * it is about to delete, so a caller cannot name someone else's reservation to
+ * release. For the same reason there is no uid parameter on the wire — the
+ * server derives identity solely from the verified ID token.
  */
-export async function deleteAccount(uid: string, username: string): Promise<void> {
+export async function deleteAccount(uid: string): Promise<void> {
   const user = requireAuth().currentUser;
   if (!user) throw new Error("Not signed in");
   if (user.uid !== uid) {
-    // Defensive: the caller snapshots uid/username before the flow starts,
-    // so a mismatch here means identity drift mid-delete — refuse rather
-    // than delete the wrong account.
+    // Defensive: the caller snapshots uid before the flow starts, so a
+    // mismatch here means identity drift mid-delete — refuse rather than
+    // delete the wrong account.
     throw new Error("Auth uid does not match requested delete uid");
   }
   logger.info("delete_account_attempt", { uid });
 
-  // Step 1: Delete Firebase Auth FIRST. If this throws
-  // auth/requires-recent-login, the caller sends the user through re-auth
-  // and retries — no Firestore data has been touched, so the profile is
-  // still intact on retry.
-  await deleteUser(user);
-  logger.info("delete_account_auth_done", { uid });
+  const idToken = await user.getIdToken();
+  const base = import.meta.env.VITE_APP_URL || "";
 
-  // Step 2: Wipe Firestore data. The Auth token is already revoked, so
-  // any remaining writes must happen via the still-cached credentials of
-  // the just-deleted user. Transient network failures are the only
-  // recoverable class of errors — retry aggressively, then accept the
-  // orphan state and surface it to Sentry for manual cleanup.
+  let res: Response;
   try {
-    await withRetry(() => deleteUserData(uid, username));
-    logger.info("delete_account_firestore_done", { uid });
+    res = await fetch(`${base}${ACCOUNT_DELETE_PATH}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
   } catch (err) {
-    logger.error("delete_account_firestore_orphaned", {
-      uid,
-      username,
-      code: getErrorCode(err),
-      error: parseFirebaseError(err),
-    });
-    captureException(err, {
-      level: "error",
-      extra: {
-        context:
-          "deleteUserData failed after Firebase Auth deletion — Firestore data orphaned, manual cleanup required",
-        uid,
-        username,
-      },
-    });
-    // Deliberately do NOT rethrow: the Auth account is already gone, so
-    // from the user's perspective the deletion succeeded. Operators will
-    // clean up via the Sentry alert.
+    // Network-level failure: nothing was deleted, so this is cleanly retryable.
+    logger.error("delete_account_request_failed", { uid, error: parseFirebaseError(err) });
+    throw new CodedError("account-delete/network", "Could not reach the server. Please try again.", err);
   }
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { code?: unknown; message?: unknown } | null;
+    const serverCode = typeof body?.code === "string" ? body.code : "unknown";
+    const message =
+      typeof body?.message === "string" ? body.message : "Could not delete your account. Please try again.";
+    logger.error("delete_account_rejected", { uid, status: res.status, serverCode });
+
+    if (serverCode === "requires_recent_login" || serverCode === "invalid_token") {
+      // Re-authenticating is the remedy for both, and the caller already has a
+      // dedicated branch (plus a "Finish deletion" affordance) for this code.
+      throw new CodedError("auth/requires-recent-login", message);
+    }
+    captureException(new Error(`account delete failed: ${serverCode}`), {
+      level: "error",
+      extra: { context: "server-side account deletion rejected", uid, status: res.status, serverCode },
+    });
+    throw new CodedError(`account-delete/${serverCode}`, message);
+  }
+
+  const result = (await res.json().catch(() => null)) as { authDeleted?: unknown } | null;
+  if (result?.authDeleted === false) {
+    // Data is erased but the Auth record survived. Not a user-facing failure —
+    // there is nothing left to protect — but it must not pass silently, because
+    // a sign-in would land in profile setup with no explanation.
+    logger.warn("delete_account_auth_survived", { uid });
+    captureException(new Error("account data erased but Auth user survived"), {
+      level: "warning",
+      extra: { context: "server erased all data; Auth deletion failed and needs a sweep", uid },
+    });
+  }
+
+  // The server deleted the Auth user, so the cached session is already dead.
+  // Clear it explicitly rather than waiting for the next token refresh to fail.
+  await fbSignOut(requireAuth()).catch((err: unknown) => {
+    logger.warn("delete_account_signout_failed", { uid, error: parseFirebaseError(err) });
+  });
+
   logger.info("delete_account_success", { uid });
 }
 
