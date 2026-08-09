@@ -35,3 +35,16 @@ export const MAX_VIDEO_DURATION_MS = MAX_VIDEO_DURATION_SECONDS * 1000;
  * board movement smears into mush, which is the whole subject of the footage.
  */
 export const VIDEO_BITS_PER_SECOND = 8_000_000;
+
+/**
+ * Smallest clip Firebase Storage will accept (1 KB) — mirrors `storage.rules`,
+ * which enforces `request.resource.size > 1024`. The bound is EXCLUSIVE: a blob
+ * of exactly this size is rejected, so callers must test `size <= MIN`.
+ *
+ * Lives here rather than in `src/services/storage.ts` so the capture path can
+ * reject a failed encode the moment it is produced — while the user is still on
+ * the camera screen and can simply shoot again — without importing the service
+ * layer and pulling the Firebase SDK into the recorder. `storage.ts` re-exports
+ * it, so the uploader and the recorder cannot drift apart.
+ */
+export const MIN_UPLOAD_BYTES = 1024;

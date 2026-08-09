@@ -24,6 +24,16 @@ const mockRecordNativeVideo = vi.mocked(recordNativeVideo);
 const mockGetUserMedia = vi.fn();
 
 /**
+ * Payload for a chunk representing a *real* take. It must exceed
+ * MIN_UPLOAD_BYTES (1 KB), because the recorder now rejects anything at or
+ * below that as a failed encode — the iOS Safari failure mode where the
+ * encoder yields a technically non-empty but unusable file. A 10-byte fixture
+ * would exercise the rejection path in every test that meant to record
+ * successfully.
+ */
+const CLIP_BYTES = "clip-bytes".padEnd(2048, ".");
+
+/**
  * A `MediaStreamTrack`-shaped fake. The real object always carries the
  * event-target pair (used to detect a revoked camera) and `getSettings()`,
  * so the fake does too — a thinner one only proves the code survives thin
@@ -73,7 +83,11 @@ class FakeRecorder {
     FakeRecorder.latest = this;
   }
 
-  start(): void {
+  /** Timeslice the hook asked for, or undefined if it passed none. */
+  startTimeslice: number | undefined = undefined;
+
+  start(timeslice?: number): void {
+    this.startTimeslice = timeslice;
     this.state = "recording";
   }
 
@@ -111,6 +125,27 @@ async function openCamera(view: HookView): Promise<void> {
   await act(async () => {
     await view.result.current.openCamera();
   });
+}
+
+/**
+ * A canvas whose `captureStream` is a spy, plus the stream it hands back —
+ * the shape every fisheye-recording assertion needs.
+ */
+function fakeFisheyeCanvas() {
+  const canvasStream = { addTrack: vi.fn(), getTracks: () => [], getAudioTracks: () => [] };
+  const captureStream = vi.fn(() => canvasStream);
+  const canvas = document.createElement("canvas");
+  Object.defineProperty(canvas, "captureStream", { configurable: true, value: captureStream });
+  return { canvas, canvasStream, captureStream };
+}
+
+/** Hand the hook a fisheye canvas, arm the effect, and start a take. */
+function startFisheyeTake(view: HookView, canvas: HTMLCanvasElement): void {
+  act(() => {
+    view.result.current.setFisheyeCanvas(canvas);
+    view.result.current.toggleFisheye();
+  });
+  act(() => view.result.current.startRec());
 }
 
 /** Shadow navigator.userAgent for one test; returns the restore function. */
@@ -239,7 +274,7 @@ describe("useMediaRecorder", () => {
       await openCamera(view);
 
       act(() => view.result.current.startRec());
-      act(() => latestRecorder().emit(new Blob(["clip-bytes"], chunkType ? { type: chunkType } : undefined)));
+      act(() => latestRecorder().emit(new Blob([CLIP_BYTES], chunkType ? { type: chunkType } : undefined)));
       act(() => view.result.current.stopRec());
 
       await waitFor(() => expect(view.onRecorded).toHaveBeenCalled());
@@ -248,6 +283,60 @@ describe("useMediaRecorder", () => {
       expect(view.result.current.blobUrl).toBeTruthy();
     });
   }
+
+  // ── iOS Safari capture reliability (ported from PR #464) ──
+  // These three guard the failure modes behind "black video" and "Video is
+  // too small to upload" on iPhone Safari. None can be reproduced in JSDOM
+  // with a real MediaRecorder, so they are asserted against the fake at the
+  // exact seams the fixes touch.
+
+  it("flushes a chunk every second so short iOS takes are not lost", async () => {
+    // Without a timeslice the recorder may buffer the whole take and
+    // materialise nothing at stop() — the empty-file bug on iOS Safari.
+    mockGetUserMedia.mockResolvedValue(fakeStream([fakeTrack("video")]));
+    const view = mountRecorder();
+    await openCamera(view);
+
+    act(() => view.result.current.startRec());
+
+    expect(latestRecorder().startTimeslice).toBe(1000);
+  });
+
+  it("rejects a non-empty take that is too small to upload", async () => {
+    // A 1-byte encode is the other iOS Safari failure: technically non-empty,
+    // but storage.rules requires > 1 KB, so it would surface a confusing
+    // "Video is too small to upload" long after the user left the camera.
+    mockGetUserMedia.mockResolvedValue(fakeStream([fakeTrack("video")]));
+    const view = mountRecorder();
+    await openCamera(view);
+
+    act(() => view.result.current.startRec());
+    act(() => latestRecorder().emit(new Blob(["x"], { type: "video/mp4" })));
+    act(() => view.result.current.stopRec());
+
+    await waitFor(() => expect(view.onRecorded).toHaveBeenCalledWith(null));
+    // Back to idle with an actionable message, not "done" with a dead clip.
+    expect(view.result.current.state).toBe("idle");
+    expect(view.result.current.cameraError).toMatch(/recording failed on this device/i);
+    expect(view.result.current.blobUrl).toBeNull();
+  });
+
+  it("accepts a take of exactly the minimum upload size plus one byte", async () => {
+    // The bound is exclusive in storage.rules (`size > 1024`), so 1025 is the
+    // first acceptable size. Pins the boundary against an off-by-one.
+    mockGetUserMedia.mockResolvedValue(fakeStream([fakeTrack("video")]));
+    const view = mountRecorder();
+    await openCamera(view);
+
+    act(() => view.result.current.startRec());
+    act(() => latestRecorder().emit(new Blob(["y".repeat(1025)], { type: "video/mp4" })));
+    act(() => view.result.current.stopRec());
+
+    await waitFor(() => expect(view.onRecorded).toHaveBeenCalled());
+    const [blob] = view.onRecorded.mock.calls[0];
+    expect(blob?.size).toBe(1025);
+    expect(view.result.current.state).toBe("done");
+  });
 
   it("releases the camera and mic when a take produces no bytes", async () => {
     const video = fakeTrack("video");
@@ -294,24 +383,61 @@ describe("useMediaRecorder", () => {
       const audio = fakeTrack("audio");
       const videoTracks = hasVideoTrack ? [fakeTrack("video", settings)] : [];
       mockGetUserMedia.mockResolvedValue(fakeStream(videoTracks, [audio]));
-      const canvasStream = { addTrack: vi.fn(), getTracks: () => [], getAudioTracks: () => [] };
-      const captureStream = vi.fn(() => canvasStream);
-      const canvas = document.createElement("canvas");
-      Object.defineProperty(canvas, "captureStream", { configurable: true, value: captureStream });
+      const { canvas, canvasStream, captureStream } = fakeFisheyeCanvas();
 
       const view = mountRecorder();
       await openCamera(view);
-      act(() => {
-        view.result.current.setFisheyeCanvas(canvas);
-        view.result.current.toggleFisheye();
-      });
-      act(() => view.result.current.startRec());
+      startFisheyeTake(view, canvas);
 
       expect(captureStream).toHaveBeenCalledWith(expected);
       // Audio must be grafted onto the canvas stream or the fisheye take is silent.
       expect(canvasStream.addTrack).toHaveBeenCalledWith(audio);
     });
   }
+
+  const IOS_SAFARI_UA =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1";
+
+  it("records the raw camera stream instead of the fisheye canvas on iOS Safari", async () => {
+    // WebGL-canvas captureStream into MediaRecorder is unreliable on iOS
+    // Safari and yields black/near-empty files. Fisheye stays a live preview
+    // there; the clip itself comes from the camera so the user gets real video.
+    const restoreUA = stubUserAgent(IOS_SAFARI_UA);
+    try {
+      const camera = fakeStream([fakeTrack("video")]);
+      mockGetUserMedia.mockResolvedValue(camera);
+      const { canvas, captureStream } = fakeFisheyeCanvas();
+
+      const view = mountRecorder();
+      await openCamera(view);
+      startFisheyeTake(view, canvas);
+
+      expect(captureStream).not.toHaveBeenCalled();
+      expect(latestRecorder().recordedStream).toBe(camera);
+      // The effect stays armed for the viewfinder — only recording bypasses it.
+      expect(view.result.current.fisheyeOn).toBe(true);
+    } finally {
+      restoreUA();
+    }
+  });
+
+  it("still captures the fisheye canvas when the browser reports no user agent", async () => {
+    // A blank UA must not be mistaken for iOS Safari — that would silently
+    // disable the fisheye effect for every take on such a browser.
+    const restoreUA = stubUserAgent("");
+    try {
+      mockGetUserMedia.mockResolvedValue(fakeStream([fakeTrack("video")]));
+      const { canvas, captureStream } = fakeFisheyeCanvas();
+
+      const view = mountRecorder();
+      await openCamera(view);
+      startFisheyeTake(view, canvas);
+
+      expect(captureStream).toHaveBeenCalled();
+    } finally {
+      restoreUA();
+    }
+  });
 
   const PERMISSION_HINT_CASES = [
     {
