@@ -44,6 +44,11 @@ on:
         options:
           - "false"
           - "true"
+      pii_scan_verified:
+        description: "Type i-ran-the-scan ONLY if you have just run migrate-users-private.mjs --verify against production and it reported offending=0."
+        required: false
+        default: ""
+        type: string
   # Freshness guard. firebase-tools v15 has no reliable "fetch live deployed
   # rules" command to diff against HEAD, so instead we re-run the full deploy
   # daily. The deploy is idempotent (re-uploading identical rules is a no-op),
@@ -159,39 +164,76 @@ jobs:
           workload_identity_provider: ${{ secrets.FIREBASE_WIF_PROVIDER }}
           service_account: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
 
-      # ── PII gate — must pass before any rules reach production ──
+      # ── PII gate — scoped to the rule that needs it ──
       # `users/{uid}` is publicly `get`-able so a shared /player/{uid} link
       # resolves for a signed-out visitor. Firestore rules cannot filter
       # fields — they allow or deny whole documents — so that rule is only
       # safe while no public user doc still carries a sensitive field inline.
-      # The public/private split moved email/dob/parentalConsent/fcmTokens to
-      # the owner-only subcollection; a doc the backfill missed would become
-      # world-readable the moment these rules publish, including the date of
-      # birth of a minor.
+      # A doc the public/private backfill missed would become world-readable
+      # the moment it publishes, including the date of birth of a minor.
       #
-      # This lives here, and not in a runbook, because rules deploy
-      # AUTOMATICALLY on merge to main (see the `on: push` trigger above). A
-      # documented manual step cannot gate an automated deploy — there is no
-      # human in the loop to perform it. The scan exits non-zero on any
-      # residual field, which fails the job before `firebase deploy` runs.
-      - name: Scan production for residual PII on public user docs
-        if: ${{ github.event.inputs.dry_run != 'true' }}
-        env:
-          FIREBASE_PROJECT_ID: ${{ steps.project.outputs.project_id }}
+      # This is a job step, not a runbook line, because rules deploy
+      # AUTOMATICALLY on merge to main (see `on: push` above). A documented
+      # manual step cannot gate an automated deploy — nobody is there to do it.
+      #
+      # It is deliberately scoped to rules that actually contain the public
+      # read. Deploys that don't touch it are unaffected, so this cannot
+      # become the step everyone learns to route around.
+      - name: Check whether rules expose public profile reads
+        id: pubread
         run: |
           set -euo pipefail
-          # Fail closed: without Application Default Credentials the scan
-          # cannot read production, and an unrun scan must never be mistaken
-          # for a clean one.
-          if [ "${{ steps.creds.outputs.method }}" != "wif" ]; then
-            echo "::error::Rules deploy requires Workload Identity Federation so the PII scan can read production."
-            echo "The legacy FIREBASE_TOKEN cannot authenticate the Admin SDK, so the scan would be skipped —"
-            echo "and a skipped scan is not a passed scan. Configure FIREBASE_WIF_PROVIDER +"
-            echo "FIREBASE_WIF_SERVICE_ACCOUNT, or run 'node scripts/migrate-users-private.mjs --verify'"
-            echo "by hand and re-run this workflow with dry_run=true to deploy deliberately."
-            exit 1
+          # Literal grep for `allow get: if true;` rather than a rules parse.
+          # Known weakness, stated rather than hidden: reformatting or renaming
+          # that line makes this report "absent" and the gate silently stops
+          # guarding. It fails OPEN, which is the wrong direction — accepted
+          # only because the alternative (a rules parser in bash) is worse, and
+          # because rules-tests/users-public-read.rules.test.ts fails loudly if
+          # the public read is removed outright. Revisit if the rule moves.
+          if grep -qE '^\s*allow get: if true;' firestore.rules; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "Public profile read detected — PII scan required."
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No public profile read in firestore.rules — PII scan not required."
           fi
-          node scripts/migrate-users-private.mjs --verify
+
+      - name: Scan production for residual PII on public user docs
+        if: ${{ github.event.inputs.dry_run != 'true' && steps.pubread.outputs.present == 'true' }}
+        env:
+          FIREBASE_PROJECT_ID: ${{ steps.project.outputs.project_id }}
+          ACK: ${{ github.event.inputs.pii_scan_verified }}
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.creds.outputs.method }}" = "wif" ]; then
+            # Application Default Credentials are present; scan for real.
+            node scripts/migrate-users-private.mjs --verify
+            exit 0
+          fi
+          # Legacy FIREBASE_TOKEN is a firebase-tools refresh token; it cannot
+          # authenticate the Admin SDK, so the scan cannot read production.
+          # A skipped scan is not a passed scan.
+          if [ "$ACK" = "i-ran-the-scan" ]; then
+            echo "::warning::PII scan skipped — maintainer asserted it was run by hand (pii_scan_verified)."
+            exit 0
+          fi
+          echo "::error::Cannot verify production before publishing a public read rule."
+          echo ""
+          echo "firestore.rules contains 'allow get: if true' for users/{uid}, which makes every"
+          echo "public user doc world-readable. That is only safe once production is confirmed to"
+          echo "carry no residual dob / fcmTokens / email fields inline — and this repo authenticates"
+          echo "with the legacy FIREBASE_TOKEN, which cannot authenticate the Admin SDK, so the scan"
+          echo "cannot run here."
+          echo ""
+          echo "Pick one:"
+          echo "  A. Migrate to Workload Identity Federation (set FIREBASE_WIF_PROVIDER and"
+          echo "     FIREBASE_WIF_SERVICE_ACCOUNT). The scan then runs automatically on every deploy."
+          echo "  B. Run it yourself, then re-run this workflow via workflow_dispatch with"
+          echo "     pii_scan_verified = i-ran-the-scan :"
+          echo "       export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json"
+          echo "       node scripts/migrate-users-private.mjs --verify"
+          echo "     Expect: 'verify: scanned=<n> offending=0'"
+          exit 1
 
       - name: Deploy rules and indexes
         id: deploy

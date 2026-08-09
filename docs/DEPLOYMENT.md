@@ -126,14 +126,28 @@ remember. It runs `scripts/migrate-users-private.mjs --verify` against the
 production project and exits non-zero on any residual field, failing the job
 before `firebase deploy` runs.
 
-It fails closed in two ways worth knowing:
+It is **scoped to rules that actually contain the public read** (grepped for
+`allow get: if true;`). Deploys that don't touch it run exactly as before, so
+this can't become the step everyone learns to route around.
 
-- **No Workload Identity Federation, no deploy.** The legacy `FIREBASE_TOKEN`
-  cannot authenticate the Admin SDK, so the scan could not read production. A
-  skipped scan is not a passed scan, so the job errors instead of proceeding.
-- **Any `LEAK <uid> still has: …` line fails the job.** Re-run the migration
-  (`node scripts/migrate-users-private.mjs`, idempotent and resumable), then
-  re-run the workflow.
+Behaviour:
+
+- **With Workload Identity Federation** — the scan runs automatically against
+  production. Any `LEAK <uid> still has: …` line fails the job; re-run the
+  migration (`node scripts/migrate-users-private.mjs`, idempotent and
+  resumable) and re-run the workflow.
+- **With the legacy `FIREBASE_TOKEN`** — which is what this repo currently
+  uses — the scan **cannot run**. `FIREBASE_TOKEN` is a firebase-tools refresh
+  token and cannot authenticate the Admin SDK. The job fails with instructions
+  rather than deploying an unverified public read.
+
+  To unblock, either migrate to WIF (set `FIREBASE_WIF_PROVIDER` +
+  `FIREBASE_WIF_SERVICE_ACCOUNT`, after which this is automatic), or run the
+  scan by hand and re-run the workflow via `workflow_dispatch` with
+  `pii_scan_verified = i-ran-the-scan`.
+
+  That override is an honour system and is logged as a warning on the run. It
+  exists so a solo maintainer isn't wedged; it is not a substitute for WIF.
 
 To run it yourself against production — worth doing before opening a rules PR,
 so you find out early rather than at deploy time:
