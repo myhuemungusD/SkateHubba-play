@@ -65,9 +65,10 @@ const RECORDER_TIMESLICE_MS = 1000;
  * files. Chrome/Firefox on iOS are excluded — they are WebKit shells but do
  * not exhibit the same capture path.
  */
-function isIOSSafari(): boolean {
-  // No `typeof navigator` guard: this is only reached from startRec, which runs
-  // after getUserMedia has already resolved — navigator provably exists there.
+export function isIOSSafari(): boolean {
+  // No `typeof navigator` guard: every caller runs in the browser — startRec
+  // (after getUserMedia resolved) and VideoRecorder's render path. There is no
+  // SSR in this app.
   const ua = navigator.userAgent || "";
   const isIOS = /iPad|iPhone|iPod/.test(ua);
   const isSafari = /Safari/.test(ua) && !/Chrome|CriOS|FxiOS|EdgiOS/.test(ua);
