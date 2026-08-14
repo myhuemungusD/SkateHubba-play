@@ -1,8 +1,8 @@
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import { Btn } from "./ui/Btn";
 import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
 import { FisheyeRenderer } from "./FisheyeRenderer";
-import { useMediaRecorder } from "../hooks/useMediaRecorder";
+import { useMediaRecorder, isIOSSafari } from "../hooks/useMediaRecorder";
 import { MAX_VIDEO_DURATION_SECONDS } from "../constants/video";
 
 /**
@@ -15,6 +15,34 @@ const AUTO_STOP_WARNING_SECONDS = 5;
 /** Shared classes for the viewfinder chrome toggles — 44px touch target. */
 const CHROME_BTN =
   "w-11 h-11 inline-flex items-center justify-center rounded-full transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+
+/**
+ * Permissions the recorder needs. Neither is in the DOM lib's `PermissionName`
+ * union (it only covers the names every engine implements), hence the cast at
+ * the query site.
+ */
+type MediaPermissionName = "camera" | "microphone";
+
+/**
+ * Current grant state, or "unknown" when we cannot tell. Safari and Firefox
+ * throw for names they don't support and older engines have no
+ * `navigator.permissions` at all; every failure resolves to "unknown" so we
+ * never assume access we don't have.
+ */
+async function queryMediaPermission(name: MediaPermissionName): Promise<PermissionState | "unknown"> {
+  try {
+    const status = await navigator.permissions.query({ name: name as PermissionName });
+    return status.state;
+  } catch {
+    return "unknown";
+  }
+}
+
+/** True only when camera AND mic are already granted, i.e. no prompt will show. */
+async function hasGrantedCameraAndMic(): Promise<boolean> {
+  const [camera, microphone] = await Promise.all([queryMediaPermission("camera"), queryMediaPermission("microphone")]);
+  return camera === "granted" && microphone === "granted";
+}
 
 export function VideoRecorder({
   onRecorded,
@@ -47,11 +75,30 @@ export function VideoRecorder({
     stopNativeRec,
   } = useMediaRecorder(onRecorded);
 
+  const [permissionGranted, setPermissionGranted] = useState(false);
+
   const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
-    // openCamera is async (it awaits getUserMedia before any setState), so this
-    // is not a synchronous set-state-in-effect. Native has its own entry point.
-    if (autoOpenRef.current && !isNative) void openCamera();
+    // openCamera is async (it awaits getUserMedia before any setState), so
+    // neither branch is a synchronous set-state-in-effect. Native has its own
+    // entry point.
+    if (isNative) return;
+    if (autoOpenRef.current) {
+      void openCamera();
+      return;
+    }
+    // Camera + mic already granted → the browser shows no prompt, so open the
+    // stream without making the user tap. Anything else (prompt/denied/unknown)
+    // waits for a gesture so we never trigger an unsolicited prompt.
+    let cancelled = false;
+    void hasGrantedCameraAndMic().then((granted) => {
+      if (cancelled || !granted) return;
+      setPermissionGranted(true);
+      void openCamera();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [openCamera, isNative]);
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
@@ -137,6 +184,13 @@ export function VideoRecorder({
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
             <FilmIcon size={48} className="opacity-30 text-subtle" />
             <span className="font-body text-sm text-subtle">Tap to open camera</span>
+            {!permissionGranted && (
+              <span className="font-body text-xs text-subtle px-4 text-center">
+                {isIOSSafari()
+                  ? 'Tip: in Safari choose "Allow" — or aA → Website Settings → Camera: Allow to stop repeat prompts'
+                  : "Allow camera & mic once — we won't ask again"}
+              </span>
+            )}
           </div>
         )}
 
