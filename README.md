@@ -110,10 +110,10 @@ No custom backend. No application-authored Cloud Functions. The client talks dir
 - **Invite & share** — SMS, link copy, and native share for invites and trick clips
 - **Push notifications** — FCM "your turn" alerts that deep-link into the game
 - **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips
-- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules _(vote-driven ranking in progress)_
+- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
-- **Spots map** _(in progress)_ — geo-tagged skate spots with gnar rating + bust risk
+- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, and challenge-from-spot
 
 ### Platform
 
@@ -253,6 +253,8 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 | [docs/GAME_STATE_MACHINE.md](docs/GAME_STATE_MACHINE.md) | State transitions and lifecycle             |
 | [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md)           | Per-feature completion status               |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                   | Architecture decision records               |
+| [ROADMAP.md](ROADMAP.md)                                 | Direction, exit criteria, and the icebox    |
+| [docs/ECONOMY.md](docs/ECONOMY.md)                       | Long-term economy and creator ecosystem     |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                       | How to contribute                           |
 | [SECURITY.md](SECURITY.md)                               | Security policy and vulnerability reporting |
 | [CHANGELOG.md](CHANGELOG.md)                             | Version history                             |
@@ -329,7 +331,7 @@ Each step maps 1:1 to a tracked event. Drop-off between any two stages is visibl
 
 ## Roadmap: Async Gameplay → Network Effects
 
-For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md).
+For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md). For direction, exit criteria, and what's deliberately parked, see [ROADMAP.md](ROADMAP.md).
 
 > **Legend:** ✅ shipped · 🚧 in progress · 🧑‍⚖️ in review · 🧊 deferred · ⏳ planned
 
@@ -356,8 +358,8 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 - ✅ **Block & report** — moderation tooling backed by Firestore rules
 - ✅ **Cross-game clips feed** — landed tricks become a discovery surface with an autoplaying top-slot that rotates through the visible clips
 - ✅ **Clip upvotes** — single-tap, no-undo upvotes on every clip (per-vote rules + double-vote guard)
-- 🚧 **Vote-driven clip ranking** — promote the feed from chronological to upvote-ranked (next up)
-- 🧊 **Spectator mode** — deferred; revisit after vote-driven ranking lands
+- ✅ **Vote-driven clip ranking** — feed defaults to upvote-ranked with a Top/New toggle and a fallback to chronological if the composite index is missing
+- 🧊 **Spectator mode** — deferred; eligible for revisit now that ranked clips produce engagement data
 
 ### Phase 4 — Network Effects Flywheel 🟡 in progress
 
