@@ -44,10 +44,10 @@ Open [http://localhost:5173](http://localhost:5173).
 | `npm run test:coverage` | Run tests with coverage report (CI gate enforces thresholds)                |
 | `npm run test:rules`    | Run Firestore rules tests against the rules emulator                        |
 | `npm run test:e2e`      | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators) |
-| `npm run lint`          | Lint `src/` with ESLint                                                     |
+| `npm run lint`          | Lint `src/` and `api/` with ESLint                                          |
 | `npm run lint:fix`      | Lint and auto-fix where possible                                            |
 | `npm run format`        | Format `src/**/*.{ts,tsx}` with Prettier                                    |
-| `npm run verify`        | Full CI gate: `tsc -b && lint && test:coverage && build`                    |
+| `npm run verify`        | Full CI gate: `tsc -b && lint && test:coverage && build && check:test-dup`  |
 | `npm run emulators`     | Start the Firebase emulator suite locally                                   |
 
 ---
@@ -227,7 +227,7 @@ See [docs/DEPLOYMENT.md](DEPLOYMENT.md) for more detail.
 Mirror the full CI gate in one command:
 
 ```bash
-npm run verify    # tsc -b && lint && test:coverage && build
+npm run verify    # tsc -b && lint && test:coverage && build && check:test-dup
 ```
 
 Or step through individually:
