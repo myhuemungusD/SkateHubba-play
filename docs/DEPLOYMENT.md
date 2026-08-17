@@ -2,12 +2,12 @@
 
 ## Architecture
 
-| Concern                   | Service                                     |
-| ------------------------- | ------------------------------------------- |
-| Code hosting              | Vercel (auto-deploys from GitHub)           |
-| Auth + Database + Storage | Firebase (manual rules deployment required) |
-| Stats close-out           | Firebase Cloud Functions (manual deploy)    |
-| CI gate                   | GitHub Actions (type check → test → build)  |
+| Concern                   | Service                                         |
+| ------------------------- | ----------------------------------------------- |
+| Code hosting              | Vercel (auto-deploys from GitHub)               |
+| Auth + Database + Storage | Firebase (rules auto-deploy on merge to `main`) |
+| Stats close-out           | Firebase Cloud Functions (manual deploy)        |
+| CI gate                   | GitHub Actions (type check → test → build)      |
 
 ---
 
