@@ -52,6 +52,12 @@ vi.mock("../../services/blocking", () => ({
   unblockUser: vi.fn(),
 }));
 
+// Economy Phase A reads the controller fires alongside the profile load —
+// mocked to resolve empty so the placeholder-visibility specs below see the
+// earned-nothing state (both sections render null / owner-only hint).
+vi.mock("../../services/achievements", () => ({ fetchAchievements: vi.fn().mockResolvedValue([]) }));
+vi.mock("../../services/locker", () => ({ fetchLockerItems: vi.fn().mockResolvedValue([]) }));
+
 const fetchedProfile = vi.fn();
 vi.mock("../../hooks/usePlayerProfile", () => ({
   usePlayerProfile: (...args: unknown[]) => fetchedProfile(...args),

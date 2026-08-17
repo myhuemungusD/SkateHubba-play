@@ -180,7 +180,16 @@ service cloud.firestore {
     // at the security boundary; the TS constants exist so the UI can reject
     // invalid input before a round-trip. Update BOTH when changing limits.
     match /users/{uid} {
-      allow read: if isSignedIn();
+      // Split read into get/list deliberately. `get` is public so a shared
+      // `/player/{uid}` link resolves for a signed-OUT visitor — the link
+      // already carries the uid, and this doc holds only fields that are
+      // safe to expose (see the public/private split note above). `list`
+      // stays signed-in: a public `read` would cover BOTH verbs and let an
+      // anonymous client enumerate every account in the app. The only
+      // production list queries are getPlayerDirectory / getLeaderboard in
+      // src/services/users.ts, both of which run signed-in.
+      allow get: if true;
+      allow list: if isSignedIn();
       allow create: if isOwner(uid)
         // One profile per UID — prevent a race condition from overwriting an existing profile
         && !exists(/databases/$(database)/documents/users/$(uid))
@@ -497,14 +506,28 @@ service cloud.firestore {
       // ── Achievements (subcollection) ──
       // Earned-achievement records. Grants are server-authored (Admin SDK
       // only) — clients never mint or mutate them, hence create/update are
-      // denied outright. The owner needs read for display and DELETE so the
-      // account-deletion batch in src/services/users.ts (~345-353) can wipe
-      // them atomically alongside /private + the parent user doc; under
-      // default-deny that batch fails closed and breaks GDPR erasure.
-      // Mirrors the owner-only shape of the sibling /private and
-      // /blocked_users blocks above.
+      // denied outright. The owner needs DELETE so the account-deletion batch
+      // in src/services/users.ts (~345-353) can wipe them atomically alongside
+      // /private + the parent user doc; under default-deny that batch fails
+      // closed and breaks GDPR erasure.
       match /achievements/{achievementId} {
-        allow read, delete: if isOwner(uid);
+        // Badges are public reputation — any signed-in user renders them on
+        // another skater's profile (/player/:uid). Writes stay Admin-SDK-only.
+        allow read: if isSignedIn();
+        allow delete: if isOwner(uid);
+        allow create, update: if false;
+      }
+
+      // ── Locker (subcollection) ──
+      // Owned economy items (gear/cosmetics). Same posture as /achievements:
+      // minted server-side by the Admin SDK, deletable by the owner so the
+      // account-deletion batch stays atomic.
+      match /locker/{itemId} {
+        // Equipped gear is public reputation, shown on /player/:uid. Client
+        // create/update is denied outright — a client that can mint gear has
+        // no economy.
+        allow read: if isSignedIn();
+        allow delete: if isOwner(uid);
         allow create, update: if false;
       }
     }

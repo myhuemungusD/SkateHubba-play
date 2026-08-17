@@ -60,6 +60,9 @@ const FIRESTORE_DB_ID = "skatehubba";
 const PRIVATE_PROFILE_DOC_ID = "profile";
 const SENSITIVE_FIELDS = ["email", "emailVerified", "dob", "parentalConsent", "fcmTokens"];
 
+/** Page size for every full-collection walk (both `run` and `verify`). */
+const PAGE_SIZE = 200;
+
 const args = new Set(process.argv.slice(2));
 const DRY_RUN = args.has("--dry-run");
 const VERIFY = args.has("--verify");
@@ -67,13 +70,19 @@ const VERIFY = args.has("--verify");
 function initAdmin() {
   const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (credPath) {
-    const serviceAccount = JSON.parse(readFileSync(credPath, "utf-8"));
-    initializeApp({ credential: cert(serviceAccount) });
-  } else {
-    // Falls back to application-default credentials (e.g. on a
-    // GCP host). Fails loudly if none are available.
-    initializeApp();
+    const parsed = JSON.parse(readFileSync(credPath, "utf-8"));
+    // `cert()` only understands a raw service-account key. Workload Identity
+    // Federation — how CI authenticates — writes an `external_account` config
+    // to this same variable, which cert() rejects. Anything that isn't a raw
+    // key is handed to the Google auth library instead, which resolves both.
+    if (parsed.type === "service_account") {
+      initializeApp({ credential: cert(parsed) });
+      return getFirestore(FIRESTORE_DB_ID);
+    }
   }
+  // Application-default credentials (WIF on a runner, or a GCP host).
+  // Fails loudly if none are available.
+  initializeApp();
   return getFirestore(FIRESTORE_DB_ID);
 }
 
@@ -85,15 +94,26 @@ async function verify(db) {
   console.log("verify: scanning users/* for residual sensitive fields...");
   let offending = 0;
   let total = 0;
-  const snap = await db.collection("users").get();
-  for (const d of snap.docs) {
-    total += 1;
-    const data = d.data();
-    const leaks = SENSITIVE_FIELDS.filter((f) => f in data);
-    if (leaks.length) {
-      offending += 1;
-      console.log(`LEAK ${d.id} still has: ${leaks.join(", ")}`);
+  // Paginated for the same reason `run()` is. This scan gates a security
+  // deploy, so the one command that must not fail is not the one that loads
+  // the entire user fleet into memory first.
+  let cursor = null;
+  while (true) {
+    let q = db.collection("users").orderBy("__name__").limit(PAGE_SIZE);
+    if (cursor) q = q.startAfter(cursor);
+    const page = await q.get();
+    if (page.empty) break;
+    for (const d of page.docs) {
+      total += 1;
+      const data = d.data();
+      const leaks = SENSITIVE_FIELDS.filter((f) => f in data);
+      if (leaks.length) {
+        offending += 1;
+        console.log(`LEAK ${d.id} still has: ${leaks.join(", ")}`);
+      }
     }
+    cursor = page.docs[page.docs.length - 1];
+    if (page.size < PAGE_SIZE) break;
   }
   console.log(`verify: scanned=${total} offending=${offending}`);
   process.exit(offending === 0 ? 0 : 1);
@@ -161,7 +181,6 @@ async function run(db) {
   console.log(`migrate-users-private: starting (dry_run=${DRY_RUN})`);
 
   // Paginate to avoid loading every user into memory.
-  const PAGE_SIZE = 200;
   let cursor = null;
   let processed = 0;
   let skipped = 0;

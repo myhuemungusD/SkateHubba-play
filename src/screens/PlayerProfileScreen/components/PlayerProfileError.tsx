@@ -4,15 +4,17 @@ import { SkateboardIcon } from "../../../components/icons";
 interface Props {
   message: string;
   onBack: () => void;
+  /** Where Back actually goes — "Home" for signed-out visitors, who have no lobby. */
+  backLabel?: string;
 }
 
-export function PlayerProfileError({ message, onBack }: Props) {
+export function PlayerProfileError({ message, onBack, backLabel = "Lobby" }: Props) {
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 bg-background/80">
       <SkateboardIcon size={32} className="mb-4 text-faint" />
       <p className="font-body text-sm text-faint mb-4">{message}</p>
       <Btn onClick={onBack} variant="ghost">
-        Back to Lobby
+        Back to {backLabel}
       </Btn>
     </div>
   );
