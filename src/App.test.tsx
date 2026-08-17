@@ -17,6 +17,7 @@ vi.mock("./services/auth", () => ({
   resendVerification: vi.fn(),
   signInWithGoogle: vi.fn(),
   resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
+  getAdminClaim: vi.fn().mockResolvedValue(false),
 }));
 
 vi.mock("./services/users", () => ({
@@ -330,5 +331,43 @@ describe("App", () => {
     // The pre-existing ChallengeScreen must NOT render — regression guard
     // against a future rules-relaxation that lets unverified users through.
     expect(screen.queryByRole("heading", { name: /Challenge/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the 404 screen — not a redirect — when a non-admin opens /admin", async () => {
+    // The console is unlisted. A redirect (to /lobby, /404, anywhere) would
+    // confirm the route exists to anyone probing for it; rendering NotFound
+    // in place makes /admin indistinguishable from any other dead URL.
+    //
+    // Pin the claim explicitly rather than relying on the mock's declared
+    // default: the admin case below overwrites it, and `vi.clearAllMocks()`
+    // resets calls but NOT the implementation — without this the two specs
+    // would flip results purely on execution order.
+    const { getAdminClaim } = await import("./services/auth");
+    vi.mocked(getAdminClaim).mockResolvedValue(false);
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "u1", email: "a@b.com", emailVerified: true },
+      profile: { uid: "u1", username: "sk8r", stance: "regular" },
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/admin");
+
+    expect(await screen.findByText("BAIL!")).toBeInTheDocument();
+    expect(screen.queryByText("ADMIN")).not.toBeInTheDocument();
+  });
+
+  it("renders the admin console for a user holding the admin claim", async () => {
+    const { getAdminClaim } = await import("./services/auth");
+    vi.mocked(getAdminClaim).mockResolvedValue(true);
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "admin1", email: "a@b.com", emailVerified: true },
+      profile: { uid: "admin1", username: "boss", stance: "regular" },
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/admin");
+
+    expect(await screen.findByText("ADMIN")).toBeInTheDocument();
+    expect(screen.queryByText("BAIL!")).not.toBeInTheDocument();
   });
 });

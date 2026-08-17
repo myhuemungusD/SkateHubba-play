@@ -18,6 +18,7 @@ import { GameNotificationWatcher, OPEN_GAME_EVENT } from "./components/GameNotif
 import { OfflineBanner } from "./components/OfflineBanner";
 import { BottomNav } from "./components/BottomNav";
 import { useBlockedUsers } from "./hooks/useBlockedUsers";
+import { useIsAdmin } from "./hooks/useIsAdmin";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
@@ -50,6 +51,7 @@ const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default:
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
+const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -183,6 +185,21 @@ function PlayerProfileRoute({
       onSignUp={onSignUp}
     />
   );
+}
+
+/**
+ * Guard for the unlisted `/admin` console. While the admin claim is resolving
+ * we render the same full-screen Spinner every lazy route falls back to; a
+ * non-admin (or signed-out visitor) gets the NotFound screen rather than a
+ * redirect, because a redirect would confirm the route exists. The claim check
+ * lives here, not in AppRoutes, so it only runs for someone who actually opens
+ * the URL — and the admin chunk is never fetched for anyone else.
+ */
+function AdminRoute({ uid, onBack }: { uid: string | null; onBack: () => void }) {
+  const { isAdmin, loading } = useIsAdmin(uid ?? "");
+  if (loading) return <Spinner />;
+  if (!uid || !isAdmin) return <NotFound onBack={onBack} />;
+  return <AdminScreen adminUid={uid} onBack={onBack} />;
 }
 
 /** Shared toast fired whenever an unverified user attempts to challenge —
@@ -557,6 +574,16 @@ function AppRoutes() {
             {/* /feed used to live as its own route + tab — it's now embedded in
               the lobby. Redirect lingering deep-links so old shares still land. */}
             <Route path="/feed" element={<Navigate to="/lobby" replace />} />
+
+            <Route
+              path="/admin"
+              element={
+                <AdminRoute
+                  uid={auth.user?.uid ?? null}
+                  onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")}
+                />
+              }
+            />
 
             <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />
 
