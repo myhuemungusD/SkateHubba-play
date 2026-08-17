@@ -8,7 +8,7 @@ import { useReducedMotion } from "../../../hooks/useReducedMotion";
  *
  * Layout:
  *   • Brag row:   Lifetime Wins · Lifetime Losses · Win Rate %
- *   • Detail row: Total Games (always)
+ *   • Detail row: Total Games · Best Streak · Current Streak (always)
  *   • VS-You row: H2H record — opponent profile only.
  *
  * Number formatting via Intl compact (audit H1: "1.2K" instead of "1234").
@@ -19,9 +19,10 @@ import { useReducedMotion } from "../../../hooks/useReducedMotion";
  * from 0 → final, but the screen-reader label is static so NVDA / VoiceOver
  * announce "Lifetime wins: forty-seven" once, not "1, 2, 3...".
  *
- * Fields that aren't backed by counters on the current schema (longest
- * streak, tricks landed, clean judgments, level/xp, spots added/checked-in)
- * are intentionally hidden — a future PR will activate them once their
+ * Streak tiles read `currentWinStreak` / `bestWinStreak`, which ARE now
+ * server-maintained on the profile doc. Fields still without a counter on the
+ * current schema (tricks landed, clean judgments, level/xp, spots
+ * added/checked-in) stay hidden — a future PR activates them when their
  * counters ship.
  */
 
@@ -45,6 +46,8 @@ export type StatTileName =
   | "losses"
   | "winRate"
   | "totalGames"
+  | "bestStreak"
+  | "currentStreak"
   | "vsYouWins"
   | "vsYouLosses"
   | "vsYouTotal"
@@ -89,13 +92,27 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
         />
       </Row>
 
-      {/* Detail row — Total Games on its own row keeps the layout balanced. */}
-      <Row testid="detail-row" cols="grid-cols-1">
+      {/* Detail row — volume next to the two win-streak counters. */}
+      <Row testid="detail-row" cols="grid-cols-3">
         <StatTile
           name="totalGames"
           label="Total Games"
           value={stats.total}
           ariaLabel={`Total games: ${stats.total}`}
+          onTap={onTileTap}
+        />
+        <StatTile
+          name="bestStreak"
+          label="Best Streak"
+          value={stats.bestWinStreak}
+          ariaLabel={`Best win streak: ${stats.bestWinStreak}`}
+          onTap={onTileTap}
+        />
+        <StatTile
+          name="currentStreak"
+          label="Current Streak"
+          value={stats.currentWinStreak}
+          ariaLabel={`Current win streak: ${stats.currentWinStreak}`}
           onTap={onTileTap}
         />
       </Row>
