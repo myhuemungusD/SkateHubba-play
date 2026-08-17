@@ -120,7 +120,7 @@ the reCAPTCHA badge's injected stylesheet may be blocked and the badge may not
 render. Token minting is unaffected (the scoring iframe is cross-origin).
 If the badge is missing, satisfy Google's attribution requirement with the
 permitted text disclosure — **do not add `'unsafe-inline'` to `style-src`**;
-that reopens finding F6 (`docs/AUDIT_2026-05.md`).
+that reopens finding F6 (`docs/archive/AUDIT_2026-05.md`).
 
 ### 0.5 Console enforcement is currently OFF
 
@@ -318,7 +318,7 @@ Three things that will bite:
 | ☐   | 2     | 24 h clean on Firestore (no `users/{uid} permission-denied after retries`)                |
 | ☐   | 2     | Cloud Storage set to **Enforce**; video upload verified end-to-end                        |
 | ☐   | post  | `docs/PERMISSION_DENIED_RUNBOOK.md` §0 updated to reflect the new default                 |
-| ☐   | post  | `docs/AUDIT_2026-05.md` F5 / issue #338 closed                                            |
+| ☐   | post  | `docs/archive/AUDIT_2026-05.md` F5 / issue #338 closed                                    |
 
 ---
 
@@ -326,7 +326,7 @@ Three things that will bite:
 
 - `docs/PERMISSION_DENIED_RUNBOOK.md` — §0 current default, §1 App Check vs
   reCAPTCHA triage. Use this during an incident; use the present doc to plan.
-- `docs/AUDIT_2026-05.md` F5 — the tracked finding this rollout closes.
+- `docs/archive/AUDIT_2026-05.md` F5 — the tracked finding this rollout closes.
 - `src/firebase.ts:116–230` — the init path, all log strings.
 - `src/lib/env.ts:30–46` — env parsing (empty string = unset).
 - `.github/workflows/android-aab.yml:73–74` — native build-time flag.
