@@ -128,8 +128,7 @@ firebase deploy --only functions:onGameCompleted
 `us-central1` (`functions/src/index.ts`), which must match the `skatehubba`
 named database's location or the trigger will never fire. Confirm with
 `gcloud firestore databases describe --database=skatehubba` (expected:
-`us-central1`, the same region pinned in `infra/firestore-backup.sh` and the
-`firestore-send-fcm` extension env).
+`us-central1`, the same region pinned in `infra/firestore-backup.sh`).
 
 **Verify the deployment:**
 
