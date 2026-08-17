@@ -11,6 +11,7 @@ const mockSendReset = vi.fn().mockResolvedValue(undefined);
 const mockSendVerify = vi.fn().mockResolvedValue(undefined);
 const mockOnAuthStateChanged = vi.fn();
 const mockGetRedirectResult = vi.fn();
+const mockGetIdTokenResult = vi.fn();
 const mockCaptureException = vi.fn();
 
 vi.mock("firebase/auth", () => ({
@@ -21,6 +22,7 @@ vi.mock("firebase/auth", () => ({
   sendEmailVerification: (...args: unknown[]) => mockSendVerify(...args),
   onAuthStateChanged: (...args: unknown[]) => mockOnAuthStateChanged(...args),
   getRedirectResult: (...args: unknown[]) => mockGetRedirectResult(...args),
+  getIdTokenResult: (...args: unknown[]) => mockGetIdTokenResult(...args),
   GoogleAuthProvider: vi.fn(),
   signInWithPopup: vi.fn(),
   signInWithRedirect: vi.fn(),
@@ -47,6 +49,7 @@ import {
   resetPassword,
   resendVerification,
   reloadUser,
+  getAdminClaim,
   onAuthChange,
   deleteAccount,
   resolveGoogleRedirect,
@@ -325,6 +328,49 @@ describe("auth service", () => {
       (auth as unknown as { currentUser: unknown }).currentUser = null;
       const result = await reloadUser();
       expect(result).toBeNull();
+    });
+  });
+
+  describe("getAdminClaim", () => {
+    /** Sign in a stand-in user whose ID token carries `claims`. */
+    function signInWithClaims(claims: Record<string, unknown>): void {
+      (auth as unknown as { currentUser: unknown }).currentUser = { uid: "u1" };
+      mockGetIdTokenResult.mockResolvedValue({ claims });
+    }
+
+    it("returns true when the ID token carries admin: true", async () => {
+      signInWithClaims({ admin: true });
+      await expect(getAdminClaim()).resolves.toBe(true);
+    });
+
+    it("reads the cached token rather than forcing a refresh", async () => {
+      signInWithClaims({ admin: true });
+      await getAdminClaim();
+      // A network round-trip on every admin-console render guard is not worth
+      // it; the granting script tells the admin to sign out/in instead.
+      expect(mockGetIdTokenResult).toHaveBeenCalledWith({ uid: "u1" }, false);
+    });
+
+    it.each([
+      { label: "the claim is absent", claims: {} },
+      { label: "the claim is false", claims: { admin: false } },
+      { label: "the claim is a truthy non-boolean", claims: { admin: "true" } },
+    ])("returns false when $label", async ({ claims }) => {
+      signInWithClaims(claims);
+      await expect(getAdminClaim()).resolves.toBe(false);
+    });
+
+    it("returns false when signed out, without reading a token", async () => {
+      (auth as unknown as { currentUser: unknown }).currentUser = null;
+      await expect(getAdminClaim()).resolves.toBe(false);
+      expect(mockGetIdTokenResult).not.toHaveBeenCalled();
+    });
+
+    it("returns false when the token read fails", async () => {
+      // No claim readable means no console — never fail open.
+      (auth as unknown as { currentUser: unknown }).currentUser = { uid: "u1" };
+      mockGetIdTokenResult.mockRejectedValue(new Error("network"));
+      await expect(getAdminClaim()).resolves.toBe(false);
     });
   });
 
