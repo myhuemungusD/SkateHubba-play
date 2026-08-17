@@ -2,12 +2,12 @@
 
 ## Architecture
 
-| Concern                   | Service                                     |
-| ------------------------- | ------------------------------------------- |
-| Code hosting              | Vercel (auto-deploys from GitHub)           |
-| Auth + Database + Storage | Firebase (manual rules deployment required) |
-| Stats close-out           | Firebase Cloud Functions (manual deploy)    |
-| CI gate                   | GitHub Actions (type check → test → build)  |
+| Concern                   | Service                                         |
+| ------------------------- | ----------------------------------------------- |
+| Code hosting              | Vercel (auto-deploys from GitHub)               |
+| Auth + Database + Storage | Firebase (rules auto-deploy on merge to `main`) |
+| Stats close-out           | Firebase Cloud Functions (manual deploy)        |
+| CI gate                   | GitHub Actions (type check → test → build)      |
 
 ---
 
@@ -72,9 +72,22 @@ You don't need to do anything manually for code changes. Vercel picks up `main` 
 
 ## Firebase Rules Deployment
 
-Rules changes are **not** part of the Vercel pipeline. This is intentional — rules are a security boundary and should be deployed deliberately after review.
+Rules changes are **not** part of the Vercel pipeline — but they are **not manual either**.
 
-After any change to `firestore.rules` or `storage.rules`:
+> **They deploy automatically on merge to `main`.**
+> `.github/workflows/firebase-rules-deploy.yml` triggers on any push to `main`
+> touching `firestore.rules`, `firestore.indexes.json`, `storage.rules`,
+> `firebase.json`, or `.firebaserc`. A daily `cron` re-deploys from `main` as a
+> freshness guard, so a hand-rollback in the Firebase console is reverted within
+> 24 hours — the fix for a bad rule is a revert commit, not a console edit.
+>
+> This paragraph previously claimed rules were deployed by hand. That was stale
+> and actively dangerous: it invited safety checks to be written as runbook
+> prose for a pipeline with no human in it. Any gate that matters belongs in the
+> workflow (see the PII scan below), not here.
+
+The commands below are for a **deliberate out-of-band deploy** — a rollback, a
+first-time setup, or a deploy from a branch. Routine changes need none of it:
 
 ```bash
 firebase use sk8hub-d7806
@@ -95,6 +108,63 @@ Firebase Console → Firestore → Rules tab → check the "Published rules" tim
 **Test before deploying:**
 
 Firebase Console → Firestore → Rules → Rules Playground lets you simulate reads and writes against your rules before publishing them.
+
+### PII scan gate (enforced in CI — you do not run this by hand)
+
+`users/{uid}` is `get`-able by anyone, so a shared `/player/{uid}` link resolves
+for a signed-out visitor. Firestore rules **cannot filter fields** — they allow
+or deny whole documents — so that rule is only safe while no public user doc
+still carries a sensitive field inline. The public/private split moved `email`,
+`emailVerified`, `dob`, `parentalConsent`, and `fcmTokens` into the owner-only
+`users/{uid}/private/profile`; a doc the backfill missed would become
+**world-readable** the moment those rules publish, including the date of birth
+of a minor.
+
+Because rules deploy automatically, this is a **step in the deploy job**
+(`Scan production for residual PII on public user docs`), not something to
+remember. It runs `scripts/migrate-users-private.mjs --verify` against the
+production project and exits non-zero on any residual field, failing the job
+before `firebase deploy` runs.
+
+It is **scoped to rules that actually contain the public read** (grepped for
+`allow get: if true;`). Deploys that don't touch it run exactly as before, so
+this can't become the step everyone learns to route around.
+
+Behaviour:
+
+- **With Workload Identity Federation** — the scan runs automatically against
+  production. Any `LEAK <uid> still has: …` line fails the job; re-run the
+  migration (`node scripts/migrate-users-private.mjs`, idempotent and
+  resumable) and re-run the workflow.
+- **With the legacy `FIREBASE_TOKEN`** — which is what this repo currently
+  uses — the scan **cannot run**. `FIREBASE_TOKEN` is a firebase-tools refresh
+  token and cannot authenticate the Admin SDK. The job fails with instructions
+  rather than deploying an unverified public read.
+
+  To unblock, either migrate to WIF (set `FIREBASE_WIF_PROVIDER` +
+  `FIREBASE_WIF_SERVICE_ACCOUNT`, after which this is automatic), or run the
+  scan by hand and re-run the workflow via `workflow_dispatch` with
+  `pii_scan_verified = i-ran-the-scan`.
+
+  That override is an honour system and is logged as a warning on the run. It
+  exists so a solo maintainer isn't wedged; it is not a substitute for WIF.
+
+To run it yourself against production — worth doing before opening a rules PR,
+so you find out early rather than at deploy time:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/absolute/path/to/service-account.json
+node scripts/migrate-users-private.mjs --verify
+```
+
+`verify: scanned=<n> offending=0` (exit 0) is the go signal.
+
+**Known limitation, not yet closed:** the scan checks a _denylist_ of five known
+field names. `users/{uid}` create/update rules likewise deny those five rather
+than allowlisting known-good keys, so a sixth field written by a future code
+path would be world-readable and neither the rules nor this scan would catch it.
+Tracked as follow-up; the fix is `keys().hasOnly([...])` on the create/update
+rules plus an allowlist-based scan.
 
 ---
 

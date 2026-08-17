@@ -19,8 +19,14 @@ interface PlayerProfileState {
  *
  * When `viewerUid` is provided, only games between both players are fetched.
  * This is required because Firestore rules restrict game reads to participants.
+ *
+ * `includeGames` exists for the signed-out visitor on a shared `/player/:uid`
+ * link. `users/{uid}` is publicly readable but game reads are gated on
+ * `isSignedIn() && isParticipant(...)`, so an anonymous games query is a
+ * guaranteed `permission-denied` round trip. Pass `false` to skip it entirely
+ * rather than firing a request that can only fail.
  */
-export function usePlayerProfile(uid: string, viewerUid?: string): PlayerProfileState {
+export function usePlayerProfile(uid: string, viewerUid?: string, includeGames: boolean = true): PlayerProfileState {
   const [data, setData] = useState<{
     fetchedUid: string;
     profile: UserProfile | null;
@@ -38,10 +44,12 @@ export function usePlayerProfile(uid: string, viewerUid?: string): PlayerProfile
     // (e.g. missing composite index, permissions) doesn't block the profile.
     const profilePromise = getUserProfile(uid);
 
-    const gamesPromise = fetchPlayerCompletedGames(uid, viewerUid).catch((err: unknown) => {
-      logger.warn("player_games_fetch_failed", { uid, viewerUid, error: parseFirebaseError(err) });
-      return [] as GameDoc[];
-    });
+    const gamesPromise = includeGames
+      ? fetchPlayerCompletedGames(uid, viewerUid).catch((err: unknown) => {
+          logger.warn("player_games_fetch_failed", { uid, viewerUid, error: parseFirebaseError(err) });
+          return [] as GameDoc[];
+        })
+      : Promise.resolve<GameDoc[]>([]);
 
     Promise.all([profilePromise, gamesPromise])
       .then(([fetchedProfile, fetchedGames]) => {
@@ -61,7 +69,7 @@ export function usePlayerProfile(uid: string, viewerUid?: string): PlayerProfile
     return () => {
       stale = true;
     };
-  }, [uid, viewerUid]);
+  }, [uid, viewerUid, includeGames]);
 
   // Loading: uid is non-empty and data hasn't arrived for this uid yet
   const loading = uid !== "" && data.fetchedUid !== uid;

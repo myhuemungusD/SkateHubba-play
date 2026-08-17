@@ -45,7 +45,9 @@ function LocationProbe() {
   return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
 }
 
-async function renderAt(initialPath: string): Promise<RenderResult> {
+/** Mount the real route table at a URL. No readiness wait — callers pick the
+ *  signal that suits their route (see renderAt vs. the public-profile block). */
+async function mountApp(initialPath: string): Promise<RenderResult> {
   let result!: RenderResult;
   await act(async () => {
     result = render(
@@ -55,6 +57,11 @@ async function renderAt(initialPath: string): Promise<RenderResult> {
       </MemoryRouter>,
     );
   });
+  return result;
+}
+
+async function renderAt(initialPath: string): Promise<RenderResult> {
+  const result = await mountApp(initialPath);
   // Wait for the persistent BottomNav to mount — it only renders on the
   // four authed primary screens (lobby/map/record/player), so its presence
   // confirms the route resolved past the Suspense fallback. Asserting on a
@@ -199,5 +206,80 @@ describe("Smoke: /spots/:id deep link survives the auth bounce", () => {
       expect(screen.getByTestId("location").textContent).toBe(`/spots/${SPOT_ID}`);
     });
     expect(sessionStorage.getItem(DETAIL_KEY)).toBeNull();
+  });
+});
+
+/**
+ * The same route table, one deep-link, and NO account.
+ *
+ * `/player/:uid` is the app's share surface, and it used to bounce logged-out
+ * visitors to `/` twice over — once from the route guard in `App.tsx`, once
+ * from the auth router in `NavigationContext` — so a shared profile link could
+ * only ever reach people who already had accounts. Both gates are exercised
+ * here by mounting the real route table with a null auth user.
+ */
+describe("Smoke: public /player/:uid for a signed-out visitor", () => {
+  /** The public doc a logged-out client is allowed to `get`. */
+  const publicProfile: UserProfile = {
+    uid: "u2",
+    username: "sk8rboi",
+    stance: "goofy",
+    createdAt: null,
+    wins: 10,
+    losses: 3,
+  };
+
+  async function renderPublicProfile(): Promise<void> {
+    await mountApp("/player/u2");
+    // The screen is lazy — waiting on its content (rather than a route-agnostic
+    // signal) is what proves the chunk actually mounted instead of bouncing.
+    await screen.findByText("@sk8rboi");
+  }
+
+  beforeEach(() => {
+    // Overrides the file-scope signed-in user.
+    mocks.auth.refs.useAuth.mockReturnValue({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    mocks.users.refs.getUserProfile.mockResolvedValue(publicProfile);
+  });
+
+  it("renders the shared profile instead of bouncing to the landing page", async () => {
+    await renderPublicProfile();
+    expect(screen.getByTestId("location").textContent).toBe("/player/u2");
+    expect(screen.getByText("goofy")).toBeInTheDocument();
+    expect(screen.getByLabelText("Lifetime wins: 10")).toBeInTheDocument();
+  });
+
+  it("reads only the public profile doc, never the participant-gated games", async () => {
+    await renderPublicProfile();
+    expect(mocks.users.refs.getUserProfile).toHaveBeenCalledWith("u2");
+    // `fetchPlayerCompletedGames` is absent from the games mock module, so a
+    // query attempt would throw and take the screen down with it. Reaching
+    // this assertion at all is the proof it was skipped.
+    expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
+  });
+
+  it("routes the sign-up call to action into the auth flow", async () => {
+    await renderPublicProfile();
+    await userEvent.click(screen.getByRole("button", { name: "Sign up to challenge @sk8rboi" }));
+    expect(screen.getByTestId("location").textContent).toBe("/auth");
+  });
+
+  it("withholds every affordance that needs an account", async () => {
+    await renderPublicProfile();
+    expect(screen.queryByText("Challenge @sk8rboi")).not.toBeInTheDocument();
+    expect(screen.queryByText("Block this player")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("share-my-profile-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("added-spots-placeholder")).not.toBeInTheDocument();
+    expect(screen.queryByText("GAMES VS YOU")).not.toBeInTheDocument();
+  });
+
+  it("hides the bottom tab bar, whose destinations are all auth-gated", async () => {
+    await renderPublicProfile();
+    expect(screen.queryByRole("navigation", { name: "Primary navigation" })).not.toBeInTheDocument();
   });
 });

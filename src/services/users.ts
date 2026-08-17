@@ -337,7 +337,8 @@ export async function createProfile(
  *         keep a uid→device map readable by every signed-in user.
  * Phase 4: Atomically delete profile + username reservation + private
  *         profile doc (where sensitive fields live since the
- *         public-doc privacy split).
+ *         public-doc privacy split) + the owner-deletable
+ *         achievements/locker subcollections.
  */
 export async function deleteUserData(uid: string, username: string): Promise<void> {
   const db = requireDb();
@@ -417,14 +418,24 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // auth context still resolves isOwner(uid) cleanly against the
   // private-subcollection rule.
   //
-  // Achievements subcollection is folded into the same batch so a single
-  // commit either wipes the whole identity surface or none of it. Without
-  // this, a partial failure could leave orphan achievement docs after the
-  // parent user doc was gone — the GDPR/CCPA gap audit B10/S15 calls out.
-  const achievementsSnap = await getDocs(collection(db, "users", uid, "achievements"));
+  // The achievements AND locker subcollections are folded into the same batch
+  // so a single commit either wipes the whole identity surface or none of it.
+  // Without this, a partial failure could leave orphan docs after the parent
+  // user doc was gone — the GDPR/CCPA gap audit B10/S15 calls out.
+  //
+  // Both are server-minted (Admin SDK) and owner-deletable per
+  // `firestore.rules`; they are the only two subcollections under users/{uid}
+  // that the owner can enumerate and delete, so any new one added there must
+  // be swept here too or it silently orphans personal data. Fetched in
+  // parallel — they are independent reads and the batch needs both before it
+  // can commit.
+  const [achievementsSnap, lockerSnap] = await Promise.all([
+    getDocs(collection(db, "users", uid, "achievements")),
+    getDocs(collection(db, "users", uid, "locker")),
+  ]);
   const batch = writeBatch(db);
-  for (const achievementDoc of achievementsSnap.docs) {
-    batch.delete(achievementDoc.ref);
+  for (const ownedDoc of [...achievementsSnap.docs, ...lockerSnap.docs]) {
+    batch.delete(ownedDoc.ref);
   }
   batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
   batch.delete(doc(db, "users", uid));

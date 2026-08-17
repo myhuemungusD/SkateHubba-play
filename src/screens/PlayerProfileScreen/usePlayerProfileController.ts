@@ -1,7 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { blockUser, unblockUser } from "../../services/blocking";
+import { fetchAchievements, type Achievement } from "../../services/achievements";
+import { fetchLockerItems, type LockerItem } from "../../services/locker";
+import { logger } from "../../services/logger";
+import { parseFirebaseError } from "../../utils/helpers";
 import { ratedWinRate } from "../../constants/stats";
 import { usePlayerProfile } from "../../hooks/usePlayerProfile";
 
@@ -55,7 +59,12 @@ export interface ProfileStats {
 
 interface Args {
   viewedUid: string;
-  currentUserProfile: UserProfile;
+  /**
+   * The viewer. Absent for a signed-out visitor arriving on a shared
+   * `/player/:uid` link — every viewer-scoped derivation below (H2H record,
+   * game history, block state) degrades to its empty value in that case.
+   */
+  currentUserProfile?: UserProfile | null;
   ownGames: GameDoc[];
   isOwnProfile: boolean;
   blockedUids?: Set<string>;
@@ -68,6 +77,10 @@ export interface PlayerProfileController {
   completedGames: GameDoc[];
   stats: ProfileStats;
   opponents: OpponentRecord[];
+  /** Earned badges. Empty until the parallel fetch resolves, and on failure. */
+  achievements: Achievement[];
+  /** Earned locker gear. Empty until the parallel fetch resolves, and on failure. */
+  lockerItems: LockerItem[];
 
   expandedGameId: string | null;
   toggleExpanded: (id: string) => void;
@@ -88,9 +101,13 @@ export function usePlayerProfileController({
   isOwnProfile,
   blockedUids,
 }: Args): PlayerProfileController {
-  const fetchedData = usePlayerProfile(isOwnProfile ? "" : viewedUid, currentUserProfile.uid);
+  const viewerUid = currentUserProfile?.uid;
+  // No viewer → no readable games. Firestore gates game reads on
+  // `isSignedIn() && isParticipant(...)`, so skip the query rather than fire
+  // one that can only come back permission-denied.
+  const fetchedData = usePlayerProfile(isOwnProfile ? "" : viewedUid, viewerUid, Boolean(viewerUid));
 
-  const profile = isOwnProfile ? currentUserProfile : fetchedData.profile;
+  const profile = isOwnProfile ? (currentUserProfile ?? null) : fetchedData.profile;
   const games = isOwnProfile ? ownGames : fetchedData.games;
   const loading = isOwnProfile ? false : fetchedData.loading;
   const error = isOwnProfile ? null : fetchedData.error;
@@ -103,6 +120,45 @@ export function usePlayerProfileController({
   const toggleExpanded = useCallback((id: string) => {
     setExpandedGameId((prev) => (prev === id ? null : id));
   }, []);
+
+  /**
+   * Economy Phase A: badges + locker gear. Fetched in parallel with each other
+   * and alongside the profile load — neither blocks `loading`, so the record
+   * and stats paint immediately and these sections fill in.
+   *
+   * Fail-soft *per section*, which is why this is `allSettled` and not `all`:
+   * with `all`, a locker permission-denied would also blank a badges row that
+   * fetched perfectly well. Each result is applied on its own, and a rejection
+   * leaves that one section empty — which renders as "nothing earned yet".
+   *
+   * The rejection value goes through `logger.warn` rather than a bare
+   * `console.warn` so a production permission-denied lands in Sentry
+   * breadcrumbs instead of being discarded.
+   *
+   * Anonymous visitors skip the fetch entirely: achievements and locker
+   * reads are gated on `isSignedIn()` in firestore.rules, so without a
+   * viewer both requests are guaranteed permission-denied round trips —
+   * the same reasoning as `includeGames` on `usePlayerProfile`. The
+   * sections render their empty state, which for a signed-out visitor is
+   * indistinguishable from "nothing earned yet".
+   */
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [lockerItems, setLockerItems] = useState<LockerItem[]>([]);
+
+  useEffect(() => {
+    if (!viewedUid || !viewerUid) return;
+    let stale = false;
+    void Promise.allSettled([fetchAchievements(viewedUid), fetchLockerItems(viewedUid)]).then(([earned, gear]) => {
+      if (stale) return;
+      if (earned.status === "fulfilled") setAchievements(earned.value);
+      else logger.warn("profile_achievements_load_failed", { error: parseFirebaseError(earned.reason) });
+      if (gear.status === "fulfilled") setLockerItems(gear.value);
+      else logger.warn("profile_locker_load_failed", { error: parseFirebaseError(gear.reason) });
+    });
+    return () => {
+      stale = true;
+    };
+  }, [viewedUid, viewerUid]);
 
   const completedGames = useMemo(
     () =>
@@ -140,9 +196,9 @@ export function usePlayerProfileController({
       for (const g of completedGames) {
         // From the viewer's perspective: a profile-side WIN against the
         // viewer is a viewer-side LOSS (and vice versa). The viewer's uid
-        // is currentUserProfile.uid; the profile being viewed is profile.uid.
+        // is viewerUid; the profile being viewed is profile.uid.
         if (g.winner === profile.uid) vsYouLosses++;
-        else if (g.winner === currentUserProfile.uid) vsYouWins++;
+        else if (g.winner === viewerUid) vsYouWins++;
       }
     }
 
@@ -161,7 +217,7 @@ export function usePlayerProfileController({
       disputesRight: profile?.disputesRight ?? 0,
       disputesWrong: profile?.disputesWrong ?? 0,
     };
-  }, [profile, completedGames, currentUserProfile.uid]);
+  }, [profile, completedGames, viewerUid]);
 
   const opponents = useMemo<OpponentRecord[]>(() => {
     if (!profile) return [];
@@ -190,26 +246,29 @@ export function usePlayerProfileController({
   const openBlockConfirm = useCallback(() => setShowBlockConfirm(true), []);
   const cancelBlockConfirm = useCallback(() => setShowBlockConfirm(false), []);
 
+  // Both block actions are viewer-scoped writes. The controls are never
+  // rendered without a viewer, so the `!viewerUid` arm is defence-in-depth
+  // against a future caller wiring them up on the public profile.
   const confirmBlock = useCallback(async () => {
-    if (!profile) return;
+    if (!profile || !viewerUid) return;
     setBlockLoading(true);
     try {
-      await blockUser(currentUserProfile.uid, profile.uid);
+      await blockUser(viewerUid, profile.uid);
       setShowBlockConfirm(false);
     } finally {
       setBlockLoading(false);
     }
-  }, [currentUserProfile.uid, profile]);
+  }, [viewerUid, profile]);
 
   const handleUnblock = useCallback(async () => {
-    if (!profile) return;
+    if (!profile || !viewerUid) return;
     setBlockLoading(true);
     try {
-      await unblockUser(currentUserProfile.uid, profile.uid);
+      await unblockUser(viewerUid, profile.uid);
     } finally {
       setBlockLoading(false);
     }
-  }, [currentUserProfile.uid, profile]);
+  }, [viewerUid, profile]);
 
   return {
     profile,
@@ -218,6 +277,8 @@ export function usePlayerProfileController({
     completedGames,
     stats,
     opponents,
+    achievements,
+    lockerItems,
     expandedGameId,
     toggleExpanded,
     isBlocked,
