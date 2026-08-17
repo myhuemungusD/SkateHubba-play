@@ -1,7 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 import { blockUser, unblockUser } from "../../services/blocking";
+import { fetchAchievements, type Achievement } from "../../services/achievements";
+import { fetchLockerItems, type LockerItem } from "../../services/locker";
+import { logger } from "../../services/logger";
+import { parseFirebaseError } from "../../utils/helpers";
 import { ratedWinRate } from "../../constants/stats";
 import { usePlayerProfile } from "../../hooks/usePlayerProfile";
 
@@ -68,6 +72,10 @@ export interface PlayerProfileController {
   completedGames: GameDoc[];
   stats: ProfileStats;
   opponents: OpponentRecord[];
+  /** Earned badges. Empty until the parallel fetch resolves, and on failure. */
+  achievements: Achievement[];
+  /** Earned locker gear. Empty until the parallel fetch resolves, and on failure. */
+  lockerItems: LockerItem[];
 
   expandedGameId: string | null;
   toggleExpanded: (id: string) => void;
@@ -103,6 +111,38 @@ export function usePlayerProfileController({
   const toggleExpanded = useCallback((id: string) => {
     setExpandedGameId((prev) => (prev === id ? null : id));
   }, []);
+
+  /**
+   * Economy Phase A: badges + locker gear. Fetched in parallel with each other
+   * and alongside the profile load — neither blocks `loading`, so the record
+   * and stats paint immediately and these sections fill in.
+   *
+   * Fail-soft *per section*, which is why this is `allSettled` and not `all`:
+   * with `all`, a locker permission-denied would also blank a badges row that
+   * fetched perfectly well. Each result is applied on its own, and a rejection
+   * leaves that one section empty — which renders as "nothing earned yet".
+   *
+   * The rejection value goes through `logger.warn` rather than a bare
+   * `console.warn` so a production permission-denied lands in Sentry
+   * breadcrumbs instead of being discarded.
+   */
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [lockerItems, setLockerItems] = useState<LockerItem[]>([]);
+
+  useEffect(() => {
+    if (!viewedUid) return;
+    let stale = false;
+    void Promise.allSettled([fetchAchievements(viewedUid), fetchLockerItems(viewedUid)]).then(([earned, gear]) => {
+      if (stale) return;
+      if (earned.status === "fulfilled") setAchievements(earned.value);
+      else logger.warn("profile_achievements_load_failed", { error: parseFirebaseError(earned.reason) });
+      if (gear.status === "fulfilled") setLockerItems(gear.value);
+      else logger.warn("profile_locker_load_failed", { error: parseFirebaseError(gear.reason) });
+    });
+    return () => {
+      stale = true;
+    };
+  }, [viewedUid]);
 
   const completedGames = useMemo(
     () =>
@@ -218,6 +258,8 @@ export function usePlayerProfileController({
     completedGames,
     stats,
     opponents,
+    achievements,
+    lockerItems,
     expandedGameId,
     toggleExpanded,
     isBlocked,

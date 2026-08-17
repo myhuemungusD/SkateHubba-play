@@ -464,14 +464,24 @@ describe("users service", () => {
 
   describe("deleteUserData", () => {
     /**
-     * deleteUserData calls getDocs three times per invocation:
+     * deleteUserData calls getDocs four times per invocation:
      *   1. games where player1Uid == uid
      *   2. games where player2Uid == uid
      *   3. users/{uid}/achievements subcollection
-     * Tests that don't care about achievements stub it out as empty.
+     *   4. users/{uid}/locker subcollection
+     * Tests that don't care about the owned-item subcollections stub both out
+     * as empty. Order matters: Promise.all invokes them in argument order.
      */
-    function stubEmptyAchievements(): void {
+    function stubEmptyOwnedItems(): void {
       mockGetDocs.mockResolvedValueOnce({ docs: [] }); // achievements
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
+    }
+
+    /** Stub the two game queries and both owned-item subcollections as empty. */
+    function stubEmptyCascade(): void {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // games p1
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // games p2
+      stubEmptyOwnedItems();
     }
 
     it("deletes videos and game docs then profile and username via batch", async () => {
@@ -480,7 +490,7 @@ describe("users service", () => {
       mockGetDocs
         .mockResolvedValueOnce({ docs: [gameDoc1] }) // player1Uid query
         .mockResolvedValueOnce({ docs: [gameDoc2] }); // player2Uid query
-      stubEmptyAchievements();
+      stubEmptyOwnedItems();
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -520,7 +530,7 @@ describe("users service", () => {
       const activeGame = { id: "g1", data: () => ({ status: "active" }) };
       const completeGame = { id: "g2", data: () => ({ status: "complete" }) };
       mockGetDocs.mockResolvedValueOnce({ docs: [activeGame, completeGame] }).mockResolvedValueOnce({ docs: [] });
-      stubEmptyAchievements();
+      stubEmptyOwnedItems();
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -537,7 +547,7 @@ describe("users service", () => {
     it("deduplicates game docs appearing in both queries", async () => {
       const gameDoc = { id: "g1", data: () => ({ status: "complete" }) };
       mockGetDocs.mockResolvedValueOnce({ docs: [gameDoc] }).mockResolvedValueOnce({ docs: [gameDoc] }); // same game in both
-      stubEmptyAchievements();
+      stubEmptyOwnedItems();
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -551,11 +561,8 @@ describe("users service", () => {
     });
 
     it("re-throws batch commit errors", async () => {
-      // Phase 1 succeeds (games + achievements)
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] }); // achievements
+      // Phase 1 succeeds (games + achievements + locker)
+      stubEmptyCascade();
 
       // Phase 4 fails
       const batch = mockWriteBatch();
@@ -564,10 +571,7 @@ describe("users service", () => {
     });
 
     it("scrubs the pushTargets mirror and received notifications in Phase 3b", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] }) // games p1
-        .mockResolvedValueOnce({ docs: [] }) // games p2
-        .mockResolvedValueOnce({ docs: [] }); // achievements
+      stubEmptyCascade();
 
       await deleteUserData("u1", "sk8r");
 
@@ -579,10 +583,7 @@ describe("users service", () => {
     });
 
     it("logs and continues when the pushTargets mirror delete fails", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] }); // achievements
+      stubEmptyCascade();
       // Only the pushTargets delete rejects (game deletes use the default
       // resolved mock; there are no games here anyway).
       mockDeleteDoc.mockRejectedValueOnce(new Error("mirror delete denied"));
@@ -599,10 +600,7 @@ describe("users service", () => {
     });
 
     it("stringifies non-Error pushTargets delete rejections before logging", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] });
+      stubEmptyCascade();
       mockDeleteDoc.mockRejectedValueOnce("mirror-string-error");
 
       await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
@@ -614,10 +612,7 @@ describe("users service", () => {
     });
 
     it("logs and continues when deleteUserNotifications fails", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] });
+      stubEmptyCascade();
       mockDeleteUserNotifications.mockRejectedValueOnce(new Error("notif scrub denied"));
 
       await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
@@ -631,10 +626,7 @@ describe("users service", () => {
     });
 
     it("stringifies non-Error notification scrub rejections before logging", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] });
+      stubEmptyCascade();
       mockDeleteUserNotifications.mockRejectedValueOnce("notif-string-error");
 
       await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
@@ -651,6 +643,7 @@ describe("users service", () => {
       mockGetDocs.mockResolvedValueOnce({
         docs: achievementRefs.map((ref) => ({ ref })),
       });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
       mockDeleteDoc.mockResolvedValue(undefined);
 
       await deleteUserData("u1", "sk8r");
@@ -663,11 +656,51 @@ describe("users service", () => {
       expect(batch.commit).toHaveBeenCalled();
     });
 
+    /**
+     * Economy Phase A regression: `users/{uid}/locker` holds server-minted gear
+     * and, like achievements, is NOT removed by deleting the parent user doc —
+     * Firestore never cascades into subcollections. Before this sweep existed,
+     * deleting an account orphaned every locker item under a users/{uid} doc
+     * that no longer existed, leaving personal data behind after erasure.
+     */
+    it("folds the locker subcollection into the profile/username batch", async () => {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // achievements
+      const lockerRefs = [{ fullPath: "users/u1/locker/deck-1" }, { fullPath: "users/u1/locker/wheels-2" }];
+      mockGetDocs.mockResolvedValueOnce({ docs: lockerRefs.map((ref) => ({ ref })) });
+      mockDeleteDoc.mockResolvedValue(undefined);
+
+      await deleteUserData("u1", "sk8r");
+
+      expect(mockCollection).toHaveBeenCalledWith(expect.anything(), "users", "u1", "locker");
+      // 2 locker items + private profile + public profile + username = 5 deletes.
+      const batch = mockWriteBatch();
+      expect(batch.delete).toHaveBeenCalledTimes(5);
+      expect(batch.delete).toHaveBeenCalledWith(lockerRefs[0]);
+      expect(batch.delete).toHaveBeenCalledWith(lockerRefs[1]);
+      expect(batch.commit).toHaveBeenCalled();
+    });
+
+    it("wipes achievements and locker in the same single commit", async () => {
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
+      const achievementRef = { fullPath: "users/u1/achievements/century" };
+      const lockerRef = { fullPath: "users/u1/locker/deck-1" };
+      mockGetDocs.mockResolvedValueOnce({ docs: [{ ref: achievementRef }] });
+      mockGetDocs.mockResolvedValueOnce({ docs: [{ ref: lockerRef }] });
+
+      await deleteUserData("u1", "sk8r");
+
+      const batch = mockWriteBatch();
+      // 1 achievement + 1 locker item + private + public + username = 5.
+      expect(batch.delete).toHaveBeenCalledTimes(5);
+      expect(batch.delete).toHaveBeenCalledWith(achievementRef);
+      expect(batch.delete).toHaveBeenCalledWith(lockerRef);
+      // One commit — a partial failure must not leave half the identity surface.
+      expect(batch.commit).toHaveBeenCalledTimes(1);
+    });
+
     it("delegates avatar cleanup to deleteAvatar(uid)", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] });
+      stubEmptyCascade();
       mockDeleteAvatar.mockResolvedValueOnce({ removed: true });
 
       await deleteUserData("u1", "sk8r");
@@ -679,6 +712,7 @@ describe("users service", () => {
       mockGetDocs.mockResolvedValueOnce({ docs: [] }).mockResolvedValueOnce({ docs: [] });
       const achievementRefs = [{ fullPath: "users/u1/achievements/a1" }];
       mockGetDocs.mockResolvedValueOnce({ docs: achievementRefs.map((ref) => ({ ref })) });
+      mockGetDocs.mockResolvedValueOnce({ docs: [] }); // locker
       mockDeleteAvatar.mockResolvedValueOnce({ removed: true });
 
       await deleteUserData("u1", "sk8r");
@@ -687,10 +721,7 @@ describe("users service", () => {
     });
 
     it("reports avatarRemoved=false in telemetry when deleteAvatar found nothing to remove", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] });
+      stubEmptyCascade();
       mockDeleteAvatar.mockResolvedValueOnce({ removed: false });
 
       await deleteUserData("u1", "sk8r");
@@ -699,10 +730,7 @@ describe("users service", () => {
     });
 
     it("logs and continues when deleteAvatar itself throws", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] });
+      stubEmptyCascade();
       mockDeleteAvatar.mockRejectedValueOnce(new Error("storage boot failure"));
 
       await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();
@@ -711,10 +739,7 @@ describe("users service", () => {
     });
 
     it("stringifies non-Error rejections from deleteAvatar before logging", async () => {
-      mockGetDocs
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] })
-        .mockResolvedValueOnce({ docs: [] });
+      stubEmptyCascade();
       mockDeleteAvatar.mockRejectedValueOnce("string-error");
 
       await expect(deleteUserData("u1", "sk8r")).resolves.toBeUndefined();

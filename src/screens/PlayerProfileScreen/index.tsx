@@ -6,6 +6,8 @@ import { hashUid } from "../../utils/pii";
 import type { StatTileName } from "./components/ProfileStatsGrid";
 import { usePullToRefresh } from "../../hooks/usePullToRefresh";
 import { PullToRefreshIndicator } from "../../components/PullToRefreshIndicator";
+import { BadgesRow } from "../../components/BadgesRow";
+import { LockerShowcase } from "../../components/LockerShowcase";
 import { usePlayerProfileController } from "./usePlayerProfileController";
 import { BlockControls } from "./components/BlockControls";
 import { ChallengeButton } from "./components/ChallengeButton";
@@ -67,13 +69,16 @@ interface Props {
  *   - AddedSpotsPlaceholder — empty state whose CTA opens the map with the
  *     Add Spot sheet already open; the spot *list* still awaits real data.
  *
+ *   - BadgesRow / LockerShowcase — Economy Phase A. Real granted data, fetched
+ *     by the controller; each renders nothing when the player has earned
+ *     nothing (LockerShowcase shows one hint card on your own profile).
+ *
  * Deliberately NOT rendered until real data exists to back them. Rendering a
  * placeholder on a live profile reads as an unfinished product, so these stay
  * off the screen rather than shipping as visible stubs. Both components are
  * kept (with their tests) so re-enabling them is a one-line change:
- *   - AchievementsRibbon — 12 locked "???" tiles. There is no
- *     `users/{uid}/achievements` collection, so every tile is permanently
- *     locked. Re-render it once achievements are actually granted.
+ *   - AchievementsRibbon — 12 locked "???" tiles. Superseded by BadgesRow,
+ *     which renders the badges actually granted under `users/{uid}/achievements`.
  *   - LevelChip (in ProfileIdentityCard) — hard-coded "L1"; `UserProfile` has
  *     no `level` field and there is no XP system. Re-add it with the XP work.
  */
@@ -242,12 +247,16 @@ export function PlayerProfileScreen({
           <WinStreakBanner currentStreak={c.stats.currentWinStreak} />
         )}
 
+        <BadgesRow achievements={c.achievements} />
+
         <ProfileStatsGrid
           stats={c.stats}
           isOwnProfile={isOwnProfile}
           hasCompletedGames={c.completedGames.length > 0}
           onTileTap={handleTileTap}
         />
+
+        <LockerShowcase items={c.lockerItems} isOwnProfile={isOwnProfile} />
 
         {/* Owner-only: advertising an unbuilt feature on someone else's public
             profile is noise to every visitor but the owner. AchievementsRibbon

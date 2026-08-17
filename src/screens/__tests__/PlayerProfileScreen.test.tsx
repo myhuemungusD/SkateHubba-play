@@ -21,6 +21,11 @@ vi.mock("../../services/blocking", () => ({
   getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
 }));
 
+// Economy Phase A reads the controller fires alongside the profile load —
+// mocked to resolve empty so these specs stay on record/history behaviour.
+vi.mock("../../services/achievements", () => ({ fetchAchievements: vi.fn().mockResolvedValue([]) }));
+vi.mock("../../services/locker", () => ({ fetchLockerItems: vi.fn().mockResolvedValue([]) }));
+
 const mockUsePlayerProfile = vi.fn();
 
 vi.mock("../../hooks/usePlayerProfile", () => ({

@@ -82,6 +82,7 @@ export interface DeletionSummary {
   nudges: number;
   reports: number;
   achievements: number;
+  locker: number;
   blockedUsers: number;
   avatarObjects: number;
   usernameReleased: boolean;
@@ -109,6 +110,7 @@ function emptySummary(): DeletionSummary {
     nudges: 0,
     reports: 0,
     achievements: 0,
+    locker: 0,
     blockedUsers: 0,
     avatarObjects: 0,
     usernameReleased: false,
@@ -423,13 +425,20 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   );
 
   // ── Phase 4: identity surface ──
-  // Achievements, blocked_users, the private profile doc (email / DOB /
+  // Achievements, locker, blocked_users, the private profile doc (email / DOB /
   // parental consent) and the public profile go together, so in the ordinary
   // case the whole identity surface vanishes in a single commit. Past
   // BATCH_CHUNK refs it necessarily splits across commits — harmless, because
   // this phase runs last and the run is resumable, but it is not the atomic
   // guarantee the single-batch shape suggests.
+  //
+  // Locker mirrors achievements exactly: both are Admin-SDK-minted economy
+  // subcollections under users/{uid}, and both are swept by the client cascade
+  // in `src/services/users.ts`. A subcollection is NOT deleted by deleting its
+  // parent document in Firestore, so each one has to be enumerated by name —
+  // any future subcollection added under users/{uid} must be added here too.
   const achievements = await scanAll(db.collection("users").doc(uid).collection("achievements"));
+  const locker = await scanAll(db.collection("users").doc(uid).collection("locker"));
   // The reservation is released first and separately, because it is the one
   // delete here that needs an ownership check (see `releaseUsername`) and so
   // cannot ride along in an unconditional batch.
@@ -438,12 +447,14 @@ export async function deleteUserDataAsAdmin(deps: CascadeDeps, uid: string): Pro
   const blocked = await scanAll(db.collection("users").doc(uid).collection("blocked_users"));
   const identityRefs: FirebaseFirestore.DocumentReference[] = [
     ...achievements.map((d) => d.ref),
+    ...locker.map((d) => d.ref),
     ...blocked.map((d) => d.ref),
     db.collection("users").doc(uid).collection("private").doc(PRIVATE_PROFILE_DOC_ID),
     db.collection("users").doc(uid),
   ];
   await deleteRefs(db, identityRefs);
   summary.achievements = achievements.length;
+  summary.locker = locker.length;
   summary.blockedUsers = blocked.length;
 
   // ── Phase 5: avatar binaries ──
