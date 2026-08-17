@@ -18,6 +18,7 @@ import { ProfileHeader } from "./components/ProfileHeader";
 import { ProfileIdentityCard } from "./components/ProfileIdentityCard";
 import { ProfileSkeleton } from "./components/ProfileSkeleton";
 import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
+import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
 import { AddedSpotsPlaceholder } from "./components/AddedSpotsPlaceholder";
 import { WinStreakBanner } from "./components/WinStreakBanner";
 
@@ -29,7 +30,13 @@ const MIN_DISPLAYED_WIN_STREAK = 2;
 
 interface Props {
   viewedUid: string;
-  currentUserProfile: UserProfile;
+  /**
+   * The signed-in viewer, or absent for a logged-out visitor arriving on a
+   * shared `/player/:uid` link. Everything that needs a viewer identity
+   * (challenge, block, game history, own-profile affordances) is withheld
+   * when this is absent — see the docstring below.
+   */
+  currentUserProfile?: UserProfile | null;
   /** Games from GameContext — used when viewing own profile to avoid redundant fetch. */
   ownGames: GameDoc[];
   isOwnProfile: boolean;
@@ -52,6 +59,12 @@ interface Props {
    * refetch (the pre-wiring behaviour).
    */
   onRefreshProfile?: () => Promise<void>;
+  /**
+   * Sends a signed-out visitor to the sign-up flow. Rendered in place of the
+   * Challenge button, which cannot work without an account. Omit and the
+   * public profile simply has no CTA.
+   */
+  onSignUp?: () => void;
 }
 
 /**
@@ -81,6 +94,15 @@ interface Props {
  *     which renders the badges actually granted under `users/{uid}/achievements`.
  *   - LevelChip (in ProfileIdentityCard) — hard-coded "L1"; `UserProfile` has
  *     no `level` field and there is no XP system. Re-add it with the XP work.
+ *
+ * Signed-out visitors (`currentUserProfile` absent) reach this screen through
+ * a shared `/player/:uid` link. They get the public doc's content — avatar,
+ * username, stance, verified-pro badge, stat tiles — plus a sign-up CTA in
+ * place of Challenge. Withheld: block controls, Challenge, and every
+ * own-profile affordance (share-my-profile, pull-to-refresh, added spots).
+ * Game history is withheld too, because Firestore gates game reads on
+ * participation — an anonymous visitor can read none of them, and an empty
+ * "no games yet" state would misreport a player who has played plenty.
  */
 export function PlayerProfileScreen({
   viewedUid,
@@ -94,6 +116,7 @@ export function PlayerProfileScreen({
   blockedUids,
   onAddSpot,
   onRefreshProfile,
+  onSignUp,
 }: Props) {
   const c = usePlayerProfileController({
     viewedUid,
@@ -102,6 +125,14 @@ export function PlayerProfileScreen({
     isOwnProfile,
     blockedUids,
   });
+
+  // Absent viewer is carried as an empty uid — the same "no identity"
+  // convention `useBlockedUsers("")` and `usePlayerProfile("")` already use.
+  // `hashUid("")` passes it straight through, so the telemetry below reports
+  // an anonymous view without inventing a uid (and, as everywhere else, a
+  // raw Firebase uid never leaves the app).
+  const viewerUid = currentUserProfile?.uid ?? "";
+  const hasViewer = currentUserProfile != null;
 
   // ── profile_viewed telemetry ──
   // Fires once per mount. `msToFirstPaint` is the elapsed time between
@@ -120,8 +151,8 @@ export function PlayerProfileScreen({
     if (mountStartRef.current === null) mountStartRef.current = performance.now();
     profileViewedFiredRef.current = true;
     const msToFirstPaint = Math.round(performance.now() - mountStartRef.current);
-    analytics.profileViewed(currentUserProfile.uid, viewedUid, currentUserProfile.uid === viewedUid, msToFirstPaint);
-  }, [currentUserProfile.uid, viewedUid]);
+    analytics.profileViewed(viewerUid, viewedUid, viewerUid === viewedUid, msToFirstPaint);
+  }, [viewerUid, viewedUid]);
 
   // ── profile_stat_tile_tapped telemetry ──
   // Engagement signal fires on every tile tap. The `profileUid` is whose
@@ -151,19 +182,19 @@ export function PlayerProfileScreen({
   // thing its label promises instead of being an inert affordance.
   const handleAddSpot = useCallback(() => {
     if (!onAddSpot) return;
-    trackEvent("profile_add_a_spot_tapped", { uid: hashUid(currentUserProfile.uid) });
+    trackEvent("profile_add_a_spot_tapped", { uid: hashUid(viewerUid) });
     onAddSpot();
-  }, [onAddSpot, currentUserProfile.uid]);
+  }, [onAddSpot, viewerUid]);
 
   const [shareCopiedAt, setShareCopiedAt] = useState<number | null>(null);
   const handleShareProfile = useCallback(async () => {
     // `/player/:uid` is the public profile route. `/profile` is the
     // profile-*setup* route and matches exactly, so `/profile/{uid}` fell
     // through to `*` and redirected every shared link to /404.
-    const url = `${window.location.origin}/player/${currentUserProfile.uid}`;
-    trackEvent("profile_share_my_profile_tapped", { uid: hashUid(currentUserProfile.uid) });
+    const url = `${window.location.origin}/player/${viewerUid}`;
+    trackEvent("profile_share_my_profile_tapped", { uid: hashUid(viewerUid) });
     const payload: ShareData = {
-      title: `@${currentUserProfile.username} on SkateHubba`,
+      title: `@${currentUserProfile?.username} on SkateHubba`,
       text: `Catch my SkateHubba profile`,
       url,
     };
@@ -184,14 +215,17 @@ export function PlayerProfileScreen({
       // No clipboard either — silent fail. Telemetry already fired so we
       // can detect this on the dashboard.
     }
-  }, [currentUserProfile.uid, currentUserProfile.username]);
+  }, [viewerUid, currentUserProfile?.username]);
+
+  // A visitor with no account has no lobby to go back to — send them home.
+  const backLabel = hasViewer ? "Lobby" : "Home";
 
   if (c.loading) {
-    return <ProfileSkeleton onBack={onBack} />;
+    return <ProfileSkeleton onBack={onBack} backLabel={backLabel} />;
   }
 
   if (c.error || !c.profile) {
-    return <PlayerProfileError message={c.error ?? "Player not found"} onBack={onBack} />;
+    return <PlayerProfileError message={c.error ?? "Player not found"} onBack={onBack} backLabel={backLabel} />;
   }
 
   const profile = c.profile;
@@ -202,7 +236,7 @@ export function PlayerProfileScreen({
       {isOwnProfile && (
         <PullToRefreshIndicator offset={ptr.offset} state={ptr.state} triggerReached={ptr.triggerReached} />
       )}
-      <ProfileHeader onBack={onBack} />
+      <ProfileHeader onBack={onBack} backLabel={backLabel} />
 
       <div className="px-5 pt-7 max-w-lg mx-auto">
         <ProfileIdentityCard
@@ -226,11 +260,16 @@ export function PlayerProfileScreen({
           </button>
         )}
 
-        {!isOwnProfile && onChallenge && !c.isBlocked && (
+        {/* Challenging and blocking both need an account. A signed-out visitor
+            gets the sign-up CTA instead — otherwise the shared link dead-ends
+            on a profile they can do nothing with. */}
+        {!isOwnProfile && hasViewer && onChallenge && !c.isBlocked && (
           <ChallengeButton username={profile.username} uid={profile.uid} onChallenge={onChallenge} />
         )}
 
-        {!isOwnProfile && (
+        {!hasViewer && onSignUp && <SignUpToChallengeCta username={profile.username} onSignUp={onSignUp} />}
+
+        {!isOwnProfile && hasViewer && (
           <BlockControls
             username={profile.username}
             isBlocked={c.isBlocked}
@@ -249,10 +288,12 @@ export function PlayerProfileScreen({
 
         <BadgesRow achievements={c.achievements} />
 
+        {/* The VS-YOU row this flag unlocks is head-to-head against the
+            viewer. With no viewer there is no such record to report. */}
         <ProfileStatsGrid
           stats={c.stats}
           isOwnProfile={isOwnProfile}
-          hasCompletedGames={c.completedGames.length > 0}
+          hasCompletedGames={hasViewer && c.completedGames.length > 0}
           onTileTap={handleTileTap}
         />
 
@@ -263,22 +304,31 @@ export function PlayerProfileScreen({
             used to sit here too — see this file's docstring for why it doesn't. */}
         {isOwnProfile && <AddedSpotsPlaceholder onAddSpot={onAddSpot ? handleAddSpot : undefined} />}
 
-        <OpponentList
-          opponents={c.opponents}
-          currentUserUid={currentUserProfile.uid}
-          isOwnProfile={isOwnProfile}
-          onViewPlayer={onViewPlayer}
-        />
+        {/* Both sections are derived from games, and game reads are gated on
+            participation — a signed-out visitor can read none of them. The
+            history section in particular would render "No games between you
+            two yet" to someone who has no "you two": a false statement about
+            the player's record. Omit both rather than under-report. */}
+        {hasViewer && (
+          <>
+            <OpponentList
+              opponents={c.opponents}
+              currentUserUid={viewerUid}
+              isOwnProfile={isOwnProfile}
+              onViewPlayer={onViewPlayer}
+            />
 
-        <GameHistorySection
-          isOwnProfile={isOwnProfile}
-          profileUsername={profile.username}
-          profileUid={profile.uid}
-          completedGames={c.completedGames}
-          expandedGameId={c.expandedGameId}
-          toggleExpanded={c.toggleExpanded}
-          onOpenGame={onOpenGame}
-        />
+            <GameHistorySection
+              isOwnProfile={isOwnProfile}
+              profileUsername={profile.username}
+              profileUid={profile.uid}
+              completedGames={c.completedGames}
+              expandedGameId={c.expandedGameId}
+              toggleExpanded={c.toggleExpanded}
+              onOpenGame={onOpenGame}
+            />
+          </>
+        )}
       </div>
     </div>
   );

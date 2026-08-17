@@ -83,6 +83,23 @@ function dispatchSetScreen(target: Screen): string {
   return message;
 }
 
+/**
+ * Mount `children` inside the router + provider stack at `initialPath`.
+ *
+ * Named distinctly from the `renderAt` declared inside the deep-link describe
+ * below: that one takes only a path and returns a URL reader, and a same-named
+ * helper with a different signature shadowing this one reads like a bug.
+ */
+function renderWithProviders(initialPath: string, children: ReactNode) {
+  return render(
+    <MemoryRouter initialEntries={[initialPath]}>
+      <AuthProvider>
+        <NavigationProvider>{children}</NavigationProvider>
+      </AuthProvider>
+    </MemoryRouter>,
+  );
+}
+
 beforeEach(() => {
   mockAuth = { loading: false, user: null, profile: null };
   sessionStorage.clear();
@@ -114,15 +131,7 @@ describe("useNavigationContext", () => {
       return <span data-testid="screen">{ctx.screen}</span>;
     }
 
-    const { getByTestId } = render(
-      <MemoryRouter initialEntries={["/"]}>
-        <AuthProvider>
-          <NavigationProvider>
-            <TestComponent />
-          </NavigationProvider>
-        </AuthProvider>
-      </MemoryRouter>,
-    );
+    const { getByTestId } = renderWithProviders("/", <TestComponent />);
 
     expect(getByTestId("screen").textContent).toBe("landing");
   });
@@ -141,21 +150,40 @@ describe("useNavigationContext", () => {
       );
     }
 
-    const { getByTestId } = render(
-      <MemoryRouter initialEntries={["/map"]}>
-        <AuthProvider>
-          <NavigationProvider>
-            <TestComponent />
-            <LocationProbe />
-          </NavigationProvider>
-        </AuthProvider>
-      </MemoryRouter>,
+    const { getByTestId } = renderWithProviders(
+      "/map",
+      <>
+        <TestComponent />
+        <LocationProbe />
+      </>,
     );
 
     act(() => {
       getByTestId("go").click();
     });
     expect(getByTestId("location").textContent).toBe("/map?add=1");
+  });
+
+  it("leaves a signed-out visitor on /player/:uid instead of bouncing to landing", () => {
+    // The auth router is a second, independent gate: even with the route
+    // guard in App.tsx opened up, a "player" missing from PUBLIC_SCREENS
+    // would replace the URL with "/" the moment the effect ran, and the
+    // shared link would still be unreachable without an account.
+    function TestComponent() {
+      const ctx = useNavigationContext();
+      return <span data-testid="screen">{ctx.screen}</span>;
+    }
+
+    const { getByTestId } = renderWithProviders(
+      "/player/u2",
+      <>
+        <TestComponent />
+        <LocationProbe />
+      </>,
+    );
+
+    expect(getByTestId("screen").textContent).toBe("player");
+    expect(getByTestId("location").textContent).toBe("/player/u2");
   });
 
   it("setScreen('player') throws — callers must go through navigateToPlayer(uid)", () => {

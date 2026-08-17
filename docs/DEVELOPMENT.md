@@ -129,6 +129,8 @@ skatehubba-play/
 │       ├── setup.ts         # Global test setup (jest-dom matchers)
 │       ├── smoke-helpers.tsx
 │       └── smoke-*.test.tsx # smoke-auth, smoke-lobby, smoke-gameplay, …
+├── api/                     # Vercel serverless endpoints (cron sweeps, push drain, account deletion, social cards)
+├── functions/               # Maintainer-approved stats close-out Cloud Function (CI-pinned file set)
 ├── e2e/                     # Playwright E2E tests
 ├── rules-tests/             # Firestore rules tests (@firebase/rules-unit-testing)
 ├── firestore.rules          # Firestore security rules
@@ -158,7 +160,7 @@ skatehubba-play/
 ### Component architecture
 
 - `App.tsx` is the intentional monolith — it owns the full route table, auth-gated `<Route>`s, and the global provider tree (Auth/Navigation/Notification/Game). Do not split it into route-based files without discussion.
-- URL routing uses `react-router-dom` v7. All `<Route>` elements live in `App.tsx`. Screen transitions go through `NavigationContext.setScreen` (or `useNavigate` for parameterised routes).
+- URL routing uses `react-router` v8. All `<Route>` elements live in `App.tsx`. Screen transitions go through `NavigationContext.setScreen` (or `useNavigate` for parameterised routes).
 - Non-critical screens (gameplay, profile, map, settings, legal pages) are `lazy()`-imported and wrapped in `<Suspense>`; Landing/AuthScreen/ProfileSetup/Lobby are eager for first paint.
 - New Firebase operations belong in the relevant `src/services/*.ts` file — components never import the Firebase SDK directly.
 
