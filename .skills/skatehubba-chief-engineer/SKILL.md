@@ -26,11 +26,11 @@ Long-term economy/creator vision lives in `docs/ECONOMY.md` — nothing there sh
 - **Repo:** single-package, npm, Node 22+ (`.nvmrc`, `engines`). Not a monorepo.
 - **Web:** React 19.2 + Vite 8 (SPA only, no SSR), TypeScript 5.6 strict, Tailwind CSS 4
 - **Client state:** React Context (Auth, Navigation, Game, Notification, Onboarding) + hooks
-- **Routing:** `react-router-dom` v7 — every `<Route>` in `App.tsx`; transitions via `NavigationContext.setScreen`
+- **Routing:** `react-router` v8 — every `<Route>` in `App.tsx`; transitions via `NavigationContext.setScreen`
 - **Auth:** Firebase Auth (email/password + Google OAuth, popup with redirect fallback)
 - **Data:** Cloud Firestore, named database `skatehubba` (not default). Offline persistence enabled. All game-state mutations use `runTransaction`.
 - **Storage:** Firebase Storage — WebM (web) / MP4 (native), 1 KB–50 MB
-- **Server logic:** none for app logic. Firestore rules are the backend. Two approved exceptions: the `api/cron/**` serverless endpoints (expired-turn sweep, push drain) and the maintainer-approved stats close-out function pinned by the `verify-no-cloud-functions` gate.
+- **Server logic:** none for app logic. Firestore rules are the backend. Approved exceptions: the maintainer-approved stats close-out function pinned by the `verify-no-cloud-functions` gate, and the narrow `api/` serverless endpoints — cron sweeps (expired turns, expired disputes, push drain), account deletion, and social-card metadata.
 - **Maps:** Mapbox GL JS
 - **Mobile:** Capacitor 8 (Android first, then iOS) wrapping the same SPA
 - **Payments:** Stripe (physical goods / donations); Apple/Google IAP for any future digital-currency purchase

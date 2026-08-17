@@ -140,7 +140,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - React 19.2 + Vite 8 (SPA only — no SSR)
 - TypeScript 5.6 strict
 - Tailwind CSS 4 — **CSS-based config in `src/index.css`** via `@import "tailwindcss"` + `@theme { ... }`. No `tailwind.config.js`.
-- React Router DOM v7 (all routes in `App.tsx`; transitions via `NavigationContext.setScreen`)
+- React Router v8 (`react-router` package; all routes in `App.tsx`; transitions via `NavigationContext.setScreen`)
 - Bebas Neue (display) + DM Sans (body)
 - Single-package architecture (npm, Node 22+; no pnpm, no workspaces)
 - React Context for state (Auth, Navigation, Game, Notification, Onboarding) — no Redux/Zustand/MobX/TanStack Query
@@ -306,7 +306,7 @@ billingAlerts/{id}
 
 ### 4.12 Production dependencies (approved majors)
 
-React 19.2, react-dom 19.2, react-router-dom 7, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 3, @vercel/analytics 2, @vercel/speed-insights 2, @capacitor/core 8 (+ android/ios/camera/haptics/splash-screen/push-notifications), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
+React 19.2, react-dom 19.2, react-router 8, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 3, @vercel/analytics 2, @vercel/speed-insights 2, @capacitor/core 8 (+ android/ios/camera/haptics/splash-screen/push-notifications), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
 
 These are the approved majors. Minors and patches track upstream via the caret ranges in `package.json`; `package-lock.json` is the deterministic record installed in CI and in production. New production deps require written justification and Chief Engineer approval.
 
@@ -355,7 +355,7 @@ screenshots/
 - No deep nesting
 - Files readable in isolation
 - Services layer holds all Firebase SDK calls; components never import Firebase directly
-- Routing via `react-router-dom` only; transitions through `NavigationContext.setScreen`
+- Routing via `react-router` only; transitions through `NavigationContext.setScreen`
 
 ### 5.3 UX & accessibility
 

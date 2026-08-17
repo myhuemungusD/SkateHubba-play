@@ -83,7 +83,7 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 | Testing   | Vitest, @testing-library/react, Playwright (E2E)             |
 | CI        | GitHub Actions                                               |
 
-No custom backend. No application-authored Cloud Functions. The client talks directly to Firebase with security enforced by Firestore rules. The one managed exception is the `firestore-send-fcm` Firebase Extension, which provisions a Cloud Run push dispatcher we configure but do not author.
+No custom backend for game logic — the client talks directly to Firebase with security enforced by Firestore rules. The only server-side code is the maintainer-approved stats close-out Cloud Function (pinned by CI to an exact file set) and a handful of narrow `api/` serverless endpoints: scheduled sweeps for expired turns and disputes, FCM push delivery, account deletion, and social cards for shared `/player` links.
 
 ---
 
@@ -194,6 +194,8 @@ skatehubba-play/
 │   ├── lib/                   # Third-party bridges (Sentry, Mapbox)
 │   ├── utils/                 # Helpers, retry logic, error parsing
 │   └── types/                 # Shared TypeScript types
+├── api/                       # Vercel serverless endpoints (cron sweeps, push drain, account deletion, social cards)
+├── functions/                 # Maintainer-approved stats close-out Cloud Function (CI-pinned file set)
 ├── e2e/                       # Playwright E2E tests (auth, game, map)
 ├── rules-tests/               # Firestore rules unit tests (clips, spots, notifications)
 ├── docs/                      # Documentation suite
