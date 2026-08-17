@@ -243,7 +243,7 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 - `src/services/fcm.ts:107` (private `fcmTokens` add via `arrayUnion`) and `:112` (cross-readable `/pushTargets/{uid}.tokens` mirror)
 - `firestore.rules` `/pushTargets/{uid}` (cap of 10 tokens enforced server-side)
 - `src/services/pushDispatch.ts` `MAX_TOKENS_PER_DISPATCH = 10` (per-dispatch fan-out cap, mirrored against the rule)
-- (historical) Cloud Function `onNudgeCreated` previously cleaned tokens reactively on send failure — removed along with the rest of the `functions/` package; the `firestore-send-fcm` extension is the current sender but no token-pruning cleaner runs against its delivery results.
+- (historical) Cloud Function `onNudgeCreated` previously cleaned tokens reactively on send failure — removed along with the rest of the `functions/` package; the drain endpoint (`api/cron/drain-push-dispatch.ts`) is the current sender and prunes dead tokens itself, per the Status above.
 
 **Problem:** FCM tokens accumulate up to the per-user cap. Background push is now dispatched by the `firestore-send-fcm` extension via `/push_dispatch`, but no companion cleaner prunes tokens from `/pushTargets/{uid}` that the extension reports as invalid — the array sits at the cap and revoked devices stay in the rotation until the user clears their browser data or signs out.
 
@@ -288,8 +288,8 @@ allow read: if isSignedIn() && resource.data.senderUid == request.auth.uid;
 **Status:** Resolved. `judge_invite` is on the same dispatch path as every other notification type:
 
 - `src/services/games.create.ts:151` writes the `judge_invite` notification via `writeNotification`.
-- `src/services/notifications.ts:102` — `writeNotification` unconditionally calls `dispatchPushNotification`, which writes to `/push_dispatch` for **every** type. The `firestore-send-fcm` extension consumes that collection and delivers FCM/APNS background push to the judge.
-- `src/components/GameNotificationWatcher.tsx:19` — `fcmChimeMap` includes `judge_invite: "general"`, and `judge_invite` is in `FIRESTORE_HANDLED_TYPES` so the foreground watcher does not double-toast when the extension delivers the background push.
+- `src/services/notifications.ts:102` — `writeNotification` unconditionally calls `dispatchPushNotification`, which writes to `/push_dispatch` for **every** type. The drain endpoint (`api/cron/drain-push-dispatch.ts`) consumes that collection and delivers FCM/APNS background push to the judge.
+- `src/components/GameNotificationWatcher.tsx:19` — `fcmChimeMap` includes `judge_invite: "general"`, and `judge_invite` is in `FIRESTORE_HANDLED_TYPES` so the foreground watcher does not double-toast when the drain delivers the background push.
 
 No further action required for the judge-invite path. Do not add a separate `/push_dispatch` write for `judge_invite` — the write already happens inside `writeNotification` and a duplicate would cause double background pushes.
 
@@ -318,7 +318,7 @@ No further action required for the judge-invite path. Do not add a separate `/pu
 
 1. ~~**No Firestore rules tests for `/notifications`**~~ — covered by `rules-tests/notifications-redteam.rules.test.ts` and `notification-limits.rules.test.ts` (added after this audit).
 2. ~~**No Firestore rules tests for `/nudges` or `/nudge_limits`**~~ — covered by `rules-tests/nudges-redteam.rules.test.ts`: companion `nudge_limits` write requirement, the 1-hour cooldown gate (including the stale-cooldown bypass), and limit-doc delete-denial are exercised at the rules level.
-3. **Cloud Functions limited to the stats close-out** — the historical notification `functions/` package remains removed. Background push (FCM) is delivered by the `firestore-send-fcm` Firebase Extension's managed Cloud Run worker consuming `/push_dispatch`. Scheduled forfeit enforcement and billing alerts previously implemented in `functions/` are no longer deployed; client-side `forfeitExpiredTurn` continues to run on game completion (auto-forfeit gap tracked in `docs/CHARTER.md` §9.2). Win/loss stat writes moved server-side to the maintainer-approved stats close-out function (`functions/src/applyGameStats.ts`) — none of the notification paths audited here involve it.
+3. **Cloud Functions limited to the stats close-out** — the historical notification `functions/` package remains removed. Background push (FCM) is delivered by the drain endpoint (`api/cron/drain-push-dispatch.ts`, on a five-minute GitHub Actions schedule) consuming `/push_dispatch`. Billing alerts previously implemented in `functions/` are no longer deployed; expired turns are handled by client-side `forfeitExpiredTurn` plus the `api/cron/sweep-expired-turns.ts` sweep (see `docs/CHARTER.md` §9.2). Win/loss stat writes moved server-side to the maintainer-approved stats close-out function (`functions/src/applyGameStats.ts`) — none of the notification paths audited here involve it.
 
 ---
 
