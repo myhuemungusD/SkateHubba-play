@@ -119,7 +119,7 @@ See [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md) for the full 
 
 Before opening a PR, confirm:
 
-- [ ] `npm run verify` passes (`tsc -b && lint && test:coverage && build`)
+- [ ] `npm run verify` passes (`tsc -b && lint && test:coverage && build && check:test-dup`)
 - [ ] New features have tests (unit + smoke + rules tests where applicable)
 - [ ] 100% coverage thresholds on `src/services/**` and `src/hooks/**` still hold
 - [ ] No console.log statements left in code (use `console.warn` for expected error paths only)

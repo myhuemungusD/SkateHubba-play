@@ -145,23 +145,30 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 
 ## Scripts
 
-| Command                    | Description                                                   |
-| -------------------------- | ------------------------------------------------------------- |
-| `npm run dev`              | Start the Vite dev server at `http://localhost:5173`          |
-| `npm run build`            | Type-check + production build → `dist/`                       |
-| `npm run preview`          | Preview the production build locally                          |
-| `npm test`                 | Run the unit + component test suite once                      |
-| `npm run test:watch`       | Run tests in watch mode                                       |
-| `npm run test:coverage`    | Run tests with coverage report (CI gate)                      |
-| `npm run test:rules`       | Run Firestore security-rules tests against the rules emulator |
-| `npm run test:e2e`         | Run Playwright E2E tests (auto-starts emulators)              |
-| `npm run lint`             | Lint source files with ESLint                                 |
-| `npm run lint:fix`         | Lint and auto-fix where possible                              |
-| `npm run format`           | Format `src/**/*.{ts,tsx}` with Prettier                      |
-| `npm run emulators`        | Start the Firebase emulator suite locally                     |
-| `npm run cap:sync`         | Sync the web build into iOS/Android Capacitor projects        |
-| `npm run cap:open:ios`     | Open the iOS project in Xcode                                 |
-| `npm run cap:open:android` | Open the Android project in Android Studio                    |
+| Command                     | Description                                                   |
+| --------------------------- | ------------------------------------------------------------- |
+| `npm run dev`               | Start the Vite dev server at `http://localhost:5173`          |
+| `npm run build`             | Type-check + production build → `dist/`                       |
+| `npm run preview`           | Preview the production build locally                          |
+| `npm run typecheck`         | Run `tsc -b` only                                             |
+| `npm test`                  | Run the unit + component test suite once                      |
+| `npm run test:watch`        | Run tests in watch mode                                       |
+| `npm run test:coverage`     | Run tests with coverage report (CI gate)                      |
+| `npm run test:rules`        | Run Firestore security-rules tests against the rules emulator |
+| `npm run test:e2e`          | Run Playwright E2E tests (auto-starts emulators)              |
+| `npm run test:e2e:ui`       | Same as above in the Playwright UI runner                     |
+| `npm run lint`              | Lint `src/` and `api/` with ESLint                            |
+| `npm run lint:fix`          | Lint and auto-fix where possible                              |
+| `npm run format`            | Format `src/**/*.{ts,tsx}` with Prettier                      |
+| `npm run check:test-dup`    | Flag duplicated test cases (CI gate)                          |
+| `npm run check:file-length` | Report files over the LOC budgets (non-blocking)              |
+| `npm run verify`            | Full CI gate: type-check, lint, coverage, build, test-dup     |
+| `npm run emulators`         | Start the Firebase emulator suite locally                     |
+| `npm run cap:sync`          | Sync the web build into iOS/Android Capacitor projects        |
+| `npm run cap:open:ios`      | Open the iOS project in Xcode                                 |
+| `npm run cap:open:android`  | Open the Android project in Android Studio                    |
+| `npm run cap:run:ios`       | Build and run the app on an iOS device/simulator              |
+| `npm run cap:run:android`   | Build and run the app on an Android device/emulator           |
 
 ---
 
