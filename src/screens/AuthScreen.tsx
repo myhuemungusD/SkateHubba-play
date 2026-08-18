@@ -4,6 +4,7 @@ import { EMAIL_RE, getErrorCode, parseFirebaseError, getUserMessage } from "../u
 import { isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
+import { PasswordToggle } from "../components/ui/PasswordToggle";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
 import { PasswordStrengthMeter } from "../components/PasswordStrengthMeter";
@@ -50,6 +51,8 @@ export function AuthScreen({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [month, setMonth] = useState("");
   const [day, setDay] = useState("");
   const [year, setYear] = useState("");
@@ -316,7 +319,8 @@ export function AuthScreen({
             onChange={setPassword}
             placeholder="••••••••"
             icon="🔒"
-            type="password"
+            type={showPassword ? "text" : "password"}
+            rightSlot={<PasswordToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />}
             autoComplete={isSignup ? "new-password" : "current-password"}
             enterKeyHint={isSignup ? "next" : "go"}
           />
@@ -329,7 +333,14 @@ export function AuthScreen({
               onChange={setConfirm}
               placeholder="••••••••"
               icon="🔒"
-              type="password"
+              type={showConfirm ? "text" : "password"}
+              rightSlot={
+                <PasswordToggle
+                  visible={showConfirm}
+                  onToggle={() => setShowConfirm((v) => !v)}
+                  label="confirm password"
+                />
+              }
               autoComplete="new-password"
               enterKeyHint={showDob ? "next" : "go"}
             />

@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 
 export function Field({
   label,
@@ -11,6 +11,7 @@ export function Field({
   noteLive,
   error,
   icon,
+  rightSlot,
   autoComplete,
   autoFocus,
   disabled,
@@ -32,6 +33,9 @@ export function Field({
   noteLive?: boolean;
   error?: string;
   icon?: string;
+  /** Control pinned inside the input's right edge (e.g. a password toggle).
+   *  The input reserves padding for it so text never runs underneath. */
+  rightSlot?: ReactNode;
   autoComplete?: string;
   autoFocus?: boolean;
   disabled?: boolean;
@@ -85,8 +89,11 @@ export function Field({
             disabled:opacity-40 disabled:cursor-not-allowed
             placeholder:text-subtle/60
             ${error ? "border-brand-red" : "border-border"}
-            ${icon ? "pl-10 pr-4 py-3.5" : "px-4 py-3.5"}`}
+            ${icon ? "pl-10" : "pl-4"} ${rightSlot ? "pr-14" : "pr-4"} py-3.5`}
         />
+        {rightSlot && (
+          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 flex items-center">{rightSlot}</span>
+        )}
       </div>
       {error && (
         <span id={errorId} className="text-xs text-brand-red mt-1.5 block font-body" role="alert">
