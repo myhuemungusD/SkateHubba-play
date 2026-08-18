@@ -44,7 +44,6 @@ function makeValidNudge(overrides: Record<string, unknown> = {}): Record<string,
     senderUsername: "alice",
     recipientUid: RECIPIENT_UID,
     gameId: GAME_ID,
-    delivered: false,
     createdAt: serverTimestamp(),
     ...overrides,
   };
@@ -82,6 +81,13 @@ async function submitNudgeBatch(
 describe("nudges — companion write + 1h cooldown (H1)", () => {
   it("legitimate: first-ever nudge writes both the nudge and the limit doc", async () => {
     await assertSucceeds(submitNudgeBatch());
+  });
+
+  it("legitimate: an OLD client still sending the vestigial `delivered` field is accepted", async () => {
+    // Backwards compat: `delivered` is no longer required on create, and the
+    // nudge rules use no key allowlist, so a stale bundle still sending it
+    // must keep working.
+    await assertSucceeds(submitNudgeBatch({ delivered: false }));
   });
 
   it("attack: CANNOT submit a nudge without the companion nudge_limits write", async () => {
