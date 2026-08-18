@@ -422,6 +422,68 @@ describe("AuthScreen", () => {
     expect(pws[0].value).toBe("password123");
   });
 
+  describe("password visibility toggle", () => {
+    it("flips the password input between masked and plain text", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      const input = screen.getAllByPlaceholderText(/•/)[0];
+      expect(input).toHaveAttribute("type", "password");
+
+      await userEvent.click(screen.getByRole("button", { name: "Show password" }));
+      expect(input).toHaveAttribute("type", "text");
+
+      await userEvent.click(screen.getByRole("button", { name: "Hide password" }));
+      expect(input).toHaveAttribute("type", "password");
+    });
+
+    it("reflects reveal state in aria-pressed", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      const toggle = screen.getByRole("button", { name: "Show password" });
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+      await userEvent.click(toggle);
+      expect(screen.getByRole("button", { name: "Hide password" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("keeps the typed value and does not submit the form when toggled", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      const input = screen.getAllByPlaceholderText(/•/)[0] as HTMLInputElement;
+      await userEvent.type(input, "password123");
+
+      await userEvent.click(screen.getByRole("button", { name: "Show password" }));
+
+      expect(input.value).toBe("password123");
+      expect(mockSignIn).not.toHaveBeenCalled();
+      expect(mockSignInAttempt).not.toHaveBeenCalled();
+    });
+
+    it("leaves focus on the password input while toggling", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      const input = screen.getAllByPlaceholderText(/•/)[0];
+      await userEvent.type(input, "hunter22");
+
+      await userEvent.click(screen.getByRole("button", { name: "Show password" }));
+
+      expect(input).toHaveFocus();
+    });
+
+    it("toggles the confirm field independently of the password field", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
+      const [password, confirmInput] = screen.getAllByPlaceholderText(/•/);
+
+      await userEvent.click(screen.getByRole("button", { name: "Show confirm password" }));
+
+      expect(confirmInput).toHaveAttribute("type", "text");
+      expect(password).toHaveAttribute("type", "password");
+      expect(screen.getByRole("button", { name: "Show password" })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("renders no confirm toggle in sign-in mode", () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      expect(screen.queryByRole("button", { name: /confirm password/ })).not.toBeInTheDocument();
+    });
+  });
+
   describe("auth telemetry (outage detection)", () => {
     it("fires sign_in_attempt + sign_in success on successful email sign-in", async () => {
       mockSignIn.mockResolvedValueOnce({ uid: "uid-success" });
