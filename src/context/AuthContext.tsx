@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
+import { getMfaChallenge, type MfaChallenge } from "../services/mfa";
 import { removeCurrentFcmToken, refreshWebPushTokenIfGranted } from "../services/fcm";
 import { isPushSupported, registerPushToken, unregisterPushToken } from "../services/pushNotifications";
 import type { UserProfile } from "../services/users";
@@ -46,6 +47,11 @@ function clearPendingDeleteUid(): void {
   }
 }
 
+/** Which sign-in surface produced a pending second-factor challenge. Carried
+ *  alongside the challenge so the completion event is attributed to the method
+ *  the user actually used, not a guess. */
+export type MfaMethod = "google" | "email";
+
 export interface AuthContextValue {
   loading: boolean;
   user: ReturnType<typeof useAuth>["user"];
@@ -57,6 +63,24 @@ export interface AuthContextValue {
   googleLoading: boolean;
   googleError: string;
   setGoogleError: (e: string) => void;
+  /**
+   * Pending second-factor challenge captured from a sign-in rejection. Non-null
+   * means the password/Google credential was accepted but Firebase is holding
+   * the session until the user clears their second factor — AuthScreen swaps
+   * the form for MfaVerifyCard while this is set.
+   */
+  mfaChallenge: MfaChallenge | null;
+  /**
+   * Capture a second-factor challenge from a caught sign-in error. Returns true
+   * when the error WAS an MFA challenge (caller should stop its own error
+   * handling), false for every other error (caller proceeds as before).
+   *
+   * `method` records which surface the credential came from so the eventual
+   * `sign_in` event is attributed correctly once the challenge clears.
+   */
+  beginMfaChallenge: (err: unknown, method: MfaMethod) => boolean;
+  /** Abandon the pending challenge and return to the normal sign-in form. */
+  clearMfaChallenge: () => void;
   handleSignOut: () => Promise<void>;
   handleDeleteAccount: () => Promise<void>;
   handleDownloadData: () => Promise<void>;
@@ -98,6 +122,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
   const [googleLoading, setGoogleLoading] = useState(false);
   const [googleError, setGoogleError] = useState("");
+  const [mfaChallenge, setMfaChallenge] = useState<MfaChallenge | null>(null);
+  // Set in the same commit as the challenge above; only read while one is
+  // pending, so its initial value is never observed.
+  const [mfaMethod, setMfaMethod] = useState<MfaMethod>("google");
   // Mirror of PENDING_DELETE_KEY in React state so the banner component can
   // re-render on capture / clear without polling storage.
   const [pendingDeleteUid, setPendingDeleteUid] = useState<string | null>(() => readPendingDeleteUid());
@@ -117,6 +145,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           message: parseFirebaseError(err),
         });
         const code = getErrorCode(err);
+        // A pending second factor is an expected account state, not an outage:
+        // hand it to the MFA card instead of the error banner, and keep it out
+        // of Sentry. It is also NOT a sign-in failure — counting it as one made
+        // every MFA user read as a rising failure rate on the dashboards. The
+        // matching `sign_in` fires once the challenge clears (see the effect
+        // below), so attempt/success stay paired.
+        const redirectChallenge = getMfaChallenge(err);
+        if (redirectChallenge) {
+          logger.info("google_sign_in_mfa_required", { factorCount: redirectChallenge.hints.length });
+          setMfaMethod("google");
+          setMfaChallenge(redirectChallenge);
+          return;
+        }
         analytics.signInFailure("google", code || "redirect_error");
         metrics.signInFailure("google", code || "redirect_error");
         // Skip Sentry for benign user-environment failures (Safari private
@@ -149,6 +190,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: unknown) {
       const code = getErrorCode(err);
+      // Second factor pending: the credential was fine, Firebase is just
+      // holding the session. Surface the challenge UI rather than an error
+      // banner, don't page Sentry, and don't record a sign-in failure — this is
+      // a healthy account state, and the `sign_in` event fires once the
+      // challenge clears.
+      const challenge = getMfaChallenge(err);
+      if (challenge) {
+        logger.info("google_sign_in_mfa_required", { factorCount: challenge.hints.length });
+        setMfaMethod("google");
+        setMfaChallenge(challenge);
+        return;
+      }
       analytics.signInFailure("google", code || "unknown");
       metrics.signInFailure("google", code || "unknown");
       // User-driven dismissals don't warrant any UI — just breadcrumb.
@@ -182,6 +235,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setGoogleLoading(false);
     }
   }, []);
+
+  const beginMfaChallenge = useCallback((err: unknown, method: MfaMethod): boolean => {
+    const challenge = getMfaChallenge(err);
+    if (!challenge) return false;
+    logger.info("mfa_challenge_captured", { factorCount: challenge.hints.length, method });
+    setMfaMethod(method);
+    setMfaChallenge(challenge);
+    return true;
+  }, []);
+
+  const clearMfaChallenge = useCallback(() => setMfaChallenge(null), []);
+
+  // A resolved session retires the challenge: the resolver is single-use, so
+  // holding it once the user is signed in would re-render a dead card if they
+  // ever returned to /auth in the same tab.
+  //
+  // This is also where the deferred `sign_in` event fires. The sign-in attempt
+  // that provoked the challenge recorded neither success nor failure, so
+  // without this an MFA user would be an attempt with no outcome. Guarded on a
+  // challenge actually being pending, so ordinary sign-ins (which emit their
+  // own event at the call site) are not double-counted.
+  useEffect(() => {
+    if (!user || !mfaChallenge) return;
+    logger.info("mfa_sign_in_completed", { uid: user.uid, method: mfaMethod });
+    analytics.signIn(mfaMethod);
+    metrics.signIn(mfaMethod, user.uid);
+    setMfaChallenge(null);
+  }, [user, mfaChallenge, mfaMethod]);
 
   // Reactive analytics-consent gate. PostHog identify is only permitted once
   // the user has accepted the ConsentBanner (see PrivacyPolicy §Usage data:
@@ -285,6 +366,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logger.error("sign_out_error", { message: parseFirebaseError(err) });
     }
     setActiveProfile(null);
+    setMfaChallenge(null);
   }, [user]);
 
   const handleDeleteAccount = useCallback(async () => {
@@ -428,6 +510,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     googleLoading,
     googleError,
     setGoogleError,
+    mfaChallenge,
+    beginMfaChallenge,
+    clearMfaChallenge,
     handleSignOut,
     handleDeleteAccount,
     handleDownloadData,

@@ -323,6 +323,9 @@ function AppRoutes() {
                   googleLoading={auth.googleLoading}
                   googleError={auth.googleError}
                   onGoogleErrorDismiss={() => auth.setGoogleError("")}
+                  mfaChallenge={auth.mfaChallenge}
+                  onMfaBegin={auth.beginMfaChallenge}
+                  onMfaCancel={auth.clearMfaChallenge}
                   showAgeFields={nav.authMode === "signup"}
                   onAgeVerified={nav.setAgeGateResult}
                   onAgeGateReset={nav.clearAgeGate}

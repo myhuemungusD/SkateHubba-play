@@ -26,6 +26,13 @@ const {
   mockPosthogReset,
   mockSetSentryUser,
   mockConsent,
+  mockSignInWithGoogle,
+  mockResolveGoogleRedirect,
+  mockGetMfaChallenge,
+  mockAnalyticsSignIn,
+  mockAnalyticsSignInFailure,
+  mockMetricsSignIn,
+  mockMetricsSignInFailure,
 } = vi.hoisted(() => ({
   mockUseAuth: vi.fn<() => AuthState>(() => ({
     loading: false,
@@ -43,6 +50,15 @@ const {
   mockSetSentryUser: vi.fn(),
   // Default: no analytics consent. Individual tests flip this to true.
   mockConsent: vi.fn<() => boolean>(() => false),
+  mockSignInWithGoogle: vi.fn(),
+  mockResolveGoogleRedirect: vi.fn<() => Promise<unknown>>(() => Promise.resolve(null)),
+  // Default: nothing is a second-factor challenge (matches the real total
+  // function's behaviour for every non-MFA error).
+  mockGetMfaChallenge: vi.fn<(err: unknown) => unknown>(() => null),
+  mockAnalyticsSignIn: vi.fn(),
+  mockAnalyticsSignInFailure: vi.fn(),
+  mockMetricsSignIn: vi.fn(),
+  mockMetricsSignInFailure: vi.fn(),
 }));
 
 vi.mock("../../hooks/useAuth", () => ({
@@ -50,9 +66,12 @@ vi.mock("../../hooks/useAuth", () => ({
 }));
 vi.mock("../../services/auth", () => ({
   signOut: vi.fn(),
-  signInWithGoogle: vi.fn(),
-  resolveGoogleRedirect: vi.fn().mockResolvedValue(null),
+  signInWithGoogle: (...args: unknown[]) => mockSignInWithGoogle(...args),
+  resolveGoogleRedirect: () => mockResolveGoogleRedirect(),
   deleteAccount: (...args: unknown[]) => mockDeleteAccount(...args),
+}));
+vi.mock("../../services/mfa", () => ({
+  getMfaChallenge: (err: unknown) => mockGetMfaChallenge(err),
 }));
 vi.mock("../../services/users", () => ({
   deleteUserData: (...args: unknown[]) => mockDeleteUserData(...args),
@@ -76,7 +95,11 @@ vi.mock("../../services/userData", () => ({
   userDataFilename: vi.fn(() => "export.json"),
 }));
 vi.mock("../../services/analytics", () => ({
-  analytics: { signIn: vi.fn() },
+  analytics: {
+    signIn: (...args: unknown[]) => mockAnalyticsSignIn(...args),
+    signInAttempt: vi.fn(),
+    signInFailure: (...args: unknown[]) => mockAnalyticsSignInFailure(...args),
+  },
 }));
 vi.mock("../../services/logger", () => ({
   logger: {
@@ -85,7 +108,12 @@ vi.mock("../../services/logger", () => ({
     warn: vi.fn(),
     error: (...args: unknown[]) => mockLoggerError(...args),
   },
-  metrics: { signIn: vi.fn(), accountDeleted: vi.fn() },
+  metrics: {
+    signIn: (...args: unknown[]) => mockMetricsSignIn(...args),
+    signInAttempt: vi.fn(),
+    signInFailure: (...args: unknown[]) => mockMetricsSignInFailure(...args),
+    accountDeleted: vi.fn(),
+  },
 }));
 vi.mock("../../lib/sentry", () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
@@ -208,6 +236,227 @@ describe("identity sync", () => {
     expect(mockPosthogReset).toHaveBeenCalled();
     expect(mockSetSentryUser).toHaveBeenCalledWith(null);
     expect(mockPosthogIdentify).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Second-factor challenge capture. Users with MFA enrolled used to be stranded:
+ * the Google popup rejected with auth/multi-factor-auth-required and the raw
+ * code landed in the error banner with no way to finish signing in.
+ */
+describe("mfa challenge", () => {
+  const challenge = { resolver: {}, hints: [{ uid: "f1", factorId: "phone" }] };
+
+  // Exposes the live context so tests can drive the Google flow and read back
+  // the challenge state.
+  function renderCtx(): { current: ReturnType<typeof useAuthContext> | null } {
+    const ctxRef: { current: ReturnType<typeof useAuthContext> | null } = { current: null };
+    function Harness() {
+      const ctx = useAuthContext();
+      // Mirrored in an effect (not during render) so the value published to the
+      // test is always one React has committed. `value` is a fresh object each
+      // render, so this re-runs whenever anything in the context changes.
+      useEffect(() => {
+        ctxRef.current = ctx;
+      }, [ctx]);
+      return null;
+    }
+    render(
+      <AuthProvider>
+        <Harness />
+      </AuthProvider>,
+    );
+    return ctxRef;
+  }
+
+  // Starting point for the "how does it get cleared" cases: a provider with a
+  // challenge already captured.
+  async function renderWithChallenge(
+    method: "google" | "email" = "email",
+  ): Promise<{ current: ReturnType<typeof useAuthContext> | null }> {
+    mockGetMfaChallenge.mockReturnValue(challenge);
+    const ctx = renderCtx();
+    await act(async () => {
+      ctx.current?.beginMfaChallenge({ code: "auth/multi-factor-auth-required" }, method);
+    });
+    expect(ctx.current?.mfaChallenge).toBe(challenge);
+    return ctx;
+  }
+
+  /** Flips useAuth to a signed-in session and nudges a re-render (via a real
+   *  state change) so the provider's effects observe it. */
+  async function resolveSession(ctx: { current: ReturnType<typeof useAuthContext> | null }): Promise<void> {
+    await act(async () => {
+      mockUseAuth.mockReturnValue({
+        loading: false,
+        user: { uid: "u1" } as { uid: string },
+        profile: null,
+        refreshProfile: vi.fn(),
+      });
+      ctx.current?.setActiveProfile({ uid: "u1", username: "sk8r" } as UserProfile);
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetMfaChallenge.mockReturnValue(null);
+    mockUseAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+  });
+
+  it("captures the challenge from a Google rejection without surfacing an error", async () => {
+    const err = { code: "auth/multi-factor-auth-required" };
+    mockSignInWithGoogle.mockRejectedValueOnce(err);
+    mockGetMfaChallenge.mockReturnValue(challenge);
+
+    const ctx = renderCtx();
+    await act(async () => {
+      await ctx.current?.handleGoogleSignIn();
+    });
+
+    expect(mockGetMfaChallenge).toHaveBeenCalledWith(err);
+    expect(ctx.current?.mfaChallenge).toBe(challenge);
+    // The banner stays empty — the card is the recovery path, not an error.
+    expect(ctx.current?.googleError).toBe("");
+    // Expected account state, not an outage: nothing goes to Sentry.
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    expect(mockLoggerInfo).toHaveBeenCalledWith("google_sign_in_mfa_required", { factorCount: 1 });
+    // Nor a failure: attempt=1/failure=1/success=0 per MFA sign-in made
+    // dashboards read growing MFA adoption as a rising failure rate.
+    expect(mockAnalyticsSignInFailure).not.toHaveBeenCalled();
+    expect(mockMetricsSignInFailure).not.toHaveBeenCalled();
+  });
+
+  it("still records a sign-in failure for non-MFA Google rejections", async () => {
+    // The telemetry guard is narrow — only the challenge branch is exempt.
+    mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/user-disabled" });
+
+    const ctx = renderCtx();
+    await act(async () => {
+      await ctx.current?.handleGoogleSignIn();
+    });
+
+    expect(mockAnalyticsSignInFailure).toHaveBeenCalledWith("google", "auth/user-disabled");
+    expect(mockMetricsSignInFailure).toHaveBeenCalledWith("google", "auth/user-disabled");
+  });
+
+  it("emits the deferred sign_in once the challenge resolves, tagged with its method", async () => {
+    // The attempt that provoked the challenge recorded no outcome at all, so
+    // this is the event that closes the funnel.
+    const ctx = await renderWithChallenge("google");
+    expect(mockAnalyticsSignIn).not.toHaveBeenCalled();
+
+    await resolveSession(ctx);
+
+    await waitFor(() => expect(mockAnalyticsSignIn).toHaveBeenCalledWith("google"));
+    expect(mockMetricsSignIn).toHaveBeenCalledWith("google", "u1");
+    expect(mockLoggerInfo).toHaveBeenCalledWith("mfa_sign_in_completed", { uid: "u1", method: "google" });
+  });
+
+  it("attributes the email path when the challenge came from the password form", async () => {
+    const ctx = await renderWithChallenge("email");
+
+    await resolveSession(ctx);
+
+    await waitFor(() => expect(mockAnalyticsSignIn).toHaveBeenCalledWith("email"));
+    expect(mockMetricsSignIn).toHaveBeenCalledWith("email", "u1");
+  });
+
+  it("does NOT emit the deferred sign_in for an ordinary sign-in", async () => {
+    // No challenge was pending, so the call site already emitted its own
+    // event — firing here too would double-count every normal sign-in.
+    const ctx = renderCtx();
+
+    await resolveSession(ctx);
+
+    expect(mockAnalyticsSignIn).not.toHaveBeenCalled();
+    expect(mockMetricsSignIn).not.toHaveBeenCalled();
+  });
+
+  it("captures the challenge from the mount-time redirect resolution", async () => {
+    // Mobile/Safari take the redirect fallback, so the MFA rejection arrives
+    // on mount rather than from the popup call.
+    mockResolveGoogleRedirect.mockRejectedValueOnce({ code: "auth/multi-factor-auth-required" });
+    mockGetMfaChallenge.mockReturnValue(challenge);
+
+    const ctx = renderCtx();
+
+    await waitFor(() => expect(ctx.current?.mfaChallenge).toBe(challenge));
+    expect(ctx.current?.googleError).toBe("");
+    expect(mockCaptureException).not.toHaveBeenCalled();
+    // Same parity rule as the popup path: a challenge is not a failure.
+    expect(mockAnalyticsSignInFailure).not.toHaveBeenCalled();
+    expect(mockMetricsSignInFailure).not.toHaveBeenCalled();
+  });
+
+  it("still records a sign-in failure when the redirect fails for another reason", async () => {
+    mockResolveGoogleRedirect.mockRejectedValueOnce({ code: "auth/network-request-failed" });
+
+    const ctx = renderCtx();
+
+    await waitFor(() =>
+      expect(mockAnalyticsSignInFailure).toHaveBeenCalledWith("google", "auth/network-request-failed"),
+    );
+    expect(mockMetricsSignInFailure).toHaveBeenCalledWith("google", "auth/network-request-failed");
+    expect(ctx.current?.mfaChallenge).toBeNull();
+  });
+
+  it("still surfaces googleError for non-MFA rejections", async () => {
+    mockSignInWithGoogle.mockRejectedValueOnce({ code: "auth/user-disabled" });
+
+    const ctx = renderCtx();
+    await act(async () => {
+      await ctx.current?.handleGoogleSignIn();
+    });
+
+    expect(ctx.current?.mfaChallenge).toBeNull();
+    expect(ctx.current?.googleError).toMatch(/account has been disabled/);
+  });
+
+  it("beginMfaChallenge reports whether the error was a challenge", async () => {
+    const ctx = renderCtx();
+
+    let declined: boolean | undefined;
+    await act(async () => {
+      declined = ctx.current?.beginMfaChallenge(new Error("nope"), "email");
+    });
+    expect(declined).toBe(false);
+    expect(ctx.current?.mfaChallenge).toBeNull();
+
+    mockGetMfaChallenge.mockReturnValue(challenge);
+    let accepted: boolean | undefined;
+    await act(async () => {
+      accepted = ctx.current?.beginMfaChallenge({ code: "auth/multi-factor-auth-required" }, "email");
+    });
+    expect(accepted).toBe(true);
+    expect(ctx.current?.mfaChallenge).toBe(challenge);
+  });
+
+  it("clearMfaChallenge drops the pending challenge", async () => {
+    const ctx = await renderWithChallenge();
+
+    await act(async () => {
+      ctx.current?.clearMfaChallenge();
+    });
+    expect(ctx.current?.mfaChallenge).toBeNull();
+  });
+
+  it("drops the challenge on sign-out", async () => {
+    const ctx = await renderWithChallenge();
+
+    await act(async () => {
+      await ctx.current?.handleSignOut();
+    });
+    expect(ctx.current?.mfaChallenge).toBeNull();
+  });
+
+  it("drops the challenge once a session resolves", async () => {
+    // The resolver is single-use: a signed-in user must never see a stale card
+    // if they navigate back to /auth in the same tab.
+    const ctx = await renderWithChallenge();
+
+    await resolveSession(ctx);
+
+    await waitFor(() => expect(ctx.current?.mfaChallenge).toBeNull());
   });
 });
 

@@ -62,6 +62,23 @@ describe("getAuthErrorMessage", () => {
     expect(msg).not.toMatch(/auth\/internal-error/);
   });
 
+  it("owns the second-factor wording so MfaVerifyCard can't drift from it", () => {
+    // These used to be duplicated byte-for-byte inside MfaVerifyCard, which
+    // shadowed the mapper entirely — two copies of the same copy, one of them
+    // dead and untested.
+    expect(getAuthErrorMessage("auth/invalid-verification-code")).toBe("That code didn't match. Try again.");
+    expect(getAuthErrorMessage("auth/missing-verification-code")).toBe("That code didn't match. Try again.");
+    expect(getAuthErrorMessage("auth/code-expired")).toBe("That code expired. Request a new one.");
+  });
+
+  it("maps the MFA challenge code to fallback copy that names the extra step", () => {
+    // Only reachable when the challenge could not be built — the sign-in flow
+    // normally intercepts this code before any mapping happens.
+    const msg = getAuthErrorMessage("auth/multi-factor-auth-required");
+    expect(msg).toMatch(/two-step verification/i);
+    expect(msg).not.toMatch(/auth\/multi-factor-auth-required/);
+  });
+
   it("returns null for codes the caller must handle itself (context-sensitive)", () => {
     // email-already-in-use pairs with an inline mode-switch action that only
     // makes sense on AuthScreen; user-not-found pairs with the inverse. The

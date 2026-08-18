@@ -3,7 +3,7 @@ import { act, render } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import { Component, type ReactNode } from "react";
 import { useNavigationContext, NavigationProvider, pathToScreen, type Screen } from "../NavigationContext";
-import { AuthProvider } from "../AuthContext";
+import { AuthProvider, useAuthContext } from "../AuthContext";
 
 /** Mutable auth state so a single file can exercise both sides of the bounce. */
 let mockAuth: { loading: boolean; user: { uid: string } | null; profile: { username: string } | null } = {
@@ -23,6 +23,11 @@ vi.mock("../../services/auth", () => ({
 }));
 vi.mock("../../services/users", () => ({
   deleteUserData: vi.fn(),
+}));
+// Any error handed to beginMfaChallenge counts as a second-factor challenge —
+// the real extraction is the service's business, not the router's.
+vi.mock("../../services/mfa", () => ({
+  getMfaChallenge: () => ({ resolver: {}, hints: [{ uid: "f1", factorId: "phone" }] }),
 }));
 vi.mock("../../services/analytics", () => ({
   analytics: { signIn: vi.fn() },
@@ -184,6 +189,40 @@ describe("useNavigationContext", () => {
 
     expect(getByTestId("screen").textContent).toBe("player");
     expect(getByTestId("location").textContent).toBe("/player/u2");
+  });
+
+  it("routes a captured second-factor challenge to /auth so the card has somewhere to render", () => {
+    // AuthScreen is the only renderer of MfaVerifyCard, but Google sign-in also
+    // starts from Landing and a redirect resolves on "/" — the challenge was
+    // captured with nothing on screen, stranding the user mid-sign-in. Mirrors
+    // the googleError → /auth bounce.
+    function MfaTrigger() {
+      const auth = useAuthContext();
+      return (
+        <button
+          type="button"
+          data-testid="mfa"
+          onClick={() => auth.beginMfaChallenge({ code: "auth/multi-factor-auth-required" }, "google")}
+        >
+          go
+        </button>
+      );
+    }
+
+    const { getByTestId } = renderWithProviders(
+      "/",
+      <>
+        <MfaTrigger />
+        <LocationProbe />
+      </>,
+    );
+    expect(getByTestId("location").textContent).toBe("/");
+
+    act(() => {
+      getByTestId("mfa").click();
+    });
+
+    expect(getByTestId("location").textContent).toBe("/auth");
   });
 
   it("setScreen('player') throws — callers must go through navigateToPlayer(uid)", () => {

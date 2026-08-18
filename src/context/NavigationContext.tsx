@@ -170,7 +170,7 @@ export function useNavigationContext(): NavigationContextValue {
 }
 
 export function NavigationProvider({ children }: { children: ReactNode }) {
-  const { loading, user, activeProfile, googleError } = useAuthContext();
+  const { loading, user, activeProfile, googleError, mfaChallenge } = useAuthContext();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -318,6 +318,20 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
     prevGoogleErrorRef.current = googleError;
   }, [googleError, screen, setScreen]);
+
+  // Same mechanism for a captured second-factor challenge. AuthScreen is the
+  // only renderer of the verification card, but Google sign-in also starts from
+  // Landing (and a redirect resolves on "/"), so a challenge captured off /auth
+  // used to leave the user staring at the landing page with a pending session
+  // and no way to finish — a silent dead end.
+  const prevMfaChallengeRef = useRef(mfaChallenge);
+  useEffect(() => {
+    if (mfaChallenge && mfaChallenge !== prevMfaChallengeRef.current && screen !== "auth") {
+      setAuthMode("signin");
+      setScreen("auth");
+    }
+    prevMfaChallengeRef.current = mfaChallenge;
+  }, [mfaChallenge, screen, setScreen]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const value: NavigationContextValue = {
