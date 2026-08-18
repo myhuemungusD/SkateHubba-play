@@ -55,6 +55,14 @@ export interface UserProfile {
   currentWinStreak?: number;
   /** Lifetime high-water mark for {@link currentWinStreak}. Server-written. */
   bestWinStreak?: number;
+  /**
+   * Lifetime letters this user handed out (opponent failed a trick they set).
+   * Aggregated from each game's turnHistory by the stats close-out function.
+   * Server-written; absent on any profile whose games predate the counter.
+   */
+  lettersGiven?: number;
+  /** Lifetime letters this user received. Server-written; see {@link lettersGiven}. */
+  lettersTaken?: number;
   /** # of this user's landed claims that were disputed. Written to the claimer by the dispute referee (admin SDK). Server-written. */
   tricksDisputed?: number;
   /** # of disputes this user initiated. Written to the disputer by the dispute referee (admin SDK). Server-written. */

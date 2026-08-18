@@ -458,6 +458,25 @@ describe("dispute doc mapping", () => {
     const e = await mapOne(validDisputeData({ landVotes: Number.NaN, bailVotes: 4 }));
     expect(e).toMatchObject({ landVotes: 0, bailVotes: 4 });
   });
+
+  it.each(["land", "bail", "tie", "none"])("surfaces the referee's '%s' verdict", async (verdict) => {
+    const d = await mapOne(validDisputeData({ status: "closed", verdict }));
+    expect(d?.verdict).toBe(verdict);
+  });
+
+  it("omits the verdict entirely while the dispute is still open", async () => {
+    const d = await mapOne(validDisputeData({ verdict: undefined }));
+    expect(d?.verdict).toBeUndefined();
+    expect(d).not.toHaveProperty("verdict");
+  });
+
+  it.each([["unknown-literal"], [3], [null], [{}]])(
+    "drops an unrecognised verdict value (%s) rather than leaking it",
+    async (verdict) => {
+      const d = await mapOne(validDisputeData({ status: "closed", verdict }));
+      expect(d?.verdict).toBeUndefined();
+    },
+  );
 });
 
 /* ── castDisputeVerdict ──────────────────────── */

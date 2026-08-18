@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Firestore } from "firebase-admin/firestore";
-import { applyGameStats, type ApplyGameStatsResult } from "./applyGameStats.js";
+import { applyGameStats, tallyLetters, type ApplyGameStatsResult } from "./applyGameStats.js";
 
 // Replace the real FieldValue with a deterministic sentinel so we can assert on
 // the exact payload handed to tx.update without depending on admin internals.
@@ -284,6 +284,142 @@ describe("applyGameStats", () => {
     expect(update).toHaveBeenCalledTimes(1);
     expect(update).toHaveBeenCalledWith({ path: GAME_PATH }, { statsApplied: true });
     expect(warnSpy).toHaveBeenCalledTimes(2);
+  });
+
+  // ── Letter counters derived from turnHistory ──
+  // These ride the same transaction + statsApplied guard as wins/losses, so the
+  // assertions pin both the arithmetic and the "counted at most once" property.
+  describe("letter aggregation", () => {
+    /** A failed turn: `letterTo` took a letter, the other player gave it. */
+    function letterTurn(letterTo: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return { turnNumber: 1, landed: false, letterTo, ...overrides };
+    }
+
+    it("credits lettersTaken to the receiver and lettersGiven to the opponent", async () => {
+      const { db, update } = makeHarness({
+        // P1 wins; P2 took three letters along the way.
+        [GAME_PATH]: terminalGame({
+          turnHistory: [letterTurn(P2), letterTurn(P2), letterTurn(P2)],
+        }),
+        [P1_PATH]: { wins: 3, losses: 1 },
+        [P2_PATH]: { wins: 0, losses: 5 },
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith({ path: P1_PATH }, { ...winPayload(1, 1), lettersGiven: { __increment: 3 } });
+      expect(update).toHaveBeenCalledWith({ path: P2_PATH }, { ...LOSS_INCREMENT, lettersTaken: { __increment: 3 } });
+    });
+
+    it("counts letters in both directions within one game", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame({
+          turnHistory: [letterTurn(P2), letterTurn(P1), letterTurn(P2)],
+        }),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith(
+        { path: P1_PATH },
+        { ...winPayload(1, 1), lettersGiven: { __increment: 2 }, lettersTaken: { __increment: 1 } },
+      );
+      expect(update).toHaveBeenCalledWith(
+        { path: P2_PATH },
+        { ...LOSS_INCREMENT, lettersGiven: { __increment: 1 }, lettersTaken: { __increment: 2 } },
+      );
+    });
+
+    it("ignores landed turns — only a failed turn moves a letter", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame({
+          turnHistory: [
+            { turnNumber: 1, landed: true, letterTo: null },
+            { turnNumber: 2, landed: true, letterTo: P2 },
+          ],
+        }),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      // No letter keys at all — an increment(0) would needlessly create fields.
+      expect(update).toHaveBeenCalledWith({ path: P1_PATH }, winPayload(1, 1));
+      expect(update).toHaveBeenCalledWith({ path: P2_PATH }, LOSS_INCREMENT);
+    });
+
+    it.each([
+      ["a missing turnHistory", undefined],
+      ["a non-array turnHistory", { 0: "nope" }],
+      ["a string turnHistory", "corrupt"],
+      ["an empty turnHistory", []],
+      ["null entries", [null]],
+      ["primitive entries", ["x", 7]],
+      ["entries with no letterTo", [{ turnNumber: 1, landed: false }]],
+      ["entries with a null letterTo", [{ turnNumber: 1, landed: false, letterTo: null }]],
+      ["entries with an empty letterTo", [{ turnNumber: 1, landed: false, letterTo: "" }]],
+      ["entries with a non-string letterTo", [{ turnNumber: 1, landed: false, letterTo: 12 }]],
+      ["entries with a non-boolean landed", [{ turnNumber: 1, landed: "false", letterTo: P2 }]],
+      ["entries with a missing landed", [{ turnNumber: 1, letterTo: P2 }]],
+      ["a letterTo naming a non-participant", [{ turnNumber: 1, landed: false, letterTo: "uid-stranger" }]],
+    ])("writes no letter counters for %s", async (_label, turnHistory) => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame({ turnHistory }),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith({ path: P1_PATH }, winPayload(1, 1));
+      expect(update).toHaveBeenCalledWith({ path: P2_PATH }, LOSS_INCREMENT);
+    });
+
+    it("never increments letters for an already-applied game (idempotency guard covers them)", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame({ statsApplied: true, turnHistory: [letterTurn(P2)] }),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+      });
+
+      expect(await applyGameStats(db, GAME_ID)).toBe("already-applied");
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it("skips the deleted profile's letters but still credits the surviving one", async () => {
+      const { db, update, updatedPaths } = makeHarness({
+        [GAME_PATH]: terminalGame({ turnHistory: [letterTurn(P2), letterTurn(P1)] }),
+        // Winner profile deleted.
+        [P2_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(updatedPaths()).not.toContain(P1_PATH);
+      expect(update).toHaveBeenCalledWith(
+        { path: P2_PATH },
+        { ...LOSS_INCREMENT, lettersGiven: { __increment: 1 }, lettersTaken: { __increment: 1 } },
+      );
+    });
+  });
+
+  describe("tallyLetters (unit)", () => {
+    it("returns a zeroed tally for both players when there is no history", () => {
+      expect(tallyLetters(undefined, P1, P2)).toEqual({
+        [P1]: { lettersTaken: 0, lettersGiven: 0 },
+        [P2]: { lettersTaken: 0, lettersGiven: 0 },
+      });
+    });
+
+    it("counts each qualifying entry exactly once", () => {
+      expect(tallyLetters([{ landed: false, letterTo: P1 }], P1, P2)).toEqual({
+        [P1]: { lettersTaken: 1, lettersGiven: 0 },
+        [P2]: { lettersTaken: 0, lettersGiven: 1 },
+      });
+    });
   });
 
   it("returns 'missing' when the game doc no longer exists", async () => {
