@@ -316,6 +316,17 @@ describe("users/{uid} Tier-1 stat counters — client writes are DENIED", () => 
   });
 });
 
+// Shared by the dispute- and letter-counter suites below: attempt to create
+// Alice's own profile with a single server-only counter set to `value`.
+function createProfileWithCounter(field: string, value: number) {
+  return setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+    uid: ALICE_UID,
+    username: "alice",
+    stance: "Regular",
+    [field]: value,
+  });
+}
+
 // Binding-dispute Phase 2 adds four public counters written EXCLUSIVELY by the
 // dispute referee (Admin SDK): tricksDisputed / disputesRaised / disputesRight /
 // disputesWrong. A self-granted dispute record is exactly as forgeable as a
@@ -325,25 +336,11 @@ describe("users/{uid} dispute stat counters — client writes are DENIED", () =>
   const DISPUTE_COUNTERS = ["tricksDisputed", "disputesRaised", "disputesRight", "disputesWrong"] as const;
 
   it.each(DISPUTE_COUNTERS)("denied: cannot create a profile with a non-zero %s", async (field) => {
-    await assertFails(
-      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        [field]: 7,
-      }),
-    );
+    await assertFails(createProfileWithCounter(field, 7));
   });
 
   it.each(DISPUTE_COUNTERS)("succeeds: creating with %s explicitly zeroed", async (field) => {
-    await assertSucceeds(
-      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        [field]: 0,
-      }),
-    );
+    await assertSucceeds(createProfileWithCounter(field, 0));
   });
 
   it.each(DISPUTE_COUNTERS)("denied: owner CANNOT seed %s on a doc without it", async (field) => {
@@ -409,25 +406,11 @@ describe("users/{uid} letter stat counters — client writes are DENIED", () => 
   const LETTER_COUNTERS = ["lettersGiven", "lettersTaken"] as const;
 
   it.each(LETTER_COUNTERS)("denied: cannot create a profile with a non-zero %s", async (field) => {
-    await assertFails(
-      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        [field]: 7,
-      }),
-    );
+    await assertFails(createProfileWithCounter(field, 7));
   });
 
   it.each(LETTER_COUNTERS)("succeeds: creating with %s explicitly zeroed", async (field) => {
-    await assertSucceeds(
-      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        [field]: 0,
-      }),
-    );
+    await assertSucceeds(createProfileWithCounter(field, 0));
   });
 
   it.each(LETTER_COUNTERS)("denied: owner CANNOT seed %s on a doc without it", async (field) => {
