@@ -1,5 +1,6 @@
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { requireAuth, requireStorage } from "../firebase";
+import { analytics } from "./analytics";
 import { isAvatarSafe } from "./avatarModeration";
 import { logger } from "./logger";
 
@@ -322,6 +323,9 @@ export async function deleteAvatar(uid: string): Promise<{ removed: boolean }> {
       }
     }),
   );
+  // Emitted unconditionally: `removed === false` is itself the signal that the
+  // user had no avatar object, and the dashboard needs the attempt either way.
+  analytics.avatarDeleted(uid);
   return { removed };
 }
 

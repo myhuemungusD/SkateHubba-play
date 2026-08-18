@@ -316,6 +316,17 @@ describe("users/{uid} Tier-1 stat counters — client writes are DENIED", () => 
   });
 });
 
+// Shared by the dispute- and letter-counter suites below: attempt to create
+// Alice's own profile with a single server-only counter set to `value`.
+function createProfileWithCounter(field: string, value: number) {
+  return setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+    uid: ALICE_UID,
+    username: "alice",
+    stance: "Regular",
+    [field]: value,
+  });
+}
+
 // Binding-dispute Phase 2 adds four public counters written EXCLUSIVELY by the
 // dispute referee (Admin SDK): tricksDisputed / disputesRaised / disputesRight /
 // disputesWrong. A self-granted dispute record is exactly as forgeable as a
@@ -325,25 +336,11 @@ describe("users/{uid} dispute stat counters — client writes are DENIED", () =>
   const DISPUTE_COUNTERS = ["tricksDisputed", "disputesRaised", "disputesRight", "disputesWrong"] as const;
 
   it.each(DISPUTE_COUNTERS)("denied: cannot create a profile with a non-zero %s", async (field) => {
-    await assertFails(
-      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        [field]: 7,
-      }),
-    );
+    await assertFails(createProfileWithCounter(field, 7));
   });
 
   it.each(DISPUTE_COUNTERS)("succeeds: creating with %s explicitly zeroed", async (field) => {
-    await assertSucceeds(
-      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        [field]: 0,
-      }),
-    );
+    await assertSucceeds(createProfileWithCounter(field, 0));
   });
 
   it.each(DISPUTE_COUNTERS)("denied: owner CANNOT seed %s on a doc without it", async (field) => {
@@ -397,6 +394,86 @@ describe("users/{uid} dispute stat counters — client writes are DENIED", () =>
         disputesRaised: 2,
         disputesRight: 1,
         disputesWrong: 1,
+      }),
+    );
+  });
+});
+
+// lettersGiven / lettersTaken are incremented by applyGameStats (Admin SDK,
+// bypasses these rules) at game close-out. They are leaderboard-visible, so
+// they get the identical create zero-seed + update backstop lockdown.
+describe("users/{uid} letter stat counters — client writes are DENIED", () => {
+  const LETTER_COUNTERS = ["lettersGiven", "lettersTaken"] as const;
+
+  it.each(LETTER_COUNTERS)("denied: cannot create a profile with a non-zero %s", async (field) => {
+    await assertFails(createProfileWithCounter(field, 7));
+  });
+
+  it.each(LETTER_COUNTERS)("succeeds: creating with %s explicitly zeroed", async (field) => {
+    await assertSucceeds(createProfileWithCounter(field, 0));
+  });
+
+  it.each(LETTER_COUNTERS)("denied: owner CANNOT seed %s on a doc without it", async (field) => {
+    await seed();
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 1 }));
+  });
+
+  it.each(LETTER_COUNTERS)("denied: owner CANNOT inflate a stored %s", async (field) => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        wins: 2,
+        losses: 2,
+        [field]: 2,
+      });
+    });
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 99 }));
+  });
+
+  it.each(LETTER_COUNTERS)("denied: owner CANNOT zero out a stored %s", async (field) => {
+    // Deflation matters too — lettersTaken is a "how often you got beat"
+    // counter, so scrubbing it is as much tampering as inflating lettersGiven.
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        [field]: 12,
+      });
+    });
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 0 }));
+  });
+
+  it("denied: owner CANNOT smuggle a lettersGiven bump alongside a benign stance edit", async () => {
+    await seed({ aliceWins: 3, aliceLosses: 1 });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+        lettersGiven: 25,
+        lettersTaken: 0,
+      }),
+    );
+  });
+
+  it("succeeds: re-writing letter counters to their SAME stored value is not a diff", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        wins: 4,
+        losses: 1,
+        lettersGiven: 9,
+        lettersTaken: 6,
+      });
+    });
+    await assertSucceeds(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+        lettersGiven: 9,
+        lettersTaken: 6,
       }),
     );
   });

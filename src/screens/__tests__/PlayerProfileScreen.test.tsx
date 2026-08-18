@@ -79,6 +79,19 @@ describe("PlayerProfileScreen", () => {
     expect(screen.getByLabelText("Disputes you got wrong: 1")).toBeInTheDocument();
   });
 
+  it("shows the letter counters, defaulting missing fields to 0", () => {
+    render(<PlayerProfileScreen {...baseProps} />);
+    expect(screen.getByLabelText("Letters given: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Letters taken: 0")).toBeInTheDocument();
+  });
+
+  it("reads letter counters straight off the profile doc", () => {
+    const currentUserProfile = { ...baseProps.currentUserProfile, lettersGiven: 9, lettersTaken: 4 };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByLabelText("Letters given: 9")).toBeInTheDocument();
+    expect(screen.getByLabelText("Letters taken: 4")).toBeInTheDocument();
+  });
+
   it("shows empty game history message for own profile", () => {
     render(<PlayerProfileScreen {...baseProps} />);
     expect(screen.getByText("No games played yet")).toBeInTheDocument();

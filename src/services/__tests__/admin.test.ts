@@ -449,7 +449,7 @@ describe("fetchReports — parsing", () => {
     stubReports([reportDoc("r1", fullReport())]);
 
     await expect(fetchReports()).resolves.toEqual([
-      { id: "r1", ...REPORT_FIELDS, createdAt: new Date("2026-06-01T12:00:00Z") },
+      { id: "r1", ...REPORT_FIELDS, createdAt: new Date("2026-06-01T12:00:00Z"), resolvedBy: "", resolvedAt: null },
     ]);
   });
 
@@ -484,6 +484,8 @@ describe("fetchReports — parsing", () => {
       clipId: null,
       status: "",
       createdAt: new Date("2026-06-01T12:00:00Z"),
+      resolvedBy: "",
+      resolvedAt: null,
     });
   });
 
@@ -502,8 +504,35 @@ describe("fetchReports — parsing", () => {
       "reportedUid",
       "reportedUsername",
       "reporterUid",
+      "resolvedAt",
+      "resolvedBy",
       "status",
     ]);
+  });
+
+  it("surfaces the resolution audit pair written by resolveReport", async () => {
+    stubReports([
+      reportDoc("r1", {
+        ...fullReport(),
+        status: "resolved",
+        resolvedBy: "admin-7",
+        resolvedAt: FILED_2025,
+      }),
+    ]);
+
+    const [report] = await fetchReports();
+
+    expect(report.resolvedBy).toBe("admin-7");
+    expect(report.resolvedAt).toEqual(new Date("2025-01-15T09:30:00Z"));
+  });
+
+  it("degrades a mistyped resolvedBy/resolvedAt to the pending sentinels", async () => {
+    stubReports([reportDoc("r1", { ...fullReport(), resolvedBy: 42, resolvedAt: "yesterday" })]);
+
+    const [report] = await fetchReports();
+
+    expect(report.resolvedBy).toBe("");
+    expect(report.resolvedAt).toBeNull();
   });
 
   it("carries the reporter's description through verbatim", async () => {

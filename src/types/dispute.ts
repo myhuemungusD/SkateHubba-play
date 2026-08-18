@@ -15,6 +15,13 @@ import type { Timestamp } from "firebase/firestore";
 export type DisputeVerdict = "land" | "bail";
 
 /**
+ * The referee's ruling on a closed dispute — a superset of `DisputeVerdict`
+ * because the server can also close on a tie or on no usable votes at all.
+ * Mirrors the union `decideDisputeResolution` produces.
+ */
+export type DisputeOutcome = "land" | "bail" | "tie" | "none";
+
+/**
  * Lifecycle of a dispute.
  *
  *  • open   — accepting community verdicts
@@ -69,6 +76,13 @@ export interface Dispute {
   moderationStatus: DisputeModerationStatus;
   landVotes: number;
   bailVotes: number;
+  /**
+   * The referee's ruling, written by `api/cron/resolve-expired-disputes.ts`
+   * when the dispute closes. Absent while the dispute is open (and on any doc
+   * carrying an unrecognised value). `"none"` means the vote window expired
+   * without a usable tally; `"tie"` means land and bail votes were level.
+   */
+  verdict?: DisputeOutcome;
 }
 
 /** A single viewer's verdict on a dispute. */

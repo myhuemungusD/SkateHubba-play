@@ -25,6 +25,8 @@ function buildStats(overrides?: Partial<ProfileStats>): ProfileStats {
     disputesRaised: 0,
     disputesRight: 0,
     disputesWrong: 0,
+    lettersGiven: 0,
+    lettersTaken: 0,
     ...overrides,
   };
 }
@@ -69,5 +71,38 @@ describe("ProfileStatsGrid streak tiles", () => {
     await userEvent.click(screen.getByLabelText("Current win streak: 5"));
     expect(onTileTap).toHaveBeenNthCalledWith(1, "bestStreak");
     expect(onTileTap).toHaveBeenNthCalledWith(2, "currentStreak");
+  });
+});
+
+describe("ProfileStatsGrid letter tiles", () => {
+  it("renders both letter tiles in the letters row", () => {
+    render(<ProfileStatsGrid stats={buildStats()} isOwnProfile hasCompletedGames={false} />);
+    const lettersRow = screen.getByTestId("letters-row");
+    expect(lettersRow).toHaveTextContent("Letters Given");
+    expect(lettersRow).toHaveTextContent("Letters Taken");
+  });
+
+  it("labels each letter tile with its final value, not the count-up frame", () => {
+    render(
+      <ProfileStatsGrid stats={buildStats({ lettersGiven: 17, lettersTaken: 6 })} isOwnProfile hasCompletedGames />,
+    );
+    expect(screen.getByLabelText("Letters given: 17")).toBeInTheDocument();
+    expect(screen.getByLabelText("Letters taken: 6")).toBeInTheDocument();
+  });
+
+  it("reports the tapped letter tile names to the telemetry handler", async () => {
+    const onTileTap = vi.fn();
+    render(
+      <ProfileStatsGrid
+        stats={buildStats({ lettersGiven: 2, lettersTaken: 3 })}
+        isOwnProfile
+        hasCompletedGames={false}
+        onTileTap={onTileTap}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText("Letters given: 2"));
+    await userEvent.click(screen.getByLabelText("Letters taken: 3"));
+    expect(onTileTap).toHaveBeenNthCalledWith(1, "lettersGiven");
+    expect(onTileTap).toHaveBeenNthCalledWith(2, "lettersTaken");
   });
 });

@@ -55,6 +55,14 @@ export interface ProfileStats {
   disputesRight: number;
   /** Of raised disputes, the ones the community overturned (land verdict). */
   disputesWrong: number;
+  /**
+   * SKATE letter counters, server-written by the stats close-out function;
+   * 0 for docs predating the feature.
+   */
+  /** Letters this player handed out to opponents. */
+  lettersGiven: number;
+  /** Letters this player took from opponents. */
+  lettersTaken: number;
 }
 
 interface Args {
@@ -216,6 +224,8 @@ export function usePlayerProfileController({
       disputesRaised: profile?.disputesRaised ?? 0,
       disputesRight: profile?.disputesRight ?? 0,
       disputesWrong: profile?.disputesWrong ?? 0,
+      lettersGiven: profile?.lettersGiven ?? 0,
+      lettersTaken: profile?.lettersTaken ?? 0,
     };
   }, [profile, completedGames, viewerUid]);
 

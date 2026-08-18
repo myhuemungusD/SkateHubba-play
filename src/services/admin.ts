@@ -86,6 +86,13 @@ export interface AdminReport {
   status: string;
   /** Filing time, or `null` when the field is missing or not a Timestamp. */
   createdAt: Date | null;
+  /**
+   * Admin uid stamped by {@link resolveReport}. Empty string while the report
+   * is still pending (or on a doc resolved before the field was written).
+   */
+  resolvedBy: string;
+  /** Resolution time, or `null` when unresolved / not a Timestamp. */
+  resolvedAt: Date | null;
 }
 
 /** Fields the console supplies when minting a locker item. */
@@ -353,6 +360,11 @@ function toAdminReport(snap: ParsableDoc): AdminReport | null {
     clipId: toStringOrNull(data.clipId),
     status: toStringOrEmpty(data.status),
     createdAt: toDateOrNull(data.createdAt),
+    // The resolution audit pair. Written by `resolveReport`; absent on every
+    // pending report, so both degrade to the empty/null sentinels rather than
+    // failing the parse.
+    resolvedBy: toStringOrEmpty(data.resolvedBy),
+    resolvedAt: toDateOrNull(data.resolvedAt),
   };
 }
 

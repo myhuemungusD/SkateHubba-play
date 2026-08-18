@@ -94,8 +94,10 @@ describe("sendNudge", () => {
       recipientUid: "u2",
       gameId: "g1",
       createdAt: "SERVER_TS",
-      delivered: false,
     });
+    // `delivered` was vestigial — nothing ever flipped it, and no reader
+    // consulted it. It must not come back.
+    expect(nudgeCall?.data).not.toHaveProperty("delivered");
 
     const limitCall = batchSetCalls.find((c) => c.ref === "nudge_limits/u1_g1");
     expect(limitCall?.data).toEqual({

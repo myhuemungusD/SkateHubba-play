@@ -222,6 +222,8 @@ service cloud.firestore {
         && (!('gamesPlayed' in request.resource.data) || request.resource.data.gamesPlayed == 0)
         && (!('currentWinStreak' in request.resource.data) || request.resource.data.currentWinStreak == 0)
         && (!('bestWinStreak' in request.resource.data) || request.resource.data.bestWinStreak == 0)
+        && (!('lettersGiven' in request.resource.data) || request.resource.data.lettersGiven == 0)
+        && (!('lettersTaken' in request.resource.data) || request.resource.data.lettersTaken == 0)
         // Binding-dispute stat counters (server-written by the dispute referee)
         // get the same zero-seed treatment — a signup must not mint a dispute
         // history for itself. Written exclusively server-side; see the update
@@ -294,7 +296,8 @@ service cloud.firestore {
         //     legacy sensitive fields; once moved to /private they must
         //     never reappear or be re-written on the public doc.
         //   wins, losses, lastStatsGameId, gamesPlayed, currentWinStreak,
-        //     bestWinStreak, tricksDisputed, disputesRaised, disputesRight,
+        //     bestWinStreak, lettersGiven, lettersTaken,
+        //     tricksDisputed, disputesRaised, disputesRight,
         //     disputesWrong — stats are written exclusively server-side
         //     (applyGameStats Cloud Function + the one-time admin backfill for
         //     win/streak counters; the dispute referee for the four dispute
@@ -309,6 +312,7 @@ service cloud.firestore {
                      'fcmTokens',
                      'wins', 'losses', 'lastStatsGameId',
                      'gamesPlayed', 'currentWinStreak', 'bestWinStreak',
+                     'lettersGiven', 'lettersTaken',
                      'tricksDisputed', 'disputesRaised', 'disputesRight', 'disputesWrong']))
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
@@ -1795,7 +1799,6 @@ service cloud.firestore {
         && request.resource.data.recipientUid != request.auth.uid
         && request.resource.data.gameId is string
         && request.resource.data.senderUsername is string
-        && request.resource.data.delivered == false
         // Sender must be a player in the game, recipient must be the other player
         && (
           (request.auth.uid == get(/databases/$(database)/documents/games/$(request.resource.data.gameId)).data.player1Uid
@@ -1815,12 +1818,12 @@ service cloud.firestore {
         // the rule rejects. Mirrors the /reports pattern (H-R2).
         && getAfter(/databases/$(database)/documents/nudge_limits/$(request.auth.uid + '_' + request.resource.data.gameId)).data.lastNudgedAt == request.time;
 
-      // Immutable. `delivered` is a vestigial field: it was to be flipped by an
-      // onNudgeCreated Cloud Function that was removed with the functions/
-      // package, and nothing writes it now. Nudge delivery is observable via
-      // the recipient's /nudges listener and the /push_dispatch queue instead.
-      // Kept on the doc (and required == false on create) only because changing
-      // the shape would need a rules + client migration for no benefit.
+      // Immutable. (The old `delivered` flag was vestigial — it was to be
+      // flipped by an onNudgeCreated Cloud Function that no longer exists.
+      // The client no longer writes it and creates no longer require it;
+      // there is no key allowlist here, so old clients still sending
+      // `delivered` continue to pass.) Nudge delivery is observable via the
+      // recipient's /nudges listener and the /push_dispatch queue instead.
       allow update: if false;
 
       // Sender or recipient can read nudges
