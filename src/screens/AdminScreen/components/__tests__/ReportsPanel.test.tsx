@@ -102,6 +102,79 @@ describe("ReportsPanel", () => {
     expect(screen.queryByTestId("report-clip-r1")).not.toBeInTheDocument();
   });
 
+  const resolvedReport = {
+    ...report,
+    status: "resolved",
+    resolvedBy: "admin7",
+    resolvedAt: new Date(Date.now() - 3 * 60_000),
+  };
+
+  it("shows who resolved a report and when", async () => {
+    mockFetchReports.mockResolvedValue([resolvedReport]);
+    renderPanel();
+
+    expect(await screen.findByTestId("report-resolution-r1")).toHaveTextContent("resolved by admin7 · 3m ago");
+  });
+
+  it("refetches with the selected status when the resolved tab is picked", async () => {
+    renderPanel();
+    await screen.findByTestId("report-r1");
+    expect(mockFetchReports).toHaveBeenCalledWith("pending");
+
+    mockFetchReports.mockResolvedValue([resolvedReport]);
+    await userEvent.click(screen.getByRole("tab", { name: "RESOLVED" }));
+
+    await waitFor(() => expect(mockFetchReports).toHaveBeenLastCalledWith("resolved"));
+    expect(await screen.findByTestId("report-resolution-r1")).toHaveTextContent("resolved by admin7 · 3m ago");
+    expect(screen.getByRole("tab", { name: "RESOLVED" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tab", { name: "PENDING" })).toHaveAttribute("aria-selected", "false");
+    expect(screen.getByText("RESOLVED REPORTS")).toBeInTheDocument();
+  });
+
+  it("offers no verdict buttons on an already-closed report", async () => {
+    // firestore.rules only allows the update while status == 'pending', so a
+    // verdict button here would be a guaranteed permission-denied.
+    mockFetchReports.mockResolvedValue([resolvedReport]);
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.queryByRole("button", { name: "RESOLVE" })).not.toBeInTheDocument();
+    expect(row.queryByRole("button", { name: "DISMISS" })).not.toBeInTheDocument();
+  });
+
+  it("re-selecting the active tab does not refetch", async () => {
+    renderPanel();
+    await screen.findByTestId("report-r1");
+    expect(mockFetchReports).toHaveBeenCalledTimes(1);
+
+    await userEvent.click(screen.getByRole("tab", { name: "PENDING" }));
+    expect(mockFetchReports).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows a status-specific empty state on the resolved tab", async () => {
+    renderPanel();
+    await screen.findByTestId("report-r1");
+
+    mockFetchReports.mockResolvedValue([]);
+    await userEvent.click(screen.getByRole("tab", { name: "RESOLVED" }));
+
+    expect(await screen.findByTestId("reports-empty")).toHaveTextContent("No resolved reports");
+  });
+
+  it("says unknown for a report resolved before the audit fields shipped", async () => {
+    mockFetchReports.mockResolvedValue([{ ...report, status: "dismissed", resolvedBy: "", resolvedAt: null }]);
+    renderPanel();
+
+    expect(await screen.findByTestId("report-resolution-r1")).toHaveTextContent("dismissed by unknown · unknown");
+  });
+
+  it("omits the resolution line while a report is still pending", async () => {
+    renderPanel();
+
+    await screen.findByTestId("report-r1");
+    expect(screen.queryByTestId("report-resolution-r1")).not.toBeInTheDocument();
+  });
+
   it("falls back to the raw reason for a value this build doesn't know", async () => {
     mockFetchReports.mockResolvedValue([{ ...report, reason: "future_reason" }]);
     renderPanel();

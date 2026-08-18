@@ -54,7 +54,9 @@ export type StatTileName =
   | "tricksDisputed"
   | "disputesRaised"
   | "disputesRight"
-  | "disputesWrong";
+  | "disputesWrong"
+  | "lettersGiven"
+  | "lettersTaken";
 
 export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTileTap }: Props) {
   return (
@@ -113,6 +115,26 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
           label="Current Streak"
           value={stats.currentWinStreak}
           ariaLabel={`Current win streak: ${stats.currentWinStreak}`}
+          onTap={onTileTap}
+        />
+      </Row>
+
+      {/* Letters section — SKATE letters handed out vs. taken, server-written
+          by the stats close-out. 0 on profiles predating the counters. */}
+      <p className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-2.5 mt-2 animate-fade-in">LETTERS</p>
+      <Row testid="letters-row" cols="grid-cols-2">
+        <StatTile
+          name="lettersGiven"
+          label="Letters Given"
+          value={stats.lettersGiven}
+          ariaLabel={`Letters given: ${stats.lettersGiven}`}
+          onTap={onTileTap}
+        />
+        <StatTile
+          name="lettersTaken"
+          label="Letters Taken"
+          value={stats.lettersTaken}
+          ariaLabel={`Letters taken: ${stats.lettersTaken}`}
           onTap={onTileTap}
         />
       </Row>

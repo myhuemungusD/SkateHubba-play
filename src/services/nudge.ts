@@ -83,7 +83,6 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
     recipientUid,
     gameId,
     createdAt: serverTimestamp(),
-    delivered: false,
   });
   batch.set(limitRef, { senderUid, gameId, lastNudgedAt: serverTimestamp() });
 
