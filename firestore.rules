@@ -47,6 +47,19 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    // ── Admin custom claim ──
+    // `admin: true` is minted on the ID token by the Admin SDK (out-of-band
+    // console tooling) and can never be self-assigned by a client, so it is a
+    // safe authorization signal for the privileged console surfaces:
+    // Verified-Pro granting (users/{uid}), badge + gear awarding
+    // (users/{uid}/achievements, users/{uid}/locker) and report moderation
+    // (reports/{reportId}). The claim only widens WHO may write — every admin
+    // path below stays field-scoped, so a stolen admin token still cannot
+    // rewrite usernames, inflate stats, or edit a report's evidence.
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
     function isPlayer(game) {
       return isSignedIn() && (
         request.auth.uid == game.player1Uid ||
@@ -378,6 +391,33 @@ service cloud.firestore {
             )
           )
         );
+      // ── Verified-Pro grant / revoke (admin custom claim) ──
+      // Deliberately a SEPARATE `allow update` clause: Firestore ORs allow
+      // rules, so the owner clause above is untouched — its
+      // affectedKeys().hasAny([...]) backstop still denies every client
+      // self-grant, and a non-admin's accepted set is byte-for-byte what it
+      // was before this clause existed. This is the ONLY client path that may
+      // change the three pro fields, and it may change NOTHING else:
+      // `hasOnly` pins the affected key set so an admin cannot ride a
+      // username rewrite or a wins inflation along in the same write.
+      // verifiedBy/verifiedAt are the audit trail — pinned to the acting
+      // admin and to server time so a grant can never be forged onto another
+      // moderator or back-dated.
+      //
+      // SELF-GRANT IS FORBIDDEN (`uid != request.auth.uid`): a single
+      // compromised admin token must not be able to mint its own Verified-Pro
+      // badge, and the four-eyes shape means every client-side grant is
+      // attributable to a DIFFERENT operator than its subject. Founder / first
+      // -admin self-verification is still possible out-of-band via
+      // scripts/grant-pro.ts, which runs on the Admin SDK and bypasses these
+      // rules entirely — that path is deliberately not client-reachable.
+      allow update: if isAdmin()
+        && uid != request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['isVerifiedPro', 'verifiedBy', 'verifiedAt'])
+        && request.resource.data.isVerifiedPro is bool
+        && request.resource.data.verifiedBy == request.auth.uid
+        && request.resource.data.verifiedAt == request.time;
       // NOTE: there is deliberately no peer-write branch. wins/losses were
       // once closed out by either participant (canPeerCloseStats); that
       // client fan-out corrupted counters and has been removed. Stats are
@@ -504,31 +544,70 @@ service cloud.firestore {
       }
 
       // ── Achievements (subcollection) ──
-      // Earned-achievement records. Grants are server-authored (Admin SDK
-      // only) — clients never mint or mutate them, hence create/update are
-      // denied outright. The owner needs DELETE so the account-deletion batch
-      // in src/services/users.ts (~345-353) can wipe them atomically alongside
-      // /private + the parent user doc; under default-deny that batch fails
-      // closed and breaks GDPR erasure.
+      // Earned-achievement records. Grants are PRIVILEGED writes: either the
+      // Admin SDK (server-side award pipeline, bypasses these rules) or an
+      // operator holding the `admin: true` custom claim (console award).
+      // Ordinary clients never mint or mutate them. The owner needs DELETE so
+      // the account-deletion batch in src/services/users.ts (~345-353) can
+      // wipe them atomically alongside /private + the parent user doc; under
+      // default-deny that batch fails closed and breaks GDPR erasure.
       match /achievements/{achievementId} {
         // Badges are public reputation — any signed-in user renders them on
-        // another skater's profile (/player/:uid). Writes stay Admin-SDK-only.
+        // another skater's profile (/player/:uid).
         allow read: if isSignedIn();
-        allow delete: if isOwner(uid);
-        allow create, update: if false;
+        // Award shape is pinned exactly: no extra keys (a badge that carries
+        // client-chosen fields becomes an unbounded write surface),
+        // server-stamped earnedAt, bounded human-readable reason.
+        allow create: if isAdmin()
+          && request.resource.data.keys().hasOnly(['earnedAt', 'reason'])
+          && request.resource.data.earnedAt == request.time
+          && request.resource.data.reason is string
+          && request.resource.data.reason.size() <= 200;
+        // A badge is never edited — a wrong award is revoked and re-issued,
+        // which keeps earnedAt honest.
+        allow update: if false;
+        // Owner: GDPR erasure batch. Admin: revoke a wrongly-awarded badge.
+        allow delete: if isOwner(uid) || isAdmin();
       }
 
       // ── Locker (subcollection) ──
       // Owned economy items (gear/cosmetics). Same posture as /achievements:
-      // minted server-side by the Admin SDK, deletable by the owner so the
-      // account-deletion batch stays atomic.
+      // minted by the Admin SDK award pipeline or by an `admin: true` console
+      // operator, deletable by the owner so the account-deletion batch stays
+      // atomic.
       match /locker/{itemId} {
-        // Equipped gear is public reputation, shown on /player/:uid. Client
-        // create/update is denied outright — a client that can mint gear has
-        // no economy.
+        // Equipped gear is public reputation, shown on /player/:uid. Ordinary
+        // client create/update is denied outright — a client that can mint
+        // gear has no economy.
         allow read: if isSignedIn();
-        allow delete: if isOwner(uid);
-        allow create, update: if false;
+        // Exact item shape. Every listed key is required in practice: the
+        // per-field checks below read each one, so a create that omits any of
+        // them fails closed. Strings are length-capped (an award is metadata,
+        // not a payload channel) and acquiredAt is server-stamped.
+        allow create: if isAdmin()
+          && request.resource.data.keys().hasOnly(
+               ['type', 'brand', 'name', 'imageUrl', 'rarity', 'acquiredAt', 'provenance'])
+          && request.resource.data.type is string
+          && request.resource.data.type.size() <= 100
+          && request.resource.data.brand is string
+          && request.resource.data.brand.size() <= 100
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 100
+          && request.resource.data.rarity is string
+          && request.resource.data.rarity.size() <= 100
+          && (request.resource.data.imageUrl == null || request.resource.data.imageUrl is string)
+          && request.resource.data.acquiredAt == request.time
+          // provenance is the award's audit note; only a bounded `reason`.
+          && request.resource.data.provenance is map
+          && request.resource.data.provenance.keys().hasOnly(['reason'])
+          && request.resource.data.provenance.reason is string
+          && request.resource.data.provenance.reason.size() <= 200;
+        // Items are immutable once awarded — re-award instead of editing, so
+        // acquiredAt and provenance stay truthful.
+        allow update: if false;
+        // Owner: GDPR erasure batch. Admin: revoke wrongly-awarded gear.
+        allow delete: if isOwner(uid) || isAdmin();
       }
     }
 
@@ -2129,11 +2208,15 @@ service cloud.firestore {
     // (That caps the worst case at 24 reports/day against a single target
     // per reporter — fine for moderation triage; no per-day counter needed.)
     //
-    // Reports are immutable once created (only Admin SDK can update status).
+    // Report CONTENT is immutable once created; only the moderation
+    // close-out fields may change, and only via the Admin SDK or an
+    // `admin: true` console operator (see the update rule below).
     match /reports/{reportId} {
-      // Only the reporter can read their own reports (to check for duplicates)
-      allow read: if isSignedIn()
-        && resource.data.reporterUid == request.auth.uid;
+      // The reporter reads their own reports (duplicate check in the UI); an
+      // admin reads every report — that IS the moderation queue. The reported
+      // user must never read it (retaliation vector).
+      allow read: if isAdmin()
+        || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
 
       allow create: if isSignedIn()
         && request.resource.data.reporterUid == request.auth.uid
@@ -2173,8 +2256,27 @@ service cloud.firestore {
         // write, the doc won't exist there and the rule rejects.
         && getAfter(/databases/$(database)/documents/reports_limits/$(request.auth.uid + '_' + request.resource.data.reportedUid)).data.lastSentAt == request.time;
 
-      // Reports are immutable — only Admin SDK can update (for moderation)
-      allow update: if false;
+      // ── Moderation close-out (admin custom claim) ──
+      // Reports stay immutable to everyone else — a reporter can never
+      // rewrite their own filing. An admin may only move a report to a
+      // TERMINAL state with an audit trail: `pending` is not an accepted
+      // target, so a report cannot be silently reopened/recycled, and
+      // `hasOnly` keeps reason/description/gameId/clipId (the evidence) and
+      // reporterUid/reportedUid (the parties) frozen in the same write.
+      //
+      // The close-out is ONE-WAY: only a still-`pending` report may be
+      // actioned. Without this, a second admin (or a replayed token) could
+      // overwrite an existing verdict — flipping resolved→dismissed and
+      // rewriting resolvedBy/resolvedAt — which destroys the audit trail of
+      // who actually adjudicated the report.
+      allow update: if isAdmin()
+        && resource.data.status == 'pending'
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'resolvedBy', 'resolvedAt'])
+        && request.resource.data.status in ['resolved', 'dismissed']
+        && request.resource.data.resolvedBy == request.auth.uid
+        && request.resource.data.resolvedAt == request.time;
+      // Reports are the moderation audit trail — nobody deletes them.
       allow delete: if false;
     }
 

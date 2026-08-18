@@ -10,6 +10,7 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  getIdTokenResult,
   type User,
   type ActionCodeSettings,
 } from "firebase/auth";
@@ -208,6 +209,39 @@ export async function reloadUser(): Promise<boolean | null> {
     await user.getIdToken(/* forceRefresh= */ true);
   }
   return user.emailVerified;
+}
+
+/**
+ * Whether the signed-in user carries the `admin` custom claim.
+ *
+ * The claim is minted out of band (`scripts/set-admin-claim.mjs`) and is what
+ * `firestore.rules` checks on every admin-console write path, so this read is
+ * purely a UI affordance: it decides whether to render the console, never
+ * whether a write is allowed. A user who flips the returned boolean in a
+ * debugger gets a console whose every action is rejected server-side.
+ *
+ * Reads the cached ID token (`forceRefresh: false`) — a network round-trip on
+ * every render guard is not worth it. The consequence is that a freshly
+ * granted or revoked claim only lands after the token refreshes (up to an
+ * hour, or immediately on sign-out/sign-in), which is why the granting script
+ * prints that reminder.
+ *
+ * Returns `false` when signed out, when Firebase is not initialised, and on
+ * any token-read failure: no claim readable means no console.
+ */
+export async function getAdminClaim(): Promise<boolean> {
+  try {
+    const user = requireAuth().currentUser;
+    if (!user) return false;
+    const result = await getIdTokenResult(user, /* forceRefresh= */ false);
+    // ParsedToken is an `any`-valued index signature; re-type it as unknown so
+    // the comparison below is checked rather than silently permissive.
+    const claims = result.claims as Record<string, unknown>;
+    return claims.admin === true;
+  } catch (err) {
+    logger.warn("admin_claim_read_failed", { error: parseFirebaseError(err) });
+    return false;
+  }
 }
 
 /**
