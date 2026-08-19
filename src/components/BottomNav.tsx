@@ -48,7 +48,7 @@ export function BottomNav() {
 
   return (
     <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-safe">
-      <div className="max-w-lg mx-auto glass rounded-2xl shadow-glass">
+      <div className="max-w-[430px] mx-auto glass rounded-2xl shadow-glass">
         <ul className="flex items-stretch justify-around px-2 py-2">
           {NAV_ITEMS.map((item) => {
             const active = isActive(item);

@@ -96,7 +96,7 @@ function AppEmailVerifyBanner() {
   if (!auth.user) return null;
   if (BANNER_HIDDEN_PATHS.has(location.pathname)) return null;
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-[430px] mx-auto">
       <VerifyEmailBanner emailVerified={auth.user.emailVerified} onManualReload={auth.reloadAuthUser} />
     </div>
   );
@@ -151,6 +151,7 @@ function PlayerProfileRoute({
   onAddSpot,
   onRefreshProfile,
   onSignUp,
+  onEditProfile,
 }: {
   currentUserProfile: import("./services/users").UserProfile | null;
   ownGames: import("./services/games").GameDoc[];
@@ -162,6 +163,7 @@ function PlayerProfileRoute({
   onAddSpot: () => void;
   onRefreshProfile: () => Promise<void>;
   onSignUp: () => void;
+  onEditProfile: () => void;
 }) {
   const { uid } = useParams<{ uid: string }>();
   if (!uid) return <Navigate to={currentUserProfile ? "/lobby" : "/"} replace />;
@@ -183,6 +185,7 @@ function PlayerProfileRoute({
       onAddSpot={onAddSpot}
       onRefreshProfile={onRefreshProfile}
       onSignUp={onSignUp}
+      onEditProfile={isOwn ? onEditProfile : undefined}
     />
   );
 }
@@ -511,6 +514,7 @@ function AppRoutes() {
                     onViewPlayer={nav.navigateToPlayer}
                     onAddSpot={nav.navigateToMapWithAddSpot}
                     onRefreshProfile={auth.refreshProfile}
+                    onEditProfile={() => navigate("/settings")}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -539,6 +543,7 @@ function AppRoutes() {
                     nav.setAuthMode("signup");
                     nav.setScreen("auth");
                   }}
+                  onEditProfile={() => navigate("/settings")}
                 />
               }
             />

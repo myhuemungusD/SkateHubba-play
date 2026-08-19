@@ -94,8 +94,9 @@ describe("PlayerProfileScreen — signed-out visitor", () => {
   });
 
   it("withholds own-profile affordances", () => {
-    render(<PlayerProfileScreen {...visitorProps} onAddSpot={vi.fn()} />);
+    render(<PlayerProfileScreen {...visitorProps} onAddSpot={vi.fn()} onEditProfile={vi.fn()} />);
     expect(screen.queryByTestId("share-my-profile-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("edit-profile-button")).not.toBeInTheDocument();
     expect(screen.queryByTestId("added-spots-placeholder")).not.toBeInTheDocument();
   });
 

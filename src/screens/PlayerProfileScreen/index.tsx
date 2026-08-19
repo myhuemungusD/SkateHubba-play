@@ -65,6 +65,12 @@ interface Props {
    * public profile simply has no CTA.
    */
   onSignUp?: () => void;
+  /**
+   * Opens the profile-editing surface (Settings) from the own-profile header.
+   * Omit and the Edit Profile button is not rendered at all — an inert button
+   * next to Share would be worse than no button.
+   */
+  onEditProfile?: () => void;
 }
 
 /**
@@ -117,6 +123,7 @@ export function PlayerProfileScreen({
   onAddSpot,
   onRefreshProfile,
   onSignUp,
+  onEditProfile,
 }: Props) {
   const c = usePlayerProfileController({
     viewedUid,
@@ -238,7 +245,7 @@ export function PlayerProfileScreen({
       )}
       <ProfileHeader onBack={onBack} backLabel={backLabel} />
 
-      <div className="px-5 pt-7 max-w-lg mx-auto">
+      <div className="px-5 pt-7 max-w-[430px] mx-auto">
         <ProfileIdentityCard
           username={profile.username}
           isVerifiedPro={profile.isVerifiedPro}
@@ -249,15 +256,30 @@ export function PlayerProfileScreen({
         />
 
         {isOwnProfile && (
-          <button
-            type="button"
-            onClick={handleShareProfile}
-            data-testid="share-my-profile-button"
-            className="w-full mb-6 px-4 py-2.5 rounded-full border border-brand-orange/40 bg-brand-orange/[0.08] font-display text-sm tracking-wider text-brand-orange focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-            aria-label="Share my profile"
-          >
-            {shareCopiedAt ? "LINK COPIED" : "SHARE MY PROFILE"}
-          </button>
+          // Two compact secondary actions side by side. Neither is the primary
+          // job of this screen, so neither takes the full width or the orange
+          // treatment that the Challenge CTA owns.
+          <div className="flex items-center gap-2 mb-6">
+            {onEditProfile && (
+              <button
+                type="button"
+                onClick={onEditProfile}
+                data-testid="edit-profile-button"
+                className="flex-1 min-h-[44px] px-3 rounded-xl bg-surface border border-white/[0.06] shadow-card font-display text-xs tracking-wider text-white/80 hover:text-white hover:bg-surface-alt transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                EDIT PROFILE
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleShareProfile}
+              data-testid="share-my-profile-button"
+              className="flex-1 min-h-[44px] px-3 rounded-xl bg-surface border border-white/[0.06] shadow-card font-display text-xs tracking-wider text-white/80 hover:text-white hover:bg-surface-alt transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              aria-label="Share my profile"
+            >
+              {shareCopiedAt ? "LINK COPIED" : "SHARE"}
+            </button>
+          </div>
         )}
 
         {/* Challenging and blocking both need an account. A signed-out visitor

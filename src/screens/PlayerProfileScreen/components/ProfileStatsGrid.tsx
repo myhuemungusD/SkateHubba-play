@@ -213,7 +213,7 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
 
 function Row({ cols, testid, children }: { cols: string; testid: string; children: React.ReactNode }) {
   return (
-    <div data-testid={testid} className={`grid ${cols} gap-2.5 mb-2.5 animate-fade-in`}>
+    <div data-testid={testid} className={`grid ${cols} gap-2 mb-2 animate-fade-in`}>
       {children}
     </div>
   );
@@ -282,9 +282,9 @@ function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatTileProp
       type="button"
       onClick={handleClick}
       aria-label={ariaLabel}
-      className="text-left rounded-2xl glass-card p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+      className="text-left rounded-xl bg-surface border border-white/[0.06] shadow-card p-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
     >
-      <p className="font-display text-2xl text-white leading-none tabular-nums">
+      <p className="font-display text-xl text-white leading-none tabular-nums">
         {value === null ? (
           <span className="text-subtle">{UNAVAILABLE}</span>
         ) : (
@@ -294,7 +294,7 @@ function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatTileProp
           </>
         )}
       </p>
-      <p className="font-body text-[10px] uppercase tracking-wider text-subtle mt-2">{label}</p>
+      <p className="font-body text-[10px] uppercase tracking-wider text-subtle mt-1.5">{label}</p>
     </button>
   );
 }

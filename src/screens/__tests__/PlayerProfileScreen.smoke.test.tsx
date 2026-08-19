@@ -150,6 +150,32 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
     });
   });
 
+  // ── "Edit profile" (own-profile) ────────────────────
+
+  describe("Edit profile", () => {
+    it("routes EDIT PROFILE to the caller's settings navigation", async () => {
+      const onEditProfile = vi.fn();
+      render(<PlayerProfileScreen {...props} onEditProfile={onEditProfile} />);
+      await userEvent.click(screen.getByTestId("edit-profile-button"));
+      expect(onEditProfile).toHaveBeenCalledTimes(1);
+    });
+
+    it("omits the button entirely when the caller wires no edit route", () => {
+      // An inert button sitting next to Share reads as a broken app; the
+      // screen renders nothing rather than a dead affordance.
+      render(<PlayerProfileScreen {...props} />);
+      expect(screen.queryByTestId("edit-profile-button")).not.toBeInTheDocument();
+    });
+
+    it("does not render the edit button on another player's profile", () => {
+      // App passes `isOwn ? onEditProfile : undefined`, but the screen must
+      // hold the line itself — you cannot edit someone else's profile.
+      withOpponentFetch([]);
+      render(<PlayerProfileScreen {...props} viewedUid="u2" isOwnProfile={false} onEditProfile={vi.fn()} />);
+      expect(screen.queryByTestId("edit-profile-button")).not.toBeInTheDocument();
+    });
+  });
+
   // ── Placeholder sections — visibility rules ─────────
 
   it("does not render the achievements ribbon on the viewer's own profile", () => {

@@ -54,8 +54,8 @@ export const SpotlightCard = memo(function SpotlightCard({
           onClick={() => onViewPlayer(clip.playerUid)}
           className="flex items-center gap-2 touch-target rounded-xl px-1.5 py-1 -ml-1.5 hover:bg-white/[0.03] transition-colors duration-200 group"
         >
-          <div className="w-7 h-7 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
-            <span className="font-display text-[11px] text-brand-orange leading-none">
+          <div className="w-7 h-7 rounded-full bg-surface-alt border border-white/[0.06] flex items-center justify-center shrink-0">
+            <span className="font-display text-[11px] text-white/80 leading-none">
               {clip.playerUsername[0]?.toUpperCase() ?? "?"}
             </span>
           </div>

@@ -372,7 +372,7 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
         <div className="w-16" aria-hidden="true" />
       </div>
 
-      <div className="px-5 pt-7 max-w-lg mx-auto">
+      <div className="px-5 pt-7 max-w-[430px] mx-auto">
         <h1 className="font-display text-fluid-4xl text-white mb-2 tracking-wide">Settings</h1>
         <p className="font-body text-sm text-muted mb-6">Notifications, sound, haptics, and blocked players.</p>
 
