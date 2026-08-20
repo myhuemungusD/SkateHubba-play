@@ -151,6 +151,40 @@ describe("Smoke: /record own-profile affordances", () => {
     await screen.findByRole("button", { name: /add a spot/i });
     expect(screen.queryByLabelText(/^Level /)).not.toBeInTheDocument();
   });
+
+  it("routes the MY STATS button to the owner-only analytics screen", async () => {
+    await renderAt("/record");
+    await userEvent.click(await screen.findByTestId("my-stats-button"));
+    // A lazy route only commits its URL once the chunk resolves — poll rather
+    // than asserting on the first paint (same reason as the /spots restore).
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/my-stats");
+    });
+    expect(await screen.findByRole("heading", { name: "My Stats" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * `/my-stats` shows counters that are nobody else's business. The route has no
+ * Screen identity (same as /settings), so the `activeProfile` guard on the
+ * route element is the entire own-profile gate — worth pinning at the route
+ * level, because a guard that silently stops guarding looks identical from
+ * inside the screen's own specs.
+ */
+describe("Smoke: /my-stats is owner-only", () => {
+  it("loads directly for a signed-in user", async () => {
+    await mountApp("/my-stats");
+    expect(await screen.findByRole("heading", { name: "My Stats" })).toBeInTheDocument();
+  });
+
+  it("bounces a visitor with no profile to the landing page", async () => {
+    mocks.auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    await mountApp("/my-stats");
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/");
+    });
+    expect(screen.queryByRole("heading", { name: "My Stats" })).not.toBeInTheDocument();
+  });
 });
 
 /**

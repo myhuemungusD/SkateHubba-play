@@ -498,28 +498,30 @@ describe("Lobby", () => {
     expect(challengeBtn).toBeDisabled();
   });
 
-  it("displays relative join dates correctly", async () => {
-    const now = Date.now();
+  it("displays games-played counts with correct pluralization", async () => {
     mockGetPlayerDirectory.mockResolvedValue([
       {
         uid: "u2",
-        username: "just_now",
+        username: "many_games",
         stance: "Regular",
-        createdAt: Timestamp.fromMillis(now - 1000 * 60 * 30),
+        createdAt: null,
+        gamesPlayed: 17,
         emailVerified: true,
       },
       {
         uid: "u3",
-        username: "hours_ago",
+        username: "one_game",
         stance: "Goofy",
-        createdAt: Timestamp.fromMillis(now - 1000 * 60 * 60 * 5),
+        createdAt: null,
+        gamesPlayed: 1,
         emailVerified: true,
       },
       {
         uid: "u4",
-        username: "days_ago",
+        username: "no_games",
         stance: "Regular",
-        createdAt: Timestamp.fromMillis(now - 1000 * 60 * 60 * 24 * 3),
+        createdAt: null,
+        gamesPlayed: 0,
         emailVerified: true,
       },
     ]);
@@ -527,19 +529,28 @@ describe("Lobby", () => {
     renderWithProviders(<Lobby {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Just joined/)).toBeInTheDocument();
-      expect(screen.getByText(/Joined 5h ago/)).toBeInTheDocument();
-      expect(screen.getByText(/Joined 3d ago/)).toBeInTheDocument();
+      expect(screen.getByText(/Regular · 17 games/)).toBeInTheDocument();
+      expect(screen.getByText(/Goofy · 1 game$/)).toBeInTheDocument();
+      expect(screen.getByText(/Regular · No games yet/)).toBeInTheDocument();
     });
   });
 
-  it("handles future timestamps gracefully", async () => {
+  it("falls back to wins + losses when gamesPlayed is absent", async () => {
     mockGetPlayerDirectory.mockResolvedValue([
       {
         uid: "u2",
-        username: "time_traveler",
+        username: "legacy_doc",
+        stance: "Goofy",
+        createdAt: null,
+        wins: 3,
+        losses: 2,
+        emailVerified: true,
+      },
+      {
+        uid: "u3",
+        username: "blank_doc",
         stance: "Regular",
-        createdAt: Timestamp.fromMillis(Date.now() + 60000),
+        createdAt: null,
         emailVerified: true,
       },
     ]);
@@ -547,7 +558,8 @@ describe("Lobby", () => {
     renderWithProviders(<Lobby {...defaultProps} />);
 
     await waitFor(() => {
-      expect(screen.getByText(/Just joined/)).toBeInTheDocument();
+      expect(screen.getByText(/Goofy · 5 games/)).toBeInTheDocument();
+      expect(screen.getByText(/Regular · No games yet/)).toBeInTheDocument();
     });
   });
 

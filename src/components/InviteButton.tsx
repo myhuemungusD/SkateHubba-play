@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { trackEvent } from "../services/analytics";
-import { playOlliePop } from "../utils/ollieSound";
 
 export function InviteButton({ username, className = "" }: { username?: string; className?: string }) {
   const [showPanel, setShowPanel] = useState(false);
@@ -105,10 +104,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
     <div className={className}>
       <button
         type="button"
-        onClick={() => {
-          playOlliePop();
-          setShowPanel(!showPanel);
-        }}
+        onClick={() => setShowPanel(!showPanel)}
         className="w-full flex items-center justify-center gap-2.5 bg-transparent border border-border text-subtle hover:text-white hover:border-border-hover hover:bg-white/[0.02] rounded-2xl py-3.5 font-display tracking-wider text-lg transition-all duration-300 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
       >
         {showPanel ? (

@@ -5,6 +5,7 @@ import { GameNotificationWatcher, OPEN_GAME_EVENT } from "../GameNotificationWat
 import type { GameDoc } from "../../services/games";
 import { onForegroundMessage } from "../../services/fcm";
 import { subscribeToNudges, subscribeToNotifications } from "../../services/notifications";
+import { subscribeToNativePushOpens } from "../../services/pushNotifications";
 
 /**
  * `MessagePayload` from firebase/messaging requires `from`, `collapseKey`,
@@ -53,6 +54,17 @@ const mockFcmUnsub = vi.fn();
 
 vi.mock("../../services/fcm", () => ({
   onForegroundMessage: vi.fn(() => mockFcmUnsub),
+}));
+
+const mockNativePushUnsub = vi.fn();
+/** Captures the callback the watcher hands to subscribeToNativePushOpens. */
+let nativePushCb: ((gameId: string) => void) | null = null;
+
+vi.mock("../../services/pushNotifications", () => ({
+  subscribeToNativePushOpens: vi.fn((cb: (gameId: string) => void) => {
+    nativePushCb = cb;
+    return mockNativePushUnsub;
+  }),
 }));
 
 /* ── Helpers ────────────────────────────────── */
@@ -499,6 +511,34 @@ describe("service worker deep-link bridge", () => {
   it("no-ops when navigator.serviceWorker is undefined", () => {
     Object.defineProperty(navigator, "serviceWorker", { value: undefined, configurable: true, writable: true });
     expect(() => render(<GameNotificationWatcher />)).not.toThrow();
+  });
+});
+
+/* ── Native push deep-link ──────────────────── */
+
+describe("native push deep-link bridge", () => {
+  it("dispatches OPEN_GAME_EVENT when a native push is tapped", () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    render(<GameNotificationWatcher />);
+
+    expect(nativePushCb).toBeTypeOf("function");
+    nativePushCb!("g-native");
+
+    const ev = dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT);
+    expect(ev).toBeDefined();
+    expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g-native" });
+  });
+
+  it("does not subscribe while signed out", () => {
+    mockUser = null;
+    render(<GameNotificationWatcher />);
+    expect(vi.mocked(subscribeToNativePushOpens)).not.toHaveBeenCalled();
+  });
+
+  it("unsubscribes on unmount", () => {
+    const { unmount } = render(<GameNotificationWatcher />);
+    unmount();
+    expect(mockNativePushUnsub).toHaveBeenCalled();
   });
 });
 

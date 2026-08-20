@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Firestore } from "firebase-admin/firestore";
-import { applyGameStats, tallyLetters, type ApplyGameStatsResult } from "./applyGameStats.js";
+import { applyGameStats, deriveGameStats, nextRecentResults, type ApplyGameStatsResult } from "./applyGameStats.js";
 
 // Replace the real FieldValue with a deterministic sentinel so we can assert on
 // the exact payload handed to tx.update without depending on admin internals.
@@ -13,6 +13,7 @@ vi.mock("firebase-admin/firestore", () => ({
 const GAME_ID = "game-1";
 const P1 = "uid-p1";
 const P2 = "uid-p2";
+const JUDGE = "uid-judge";
 
 const GAME_PATH = `games/${GAME_ID}`;
 const P1_PATH = `users/${P1}`;
@@ -29,6 +30,10 @@ function winPayload(currentWinStreak: number, bestWinStreak: number): Record<str
     gamesPlayed: { __increment: 1 },
     currentWinStreak,
     bestWinStreak,
+    // A game with no letters against the winner is a clean win by definition,
+    // so the default payload carries it.
+    cleanWins: { __increment: 1 },
+    recentResults: ["W"],
   };
 }
 
@@ -37,7 +42,14 @@ const LOSS_INCREMENT = {
   losses: { __increment: 1 },
   gamesPlayed: { __increment: 1 },
   currentWinStreak: 0,
+  recentResults: ["L"],
 };
+
+/** Strip `cleanWins` from an expected winner payload (the winner took a letter). */
+function notClean(payload: Record<string, unknown>): Record<string, unknown> {
+  const { cleanWins: _dropped, ...rest } = payload;
+  return rest;
+}
 
 interface DocRef {
   path: string;
@@ -130,7 +142,8 @@ describe("applyGameStats", () => {
     expect(result).toBe("applied");
     expect(update).toHaveBeenCalledWith({ path: GAME_PATH }, { statsApplied: true });
     expect(update).toHaveBeenCalledWith({ path: P2_PATH }, winPayload(1, 1));
-    expect(update).toHaveBeenCalledWith({ path: P1_PATH }, LOSS_INCREMENT);
+    // Only the abandoning side carries forfeitLosses.
+    expect(update).toHaveBeenCalledWith({ path: P1_PATH }, { ...LOSS_INCREMENT, forfeitLosses: { __increment: 1 } });
   });
 
   // ── Tier-1 streak counters ──
@@ -324,7 +337,8 @@ describe("applyGameStats", () => {
 
       expect(update).toHaveBeenCalledWith(
         { path: P1_PATH },
-        { ...winPayload(1, 1), lettersGiven: { __increment: 2 }, lettersTaken: { __increment: 1 } },
+        // The winner took a letter here, so this is not a clean win.
+        { ...notClean(winPayload(1, 1)), lettersGiven: { __increment: 2 }, lettersTaken: { __increment: 1 } },
       );
       expect(update).toHaveBeenCalledWith(
         { path: P2_PATH },
@@ -406,19 +420,260 @@ describe("applyGameStats", () => {
     });
   });
 
-  describe("tallyLetters (unit)", () => {
+  describe("deriveGameStats (unit)", () => {
+    const ZERO = { lettersTaken: 0, lettersGiven: 0, tricksLanded: 0, tricksFailed: 0, peakLetters: 0 };
+
     it("returns a zeroed tally for both players when there is no history", () => {
-      expect(tallyLetters(undefined, P1, P2)).toEqual({
-        [P1]: { lettersTaken: 0, lettersGiven: 0 },
-        [P2]: { lettersTaken: 0, lettersGiven: 0 },
-      });
+      expect(deriveGameStats(undefined, P1, P2)).toEqual({ players: { [P1]: ZERO, [P2]: ZERO }, judgedBy: {} });
     });
 
     it("counts each qualifying entry exactly once", () => {
-      expect(tallyLetters([{ landed: false, letterTo: P1 }], P1, P2)).toEqual({
-        [P1]: { lettersTaken: 1, lettersGiven: 0 },
-        [P2]: { lettersTaken: 0, lettersGiven: 1 },
+      expect(deriveGameStats([{ landed: false, letterTo: P1, matcherUid: P1 }], P1, P2)).toEqual({
+        players: {
+          [P1]: { ...ZERO, lettersTaken: 1, tricksFailed: 1, peakLetters: 1 },
+          [P2]: { ...ZERO, lettersGiven: 1 },
+        },
+        judgedBy: {},
       });
+    });
+
+    it("attributes attempts to the matcher and ignores a non-participant matcher", () => {
+      const history = [
+        { landed: true, matcherUid: P2, judgedBy: JUDGE },
+        { landed: true, matcherUid: "uid-stranger" },
+        { landed: false, matcherUid: null, letterTo: P2 },
+      ];
+
+      expect(deriveGameStats(history, P1, P2)).toEqual({
+        players: {
+          [P1]: { ...ZERO, lettersGiven: 1 },
+          [P2]: { ...ZERO, tricksLanded: 1, lettersTaken: 1, peakLetters: 1 },
+        },
+        judgedBy: { [JUDGE]: 1 },
+      });
+    });
+  });
+
+  // ── Trick attempt counters ──
+  // "Landed" rows are matched attempts credited to matcherUid; the setter's own
+  // set is not a separate row, so a set never shows up here.
+  describe("trick attempts", () => {
+    it("splits landed and failed attempts by matcher across both profiles", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame({
+          turnHistory: [
+            { turnNumber: 1, landed: true, matcherUid: P1, letterTo: null },
+            { turnNumber: 2, landed: true, matcherUid: P2, letterTo: null },
+            { turnNumber: 3, landed: false, matcherUid: P2, letterTo: P2 },
+          ],
+        }),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith(
+        { path: P1_PATH },
+        { ...winPayload(1, 1), tricksLanded: { __increment: 1 }, lettersGiven: { __increment: 1 } },
+      );
+      expect(update).toHaveBeenCalledWith(
+        { path: P2_PATH },
+        {
+          ...LOSS_INCREMENT,
+          tricksLanded: { __increment: 1 },
+          tricksFailed: { __increment: 1 },
+          lettersTaken: { __increment: 1 },
+        },
+      );
+    });
+  });
+
+  // ── Comeback wins ──
+  // A comeback means the winner sat on 4+ letters (one from SKATE) and still won.
+  describe("comeback wins", () => {
+    it.each([
+      ["4 letters against the winner", 4, true],
+      ["3 letters against the winner", 3, false],
+    ])("records a comeback for %s: %s", async (_label, letters, expected) => {
+      const history = Array.from({ length: letters as number }, (_v, i) => ({
+        turnNumber: i + 1,
+        landed: false,
+        letterTo: P1,
+      }));
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame({ turnHistory: history }),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      // No matcherUid on these rows, so only letter counters move.
+      expect(update).toHaveBeenCalledWith(
+        { path: P1_PATH },
+        {
+          ...notClean(winPayload(1, 1)),
+          lettersTaken: { __increment: letters as number },
+          ...(expected === true ? { comebackWins: { __increment: 1 } } : {}),
+        },
+      );
+    });
+  });
+
+  // ── Game duration ──
+  describe("total game duration", () => {
+    it.each([
+      ["timestamp objects", { toMillis: (): number => 1_000 }, { toMillis: (): number => 4_500 }, 3_500],
+      ["raw epoch numbers", 1_000, 2_000, 1_000],
+      ["Date instances", new Date(1_000), new Date(3_000), 2_000],
+    ])("accumulates the span from %s", async (_label, createdAt, updatedAt, expected) => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame({ createdAt, updatedAt }),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      // The denominator moves with the numerator: one game measured, one game
+      // counted, so `totalGameDurationMs / gamesWithDuration` is always an
+      // average over exactly the games this close-out could measure.
+      const duration = {
+        totalGameDurationMs: { __increment: expected as number },
+        gamesWithDuration: { __increment: 1 },
+      };
+      expect(update).toHaveBeenCalledWith({ path: P1_PATH }, { ...winPayload(1, 1), ...duration });
+      expect(update).toHaveBeenCalledWith({ path: P2_PATH }, { ...LOSS_INCREMENT, ...duration });
+    });
+
+    it.each([
+      ["a missing createdAt", undefined, 5_000],
+      ["a missing updatedAt", 5_000, undefined],
+      ["a negative span (clock skew)", 9_000, 1_000],
+      ["a zero span", 1_000, 1_000],
+      ["an unresolved sentinel object", {}, 9_000],
+      ["a non-finite epoch", Number.NaN, 9_000],
+      // Both the numerator and its denominator drop out together — a game whose
+      // span is unmeasurable must not inflate `gamesWithDuration`.
+    ])("omits both duration counters for %s", async (_label, createdAt, updatedAt) => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame({ createdAt, updatedAt }),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith({ path: P1_PATH }, winPayload(1, 1));
+      expect(update).toHaveBeenCalledWith({ path: P2_PATH }, LOSS_INCREMENT);
+    });
+  });
+
+  // ── Recent results ring ──
+  describe("recent results", () => {
+    it("appends to each profile's ring and caps it at ten entries", async () => {
+      const nine = Array.from({ length: 9 }, () => "W");
+      const ten = Array.from({ length: 10 }, () => "L");
+      const { db, update } = makeHarness({
+        [GAME_PATH]: terminalGame(),
+        [P1_PATH]: { recentResults: nine },
+        [P2_PATH]: { recentResults: ten },
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith({ path: P1_PATH }, { ...winPayload(1, 1), recentResults: [...nine, "W"] });
+      // The oldest entry is dropped so the ring never exceeds ten.
+      expect(update).toHaveBeenCalledWith(
+        { path: P2_PATH },
+        { ...LOSS_INCREMENT, recentResults: [...ten.slice(1), "L"] },
+      );
+    });
+
+    it.each([
+      ["a non-array value", "WWL"],
+      ["members that are not W or L", ["W", 7, null, "X"]],
+    ])("discards %s rather than propagating it", (_label, raw) => {
+      expect(nextRecentResults(raw, "W")).toEqual(_label === "a non-array value" ? ["W"] : ["W", "W"]);
+    });
+  });
+
+  // ── Judge credit ──
+  describe("judge credit", () => {
+    const JUDGE_PATH = `users/${JUDGE}`;
+
+    function judgedGame(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return terminalGame({
+        judgeId: JUDGE,
+        judgeStatus: "accepted",
+        turnHistory: [
+          { turnNumber: 1, landed: true, matcherUid: P2, judgedBy: JUDGE },
+          { turnNumber: 2, landed: true, matcherUid: P2, judgedBy: null },
+        ],
+        ...overrides,
+      });
+    }
+
+    it("credits an accepted judge with the game and their judged turns", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: judgedGame(),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+        [JUDGE_PATH]: { gamesJudged: 2 },
+      });
+
+      expect(await applyGameStats(db, GAME_ID)).toBe("applied");
+      expect(update).toHaveBeenCalledWith(
+        { path: JUDGE_PATH },
+        { gamesJudged: { __increment: 1 }, turnsJudged: { __increment: 1 } },
+      );
+    });
+
+    it("still credits the game when the judge reviewed no turns", async () => {
+      const { db, update } = makeHarness({
+        [GAME_PATH]: judgedGame({ turnHistory: [] }),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+        [JUDGE_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(update).toHaveBeenCalledWith({ path: JUDGE_PATH }, { gamesJudged: { __increment: 1 } });
+    });
+
+    it("skips gracefully when the judge profile is deleted", async () => {
+      const { db, update, updatedPaths } = makeHarness({
+        [GAME_PATH]: judgedGame(),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+        // Judge user doc missing.
+      });
+
+      expect(await applyGameStats(db, GAME_ID)).toBe("applied");
+      expect(updatedPaths()).not.toContain(JUDGE_PATH);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ["the invite is still pending", { judgeStatus: "pending" }],
+      ["the invite was declined", { judgeStatus: "declined" }],
+      ["judgeStatus is absent", { judgeStatus: undefined }],
+      ["judgeId is null", { judgeId: null }],
+      ["judgeId is an empty string", { judgeId: "" }],
+    ])("writes no judge counters when %s", async (_label, overrides) => {
+      const { db, update, updatedPaths } = makeHarness({
+        [GAME_PATH]: judgedGame(overrides),
+        [P1_PATH]: {},
+        [P2_PATH]: {},
+        [JUDGE_PATH]: {},
+      });
+
+      await applyGameStats(db, GAME_ID);
+
+      expect(updatedPaths()).not.toContain(JUDGE_PATH);
+      expect(update).toHaveBeenCalledTimes(3);
     });
   });
 

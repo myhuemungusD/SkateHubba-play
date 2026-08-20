@@ -55,6 +55,16 @@ function asAlice(): RulesTestContext {
   return testEnv.authenticatedContext(ALICE_UID, { email_verified: true });
 }
 
+/** Base shape of Alice's public profile doc, shared by every seeder below. */
+const ALICE_PROFILE = { uid: ALICE_UID, username: "alice", stance: "Regular" } as const;
+
+/** Seed Alice's public profile (rules disabled) with optional extra fields. */
+async function seedAliceProfile(extra: Record<string, unknown> = {}): Promise<void> {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "users", ALICE_UID), { ...ALICE_PROFILE, ...extra });
+  });
+}
+
 /**
  * Seed Alice's user doc plus two completed games: one Alice won, one Alice
  * lost. The games exist so the tests can prove that EVEN a genuine terminal
@@ -179,13 +189,7 @@ describe("users/{uid} owner stats — every client stat write is DENIED", () => 
   it("denied: owner CANNOT seed wins from absent → 1 on a doc with no stored wins", async () => {
     // resource.data has no `wins` key — the diff introduces one, so it lands
     // in affectedKeys() and the backstop denies it.
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-      });
-    });
+    await seedAliceProfile();
     await assertFails(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
         wins: 1,
@@ -268,16 +272,7 @@ describe("users/{uid} Tier-1 stat counters — client writes are DENIED", () => 
   });
 
   it.each(TIER_1_COUNTERS)("denied: owner CANNOT inflate a stored %s", async (field) => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        wins: 2,
-        losses: 2,
-        [field]: 2,
-      });
-    });
+    await seedAliceProfile({ wins: 2, losses: 2, [field]: 2 });
     await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 99 }));
   });
 
@@ -293,17 +288,12 @@ describe("users/{uid} Tier-1 stat counters — client writes are DENIED", () => 
   });
 
   it("succeeds: re-writing Tier-1 counters to their SAME stored value is not a diff", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        wins: 4,
-        losses: 1,
-        gamesPlayed: 5,
-        currentWinStreak: 2,
-        bestWinStreak: 3,
-      });
+    await seedAliceProfile({
+      wins: 4,
+      losses: 1,
+      gamesPlayed: 5,
+      currentWinStreak: 2,
+      bestWinStreak: 3,
     });
     await assertSucceeds(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
@@ -349,16 +339,7 @@ describe("users/{uid} dispute stat counters — client writes are DENIED", () =>
   });
 
   it.each(DISPUTE_COUNTERS)("denied: owner CANNOT inflate a stored %s", async (field) => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        wins: 2,
-        losses: 2,
-        [field]: 2,
-      });
-    });
+    await seedAliceProfile({ wins: 2, losses: 2, [field]: 2 });
     await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 99 }));
   });
 
@@ -374,18 +355,13 @@ describe("users/{uid} dispute stat counters — client writes are DENIED", () =>
   });
 
   it("succeeds: re-writing dispute counters to their SAME stored value is not a diff", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        wins: 4,
-        losses: 1,
-        tricksDisputed: 3,
-        disputesRaised: 2,
-        disputesRight: 1,
-        disputesWrong: 1,
-      });
+    await seedAliceProfile({
+      wins: 4,
+      losses: 1,
+      tricksDisputed: 3,
+      disputesRaised: 2,
+      disputesRight: 1,
+      disputesWrong: 1,
     });
     await assertSucceeds(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
@@ -419,30 +395,14 @@ describe("users/{uid} letter stat counters — client writes are DENIED", () => 
   });
 
   it.each(LETTER_COUNTERS)("denied: owner CANNOT inflate a stored %s", async (field) => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        wins: 2,
-        losses: 2,
-        [field]: 2,
-      });
-    });
+    await seedAliceProfile({ wins: 2, losses: 2, [field]: 2 });
     await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 99 }));
   });
 
   it.each(LETTER_COUNTERS)("denied: owner CANNOT zero out a stored %s", async (field) => {
     // Deflation matters too — lettersTaken is a "how often you got beat"
     // counter, so scrubbing it is as much tampering as inflating lettersGiven.
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        [field]: 12,
-      });
-    });
+    await seedAliceProfile({ [field]: 12 });
     await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 0 }));
   });
 
@@ -458,22 +418,140 @@ describe("users/{uid} letter stat counters — client writes are DENIED", () => 
   });
 
   it("succeeds: re-writing letter counters to their SAME stored value is not a diff", async () => {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "users", ALICE_UID), {
-        uid: ALICE_UID,
-        username: "alice",
-        stance: "Regular",
-        wins: 4,
-        losses: 1,
-        lettersGiven: 9,
-        lettersTaken: 6,
-      });
-    });
+    await seedAliceProfile({ wins: 4, losses: 1, lettersGiven: 9, lettersTaken: 6 });
     await assertSucceeds(
       updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
         stance: "Goofy",
         lettersGiven: 9,
         lettersTaken: 6,
+      }),
+    );
+  });
+});
+
+// My Stats close-out counters. Same Admin-SDK-only posture as the Tier-1 and
+// letter counters: the create zero-seed list and the update affectedKeys()
+// backstop are BOTH allowlist-by-omission, so a field missing from either one
+// is silently client-writable. These cases exist to catch exactly that.
+describe("users/{uid} My Stats counters — client writes are DENIED", () => {
+  const MY_STATS_COUNTERS = [
+    "cleanWins",
+    "tricksLanded",
+    "tricksFailed",
+    "forfeitLosses",
+    "comebackWins",
+    "totalGameDurationMs",
+    "gamesWithDuration",
+    "gamesJudged",
+    "turnsJudged",
+  ] as const;
+
+  it.each(MY_STATS_COUNTERS)("denied: cannot create a profile with a non-zero %s", async (field) => {
+    await assertFails(createProfileWithCounter(field, 7));
+  });
+
+  it.each(MY_STATS_COUNTERS)("succeeds: creating with %s explicitly zeroed", async (field) => {
+    await assertSucceeds(createProfileWithCounter(field, 0));
+  });
+
+  it.each(MY_STATS_COUNTERS)("denied: owner CANNOT seed %s on a doc without it", async (field) => {
+    await seed();
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 1 }));
+  });
+
+  it.each(MY_STATS_COUNTERS)("denied: owner CANNOT inflate a stored %s", async (field) => {
+    await seedAliceProfile({ wins: 2, losses: 2, [field]: 2 });
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 99 }));
+  });
+
+  it.each(MY_STATS_COUNTERS)("denied: owner CANNOT zero out a stored %s", async (field) => {
+    // Deflation is tampering too: forfeitLosses / tricksFailed are the
+    // unflattering counters, so scrubbing them matters as much as inflating.
+    await seedAliceProfile({ [field]: 12 });
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { [field]: 0 }));
+  });
+
+  it("denied: owner CANNOT smuggle a cleanWins bump alongside a benign stance edit", async () => {
+    await seed({ aliceWins: 3, aliceLosses: 1 });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+        cleanWins: 50,
+        comebackWins: 50,
+      }),
+    );
+  });
+
+  it("succeeds: re-writing My Stats counters to their SAME stored value is not a diff", async () => {
+    // One snapshot object, written twice: seeded server-side, then echoed back
+    // by the client. Identical values mean no diff, so the backstop allows it.
+    const stored = {
+      cleanWins: 3,
+      tricksLanded: 40,
+      tricksFailed: 12,
+      forfeitLosses: 1,
+      comebackWins: 2,
+      totalGameDurationMs: 987654,
+      gamesWithDuration: 6,
+      gamesJudged: 8,
+      turnsJudged: 31,
+    };
+    await seedAliceProfile(stored);
+    await assertSucceeds(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { stance: "Goofy", ...stored }));
+  });
+});
+
+// recentResults is the rolling form guide ("W"/"L", max 10) rendered on the
+// profile. It is a list, not a counter, so the create-side zero-seed is an
+// empty-list requirement — but the update lockdown is identical.
+describe("users/{uid} recentResults — client writes are DENIED", () => {
+  it("denied: cannot create a profile with a pre-filled recentResults", async () => {
+    await assertFails(
+      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        recentResults: ["W", "W", "W"],
+      }),
+    );
+  });
+
+  it("succeeds: creating with recentResults as an empty list", async () => {
+    await assertSucceeds(
+      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: "alice",
+        stance: "Regular",
+        recentResults: [],
+      }),
+    );
+  });
+
+  it("denied: owner CANNOT seed recentResults on a doc without it", async () => {
+    await seed();
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { recentResults: ["W"] }));
+  });
+
+  it("denied: owner CANNOT rewrite a stored recentResults into an all-wins streak", async () => {
+    await seedAliceProfile({ recentResults: ["L", "L", "W"] });
+    await assertFails(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        recentResults: ["W", "W", "W"],
+      }),
+    );
+  });
+
+  it("denied: owner CANNOT scrub recentResults to an empty list", async () => {
+    await seedAliceProfile({ recentResults: ["L", "L", "L"] });
+    await assertFails(updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), { recentResults: [] }));
+  });
+
+  it("succeeds: re-writing recentResults to its SAME stored value is not a diff", async () => {
+    await seedAliceProfile({ recentResults: ["W", "L", "W"] });
+    await assertSucceeds(
+      updateDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        stance: "Goofy",
+        recentResults: ["W", "L", "W"],
       }),
     );
   });

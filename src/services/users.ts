@@ -16,6 +16,7 @@ import {
 import { requireAuth, requireDb } from "../firebase";
 import { ratedWinRate } from "../constants/stats";
 import { withRetry } from "../utils/retry";
+import { parseFirebaseError } from "../utils/helpers";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips, deleteUserClipVotes } from "./clips";
 import { deleteUserDisputeVotes, deleteUserDisputes } from "./disputes";
@@ -71,6 +72,43 @@ export interface UserProfile {
   disputesRight?: number;
   /** Of raised disputes, count the community sided against (land verdict). Server-written. */
   disputesWrong?: number;
+  /**
+   * Wins where this player never took a letter — a shutout. Server-written by
+   * the stats close-out function; absent on any doc predating the counter.
+   */
+  cleanWins?: number;
+  /** Wins from a deficit (peaked at S-K-A-T or worse). Server-written. */
+  comebackWins?: number;
+  /**
+   * Losses by forfeit — games this player abandoned rather than finished.
+   * Server-written. Deliberately NOT surfaced raw on the public profile: the
+   * public surface shows the positive framing (challenge completion rate).
+   */
+  forfeitLosses?: number;
+  /** Lifetime tricks this player landed when matching. Server-written. */
+  tricksLanded?: number;
+  /** Lifetime tricks this player missed when matching. Server-written. */
+  tricksFailed?: number;
+  /** Summed wall-clock duration of every completed game, in ms. Server-written. */
+  totalGameDurationMs?: number;
+  /**
+   * Games that contributed to {@link totalGameDurationMs} — incremented in
+   * lockstep with it. It is the correct denominator for average game length:
+   * `gamesPlayed` also counts games closed out before the duration counter
+   * shipped (and games whose timestamps were unusable), which would drag the
+   * average toward zero. Server-written.
+   */
+  gamesWithDuration?: number;
+  /**
+   * Most recent results, oldest first, capped at 10 by the stats close-out
+   * function. Entries are "W" or "L"; typed as `string[]` because the field is
+   * external data — consumers must narrow before rendering.
+   */
+  recentResults?: string[];
+  /** Games this player refereed to completion as an accepted judge. Server-written. */
+  gamesJudged?: number;
+  /** Individual turns this player judged across those games. Server-written. */
+  turnsJudged?: number;
   /** Whether this user is a verified pro. Only settable via Admin SDK / Firebase console. */
   isVerifiedPro?: boolean;
   /** UID of the user or admin who granted verified-pro status. */
@@ -116,10 +154,40 @@ interface UserPrivateProfile {
    * Owner-only readable. Rules cap this list at ≤10 entries.
    */
   fcmTokens?: string[];
+  /**
+   * Push notification opt-out. ABSENT MEANS ENABLED — push is on by default
+   * and only the Settings screen can turn it off (see
+   * src/services/pushPreferences.ts). Encoding the default as absence keeps
+   * every pre-existing account opted in without a migration.
+   */
+  pushEnabled?: boolean;
 }
 
 /** Document id of the canonical private profile doc. */
 export const PRIVATE_PROFILE_DOC_ID = "profile" as const;
+
+/**
+ * Read the user's push preference, defaulting to enabled.
+ *
+ * Lives here (not in pushPreferences.ts) because the token-registration paths
+ * in fcm.ts / pushNotifications.ts must consult it, and those modules already
+ * depend on this one — putting the read in pushPreferences.ts would make the
+ * dependency circular. pushPreferences.ts re-exports it as the public API.
+ *
+ * Fails OPEN: a missing doc or a failed read means enabled. A transient
+ * Firestore error must never present as "you turned push off".
+ */
+export async function getPushEnabled(uid: string): Promise<boolean> {
+  try {
+    const snap = await getDoc(doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
+    if (!snap.exists()) return true;
+    const value = (snap.data() as UserPrivateProfile).pushEnabled;
+    return typeof value === "boolean" ? value : true;
+  } catch (err) {
+    logger.warn("push_pref_read_failed", { uid, error: parseFirebaseError(err) });
+    return true;
+  }
+}
 
 /**
  * Get user profile by UID. Returns the PUBLIC profile doc — readable

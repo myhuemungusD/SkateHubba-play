@@ -35,6 +35,24 @@ vi.mock("../../services/fcm", () => ({
   requestPushPermission: vi.fn().mockResolvedValue("test-token"),
 }));
 
+// Native push service. `isPushSupported` defaults to false so the web
+// assertions below run against the unchanged fcm path; the native describe
+// block flips it.
+const mockIsPushSupported = vi.fn(() => false);
+vi.mock("../../services/pushNotifications", () => ({
+  isPushSupported: () => mockIsPushSupported(),
+  // Read-only permission query — never prompts. Defaults to the undecided
+  // state so the native block starts on the opt-in card.
+  getNativePushPermission: vi.fn().mockResolvedValue("prompt"),
+  requestPushPermission: vi.fn().mockResolvedValue("granted"),
+  registerPushToken: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("../../services/pushPreferences", () => ({
+  getPushEnabled: vi.fn().mockResolvedValue(true),
+  setPushEnabled: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock("../../services/haptics", async () => {
   const store = { enabled: true };
   return {
@@ -125,6 +143,9 @@ beforeEach(() => {
     configurable: true,
     value: "default" as NotificationPermission,
   });
+  // clearAllMocks wipes call history, not return values — re-arm the web
+  // default so a native test can't leak into the next one.
+  mockIsPushSupported.mockReturnValue(false);
   localStorage.clear();
 });
 
@@ -423,5 +444,179 @@ describe("Settings", () => {
     });
 
     expect(await screen.findByText(/Couldn't enable notifications/)).toBeInTheDocument();
+  });
+
+  /* ── Push preference toggle ─────────────────────────── */
+
+  it("reflects the saved push preference once the read resolves", async () => {
+    const { getPushEnabled } = await import("../../services/pushPreferences");
+    vi.mocked(getPushEnabled).mockResolvedValueOnce(false);
+
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+
+    const pushSwitch = screen.getByRole("switch", { name: /Push notifications/i });
+    await waitFor(() => expect(pushSwitch).toHaveAttribute("aria-checked", "false"));
+    expect(getPushEnabled).toHaveBeenCalledWith("me");
+    // With the preference off, the OS-permission cards are suppressed.
+    expect(screen.queryByText(/Enable push notifications/i)).toBeNull();
+  });
+
+  it("persists a push preference change", async () => {
+    const { setPushEnabled } = await import("../../services/pushPreferences");
+
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+    const pushSwitch = screen.getByRole("switch", { name: /Push notifications/i });
+    await waitFor(() => expect(pushSwitch).toBeEnabled());
+
+    await act(async () => {
+      await userEvent.click(pushSwitch);
+    });
+
+    expect(setPushEnabled).toHaveBeenCalledWith("me", false);
+    expect(pushSwitch).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("reverts the switch and surfaces an error when the write throws", async () => {
+    const { setPushEnabled } = await import("../../services/pushPreferences");
+    vi.mocked(setPushEnabled).mockRejectedValueOnce(new Error("permission-denied"));
+
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+    const pushSwitch = screen.getByRole("switch", { name: /Push notifications/i });
+    await waitFor(() => expect(pushSwitch).toBeEnabled());
+
+    await act(async () => {
+      await userEvent.click(pushSwitch);
+    });
+
+    await waitFor(() => expect(pushSwitch).toHaveAttribute("aria-checked", "true"));
+    // Inline alert on the row. The matching error toast is queued in
+    // NotificationProvider, which ToastContainer renders at the App level.
+    expect(await screen.findByText(/Couldn't save that preference/i)).toBeInTheDocument();
+  });
+
+  it("hints at device settings when push is on but the OS permission is denied", async () => {
+    setPermission("denied");
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+    expect(await screen.findByText(/Enable notifications in your device settings/i)).toBeInTheDocument();
+  });
+
+  it("does not show the device-settings hint while the permission is granted", async () => {
+    setPermission("granted");
+    render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+    await waitFor(() => expect(screen.getByRole("switch", { name: /Push notifications/i })).toBeEnabled());
+    expect(screen.queryByText(/Enable notifications in your device settings/i)).toBeNull();
+  });
+
+  /* ── Native (Capacitor) push branch ─────────────────── */
+
+  describe("on a native shell", () => {
+    beforeEach(() => {
+      mockIsPushSupported.mockReturnValue(true);
+      // The WebView's own permission is meaningless on native — pin it to a
+      // value that would suppress the prompt on web to prove it's ignored.
+      setPermission("denied");
+    });
+
+    it("offers the native prompt instead of the web enable flow", async () => {
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      expect(await screen.findByRole("button", { name: /Turn on notifications/ })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Enable Notifications$/ })).toBeNull();
+      // The mismatch hint rides along: preference on, OS grant unconfirmed.
+      expect(screen.getByText(/Enable notifications in your device settings/i)).toBeInTheDocument();
+    });
+
+    it("requests permission through the plugin and registers the token on grant", async () => {
+      const native = await import("../../services/pushNotifications");
+      vi.mocked(native.requestPushPermission).mockResolvedValueOnce("granted");
+      const web = await import("../../services/fcm");
+
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      await act(async () => {
+        await userEvent.click(await screen.findByRole("button", { name: /Turn on notifications/ }));
+      });
+
+      expect(native.requestPushPermission).toHaveBeenCalled();
+      // assumeEnabled skips the pref re-read: this is an explicit gesture, so
+      // an optimistic toggle whose write is still in flight must not drop the
+      // registration.
+      expect(native.registerPushToken).toHaveBeenCalledWith("me", { assumeEnabled: true });
+      // The web pair bails without a service worker — it must not be used here.
+      expect(web.requestPushPermission).not.toHaveBeenCalled();
+      expect(await screen.findByText(/Push notifications on/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Enable notifications in your device settings/i)).toBeNull();
+    });
+
+    it("shows the native denial card and skips registration", async () => {
+      const native = await import("../../services/pushNotifications");
+      vi.mocked(native.requestPushPermission).mockResolvedValueOnce("denied");
+
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      await act(async () => {
+        await userEvent.click(await screen.findByRole("button", { name: /Turn on notifications/ }));
+      });
+
+      expect(await screen.findByText(/Notifications blocked/i)).toBeInTheDocument();
+      expect(screen.getByText(/Re-enable them in your device settings/i)).toBeInTheDocument();
+      expect(native.registerPushToken).not.toHaveBeenCalled();
+    });
+
+    it("keeps the prompt available when the OS prompt is dismissed", async () => {
+      const native = await import("../../services/pushNotifications");
+      vi.mocked(native.requestPushPermission).mockResolvedValueOnce("prompt");
+
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      await act(async () => {
+        await userEvent.click(await screen.findByRole("button", { name: /Turn on notifications/ }));
+      });
+
+      expect(await screen.findByText(/Couldn't enable notifications/)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Turn on notifications/ })).toBeInTheDocument();
+      expect(native.registerPushToken).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a generic error when the plugin throws", async () => {
+      const native = await import("../../services/pushNotifications");
+      vi.mocked(native.requestPushPermission).mockRejectedValueOnce(new Error("plugin unavailable"));
+
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      await act(async () => {
+        await userEvent.click(await screen.findByRole("button", { name: /Turn on notifications/ }));
+      });
+
+      expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
+    });
+
+    it("never renders the unsupported-browser card on native", async () => {
+      Object.defineProperty(window, "Notification", { configurable: true, value: undefined });
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      expect(await screen.findByRole("button", { name: /Turn on notifications/ })).toBeInTheDocument();
+      expect(screen.queryByText(/Push notifications aren't supported/i)).toBeNull();
+    });
+
+    it("shows the granted state on mount for a device that already allowed push", async () => {
+      const native = await import("../../services/pushNotifications");
+      vi.mocked(native.getNativePushPermission).mockResolvedValueOnce("granted");
+
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+
+      // No phantom opt-in card, and no mismatch hint, for an already-granted
+      // device — the whole point of the read-only permission query.
+      expect(await screen.findByText(/Push notifications on/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Turn on notifications/ })).toBeNull();
+      expect(screen.queryByText(/Enable notifications in your device settings/i)).toBeNull();
+      // Reading permission must never prompt.
+      expect(native.requestPushPermission).not.toHaveBeenCalled();
+    });
+
+    it("shows the blocked card on mount when the OS grant was refused", async () => {
+      const native = await import("../../services/pushNotifications");
+      vi.mocked(native.getNativePushPermission).mockResolvedValueOnce("denied");
+
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+
+      expect(await screen.findByText(/Notifications blocked/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Turn on notifications/ })).toBeNull();
+      expect(screen.getByText(/Enable notifications in your device settings/i)).toBeInTheDocument();
+    });
   });
 });

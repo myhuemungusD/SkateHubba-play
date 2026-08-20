@@ -4,6 +4,7 @@ import { useGameContext } from "../context/GameContext";
 import { useNotifications } from "../context/NotificationContext";
 import { onForegroundMessage } from "../services/fcm";
 import { subscribeToNudges, subscribeToNotifications } from "../services/notifications";
+import { subscribeToNativePushOpens } from "../services/pushNotifications";
 import type { GameDoc } from "../services/games";
 import type { ChimeType } from "../services/sounds";
 
@@ -216,6 +217,21 @@ function useServiceWorkerDeepLink(uid: string | null) {
 }
 
 /**
+ * Native (Capacitor) counterpart to the service-worker bridge: a tap on an OS
+ * push notification resolves to the same `OPEN_GAME_EVENT`, so App.tsx has a
+ * single deep-link entry point regardless of platform. No-ops on web — the
+ * service returns a no-op unsubscribe when push isn't supported.
+ */
+function useNativePushDeepLink(uid: string | null) {
+  useEffect(() => {
+    if (!uid) return;
+    return subscribeToNativePushOpens((gameId) => {
+      window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: { gameId } }));
+    });
+  }, [uid]);
+}
+
+/**
  * Foreground FCM bridge. FCM is still required for background/closed-tab
  * delivery; in the foreground its only job is to surface unknown/future
  * types that no Firestore subscription covers.
@@ -262,6 +278,7 @@ export function GameNotificationWatcher() {
   useNudgeListener(uid, profileGated, notify);
   useGameCompletionWatcher(uid, games, activeGame, notify);
   useServiceWorkerDeepLink(uid);
+  useNativePushDeepLink(uid);
   useFcmForegroundBridge(uid, notify);
 
   return null;

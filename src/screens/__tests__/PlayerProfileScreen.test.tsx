@@ -92,6 +92,81 @@ describe("PlayerProfileScreen", () => {
     expect(screen.getByLabelText("Letters taken: 4")).toBeInTheDocument();
   });
 
+  it("defaults every stats-overhaul counter to zero on a legacy profile doc", () => {
+    // A doc written before these counters shipped simply lacks the fields.
+    // Reading them as 0 is what keeps the new sections from rendering NaN.
+    render(<PlayerProfileScreen {...baseProps} />);
+    expect(screen.getByLabelText("Clean wins: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Comeback wins: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Games judged: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Total games: 0")).toBeInTheDocument();
+    expect(screen.queryByTestId("last-ten-row")).not.toBeInTheDocument();
+  });
+
+  it("reads the game-style counters straight off the profile doc", () => {
+    const currentUserProfile = {
+      ...baseProps.currentUserProfile,
+      gamesPlayed: 20,
+      forfeitLosses: 1,
+      cleanWins: 6,
+      comebackWins: 3,
+      gamesJudged: 5,
+    };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByLabelText("Clean wins: 6")).toBeInTheDocument();
+    expect(screen.getByLabelText("Comeback wins: 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("Games judged: 5")).toBeInTheDocument();
+    // (20 games - 1 abandoned) / 20 = 95%.
+    expect(screen.getByLabelText("Games finished: 95 percent")).toBeInTheDocument();
+  });
+
+  it("prefers the gamesPlayed counter over wins + losses for total games", () => {
+    // PlayerDirectory has always read gamesPlayed; the profile derived its own
+    // total from wins + losses, so a game that incremented one counter and not
+    // the other made the two surfaces disagree in front of the user.
+    const currentUserProfile = { ...baseProps.currentUserProfile, wins: 4, losses: 2, gamesPlayed: 9 };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByLabelText("Total games: 9")).toBeInTheDocument();
+  });
+
+  it("falls back to wins + losses when the gamesPlayed counter is absent", () => {
+    const currentUserProfile = { ...baseProps.currentUserProfile, wins: 4, losses: 2 };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByLabelText("Total games: 6")).toBeInTheDocument();
+  });
+
+  it("renders the last-10 form guide from recentResults", () => {
+    const currentUserProfile = { ...baseProps.currentUserProfile, recentResults: ["W", "L", "W"] };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByRole("img", { name: "Last 3 games: 2 wins, 1 loss" })).toBeInTheDocument();
+  });
+
+  it("drops unrecognised entries in recentResults rather than rendering them", () => {
+    // The field is external data typed as string[] — a corrupt or future
+    // value must not become an unlabelled pip.
+    const currentUserProfile = { ...baseProps.currentUserProfile, recentResults: ["W", "X", "L"] };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByRole("img", { name: "Last 2 games: 1 win, 1 loss" })).toBeInTheDocument();
+  });
+
+  it("offers the owner-only My Stats entry point on your own profile", async () => {
+    const onViewMyStats = vi.fn();
+    render(<PlayerProfileScreen {...baseProps} onViewMyStats={onViewMyStats} />);
+    await userEvent.click(screen.getByTestId("my-stats-button"));
+    expect(onViewMyStats).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the My Stats entry point when viewing another player", () => {
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
+    render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} onViewMyStats={vi.fn()} />);
+    expect(screen.queryByTestId("my-stats-button")).not.toBeInTheDocument();
+  });
+
+  it("omits the My Stats entry point when the caller has not wired it", () => {
+    render(<PlayerProfileScreen {...baseProps} />);
+    expect(screen.queryByTestId("my-stats-button")).not.toBeInTheDocument();
+  });
+
   it("shows empty game history message for own profile", () => {
     render(<PlayerProfileScreen {...baseProps} />);
     expect(screen.getByText("No games played yet")).toBeInTheDocument();
