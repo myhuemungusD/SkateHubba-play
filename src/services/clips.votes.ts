@@ -11,9 +11,10 @@
  *
  * Changing your mind (flip) is a delete + create of the SAME vote doc id in a
  * single transaction, carrying two counter deltas (+1 on the new direction,
- * −1 on the old). It is expressed as delete-then-set rather than an update
- * because the `clipVotes` rule is `allow update: if false` — vote docs are
- * immutable, and a flip is a new vote, not an edited one.
+ * −1 on the old). Firestore coalesces the delete+set pair into one UPDATE
+ * mutation, so the `clipVotes` rule allows exactly this narrow update: the
+ * `value` must invert and `uid`/`clipId` stay frozen; a same-direction
+ * re-cast is still denied.
  *
  * Ranking is unaffected: the feed still sorts on `upvoteCount` alone.
  * `downvoteCount` is display and moderation signal only.
@@ -232,9 +233,9 @@ export async function castClipVote(uid: string, clipId: string, value: ClipVoteV
           counts[dropField] -= 1;
           updates[dropField] = counts[dropField];
         }
-        // Vote docs are immutable (`allow update: if false`), so a flip is a
-        // delete followed by a fresh create at the same id — ordered writes
-        // inside one transaction, committed atomically.
+        // A flip is delete-then-set at the same id inside one transaction;
+        // Firestore coalesces the pair into a single UPDATE, which the
+        // clipVotes rule permits only as a strict value inversion.
         tx.delete(voteRef);
       }
 
