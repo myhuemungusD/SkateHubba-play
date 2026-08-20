@@ -7,7 +7,9 @@ import { getAvatarFallbackUrl } from "../../../services/avatars";
  * Identity card at the top of the profile (PR-C — full rewrite per plan §6.4).
  *
  * Visible changes from the pre-PR-C version:
- *   - Avatar grew from 56px (`w-14`) to 96px (`w-24`) for hero presentation.
+ *   - Avatar grew from 56px (`w-14`) to 80px (`w-20`) for hero presentation.
+ *     Its frame is a neutral hairline, not an orange ring: the username is the
+ *     strongest element after the image, and an orange ring competed with it.
  *   - Pencil-edit overlay (PR-B) preserved; only renders on own profile.
  *   - Fallback chain (PR-B) preserved: `profileImageUrl` → first-letter
  *     circle → `getAvatarFallbackUrl()` SVG.
@@ -62,16 +64,16 @@ export function ProfileIdentityCard({
   const showFallbackSvg = !showCustom && !showInitial;
 
   return (
-    <div className="flex items-center gap-4 mb-6 animate-fade-in">
+    <div className="flex items-center gap-4 mb-4 animate-fade-in">
       <div className="relative">
-        <div className="w-24 h-24 rounded-full bg-brand-orange/[0.12] border-2 border-brand-orange/30 flex items-center justify-center shrink-0 shadow-glow-sm overflow-hidden">
+        <div className="w-20 h-20 rounded-full bg-surface-alt border border-white/[0.06] flex items-center justify-center shrink-0 shadow-card overflow-hidden">
           {showCustom && (
             // Hero avatar is above-the-fold — `loading="lazy"` (audit
             // C-ISSUE-1) would defer the request unnecessarily and
             // delay paint on the most prominent element.
             <img src={effectiveUrl as string} alt="" decoding="async" className="w-full h-full object-cover" />
           )}
-          {showInitial && <span className="font-display text-4xl text-brand-orange leading-none">{initial}</span>}
+          {showInitial && <span className="font-display text-3xl text-white/80 leading-none">{initial}</span>}
           {showFallbackSvg && (
             // Hero fallback also above-the-fold (audit C-ISSUE-1).
             <img src={getAvatarFallbackUrl()} alt="" decoding="async" className="w-full h-full object-cover" />
@@ -113,7 +115,7 @@ export function ProfileIdentityCard({
             <ProUsername username={username} isVerifiedPro={isVerifiedPro} />
           </h1>
         </div>
-        <p className="font-body text-xs text-muted mt-2 capitalize">{stance}</p>
+        <p className="font-body text-xs text-muted mt-1.5 capitalize">{stance}</p>
       </div>
       {pickerOpen && uid && (
         <AvatarPicker

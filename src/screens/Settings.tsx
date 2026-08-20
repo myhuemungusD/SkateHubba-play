@@ -6,7 +6,15 @@ import { unblockUser } from "../services/blocking";
 import { useBlockedUsers } from "../hooks/useBlockedUsers";
 import { isHapticsEnabled, setHapticsEnabled, playHaptic } from "../services/haptics";
 import { useNotifications } from "../context/NotificationContext";
-import { requestPushPermission } from "../services/fcm";
+import { requestPushPermission as requestWebPushPermission } from "../services/fcm";
+import {
+  getNativePushPermission,
+  isPushSupported,
+  registerPushToken,
+  requestPushPermission as requestNativePushPermission,
+  type NativePushPermission,
+} from "../services/pushNotifications";
+import { usePushPreference } from "../hooks/usePushPreference";
 import { logger } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
 import { ProUsername } from "../components/ProUsername";
@@ -23,7 +31,23 @@ type PushState = "unsupported" | "default" | "granted" | "denied";
  *  through the UI branches below. */
 const KNOWN_PUSH_STATES: ReadonlySet<string> = new Set<PushState>(["default", "granted", "denied"]);
 
+/** Map the native plugin's tri-state onto the UI's four-state union. */
+function fromNativePermission(permission: NativePushPermission): PushState {
+  return permission === "prompt" ? "default" : permission;
+}
+
+/**
+ * OS-level push permission for this runtime.
+ *
+ * On a Capacitor shell `Notification.permission` describes the WebView, not the
+ * OS grant, so it's meaningless here — and the real grant can only be read
+ * asynchronously (`getNativePushPermission`). Native therefore starts at
+ * "default" (prompt-able, the harmless default) and the mount effect below
+ * corrects it. It must never start at "unsupported": that card tells a native
+ * user to switch browsers.
+ */
 function readPushState(): PushState {
+  if (isPushSupported()) return "default";
   if (typeof window === "undefined" || typeof Notification === "undefined") return "unsupported";
   const perm: unknown = Notification.permission;
   if (typeof perm !== "string" || !KNOWN_PUSH_STATES.has(perm)) return "unsupported";
@@ -276,7 +300,7 @@ function BlockedPlayersList({
 /* ── Main Settings screen ───────────────────────────────── */
 
 export function Settings({ profile, onBack }: { profile: UserProfile; onBack: () => void }) {
-  const { soundEnabled, toggleSound } = useNotifications();
+  const { soundEnabled, toggleSound, notify } = useNotifications();
   const { replay: replayTutorial } = useOnboardingContext();
   const [replayingTutorial, setReplayingTutorial] = useState(false);
 
@@ -302,18 +326,52 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
     if (next) playHaptic("button_primary");
   }, []);
 
-  // Push permission is a tri-state that only transitions via browser
+  // Push permission is a tri-state that only transitions via browser/OS
   // prompts — we read once on mount and refresh after a user-initiated
   // enable. `unsupported` fires on desktop Safari + older browsers.
   const [pushState, setPushState] = useState<PushState>(readPushState);
   const [requestingPush, setRequestingPush] = useState(false);
   const [pushError, setPushError] = useState<string | null>(null);
+  // Native shells must go through the Capacitor plugin: the web pair in
+  // services/fcm.ts bails out without window.Notification / serviceWorker, so
+  // a native user could never reach the OS prompt through it.
+  const nativePush = isPushSupported();
+
+  // Resolve the real OS grant on native. `checkPermissions()` never raises the
+  // system dialog, so this is safe to fire on mount — without it an
+  // already-granted user sits on a phantom "Turn on notifications" card. The
+  // read fails soft to "prompt", which lands back on the harmless opt-in card.
+  useEffect(() => {
+    if (!nativePush) return;
+    let cancelled = false;
+    void getNativePushPermission().then((permission) => {
+      if (cancelled) return;
+      setPushState(fromNativePermission(permission));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [nativePush]);
 
   const handleEnablePush = useCallback(async () => {
     setRequestingPush(true);
     setPushError(null);
     try {
-      const token = await requestPushPermission(profile.uid);
+      if (nativePush) {
+        const permission = await requestNativePushPermission();
+        setPushState(fromNativePermission(permission));
+        if (permission === "granted") {
+          // Explicit user gesture — bypass the pref re-read so an optimistic
+          // toggle whose write hasn't landed can't silently drop the token.
+          await registerPushToken(profile.uid, { assumeEnabled: true });
+        } else if (permission === "denied") {
+          setPushError("Notifications were blocked. Enable them in your device settings and try again.");
+        } else {
+          setPushError("Couldn't enable notifications. Please try again.");
+        }
+        return;
+      }
+      const token = await requestWebPushPermission(profile.uid);
       const next = readPushState();
       setPushState(next);
       if (!token && next === "denied") {
@@ -329,7 +387,19 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
     } finally {
       setRequestingPush(false);
     }
-  }, [profile.uid]);
+  }, [profile.uid, nativePush]);
+
+  // Push preference — the only place in the app where push can be switched
+  // off. Independent of the OS permission above: turning it back on never
+  // prompts, it just re-arms delivery for a device that already has (or later
+  // grants) permission.
+  const handlePushPrefError = useCallback(
+    (message: string) => {
+      notify({ type: "error", title: "Preference not saved", message });
+    },
+    [notify],
+  );
+  const pushPref = usePushPreference(profile.uid, handlePushPrefError);
 
   const blockedUids = useBlockedUsers(profile.uid);
 
@@ -372,7 +442,7 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
         <div className="w-16" aria-hidden="true" />
       </div>
 
-      <div className="px-5 pt-7 max-w-lg mx-auto">
+      <div className="px-5 pt-7 max-w-[430px] mx-auto">
         <h1 className="font-display text-fluid-4xl text-white mb-2 tracking-wide">Settings</h1>
         <p className="font-body text-sm text-muted mb-6">Notifications, sound, haptics, and blocked players.</p>
 
@@ -394,7 +464,30 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
         {/* Notifications */}
         <SectionHeader title="NOTIFICATIONS" />
         <div className="space-y-2">
-          {pushState === "unsupported" && (
+          <PrefRow
+            title="Push notifications"
+            description="Turn off to stop all pushes — turns, challenges, nudges, and results."
+            checked={pushPref.enabled}
+            onChange={pushPref.setEnabled}
+            disabled={pushPref.loading}
+            trailing={
+              pushPref.error ? (
+                <p role="alert" className="font-body text-[11px] text-brand-red">
+                  {pushPref.error}
+                </p>
+              ) : /* Mismatch: the preference is on but the OS grant isn't.
+                     On native we can't read the grant, so anything short of a
+                     confirmed "granted" counts — the card below carries the
+                     prompt action while permission is still prompt-able. */
+              pushPref.enabled && (pushState === "denied" || (nativePush && pushState !== "granted")) ? (
+                <p className="font-body text-[11px] text-subtle">Enable notifications in your device settings</p>
+              ) : undefined
+            }
+          />
+          {/* Permission blocks describe the OS-level grant. They're only
+              meaningful while the preference above is on — with push switched
+              off, "Push notifications on" would be a lie. */}
+          {pushPref.enabled && pushState === "unsupported" && (
             <div className="p-4 rounded-2xl border border-dashed border-border bg-surface/30 backdrop-blur-sm">
               <p className="font-body text-xs text-faint">
                 Push notifications aren&apos;t supported in this browser. Use a recent version of Chrome, Safari, or
@@ -402,7 +495,7 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
               </p>
             </div>
           )}
-          {pushState === "granted" && (
+          {pushPref.enabled && pushState === "granted" && (
             <div className="flex items-center gap-3 p-4 rounded-2xl glass-card">
               <span
                 className="w-2 h-2 rounded-full bg-brand-green shadow-[0_0_8px_rgba(0,230,118,0.5)]"
@@ -416,15 +509,15 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
               </div>
             </div>
           )}
-          {pushState === "default" && (
+          {pushPref.enabled && pushState === "default" && (
             <div className="p-4 rounded-2xl glass-card">
               <p className="font-display text-sm text-white mb-1">Enable push notifications</p>
               <p className="font-body text-xs text-faint mb-3">
-                Get notified the moment it&apos;s your turn. You can turn this off any time in your browser or system
-                settings.
+                Get notified the moment it&apos;s your turn. You can turn this off any time in your{" "}
+                {nativePush ? "device settings" : "browser or system settings"}.
               </p>
               <Btn variant="secondary" onClick={handleEnablePush} disabled={requestingPush}>
-                {requestingPush ? "Enabling…" : "Enable Notifications"}
+                {requestingPush ? "Enabling…" : nativePush ? "Turn on notifications" : "Enable Notifications"}
               </Btn>
               {pushError && (
                 <p role="alert" className="font-body text-xs text-brand-red mt-2">
@@ -433,12 +526,13 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
               )}
             </div>
           )}
-          {pushState === "denied" && (
+          {pushPref.enabled && pushState === "denied" && (
             <div className="p-4 rounded-2xl border border-brand-red/25 bg-brand-red/[0.06]">
               <p className="font-display text-sm text-white mb-1">Notifications blocked</p>
               <p className="font-body text-xs text-faint">
-                You&apos;ve blocked SkateHubba from sending notifications. Re-enable them from your browser or system
-                settings, then reload this page.
+                {nativePush
+                  ? "You've blocked SkateHubba from sending notifications. Re-enable them in your device settings, then reopen the app."
+                  : "You've blocked SkateHubba from sending notifications. Re-enable them from your browser or system settings, then reload this page."}
               </p>
             </div>
           )}

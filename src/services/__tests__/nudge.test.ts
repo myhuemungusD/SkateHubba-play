@@ -43,6 +43,7 @@ vi.mock("../pushDispatch", () => ({
 /* ── tests ───────────────────────────────────── */
 
 import { sendNudge, canNudge, getServerNudgeCooldownMs, NUDGE_COOLDOWN_MS } from "../nudge";
+import { _resetNotificationRateLimit } from "../notifications";
 
 /** Build a rejection shaped like a FirebaseError (a `code` field, not just a message). */
 function firebaseError(code: string): Error & { code: string } {
@@ -53,6 +54,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   batchSetCalls.length = 0;
   localStorage.clear();
+  // sendNudge now routes the bell entry through writeNotification, which keeps
+  // a module-level 5s cooldown map. Without this reset the second test in the
+  // file would silently exercise the suppressed branch.
+  _resetNotificationRateLimit();
   mockGetDoc.mockResolvedValue({ exists: () => false, data: () => undefined });
 });
 
@@ -83,9 +88,13 @@ describe("sendNudge", () => {
   it("commits the nudge and rate-limit doc atomically in a single writeBatch", async () => {
     await sendNudge(params);
 
-    expect(mockWriteBatch).toHaveBeenCalledTimes(1);
-    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
-    expect(mockBatchSet).toHaveBeenCalledTimes(2);
+    // Two batches now: the nudge batch (nudge + nudge_limits) and the bell
+    // batch writeNotification commits afterwards (notification +
+    // notification_limits). Each is independently atomic, which is what the
+    // companion-write rules require.
+    expect(mockWriteBatch).toHaveBeenCalledTimes(2);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(2);
+    expect(mockBatchSet).toHaveBeenCalledTimes(4);
 
     const nudgeCall = batchSetCalls.find((c) => c.ref === "nudges/auto-id");
     expect(nudgeCall?.data).toEqual({
@@ -159,6 +168,33 @@ describe("sendNudge", () => {
       body: "@sk8r is waiting for your move",
       gameId: "g1",
     });
+  });
+
+  it("leaves a persistent bell entry with EXACTLY the keys the nudge rule allows", async () => {
+    // The /notifications create rule validates type=='nudge' docs against an
+    // exact key set. An extra field here is a rules rejection in production,
+    // and the bell silently loses nudges again.
+    await sendNudge(params);
+    const bell = batchSetCalls
+      .map((c) => c.data as Record<string, unknown>)
+      .find((d) => d?.type === "nudge" && "read" in d);
+    expect(bell).toBeDefined();
+    expect(Object.keys(bell as Record<string, unknown>).sort()).toEqual(
+      ["body", "createdAt", "gameId", "read", "recipientUid", "senderUid", "title", "type"].sort(),
+    );
+    expect(bell).toMatchObject({ recipientUid: "u2", senderUid: "u1", read: false, gameId: "g1" });
+  });
+
+  it("writes the notification_limits cooldown companion alongside the bell entry", async () => {
+    await sendNudge(params);
+    const limit = batchSetCalls.find((c) => c.ref === "notification_limits/u1_g1_nudge");
+    expect(limit?.data).toMatchObject({ senderUid: "u1", gameId: "g1", type: "nudge", lastSentAt: "SERVER_TS" });
+  });
+
+  it("does not write a bell entry when the nudge batch commit fails", async () => {
+    mockBatchCommit.mockRejectedValueOnce(firebaseError("permission-denied"));
+    await expect(sendNudge(params)).rejects.toThrow();
+    expect(batchSetCalls.some((c) => c.ref.startsWith("notification_limits/"))).toBe(false);
   });
 
   it("does not dispatch a push when the batch commit fails", async () => {

@@ -4,25 +4,17 @@ import { ProUsername } from "../../../components/ProUsername";
 
 type Player = ReturnType<typeof usePlayerDirectory>["players"][number];
 
-function relativeJoinDate(createdAt: unknown): string {
-  if (
-    !createdAt ||
-    typeof createdAt !== "object" ||
-    !("toMillis" in createdAt) ||
-    typeof (createdAt as { toMillis: unknown }).toMillis !== "function"
-  )
-    return "Joined";
-  const millis = (createdAt as { toMillis: () => number }).toMillis();
-  const ms = Date.now() - millis;
-  if (ms < 0) return "Just joined";
-  const hours = ms / 3_600_000;
-  if (hours < 1) return "Just joined";
-  if (hours < 24) return `Joined ${Math.floor(hours)}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `Joined ${days}d ago`;
-  const d = new Date(millis);
-  const month = d.toLocaleString("en-US", { month: "short" });
-  return `Joined ${month} ${d.getDate()}`;
+/**
+ * Completed-games label for a directory row.
+ *
+ * Prefers the denormalized `gamesPlayed` counter, falling back to
+ * `wins + losses` for profiles whose docs predate that field — the same
+ * total the profile stats grid derives, so the two screens agree.
+ */
+function gamesLabel(player: Player): string {
+  const count = player.gamesPlayed ?? (player.wins ?? 0) + (player.losses ?? 0);
+  if (count === 0) return "No games yet";
+  return count === 1 ? "1 game" : `${count} games`;
 }
 
 interface Props {
@@ -44,16 +36,16 @@ export function PlayerDirectory({ players, loading, user, onViewPlayer, onChalle
           {[0, 1, 2].map((i) => (
             <div
               key={i}
-              className="flex items-center justify-between p-4 rounded-2xl bg-surface-alt/60 border border-border"
+              className="flex min-h-[72px] items-center justify-between gap-3 px-3.5 py-3 rounded-xl bg-surface border border-white/[0.06] shadow-card"
             >
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-8 h-8 rounded-full bg-surface-alt border border-border shrink-0" />
+                <div className="w-10 h-10 rounded-full bg-surface-alt border border-white/[0.06] shrink-0" />
                 <div className="space-y-2">
                   <div className="h-4 w-28 rounded-md bg-surface-alt" />
                   <div className="h-3 w-20 rounded-md bg-surface-alt/70" />
                 </div>
               </div>
-              <div className="h-9 w-20 rounded-lg bg-surface-alt" />
+              <div className="h-11 w-24 rounded-lg bg-surface-alt" />
             </div>
           ))}
         </div>
@@ -76,28 +68,26 @@ export function PlayerDirectory({ players, loading, user, onViewPlayer, onChalle
         {players.map((p: Player) => (
           <div
             key={p.uid}
-            className="flex items-center justify-between p-4 rounded-2xl glass-card transition-all duration-300 ease-smooth"
+            className="flex min-h-[72px] items-center justify-between gap-3 px-3.5 py-3 rounded-xl bg-surface border border-white/[0.06] shadow-card transition-colors duration-300 ease-smooth"
           >
             <button
               type="button"
               onClick={() => onViewPlayer?.(p.uid)}
-              className="flex items-center gap-3 min-w-0 text-left cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              className="flex flex-1 items-center gap-3 min-w-0 text-left cursor-pointer hover:opacity-80 transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
               aria-label={`View @${p.username}'s profile`}
             >
-              <div className="w-8 h-8 rounded-full bg-brand-orange/10 border border-brand-orange/20 flex items-center justify-center shrink-0">
-                <span className="font-display text-[11px] text-brand-orange leading-none">
-                  {p.username[0].toUpperCase()}
-                </span>
+              <div className="w-10 h-10 rounded-full bg-surface-alt border border-white/[0.06] flex items-center justify-center shrink-0">
+                <span className="font-display text-sm text-white/80 leading-none">{p.username[0].toUpperCase()}</span>
               </div>
               <div className="min-w-0">
                 <ProUsername
                   username={p.username}
                   isVerifiedPro={(p as UserProfile).isVerifiedPro}
-                  className="font-display text-base text-white block leading-none"
+                  className="font-display text-base text-white block leading-none truncate"
                 />
-                <span className="font-body text-[11px] text-brand-green block mt-1">
+                <span className="font-body text-[11px] text-muted block mt-1.5 truncate">
                   {p.stance}
-                  {p.createdAt ? ` · ${relativeJoinDate(p.createdAt)}` : ""}
+                  {` · ${gamesLabel(p)}`}
                 </span>
               </div>
             </button>
@@ -105,7 +95,7 @@ export function PlayerDirectory({ players, loading, user, onViewPlayer, onChalle
               type="button"
               onClick={() => onChallengeUser(p.username)}
               disabled={!user?.emailVerified}
-              className={`font-display text-xs shrink-0 ml-3 px-3 py-1.5 touch-target inline-flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
+              className={`font-display text-xs shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
               aria-label={`Challenge @${p.username}`}
             >
               Challenge
