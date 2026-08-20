@@ -300,7 +300,14 @@ describe("push_dispatch — nudge type", () => {
     );
   });
 
-  it("attack: 'nudge' is NOT a valid /notifications type — the in-app feed schema is unchanged", async () => {
+  // Aug 2026: this used to assert 'nudge' was REJECTED by /notifications —
+  // nudges toasted only and left no bell entry. Nudges now also write a
+  // persistent notification doc from the sender, under the same Path A
+  // companion-write anchor. The invariant that still matters is that the
+  // notification leg is gated exactly like every other type, which the
+  // dedicated suite (notifications-nudge-type.rules.test.ts) covers; here we
+  // only pin that a well-formed nudge notification rides alongside dispatch.
+  it("a well-formed 'nudge' /notifications doc is accepted with its limits companion", async () => {
     const fs = asUser(SENDER_UID).firestore();
     const batch = writeBatch(fs);
     batch.set(doc(fs, "notifications", "notif-nudge"), {
@@ -319,6 +326,6 @@ describe("push_dispatch — nudge type", () => {
       type: "nudge",
       lastSentAt: serverTimestamp(),
     });
-    await assertFails(batch.commit());
+    await assertSucceeds(batch.commit());
   });
 });

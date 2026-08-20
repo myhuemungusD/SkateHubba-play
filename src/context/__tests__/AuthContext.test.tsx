@@ -87,6 +87,7 @@ vi.mock("../../services/fcm", () => ({
 vi.mock("../../services/pushNotifications", () => ({
   isPushSupported: vi.fn().mockReturnValue(false),
   registerPushToken: vi.fn().mockResolvedValue(undefined),
+  registerPushTokenIfGranted: vi.fn().mockResolvedValue(undefined),
   unregisterPushToken: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../services/userData", () => ({

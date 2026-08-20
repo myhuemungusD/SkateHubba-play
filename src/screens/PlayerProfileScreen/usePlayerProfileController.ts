@@ -25,9 +25,30 @@ export interface OpponentRecord {
  * H2H (vsYou*) record is still derived from local games because it is
  * inherently per-viewer and isn't stored on the profile doc.
  */
+/** A single entry in {@link ProfileStats.recentResults}. */
+export type MatchResult = "W" | "L";
+
+/**
+ * Narrow the raw `recentResults` array off the profile doc. The field is
+ * external data typed as `string[]`, so anything that isn't a literal "W"/"L"
+ * is dropped rather than rendered as an unknown pip. A missing field reads as
+ * an empty run — the same "absent means zero" convention every other counter
+ * on this screen follows.
+ */
+export function narrowRecentResults(raw: string[] | undefined): MatchResult[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter((v): v is MatchResult => v === "W" || v === "L");
+}
+
 export interface ProfileStats {
   wins: number;
   losses: number;
+  /**
+   * Completed games. Prefers the server-written `gamesPlayed` counter and only
+   * falls back to `wins + losses` for docs predating it — the leaderboard
+   * (PlayerDirectory) already reads it that way, and the two surfaces
+   * disagreeing about a player's game count is a bug users can see.
+   */
   total: number;
   /**
    * Whole-percent win rate, or `null` when the player has not yet played
@@ -63,6 +84,21 @@ export interface ProfileStats {
   lettersGiven: number;
   /** Letters this player took from opponents. */
   lettersTaken: number;
+  /** Wins without taking a single letter. 0 for docs predating the counter. */
+  cleanWins: number;
+  /** Wins from a deficit. 0 for docs predating the counter. */
+  comebackWins: number;
+  /**
+   * Share of games this player saw through to the end, as a whole percent, or
+   * `null` when they have no completed games. This is the public framing of
+   * `forfeitLosses`: the raw abandon count is owner-only (My Stats), because a
+   * negative counter on a public profile invites gaming and shaming alike.
+   */
+  challengeCompletion: number | null;
+  /** Last 10 results, oldest first. Empty for docs predating the counter. */
+  recentResults: MatchResult[];
+  /** Games refereed to completion as an accepted judge. 0 for legacy docs. */
+  gamesJudged: number;
 }
 
 interface Args {
@@ -193,7 +229,7 @@ export function usePlayerProfileController({
   const stats = useMemo<ProfileStats>(() => {
     const wins = profile?.wins ?? 0;
     const losses = profile?.losses ?? 0;
-    const total = wins + losses;
+    const total = profile?.gamesPlayed ?? wins + losses;
     const winRate = ratedWinRate(wins, losses);
     const currentWinStreak = profile?.currentWinStreak ?? 0;
     const bestWinStreak = profile?.bestWinStreak ?? 0;
@@ -226,6 +262,14 @@ export function usePlayerProfileController({
       disputesWrong: profile?.disputesWrong ?? 0,
       lettersGiven: profile?.lettersGiven ?? 0,
       lettersTaken: profile?.lettersTaken ?? 0,
+      cleanWins: profile?.cleanWins ?? 0,
+      comebackWins: profile?.comebackWins ?? 0,
+      // Clamped at 0 so a corrupt doc (forfeitLosses > total) renders a floor
+      // rather than a negative percentage.
+      challengeCompletion:
+        total > 0 ? Math.max(0, Math.round(((total - (profile?.forfeitLosses ?? 0)) / total) * 100)) : null,
+      recentResults: narrowRecentResults(profile?.recentResults),
+      gamesJudged: profile?.gamesJudged ?? 0,
     };
   }, [profile, completedGames, viewerUid]);
 

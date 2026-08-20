@@ -215,7 +215,9 @@ function dbWithOneExpiredGame() {
       where: vi.fn().mockReturnThis(),
       orderBy: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
-      get: vi.fn().mockResolvedValue({ docs: [{ id: "g1" }] }),
+      // Candidate docs carry data() because the notification passes read the
+      // doc body (createdAt / turnDeadline) straight off the query snapshot.
+      get: vi.fn().mockResolvedValue({ docs: [expiredGameSnapshot()], empty: false }),
       doc: vi.fn(() => docRef),
     })),
     runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) =>
@@ -253,7 +255,7 @@ function dbForResolve(rawGameData: Record<string, unknown>, pushTokens: string[]
       where: vi.fn().mockReturnThis(),
       orderBy: vi.fn().mockReturnThis(),
       limit: vi.fn().mockReturnThis(),
-      get: vi.fn().mockResolvedValue({ docs: [{ id: "g1" }] }),
+      get: vi.fn().mockResolvedValue({ docs: [{ id: "g1", data: () => rawGameData }], empty: false }),
       doc: vi.fn(() => ({ __doc: name })),
     };
   });
@@ -318,6 +320,430 @@ describe("sweep handler dry-run (never writes)", () => {
     const write = txUpdate.mock.calls[0][1] as Record<string, unknown>;
     expect(write.status).toBe("forfeit");
     expect(write.winner).toBe("p2");
+  });
+});
+
+/**
+ * A db double aimed at the two notification passes.
+ *
+ * All three game queries (forfeit candidates, challenge reconcile, deadline
+ * reminder) hit db.collection("games"), so the games `get()` serves a fixed
+ * SEQUENCE: [forfeit, reconcile, reminder].
+ */
+function dbForNotifyPasses(opts: {
+  reconcile?: Array<{ id: string; data: () => Record<string, unknown> }>;
+  reminder?: Array<{ id: string; data: () => Record<string, unknown> }>;
+  challengeNotified?: boolean;
+  tokens?: string[];
+  gamesQueryError?: Error;
+}) {
+  const notifSet = vi.fn();
+  const dispatchAdd = vi.fn().mockResolvedValue(undefined);
+  // Tombstone writes: `batchUpdate` is the in-batch stamp that rides with a
+  // notification; `gameUpdate` is the standalone migration stamp.
+  const batchUpdate = vi.fn();
+  const gameUpdate = vi.fn().mockResolvedValue(undefined);
+  const batchCommit = vi.fn().mockResolvedValue(undefined);
+  const gamesResults = [{ docs: [] }, { docs: opts.reconcile ?? [] }, { docs: opts.reminder ?? [] }];
+  const gamesFilters: Array<Array<unknown[]>> = [];
+  let gamesCall = 0;
+
+  const collection = vi.fn((name: string) => {
+    if (name === "push_dispatch") return { add: dispatchAdd };
+    if (name === "pushTargets") {
+      return {
+        doc: vi.fn(() => ({
+          get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ tokens: opts.tokens ?? [] }) }),
+        })),
+      };
+    }
+    if (name === "notifications") {
+      return {
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ empty: !opts.challengeNotified }),
+        doc: vi.fn((id: string) => ({ __notification: id })),
+      };
+    }
+    // Each games query gets its own recorder so a test can assert the exact
+    // filter set of a given pass (0 = forfeit, 1 = reconcile, 2 = reminder).
+    const filters: Array<unknown[]> = [];
+    gamesFilters.push(filters);
+    const q = {
+      where: vi.fn((...args: unknown[]) => {
+        filters.push(args);
+        return q;
+      }),
+      orderBy: vi.fn(() => q),
+      limit: vi.fn(() => q),
+      get: vi.fn(() => {
+        if (opts.gamesQueryError && gamesCall > 0) return Promise.reject(opts.gamesQueryError);
+        return Promise.resolve(gamesResults[gamesCall++] ?? { docs: [] });
+      }),
+      doc: vi.fn((id: string) => ({ __game: id, update: (data: unknown) => gameUpdate(id, data) })),
+    };
+    return q;
+  });
+
+  const batch = vi.fn(() => ({
+    set: (ref: { __notification: string }, data: unknown) => notifSet(ref.__notification, data),
+    update: (ref: { __game: string }, data: unknown) => batchUpdate(ref.__game, data),
+    commit: batchCommit,
+  }));
+
+  return {
+    db: { collection, batch, runTransaction: vi.fn() },
+    notifSet,
+    dispatchAdd,
+    batchUpdate,
+    gameUpdate,
+    /** Filters applied by the nth games query (0 forfeit, 1 reconcile, 2 reminder). */
+    gamesFilters: (n: number): Array<unknown[]> => gamesFilters[n] ?? [],
+  };
+}
+
+/** Timestamp stub matching the admin SDK surface the passes read. */
+function tsAt(ms: number): { toMillis: () => number } {
+  return { toMillis: () => ms };
+}
+
+function challengeGame(
+  ageMs: number,
+  extra: Record<string, unknown> = {},
+): { id: string; data: () => Record<string, unknown> } {
+  return {
+    id: "gc1",
+    data: () => ({
+      player1Uid: "p1",
+      player2Uid: "p2",
+      player1Username: "alice",
+      status: "active",
+      turnNumber: 1,
+      createdAt: tsAt(Date.now() - ageMs),
+      ...extra,
+    }),
+  };
+}
+
+function deadlineGame(
+  leadMs: number,
+  extra: Record<string, unknown> = {},
+): { id: string; data: () => Record<string, unknown> } {
+  return {
+    id: "gd1",
+    data: () => ({
+      player1Uid: "p1",
+      player2Uid: "p2",
+      player1Username: "alice",
+      player2Username: "bob",
+      status: "active",
+      phase: "matching",
+      currentTurn: "p2",
+      turnNumber: 3,
+      turnDeadline: tsAt(Date.now() + leadMs),
+      ...extra,
+    }),
+  };
+}
+
+describe("sweep handler challenge-notification reconcile (server backstop)", () => {
+  beforeEach(() => {
+    process.env.CRON_SECRET = "s3cret";
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
+    getAppsMock.mockReturnValue([]);
+    initializeAppMock.mockReturnValue({ name: "app" });
+  });
+
+  it("backfills the missing new_challenge notification at a deterministic id", async () => {
+    // The client's write died mid-flight (tab closed on navigate). The
+    // opponent otherwise never learns the game exists.
+    const { db, notifSet, dispatchAdd, batchUpdate } = dbForNotifyPasses({
+      reconcile: [challengeGame(5 * 60_000)],
+      tokens: ["tok-1"],
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reconciled: 1, notifyErrors: 0 });
+    expect(notifSet).toHaveBeenCalledTimes(1);
+    const [id, doc] = notifSet.mock.calls[0] as [string, Record<string, unknown>];
+    // Deterministic id ⇒ two overlapping cron runs converge on one doc.
+    expect(id).toBe("gc1_1_new_challenge_notify");
+    expect(doc).toMatchObject({ senderUid: "p1", recipientUid: "p2", type: "new_challenge", read: false });
+    expect(doc.body).toContain("@alice");
+    expect(dispatchAdd).toHaveBeenCalledTimes(1);
+    // The tombstone rides the SAME batch as the notification — all-or-nothing.
+    expect(batchUpdate).toHaveBeenCalledWith("gc1", { challengeNotifiedAt: h.serverTimestampSentinel });
+  });
+
+  it("never re-notifies a game already stamped, even with no notification doc left", async () => {
+    // THE regression: the recipient dismissed the challenge from the bell,
+    // which is a real Firestore delete. Re-deriving "notified" from the
+    // /notifications collection re-created and re-pushed it every 15 minutes
+    // for the full 24h window. The game-doc stamp is not theirs to delete.
+    const { db, notifSet, dispatchAdd, gameUpdate } = dbForNotifyPasses({
+      reconcile: [challengeGame(5 * 60_000, { challengeNotifiedAt: tsAt(Date.now() - 60_000) })],
+      tokens: ["tok-1"],
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reconciled: 0, notifyErrors: 0 });
+    expect(notifSet).not.toHaveBeenCalled();
+    expect(dispatchAdd).not.toHaveBeenCalled();
+    // Cheapest possible skip: the stamp short-circuits before the /notifications
+    // query, so a stamped game costs one document read per scan and nothing else.
+    expect(gameUpdate).not.toHaveBeenCalled();
+  });
+
+  it("stamps (but does not re-notify) an in-flight game whose client notification landed", async () => {
+    // Migration path for games created before the tombstone shipped: the
+    // client's doc proves delivery, so stamp the game once and stop scanning it.
+    const { db, notifSet, gameUpdate } = dbForNotifyPasses({
+      reconcile: [challengeGame(5 * 60_000)],
+      challengeNotified: true,
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reconciled: 0 });
+    expect(notifSet).not.toHaveBeenCalled();
+    expect(gameUpdate).toHaveBeenCalledWith("gc1", { challengeNotifiedAt: h.serverTimestampSentinel });
+  });
+
+  it("does not stamp the migration marker under dry-run", async () => {
+    const { db, gameUpdate } = dbForNotifyPasses({
+      reconcile: [challengeGame(5 * 60_000)],
+      challengeNotified: true,
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret", query: { dryRun: "1" } }), res);
+
+    expect(out.body).toMatchObject({ reconciled: 0, dryRun: true });
+    expect(gameUpdate).not.toHaveBeenCalled();
+  });
+
+  it("only considers ACTIVE games (no 'New Challenge!' for a dead game)", async () => {
+    const harness = dbForNotifyPasses({ reconcile: [] });
+    getFirestoreMock.mockReturnValue(harness.db);
+
+    const { res } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    // Query index 1 is the reconcile pass (0 is the forfeit sweep).
+    expect(harness.gamesFilters(1)).toContainEqual(["status", "==", "active"]);
+    expect(harness.gamesFilters(1)).toContainEqual(["turnNumber", "==", 1]);
+  });
+
+  it("leaves a game inside the grace period alone (no race with the client)", async () => {
+    const { db, notifSet } = dbForNotifyPasses({ reconcile: [challengeGame(10_000)] });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reconciled: 0 });
+    expect(notifSet).not.toHaveBeenCalled();
+  });
+
+  it("skips games with no usable createdAt or participants", async () => {
+    const { db, notifSet } = dbForNotifyPasses({
+      reconcile: [
+        { id: "no-ts", data: () => ({ player1Uid: "p1", player2Uid: "p2" }) },
+        { id: "no-players", data: () => ({ createdAt: tsAt(Date.now() - 5 * 60_000) }) },
+      ],
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reconciled: 0, notifyErrors: 0 });
+    expect(notifSet).not.toHaveBeenCalled();
+  });
+
+  it("counts but does not write under dry-run", async () => {
+    const { db, notifSet } = dbForNotifyPasses({ reconcile: [challengeGame(5 * 60_000)] });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret", query: { dryRun: "1" } }), res);
+
+    expect(out.body).toMatchObject({ reconciled: 1, dryRun: true });
+    expect(notifSet).not.toHaveBeenCalled();
+  });
+
+  it("counts a per-game failure without failing the run", async () => {
+    const { db } = dbForNotifyPasses({
+      reconcile: [
+        {
+          id: "boom",
+          data: () => {
+            throw new Error("corrupt doc");
+          },
+        },
+      ],
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.code).toBe(200);
+    expect(out.body).toMatchObject({ notifyErrors: 1, reconciled: 0 });
+  });
+
+  it("absorbs a pass-level query failure (e.g. missing composite index)", async () => {
+    const { db } = dbForNotifyPasses({ gamesQueryError: new Error("index missing") });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    // The forfeit sweep still reports 200 — the reconcile is a backstop, not
+    // the load-bearing job.
+    expect(out.code).toBe(200);
+    expect(out.body).toMatchObject({ notifyErrors: 2 });
+  });
+});
+
+describe("sweep handler turn-deadline reminder", () => {
+  beforeEach(() => {
+    process.env.CRON_SECRET = "s3cret";
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;
+    getAppsMock.mockReturnValue([]);
+    initializeAppMock.mockReturnValue({ name: "app" });
+  });
+
+  it("sends one reminder to the player on the hook, ~2h out", async () => {
+    const { db, notifSet, dispatchAdd, batchUpdate } = dbForNotifyPasses({
+      reminder: [deadlineGame(1.9 * 60 * 60_000)],
+      tokens: ["tok-1"],
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reminded: 1 });
+    const [id, doc] = notifSet.mock.calls[0] as [string, Record<string, unknown>];
+    expect(id).toBe("gd1_3_turn_reminder_notify");
+    // Recipient is whoever holds currentTurn; sender is the player waiting.
+    expect(doc).toMatchObject({ recipientUid: "p2", senderUid: "p1", type: "your_turn", read: false });
+    expect(doc.body).toContain("@alice");
+    expect(dispatchAdd).toHaveBeenCalledTimes(1);
+    // Per-turn tombstone, committed with the notification.
+    expect(batchUpdate).toHaveBeenCalledWith("gd1", { turnReminderSentFor: 3 });
+  });
+
+  it("never repeats a reminder for the same turn, even after the recipient dismissed it", async () => {
+    // Same class of bug as the challenge reconcile: the old pre-check read the
+    // notification doc, which the recipient can delete from the bell.
+    const { db, notifSet } = dbForNotifyPasses({
+      reminder: [deadlineGame(1.9 * 60 * 60_000, { turnReminderSentFor: 3 })],
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reminded: 0 });
+    expect(notifSet).not.toHaveBeenCalled();
+  });
+
+  it("reminds again once the game advances to the next turn", async () => {
+    // The tombstone is per-turn, not per-game: turn 4 has its own deadline.
+    const { db, notifSet } = dbForNotifyPasses({
+      reminder: [deadlineGame(1.9 * 60 * 60_000, { turnNumber: 4, turnReminderSentFor: 3 })],
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reminded: 1 });
+    expect(notifSet).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([["pendingReview"], ["communityReview"]])(
+    "stays quiet while the game is frozen in %s",
+    async (phase: string) => {
+      // The freeze leaves turnDeadline untouched (reviewDeadline is separate),
+      // so a frozen game drifts into the reminder window while currentTurn —
+      // the matcher who already submitted — has no legal move to make.
+      const { db, notifSet } = dbForNotifyPasses({
+        reminder: [deadlineGame(1.9 * 60 * 60_000, { phase })],
+      });
+      getFirestoreMock.mockReturnValue(db);
+
+      const { res, out } = makeRes();
+      await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+      expect(out.body).toMatchObject({ reminded: 0, notifyErrors: 0 });
+      expect(notifSet).not.toHaveBeenCalled();
+    },
+  );
+
+  it("ignores deadlines outside the window and games with no current player", async () => {
+    const { db, notifSet } = dbForNotifyPasses({
+      reminder: [
+        deadlineGame(20 * 60 * 60_000),
+        { id: "no-deadline", data: () => ({ currentTurn: "p2" }) },
+        { id: "no-turn", data: () => ({ turnDeadline: tsAt(Date.now() + 1.9 * 60 * 60_000) }) },
+      ],
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reminded: 0, notifyErrors: 0 });
+    expect(notifSet).not.toHaveBeenCalled();
+  });
+
+  it("counts but does not write under dry-run", async () => {
+    const { db, notifSet } = dbForNotifyPasses({ reminder: [deadlineGame(1.8 * 60 * 60_000)] });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret", query: { dryRun: "1" } }), res);
+
+    expect(out.body).toMatchObject({ reminded: 1, dryRun: true });
+    expect(notifSet).not.toHaveBeenCalled();
+  });
+
+  it("falls back gracefully when the opponent's username is missing", async () => {
+    const { db, notifSet } = dbForNotifyPasses({
+      reminder: [
+        {
+          id: "gd1",
+          data: () => ({
+            player1Uid: "p1",
+            player2Uid: "p2",
+            currentTurn: "p1",
+            turnNumber: 2,
+            turnDeadline: tsAt(Date.now() + 1.9 * 60 * 60_000),
+          }),
+        },
+      ],
+    });
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.body).toMatchObject({ reminded: 1 });
+    const [, doc] = notifSet.mock.calls[0] as [string, Record<string, unknown>];
+    expect(doc).toMatchObject({ recipientUid: "p1", senderUid: "p2" });
+    expect(doc.body).toContain("your opponent");
   });
 });
 
@@ -419,6 +845,19 @@ describe("sweep handler your_turn notification (server always notifies)", () => 
 
     expect(pushTargetsGet).toHaveBeenCalledTimes(1);
     expect(dispatchAdd).not.toHaveBeenCalled();
+  });
+
+  it("reports the notification-pass counters alongside the forfeit counters", async () => {
+    const { db } = dbForResolve(rawGame(DISPUTABLE));
+    getFirestoreMock.mockReturnValue(db);
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    // The passes run on the same (deliberately dumb) query double, which
+    // returns no reconcile/reminder-eligible docs — the point is that the
+    // counters exist and the forfeit sweep is unaffected by them.
+    expect(out.body).toMatchObject({ reconciled: 0, reminded: 0 });
   });
 
   it("swallows a push-dispatch failure without failing the sweep", async () => {

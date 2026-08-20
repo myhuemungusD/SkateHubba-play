@@ -51,6 +51,7 @@ const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default:
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
+const MyStatsScreen = lazy(() => import("./screens/MyStatsScreen").then((m) => ({ default: m.MyStatsScreen })));
 const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
@@ -152,6 +153,7 @@ function PlayerProfileRoute({
   onRefreshProfile,
   onSignUp,
   onEditProfile,
+  onViewMyStats,
 }: {
   currentUserProfile: import("./services/users").UserProfile | null;
   ownGames: import("./services/games").GameDoc[];
@@ -164,6 +166,7 @@ function PlayerProfileRoute({
   onRefreshProfile: () => Promise<void>;
   onSignUp: () => void;
   onEditProfile: () => void;
+  onViewMyStats: () => void;
 }) {
   const { uid } = useParams<{ uid: string }>();
   if (!uid) return <Navigate to={currentUserProfile ? "/lobby" : "/"} replace />;
@@ -186,6 +189,7 @@ function PlayerProfileRoute({
       onRefreshProfile={onRefreshProfile}
       onSignUp={onSignUp}
       onEditProfile={isOwn ? onEditProfile : undefined}
+      onViewMyStats={isOwn ? onViewMyStats : undefined}
     />
   );
 }
@@ -515,6 +519,7 @@ function AppRoutes() {
                     onAddSpot={nav.navigateToMapWithAddSpot}
                     onRefreshProfile={auth.refreshProfile}
                     onEditProfile={() => navigate("/settings")}
+                    onViewMyStats={() => navigate("/my-stats")}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -544,6 +549,7 @@ function AppRoutes() {
                     nav.setScreen("auth");
                   }}
                   onEditProfile={() => navigate("/settings")}
+                  onViewMyStats={() => navigate("/my-stats")}
                 />
               }
             />
@@ -565,6 +571,22 @@ function AppRoutes() {
               element={
                 auth.activeProfile ? (
                   <Settings profile={auth.activeProfile} onBack={() => nav.setScreen("lobby")} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+
+            {/* Owner-only analytics. Same shape as /settings: a lazy screen
+                behind an activeProfile guard, reached with navigate() rather
+                than NavigationContext (neither path has a Screen identity). The
+                guard is the whole own-profile gate — the screen only ever
+                receives the signed-in user's own profile doc. */}
+            <Route
+              path="/my-stats"
+              element={
+                auth.activeProfile ? (
+                  <MyStatsScreen profile={auth.activeProfile} onBack={() => nav.setScreen("record")} />
                 ) : (
                   <Navigate to="/" replace />
                 )

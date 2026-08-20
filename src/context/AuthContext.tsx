@@ -3,7 +3,7 @@ import { useAuth } from "../hooks/useAuth";
 import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
 import { getMfaChallenge, type MfaChallenge } from "../services/mfa";
 import { removeCurrentFcmToken, refreshWebPushTokenIfGranted } from "../services/fcm";
-import { isPushSupported, registerPushToken, unregisterPushToken } from "../services/pushNotifications";
+import { isPushSupported, registerPushTokenIfGranted, unregisterPushToken } from "../services/pushNotifications";
 import type { UserProfile } from "../services/users";
 import { exportUserData, serializeUserData, userDataFilename } from "../services/userData";
 import { getErrorCode, parseFirebaseError } from "../utils/helpers";
@@ -296,16 +296,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [user, activeProfile?.username, analyticsConsented]);
 
-  // Register for native push notifications after sign-in. Gated on
-  // isPushSupported() so web users never hit the Capacitor plugin (which
-  // throws "unimplemented" in the browser). Best-effort — errors inside
-  // registerPushToken are already swallowed and logged; this effect must
-  // never block the login flow.
+  // Refresh the native push token after sign-in. Gated on isPushSupported()
+  // so web users never hit the Capacitor plugin (which throws "unimplemented"
+  // in the browser), and on the NON-PROMPTING variant so signing in can never
+  // raise a cold OS permission dialog — the prompting path belongs to explicit
+  // user action in the notification settings flow. Mirrors the web split
+  // below (refreshWebPushTokenIfGranted). Best-effort — errors inside
+  // registerPushTokenIfGranted are already swallowed and logged; this effect
+  // must never block the login flow.
   useEffect(() => {
     if (!user) return;
     if (!isPushSupported()) return;
     const uid = user.uid;
-    void registerPushToken(uid).catch((err: unknown) => {
+    void registerPushTokenIfGranted(uid).catch((err: unknown) => {
       logger.warn("push_register_unhandled", { uid, message: parseFirebaseError(err) });
     });
   }, [user]);

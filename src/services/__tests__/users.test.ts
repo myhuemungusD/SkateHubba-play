@@ -138,6 +138,7 @@ import {
   getLeaderboard,
   getPlayerDirectory,
   setProfileImageUrl,
+  getPushEnabled,
   InvalidAvatarUrlError,
 } from "../users";
 
@@ -158,6 +159,32 @@ describe("users service", () => {
       mockGetDoc.mockResolvedValueOnce({ exists: () => false });
       const result = await getUserProfile("u1");
       expect(result).toBeNull();
+    });
+  });
+
+  describe("getPushEnabled", () => {
+    it("defaults to enabled when the field was never written", async () => {
+      // Push is ON by default — the absence of the field is the default, so no
+      // migration is needed for existing accounts.
+      mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ fcmTokens: [] }) });
+      await expect(getPushEnabled("u1")).resolves.toBe(true);
+    });
+
+    it("defaults to enabled when the private profile doc is missing", async () => {
+      mockGetDoc.mockResolvedValueOnce({ exists: () => false });
+      await expect(getPushEnabled("u1")).resolves.toBe(true);
+    });
+
+    it("honors an explicit opt-out", async () => {
+      mockGetDoc.mockResolvedValueOnce({ exists: () => true, data: () => ({ pushEnabled: false }) });
+      await expect(getPushEnabled("u1")).resolves.toBe(false);
+    });
+
+    it("fails open when the read errors", async () => {
+      // A transient Firestore failure must not present as "you turned push off".
+      mockGetDoc.mockRejectedValueOnce(new Error("unavailable"));
+      await expect(getPushEnabled("u1")).resolves.toBe(true);
+      expect(mockLoggerWarn).toHaveBeenCalledWith("push_pref_read_failed", expect.objectContaining({ uid: "u1" }));
     });
   });
 

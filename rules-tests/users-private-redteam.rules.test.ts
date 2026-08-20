@@ -279,3 +279,52 @@ describe("users/{uid}/private — fcmTokens list cap moves with the field", () =
     );
   });
 });
+
+// pushEnabled is the Settings push opt-out, written by setPushEnabled
+// (src/services/pushPreferences.ts) to users/{uid}/private/profile. The
+// privateProfileKeysOk() allowlist is fail-closed, so the field needs an
+// explicit entry plus a bool type check: getPushEnabled treats "absent" as
+// enabled and only `=== false` as opt-out, so a non-bool value stored here
+// would silently re-enable push for a user who asked for it off.
+describe("users/{uid}/private — pushEnabled toggle", () => {
+  function privateProfile(ctx: RulesTestContext) {
+    return doc(ctx.firestore(), "users", OWNER_UID, "private", "profile");
+  }
+
+  it("legitimate: owner CAN write pushEnabled: true", async () => {
+    await assertSucceeds(setDoc(privateProfile(asOwner()), { pushEnabled: true }, { merge: true }));
+  });
+
+  it("legitimate: owner CAN write pushEnabled: false (the opt-out path)", async () => {
+    await assertSucceeds(setDoc(privateProfile(asOwner()), { pushEnabled: false }, { merge: true }));
+  });
+
+  it("legitimate: owner CAN toggle pushEnabled on an existing private doc", async () => {
+    await testEnv.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), "users", OWNER_UID, "private", "profile"), {
+        pushEnabled: true,
+      });
+    });
+    await assertSucceeds(updateDoc(privateProfile(asOwner()), { pushEnabled: false }));
+  });
+
+  it("attack: owner CANNOT write pushEnabled as a string", async () => {
+    await assertFails(setDoc(privateProfile(asOwner()), { pushEnabled: "true" }, { merge: true }));
+  });
+
+  it("attack: owner CANNOT write pushEnabled as a number", async () => {
+    await assertFails(setDoc(privateProfile(asOwner()), { pushEnabled: 1 }, { merge: true }));
+  });
+
+  it("attack: owner CANNOT write pushEnabled as null", async () => {
+    await assertFails(setDoc(privateProfile(asOwner()), { pushEnabled: null }, { merge: true }));
+  });
+
+  it("attack: a stranger CANNOT write pushEnabled on another user's private doc", async () => {
+    await assertFails(setDoc(privateProfile(asStranger()), { pushEnabled: false }, { merge: true }));
+  });
+
+  it("attack: an unrelated key alongside pushEnabled is still rejected by the allowlist", async () => {
+    await assertFails(setDoc(privateProfile(asOwner()), { pushEnabled: true, isAdmin: true }, { merge: true }));
+  });
+});

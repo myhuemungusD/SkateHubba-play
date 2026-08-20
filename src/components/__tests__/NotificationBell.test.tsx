@@ -1,9 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NotificationBell } from "../NotificationBell";
+import { getNotificationGame } from "../../services/notifications";
 
 const mockNotifications = vi.fn();
+
+vi.mock("../../services/notifications", () => ({
+  getNotificationGame: vi.fn(),
+}));
+
+const getNotificationGameMock = vi.mocked(getNotificationGame);
 
 vi.mock("../../context/NotificationContext", () => ({
   useNotifications: () => mockNotifications(),
@@ -29,6 +36,41 @@ const baseCtx = {
   soundEnabled: true,
   toggleSound: vi.fn(),
 };
+
+const MISSING_ROW_TITLE = "Gone";
+
+/**
+ * Drive the "game no longer exists" path end to end: seed one unread
+ * notification pointing at a game the fetch can't resolve, open the panel,
+ * activate the row, and settle on the inline alert. Shared by every test that
+ * asserts on that alert so the fixture lives in one place.
+ */
+async function activateMissingGameRow(ctx: Partial<typeof baseCtx> = {}) {
+  const onOpenGame = vi.fn();
+  getNotificationGameMock.mockResolvedValue(null);
+  mockNotifications.mockReturnValue({
+    ...baseCtx,
+    ...ctx,
+    notifications: [
+      {
+        id: "n1",
+        type: "game_event",
+        title: MISSING_ROW_TITLE,
+        message: "msg",
+        timestamp: Date.now(),
+        read: false,
+        gameId: "g-deleted",
+      },
+    ],
+    unreadCount: 1,
+  });
+
+  render(<NotificationBell onOpenGame={onOpenGame} />);
+  await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+  await userEvent.click(screen.getByText(MISSING_ROW_TITLE));
+
+  return { onOpenGame, alert: await screen.findByRole("alert") };
+}
 
 describe("NotificationBell", () => {
   beforeEach(() => {
@@ -339,41 +381,165 @@ describe("NotificationBell", () => {
     expect(onOpenGame).toHaveBeenCalledWith(game);
   });
 
-  it("non-clickable row has tabIndex -1 and aria-disabled true", async () => {
+  it("a read row with no game is inert (tabIndex -1, aria-disabled)", async () => {
     mockNotifications.mockReturnValue({
       ...baseCtx,
       notifications: [
-        { id: "n1", type: "game_event", title: "NoGame", message: "msg", timestamp: Date.now(), read: false },
+        { id: "n1", type: "game_event", title: "NoGame", message: "msg", timestamp: Date.now(), read: true },
       ],
-      unreadCount: 1,
     });
 
     render(<NotificationBell />);
-    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+    await userEvent.click(screen.getByLabelText("Notifications"));
 
     const row = screen.getByText("NoGame").closest('[role="button"]');
     expect(row?.getAttribute("tabindex")).toBe("-1");
     expect(row?.getAttribute("aria-disabled")).toBe("true");
   });
 
-  it("clicking a non-clickable row is a no-op (no markRead, no onOpenGame)", async () => {
+  it("marks an unread row read even when it has no game to open", async () => {
     const markRead = vi.fn();
     const onOpenGame = vi.fn();
     mockNotifications.mockReturnValue({
       ...baseCtx,
       markRead,
       notifications: [
-        { id: "n1", type: "game_event", title: "NoClick", message: "msg", timestamp: Date.now(), read: false },
+        { id: "n1", type: "game_event", title: "NoGameYet", message: "msg", timestamp: Date.now(), read: false },
       ],
       unreadCount: 1,
     });
 
-    // No games array passed → clickable === false even though markRead is wired
     render(<NotificationBell onOpenGame={onOpenGame} />);
     await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
-    await userEvent.click(screen.getByText("NoClick"));
+    await userEvent.click(screen.getByText("NoGameYet"));
 
-    expect(markRead).not.toHaveBeenCalled();
+    expect(markRead).toHaveBeenCalledWith("n1");
     expect(onOpenGame).not.toHaveBeenCalled();
+    // Panel stays open — nothing to navigate to.
+    expect(screen.getByText("NOTIFICATIONS")).toBeInTheDocument();
+  });
+
+  it("fetches the game on click when it isn't in the provided list", async () => {
+    const markRead = vi.fn();
+    const onOpenGame = vi.fn();
+    const fetched = { id: "g-missing" };
+    getNotificationGameMock.mockResolvedValue(fetched as never);
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      markRead,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Stale",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g-missing",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    // games list holds a different game entirely
+    render(<NotificationBell games={[{ id: "g-other" } as never]} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+    await userEvent.click(screen.getByText("Stale"));
+
+    await waitFor(() => expect(onOpenGame).toHaveBeenCalledWith(fetched));
+    expect(getNotificationGameMock).toHaveBeenCalledWith("g-missing");
+    expect(markRead).toHaveBeenCalledWith("n1");
+    expect(screen.queryByText("NOTIFICATIONS")).not.toBeInTheDocument();
+  });
+
+  it("shows a loading state on the row while the game is being fetched", async () => {
+    let resolveFetch: (g: unknown) => void = () => {};
+    getNotificationGameMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveFetch = resolve;
+      }) as never,
+    );
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Slow",
+          message: "msg",
+          timestamp: Date.now(),
+          read: false,
+          gameId: "g9",
+        },
+      ],
+      unreadCount: 1,
+    });
+
+    render(<NotificationBell onOpenGame={vi.fn()} />);
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+    await userEvent.click(screen.getByText("Slow"));
+
+    expect(await screen.findByText("Opening…")).toBeInTheDocument();
+    await act(async () => {
+      resolveFetch({ id: "g9" });
+    });
+  });
+
+  it("surfaces an inline error when the fetched game no longer exists", async () => {
+    const { onOpenGame, alert } = await activateMissingGameRow();
+
+    expect(alert).toHaveTextContent("That game is no longer available");
+    expect(onOpenGame).not.toHaveBeenCalled();
+    expect(screen.getByText("NOTIFICATIONS")).toBeInTheDocument();
+  });
+
+  it("clears the missing-game error when the panel is closed and reopened", async () => {
+    await activateMissingGameRow();
+
+    // Escape closes the panel; the message belonged to that one attempt and
+    // must not be waiting on the next open.
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    await userEvent.click(screen.getByLabelText("Notifications (1 unread)"));
+
+    expect(screen.getByText(MISSING_ROW_TITLE)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("clears the missing-game error when the affected row is dismissed", async () => {
+    const dismissNotification = vi.fn();
+    await activateMissingGameRow({ dismissNotification });
+
+    await userEvent.click(screen.getByLabelText("Delete notification"));
+
+    expect(dismissNotification).toHaveBeenCalledWith("n1");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not fetch when the game is already in the list", async () => {
+    const onOpenGame = vi.fn();
+    const game = { id: "g1" };
+    mockNotifications.mockReturnValue({
+      ...baseCtx,
+      notifications: [
+        {
+          id: "n1",
+          type: "game_event",
+          title: "Cached",
+          message: "msg",
+          timestamp: Date.now(),
+          read: true,
+          gameId: "g1",
+        },
+      ],
+    });
+
+    render(<NotificationBell games={[game as never]} onOpenGame={onOpenGame} />);
+    await userEvent.click(screen.getByLabelText("Notifications"));
+    await userEvent.click(screen.getByText("Cached"));
+
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+    expect(getNotificationGameMock).not.toHaveBeenCalled();
   });
 });

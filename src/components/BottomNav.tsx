@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
+import { useNotifications } from "../context/NotificationContext";
 import { HomeIcon, MapPinIcon, UserIcon } from "./icons";
 
 /** Screens where the persistent bottom nav is rendered. */
@@ -37,6 +38,9 @@ const NAV_ITEMS: readonly NavItem[] = [
 export function BottomNav() {
   const nav = useNavigationContext();
   const location = useLocation();
+  // Unread state already lives in NotificationContext (the bell reads the same
+  // value), so the badge is a read of shared state — no new state to lift.
+  const { unreadCount } = useNotifications();
 
   if (!NAV_VISIBLE_ON.has(nav.screen)) return null;
 
@@ -53,12 +57,15 @@ export function BottomNav() {
           {NAV_ITEMS.map((item) => {
             const active = isActive(item);
             const path = screenToPath(item.screen);
+            // Badge only on Home, and only when the user is somewhere else —
+            // the lobby header's bell already carries the count in place.
+            const badgeCount = item.screen === "lobby" && !active ? unreadCount : 0;
             return (
               <li key={item.screen} className="flex-1">
                 <Link
                   to={path}
                   aria-current={active ? "page" : undefined}
-                  aria-label={item.label}
+                  aria-label={badgeCount > 0 ? `${item.label} (${badgeCount} unread)` : item.label}
                   data-tutorial={item.screen === "record" ? "record-button" : undefined}
                   className={`group relative w-full flex flex-col items-center justify-center gap-1 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
                     active
@@ -66,10 +73,20 @@ export function BottomNav() {
                       : "text-faint hover:text-white hover:bg-white/[0.03] active:scale-[0.97]"
                   }`}
                 >
-                  <item.Icon
-                    size={22}
-                    className={`transition-transform duration-300 ${active ? "scale-110" : "group-hover:-translate-y-0.5"}`}
-                  />
+                  <span className="relative inline-flex">
+                    <item.Icon
+                      size={22}
+                      className={`transition-transform duration-300 ${active ? "scale-110" : "group-hover:-translate-y-0.5"}`}
+                    />
+                    {badgeCount > 0 && (
+                      <span
+                        aria-hidden="true"
+                        className="absolute -top-1 -right-2 min-w-[15px] h-[15px] px-1 flex items-center justify-center rounded-full bg-brand-orange font-display text-[9px] text-white leading-none tabular-nums"
+                      >
+                        {badgeCount > 9 ? "9+" : badgeCount}
+                      </span>
+                    )}
+                  </span>
                   <span className="font-display text-[10px] tracking-[0.15em] leading-none uppercase">
                     {item.label}
                   </span>

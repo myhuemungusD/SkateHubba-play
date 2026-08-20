@@ -4,25 +4,17 @@ import { ProUsername } from "../../../components/ProUsername";
 
 type Player = ReturnType<typeof usePlayerDirectory>["players"][number];
 
-function relativeJoinDate(createdAt: unknown): string {
-  if (
-    !createdAt ||
-    typeof createdAt !== "object" ||
-    !("toMillis" in createdAt) ||
-    typeof (createdAt as { toMillis: unknown }).toMillis !== "function"
-  )
-    return "Joined";
-  const millis = (createdAt as { toMillis: () => number }).toMillis();
-  const ms = Date.now() - millis;
-  if (ms < 0) return "Just joined";
-  const hours = ms / 3_600_000;
-  if (hours < 1) return "Just joined";
-  if (hours < 24) return `Joined ${Math.floor(hours)}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `Joined ${days}d ago`;
-  const d = new Date(millis);
-  const month = d.toLocaleString("en-US", { month: "short" });
-  return `Joined ${month} ${d.getDate()}`;
+/**
+ * Completed-games label for a directory row.
+ *
+ * Prefers the denormalized `gamesPlayed` counter, falling back to
+ * `wins + losses` for profiles whose docs predate that field — the same
+ * total the profile stats grid derives, so the two screens agree.
+ */
+function gamesLabel(player: Player): string {
+  const count = player.gamesPlayed ?? (player.wins ?? 0) + (player.losses ?? 0);
+  if (count === 0) return "No games yet";
+  return count === 1 ? "1 game" : `${count} games`;
 }
 
 interface Props {
@@ -95,7 +87,7 @@ export function PlayerDirectory({ players, loading, user, onViewPlayer, onChalle
                 />
                 <span className="font-body text-[11px] text-muted block mt-1.5 truncate">
                   {p.stance}
-                  {p.createdAt ? ` · ${relativeJoinDate(p.createdAt)}` : ""}
+                  {` · ${gamesLabel(p)}`}
                 </span>
               </div>
             </button>

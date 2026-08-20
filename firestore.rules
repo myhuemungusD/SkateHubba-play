@@ -232,6 +232,26 @@ service cloud.firestore {
         && (!('disputesRaised' in request.resource.data) || request.resource.data.disputesRaised == 0)
         && (!('disputesRight' in request.resource.data) || request.resource.data.disputesRight == 0)
         && (!('disputesWrong' in request.resource.data) || request.resource.data.disputesWrong == 0)
+        // My Stats counters (server-written by the applyGameStats close-out via
+        // Admin SDK) get the same zero-seed treatment. These lists are
+        // allowlist-by-omission: a counter missing here is client-mintable at
+        // signup, so every new field name MUST be added to both this block and
+        // the update backstop below.
+        && (!('cleanWins' in request.resource.data) || request.resource.data.cleanWins == 0)
+        && (!('tricksLanded' in request.resource.data) || request.resource.data.tricksLanded == 0)
+        && (!('tricksFailed' in request.resource.data) || request.resource.data.tricksFailed == 0)
+        && (!('forfeitLosses' in request.resource.data) || request.resource.data.forfeitLosses == 0)
+        && (!('comebackWins' in request.resource.data) || request.resource.data.comebackWins == 0)
+        && (!('totalGameDurationMs' in request.resource.data) || request.resource.data.totalGameDurationMs == 0)
+        // Divisor for the average-game-length tile: counts only the games whose
+        // duration could actually be measured, so it must be as unforgeable as
+        // the numerator it pairs with.
+        && (!('gamesWithDuration' in request.resource.data) || request.resource.data.gamesWithDuration == 0)
+        && (!('gamesJudged' in request.resource.data) || request.resource.data.gamesJudged == 0)
+        && (!('turnsJudged' in request.resource.data) || request.resource.data.turnsJudged == 0)
+        // recentResults is a rolling "W"/"L" list (max 10), not a counter — the
+        // zero-seed equivalent is an empty list.
+        && (!('recentResults' in request.resource.data) || request.resource.data.recentResults == [])
         // Pro fields are admin-only — clients cannot set them at creation
         && !('isVerifiedPro' in request.resource.data)
         && !('verifiedBy' in request.resource.data)
@@ -313,7 +333,10 @@ service cloud.firestore {
                      'wins', 'losses', 'lastStatsGameId',
                      'gamesPlayed', 'currentWinStreak', 'bestWinStreak',
                      'lettersGiven', 'lettersTaken',
-                     'tricksDisputed', 'disputesRaised', 'disputesRight', 'disputesWrong']))
+                     'tricksDisputed', 'disputesRaised', 'disputesRight', 'disputesWrong',
+                     'cleanWins', 'tricksLanded', 'tricksFailed', 'forfeitLosses',
+                     'comebackWins', 'totalGameDurationMs', 'gamesWithDuration',
+                     'recentResults', 'gamesJudged', 'turnsJudged']))
         // Cannot change username or uid after creation
         && request.resource.data.username == resource.data.username
         && request.resource.data.uid == resource.data.uid
@@ -499,6 +522,19 @@ service cloud.firestore {
                 && request.resource.data.onboardingSkippedAt <= request.time + duration.value(5, 's'));
         }
 
+        // Push opt-out toggle written by setPushEnabled
+        // (src/services/pushPreferences.ts). Absent == enabled, so the field is
+        // optional. The `is bool` pin keeps the STORED type unambiguous:
+        // getPushEnabled coerces anything non-boolean to enabled
+        // (`typeof value === "boolean" ? value : true`), so a client that wrote
+        // the string "false" would read back as opted-IN while the Settings UI
+        // believed otherwise — and any future reader without that fail-open
+        // coercion would inherit the ambiguity.
+        function pushEnabledOk() {
+          return !('pushEnabled' in request.resource.data)
+            || request.resource.data.pushEnabled is bool;
+        }
+
         // ── Allowlist of accepted keys ──
         // Every key currently written to users/{uid}/private/profile by
         // the codebase. Keep in sync with UserPrivateProfile in
@@ -513,7 +549,8 @@ service cloud.firestore {
             'fcmTokens',
             'onboardingTutorialVersion',
             'onboardingCompletedAt',
-            'onboardingSkippedAt'
+            'onboardingSkippedAt',
+            'pushEnabled'
           ]);
         }
 
@@ -522,13 +559,15 @@ service cloud.firestore {
           && fcmTokensOk()
           && onboardingTutorialVersionOk()
           && onboardingCompletedAtOk()
-          && onboardingSkippedAtOk();
+          && onboardingSkippedAtOk()
+          && pushEnabledOk();
         allow update: if isOwner(uid)
           && privateProfileKeysOk()
           && fcmTokensOk()
           && onboardingTutorialVersionOk()
           && onboardingCompletedAtOk()
-          && onboardingSkippedAtOk();
+          && onboardingSkippedAtOk()
+          && pushEnabledOk();
         allow delete: if isOwner(uid);
       }
 
@@ -769,6 +808,38 @@ service cloud.firestore {
             && request.resource.data.statsApplied == resource.data.statsApplied);
     }
 
+    // ── Cron notification tombstones are server-only ──
+    // `challengeNotifiedAt` and `turnReminderSentFor` are written EXCLUSIVELY
+    // by api/cron/sweep-expired-turns.ts (Admin SDK, bypasses these rules) and
+    // read back by it as "already handled, skip this game" marks. They sit on
+    // the GAME doc rather than the notification doc because the recipient can
+    // delete a notification, which would otherwise resurrect the buzz every
+    // tick. That makes them a suppression lever pointed at the OPPONENT:
+    //   • challengeNotifiedAt non-null → the challenge backstop skips the game,
+    //     so a challenger who seeds it and never sends the client notification
+    //     leaves the opponent unaware while the 24h forfeit clock runs.
+    //   • turnReminderSentFor == turnNumber → the "2 hours left" reminder is
+    //     skipped. setting→matching is the write that hands the turn over AND
+    //     leaves turnNumber unchanged, so one smuggled field on the hot path
+    //     silences that turn's warning.
+    // Both end in a free forfeit win, so every /games update branch pins them
+    // and the create rule forbids them outright. Unlike the rest of this file
+    // the /games block has no keys().hasOnly() allowlist — an unrecognised
+    // field is accepted by default — so this explicit pin IS the enforcement.
+    // Presence-pair form (not .get(field, default)) for the same "Null value
+    // error" engine quirk noted on statsAppliedUnchanged(); reads no documents.
+    function cronNotifyTombstonesUnchanged() {
+      return (
+        (!('challengeNotifiedAt' in resource.data) && !('challengeNotifiedAt' in request.resource.data))
+        || ('challengeNotifiedAt' in resource.data && 'challengeNotifiedAt' in request.resource.data
+            && request.resource.data.challengeNotifiedAt == resource.data.challengeNotifiedAt)
+      ) && (
+        (!('turnReminderSentFor' in resource.data) && !('turnReminderSentFor' in request.resource.data))
+        || ('turnReminderSentFor' in resource.data && 'turnReminderSentFor' in request.resource.data
+            && request.resource.data.turnReminderSentFor == resource.data.turnReminderSentFor)
+      );
+    }
+
     // ── judgeUsername is bound at create, immutable on every update ──
     // The create rule binds judgeUsername to the judge's authoritative
     // users/{judgeId}.username (username-impersonation guard). Judge
@@ -899,7 +970,12 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)/blocked_users/$(request.auth.uid))
         // statsApplied is server-only — a client that pre-seeds it at
         // creation would make applyGameStats skip crediting this game.
-        && !('statsApplied' in request.resource.data);
+        && !('statsApplied' in request.resource.data)
+        // Same posture for the cron's notification tombstones: seeding
+        // challengeNotifiedAt here disarms the challenge backstop for a game
+        // the opponent was never told about. See cronNotifyTombstonesUnchanged.
+        && !('challengeNotifiedAt' in request.resource.data)
+        && !('turnReminderSentFor' in request.resource.data);
 
       // Current-turn player can make normal game updates
       allow update: if isSignedIn()
@@ -1042,7 +1118,8 @@ service cloud.firestore {
           || request.resource.data.turnHistory == resource.data.turnHistory
         )
         && judgeUsernameUnchanged()
-        && statsAppliedUnchanged();
+        && statsAppliedUnchanged()
+        && cronNotifyTombstonesUnchanged();
 
       // ── Match resolution (matcher submits an attempt) ──
       // Honor system (no active judge):
@@ -1149,7 +1226,8 @@ service cloud.firestore {
         // set is unchanged — see the helper for the per-outcome rationale.
         && matchResolutionPinsOk(resource.data, request.resource.data)
         && judgeUsernameUnchanged()
-        && statsAppliedUnchanged();
+        && statsAppliedUnchanged()
+        && cronNotifyTombstonesUnchanged();
 
       // ── Pending-review resolution (honor-system binding dispute, Phase 2) ──
       // A matcher's landed claim now freezes the game in `pendingReview` (see
@@ -1270,7 +1348,8 @@ service cloud.firestore {
         // dispute leaves it unchanged (pinned above). Same +1 / ≤200 ceiling.
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
-        && statsAppliedUnchanged();
+        && statsAppliedUnchanged()
+        && cronNotifyTombstonesUnchanged();
 
       // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
       // Judge-only. The setter never self-judges — disputes only exist in
@@ -1372,7 +1451,8 @@ service cloud.firestore {
         // the match-resolution branch enforces.
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
-        && statsAppliedUnchanged();
+        && statsAppliedUnchanged()
+        && cronNotifyTombstonesUnchanged();
 
       // ── Call BS resolution (judge rules on set trick in setReview phase) ──
       // Judge-only. Clean → back to matching (matcher must attempt).
@@ -1441,7 +1521,8 @@ service cloud.firestore {
         // other resolution branches.
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
-        && statsAppliedUnchanged();
+        && statsAppliedUnchanged()
+        && cronNotifyTombstonesUnchanged();
 
       // ── Judge invite accept / decline ──
       // Only the nominated judge can flip their status from pending. No
@@ -1492,7 +1573,8 @@ service cloud.firestore {
               && request.resource.data.customRules == resource.data.customRules)
         )
         && judgeUsernameUnchanged()
-        && statsAppliedUnchanged();
+        && statsAppliedUnchanged()
+        && cronNotifyTombstonesUnchanged();
 
       // Either player can forfeit the current-turn player's expired turn
       // Winner must be the opponent of the player whose turn it is
@@ -1540,7 +1622,8 @@ service cloud.firestore {
         // append (forward-compat).
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
-        && statsAppliedUnchanged();
+        && statsAppliedUnchanged()
+        && cronNotifyTombstonesUnchanged();
 
       // ── Expired dispute auto-accept ──
       // When the judge's review window expires (24 h), any participant
@@ -1607,7 +1690,8 @@ service cloud.firestore {
         // the expired dispute. Same 1-per-write + ≤200 ceiling.
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
-        && statsAppliedUnchanged();
+        && statsAppliedUnchanged()
+        && cronNotifyTombstonesUnchanged();
 
       // ── Expired setReview auto-clear ──
       // When the judge doesn't rule on a "Call BS" within 24h, the set
@@ -1658,7 +1742,8 @@ service cloud.firestore {
         // any sneaky append.
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
-        && statsAppliedUnchanged();
+        && statsAppliedUnchanged()
+        && cronNotifyTombstonesUnchanged();
 
       // Players may delete their own non-active games (account deletion flow)
       allow delete: if isSignedIn() && isPlayer(resource.data)
@@ -1853,7 +1938,20 @@ service cloud.firestore {
         && request.resource.data.senderUid == request.auth.uid
         && request.resource.data.recipientUid is string
         && request.resource.data.recipientUid != request.auth.uid
-        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite']
+        // 'nudge' (Aug 2026): nudges previously toasted only and left no bell
+        // entry. The sender now also writes a persistent notification doc via
+        // the standard Path A companion-write below.
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite', 'nudge']
+        // Key allowlist scoped to the newest type only. The legacy types have
+        // shipped for months without one and old clients may still carry extra
+        // fields; tightening them retroactively would break live writes. New
+        // types start closed.
+        && (
+          request.resource.data.type != 'nudge'
+          || request.resource.data.keys().hasOnly(
+            ['senderUid', 'recipientUid', 'gameId', 'type', 'title', 'body', 'read', 'createdAt']
+          )
+        )
         && request.resource.data.title is string
         // Hard cap on user-visible strings — prevents a malicious sender from
         // wedging multi-megabyte notification docs into the recipient's feed.
@@ -1937,7 +2035,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.senderUid
         && limitId == (request.auth.uid + '_' + request.resource.data.gameId + '_' + request.resource.data.type)
-        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite']
+        && request.resource.data.type in ['your_turn', 'new_challenge', 'game_won', 'game_lost', 'judge_invite', 'nudge']
         // lastSentAt must equal the server's current time. Without this, a
         // client could seed the doc with a stale timestamp (e.g. epoch 0)
         // and every subsequent update would instantly satisfy the 5s cooldown

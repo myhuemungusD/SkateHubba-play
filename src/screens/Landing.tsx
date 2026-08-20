@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react"
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
 import { SkateButton } from "../components/SkateButton";
-import { playOlliePop } from "../utils/ollieSound";
 import { VideoIcon, ClockIcon, FlameIcon, ShieldIcon, TrophyIcon, UsersIcon } from "../components/icons";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
 
@@ -94,7 +93,6 @@ const FEATURES = [
 export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) {
   const handleAuth = useCallback(
     (mode: AuthMode) => () => {
-      playOlliePop();
       onGo(mode);
     },
     [onGo],
@@ -127,7 +125,6 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
   }, [shouldLoadMap]);
 
   const handleGoogle = useCallback(() => {
-    playOlliePop();
     onGoogle();
   }, [onGoogle]);
 

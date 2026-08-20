@@ -71,6 +71,12 @@ interface Props {
    * next to Share would be worse than no button.
    */
   onEditProfile?: () => void;
+  /**
+   * Opens the owner-only My Stats screen. Own-profile only, and omitted the
+   * same way `onEditProfile` is — an unwired caller renders no entry point
+   * rather than a button that leads nowhere.
+   */
+  onViewMyStats?: () => void;
 }
 
 /**
@@ -124,6 +130,7 @@ export function PlayerProfileScreen({
   onRefreshProfile,
   onSignUp,
   onEditProfile,
+  onViewMyStats,
 }: Props) {
   const c = usePlayerProfileController({
     viewedUid,
@@ -258,8 +265,9 @@ export function PlayerProfileScreen({
         {isOwnProfile && (
           // Two compact secondary actions side by side. Neither is the primary
           // job of this screen, so neither takes the full width or the orange
-          // treatment that the Challenge CTA owns.
-          <div className="flex items-center gap-2 mb-6">
+          // treatment that the Challenge CTA owns. The bottom margin closes up
+          // when the My Stats button follows, which owns the gap instead.
+          <div className={`flex items-center gap-2 ${onViewMyStats ? "mb-2" : "mb-6"}`}>
             {onEditProfile && (
               <button
                 type="button"
@@ -280,6 +288,21 @@ export function PlayerProfileScreen({
               {shareCopiedAt ? "LINK COPIED" : "SHARE"}
             </button>
           </div>
+        )}
+
+        {/* Owner-only deep analytics. Kept off the Edit/Share row — a third
+            item there squeezes all three labels onto two lines at 430px — and
+            given the same neutral treatment so it reads as a quiet drill-down
+            rather than a second CTA competing with Challenge. */}
+        {isOwnProfile && onViewMyStats && (
+          <button
+            type="button"
+            onClick={onViewMyStats}
+            data-testid="my-stats-button"
+            className="w-full min-h-[44px] px-3 mb-6 rounded-xl bg-surface border border-white/[0.06] shadow-card font-display text-xs tracking-wider text-white/80 hover:text-white hover:bg-surface-alt transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+          >
+            MY STATS
+          </button>
         )}
 
         {/* Challenging and blocking both need an account. A signed-out visitor
