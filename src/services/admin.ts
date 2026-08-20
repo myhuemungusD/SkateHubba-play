@@ -66,8 +66,12 @@ export interface AdminReport {
   reportedUid: string;
   /** Denormalized username of the subject, as captured at report time. */
   reportedUsername: string;
-  /** Game the report was filed from. */
-  gameId: string;
+  /**
+   * Game the report was filed from, or `null` when there is none — a report
+   * against a user-posted clip has no game behind it, and `submitReport`
+   * writes an explicit `null` in that case. `clipId` identifies the target.
+   */
+  gameId: string | null;
   /** A `ReportReason` value in practice; read as a plain string — see note. */
   reason: string;
   /**
@@ -347,7 +351,9 @@ function toAdminReport(snap: ParsableDoc): AdminReport | null {
     reporterUid: toStringOrEmpty(data.reporterUid),
     reportedUid: toStringOrEmpty(data.reportedUid),
     reportedUsername: toStringOrEmpty(data.reportedUsername),
-    gameId: toStringOrEmpty(data.gameId),
+    // Null (not "") when absent: the queue branches on presence to decide
+    // whether to offer a "view game" affordance at all.
+    gameId: toStringOrNull(data.gameId),
     // Neither `reason` nor `status` is narrowed to a union: both are written by
     // clients and future servers, and an unrecognised value must still appear
     // in the queue — dropping it would hide the report from moderation.

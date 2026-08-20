@@ -174,6 +174,7 @@ export function makeClip(overrides: Record<string, unknown> = {}): Record<string
     gameId: "game",
     turnNumber: 1,
     role: "set",
+    source: "game",
     playerUid: "owner",
     playerUsername: "alice",
     trickName: "tre flip",
@@ -272,7 +273,7 @@ async function deleteRefTree(ref: Reference): Promise<void> {
  * quirk where `listAll()` on `''` intermittently throws `unauthorized` when
  * the suite runs after another storage file in the shared emulator process.
  */
-const STORAGE_TEST_PREFIXES = ["games", "users"] as const;
+const STORAGE_TEST_PREFIXES = ["games", "users", "userClips"] as const;
 
 /**
  * Fully clear the Storage emulator for a rules-test env, including the NESTED

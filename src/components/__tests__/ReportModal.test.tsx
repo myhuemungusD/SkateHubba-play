@@ -12,6 +12,7 @@ vi.mock("../../services/reports", () => ({
     abusive_behavior: "Abusive or threatening behavior",
     cheating: "Cheating or exploiting",
     spam: "Spam or bot activity",
+    non_skate_content: "Not skateboarding",
     other: "Other",
   },
 }));
@@ -102,5 +103,38 @@ describe("ReportModal", () => {
     await userEvent.selectOptions(screen.getByLabelText("REASON"), "other");
     await userEvent.click(screen.getByText("Submit Report"));
     expect(screen.getByText("Sending...")).toBeInTheDocument();
+  });
+});
+
+describe("ReportModal — user-clip reports", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSubmitReport.mockResolvedValue("r1");
+  });
+
+  it("offers the non-skate-content reason — the one a feed clip is usually reported for", async () => {
+    const user = userEvent.setup();
+    render(<ReportModal {...baseProps} />);
+
+    await user.selectOptions(screen.getByRole("combobox"), "non_skate_content");
+
+    expect(screen.getByRole("option", { name: "Not skateboarding" })).toBeInTheDocument();
+    await user.click(screen.getByText("Submit Report"));
+    await waitFor(() =>
+      expect(mockSubmitReport).toHaveBeenCalledWith(expect.objectContaining({ reason: "non_skate_content" })),
+    );
+  });
+
+  it("sends a null gameId when reporting a clip that belongs to no game", async () => {
+    const user = userEvent.setup();
+    const { gameId: _omitted, ...noGame } = baseProps;
+    render(<ReportModal {...noGame} clipId="userclip1" />);
+
+    await user.selectOptions(screen.getByRole("combobox"), "non_skate_content");
+    await user.click(screen.getByText("Submit Report"));
+
+    await waitFor(() =>
+      expect(mockSubmitReport).toHaveBeenCalledWith(expect.objectContaining({ gameId: null, clipId: "userclip1" })),
+    );
   });
 });

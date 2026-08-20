@@ -49,11 +49,19 @@ export function VideoRecorder({
   label,
   autoOpen = false,
   doneLabel = "Recorded",
+  maxDurationSeconds = MAX_VIDEO_DURATION_SECONDS,
 }: {
   onRecorded: (blob: Blob | null) => void;
   label: string;
   autoOpen?: boolean;
   doneLabel?: string;
+  /**
+   * Hard auto-stop for the take, in seconds. Defaults to the game-turn cap;
+   * standalone user-clip capture passes `USER_CLIP_MAX_DURATION_SECONDS`.
+   * Drives both the recorder's own timer and the "Auto-stop in Ns" warning,
+   * so the two can never disagree about when the take ends.
+   */
+  maxDurationSeconds?: number;
 }) {
   const {
     state,
@@ -73,7 +81,7 @@ export function VideoRecorder({
     stopRec,
     startNativeRec,
     stopNativeRec,
-  } = useMediaRecorder(onRecorded);
+  } = useMediaRecorder(onRecorded, maxDurationSeconds);
 
   const [permissionGranted, setPermissionGranted] = useState(false);
 
@@ -112,7 +120,7 @@ export function VideoRecorder({
   // interactive controls go away.
   const showChromeToggles = state === "preview";
   const showFisheyeOverlay = fisheyeOn && (state === "preview" || state === "recording");
-  const secondsLeft = MAX_VIDEO_DURATION_SECONDS - seconds;
+  const secondsLeft = maxDurationSeconds - seconds;
 
   return (
     <div className="w-full flex flex-col items-center gap-4">
@@ -259,7 +267,7 @@ export function VideoRecorder({
           <Btn onClick={isNative ? stopNativeRec : stopRec} variant="danger" className="text-2xl py-5 animate-rec-ring">
             <StopIcon size={16} className="inline -mt-0.5" /> Stop Recording
           </Btn>
-          {seconds >= MAX_VIDEO_DURATION_SECONDS - AUTO_STOP_WARNING_SECONDS && secondsLeft > 0 && (
+          {seconds >= maxDurationSeconds - AUTO_STOP_WARNING_SECONDS && secondsLeft > 0 && (
             <span className="font-body text-xs text-brand-red animate-pulse">Auto-stop in {secondsLeft}s</span>
           )}
         </>
