@@ -441,9 +441,28 @@ describe("useMediaRecorder", () => {
 
   const PERMISSION_HINT_CASES = [
     {
-      name: "iOS sends the user to system Settings",
+      name: "iOS Safari sends the user to system Settings",
       ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1",
       hint: "Open Settings → Safari → Camera and allow access, then reload.",
+    },
+    {
+      // iOS camera access is granted per APP, so naming the wrong browser is
+      // not a cosmetic slip — the user follows it exactly, nothing changes,
+      // and the app reads as broken. Every iOS browser also carries a
+      // `Safari/` token, which is what made this easy to get wrong.
+      name: "iOS Chrome is sent to Chrome's settings, not Safari's",
+      ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.0.0 Mobile/15E148 Safari/604.1",
+      hint: "Open Settings → Chrome → Camera and allow access, then reload.",
+    },
+    {
+      name: "iOS Firefox is sent to Firefox's settings",
+      ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/121.0 Mobile/15E148 Safari/605.1.15",
+      hint: "Open Settings → Firefox → Camera and allow access, then reload.",
+    },
+    {
+      name: "iOS Edge is sent to Edge's settings",
+      ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) EdgiOS/120.0.0.0 Mobile/15E148 Safari/605.1.15",
+      hint: "Open Settings → Edge → Camera and allow access, then reload.",
     },
     {
       name: "desktop Safari names its own address bar",
