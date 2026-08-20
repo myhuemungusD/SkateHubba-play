@@ -167,7 +167,21 @@ function captureFrameRate(stream: MediaStream | null): number {
 function permissionHint(): string {
   if (typeof navigator === "undefined") return "Check your browser permissions and try again.";
   const ua = navigator.userAgent || "";
-  if (/iPad|iPhone|iPod/.test(ua)) return "Open Settings → Safari → Camera and allow access, then reload.";
+  if (/iPad|iPhone|iPod/.test(ua)) {
+    // Every iOS browser renders through WebKit, which makes it tempting to
+    // treat them all as Safari — but camera access on iOS is granted PER APP,
+    // so the app named here has to be the one the user is actually holding.
+    // Settings → Safari → Camera does not govern Chrome, so sending a Chrome
+    // user there is a dead end: they follow the instruction exactly, nothing
+    // changes, and the app looks broken rather than un-permissioned.
+    //
+    // Order matters. These tokens must be checked BEFORE falling through to
+    // Safari, because every one of them also carries a `Safari/` token.
+    if (/CriOS/.test(ua)) return "Open Settings → Chrome → Camera and allow access, then reload.";
+    if (/FxiOS/.test(ua)) return "Open Settings → Firefox → Camera and allow access, then reload.";
+    if (/EdgiOS/.test(ua)) return "Open Settings → Edge → Camera and allow access, then reload.";
+    return "Open Settings → Safari → Camera and allow access, then reload.";
+  }
   if (/Safari/.test(ua) && !/Chrome|CriOS|FxiOS/.test(ua)) {
     return "Click the camera icon in Safari's address bar and allow access.";
   }
