@@ -91,9 +91,17 @@ service firebase.storage {
     // Path: userClips/{uid}/{fileName}.webm (web) or .mp4 (native).
     // The uid IS the path prefix here (unlike game videos, where turn
     // ownership flips), so ownership is enforced structurally on create
-    // and delete. `update: if false` forces delete-then-create on
-    // re-upload, so bytes behind an already-moderated clip URL can never
-    // be silently swapped (same reasoning as the game-video block above).
+    // and delete. `update: if false` blocks IN-PLACE mutation (including
+    // metadata edits) of a committed object. It does NOT make the bytes
+    // permanently immutable: the owner may still `delete` and re-`create`
+    // at the same name. That is safe here only because the download URL
+    // carries a token that ROTATES on re-create, so an already-published
+    // (and possibly already-moderated) URL keeps resolving to the bytes it
+    // was moderated against and cannot be silently repointed. What
+    // `update: false` actually buys is that every set of bytes goes
+    // through the full `create` rule — size, MIME, filename and
+    // uploaderUid re-validated from scratch — instead of being patched
+    // past those checks.
     //
     // NOTE: Storage rules cannot cross-reference Firestore, so the
     // `users/{uid}.banned` flag is NOT enforceable here — a banned user can

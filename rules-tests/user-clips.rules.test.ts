@@ -76,9 +76,14 @@ function createUserClip(
   return batch.commit();
 }
 
+/**
+ * Ban `uid` by seeding the authoritative `bans/{uid}` tombstone. NOT a
+ * users/{uid} field — see users-banned-redteam for why that was
+ * bypassable via delete-then-recreate.
+ */
 async function ban(uid: string): Promise<void> {
   await getEnv().withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), "users", uid), { uid, username: "alice", banned: true });
+    await setDoc(doc(ctx.firestore(), "bans", uid), { bannedBy: "u-admin", bannedAt: new Date() });
   });
 }
 

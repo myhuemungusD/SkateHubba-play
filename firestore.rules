@@ -61,22 +61,32 @@ service cloud.firestore {
     }
 
     // ── Ban gate (moderation) ──
-    // `users/{uid}.banned` is admin-only (see the admin clause on
-    // /users/{uid}); a banned account keeps read access but loses every
-    // UGC-producing write: user-source clips, clipVotes and clip comments.
-    // The `!exists(...)` branch keeps the gate open for accounts that have
-    // no profile doc yet (rules-test contexts and the pre-onboarding
-    // window) — absence of a profile is not evidence of a ban.
+    // Enforcement keys off a TOMBSTONE doc at `bans/{uid}` — never off a
+    // field on the user's own profile. That distinction is load-bearing:
+    // `users/{uid}` is owner-DELETABLE (account-deletion flow), so a
+    // `users/{uid}.banned` flag was trivially bypassable by deleting the
+    // profile (which alone re-opens comments + votes, since a missing
+    // profile cannot be evidence of a ban) and then re-creating it clean —
+    // the create rule forbids seeding `banned`, so the account came back
+    // unbanned and clip uploads resumed. `bans/{uid}` is outside the
+    // owner's reach entirely: admin-only create/delete, owner denied
+    // everything, so the ban survives profile deletion and re-signup on
+    // the same UID.
+    //
+    // A banned account keeps READ access but loses every UGC-producing
+    // write: user-source clips, clipVotes (cast + flip) and clip comments.
     //
     // DELIBERATELY NOT APPLIED TO GAME WRITES: /games rules already sit
     // near the 10-document-access / 1000-expression ceiling (see the note
-    // above BUCKET_DL_URL_RE), and adding a users get() to every turn
-    // action would tip them over. Accepted gap: a banned user can finish
-    // an in-flight game. Moderation revokes their feed presence, which is
-    // the public surface that matters.
+    // above BUCKET_DL_URL_RE), and adding a lookup to every turn action
+    // would tip them over. Accepted gap: a banned user can finish an
+    // in-flight game. Moderation revokes their feed presence, which is the
+    // public surface that matters.
+    //
+    // Single `exists()` by design — one document access, no `get()`, which
+    // keeps the user-clip create path (its heaviest caller) inside budget.
     function notBanned() {
-      return !exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('banned', false) == false;
+      return !exists(/databases/$(database)/documents/bans/$(request.auth.uid));
     }
 
     function isPlayer(game) {
@@ -136,6 +146,11 @@ service cloud.firestore {
     // the only way the client obtains this value; the bucket-as-host CDN
     // form is deliberately not accepted here (game clips need it because
     // they copy the games doc value verbatim; user clips do not).
+    //
+    // FIREBASE_BUCKET() is already REGEX-ESCAPED at its definition (every
+    // `.` is `\\.`), so interpolating it here is safe — the same pattern
+    // the profileImageUrl pins use. Keep it escaped if that constant is
+    // ever changed, or a look-alike bucket satisfies the wildcard.
     function userClipVideoUrlOk(url, uid) {
       return url is string
         && url.size() <= 2048
@@ -549,7 +564,14 @@ service cloud.firestore {
         && request.resource.data.isVerifiedPro is bool
         && request.resource.data.verifiedBy == request.auth.uid
         && request.resource.data.verifiedAt == request.time;
-      // ── Ban / unban (admin custom claim) ──
+      // ── Ban flag mirror (admin custom claim) ──
+      // NOT the enforcement point — `bans/{uid}` is (see notBanned()).
+      // This field is a DISPLAY mirror for the moderation console and
+      // profile badges, kept admin-writable so it can be maintained in the
+      // same operator flow. Because users/{uid} is owner-deletable, a ban
+      // recorded ONLY here would be shed by deleting and re-creating the
+      // profile; never gate a write on it.
+      //
       // Mirrors the Verified-Pro clause above field-for-field, and for the
       // same reasons: a separate `allow update` so the owner clause is
       // untouched (its affectedKeys().hasAny([...]) backstop now lists
@@ -752,6 +774,48 @@ service cloud.firestore {
         // Owner: GDPR erasure batch. Admin: revoke wrongly-awarded gear.
         allow delete: if isOwner(uid) || isAdmin();
       }
+    }
+
+    // ── Bans (moderation tombstones) ──
+    // The AUTHORITATIVE ban record, keyed by UID. Deliberately a top-level
+    // collection rather than a field on users/{uid}: the profile doc is
+    // owner-deletable and owner-recreatable, so any flag stored on it can
+    // be shed by deleting the account and signing up again on the same
+    // UID. This doc is unreachable by its subject in every verb, so a ban
+    // survives profile deletion, re-signup, and username changes.
+    //
+    // `notBanned()` reads this with a single exists() — the doc's mere
+    // presence is the ban. Fields are the moderation audit trail only.
+    match /bans/{uid} {
+      // The subject may read their OWN ban so the client can explain why
+      // a write was rejected. `list` is admin-only: a public listing would
+      // be a roster of banned accounts (harassment + doxxing surface).
+      allow get: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
+
+      // Admin-only, and never against yourself — same four-eyes shape as
+      // the Verified-Pro grant: a single compromised admin token must not
+      // be able to ban a rival moderator's subject and then quietly clear
+      // its own record.
+      allow create: if isAdmin()
+        && uid != request.auth.uid
+        && request.resource.data.keys().hasOnly(['bannedBy', 'bannedAt', 'reason'])
+        && request.resource.data.bannedBy == request.auth.uid
+        && request.resource.data.bannedAt == request.time
+        && (
+          !('reason' in request.resource.data)
+          || (request.resource.data.reason is string
+              && request.resource.data.reason.size() <= 500)
+        );
+
+      // Immutable: a ban is never edited in place, so the bannedBy /
+      // bannedAt audit trail can't be rewritten onto another moderator or
+      // back-dated. Re-banning is delete + create, which re-stamps both.
+      allow update: if false;
+
+      // Unban. Admin-only and never self — the subject of a ban can never
+      // reach this verb, which is the whole point of the collection.
+      allow delete: if isAdmin() && uid != request.auth.uid;
     }
 
     // ── Usernames (reservation docs for uniqueness) ──
