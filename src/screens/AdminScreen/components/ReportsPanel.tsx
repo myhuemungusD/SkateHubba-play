@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { fetchReports, resolveReport, type AdminReport } from "../../../services/admin";
-import { REPORT_REASON_LABELS, type ReportReason } from "../../../services/reports";
+import { banUser } from "../../../services/admin.bans";
 import { useNotifications } from "../../../context/NotificationContext";
-import { errorMessage, relativeAge } from "../utils";
+import { errorMessage } from "../utils";
+import { ReportRow } from "./ReportRow";
 
 type Verdict = "resolved" | "dismissed";
 
@@ -21,21 +22,14 @@ const VIEWS = [
 type ViewStatus = (typeof VIEWS)[number]["status"];
 
 /**
- * Reason labels are keyed by the reasons this build knows about. A report
- * written by a newer client can carry one it doesn't, so the raw value is
- * shown rather than a blank cell — moderation must never silently lose the
- * only field describing what was reported.
- */
-function reasonLabel(reason: string): string {
-  return Object.hasOwn(REPORT_REASON_LABELS, reason) ? REPORT_REASON_LABELS[reason as ReportReason] : reason;
-}
-
-/**
  * Pending report queue.
  *
- * v1 is deliberately read-and-verdict only: the reported player, game and
- * reporter are plain text, not links. Navigating away mid-triage would lose
- * the queue, and the ids are enough to look a case up by hand.
+ * Rows (and their controls) live in ReportRow / ReportRowActions — the panel
+ * itself owns only the queue: which view is showing, the fetch, and the
+ * writes. Reports filed against a user-posted clip carry no `gameId`; they
+ * appear in the same queue and the row labels them rather than filtering them
+ * out, because a clip with no game is exactly the content that most needs
+ * looking at.
  */
 export function ReportsPanel({ adminUid }: { adminUid: string }) {
   const { notify } = useNotifications();
@@ -77,6 +71,25 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
       setReloadKey((key) => key + 1);
     } catch (err: unknown) {
       notify({ type: "error", title: "Action failed", message: errorMessage(err) });
+    } finally {
+      setActing(null);
+    }
+  };
+
+  /**
+   * Ban the reported user. Deliberately does NOT resolve the report: the
+   * verdict is a separate record of what the operator decided, and silently
+   * closing the ticket would erase the distinction between "banned and
+   * resolved" and "banned, still under review".
+   */
+  const ban = async (report: AdminReport): Promise<void> => {
+    setActing(report.id);
+    try {
+      await banUser(report.reportedUid);
+      notify({ type: "success", title: "User banned", message: `@${report.reportedUsername}` });
+      setReloadKey((key) => key + 1);
+    } catch (err: unknown) {
+      notify({ type: "error", title: "Ban failed", message: errorMessage(err) });
     } finally {
       setActing(null);
     }
@@ -144,81 +157,14 @@ export function ReportsPanel({ adminUid }: { adminUid: string }) {
       {!loading && !state.error && state.reports.length > 0 && (
         <ul className="flex flex-col gap-2">
           {state.reports.map((report) => (
-            <li
+            <ReportRow
               key={report.id}
-              data-testid={`report-${report.id}`}
-              className="rounded-2xl border border-border bg-surface p-3"
-            >
-              <p className="font-display text-sm text-white">@{report.reportedUsername}</p>
-              <p className="mt-0.5 font-body text-xs text-muted">{reasonLabel(report.reason)}</p>
-
-              {/* The reporter's own words — the evidence the verdict is being
-                  made on. Rendered as a plain text node so React escapes it:
-                  this is untrusted user input and must never reach innerHTML.
-                  `whitespace-pre-wrap` keeps the reporter's line breaks, and a
-                  capped scroll box (the app's existing overflow idiom) stops a
-                  500-char wall of text pushing the verdict buttons off screen. */}
-              {report.description ? (
-                <p
-                  data-testid={`report-description-${report.id}`}
-                  className="mt-2 max-h-32 overflow-y-auto rounded-lg border border-border bg-surface-alt/60 p-2 font-body text-xs leading-relaxed break-words whitespace-pre-wrap text-white/90"
-                >
-                  {report.description}
-                </p>
-              ) : (
-                <p className="mt-2 font-body text-xs text-faint italic">No description provided</p>
-              )}
-
-              {report.clipId && (
-                <p
-                  data-testid={`report-clip-${report.id}`}
-                  className="mt-2 font-mono text-[11px] break-all text-subtle"
-                >
-                  clip {report.clipId}
-                </p>
-              )}
-
-              <p className="mt-1 font-body text-[11px] text-faint break-all">
-                {relativeAge(report.createdAt)} · game {report.gameId} · reporter {report.reporterUid}
-              </p>
-              {/* Resolution audit trail. Only a report that already carries a
-                  verdict has one; reports resolved before the audit fields
-                  shipped render "unknown" rather than being hidden, so the
-                  verdict itself is never silently dropped from the row. */}
-              {report.status !== "pending" && (
-                <p
-                  data-testid={`report-resolution-${report.id}`}
-                  className="mt-1 font-body text-[11px] text-faint break-all"
-                >
-                  {report.status} by {report.resolvedBy || "unknown"} · {relativeAge(report.resolvedAt)}
-                </p>
-              )}
-
-              {/* Verdict controls are pending-only: firestore.rules gates the
-                  report update on `resource.data.status == 'pending'`, so
-                  offering them on an already-closed report would hand the
-                  operator a guaranteed permission-denied. */}
-              {report.status === "pending" && (
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void decide(report, "resolved")}
-                    disabled={acting === report.id}
-                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-brand-green/40 bg-brand-green/[0.1] px-3 font-display text-[11px] tracking-[0.15em] text-brand-green transition-colors active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {acting === report.id ? "..." : "RESOLVE"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void decide(report, "dismissed")}
-                    disabled={acting === report.id}
-                    className="inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl border border-border px-3 font-display text-[11px] tracking-[0.15em] text-muted transition-colors hover:text-white active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    {acting === report.id ? "..." : "DISMISS"}
-                  </button>
-                </div>
-              )}
-            </li>
+              report={report}
+              acting={acting === report.id}
+              onResolve={(r) => void decide(r, "resolved")}
+              onDismiss={(r) => void decide(r, "dismissed")}
+              onBan={(r) => void ban(r)}
+            />
           ))}
         </ul>
       )}

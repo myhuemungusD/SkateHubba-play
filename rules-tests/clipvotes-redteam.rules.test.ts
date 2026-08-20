@@ -44,6 +44,7 @@ function makeValidVote(voterUid: string, overrides: Record<string, unknown> = {}
   return {
     uid: voterUid,
     clipId: CLIP_ID,
+    value: 1,
     createdAt: serverTimestamp(),
     ...overrides,
   };
@@ -123,6 +124,7 @@ describe("clipVotes — red-team against email_verified + uniqueness", () => {
       await setDoc(doc(ctx.firestore(), "clipVotes", `voter-uid_${CLIP_ID}`), {
         uid: "voter-uid",
         clipId: CLIP_ID,
+        value: 1,
         createdAt: new Date(Date.now() - 60_000),
       });
     });

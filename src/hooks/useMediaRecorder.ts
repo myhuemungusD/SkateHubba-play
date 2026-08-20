@@ -1,10 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import {
-  MAX_VIDEO_DURATION_MS,
-  MAX_VIDEO_DURATION_SECONDS,
-  MIN_UPLOAD_BYTES,
-  VIDEO_BITS_PER_SECOND,
-} from "../constants/video";
+import { MAX_VIDEO_DURATION_SECONDS, MIN_UPLOAD_BYTES, VIDEO_BITS_PER_SECOND } from "../constants/video";
 import { isNativePlatform, recordNativeVideo } from "../services/nativeVideo";
 import { logger } from "../services/logger";
 import { parseFirebaseError } from "../utils/helpers";
@@ -221,8 +216,23 @@ export interface MediaRecorderController {
 /**
  * Drive a one-take video capture. `onRecorded` receives the finished blob, or
  * null when the take produced no usable bytes.
+ *
+ * `maxDurationSeconds` is the hard auto-stop for the take, defaulting to the
+ * game cap. It is a parameter rather than a direct constant read because the
+ * two clip kinds have different caps (20 s for a game turn, 30 s for a
+ * standalone user clip) and the recorder itself has no way to know which one
+ * it is filming — the caller does.
  */
-export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): MediaRecorderController {
+export function useMediaRecorder(
+  onRecorded: (blob: Blob | null) => void,
+  maxDurationSeconds: number = MAX_VIDEO_DURATION_SECONDS,
+): MediaRecorderController {
+  // Mirror the cap in a ref so the recording callbacks can read the current
+  // value without listing it in their deps. `startRec`'s identity feeds
+  // memoized children; rebuilding it because a prop re-rendered with the same
+  // number would defeat that for no behavioural gain.
+  const maxDurationRef = useRef(maxDurationSeconds);
+  maxDurationRef.current = maxDurationSeconds;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const setVideoRef = useCallback((el: HTMLVideoElement | null) => {
@@ -518,7 +528,7 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
       if (mrRef.current?.state === "recording") {
         mrRef.current.stop();
       }
-    }, MAX_VIDEO_DURATION_MS);
+    }, maxDurationRef.current * 1000);
     /* v8 ignore stop */
   }, [onRecorded, fisheyeOn, discardRecorder, stopTracks]);
 
@@ -559,17 +569,19 @@ export function useMediaRecorder(onRecorded: (blob: Blob | null) => void): Media
     setState("recording");
     setSeconds(0);
     try {
-      const result = await recordNativeVideo(controller.signal, () => {
-        /* v8 ignore next -- guards an unmount that lands inside the plugin callback */
-        if (!mountedRef.current) return;
-        // Cap the displayed count: the interval outlives the recording itself
-        // (stopRecording + fetch + destroy all run after the cap fires), and
-        // without this the REC chip ticked past the limit — 0:21, 0:22, 0:23…
-        timerRef.current = window.setInterval(
-          () => setSeconds((s) => (s < MAX_VIDEO_DURATION_SECONDS ? s + 1 : s)),
-          1000,
-        );
-      });
+      const result = await recordNativeVideo(
+        controller.signal,
+        () => {
+          /* v8 ignore next -- guards an unmount that lands inside the plugin callback */
+          if (!mountedRef.current) return;
+          // Cap the displayed count: the interval outlives the recording itself
+          // (stopRecording + fetch + destroy all run after the cap fires), and
+          // without this the REC chip ticked past the limit — 0:21, 0:22, 0:23…
+          const cap = maxDurationRef.current;
+          timerRef.current = window.setInterval(() => setSeconds((s) => (s < cap ? s + 1 : s)), 1000);
+        },
+        maxDurationRef.current,
+      );
       clearInterval(timerRef.current);
       /* v8 ignore next -- unmount-during-native-capture race; no native shell in JSDOM */
       if (!mountedRef.current) return;

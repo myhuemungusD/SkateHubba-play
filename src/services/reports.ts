@@ -3,21 +3,39 @@ import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 
-export type ReportReason = "inappropriate_video" | "abusive_behavior" | "cheating" | "spam" | "other";
+export type ReportReason =
+  | "inappropriate_video"
+  | "abusive_behavior"
+  | "cheating"
+  | "spam"
+  | "non_skate_content"
+  | "other";
 
 export const REPORT_REASON_LABELS: Record<ReportReason, string> = {
   inappropriate_video: "Inappropriate video content",
   abusive_behavior: "Abusive or threatening behavior",
   cheating: "Cheating or exploiting",
   spam: "Spam or bot activity",
+  // Distinct from "inappropriate": the clip is fine, it just isn't
+  // skateboarding. Feed-only in practice, and the most common reason a
+  // user-posted clip needs to come down, so it gets its own bucket instead
+  // of being buried under "other" where moderators can't triage it.
+  non_skate_content: "Not skateboarding",
   other: "Other",
 };
 
-interface SubmitReportParams {
+export interface SubmitReportParams {
   reporterUid: string;
   reportedUid: string;
   reportedUsername: string;
-  gameId: string;
+  /**
+   * Game the report was filed from, or `null` when there isn't one — a
+   * user-posted clip belongs to no game. `clipId` identifies the target in
+   * that case, and the written doc carries `gameId: null` rather than
+   * omitting the field so the moderation queue can distinguish "no game"
+   * from a doc that lost the field.
+   */
+  gameId?: string | null;
   reason: ReportReason;
   description: string;
   /**
@@ -44,6 +62,13 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
 
   if (!reason) throw new Error("Please select a reason for your report.");
   if (reporterUid === reportedUid) throw new Error("You cannot report yourself.");
+  // A report that identifies neither a game nor a clip gives moderators
+  // nothing to look at.
+  const targetGameId = typeof gameId === "string" && gameId.length > 0 ? gameId : null;
+  const targetClipId = typeof clipId === "string" && clipId.length > 0 ? clipId.slice(0, 128) : null;
+  if (targetGameId === null && targetClipId === null) {
+    throw new Error("Nothing to report — no game or clip was identified.");
+  }
 
   try {
     const db = requireDb();
@@ -54,14 +79,14 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
       reporterUid,
       reportedUid,
       reportedUsername,
-      gameId,
+      gameId: targetGameId,
       reason,
       description: description.trim().slice(0, 500),
       status: "pending",
       createdAt: serverTimestamp(),
     };
-    if (typeof clipId === "string" && clipId.length > 0) {
-      payload.clipId = clipId.slice(0, 128);
+    if (targetClipId !== null) {
+      payload.clipId = targetClipId;
     }
 
     // Atomic batch: report + companion cooldown anchor. The rule requires
@@ -83,7 +108,7 @@ export async function submitReport(params: SubmitReportParams): Promise<string> 
   } catch (err) {
     logger.warn("report_submit_failed", {
       reporterUid,
-      gameId,
+      gameId: targetGameId,
       error: parseFirebaseError(err),
     });
     throw new Error("Failed to submit report. Please try again.");

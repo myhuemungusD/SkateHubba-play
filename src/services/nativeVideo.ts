@@ -19,7 +19,7 @@ import {
   VideoRecorderQuality,
   type VideoRecorderPreviewFrame,
 } from "@capacitor-community/video-recorder";
-import { MAX_VIDEO_DURATION_MS, VIDEO_BITS_PER_SECOND } from "../constants/video";
+import { MAX_VIDEO_DURATION_SECONDS, VIDEO_BITS_PER_SECOND } from "../constants/video";
 import { addBreadcrumb } from "../lib/sentry";
 
 /** True when the app is running inside a Capacitor native shell. */
@@ -61,7 +61,7 @@ const PREVIEW_FRAME: VideoRecorderPreviewFrame = {
  *   2. `startRecording()` begins writing to a temp file on device.
  *   3. Recording stops on whichever fires first:
  *        • the caller signals `signal.abort()` (user tapped "Stop"), or
- *        • `MAX_VIDEO_DURATION_MS` elapses (hard duration cap).
+ *        • `maxDurationSeconds` elapses (hard duration cap).
  *   4. `stopRecording()` returns the temp-file URI, which we `fetch()`
  *      into a Blob for the uploader.
  *   5. `destroy()` releases the capture device in a `finally` block so
@@ -95,10 +95,17 @@ const PREVIEW_FRAME: VideoRecorderPreviewFrame = {
  *               use it to start their elapsed-time UI so the on-screen clock
  *               cannot lead the real recording by the warm-up latency. Never
  *               invoked when the take is aborted during warm-up.
+ * @param maxDurationSeconds hard auto-stop, in seconds. Defaults to the game
+ *               cap ({@link MAX_VIDEO_DURATION_SECONDS}); standalone user-clip
+ *               capture passes the longer `USER_CLIP_MAX_DURATION_SECONDS`.
+ *               The plugin exposes no native max-duration option, so this
+ *               timer is the only thing between a forgotten recording and the
+ *               50 MB Storage ceiling — callers may raise it, never remove it.
  */
 export async function recordNativeVideo(
   signal?: AbortSignal,
   onRecordingStarted?: () => void,
+  maxDurationSeconds: number = MAX_VIDEO_DURATION_SECONDS,
 ): Promise<NativeVideoResult> {
   if (signal?.aborted) {
     throw new DOMException("Recording cancelled", "AbortError");
@@ -192,7 +199,10 @@ export async function recordNativeVideo(
         resolve();
         return;
       }
-      autoStopTimer = setTimeout(resolve, MAX_VIDEO_DURATION_MS);
+      // Seconds → ms here (rather than taking a pre-multiplied constant)
+      // because the cap is a per-call parameter now: the game path passes the
+      // 20 s turn cap, the user-clip path the longer 30 s one.
+      autoStopTimer = setTimeout(resolve, maxDurationSeconds * 1000);
       if (signal) {
         onAbort = () => resolve();
         signal.addEventListener("abort", onAbort, { once: true });

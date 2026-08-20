@@ -12,22 +12,6 @@ export interface UploadProgress {
 }
 
 /**
- * Upload a video blob to Firebase Storage with progress tracking and retry.
- *
- * Path: games/{gameId}/turn-{turnNumber}/{role}.webm (web) or .mp4 (native)
- * role = "set" | "match"
- *
- * Uses uploadBytesResumable for real-time progress tracking.
- * Retries with exponential backoff + jitter on transient failures only —
- * permanent errors (permission/quota/not-found) short-circuit the loop.
- *
- * An optional `signal: AbortSignal` cancels the in-flight upload: the
- * currently running resumable task is torn down via `task.cancel()` and
- * this function rejects with `DOMException("Upload cancelled", "AbortError")`.
- * App Store reviewers exercise the cancel button on a 50 MB upload, so
- * the contract here is non-optional.
- */
-/**
  * Minimum upload size (1 KB) — must match storage.rules.
  *
  * Defined in `src/constants/video.ts` and re-exported here so the capture path
@@ -35,10 +19,8 @@ export interface UploadProgress {
  * into the recorder). Re-exported rather than redeclared so the uploader and the
  * recorder can never drift apart.
  */
-export { MIN_UPLOAD_BYTES } from "../constants/video";
-import { MIN_UPLOAD_BYTES } from "../constants/video";
-/** Maximum upload size (50 MB) — must match storage.rules */
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+export { MIN_UPLOAD_BYTES, MAX_UPLOAD_BYTES } from "../constants/video";
+import { MIN_UPLOAD_BYTES, MAX_UPLOAD_BYTES } from "../constants/video";
 /**
  * Base delay for exponential backoff on upload retries.
  *
@@ -117,27 +99,43 @@ export function classifyVideoBlob(blob: Blob): UploadShape {
   return { ext, contentType, blob: outBlob };
 }
 
-export async function uploadVideo(
-  gameId: string,
-  turnNumber: number,
-  role: "set" | "match",
-  blob: Blob,
-  onProgress?: (progress: UploadProgress) => void,
-  maxRetries = 2,
-  signal?: AbortSignal,
-): Promise<string> {
-  // Reject immediately if the caller already aborted before invocation —
-  // no point spinning up the SDK or even touching the blob.
-  if (signal?.aborted) {
-    throw new DOMException("Upload cancelled", "AbortError");
-  }
+/**
+ * Everything the retry/abort/progress core needs that is NOT specific to
+ * where a clip came from. Both upload paths build one of these and hand it
+ * to {@link runResumableUpload}; the core has no idea whether it is moving a
+ * game turn or a user-posted clip.
+ */
+interface ResumableUploadRequest {
+  /** Full Storage path, extension included. */
+  path: string;
+  contentType: "video/mp4" | "video/webm";
+  /** Already classified by {@link classifyVideoBlob}. */
+  blob: Blob;
+  /**
+   * Custom metadata written alongside the object. MUST include
+   * `uploaderUid` — storage.rules pins it to `request.auth.uid` on create
+   * and re-checks it from `resource.metadata` on update/delete, so without
+   * it any signed-in user could overwrite another's video.
+   */
+  customMetadata: Record<string, string>;
+  onProgress?: (progress: UploadProgress) => void;
+  maxRetries: number;
+  signal?: AbortSignal;
+}
 
-  // Pre-validate size to fail fast before wasting bandwidth.
-  // Bounds are EXCLUSIVE to mirror storage.rules exactly, which enforces
-  // `request.resource.size > 1024` and `request.resource.size < 50*1024*1024`.
-  // A clip of exactly MIN_UPLOAD_BYTES or exactly MAX_UPLOAD_BYTES is rejected
-  // by the rules, so the client must reject it too — otherwise it passes the
-  // client check, uploads, and then fails at the rules boundary.
+/**
+ * Validate a blob against the Storage size bounds and classify it.
+ *
+ * Bounds are EXCLUSIVE to mirror storage.rules exactly, which enforces
+ * `request.resource.size > 1024` and `request.resource.size < 50*1024*1024`.
+ * A clip of exactly MIN_UPLOAD_BYTES or exactly MAX_UPLOAD_BYTES is rejected
+ * by the rules, so the client must reject it too — otherwise it passes the
+ * client check, uploads, and only then fails at the rules boundary.
+ *
+ * Also resolves the caller's uid, which every upload path must bind into
+ * `customMetadata`.
+ */
+function prepareUpload(blob: Blob): UploadShape & { uploaderUid: string } {
   if (blob.size <= MIN_UPLOAD_BYTES) {
     throw new Error("Video is too small to upload. Please record a longer clip.");
   }
@@ -145,19 +143,41 @@ export async function uploadVideo(
     throw new Error("Video exceeds the 50 MB limit. Please record a shorter clip.");
   }
 
-  // Strictly classify the blob — see `classifyVideoBlob` for the rationale.
-  // The returned blob may be re-wrapped to carry the correct content-type.
-  const { ext, contentType, blob: uploadBlob } = classifyVideoBlob(blob);
-  const path = `games/${gameId}/turn-${turnNumber}/${role}.${ext}`;
-  const storageRef = ref(requireStorage(), path);
-  // Bind the upload to the caller's UID — Storage rules verify
-  // metadata.uploaderUid == request.auth.uid so signed-in users cannot
-  // overwrite or delete each other's videos.
+  const shape = classifyVideoBlob(blob);
+
   const uploaderUid = requireAuth().currentUser?.uid;
   if (!uploaderUid) {
     throw new Error("You must be signed in to upload a video.");
   }
-  const startTime = Date.now();
+
+  return { ...shape, uploaderUid };
+}
+
+/**
+ * The shared upload engine: resumable upload + progress reporting +
+ * abort + retry with exponential backoff and jitter.
+ *
+ * Extracted from `uploadVideo` when user-posted clips arrived, rather than
+ * copied: the abort semantics (translate `storage/canceled` into a standard
+ * `AbortError`, detach the listener per attempt so retries don't leak) and
+ * the retryable/permanent error split are subtle enough that two copies
+ * would drift, and the drift would only show up as a stuck upload on a
+ * flaky network. One body, two callers.
+ *
+ * Rejects with `DOMException("Upload cancelled", "AbortError")` on abort,
+ * and rethrows the original SDK error (preserving `code`/`name`) otherwise.
+ */
+async function runResumableUpload(req: ResumableUploadRequest): Promise<string> {
+  const { path, contentType, blob, customMetadata, onProgress, maxRetries, signal } = req;
+
+  // Reject immediately if the caller already aborted before invocation —
+  // no point spinning up the SDK. Checked HERE rather than in each wrapper
+  // so a future upload path cannot forget it.
+  if (signal?.aborted) {
+    throw new DOMException("Upload cancelled", "AbortError");
+  }
+
+  const storageRef = ref(requireStorage(), path);
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     // Re-check abort between retries — a caller that aborts while we're
@@ -175,9 +195,10 @@ export async function uploadVideo(
 
     try {
       const url = await new Promise<string>((resolve, reject) => {
-        const task = uploadBytesResumable(storageRef, uploadBlob, {
+        const task = uploadBytesResumable(storageRef, blob, {
           contentType,
-          // Clip storage paths are deterministic (`games/{gameId}/turn-N/{role}.{ext}`)
+          // Clip storage paths are deterministic (`games/{gameId}/turn-N/{role}.{ext}`
+          // for game clips, `userClips/{uid}/{clipId}.{ext}` for user clips)
           // and the corresponding firestore.rules block forbids clip mutation
           // once the doc is written, so the bytes at this URL never change.
           // Marking the response immutable lets browsers (and any CDN that
@@ -185,20 +206,7 @@ export async function uploadVideo(
           // the network for a year — a viewer-perceived 0-RTT REPLAY and a
           // free win on cross-session view of the same clip.
           cacheControl: "public, max-age=31536000, immutable",
-          customMetadata: {
-            // Storage rules require uploaderUid == request.auth.uid on create
-            // and resource.metadata.uploaderUid == request.auth.uid on update/
-            // delete. Without this binding, any signed-in user could overwrite
-            // another player's video.
-            uploaderUid,
-            gameId,
-            turn: String(turnNumber),
-            role,
-            uploadedAt: new Date().toISOString(),
-            // Retention hint: videos older than 90 days may be purged by a
-            // scheduled Cloud Function or a Storage lifecycle rule.
-            retainUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
-          },
+          customMetadata,
         });
 
         if (signal) {
@@ -241,8 +249,6 @@ export async function uploadVideo(
         );
       });
 
-      analytics.videoUploaded(Date.now() - startTime, blob.size);
-      metrics.videoUploaded(gameId, blob.size, Date.now() - startTime);
       return url;
     } catch (err) {
       // Permanent errors (auth/quota/not-found/user-cancel) must short-
@@ -269,6 +275,151 @@ export async function uploadVideo(
 
   // Unreachable, but satisfies TypeScript
   throw new Error("Upload failed after retries");
+}
+
+/**
+ * Upload a game-turn video blob with progress tracking and retry.
+ *
+ * Path: games/{gameId}/turn-{turnNumber}/{role}.webm (web) or .mp4 (native),
+ * role = "set" | "match".
+ *
+ * Uses uploadBytesResumable for real-time progress tracking. Retries with
+ * exponential backoff + jitter on transient failures only — permanent errors
+ * (permission/quota/not-found) short-circuit the loop.
+ *
+ * An optional `signal: AbortSignal` cancels the in-flight upload: the
+ * currently running resumable task is torn down via `task.cancel()` and this
+ * function rejects with `DOMException("Upload cancelled", "AbortError")`.
+ * App Store reviewers exercise the cancel button on a 50 MB upload, so the
+ * contract here is non-optional.
+ */
+export async function uploadVideo(
+  gameId: string,
+  turnNumber: number,
+  role: "set" | "match",
+  blob: Blob,
+  onProgress?: (progress: UploadProgress) => void,
+  maxRetries = 2,
+  signal?: AbortSignal,
+): Promise<string> {
+  const { ext, contentType, blob: uploadBlob, uploaderUid } = prepareUpload(blob);
+  const startTime = Date.now();
+
+  const url = await runResumableUpload({
+    path: `games/${gameId}/turn-${turnNumber}/${role}.${ext}`,
+    contentType,
+    blob: uploadBlob,
+    customMetadata: {
+      uploaderUid,
+      gameId,
+      turn: String(turnNumber),
+      role,
+      uploadedAt: new Date().toISOString(),
+      // Retention hint: videos older than 90 days may be purged by a
+      // scheduled Cloud Function or a Storage lifecycle rule.
+      retainUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    onProgress,
+    maxRetries,
+    signal,
+  });
+
+  analytics.videoUploaded(Date.now() - startTime, blob.size);
+  metrics.videoUploaded(gameId, blob.size, Date.now() - startTime);
+  return url;
+}
+
+/**
+ * Upload a user-posted clip (source: "user") and return its download URL.
+ *
+ * Path: `userClips/{uid}/{clipId}.webm` (web) or `.mp4` (native). The uid
+ * segment is what makes the storage rule ownable — a user may only write
+ * under their own prefix — and `clipId` is minted by the caller BEFORE the
+ * upload so the Firestore doc written afterwards points at a path that is
+ * already known and already occupied. See `createUserClip` for that ordering.
+ *
+ * Shares the whole retry/abort/progress core with {@link uploadVideo}; the
+ * only differences are the path, the metadata, and the absence of
+ * game-scoped metrics (there is no game to attribute the upload to).
+ */
+export async function uploadUserClip(
+  uid: string,
+  clipId: string,
+  blob: Blob,
+  onProgress?: (progress: UploadProgress) => void,
+  maxRetries = 2,
+  signal?: AbortSignal,
+): Promise<string> {
+  // A uid or clip id containing "/" would escape the caller's own prefix
+  // and target somebody else's folder. The rule would reject it, but a
+  // silently mis-pathed upload is worth failing loudly and locally.
+  if (!uid || uid.includes("/")) throw new Error("Invalid user id.");
+  if (!clipId || clipId.includes("/")) throw new Error("Invalid clip id.");
+
+  const { ext, contentType, blob: uploadBlob, uploaderUid } = prepareUpload(blob);
+  if (uploaderUid !== uid) {
+    // Uploading "as" another user cannot succeed (the rule pins the prefix
+    // to request.auth.uid), so fail before burning the bandwidth.
+    throw new Error("You must be signed in to upload a video.");
+  }
+  const startTime = Date.now();
+
+  const url = await runResumableUpload({
+    path: `userClips/${uid}/${clipId}.${ext}`,
+    contentType,
+    blob: uploadBlob,
+    customMetadata: {
+      uploaderUid,
+      clipId,
+      uploadedAt: new Date().toISOString(),
+      retainUntil: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+    onProgress,
+    maxRetries,
+    signal,
+  });
+
+  analytics.videoUploaded(Date.now() - startTime, blob.size);
+  return url;
+}
+
+/**
+ * Delete every stored object for a user-posted clip.
+ *
+ * The extension isn't knowable from the clip doc (web writes `.webm`,
+ * native `.mp4`), so both candidates are attempted and a `storage/object-
+ * not-found` on the one that was never written is expected, not an error.
+ * Returns the number of objects actually removed.
+ *
+ * Best-effort by design: this backs the clip-deletion cascade, where a
+ * stranded video object is a storage-cost problem, not a correctness one,
+ * and must never block the Firestore delete.
+ */
+export async function deleteUserClipVideo(uid: string, clipId: string): Promise<number> {
+  if (!uid || uid.includes("/") || !clipId || clipId.includes("/")) return 0;
+
+  const storage = requireStorage();
+  let deleted = 0;
+
+  await Promise.all(
+    (["webm", "mp4"] as const).map(async (ext) => {
+      try {
+        await deleteObject(ref(storage, `userClips/${uid}/${clipId}.${ext}`));
+        deleted++;
+      } catch (err) {
+        const code = (err as { code?: string }).code;
+        // The sibling extension never existed — the expected outcome for
+        // exactly one of the two attempts on every clip.
+        if (code === "storage/object-not-found") return;
+        logger.warn("user_clip_video_delete_failed", {
+          clipId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }),
+  );
+
+  return deleted;
 }
 
 /**

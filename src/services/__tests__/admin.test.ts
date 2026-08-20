@@ -468,7 +468,7 @@ describe("fetchReports — parsing", () => {
     expect(report.status).toBe("escalated");
   });
 
-  it("degrades missing or mistyped string fields to empty strings", async () => {
+  it("degrades missing or mistyped string fields to empty strings, and gameId to null", async () => {
     stubReports([reportDoc("r1", { createdAt: FILED_2026, reportedUid: 42, gameId: null })]);
 
     const [report] = await fetchReports();
@@ -478,7 +478,9 @@ describe("fetchReports — parsing", () => {
       reporterUid: "",
       reportedUid: "",
       reportedUsername: "",
-      gameId: "",
+      // gameId is optional now (a user-clip report has no game), so absence
+      // reads as null rather than "" — the queue branches on presence.
+      gameId: null,
       reason: "",
       description: "",
       clipId: null,

@@ -4,10 +4,15 @@ import userEvent from "@testing-library/user-event";
 
 const mockFetchReports = vi.fn();
 const mockResolveReport = vi.fn();
+const mockBanUser = vi.fn();
 
 vi.mock("../../../../services/admin", () => ({
   fetchReports: (...args: unknown[]) => mockFetchReports(...args),
   resolveReport: (...args: unknown[]) => mockResolveReport(...args),
+}));
+
+vi.mock("../../../../services/admin.bans", () => ({
+  banUser: (...args: unknown[]) => mockBanUser(...args),
 }));
 
 vi.mock("../../../../services/logger", () => ({
@@ -38,6 +43,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockFetchReports.mockResolvedValue([report]);
   mockResolveReport.mockResolvedValue(undefined);
+  mockBanUser.mockResolvedValue(undefined);
 });
 
 describe("ReportsPanel", () => {
@@ -244,5 +250,97 @@ describe("ReportsPanel", () => {
 
     await waitFor(() => expect(mockFetchReports).toHaveBeenCalledTimes(2));
     expect(await screen.findByTestId("report-r1")).toBeInTheDocument();
+  });
+});
+
+/* ── User-clip reports and enforcement ────────────────────────────── */
+
+describe("ReportsPanel — user-clip reports", () => {
+  const userClipReport = {
+    ...report,
+    id: "r2",
+    gameId: null,
+    reason: "non_skate_content",
+    clipId: "userclip1",
+    description: "Not skating.",
+  };
+
+  it("surfaces a report with no game as a feed clip rather than printing a null", async () => {
+    mockFetchReports.mockResolvedValue([userClipReport]);
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r2"));
+    expect(row.getByText(/feed clip \(no game\)/i)).toBeInTheDocument();
+    expect(row.queryByText(/game null/i)).not.toBeInTheDocument();
+    expect(row.getByTestId("report-clip-r2")).toHaveTextContent("clip userclip1");
+  });
+
+  it("renders the non_skate_content reason via its label, not the raw enum value", async () => {
+    mockFetchReports.mockResolvedValue([userClipReport]);
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r2"));
+    expect(row.getByText("Not skateboarding")).toBeInTheDocument();
+    expect(row.queryByText("non_skate_content")).not.toBeInTheDocument();
+  });
+});
+
+describe("ReportsPanel — ban", () => {
+  it("requires a confirm step before banning", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    const row = within(await screen.findByTestId("report-r1"));
+
+    await user.click(row.getByRole("button", { name: /ban user/i }));
+
+    // The trigger is replaced by the confirm row — nothing has been called yet.
+    expect(row.getByText(/ban @nyjah\?/i)).toBeInTheDocument();
+    expect(mockBanUser).not.toHaveBeenCalled();
+  });
+
+  it("cancelling the confirm leaves the user unbanned", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    const row = within(await screen.findByTestId("report-r1"));
+
+    await user.click(row.getByRole("button", { name: /ban user/i }));
+    await user.click(row.getByRole("button", { name: /cancel/i }));
+
+    expect(mockBanUser).not.toHaveBeenCalled();
+    expect(row.getByRole("button", { name: /ban user/i })).toBeInTheDocument();
+  });
+
+  it("bans the reported uid on confirm and reports it", async () => {
+    const user = userEvent.setup();
+    renderPanel();
+    const row = within(await screen.findByTestId("report-r1"));
+
+    await user.click(row.getByRole("button", { name: /ban user/i }));
+    await user.click(row.getByRole("button", { name: "BAN" }));
+
+    await waitFor(() => expect(mockBanUser).toHaveBeenCalledWith("u1"));
+    expect(await screen.findByText("User banned")).toBeInTheDocument();
+    // Banning is enforcement, not a verdict — the ticket stays open.
+    expect(mockResolveReport).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a ban failure to the operator", async () => {
+    const user = userEvent.setup();
+    mockBanUser.mockRejectedValueOnce(new Error("no such user"));
+    renderPanel();
+    const row = within(await screen.findByTestId("report-r1"));
+
+    await user.click(row.getByRole("button", { name: /ban user/i }));
+    await user.click(row.getByRole("button", { name: "BAN" }));
+
+    expect(await screen.findByText("Ban failed")).toBeInTheDocument();
+  });
+
+  it("offers no ban control on an already-closed report", async () => {
+    mockFetchReports.mockResolvedValue([{ ...report, status: "resolved", resolvedBy: "admin1" }]);
+    renderPanel();
+
+    const row = within(await screen.findByTestId("report-r1"));
+    expect(row.queryByRole("button", { name: /ban user/i })).not.toBeInTheDocument();
   });
 });

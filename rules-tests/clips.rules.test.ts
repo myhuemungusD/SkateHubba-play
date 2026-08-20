@@ -70,6 +70,7 @@ function makeValidClip(overrides: Record<string, unknown> = {}): Record<string, 
     gameId: GAME_ID,
     turnNumber: TURN_NUMBER,
     role: "set",
+    source: "game",
     playerUid: P1_UID,
     playerUsername: "alice",
     trickName: "tre flip",
@@ -126,6 +127,22 @@ async function seedClip(overrides: Record<string, unknown> = {}): Promise<string
     await setDoc(doc(ctx.firestore(), "clips", id), makeValidClip(overrides));
   });
   return id;
+}
+
+/**
+ * Seed an existing (pre-rules) upvote doc for `voterUid` on `clipId`.
+ * Shared by the aggregate-delta suite and the standalone-delete suite so
+ * the identical rules-disabled seed isn't written twice.
+ */
+async function seedVoteDoc(clipId: string, voterUid: string, value = 1): Promise<void> {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`), {
+      uid: voterUid,
+      clipId,
+      value,
+      createdAt: new Date(Date.now() - 60_000),
+    });
+  });
 }
 
 beforeAll(async () => {
@@ -378,12 +395,8 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
    * write's rule evaluation, not the seed's.
    */
   async function seedExistingUpvote(clipId: string, voterUid: string, count: number): Promise<void> {
+    await seedVoteDoc(clipId, voterUid);
     await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`), {
-        uid: voterUid,
-        clipId,
-        createdAt: new Date(Date.now() - 60_000),
-      });
       await setDoc(doc(ctx.firestore(), "clips", clipId), makeValidClip({ upvoteCount: count }));
     });
   }
@@ -404,6 +417,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
       tx.set(voteRef(ctx, voterUid, clipId), {
         uid: voterUid,
         clipId,
+        value: 1,
         createdAt: serverTimestamp(),
       });
       tx.update(clipRef(ctx, clipId), clipUpdate);
@@ -428,6 +442,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
         tx.set(voteRef(voter, "voter-uid", id), {
           uid: "voter-uid",
           clipId: id,
+          value: 1,
           createdAt: serverTimestamp(),
         });
         tx.update(clipRef(voter, id), { upvoteCount: 1 });
@@ -444,6 +459,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
         tx.set(voteRef(voter, "voter-uid", id), {
           uid: "voter-uid",
           clipId: id,
+          value: 1,
           createdAt: serverTimestamp(),
         });
         tx.update(clipRef(voter, id), { upvoteCount: (snap.data()?.upvoteCount ?? 0) + 1 });
@@ -510,6 +526,7 @@ describe("clips — upvoteCount aggregate (paired delta only)", () => {
       await setDoc(doc(ctx.firestore(), "clipVotes", `voter-uid_${id}`), {
         uid: "voter-uid",
         clipId: id,
+        value: 1,
         createdAt: new Date(Date.now() - 60_000),
       });
     });
@@ -550,15 +567,7 @@ describe("clipVotes — standalone delete (removeUpvote drift path)", () => {
     return doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`);
   }
 
-  async function seedVote(clipId: string, voterUid: string): Promise<void> {
-    await testEnv.withSecurityRulesDisabled(async (ctx) => {
-      await setDoc(doc(ctx.firestore(), "clipVotes", `${voterUid}_${clipId}`), {
-        uid: voterUid,
-        clipId,
-        createdAt: new Date(Date.now() - 60_000),
-      });
-    });
-  }
+  const seedVote = seedVoteDoc;
 
   it("the voter CAN delete their own vote doc alone when the count is already 0", async () => {
     // Drift path: upvoteCount is at its floor, so removeUpvote skips the
@@ -606,6 +615,7 @@ describe("clips — un-upvote atomicity (rejected update must not strand the vot
       await setDoc(doc(ctx.firestore(), "clipVotes", `${VOTER_UID}_${id}`), {
         uid: VOTER_UID,
         clipId: id,
+        value: 1,
         createdAt: new Date(Date.now() - 60_000),
       });
     });
@@ -635,6 +645,7 @@ describe("clips — un-upvote atomicity (rejected update must not strand the vot
       await setDoc(doc(ctx.firestore(), "clipVotes", `${VOTER_UID}_${id}`), {
         uid: VOTER_UID,
         clipId: id,
+        value: 1,
         createdAt: new Date(Date.now() - 60_000),
       });
     });
