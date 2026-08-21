@@ -16,6 +16,7 @@ const mockDeclineJudgeInvite = vi.fn();
 const mockAcceptLanded = vi.fn();
 const mockRaiseDispute = vi.fn();
 const mockCanRaiseDispute = vi.fn();
+const mockSubscribeToGameDispute = vi.fn();
 
 vi.mock("../../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
@@ -35,6 +36,7 @@ vi.mock("../../services/games", () => ({
 vi.mock("../../services/disputes", () => ({
   raiseDispute: (...args: unknown[]) => mockRaiseDispute(...args),
   canRaiseDispute: (...args: unknown[]) => mockCanRaiseDispute(...args),
+  subscribeToGameDispute: (...args: unknown[]) => mockSubscribeToGameDispute(...args),
 }));
 
 vi.mock("../../services/storage", () => ({
@@ -84,6 +86,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: a landed claim is disputable unless a test says otherwise.
   mockCanRaiseDispute.mockReturnValue(true);
+  mockSubscribeToGameDispute.mockReturnValue(vi.fn());
 });
 
 afterEach(() => {
@@ -1109,6 +1112,28 @@ describe("GamePlayScreen", () => {
     });
   }
 
+  function makeCommunityDispute(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "game1_1",
+      gameId: "game1",
+      landVotes: 0,
+      turnNumber: 1,
+      trickName: "Kickflip",
+      setterUid: "u1",
+      setterUsername: "sk8r",
+      status: "open",
+      matcherUid: "u2",
+      matcherUsername: "rival",
+      setVideoUrl: null,
+      matchVideoUrl: "https://example.com/match.webm",
+      spotId: null,
+      createdAt: null,
+      moderationStatus: "active",
+      bailVotes: 0,
+      ...overrides,
+    };
+  }
+
   it("shows the setter Accept/Dispute surface with the matcher's attempt in pendingReview", () => {
     render(<GamePlayScreen game={makePendingReviewGame()} profile={profile} onBack={vi.fn()} />);
 
@@ -1166,13 +1191,73 @@ describe("GamePlayScreen", () => {
     expect(screen.queryByText("Dispute")).not.toBeInTheDocument();
   });
 
-  it("shows both players a frozen community-review surface", () => {
+  it("shows both players the current community tally", () => {
     const game = makePendingReviewGame({ phase: "communityReview" });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    const dispute = makeCommunityDispute({ landVotes: 2, bailVotes: 1 });
+    mockSubscribeToGameDispute.mockImplementation(
+      (_gameId: string, _turn: number, onChange: (value: unknown) => void) => {
+        onChange(dispute);
+        return vi.fn();
+      },
+    );
+    const { unmount } = render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
     expect(screen.getByText("UNDER COMMUNITY REVIEW")).toBeInTheDocument();
-    expect(screen.getByText(/The community is deciding/)).toBeInTheDocument();
-    expect(screen.queryByText("Accept")).not.toBeInTheDocument();
+    expect(screen.getByText("LAND 2")).toBeInTheDocument();
+    expect(screen.getByText("1 BAIL")).toBeInTheDocument();
+    expect(screen.getByText("3 TOTAL")).toBeInTheDocument();
+    unmount();
+
+    render(<GamePlayScreen game={game} profile={{ ...profile, uid: "u2", username: "rival" }} onBack={vi.fn()} />);
+    expect(screen.getByText("LAND 2")).toBeInTheDocument();
+    expect(screen.getByText("1 BAIL")).toBeInTheDocument();
+  });
+
+  it("keeps the visible community tally current and handles a closed update", async () => {
+    let push: ((value: unknown) => void) | undefined;
+    mockSubscribeToGameDispute.mockImplementation(
+      (_gameId: string, _turn: number, onChange: (value: unknown) => void) => {
+        push = onChange;
+        return vi.fn();
+      },
+    );
+    render(
+      <GamePlayScreen game={makePendingReviewGame({ phase: "communityReview" })} profile={profile} onBack={vi.fn()} />,
+    );
+    push?.(makeCommunityDispute({ landVotes: 1 }));
+    expect(await screen.findByText("LAND 1")).toBeInTheDocument();
+    push?.(makeCommunityDispute({ status: "closed", landVotes: 3, bailVotes: 2 }));
+    expect(await screen.findByText("LAND 3")).toBeInTheDocument();
+    expect(screen.getByText("2 BAIL")).toBeInTheDocument();
+    expect(screen.getByText(/Voting has closed/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["missing document", "The vote count is not available yet.", null],
+    ["permission denial", "You don't have permission to view the vote count.", "permission-denied"],
+    ["listener failure", "The vote count is temporarily unavailable.", "unavailable"],
+  ])("keeps gameplay visible during a %s", async (_case, message, errorCode) => {
+    mockSubscribeToGameDispute.mockImplementation(
+      (
+        _gameId: string,
+        _turn: number,
+        onChange: (value: unknown) => void,
+        onError: (error: Error & { code?: string }) => void,
+      ) => {
+        if (errorCode === null) onChange(null);
+        else onError(Object.assign(new Error("listener failed"), { code: errorCode }));
+        return vi.fn();
+      },
+    );
+
+    render(
+      <GamePlayScreen game={makePendingReviewGame({ phase: "communityReview" })} profile={profile} onBack={vi.fn()} />,
+    );
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByText("UNDER COMMUNITY REVIEW")).toBeInTheDocument();
+    expect(screen.getByTestId("letter-display-sk8r")).toBeInTheDocument();
+    expect(screen.getByTestId("letter-display-rival")).toBeInTheDocument();
   });
 
   it("does not fire a forfeit for a frozen game with a lapsed turnDeadline", () => {

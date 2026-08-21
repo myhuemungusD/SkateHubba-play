@@ -8,6 +8,7 @@ import {
   mockOrderBy,
   mockLimit,
   mockGetDocs,
+  mockOnSnapshot,
   mockDeleteDoc,
   captureTxOnce,
   mockRunTransaction,
@@ -26,6 +27,7 @@ import {
   fetchDisputeViewerState,
   fetchOpenDisputes,
   raiseDispute,
+  subscribeToGameDispute,
   type Dispute,
 } from "../disputes";
 import { auth } from "../../firebase";
@@ -140,6 +142,74 @@ describe("canRaiseDispute", () => {
 
   it("is false when there is no match video for the community to watch", () => {
     expect(canRaiseDispute(gate({ matchVideoUrl: null }), "setter")).toBe(false);
+  });
+});
+
+describe("subscribeToGameDispute", () => {
+  it("subscribes to the deterministic document and maps every tally update", () => {
+    const unsubscribe = vi.fn();
+    mockOnSnapshot.mockReturnValueOnce(unsubscribe);
+    const onChange = vi.fn();
+    const onError = vi.fn();
+
+    expect(subscribeToGameDispute("g1", 3, onChange, onError)).toBe(unsubscribe);
+    expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "disputes", "g1_3");
+
+    const [, next] = mockOnSnapshot.mock.calls[0] as unknown as [unknown, (snap: unknown) => void];
+    next({ id: "g1_3", exists: () => true, data: () => validDisputeData({ landVotes: 2, bailVotes: 1 }) });
+    next({ id: "g1_3", exists: () => true, data: () => validDisputeData({ landVotes: 4, bailVotes: 3 }) });
+    expect(onChange).toHaveBeenNthCalledWith(1, expect.objectContaining({ landVotes: 2, bailVotes: 1 }));
+    expect(onChange).toHaveBeenNthCalledWith(2, expect.objectContaining({ landVotes: 4, bailVotes: 3 }));
+  });
+
+  it("reports missing documents and forwards listener errors", () => {
+    mockOnSnapshot.mockReturnValueOnce(vi.fn());
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    subscribeToGameDispute("g1", 3, onChange, onError);
+    const [, next, fail] = mockOnSnapshot.mock.calls[0] as unknown as [
+      unknown,
+      (snap: unknown) => void,
+      (error: Error) => void,
+    ];
+    next({ id: "g1_3", exists: () => false, data: () => undefined });
+    const denied = Object.assign(new Error("denied"), { code: "permission-denied" });
+    fail(denied);
+    expect(onChange).toHaveBeenCalledWith(null);
+    expect(onError).toHaveBeenCalledWith(denied);
+  });
+
+  it("routes malformed snapshots through the listener error callback", () => {
+    mockOnSnapshot.mockReturnValueOnce(vi.fn());
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    subscribeToGameDispute("g1", 3, onChange, onError);
+    const [, next] = mockOnSnapshot.mock.calls[0] as unknown as [unknown, (snap: unknown) => void];
+
+    next({ id: "g1_3", exists: () => true, data: () => ({ gameId: "g1" }) });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("Malformed") }));
+  });
+
+  it("wraps a non-Error mapper throw so onError always receives an Error", () => {
+    mockOnSnapshot.mockReturnValueOnce(vi.fn());
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    subscribeToGameDispute("g1", 3, onChange, onError);
+    const [, next] = mockOnSnapshot.mock.calls[0] as unknown as [unknown, (snap: unknown) => void];
+
+    next({
+      id: "g1_3",
+      exists: () => true,
+      data: () => {
+        // Non-Error throw — the subscription must still hand onError an Error.
+        throw "not-an-error";
+      },
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "Failed to read dispute document" }));
   });
 });
 
