@@ -69,20 +69,31 @@ export function GameOverScreen({
   const [reported, setReported] = useState(false);
   const shareLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Mount-only: the share-label reset timer must survive game-doc updates, so
+  // its cleanup cannot share an effect with anything that has live deps.
+  useEffect(() => {
+    return () => {
+      if (shareLabelTimerRef.current) clearTimeout(shareLabelTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     let active = true;
+    // Games completed before the pointer existed fall back to the final turn —
+    // a mid-game dispute on a legacy game won't surface, which is acceptable
+    // for pre-feature history.
     const disputeTurnNumber = game.lastResolvedDisputeTurnNumber ?? game.turnNumber;
     void fetchResolvedDispute(game.id, disputeTurnNumber)
       .then((result) => {
         if (active) setResolvedDispute(result);
       })
-      .catch(() => {
-        // Authorization and transient failures fail closed; rules remain the
-        // authority and the game-over screen remains usable.
+      .catch((err) => {
+        // Transient failures fail closed — the card is optional and the
+        // game-over screen stays usable.
+        console.warn("dispute_result_fetch_failed", err);
       });
     return () => {
       active = false;
-      if (shareLabelTimerRef.current) clearTimeout(shareLabelTimerRef.current);
     };
   }, [game.id, game.lastResolvedDisputeTurnNumber, game.turnNumber]);
 

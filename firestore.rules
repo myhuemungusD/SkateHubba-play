@@ -2938,14 +2938,30 @@ service cloud.firestore {
     //      same exfil / content-spoof surface clips.videoUrl guards against.
     //
     // Open disputes form the signed-in judging feed. Closed results are game
-    // history and may only be read by either player in their backing game.
-    // The client uses a deterministic document get; this rule, not component
-    // visibility, is the authorization boundary.
+    // history: readable by the two players named on the dispute, and by any
+    // voter who ruled on it (their vote doc is the proof — the "see how you
+    // ruled" contract fetchDisputeViewerState documents, and what lets
+    // deleteUserDisputeVotes pair its erasure delete with the -1 tally move
+    // on a closed dispute). The uid pins are trustworthy because the create
+    // rule below binds setterUid/matcherUid to the backing game's real
+    // players, so no cross-doc get() is needed — which also keeps
+    // deleteUserDisputes' setterUid erasure QUERY provable (a get()-based arm
+    // cannot be evaluated for list requests and would deny the whole query).
+    //
+    // `resource == null` keeps reads of MISSING docs open to any signed-in
+    // user: raiseDispute's transactional exists-check and the game-over
+    // screen's legacy fallback probe both get() deterministic ids that may
+    // not exist, and a rule that dereferences resource.data denies those
+    // reads outright. This arm leaks only existence — strictly less than the
+    // app-wide read it replaces.
     match /disputes/{disputeId} {
       allow read: if isSignedIn()
         && (
-          resource.data.status == 'open'
-          || isParticipant(get(/databases/$(database)/documents/games/$(resource.data.gameId)).data)
+          resource == null
+          || resource.data.status == 'open'
+          || request.auth.uid == resource.data.setterUid
+          || request.auth.uid == resource.data.matcherUid
+          || exists(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
         );
 
       allow create: if isSignedIn()

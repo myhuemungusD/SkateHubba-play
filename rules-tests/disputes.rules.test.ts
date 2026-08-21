@@ -22,13 +22,17 @@
 import { describe, it, expect } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
 import {
+  collection,
   doc,
   setDoc,
   updateDoc,
   deleteDoc,
   getDoc,
+  getDocs,
+  query,
   runTransaction,
   serverTimestamp,
+  where,
   type DocumentReference,
 } from "firebase/firestore";
 import { setupRulesTestEnv, seedValidGame, authedContext } from "./_fixtures";
@@ -190,8 +194,56 @@ describe("disputes — read", () => {
     await assertFails(getDoc(disputeRef(as(VIEWER_UID))));
   });
 
+  it("a voter who ruled on a closed dispute CAN still read it (vote doc is the proof)", async () => {
+    await seedDispute({ status: "closed", verdict: "land", landVotes: 1 });
+    await seedExistingVote(VIEWER_UID);
+    await assertSucceeds(getDoc(disputeRef(as(VIEWER_UID))));
+    // A different non-participant without a vote doc stays locked out.
+    await assertFails(getDoc(disputeRef(as(OTHER_VIEWER_UID))));
+  });
+
+  it("a legacy 'resolved' status doc reads as closed: participant yes, outsider no", async () => {
+    await seedDispute({ status: "resolved", verdict: "land" });
+    await assertSucceeds(getDoc(disputeRef(as(P1_UID))));
+    await assertFails(getDoc(disputeRef(as(VIEWER_UID))));
+  });
+
+  it("any signed-in user CAN read a MISSING dispute doc — raiseDispute's transactional exists-check depends on it", async () => {
+    // No dispute seeded. A rule that dereferences resource.data would deny
+    // this get and break every raiseDispute transaction (audit PR #520).
+    await assertSucceeds(getDoc(disputeRef(as(P1_UID))));
+    await assertSucceeds(getDoc(disputeRef(as(VIEWER_UID))));
+  });
+
+  it("the setterUid erasure query stays provable even when the disputes are closed", async () => {
+    // deleteUserDisputes issues exactly this shape with NO status filter; a
+    // get()-based read arm cannot be evaluated for list requests and would
+    // deny the whole query, silently breaking right-to-erasure.
+    await seedDispute({ status: "closed", verdict: "land" });
+    const own = query(collection(as(P1_UID).firestore(), "disputes"), where("setterUid", "==", P1_UID));
+    await assertSucceeds(getDocs(own));
+    // The same query shape aimed at someone ELSE's disputes is not provable.
+    const foreign = query(collection(as(VIEWER_UID).firestore(), "disputes"), where("setterUid", "==", P1_UID));
+    await assertFails(getDocs(foreign));
+  });
+
+  it("the raiseDispute transaction shape works: read the missing doc, then create it", async () => {
+    const setter = as(P1_UID);
+    await assertSucceeds(
+      runTransaction(setter.firestore(), async (tx) => {
+        const existing = await tx.get(disputeRef(setter));
+        if (existing.exists()) throw new Error("unexpected pre-existing dispute");
+        tx.set(disputeRef(setter), makeValidDispute());
+      }),
+    );
+  });
+
   it("anonymous users CANNOT read disputes", async () => {
     await seedDispute();
+    await assertFails(getDoc(disputeRef(anon())));
+  });
+
+  it("anonymous users CANNOT read missing dispute docs either", async () => {
     await assertFails(getDoc(disputeRef(anon())));
   });
 });

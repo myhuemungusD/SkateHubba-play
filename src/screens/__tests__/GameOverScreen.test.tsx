@@ -73,6 +73,15 @@ describe("GameOverScreen", () => {
     await waitFor(() => expect(fetchResolvedDispute).toHaveBeenCalledWith("game1", 8));
   });
 
+  it("warns and stays usable when the dispute lookup fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    fetchResolvedDispute.mockRejectedValueOnce(new Error("offline"));
+    render(<GameOverScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
+    await waitFor(() => expect(warn).toHaveBeenCalledWith("dispute_result_fetch_failed", expect.any(Error)));
+    expect(screen.queryByText("COMMUNITY VERDICT")).not.toBeInTheDocument();
+    warn.mockRestore();
+  });
+
   it("calls onRematch and shows Starting... then resets", async () => {
     let resolveRematch: () => void;
     const onRematch = vi.fn(

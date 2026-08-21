@@ -619,9 +619,23 @@ describe("castDisputeVerdict", () => {
     await expect(castDisputeVerdict("viewer", "g1_3", "land")).rejects.toBeInstanceOf(DisputeClosedError);
   });
 
-  it("converts a permission-denied rejection into AlreadyRuledError", async () => {
+  it("converts permission-denied into AlreadyRuledError when the caller's vote doc exists", async () => {
     mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    mockGetDoc.mockResolvedValueOnce({ exists: () => true });
     await expect(castDisputeVerdict("viewer", "g1_3", "land")).rejects.toBeInstanceOf(AlreadyRuledError);
+    expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "disputeVotes", "viewer_g1_3");
+  });
+
+  it("converts permission-denied into DisputeClosedError when no vote doc exists (closed-read denial race)", async () => {
+    mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    mockGetDoc.mockResolvedValueOnce({ exists: () => false });
+    await expect(castDisputeVerdict("viewer", "g1_3", "land")).rejects.toBeInstanceOf(DisputeClosedError);
+  });
+
+  it("treats a failed vote-doc disambiguation read as closed — the safe terminal state", async () => {
+    mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    mockGetDoc.mockRejectedValueOnce(new Error("offline"));
+    await expect(castDisputeVerdict("viewer", "g1_3", "land")).rejects.toBeInstanceOf(DisputeClosedError);
   });
 
   it("propagates unexpected transaction errors verbatim", async () => {
