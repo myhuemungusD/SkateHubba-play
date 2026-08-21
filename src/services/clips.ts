@@ -3,19 +3,26 @@
  *   - clips.mappers.ts  — types, refs, DTO mapping
  *   - clips.writes.ts   — transactional landed-clip writes (called from games.*)
  *   - clips.feed.ts     — feed query + 'top' index circuit breaker
- *   - clips.upvotes.ts  — upvote write + per-page hydration
- *   - clips.cascade.ts  — account-deletion cascade
+ *   - clips.votes.ts     — up/down vote writes + per-page hydration
+ *   - clips.upvotes.ts   — legacy upvote-only projection of clips.votes
+ *   - clips.userWrites.ts — user-posted clip creation
+ *   - clips.comments.ts  — clip comment CRUD + pagination
+ *   - clips.cascade.ts   — account-deletion cascade
  */
 
 export type {
   Clip,
+  ClipComment,
   ClipModerationStatus,
   ClipRole,
+  ClipSource,
   ClipDoc,
   ClipsFeedSort,
   ClipsFeedCursor,
   ClipsFeedPage,
+  GameClip,
   LandedClipContext,
+  UserClip,
 } from "./clips.mappers";
 
 export { writeLandedClipsInTransaction } from "./clips.writes";
@@ -32,4 +39,33 @@ export {
 } from "./clips.upvotes";
 export type { ClipUpvoteState, ClipForUpvoteHydration } from "./clips.upvotes";
 
-export { deleteUserClips, deleteUserClipVotes } from "./clips.cascade";
+export {
+  AlreadyVotedError,
+  NotVotedError,
+  SelfVoteError,
+  castClipVote,
+  castClipVote as voteClip,
+  fetchClipVoteState,
+  removeClipVote,
+} from "./clips.votes";
+export type { ClipVoteState, ClipVoteValue, ClipForVoteHydration } from "./clips.votes";
+
+export {
+  ClipCooldownError,
+  USER_CLIP_COOLDOWN_MS,
+  UserBannedError,
+  createUserClip,
+  newUserClipId,
+} from "./clips.userWrites";
+export type { CreateUserClipParams } from "./clips.userWrites";
+
+export {
+  CLIP_COMMENT_MAX_LENGTH,
+  CLIP_COMMENT_MIN_LENGTH,
+  createClipComment,
+  deleteClipComment,
+  fetchClipComments,
+} from "./clips.comments";
+export type { ClipCommentsCursor, ClipCommentsPage } from "./clips.comments";
+
+export { deleteClipComments, deleteUserClips, deleteUserClipVotes } from "./clips.cascade";

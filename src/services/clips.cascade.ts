@@ -2,12 +2,29 @@
  * Account-deletion cascade for clips.
  */
 
-import { deleteDoc, doc, getDocs, query, runTransaction, where } from "firebase/firestore";
+import { deleteDoc, doc, getDocs, limit as limitFn, query, runTransaction, where } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { clipsRef, clipVotesRef } from "./clips.mappers";
+import { clipCommentsRef } from "./clips.comments";
+import { deleteUserClipVideo } from "./storage";
+
+/**
+ * Cap on comments swept per clip during a cascade.
+ *
+ * There is NO server-side cascade — Firestore does not delete a
+ * subcollection when its parent doc goes, and this project has no Cloud
+ * Function to do it (see CLAUDE.md: no new application-authored functions).
+ * So the client sweeps, which means the sweep is bounded by what one client
+ * can reasonably do in one shot: a single `getDocs` page and one batch of
+ * deletes. A clip with more comments than this leaves the remainder as
+ * orphans — unreachable by query (the parent is gone), costing storage only.
+ * That is the accepted trade; raising it trades user-visible teardown
+ * latency for a rarer orphan.
+ */
+const COMMENT_SWEEP_LIMIT = 300;
 
 /**
  * Delete every clip owned by `uid`. Invoked from `deleteUserData` when a
@@ -29,11 +46,56 @@ export async function deleteUserClips(uid: string): Promise<void> {
     return;
   }
 
-  const results = await Promise.allSettled(snap.docs.map((d) => deleteDoc(doc(db, "clips", d.id))));
+  const results = await Promise.allSettled(
+    snap.docs.map(async (d) => {
+      // Dependents first, doc last. If the process dies mid-cascade, an
+      // already-deleted clip whose comments survive is unrecoverable garbage
+      // (nothing left to find them by), whereas a surviving clip with some
+      // comments gone is merely incomplete and will be swept again on retry.
+      const source = (d.data() as { source?: unknown }).source;
+      await deleteClipComments(d.id);
+      if (source === "user") {
+        // Only user clips live under `userClips/{uid}/`; a game clip's video
+        // belongs to the game and is reaped by `deleteGameVideos`.
+        await deleteUserClipVideo(uid, d.id);
+      }
+      await deleteDoc(doc(db, "clips", d.id));
+    }),
+  );
 
   const failed = results.filter((r) => r.status === "rejected").length;
   if (failed > 0) {
     logger.warn("clips_delete_partial", { uid, total: results.length, failed });
+  }
+}
+
+/**
+ * Delete a clip's comment subcollection, up to {@link COMMENT_SWEEP_LIMIT}.
+ *
+ * Best-effort and non-throwing: this runs inside a teardown path where an
+ * unreachable comment is a storage-cost problem, and failing here would
+ * abort the deletion of the clip itself — the thing the user actually asked
+ * to remove.
+ *
+ * Individual `deleteDoc` calls rather than a `writeBatch` because the
+ * comment delete rule is evaluated per-document against the caller's uid,
+ * and a batch fails atomically: one comment written by somebody else (the
+ * normal case on a popular clip) would sink the entire sweep. Per-doc
+ * deletes let the author's own comments go and simply log the rest.
+ */
+export async function deleteClipComments(clipId: string): Promise<void> {
+  let snap;
+  try {
+    snap = await withRetry(() => getDocs(query(clipCommentsRef(clipId), limitFn(COMMENT_SWEEP_LIMIT))));
+  } catch (err) {
+    logger.warn("clip_comments_delete_query_failed", { clipId, error: parseFirebaseError(err) });
+    return;
+  }
+
+  const results = await Promise.allSettled(snap.docs.map((d) => deleteDoc(d.ref)));
+  const failed = results.filter((r) => r.status === "rejected").length;
+  if (failed > 0) {
+    logger.warn("clip_comments_delete_partial", { clipId, total: results.length, failed });
   }
 }
 
@@ -84,8 +146,12 @@ export async function deleteUserClipVotes(uid: string): Promise<void> {
       // id format can't point the decrement at the wrong clip. A vote with no
       // usable clipId still gets deleted — we just skip the (untargetable)
       // count adjustment.
-      const data = d.data() as { clipId?: unknown };
+      const data = d.data() as { clipId?: unknown; value?: unknown };
       const clipId = typeof data.clipId === "string" && data.clipId.length > 0 ? data.clipId : null;
+      // Decrement the counter this vote actually contributed to. Votes cast
+      // before downvoting shipped carry no `value` and were all upvotes, so
+      // a missing field reads as +1 — same default as `clips.votes.ts`.
+      const field = data.value === -1 ? "downvoteCount" : "upvoteCount";
       const voteRef = doc(db, "clipVotes", d.id);
 
       return runTransaction(db, async (tx) => {
@@ -100,7 +166,7 @@ export async function deleteUserClipVotes(uid: string): Promise<void> {
         // branch requires the clip doc to exist, and there is nothing left to
         // keep consistent.
         if (!clipSnap.exists()) return;
-        const raw = (clipSnap.data() as { upvoteCount?: unknown }).upvoteCount;
+        const raw = (clipSnap.data() as Record<string, unknown>)[field];
         const current = typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : 0;
         // Floor at 0: a 0 (or drifted) aggregate has nothing to decrement, so
         // skip the update entirely. Writing `0` would mean a no-op diff that
@@ -109,7 +175,7 @@ export async function deleteUserClipVotes(uid: string): Promise<void> {
         // would fail the whole tx and orphan the vote. So decrement only when
         // there is a positive count to subtract from.
         if (current <= 0) return;
-        tx.update(clipRef, { upvoteCount: current - 1 });
+        tx.update(clipRef, { [field]: current - 1 });
       });
     }),
   );

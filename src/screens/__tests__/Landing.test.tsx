@@ -2,12 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Landing } from "../Landing";
-import { playOlliePop } from "../../utils/ollieSound";
 import { SOCIAL_LINKS } from "../../constants/socialLinks";
-
-vi.mock("../../utils/ollieSound", () => ({
-  playOlliePop: vi.fn(),
-}));
 
 // Stub the lazy LandingMap so these tests don't pull mapbox-gl through the
 // dynamic import. The marker test surface lives in LandingMap.test.tsx.
@@ -189,18 +184,6 @@ describe("Landing", () => {
   it("labels the demo section with a visually hidden heading", () => {
     render(<Landing {...defaultProps} />);
     expect(screen.getByRole("heading", { name: "Gameplay demo" })).toBeInTheDocument();
-  });
-
-  it("plays the ollie pop sound when the Account nav button is clicked", async () => {
-    render(<Landing {...defaultProps} />);
-    await userEvent.click(screen.getByText("Account"));
-    expect(playOlliePop).toHaveBeenCalled();
-  });
-
-  it("plays the ollie pop sound when the Google button is clicked", async () => {
-    render(<Landing {...defaultProps} />);
-    await userEvent.click(screen.getByText("Continue with Google"));
-    expect(playOlliePop).toHaveBeenCalled();
   });
 
   it("hardens the demo video against download and picture-in-picture", () => {

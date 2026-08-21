@@ -2,6 +2,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -18,8 +19,17 @@ import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
 import { dispatchPushNotification, type PushDispatchOutbox } from "./pushDispatch";
+import { toGameDoc, type GameDoc } from "./games.mappers";
 
-export type NotificationDocType = "your_turn" | "new_challenge" | "game_won" | "game_lost" | "judge_invite";
+/**
+ * `nudge` joined this union in Aug 2026: a nudge now also leaves a persistent
+ * bell entry, not just a transient /nudges toast. The /notifications create rule
+ * validates nudge docs STRICTLY — exactly the eight keys writeNotification
+ * writes (senderUid, recipientUid, type, title, body, gameId, read, createdAt)
+ * and nothing else. If you add a field to the notification doc shape, the nudge
+ * path breaks first.
+ */
+export type NotificationDocType = "your_turn" | "new_challenge" | "game_won" | "game_lost" | "judge_invite" | "nudge";
 
 interface WriteNotificationParams {
   senderUid: string;
@@ -60,16 +70,43 @@ export function _resetNotificationRateLimit(): void {
  *
  * Best-effort — failures are silently swallowed so they never block
  * the primary game action.
+ *
+ * `options.awaitPush` makes the push fan-out part of this call's promise.
+ * Callers whose page is about to navigate away (createGame → the challenge
+ * screen) MUST pass it: the default fire-and-forget dispatch can be killed
+ * mid-flight by the unload, which is exactly how "I challenged them and they
+ * never got a push" happens.
  */
-export async function writeNotification(params: WriteNotificationParams): Promise<void> {
+export interface WriteNotificationOptions {
+  /** Await the push dispatch instead of firing it and returning immediately. */
+  awaitPush?: boolean;
+}
+
+export async function writeNotification(
+  params: WriteNotificationParams,
+  options: WriteNotificationOptions = {},
+): Promise<void> {
   const key = rateLimitKey(params.senderUid, params.gameId, params.type);
 
   // Client-side rate limit: skip silently if within cooldown
   const last = lastNotificationAt.get(key) ?? 0;
   if (Date.now() - last < NOTIFICATION_COOLDOWN_MS) {
+    // Observability: a dropped notification used to be indistinguishable from
+    // a delivered one. Log it so a "my opponent never got notified" report can
+    // be traced to the cooldown rather than to a rules rejection.
+    logger.warn("notification_suppressed_cooldown", {
+      recipientUid: params.recipientUid,
+      type: params.type,
+      gameId: params.gameId,
+      sinceLastMs: Date.now() - last,
+    });
     return;
   }
 
+  // The notification WRITE and the push DISPATCH are separate failure domains.
+  // Folding both into one try/catch mislabelled every dispatch rejection as
+  // `notification_write_failed` and — worse — skipped arming the cooldown, so a
+  // recipient with a broken push target could be spammed once per game action.
   try {
     const db = requireDb();
     const notificationRef = doc(collection(db, "notifications"));
@@ -93,39 +130,59 @@ export async function writeNotification(params: WriteNotificationParams): Promis
       lastSentAt: serverTimestamp(),
     });
     await batch.commit();
-
-    // Background push fan-out. Fire-and-forget after the batch commits so
-    // a dispatch failure (recipient has no tokens, dispatch cooldown hit,
-    // …) can never undo the in-app notification or wedge the caller.
-    // No await — the original writeNotification contract is "best-effort,
-    // never blocks the game action", and adding latency here would break it.
-    void dispatchPushNotification({
-      senderUid: params.senderUid,
-      recipientUid: params.recipientUid,
-      type: params.type,
-      title: params.title,
-      body: params.body,
-      gameId: params.gameId,
-    });
-
-    const now = Date.now();
-    lastNotificationAt.set(key, now);
-
-    // Drop entries past the cooldown window so the map stays bounded.
-    // The deletion has no observable effect beyond memory hygiene, so the
-    // expired branch can't be asserted — ignore for coverage.
-    const cutoff = now - NOTIFICATION_COOLDOWN_MS;
-    for (const [k, ts] of lastNotificationAt) {
-      /* v8 ignore next */
-      if (ts < cutoff) lastNotificationAt.delete(k);
-    }
   } catch (err) {
-    // Best-effort — don't block the game action if notification write fails
+    // Best-effort — don't block the game action if notification write fails.
+    // Nothing landed, so the cooldown stays unarmed and a retry is allowed.
     logger.warn("notification_write_failed", {
       recipientUid: params.recipientUid,
       type: params.type,
       error: parseFirebaseError(err),
     });
+    return;
+  }
+
+  // The batch committed: the notification EXISTS, so arm the cooldown now.
+  // Doing this before the push means a dispatch failure can never leave the
+  // limiter unarmed for an already-delivered notification.
+  const now = Date.now();
+  lastNotificationAt.set(key, now);
+
+  // Drop entries past the cooldown window so the map stays bounded.
+  // The deletion has no observable effect beyond memory hygiene, so the
+  // expired branch can't be asserted — ignore for coverage.
+  const cutoff = now - NOTIFICATION_COOLDOWN_MS;
+  for (const [k, ts] of lastNotificationAt) {
+    /* v8 ignore next */
+    if (ts < cutoff) lastNotificationAt.delete(k);
+  }
+
+  // Background push fan-out. Fire-and-forget after the batch commits so
+  // a dispatch failure (recipient has no tokens, dispatch cooldown hit,
+  // …) can never undo the in-app notification or wedge the caller.
+  // No await by default — the original writeNotification contract is
+  // "best-effort, never blocks the game action", and adding latency here
+  // would break it. Callers that are about to navigate opt into awaiting.
+  const dispatch = dispatchPushNotification({
+    senderUid: params.senderUid,
+    recipientUid: params.recipientUid,
+    type: params.type,
+    title: params.title,
+    body: params.body,
+    gameId: params.gameId,
+  }).catch((err: unknown) => {
+    // Its own log tag: this is "the in-app notification landed but the OS push
+    // didn't", which is a different (and much less severe) incident than the
+    // notification write failing outright.
+    logger.warn("notification_push_dispatch_failed", {
+      recipientUid: params.recipientUid,
+      type: params.type,
+      error: parseFirebaseError(err),
+    });
+  });
+  if (options.awaitPush) {
+    await dispatch;
+  } else {
+    void dispatch;
   }
 }
 
@@ -208,6 +265,25 @@ export async function markNotificationRead(notificationId: string): Promise<void
  */
 export async function deleteNotification(notificationId: string): Promise<void> {
   await deleteDoc(doc(requireDb(), "notifications", notificationId));
+}
+
+/**
+ * Fetch the game a notification points at, for bell click-through.
+ *
+ * Single-doc read (no subscription) — the bell needs the game exactly once, at
+ * click time, to hand it to the navigation layer. Returns `null` when the game
+ * was deleted or the reader is not a participant (the rules deny the read),
+ * so the caller can show "this game is gone" instead of hanging on a spinner.
+ */
+export async function getNotificationGame(gameId: string): Promise<GameDoc | null> {
+  try {
+    const snap = await getDoc(doc(requireDb(), "games", gameId));
+    if (!snap.exists()) return null;
+    return toGameDoc(snap);
+  } catch (err) {
+    logger.warn("notification_game_fetch_failed", { gameId, error: parseFirebaseError(err) });
+    return null;
+  }
 }
 
 /** Firestore hard-caps a writeBatch at 500 operations. */

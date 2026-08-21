@@ -57,6 +57,20 @@ describe("decideExpiredForfeit", () => {
     expect(decideExpiredForfeit(baseGame({ status: "complete" }), NOW, "g1")).toBeNull();
   });
 
+  // A frozen game keeps the turnDeadline it carried into the freeze (the review
+  // window is tracked by the separate `reviewDeadline`), so it WILL sail past
+  // that deadline mid-review. Without the phase guard this fell through to the
+  // plain-forfeit branch and handed the game to whoever was waiting on the
+  // review — and the admin sweep bypasses the rules-level freeze, so nothing
+  // downstream would have stopped the write.
+  it.each([["pendingReview"], ["communityReview"]] as const)(
+    "returns null for a game frozen in %s, even past its turnDeadline",
+    (phase) => {
+      const game = baseGame({ phase, currentTurn: "p2", currentSetter: "p1", turnDeadline: deadline(NOW - 1) });
+      expect(decideExpiredForfeit(game, NOW, "g1")).toBeNull();
+    },
+  );
+
   it("decides a plain forfeit when a setting/matching turn expires", () => {
     const game = baseGame({
       currentTurn: "p1",

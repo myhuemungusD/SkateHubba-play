@@ -1,25 +1,54 @@
-import { useState } from "react";
-import { requestPushPermission } from "../services/fcm";
+import { useEffect, useState } from "react";
+import { requestPushPermission as requestWebPushPermission } from "../services/fcm";
+import {
+  getNativePushPermission,
+  isPushSupported,
+  registerPushToken,
+  requestPushPermission as requestNativePushPermission,
+} from "../services/pushNotifications";
 import { Btn } from "./ui/Btn";
 
 const DISMISSED_KEY = "push_banner_dismissed";
 
+function dismissed(): boolean {
+  return localStorage.getItem(DISMISSED_KEY) === "1";
+}
+
 function shouldShowBanner(): boolean {
   if (typeof window === "undefined") return false;
+  if (dismissed()) return false;
+  // Native (Capacitor): `Notification.permission` describes the WebView, not
+  // the OS grant, and the real grant is only readable asynchronously. Start
+  // hidden and let the mount effect reveal the banner when permission is
+  // genuinely prompt-able — starting visible would flash an opt-in at users
+  // who already granted.
+  if (isPushSupported()) return false;
   if (!("Notification" in window)) return false;
   if (Notification.permission !== "default") return false;
-  if (localStorage.getItem(DISMISSED_KEY) === "1") return false;
   return true;
 }
 
 /**
  * Banner prompting users to enable push notifications.
- * Only shown when the browser supports notifications and permission is "default" (not yet asked).
+ * Shown only while permission has not been decided — `Notification.permission`
+ * on web, the native plugin's `checkPermissions()` on a Capacitor shell.
  */
 export function PushPermissionBanner({ uid }: { uid: string }) {
   const [visible, setVisible] = useState(shouldShowBanner);
   const [requesting, setRequesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Native-only permission read. Never prompts, so it's safe on mount.
+  useEffect(() => {
+    if (!isPushSupported() || dismissed()) return;
+    let cancelled = false;
+    void getNativePushPermission().then((permission) => {
+      if (!cancelled && permission === "prompt") setVisible(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!visible) return null;
 
@@ -53,7 +82,22 @@ export function PushPermissionBanner({ uid }: { uid: string }) {
             setRequesting(true);
             setError(null);
             try {
-              const token = await requestPushPermission(uid);
+              if (isPushSupported()) {
+                const permission = await requestNativePushPermission();
+                if (permission === "granted") {
+                  // Explicit user gesture — skip the pref re-read (see
+                  // RegisterPushTokenOptions.assumeEnabled).
+                  await registerPushToken(uid, { assumeEnabled: true });
+                  localStorage.setItem(DISMISSED_KEY, "1");
+                  setVisible(false);
+                } else if (permission === "denied") {
+                  setError("Notifications were blocked. Enable them in your device settings and try again.");
+                } else {
+                  setError("Could not enable notifications. Please try again.");
+                }
+                return;
+              }
+              const token = await requestWebPushPermission(uid);
               if (token) {
                 localStorage.setItem(DISMISSED_KEY, "1");
                 setVisible(false);

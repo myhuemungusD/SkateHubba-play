@@ -163,6 +163,21 @@ export function activeSettingUpdate(overrides: Record<string, unknown> = {}): Re
 }
 
 /**
+ * A deadline-expiry forfeit claim: the opponent of the timed-out player takes
+ * the win. Pair it with a seed whose `turnDeadline` is back-dated so the
+ * forfeit branch's "deadline actually expired" guard passes. Callers override
+ * only the field under test.
+ */
+export function forfeitUpdate(winnerUid: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    status: "forfeit",
+    winner: winnerUid,
+    updatedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+/**
  * A valid, moderation-active /clips doc payload. The clipVotes red-team suites
  * each seed an owned clip to vote against; the only fields that vary between
  * them are gameId / turnNumber / playerUid (the owner), which callers pass via
@@ -174,6 +189,7 @@ export function makeClip(overrides: Record<string, unknown> = {}): Record<string
     gameId: "game",
     turnNumber: 1,
     role: "set",
+    source: "game",
     playerUid: "owner",
     playerUsername: "alice",
     trickName: "tre flip",
@@ -272,7 +288,7 @@ async function deleteRefTree(ref: Reference): Promise<void> {
  * quirk where `listAll()` on `''` intermittently throws `unauthorized` when
  * the suite runs after another storage file in the shared emulator process.
  */
-const STORAGE_TEST_PREFIXES = ["games", "users"] as const;
+const STORAGE_TEST_PREFIXES = ["games", "users", "userClips"] as const;
 
 /**
  * Fully clear the Storage emulator for a rules-test env, including the NESTED

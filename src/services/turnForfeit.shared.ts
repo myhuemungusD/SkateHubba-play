@@ -126,6 +126,7 @@ export interface ForfeitDecision {
  * happen. Returning `null` is the idempotent / not-eligible signal:
  *
  *   • game is not active (already complete/forfeit) → null
+ *   • game is FROZEN in a review phase → null
  *   • no deadline set, or the deadline has not yet passed → null
  *
  * The `gameId` is required only to populate the landed-clip context for the
@@ -133,6 +134,16 @@ export interface ForfeitDecision {
  */
 export function decideExpiredForfeit(game: GameDoc, nowMs: number, gameId: string): ForfeitDecision | null {
   if (game.status !== "active") return null;
+
+  // pendingReview / communityReview FREEZE the game (docs/DISPUTE_BINDING_DESIGN.md
+  // §3.1): the freeze opens a separate `reviewDeadline` and deliberately leaves
+  // `turnDeadline` at whatever it was, so a frozen game sails past its turn
+  // deadline while nobody is permitted to act. Without this guard the branches
+  // below fall through to "normal forfeit" and hand the game to the player who
+  // is WAITING on the review — the admin sweep bypasses firestore.rules, so the
+  // rules-level freeze does not stop it. api/cron/resolve-expired-disputes.ts
+  // owns these phases and resolves them off `reviewDeadline`.
+  if (game.phase === "pendingReview" || game.phase === "communityReview") return null;
 
   const deadline = game.turnDeadline?.toMillis?.() ?? 0;
   if (deadline === 0 || nowMs < deadline) return null;

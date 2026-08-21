@@ -1,36 +1,27 @@
-import { useEffect, useRef, useState } from "react";
 import type { ProfileStats } from "../usePlayerProfileController";
 import { MIN_RATED_GAMES } from "../../../constants/stats";
-import { useReducedMotion } from "../../../hooks/useReducedMotion";
+import { CategoryLabel, Row, StatTile, type StatTileName } from "./StatTile";
+import { LastTenPips } from "./LastTenPips";
 
 /**
- * Profile stats grid — modern UX, adapted to main's `wins`/`losses` shape.
+ * Profile stats grid — the public, achievements-facing view of a player.
  *
- * Layout:
- *   • Brag row:   Lifetime Wins · Lifetime Losses · Win Rate %
- *   • Detail row: Total Games · Best Streak · Current Streak (always)
- *   • VS-You row: H2H record — opponent profile only.
+ * Organised into categories rather than one flat wall of tiles:
+ *   • RECORD     — volume, rate, streaks, and the last-10 form guide.
+ *   • GAME STYLE — how they win: clean wins, comebacks, completion rate.
+ *   • LETTERS    — SKATE letters handed out vs. taken.
+ *   • COMMUNITY  — judging and binding-dispute record.
+ *   • VS YOU     — head-to-head with the viewer; opponent profile only.
  *
- * Number formatting via Intl compact (audit H1: "1.2K" instead of "1234").
- * Count-up animation gated by `prefers-reduced-motion` (plan §7.4).
+ * Nothing here surfaces a negative, manipulable counter. `forfeitLosses` and
+ * `tricksFailed` exist on the profile doc and are deliberately absent from
+ * this screen: the public framing of abandonment is the positive
+ * "challenge completion" rate, and the raw numbers live on the owner-only
+ * My Stats screen. Rendering tiles/rows is delegated to ./StatTile.
  *
- * **Audit D1 — accessibility critical**: each tile sets `aria-label` to the
- * FINAL numeric value before the animation begins. The visible text tweens
- * from 0 → final, but the screen-reader label is static so NVDA / VoiceOver
- * announce "Lifetime wins: forty-seven" once, not "1, 2, 3...".
- *
- * Streak tiles read `currentWinStreak` / `bestWinStreak`, which ARE now
- * server-maintained on the profile doc. Fields still without a counter on the
- * current schema (tricks landed, clean judgments, level/xp, spots
- * added/checked-in) stay hidden — a future PR activates them when their
- * counters ship.
+ * Every counter reads 0 (or an empty run) on profiles predating its
+ * server-side counter — see usePlayerProfileController.
  */
-
-const formatter = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 });
-
-function formatCompact(n: number): string {
-  return formatter.format(n);
-}
 
 interface Props {
   stats: ProfileStats;
@@ -41,27 +32,12 @@ interface Props {
   onTileTap?: (statName: StatTileName) => void;
 }
 
-export type StatTileName =
-  | "wins"
-  | "losses"
-  | "winRate"
-  | "totalGames"
-  | "bestStreak"
-  | "currentStreak"
-  | "vsYouWins"
-  | "vsYouLosses"
-  | "vsYouTotal"
-  | "tricksDisputed"
-  | "disputesRaised"
-  | "disputesRight"
-  | "disputesWrong"
-  | "lettersGiven"
-  | "lettersTaken";
+export type { StatTileName } from "./StatTile";
 
 export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTileTap }: Props) {
   return (
     <div className="mb-8">
-      {/* Brag row — plan §1 priority order, adapted to main's counter set. */}
+      <CategoryLabel title="RECORD" />
       <Row testid="brag-row" cols="grid-cols-3">
         <StatTile
           name="wins"
@@ -94,7 +70,6 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
         />
       </Row>
 
-      {/* Detail row — volume next to the two win-streak counters. */}
       <Row testid="detail-row" cols="grid-cols-3">
         <StatTile
           name="totalGames"
@@ -119,9 +94,41 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
         />
       </Row>
 
-      {/* Letters section — SKATE letters handed out vs. taken, server-written
-          by the stats close-out. 0 on profiles predating the counters. */}
-      <p className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-2.5 mt-2 animate-fade-in">LETTERS</p>
+      <LastTenPips results={stats.recentResults} />
+
+      <CategoryLabel title="GAME STYLE" />
+      <Row testid="game-style-row" cols="grid-cols-3">
+        <StatTile
+          name="cleanWins"
+          label="Clean Wins"
+          value={stats.cleanWins}
+          ariaLabel={`Clean wins: ${stats.cleanWins}`}
+          onTap={onTileTap}
+        />
+        <StatTile
+          name="comebackWins"
+          label="Comeback Wins"
+          value={stats.comebackWins}
+          ariaLabel={`Comeback wins: ${stats.comebackWins}`}
+          onTap={onTileTap}
+        />
+        {/* Null until the player has a completed game — a completion rate over
+            zero games would print "100%" for someone who has never played. */}
+        <StatTile
+          name="challengeCompletion"
+          label="Games Finished"
+          value={stats.challengeCompletion}
+          suffix="%"
+          ariaLabel={
+            stats.challengeCompletion === null
+              ? "Games finished: no completed games yet"
+              : `Games finished: ${stats.challengeCompletion} percent`
+          }
+          onTap={onTileTap}
+        />
+      </Row>
+
+      <CategoryLabel title="LETTERS" />
       <Row testid="letters-row" cols="grid-cols-2">
         <StatTile
           name="lettersGiven"
@@ -139,10 +146,16 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
         />
       </Row>
 
-      {/* Disputes section — public binding-dispute counters, shown on every
-          profile. Two raw counts, then the right/wrong split of the disputes
-          this player raised. */}
-      <p className="font-display text-[10px] tracking-[0.2em] text-amber-400 mb-2.5 mt-2 animate-fade-in">DISPUTES</p>
+      <CategoryLabel title="COMMUNITY" />
+      <Row testid="judging-row" cols="grid-cols-2">
+        <StatTile
+          name="gamesJudged"
+          label="Games Judged"
+          value={stats.gamesJudged}
+          ariaLabel={`Games judged: ${stats.gamesJudged}`}
+          onTap={onTileTap}
+        />
+      </Row>
       <Row testid="disputes-row" cols="grid-cols-2">
         <StatTile
           name="tricksDisputed"
@@ -176,12 +189,9 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
         />
       </Row>
 
-      {/* VS-You row — opponent profile only. Computed from games history. */}
       {!isOwnProfile && hasCompletedGames && (
         <>
-          <p className="font-display text-[10px] tracking-[0.2em] text-brand-orange mb-2.5 mt-2 animate-fade-in">
-            VS YOU
-          </p>
+          <CategoryLabel title="VS YOU" />
           <Row testid="vs-you-row" cols="grid-cols-3">
             <StatTile
               name="vsYouWins"
@@ -208,93 +218,5 @@ export function ProfileStatsGrid({ stats, isOwnProfile, hasCompletedGames, onTil
         </>
       )}
     </div>
-  );
-}
-
-function Row({ cols, testid, children }: { cols: string; testid: string; children: React.ReactNode }) {
-  return (
-    <div data-testid={testid} className={`grid ${cols} gap-2.5 mb-2.5 animate-fade-in`}>
-      {children}
-    </div>
-  );
-}
-
-interface StatTileProps {
-  name: StatTileName;
-  label: string;
-  /** `null` renders the unavailable placeholder instead of a number. */
-  value: number | null;
-  suffix?: string;
-  /** Pre-computed final-value label — must NOT change as the count-up runs. */
-  ariaLabel: string;
-  onTap?: (name: StatTileName) => void;
-}
-
-/** Shown when a stat exists but isn't meaningful yet (e.g. rate below the floor). */
-const UNAVAILABLE = "—";
-
-/**
- * Individual stat tile. The visible number tweens from 0 → `value` over
- * ~600 ms, gated by `prefers-reduced-motion`. The `aria-label` reflects
- * the final value at all times so screen readers never trip over the tween.
- */
-function StatTile({ name, label, value, suffix, ariaLabel, onTap }: StatTileProps) {
-  const reducedMotion = useReducedMotion();
-  // Animation source: we tween a separate `tweenValue` from 0 → value when
-  // reduced-motion is OFF, and use the prop `value` directly when ON.
-  // Keeping the two paths separated means the effect body never calls
-  // `setState` in the reduced-motion branch — the
-  // react-hooks/set-state-in-effect lint rule rejects that pattern.
-  const [tweenValue, setTweenValue] = useState(0);
-  const startedAt = useRef<number | null>(null);
-  // A null stat has nothing to count up to; `numericValue` keeps the tween
-  // effect's dependency stable while the render branch below shows a dash.
-  const numericValue = value ?? 0;
-  const display = reducedMotion ? numericValue : tweenValue;
-
-  useEffect(() => {
-    if (reducedMotion) {
-      return;
-    }
-    let frame: number | null = null;
-    const duration = 600;
-    const start = (ts: number) => {
-      if (startedAt.current === null) startedAt.current = ts;
-      const progress = Math.min(1, (ts - startedAt.current) / duration);
-      // ease-out cubic
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setTweenValue(Math.round(numericValue * eased));
-      if (progress < 1) {
-        frame = requestAnimationFrame(start);
-      }
-    };
-    frame = requestAnimationFrame(start);
-    return () => {
-      if (frame !== null) cancelAnimationFrame(frame);
-      startedAt.current = null;
-    };
-  }, [reducedMotion, numericValue]);
-
-  const handleClick = () => onTap?.(name);
-
-  return (
-    <button
-      type="button"
-      onClick={handleClick}
-      aria-label={ariaLabel}
-      className="text-left rounded-2xl glass-card p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-    >
-      <p className="font-display text-2xl text-white leading-none tabular-nums">
-        {value === null ? (
-          <span className="text-subtle">{UNAVAILABLE}</span>
-        ) : (
-          <>
-            {formatCompact(display)}
-            {suffix}
-          </>
-        )}
-      </p>
-      <p className="font-body text-[10px] uppercase tracking-wider text-subtle mt-2">{label}</p>
-    </button>
   );
 }

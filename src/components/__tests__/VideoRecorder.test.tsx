@@ -475,6 +475,36 @@ describe("VideoRecorder", () => {
     });
   });
 
+  it("scales the auto-stop warning to a caller-supplied cap (30 s user clips)", async () => {
+    // The warning window is relative to the cap, so at 30 s nothing should
+    // appear at the moment a 20 s take would already be warning.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    setupMockStream();
+    const cap = 30;
+    render(<VideoRecorder onRecorded={vi.fn()} label="Clip" maxDurationSeconds={cap} />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByText(/Open Camera/));
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    });
+
+    // 16 s in: inside the 20 s cap's warning window, but well outside the
+    // 30 s cap's. If the component still read the constant, this would warn.
+    act(() => {
+      vi.advanceTimersByTime(16_000);
+    });
+    expect(screen.queryByText(/Auto-stop in/)).not.toBeInTheDocument();
+
+    // 26 s in: one second inside the 30 s cap's window.
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    await waitFor(() => expect(screen.getByText("Auto-stop in 4s")).toBeInTheDocument());
+  });
+
   it("retries camera after error", async () => {
     Object.defineProperty(navigator, "mediaDevices", {
       writable: true,

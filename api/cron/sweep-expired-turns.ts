@@ -58,6 +58,12 @@ interface SweepSummary {
   forfeited: number;
   skipped: number;
   errors: number;
+  /** Challenge notifications the client failed to write, backfilled by the server. */
+  reconciled: number;
+  /** "your turn ends soon" reminders emitted this run. */
+  reminded: number;
+  /** Failures inside the notification passes — never fail the forfeit sweep. */
+  notifyErrors: number;
   dryRun: boolean;
 }
 
@@ -328,6 +334,319 @@ async function dispatchAdminPush(
   }
 }
 
+/* ────────────────────────────────────────────
+ * Notification passes (backstop + reminder)
+ * ──────────────────────────────────────────── */
+
+/**
+ * Grace period before the server backfills a missing challenge notification.
+ * Long enough that a healthy client (which writes the notification immediately
+ * after the game doc) is never raced, short enough that the opponent isn't left
+ * waiting for the next 15-minute cron tick plus an hour.
+ */
+const CHALLENGE_GRACE_MS = 2 * 60_000;
+/** Upper bound on the reconcile window — old misses are not worth waking anyone for. */
+const CHALLENGE_MAX_AGE_MS = 24 * 60 * 60_000;
+/** Reminder fires when the deadline is inside [now+1h45m, now+2h]. */
+const REMINDER_LEAD_MAX_MS = 2 * 60 * 60_000;
+const REMINDER_LEAD_MIN_MS = REMINDER_LEAD_MAX_MS - 15 * 60_000;
+/** Per-pass candidate cap. Both passes re-run every 15 minutes. */
+const NOTIFY_MAX_PER_RUN = 100;
+
+/** Read a Firestore Timestamp-ish field as epoch millis, or null when absent/garbled. */
+function millisOf(value: unknown): number | null {
+  if (typeof value === "object" && value !== null && typeof (value as { toMillis?: unknown }).toMillis === "function") {
+    return (value as { toMillis: () => number }).toMillis();
+  }
+  return null;
+}
+
+function stringOf(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
+ * Phases that FREEZE the game clock pending a review (docs/DISPUTE_BINDING_DESIGN.md
+ * §3.1). Entering them opens a separate `reviewDeadline` and deliberately leaves
+ * `turnDeadline` untouched, so a frozen game keeps drifting toward a turn
+ * deadline that nobody is allowed to act on.
+ */
+const FROZEN_REVIEW_PHASES = new Set(["pendingReview", "communityReview"]);
+
+/** Result accumulator shared by both notification passes. */
+interface NotifyPassResult {
+  written: number;
+  errors: number;
+}
+
+/**
+ * Write a server-authored notification at a deterministic id, stamp the
+ * delete-resistant tombstone on the GAME doc in the same batch, and fan out
+ * the push.
+ *
+ * Why the tombstone rides the same batch: the recipient can DELETE their
+ * notification doc (the bell's dismiss is a real Firestore delete), so
+ * "has this game been notified?" cannot be re-derived from /notifications.
+ * The marker therefore lives on the game doc, which only the admin SDK writes.
+ * Committing them together makes the pair all-or-nothing — a stamp without a
+ * notification would silently swallow the alert, and a notification without a
+ * stamp would be re-sent on the next tick.
+ */
+async function emitAdminNotification(
+  db: Firestore,
+  docId: string,
+  gameId: string,
+  n: { senderUid: string; recipientUid: string; type: string; title: string; body: string },
+  tombstone: Record<string, unknown>,
+): Promise<void> {
+  const batch = db.batch();
+  batch.set(db.collection(NOTIFICATIONS_COLLECTION).doc(docId), {
+    senderUid: n.senderUid,
+    recipientUid: n.recipientUid,
+    type: n.type,
+    title: n.title,
+    body: n.body,
+    gameId,
+    read: false,
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  batch.update(db.collection("games").doc(gameId), tombstone);
+  await batch.commit();
+  await dispatchAdminPush(db, gameId, n);
+}
+
+/**
+ * Backstop for the client's new_challenge notification.
+ *
+ * createGame awaits the notification write, but the write still happens AFTER
+ * the game doc lands and outside its transaction (the /notifications create
+ * rule resolves the recipient via a pre-commit `get()` on the game, so it
+ * cannot be co-committed with the create). If the tab dies, goes offline, or
+ * gets a rules rejection in that window, the challenged player is never told a
+ * game exists. This pass finds still-active turn-1 games older than the grace
+ * period that have not been marked notified, and writes one.
+ *
+ * Requires the (status, turnNumber, createdAt) composite index in
+ * firestore.indexes.json.
+ */
+async function reconcileChallengeNotifications(
+  db: Firestore,
+  nowMs: number,
+  dryRun: boolean,
+): Promise<NotifyPassResult> {
+  const result: NotifyPassResult = { written: 0, errors: 0 };
+
+  const candidates = await db
+    .collection("games")
+    // status filter: a game that already ended (forfeit sweep, insta-quit)
+    // must never produce a "New Challenge!" buzz for a dead game.
+    .where("status", "==", "active")
+    .where("turnNumber", "==", 1)
+    .where("createdAt", ">=", Timestamp.fromMillis(nowMs - CHALLENGE_MAX_AGE_MS))
+    .where("createdAt", "<=", Timestamp.fromMillis(nowMs - CHALLENGE_GRACE_MS))
+    .orderBy("createdAt", "asc")
+    .limit(NOTIFY_MAX_PER_RUN)
+    .get();
+
+  for (const docSnap of candidates.docs) {
+    try {
+      const data = docSnap.data() as Record<string, unknown>;
+      // Tombstone first — this is the delete-resistant "already handled" mark.
+      // Checked BEFORE the /notifications query because the recipient can
+      // DELETE their notification doc (NotificationContext's dismiss is a real
+      // delete): deriving "notified" from the collection alone re-created and
+      // re-pushed a dismissed challenge every 15 minutes for the full 24h
+      // window.
+      if (data.challengeNotifiedAt !== undefined && data.challengeNotifiedAt !== null) continue;
+
+      // Re-check the window against the doc itself: the query bounds are the
+      // fast path, this is what makes the pass correct if the index/query ever
+      // widens.
+      const createdAtMs = millisOf(data.createdAt);
+      if (createdAtMs === null) continue;
+      const age = nowMs - createdAtMs;
+      if (age < CHALLENGE_GRACE_MS || age > CHALLENGE_MAX_AGE_MS) continue;
+
+      const senderUid = stringOf(data.player1Uid);
+      const recipientUid = stringOf(data.player2Uid);
+      if (!senderUid || !recipientUid) continue;
+
+      const gameRef = db.collection("games").doc(docSnap.id);
+
+      // Existence check by (gameId, type) rather than by the deterministic id:
+      // the notification the CLIENT writes has a random id, and that is the
+      // doc we're checking for. Requires the (gameId, type) index.
+      const existing = await db
+        .collection(NOTIFICATIONS_COLLECTION)
+        .where("gameId", "==", docSnap.id)
+        .where("type", "==", "new_challenge")
+        .limit(1)
+        .get();
+      if (!existing.empty) {
+        // Migration for games already in flight when the tombstone shipped:
+        // the client's notification IS there, so stamp the game once and never
+        // scan it again. The stamp outlives the recipient deleting the doc.
+        if (!dryRun) await gameRef.update({ challengeNotifiedAt: FieldValue.serverTimestamp() });
+        continue;
+      }
+
+      result.written += 1;
+      if (dryRun) continue;
+
+      const challenger = stringOf(data.player1Username) ?? "A skater";
+      await emitAdminNotification(
+        db,
+        notifyId(docSnap.id, 1, "new_challenge"),
+        docSnap.id,
+        {
+          senderUid,
+          recipientUid,
+          type: "new_challenge",
+          title: "New Challenge!",
+          body: `@${challenger} challenged you to S.K.A.T.E.`,
+        },
+        { challengeNotifiedAt: FieldValue.serverTimestamp() },
+      );
+    } catch (err) {
+      result.errors += 1;
+      console.warn(
+        JSON.stringify({
+          event: "challenge_reconcile_failed",
+          gameId: docSnap.id,
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
+ * One "your turn ends soon" reminder per turn, ~2h before the deadline.
+ *
+ * The 24h turn clock is long enough that a player who saw the original
+ * notification in the morning can still time out by evening. The window is
+ * [now+1h45m, now+2h] — one cron tick wide (15 min) so every deadline is caught
+ * exactly once — and the `turnReminderSentFor` tombstone on the game doc makes a
+ * double-tick a no-op instead of a second buzz.
+ *
+ * Reuses the existing (status, turnDeadline) composite index.
+ */
+async function remindUpcomingDeadlines(db: Firestore, nowMs: number, dryRun: boolean): Promise<NotifyPassResult> {
+  const result: NotifyPassResult = { written: 0, errors: 0 };
+
+  const candidates = await db
+    .collection("games")
+    .where("status", "==", "active")
+    .where("turnDeadline", ">=", Timestamp.fromMillis(nowMs + REMINDER_LEAD_MIN_MS))
+    .where("turnDeadline", "<=", Timestamp.fromMillis(nowMs + REMINDER_LEAD_MAX_MS))
+    .orderBy("turnDeadline", "asc")
+    .limit(NOTIFY_MAX_PER_RUN)
+    .get();
+
+  for (const docSnap of candidates.docs) {
+    try {
+      const data = docSnap.data() as Record<string, unknown>;
+      const deadlineMs = millisOf(data.turnDeadline);
+      if (deadlineMs === null) continue;
+      const lead = deadlineMs - nowMs;
+      if (lead < REMINDER_LEAD_MIN_MS || lead > REMINDER_LEAD_MAX_MS) continue;
+
+      // A game frozen in pendingReview/communityReview keeps the turnDeadline it
+      // carried when it froze (the freeze opens a SEPARATE reviewDeadline), so
+      // it drifts through this window while `currentTurn` — the matcher who
+      // already submitted — has no legal write. Never nag a player who cannot act.
+      const phase = data.phase;
+      if (typeof phase === "string" && FROZEN_REVIEW_PHASES.has(phase)) continue;
+
+      const recipientUid = stringOf(data.currentTurn);
+      if (!recipientUid) continue;
+      const turnNumber = typeof data.turnNumber === "number" ? data.turnNumber : 0;
+
+      // Idempotency: one reminder per (game, turn), forever. The marker lives on
+      // the GAME doc, not on the notification doc — the recipient can delete the
+      // notification from the bell, and a doc-existence pre-check would then
+      // resurrect the reminder (unread, with a push) on the very next tick.
+      if (data.turnReminderSentFor === turnNumber) continue;
+
+      result.written += 1;
+      if (dryRun) continue;
+
+      // Sender is the OTHER participant — the /notifications shape wants a
+      // sender, and "the person waiting on you" is the honest one.
+      const p1 = stringOf(data.player1Uid);
+      const p2 = stringOf(data.player2Uid);
+      const senderUid = recipientUid === p1 ? p2 : p1;
+      const opponent = stringOf(recipientUid === p1 ? data.player2Username : data.player1Username) ?? "your opponent";
+      await emitAdminNotification(
+        db,
+        notifyId(docSnap.id, turnNumber, "turn_reminder"),
+        docSnap.id,
+        {
+          senderUid: senderUid ?? recipientUid,
+          recipientUid,
+          type: "your_turn",
+          title: "Turn ending soon",
+          body: `Your turn vs @${opponent} ends in under 2 hours`,
+        },
+        { turnReminderSentFor: turnNumber },
+      );
+    } catch (err) {
+      result.errors += 1;
+      console.warn(
+        JSON.stringify({
+          event: "turn_reminder_failed",
+          gameId: docSnap.id,
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+  }
+
+  return result;
+}
+
+/**
+ * The notification passes, each tagged with the summary counter it feeds and a
+ * stable log name.
+ *
+ * Tagged tuples rather than function identity / `fn.name`: the deployed bundle
+ * is minified, so `pass.name` would log a mangled identifier, and `pass ===
+ * reconcileChallengeNotifications` is a fragile way to route a counter.
+ */
+type NotifyPassKey = "reconciled" | "reminded";
+type NotifyPass = (db: Firestore, nowMs: number, dryRun: boolean) => Promise<NotifyPassResult>;
+
+const NOTIFY_PASSES: ReadonlyArray<readonly [NotifyPassKey, string, NotifyPass]> = [
+  ["reconciled", "challenge_reconcile", reconcileChallengeNotifications],
+  ["reminded", "turn_reminder", remindUpcomingDeadlines],
+];
+
+/**
+ * Run both notification passes, folding their counters into the summary.
+ * Query-level failures (e.g. a missing composite index) are logged and
+ * swallowed: the forfeit sweep is the load-bearing job and must still report.
+ */
+async function runNotificationPasses(db: Firestore, summary: SweepSummary, dryRun: boolean): Promise<void> {
+  for (const [key, name, run] of NOTIFY_PASSES) {
+    try {
+      const { written, errors } = await run(db, Date.now(), dryRun);
+      summary[key] += written;
+      summary.notifyErrors += errors;
+    } catch (err) {
+      summary.notifyErrors += 1;
+      console.warn(
+        JSON.stringify({
+          event: "notify_pass_failed",
+          pass: name,
+          message: err instanceof Error ? err.message : String(err),
+        }),
+      );
+    }
+  }
+}
+
 export default async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   if (!isAuthorized(req)) {
     res.status(401).json({ error: "unauthorized" });
@@ -344,7 +663,16 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
   }
 
   const dryRun = isDryRun(req);
-  const summary: SweepSummary = { scanned: 0, forfeited: 0, skipped: 0, errors: 0, dryRun };
+  const summary: SweepSummary = {
+    scanned: 0,
+    forfeited: 0,
+    skipped: 0,
+    errors: 0,
+    reconciled: 0,
+    reminded: 0,
+    notifyErrors: 0,
+    dryRun,
+  };
 
   let db: Firestore;
   try {
@@ -389,6 +717,10 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
         );
       }
     }
+
+    // Notification passes run after the forfeit sweep so a slow reconcile can
+    // never delay the state transitions the game actually depends on.
+    await runNotificationPasses(db, summary, dryRun);
 
     res.status(200).json(summary);
   } catch (err) {

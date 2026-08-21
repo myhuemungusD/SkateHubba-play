@@ -61,7 +61,7 @@ subcollection `users/{uid}/private/*` below.
   — they must go through `users/{uid}/private/profile` instead.
 - `isVerifiedPro`/`verifiedBy`/`verifiedAt` are immutable from the client
 
-**Access:** Any signed-in user can read any profile (needed for opponent lookup). Only the owner can write, and only once.
+**Access:** A single-doc read is public — `get` requires no sign-in, so a shared player link resolves for a signed-out visitor. `list` stays signed-in, which stops an anonymous client enumerating every account. Only the owner can write, and only once.
 
 ---
 

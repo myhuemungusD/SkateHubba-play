@@ -17,6 +17,7 @@ type RegistrationHandler = (token: { value: string }) => void;
 type RegistrationErrorHandler = (err: { error: string }) => void;
 
 const mockRequestPermissions = vi.fn();
+const mockCheckPermissions = vi.fn();
 const mockRegister = vi.fn();
 const mockUnregister = vi.fn();
 const mockAddListener = vi.fn();
@@ -30,6 +31,7 @@ let capturedRegistrationErrorHandler: RegistrationErrorHandler | null = null;
 vi.mock("@capacitor/push-notifications", () => ({
   PushNotifications: {
     requestPermissions: (...args: unknown[]) => mockRequestPermissions(...args),
+    checkPermissions: (...args: unknown[]) => mockCheckPermissions(...args),
     register: (...args: unknown[]) => mockRegister(...args),
     unregister: (...args: unknown[]) => mockUnregister(...args),
     addListener: (event: string, cb: unknown) => mockAddListener(event, cb),
@@ -51,12 +53,23 @@ vi.mock("../../firebase", () => ({
   requireDb: () => ({}),
 }));
 
+// Settings push preference — gates registration. Mocked so these tests cover
+// the native surface; the disabled branch has its own case.
+const mockGetPushEnabled = vi.hoisted(() => vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)));
+vi.mock("../users", () => ({
+  PRIVATE_PROFILE_DOC_ID: "profile",
+  getPushEnabled: () => mockGetPushEnabled(),
+}));
+
 /* ── tests ───────────────────────────────────── */
 
 import {
   isPushSupported,
   requestPushPermission,
+  getNativePushPermission,
   registerPushToken,
+  registerPushTokenIfGranted,
+  subscribeToNativePushOpens,
   unregisterPushToken,
   _resetActivePushToken,
 } from "../pushNotifications";
@@ -71,6 +84,11 @@ async function flush(): Promise<void> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks leaves queued `mockResolvedValueOnce` values in place, so a
+  // test that stubs the pref read but never consumes it (assumeEnabled skips
+  // the read entirely) would leak `false` into the next test. mockReset
+  // restores the vi.fn(impl) default of "enabled".
+  mockGetPushEnabled.mockReset();
   _resetActivePushToken();
   mockIsNativePlatform.mockReturnValue(true);
   vi.stubEnv("VITE_FIREBASE_PROJECT_ID", "demo-skatehubba");
@@ -228,6 +246,168 @@ describe("registerPushToken", () => {
     expect(capturedRegistrationErrorHandler).not.toBeNull();
     // No assertion on logger here — this exercises the error-path coverage.
     expect(() => capturedRegistrationErrorHandler?.({ error: "APNS unavailable" })).not.toThrow();
+  });
+
+  it("honours the Settings opt-out by default", async () => {
+    mockRequestPermissions.mockResolvedValue({ receive: "granted" });
+    mockGetPushEnabled.mockResolvedValueOnce(false);
+    await registerPushToken("u1");
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+
+  it("skips the pref re-read when the caller passes assumeEnabled", async () => {
+    // The race this closes: Settings flips the toggle on optimistically and the
+    // user taps the CTA before the pref write lands, so the server-side read
+    // still says false and the registration silently no-ops right after the
+    // user tapped Allow.
+    mockRequestPermissions.mockResolvedValue({ receive: "granted" });
+    mockGetPushEnabled.mockResolvedValueOnce(false);
+
+    await registerPushToken("u1", { assumeEnabled: true });
+
+    expect(mockGetPushEnabled).not.toHaveBeenCalled();
+    expect(mockRegister).toHaveBeenCalledOnce();
+    capturedRegistrationHandler?.({ value: "gesture-token" });
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+  });
+
+  it("still respects a denied OS permission even with assumeEnabled", async () => {
+    // assumeEnabled bypasses the APP-level preference, never the OS grant.
+    mockRequestPermissions.mockResolvedValue({ receive: "denied" });
+    await registerPushToken("u1", { assumeEnabled: true });
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+});
+
+describe("getNativePushPermission", () => {
+  it.each([
+    ["granted", "granted"],
+    ["denied", "denied"],
+    ["prompt", "prompt"],
+    ["prompt-with-rationale", "prompt"],
+  ])("reports %s as %s without ever prompting", async (receive, expected) => {
+    mockCheckPermissions.mockResolvedValueOnce({ receive });
+    await expect(getNativePushPermission()).resolves.toBe(expected);
+    // The whole point: this is a read. A prompt from a render path is the
+    // fastest way to get permanently denied.
+    expect(mockRequestPermissions).not.toHaveBeenCalled();
+  });
+
+  it("returns prompt on web without touching the plugin", async () => {
+    mockIsNativePlatform.mockReturnValue(false);
+    await expect(getNativePushPermission()).resolves.toBe("prompt");
+    expect(mockCheckPermissions).not.toHaveBeenCalled();
+  });
+
+  it("fails soft to prompt when the plugin throws", async () => {
+    // Never "granted" on an unknown state — that would hide the opt-in from a
+    // user who actually needs it.
+    mockCheckPermissions.mockRejectedValueOnce(new Error("plugin missing"));
+    await expect(getNativePushPermission()).resolves.toBe("prompt");
+  });
+});
+
+describe("registerPushTokenIfGranted", () => {
+  it("never prompts — no requestPermissions call on any path", async () => {
+    // The whole point of the split: this variant runs from the auth lifecycle
+    // and must not be able to raise a cold OS dialog.
+    mockCheckPermissions.mockResolvedValue({ receive: "prompt" });
+    await registerPushTokenIfGranted("u1");
+    expect(mockRequestPermissions).not.toHaveBeenCalled();
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+
+  it("registers when permission was already granted", async () => {
+    mockCheckPermissions.mockResolvedValue({ receive: "granted" });
+    await registerPushTokenIfGranted("u1");
+    expect(mockRegister).toHaveBeenCalledOnce();
+    capturedRegistrationHandler?.({ value: "warm-token" });
+    await flush();
+    expect(mockSetDoc).toHaveBeenCalledTimes(2);
+  });
+
+  it("no-ops on web without touching the plugin", async () => {
+    mockIsNativePlatform.mockReturnValue(false);
+    await registerPushTokenIfGranted("u1");
+    expect(mockCheckPermissions).not.toHaveBeenCalled();
+  });
+
+  it("swallows a checkPermissions failure", async () => {
+    mockCheckPermissions.mockRejectedValueOnce(new Error("plugin missing"));
+    await expect(registerPushTokenIfGranted("u1")).resolves.toBeUndefined();
+    expect(mockRegister).not.toHaveBeenCalled();
+  });
+
+  it("skips registration entirely when the user disabled push in Settings", async () => {
+    mockCheckPermissions.mockResolvedValue({ receive: "granted" });
+    mockGetPushEnabled.mockResolvedValueOnce(false);
+    await registerPushTokenIfGranted("u1");
+    expect(mockRegister).not.toHaveBeenCalled();
+    expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+});
+
+describe("subscribeToNativePushOpens", () => {
+  type ActionHandler = (action: { notification: { data: unknown } }) => void;
+
+  /** Attach the subscription and hand back the captured native handler. */
+  async function subscribe(cb: (gameId: string) => void): Promise<{ fire: ActionHandler; unsub: () => void }> {
+    let handler: ActionHandler = () => {};
+    mockAddListener.mockImplementation(async (event: string, listener: unknown) => {
+      if (event === "pushNotificationActionPerformed") handler = listener as ActionHandler;
+      return { remove: mockListenerRemove };
+    });
+    const unsub = subscribeToNativePushOpens(cb);
+    await flush();
+    return { fire: (action) => handler(action), unsub };
+  }
+
+  it("emits the gameId from the push data payload", async () => {
+    const onOpen = vi.fn();
+    const { fire } = await subscribe(onOpen);
+    fire({ notification: { data: { gameId: "g1", type: "your_turn" } } });
+    expect(onOpen).toHaveBeenCalledWith("g1");
+  });
+
+  it("falls back to parsing click_action for legacy payloads", async () => {
+    const onOpen = vi.fn();
+    const { fire } = await subscribe(onOpen);
+    fire({ notification: { data: { click_action: "/?game=g2&x=1" } } });
+    expect(onOpen).toHaveBeenCalledWith("g2");
+  });
+
+  it("stays silent for payloads with no game reference", async () => {
+    const onOpen = vi.fn();
+    const { fire } = await subscribe(onOpen);
+    fire({ notification: { data: { click_action: "/settings" } } });
+    fire({ notification: { data: { gameId: "" } } });
+    fire({ notification: { data: null } });
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("removes the listener once, however many times unsubscribe is called", async () => {
+    const { unsub } = await subscribe(vi.fn());
+    unsub();
+    unsub();
+    await flush();
+    expect(mockListenerRemove).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a no-op unsubscribe on web", () => {
+    mockIsNativePlatform.mockReturnValue(false);
+    const unsub = subscribeToNativePushOpens(vi.fn());
+    unsub();
+    expect(mockAddListener).not.toHaveBeenCalled();
+  });
+
+  it("survives a plugin that rejects addListener", async () => {
+    mockAddListener.mockRejectedValueOnce(new Error("no listener for you"));
+    const unsub = subscribeToNativePushOpens(vi.fn());
+    await flush();
+    expect(() => unsub()).not.toThrow();
+    await flush();
+    expect(mockListenerRemove).not.toHaveBeenCalled();
   });
 });
 
