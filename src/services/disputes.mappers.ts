@@ -112,7 +112,10 @@ export function toDisputeDoc(snap: DocumentSnapshot): Dispute {
   // Unknown/missing status reads as 'open' so a doc written before a future
   // status value existed still renders; the feed query already filters
   // server-side, so this only affects direct reads.
-  const status: DisputeStatus = raw.status === "closed" ? "closed" : "open";
+  // Early referee deployments used "resolved" before the client contract was
+  // standardised on "closed". Normalize both persisted forms so participant
+  // history remains visible without widening the public status union.
+  const status: DisputeStatus = raw.status === "closed" || raw.status === "resolved" ? "closed" : "open";
   const moderationStatus: DisputeModerationStatus = raw.moderationStatus === "hidden" ? "hidden" : "active";
 
   const verdict = coerceVerdict(raw.verdict);
