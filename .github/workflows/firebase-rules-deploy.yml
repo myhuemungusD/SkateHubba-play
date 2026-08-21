@@ -146,7 +146,7 @@ jobs:
           # that way is always-on and never actually gates.
           if [ -n "$WIF_PROVIDER" ] && [ -n "$WIF_SERVICE_ACCOUNT" ]; then
             if ! [[ "$WIF_PROVIDER" =~ ^projects/[0-9]+/locations/global/workloadIdentityPools/[^/]+/providers/[^/]+$ ]]; then
-              echo "::error::FIREBASE_WIF_PROVIDER is invalid."
+              echo "::error::FIREBASE_WIF_PROVIDER is invalid. Expected: projects/NUMBER/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID"
               echo "Expected full resource name format:"
               echo "projects/123456789/locations/global/workloadIdentityPools/POOL_ID/providers/PROVIDER_ID"
               echo "Fix FIREBASE_WIF_PROVIDER in GitHub → Settings → Secrets and variables → Actions."
