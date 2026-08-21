@@ -97,7 +97,7 @@ test("setter records a clip → upload completes and download URL is persisted t
   // (rather than the full signed URL) keeps this robust to token/query-string
   // changes across firebase-tools versions.
   expect(videoUrl).toContain("9199");
-  // The clip is stored at the deterministic path games/{gameId}/turn-1/set.*,
+  // The clip is stored at the deterministic path games/{gameId}/turn-1/set-{uid}.*,
   // which appears URL-encoded in the download URL. Matching the gameId proves
   // the persisted URL belongs to THIS game's clip, not a stale one.
   expect(videoUrl).toContain(gameId);

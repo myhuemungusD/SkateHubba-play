@@ -353,6 +353,33 @@ export function setupStorageRulesTestEnv(projectId: string): () => RulesTestEnvi
   };
 }
 
+/** Path builders for a single game's video objects, bound to one gameId/turn. */
+export interface GameVideoPaths {
+  /**
+   * The uid-pinned path storage.rules requires on create:
+   * `games/{gameId}/turn-N/{role}-{uid}.{ext}`. The path is a function of WHO
+   * uploads, which is exactly what makes it unsquattable by anyone else.
+   */
+  videoPath: (role?: "set" | "match", ext?: "webm" | "mp4", uid?: string) => string;
+  /**
+   * The pre-uid (legacy) filename shape, `.../{role}.{ext}`. No longer
+   * creatable; kept so backward-compat read/delete can be asserted.
+   */
+  legacyVideoPath: (role?: "set" | "match", ext?: "webm" | "mp4") => string;
+}
+
+/**
+ * Build the game-video path helpers for one suite. Shared by the storage
+ * red-team suites so the uid-pinned filename contract lives in exactly one
+ * place — if storage.rules ever changes shape, only this function moves.
+ */
+export function gameVideoPaths(gameId: string, turnPath: string, defaultUid: string): GameVideoPaths {
+  return {
+    videoPath: (role = "set", ext = "webm", uid = defaultUid) => `games/${gameId}/${turnPath}/${role}-${uid}.${ext}`,
+    legacyVideoPath: (role = "set", ext = "webm") => `games/${gameId}/${turnPath}/${role}.${ext}`,
+  };
+}
+
 /**
  * Boot a Firestore rules test env against the local emulator on port 8080,
  * loading the repo's firestore.rules. Mirrors the shape every red-team

@@ -3,30 +3,50 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     // Game videos: only authenticated users can read/upload
-    // Path: games/{gameId}/turn-{turnNumber}/{role}.webm (web) or {role}.mp4 (native)
+    // Path: games/{gameId}/turn-{turnNumber}/{role}-{uploaderUid}.webm (web)
+    //       or {role}-{uploaderUid}.mp4 (native), role = set | match
     // NOTE: Storage rules cannot cross-reference Firestore docs to verify
-    // game membership. Firestore game rules enforce player validation.
+    // game membership (cross-service firestore.get() only reaches the
+    // (default) database; this app uses the NAMED database "skatehubba").
+    // Firestore game rules enforce player validation.
     // Storage restricts to auth + size bounds + content type + exact filename.
     match /games/{gameId}/{turnPath}/{fileName} {
+      // Read stays filename-agnostic so objects written under the pre-uid
+      // naming scheme (`set.webm` / `match.mp4`) remain playable.
       allow read: if request.auth != null;
       // Create: authenticated + size/type constraints + uid binding.
       // The uploader stamps customMetadata.uploaderUid at upload time
-      // (see src/services/storage.ts) so we can enforce ownership here —
-      // the path itself does not encode uid because turn ownership flips
-      // each round.
+      // (see src/services/storage.ts) so delete can verify ownership.
       allow create: if request.auth != null
         // Minimum 1 KB — prevents empty/stub uploads
         && request.resource.size > 1024
         // Maximum 50 MB per video
         && request.resource.size < 50 * 1024 * 1024
+        // Filename is pinned to `{role}-{request.auth.uid}.{ext}` so no
+        // account can ever OCCUPY another player's upload path. Without the
+        // uid suffix an attacker who learned a gameId could pre-create the
+        // victim's next path (e.g. .../turn-3/match.webm); because `update`
+        // is denied, the victim's own upload then collided with the squatted
+        // object, was evaluated as an update, and was rejected — they could
+        // never submit their trick and forfeited on the turn timer.
+        // Residual: an attacker can still create junk under a game's
+        // directory at THEIR OWN uid-suffixed names. That is bounded (≤50 MB,
+        // 1 KB min, auth-only readable, never referenced by any Firestore
+        // doc) and is reaped by the existing 90-day retention/cleanup sweep.
         // Per-extension content-type pinning: the extension and the
-        // contentType MUST agree (mirrors the avatar rule below). The bare
-        // allowlist used to accept `set.webm` with content-type video/mp4,
-        // letting a client lie about the payload format. Only the two known
-        // roles (set|match) are valid filenames (rejects path traversal).
+        // contentType MUST agree (mirrors the avatar rule below), so a client
+        // cannot ship mp4 bytes behind a `.webm` name. Exact-string equality
+        // (not a regex) inherently rejects path traversal and encoded
+        // separators.
         && (
-          (fileName.matches('(set|match)\\.webm') && request.resource.contentType == 'video/webm')
-          || (fileName.matches('(set|match)\\.mp4') && request.resource.contentType == 'video/mp4')
+          (
+            (fileName == ('set-' + request.auth.uid + '.webm') || fileName == ('match-' + request.auth.uid + '.webm'))
+            && request.resource.contentType == 'video/webm'
+          )
+          || (
+            (fileName == ('set-' + request.auth.uid + '.mp4') || fileName == ('match-' + request.auth.uid + '.mp4'))
+            && request.resource.contentType == 'video/mp4'
+          )
         )
         // Bind the new object to its uploader so delete can verify ownership.
         && request.resource.metadata.uploaderUid == request.auth.uid;
@@ -44,6 +64,9 @@ service firebase.storage {
       // client-side delete is needed for the normal retry path.)
       // Delete: only the original uploader may remove their own video
       // (used during account-deletion cleanup for that user's own clips).
+      // Filename-agnostic on purpose: legacy objects written under the
+      // pre-uid naming scheme must stay deletable by their uploader, and the
+      // game-deletion cascade walks the prefix with listAll().
       allow delete: if request.auth != null
         && resource.metadata.uploaderUid == request.auth.uid;
     }
