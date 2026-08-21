@@ -27,6 +27,7 @@ export type {
 export { canRaiseDispute, raiseDispute } from "./disputes.raise";
 
 export { fetchOpenDisputes } from "./disputes.feed";
+export { fetchResolvedDispute } from "./disputes.resolved";
 
 export {
   AlreadyRuledError,

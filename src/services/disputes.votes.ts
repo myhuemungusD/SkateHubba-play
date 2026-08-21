@@ -13,7 +13,7 @@
  * the same arrangement as `clipVotes` / `clips.upvoteCount`.
  */
 
-import { doc, documentId, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
+import { doc, documentId, getDoc, getDocs, query, runTransaction, serverTimestamp, where } from "firebase/firestore";
 import { requireDb } from "../firebase";
 import { withRetry } from "../utils/retry";
 import { logger } from "./logger";
@@ -214,12 +214,19 @@ export async function castDisputeVerdict(
     if (err instanceof AlreadyRuledError || err instanceof OwnDisputeError || err instanceof DisputeClosedError) {
       throw err;
     }
-    // permission-denied on an otherwise clean create almost always means the
-    // vote doc already exists and the `allow update: if false` rule rejected
-    // the implicit overwrite. Surface the business-level error so callers
-    // have a single thing to handle — mirrors `upvoteClip`.
+    // permission-denied is ambiguous here. Either the vote doc already exists
+    // and the rules rejected the implicit overwrite (a lost double-tap race,
+    // mirrors `upvoteClip`), or the dispute closed between feed render and
+    // tap: closed disputes are participant/voter-only reads, so the tx.get
+    // above is itself denied for a would-be first-time voter. The vote doc is
+    // owner-readable, so one follow-up read on this error path tells the two
+    // apart; if even that read fails, "closed" is the safe terminal state.
     const code = (err as { code?: string }).code;
-    if (code === "permission-denied") throw new AlreadyRuledError(disputeId);
+    if (code === "permission-denied") {
+      const voteSnap = await getDoc(voteRef).catch(() => null);
+      if (voteSnap?.exists()) throw new AlreadyRuledError(disputeId);
+      throw new DisputeClosedError(disputeId);
+    }
     throw err;
   }
 
