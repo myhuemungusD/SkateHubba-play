@@ -197,7 +197,7 @@ async function runResumableUpload(req: ResumableUploadRequest): Promise<string> 
       const url = await new Promise<string>((resolve, reject) => {
         const task = uploadBytesResumable(storageRef, blob, {
           contentType,
-          // Clip storage paths are deterministic (`games/{gameId}/turn-N/{role}.{ext}`
+          // Clip storage paths are deterministic (`games/{gameId}/turn-N/{role}-{uid}.{ext}`
           // for game clips, `userClips/{uid}/{clipId}.{ext}` for user clips)
           // and the corresponding firestore.rules block forbids clip mutation
           // once the doc is written, so the bytes at this URL never change.
@@ -280,8 +280,15 @@ async function runResumableUpload(req: ResumableUploadRequest): Promise<string> 
 /**
  * Upload a game-turn video blob with progress tracking and retry.
  *
- * Path: games/{gameId}/turn-{turnNumber}/{role}.webm (web) or .mp4 (native),
- * role = "set" | "match".
+ * Path: games/{gameId}/turn-{turnNumber}/{role}-{uploaderUid}.webm (web) or
+ * .mp4 (native), role = "set" | "match".
+ *
+ * The uploader's uid is part of the FILENAME, not just the metadata, because
+ * storage.rules cannot check game membership (it cannot read the named
+ * Firestore database). Without the suffix the path was guessable from the
+ * gameId alone, so any signed-in user could pre-create the victim's next
+ * upload path; the victim's own upload then collided and they forfeited on
+ * the turn timer. With the suffix, only the uid in the name can write there.
  *
  * Uses uploadBytesResumable for real-time progress tracking. Retries with
  * exponential backoff + jitter on transient failures only — permanent errors
@@ -306,7 +313,7 @@ export async function uploadVideo(
   const startTime = Date.now();
 
   const url = await runResumableUpload({
-    path: `games/${gameId}/turn-${turnNumber}/${role}.${ext}`,
+    path: `games/${gameId}/turn-${turnNumber}/${role}-${uploaderUid}.${ext}`,
     contentType,
     blob: uploadBlob,
     customMetadata: {

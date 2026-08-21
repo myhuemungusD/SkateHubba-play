@@ -81,13 +81,26 @@ describe("storage service", () => {
       const blob = validBlob();
       const url = await uploadVideo("game1", 3, "set", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-3/set.webm");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-3/set-test-uid.webm");
       expect(mockUploadBytesResumable).toHaveBeenCalledWith(
-        "games/game1/turn-3/set.webm",
+        "games/game1/turn-3/set-test-uid.webm",
         blob,
         expect.objectContaining({ contentType: "video/webm" }),
       );
       expect(url).toBe("https://cdn.example.com/video.webm");
+    });
+
+    it("suffixes the filename with the uploader uid so no other account can squat the path", async () => {
+      // Anti-griefing contract with storage.rules: the create rule pins
+      // fileName to `{role}-{request.auth.uid}.{ext}`. If this builder ever
+      // drops the uid, every game upload starts failing AND the squat attack
+      // (pre-creating the victim's next path to force a timer forfeit) is
+      // back. Assert the bare legacy name is never produced.
+      await uploadVideo("game1", 4, "match", validBlob());
+
+      const path = mockRef.mock.calls[0][1];
+      expect(path).toBe("games/game1/turn-4/match-test-uid.webm");
+      expect(path).not.toBe("games/game1/turn-4/match.webm");
     });
 
     it("sets correct custom metadata", async () => {
@@ -286,9 +299,9 @@ describe("storage service", () => {
       const blob = validBlob("video/mp4");
       const url = await uploadVideo("game1", 1, "set", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.mp4");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set-test-uid.mp4");
       expect(mockUploadBytesResumable).toHaveBeenCalledWith(
-        "games/game1/turn-1/set.mp4",
+        "games/game1/turn-1/set-test-uid.mp4",
         blob,
         expect.objectContaining({ contentType: "video/mp4" }),
       );
@@ -344,7 +357,7 @@ describe("storage service", () => {
 
       await uploadVideo("game1", 1, "set", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.mp4");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set-test-uid.mp4");
       const [, uploadedBlob, options] = mockUploadBytesResumable.mock.calls[0];
       expect(options.contentType).toBe("video/mp4");
       // Blob was rewrapped with the coerced content-type so the SDK's
@@ -359,7 +372,7 @@ describe("storage service", () => {
 
       await uploadVideo("game1", 1, "set", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.webm");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set-test-uid.webm");
       const [, uploadedBlob, options] = mockUploadBytesResumable.mock.calls[0];
       expect(options.contentType).toBe("video/webm");
       expect((uploadedBlob as Blob).type).toBe("video/webm");
@@ -373,7 +386,7 @@ describe("storage service", () => {
 
       await uploadVideo("game1", 1, "match", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/match.mp4");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/match-test-uid.mp4");
       const [, uploadedBlob, options] = mockUploadBytesResumable.mock.calls[0];
       expect(options.contentType).toBe("video/mp4");
       expect((uploadedBlob as Blob).type).toBe("video/mp4");
