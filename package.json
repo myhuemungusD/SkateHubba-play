@@ -40,6 +40,7 @@
     "check:test-dup": "node scripts/check-test-duplication.mjs",
     "check:file-length": "node scripts/check-file-length.mjs",
     "verify": "tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup",
+    "postinstall": "node scripts/patch-video-recorder-spm.mjs",
     "prepare": "husky"
   },
   "dependencies": {
