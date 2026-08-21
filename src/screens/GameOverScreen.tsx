@@ -11,6 +11,8 @@ import { GameReplay } from "../components/GameReplay";
 import { TrophyIcon, SkullIcon } from "../components/icons";
 import { ReportModal } from "../components/ReportModal";
 import { ProUsername } from "../components/ProUsername";
+import { DisputeResultCard } from "../components/DisputeResultCard";
+import { fetchResolvedDispute, type Dispute } from "../services/disputes";
 
 export function GameOverScreen({
   game,
@@ -35,6 +37,7 @@ export function GameOverScreen({
   onViewPlayer?: (uid: string) => void;
 }) {
   const [rematching, setRematching] = useState(false);
+  const [resolvedDispute, setResolvedDispute] = useState<Dispute | null>(null);
   const rematchingRef = useRef(false);
 
   const handleRematch = async () => {
@@ -66,11 +69,33 @@ export function GameOverScreen({
   const [reported, setReported] = useState(false);
   const shareLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Mount-only: the share-label reset timer must survive game-doc updates, so
+  // its cleanup cannot share an effect with anything that has live deps.
   useEffect(() => {
     return () => {
       if (shareLabelTimerRef.current) clearTimeout(shareLabelTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    // Games completed before the pointer existed fall back to the final turn —
+    // a mid-game dispute on a legacy game won't surface, which is acceptable
+    // for pre-feature history.
+    const disputeTurnNumber = game.lastResolvedDisputeTurnNumber ?? game.turnNumber;
+    void fetchResolvedDispute(game.id, disputeTurnNumber)
+      .then((result) => {
+        if (active) setResolvedDispute(result);
+      })
+      .catch((err) => {
+        // Transient failures fail closed — the card is optional and the
+        // game-over screen stays usable.
+        console.warn("dispute_result_fetch_failed", err);
+      });
+    return () => {
+      active = false;
+    };
+  }, [game.id, game.lastResolvedDisputeTurnNumber, game.turnNumber]);
 
   const handleShareGame = useCallback(async () => {
     const turns = game.turnHistory ?? [];
@@ -173,6 +198,8 @@ export function GameOverScreen({
             isVerifiedPro={opponentIsPro}
           />
         </div>
+
+        {resolvedDispute && <DisputeResultCard dispute={resolvedDispute} />}
 
         {/* Full game replay */}
         {hasTurns && (
