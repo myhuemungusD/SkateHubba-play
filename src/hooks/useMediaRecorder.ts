@@ -119,7 +119,7 @@ function containerOf(mime: string | undefined): string {
  * This used to be the string literal "video/webm", which corrupted every
  * Safari/iOS-web clip: Safari records H.264/MP4, `classifyVideoBlob` in
  * src/services/storage.ts trusts `blob.type`, so MP4 bytes were uploaded to
- * `set.webm` with `Content-Type: video/webm`. storage.rules only checks that
+ * `set-{uid}.webm` with `Content-Type: video/webm`. storage.rules only checks that
  * the extension and the content-type agree with EACH OTHER — never that either
  * matches the actual bytes — so the write succeeded and the clip was
  * unplayable. `mr.mimeType` is the spec-guaranteed property reflecting what the

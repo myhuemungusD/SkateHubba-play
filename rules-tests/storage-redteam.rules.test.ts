@@ -14,7 +14,7 @@
  */
 import { describe, it } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
-import { setupStorageRulesTestEnv } from "./_fixtures";
+import { gameVideoPaths, setupStorageRulesTestEnv } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-storage-redteam";
 
@@ -22,8 +22,6 @@ const UID_A = "attacker-alice";
 const UID_B = "victim-bob";
 const GAME_ID = "game-under-attack";
 const TURN_PATH = "turn-1";
-const SET_FILE = "set.webm";
-const MATCH_FILE = "match.webm";
 
 // Boots the Storage emulator env + deep-clears the bucket before each test
 // AND after the file, so no test (or later file) inherits leftover objects.
@@ -50,9 +48,7 @@ function asAnonymous(): RulesTestContext {
   return getEnv().unauthenticatedContext();
 }
 
-function videoPath(role: "set" | "match" = "set", ext: "webm" | "mp4" = "webm"): string {
-  return `games/${GAME_ID}/${TURN_PATH}/${role}.${ext}`;
-}
+const { videoPath, legacyVideoPath } = gameVideoPaths(GAME_ID, TURN_PATH, UID_A);
 
 /**
  * Seed a file owned by the given uid via an authenticated context so the
@@ -67,6 +63,24 @@ async function seedFileOwnedBy(uid: string, path: string = videoPath()): Promise
   await ref.put(videoPayload(), {
     contentType: "video/webm",
     customMetadata: { uploaderUid: uid },
+  });
+}
+
+/**
+ * Seed an object under the pre-uid (legacy) filename. It has to go in with
+ * security rules DISABLED because the hardened create rule no longer accepts
+ * that name — which is the point: these objects exist only from before the
+ * uid pinning, and the read/delete rules must still handle them.
+ */
+async function seedLegacyObject(path: string, uid: string): Promise<void> {
+  await getEnv().withSecurityRulesDisabled(async (ctx) => {
+    await ctx
+      .storage()
+      .ref(path)
+      .put(videoPayload(), {
+        contentType: "video/webm",
+        customMetadata: { uploaderUid: uid },
+      });
   });
 }
 
@@ -186,6 +200,117 @@ describe("storage red-team — content-type pinning (extension must agree)", () 
         customMetadata: { uploaderUid: UID_A },
       }),
     );
+  });
+});
+
+/* ────────────────────────────────────────────
+ * ATTACK 3c — path squatting (the turn-timer griefing attack)
+ *   Storage rules cannot check game membership (they cannot read the app's
+ *   NAMED Firestore database), so ANY signed-in user can write somewhere
+ *   under games/{gameId}/. Before the uid suffix, the victim's next upload
+ *   path was fully derivable from the gameId: an attacker pre-created
+ *   games/G/turn-N/match.webm, and because `update` is denied the victim's
+ *   own upload collided and was rejected — they could never submit their
+ *   trick and forfeited on the turn timer. The filename is now pinned to
+ *   `{role}-{request.auth.uid}.{ext}`, so an attacker can only ever occupy
+ *   THEIR OWN path.
+ * ──────────────────────────────────────────── */
+
+describe("storage red-team — path squatting (uid-pinned filename)", () => {
+  // The squat itself, under both metadata choices available to the attacker:
+  //   - own uid  → filename check rejects (A may not write B's name)
+  //   - B's uid  → uploaderUid binding rejects (metadata != request.auth.uid)
+  // Neither door is open, so the victim's path can never be occupied.
+  for (const stampedUid of [UID_A, UID_B]) {
+    it(`attack: user A CANNOT create at user B's filename (uploaderUid=${stampedUid})`, async () => {
+      const ref = asUserA()
+        .storage()
+        .ref(videoPath("match", "webm", UID_B));
+      await assertFails(
+        ref.put(videoPayload(), {
+          contentType: "video/webm",
+          customMetadata: { uploaderUid: stampedUid },
+        }),
+      );
+    });
+  }
+
+  it("attack: user A CANNOT squat user B's .mp4 filename either", async () => {
+    const ref = asUserA()
+      .storage()
+      .ref(videoPath("set", "mp4", UID_B));
+    await assertFails(
+      ref.put(videoPayload(), {
+        contentType: "video/mp4",
+        customMetadata: { uploaderUid: UID_A },
+      }),
+    );
+  });
+
+  it("victim: user B CAN upload match-{ownUid}.webm even after A dumped junk in the same game dir", async () => {
+    // Covers BOTH the legitimate uid-suffixed create AND the residual: A may
+    // still write junk under the game directory at their own uid-suffixed
+    // name (bounded, auth-only, reaped by the 90-day sweep) — and it must not
+    // block B's real turn upload, which is the whole point of the fix.
+    await seedFileOwnedBy(UID_A, videoPath("match", "webm", UID_A));
+    const ref = asUserB()
+      .storage()
+      .ref(videoPath("match", "webm", UID_B));
+    await assertSucceeds(
+      ref.put(videoPayload(), {
+        contentType: "video/webm",
+        customMetadata: { uploaderUid: UID_B },
+      }),
+    );
+  });
+
+  it("attack: user B CANNOT create set-{ownUid}.webm with content-type video/mp4", async () => {
+    // Content-type pinning survives the filename change.
+    const ref = asUserB()
+      .storage()
+      .ref(videoPath("set", "webm", UID_B));
+    await assertFails(
+      ref.put(videoPayload(), {
+        contentType: "video/mp4",
+        customMetadata: { uploaderUid: UID_B },
+      }),
+    );
+  });
+
+  it("attack: the old bare `match.webm` filename is no longer creatable", async () => {
+    // Create tightened: only the uid-suffixed name is writable now.
+    const ref = asUserA().storage().ref(legacyVideoPath("match", "webm"));
+    await assertFails(
+      ref.put(videoPayload(), {
+        contentType: "video/webm",
+        customMetadata: { uploaderUid: UID_A },
+      }),
+    );
+  });
+
+  it("attack: the old bare `set.mp4` filename is no longer creatable", async () => {
+    const ref = asUserA().storage().ref(legacyVideoPath("set", "mp4"));
+    await assertFails(
+      ref.put(videoPayload(), {
+        contentType: "video/mp4",
+        customMetadata: { uploaderUid: UID_A },
+      }),
+    );
+  });
+
+  it("backward compat: an existing legacy-named object stays deletable by its uploader", async () => {
+    // Only CREATE tightened. Objects written under the pre-uid scheme must
+    // remain removable (account-deletion cleanup, game-deletion cascade),
+    // so seed one with rules disabled and delete it as its uploader.
+    const legacy = legacyVideoPath("match", "webm");
+    await seedLegacyObject(legacy, UID_A);
+    await assertSucceeds(asUserA().storage().ref(legacy).delete());
+  });
+
+  it("backward compat: a legacy-named object is NOT deletable by a stranger", async () => {
+    const legacy = legacyVideoPath("set", "webm");
+    await seedLegacyObject(legacy, UID_A);
+    await assertFails(asUserB().storage().ref(legacy).delete());
   });
 });
 
