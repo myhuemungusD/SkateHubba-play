@@ -2539,10 +2539,16 @@ service cloud.firestore {
     //   4. matchVideoUrl is bucket-pinned — it renders in a public feed, the
     //      same exfil / content-spoof surface clips.videoUrl guards against.
     //
-    // Reads are open to any signed-in user: blocklist filtering is applied
-    // client-side (see useBlockedUsers), matching clips.
+    // Open disputes form the signed-in judging feed. Closed results are game
+    // history and may only be read by either player in their backing game.
+    // The client uses a deterministic document get; this rule, not component
+    // visibility, is the authorization boundary.
     match /disputes/{disputeId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn()
+        && (
+          resource.data.status == 'open'
+          || isParticipant(get(/databases/$(database)/documents/games/$(resource.data.gameId)).data)
+        );
 
       allow create: if isSignedIn()
         && request.auth.token.email_verified == true

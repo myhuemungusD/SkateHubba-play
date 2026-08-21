@@ -8,6 +8,7 @@ import {
   mockOrderBy,
   mockLimit,
   mockGetDocs,
+  mockGetDoc,
   mockDeleteDoc,
   captureTxOnce,
   mockRunTransaction,
@@ -25,6 +26,7 @@ import {
   deleteUserDisputes,
   fetchDisputeViewerState,
   fetchOpenDisputes,
+  fetchResolvedDispute,
   raiseDispute,
   type Dispute,
 } from "../disputes";
@@ -107,6 +109,53 @@ function dispute(overrides: Partial<Dispute> = {}): Dispute {
 beforeEach(() => {
   vi.clearAllMocks();
   signIn("setter");
+});
+
+describe("fetchResolvedDispute", () => {
+  it.each(["land", "bail", "tie", "none"] as const)(
+    "parses a closed %s result by deterministic turn id",
+    async (verdict) => {
+      mockGetDoc.mockResolvedValueOnce({
+        id: "g1_3",
+        exists: () => true,
+        data: () => validDisputeData({ status: "closed", verdict, landVotes: 4, bailVotes: 2 }),
+      });
+
+      await expect(fetchResolvedDispute("g1", 3)).resolves.toMatchObject({
+        verdict,
+        status: "closed",
+        landVotes: 4,
+        bailVotes: 2,
+      });
+      expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "disputes", "g1_3");
+    },
+  );
+
+  it("preserves a legacy closed result without inventing a verdict", async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      id: "g1_3",
+      exists: () => true,
+      data: () => validDisputeData({ status: "closed" }),
+    });
+    const result = await fetchResolvedDispute("g1", 3);
+    expect(result).not.toHaveProperty("verdict");
+  });
+
+  it("normalizes the referee's legacy resolved status to closed", async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      id: "g1_3",
+      exists: () => true,
+      data: () => validDisputeData({ status: "resolved", verdict: "tie" }),
+    });
+    await expect(fetchResolvedDispute("g1", 3)).resolves.toMatchObject({ status: "closed", verdict: "tie" });
+  });
+
+  it("returns null for a missing or still-open deterministic document", async () => {
+    mockGetDoc.mockResolvedValueOnce({ id: "g1_3", exists: () => false });
+    await expect(fetchResolvedDispute("g1", 3)).resolves.toBeNull();
+    mockGetDoc.mockResolvedValueOnce({ id: "g1_3", exists: () => true, data: () => validDisputeData() });
+    await expect(fetchResolvedDispute("g1", 3)).resolves.toBeNull();
+  });
 });
 
 /* ── canRaiseDispute (the setter-facing UI gate) ─────────────── */

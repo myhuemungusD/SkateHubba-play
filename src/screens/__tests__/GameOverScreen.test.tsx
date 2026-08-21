@@ -3,6 +3,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { GameOverScreen } from "../GameOverScreen";
 
+const { fetchResolvedDispute } = vi.hoisted(() => ({ fetchResolvedDispute: vi.fn().mockResolvedValue(null) }));
+vi.mock("../../services/disputes", () => ({ fetchResolvedDispute }));
+
 vi.mock("../../services/analytics", () => ({
   trackEvent: vi.fn(),
 }));
@@ -53,6 +56,23 @@ function makeGame(overrides: Record<string, unknown> = {}) {
 beforeEach(() => vi.clearAllMocks());
 
 describe("GameOverScreen", () => {
+  it("uses the server-authored dispute turn after the game advances and omits a missing result", async () => {
+    render(
+      <GameOverScreen
+        game={makeGame({ turnNumber: 8, lastResolvedDisputeTurnNumber: 3 })}
+        profile={profile}
+        onBack={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(fetchResolvedDispute).toHaveBeenCalledWith("game1", 3));
+    expect(screen.queryByText("COMMUNITY VERDICT")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the final turn for games completed before the pointer existed", async () => {
+    render(<GameOverScreen game={makeGame({ turnNumber: 8 })} profile={profile} onBack={vi.fn()} />);
+    await waitFor(() => expect(fetchResolvedDispute).toHaveBeenCalledWith("game1", 8));
+  });
+
   it("calls onRematch and shows Starting... then resets", async () => {
     let resolveRematch: () => void;
     const onRematch = vi.fn(

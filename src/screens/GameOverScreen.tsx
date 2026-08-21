@@ -11,6 +11,8 @@ import { GameReplay } from "../components/GameReplay";
 import { TrophyIcon, SkullIcon } from "../components/icons";
 import { ReportModal } from "../components/ReportModal";
 import { ProUsername } from "../components/ProUsername";
+import { DisputeResultCard } from "../components/DisputeResultCard";
+import { fetchResolvedDispute, type Dispute } from "../services/disputes";
 
 export function GameOverScreen({
   game,
@@ -35,6 +37,7 @@ export function GameOverScreen({
   onViewPlayer?: (uid: string) => void;
 }) {
   const [rematching, setRematching] = useState(false);
+  const [resolvedDispute, setResolvedDispute] = useState<Dispute | null>(null);
   const rematchingRef = useRef(false);
 
   const handleRematch = async () => {
@@ -67,10 +70,21 @@ export function GameOverScreen({
   const shareLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    let active = true;
+    const disputeTurnNumber = game.lastResolvedDisputeTurnNumber ?? game.turnNumber;
+    void fetchResolvedDispute(game.id, disputeTurnNumber)
+      .then((result) => {
+        if (active) setResolvedDispute(result);
+      })
+      .catch(() => {
+        // Authorization and transient failures fail closed; rules remain the
+        // authority and the game-over screen remains usable.
+      });
     return () => {
+      active = false;
       if (shareLabelTimerRef.current) clearTimeout(shareLabelTimerRef.current);
     };
-  }, []);
+  }, [game.id, game.lastResolvedDisputeTurnNumber, game.turnNumber]);
 
   const handleShareGame = useCallback(async () => {
     const turns = game.turnHistory ?? [];
@@ -173,6 +187,8 @@ export function GameOverScreen({
             isVerifiedPro={opponentIsPro}
           />
         </div>
+
+        {resolvedDispute && <DisputeResultCard dispute={resolvedDispute} />}
 
         {/* Full game replay */}
         {hasTurns && (

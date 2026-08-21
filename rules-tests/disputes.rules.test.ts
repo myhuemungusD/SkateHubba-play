@@ -178,9 +178,16 @@ async function readTally(field: "landVotes" | "bailVotes"): Promise<unknown> {
  * ──────────────────────────────────────────── */
 
 describe("disputes — read", () => {
-  it("any signed-in user CAN read a dispute (feed is app-wide)", async () => {
+  it("any signed-in user CAN read an open dispute (feed is app-wide)", async () => {
     await seedDispute();
     await assertSucceeds(getDoc(disputeRef(as(VIEWER_UID))));
+  });
+
+  it("only game participants can read a closed dispute", async () => {
+    await seedDispute({ status: "closed", verdict: "land" });
+    await assertSucceeds(getDoc(disputeRef(as(P1_UID))));
+    await assertSucceeds(getDoc(disputeRef(as(P2_UID))));
+    await assertFails(getDoc(disputeRef(as(VIEWER_UID))));
   });
 
   it("anonymous users CANNOT read disputes", async () => {

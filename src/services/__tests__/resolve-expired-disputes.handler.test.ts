@@ -317,6 +317,7 @@ describe("resolve handler — communityReview verdicts (binding + stats + close-
     const gw = txUpdate.mock.calls[0][1] as Record<string, unknown>;
     expect(gw.phase).toBe("setting");
     expect(gw.currentSetter).toBe("p2");
+    expect(gw.lastResolvedDisputeTurnNumber).toBe(3);
 
     const { claimer, disputer } = statWrites(txSet);
     expect(claimer.tricksDisputed).toEqual({ __inc: 1 });
