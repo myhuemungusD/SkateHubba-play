@@ -25,6 +25,7 @@ export type {
 } from "./disputes.mappers";
 
 export { canRaiseDispute, raiseDispute } from "./disputes.raise";
+export { subscribeToGameDispute } from "./disputes.subscription";
 
 export { fetchOpenDisputes } from "./disputes.feed";
 export { fetchResolvedDispute } from "./disputes.resolved";

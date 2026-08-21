@@ -13,13 +13,14 @@ import {
   setTrick,
   submitMatchAttempt,
 } from "../../services/games";
-import { canRaiseDispute, raiseDispute } from "../../services/disputes";
+import { canRaiseDispute, raiseDispute, type Dispute } from "../../services/disputes";
 import { uploadVideo, type UploadProgress as UploadProgressData } from "../../services/storage";
 import type { UserProfile } from "../../services/users";
 import { captureException } from "../../lib/sentry";
 import { logger } from "../../services/logger";
 import { playHaptic } from "../../services/haptics";
 import { parseFirebaseError } from "../../utils/helpers";
+import { useCommunityDispute, type CommunityDisputeState } from "./useCommunityDispute";
 
 export interface GamePlayController {
   game: GameDoc;
@@ -58,6 +59,8 @@ export interface GamePlayController {
   isCommunityReview: boolean;
   /** True in any frozen review phase — routes off the plain waiting screen. */
   isInReview: boolean;
+  communityDispute: Dispute | null;
+  communityDisputeState: CommunityDisputeState;
   /** Gate for the Dispute affordance — false once the claim can't be disputed. */
   canDispute: boolean;
 
@@ -162,6 +165,11 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
   const isCommunityReview = isPlayer && game.phase === "communityReview";
   const isInReview = isPendingReviewSetter || isPendingReviewMatcher || isCommunityReview;
   const canDispute = canRaiseDispute(game, profile.uid);
+  const { dispute: communityDispute, state: communityDisputeState } = useCommunityDispute(
+    isCommunityReview,
+    game.id,
+    game.turnNumber,
+  );
 
   const [disputeSubmitting, setDisputeSubmitting] = useState(false);
   const [lastDisputeAction, setLastDisputeAction] = useState<boolean | null>(null);
@@ -472,6 +480,8 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     isPendingReviewMatcher,
     isCommunityReview,
     isInReview,
+    communityDispute,
+    communityDisputeState,
     canDispute,
     opponentName,
     opponentUid,

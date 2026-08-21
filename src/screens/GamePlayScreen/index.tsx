@@ -172,7 +172,13 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         )}
 
         {c.isCommunityReview && (
-          <ReviewStatusPanel kind="community" opponentUsername={c.opponentName} deadline={c.deadline} />
+          <ReviewStatusPanel
+            kind="community"
+            opponentUsername={c.opponentName}
+            deadline={c.deadline}
+            dispute={c.communityDispute}
+            disputeState={c.communityDisputeState}
+          />
         )}
 
         {c.isJudgeInvitePending && (
