@@ -400,15 +400,21 @@ export function useMediaRecorder(
       setState("preview");
     } catch (err) {
       if (generation !== acquireGenerationRef.current || !mountedRef.current) return;
-      const isPermission =
-        err instanceof DOMException && (err.name === "NotAllowedError" || err.name === "SecurityError");
+      // The DOMException name is the only thing that distinguishes the failure
+      // modes, and it is what makes a "camera doesn't work" report diagnosable:
+      // NotAllowedError (user or OS refused) and SecurityError (blocked by
+      // Permissions-Policy or an insecure context) both surface the same copy,
+      // so the log has to carry the name or the two are indistinguishable after
+      // the fact.
+      const domName = err instanceof DOMException ? err.name : "";
+      const isPermission = domName === "NotAllowedError" || domName === "SecurityError";
       const msg = parseFirebaseError(err);
       setCameraError(isPermission ? `Camera access denied. ${permissionHint()}` : `Camera unavailable: ${msg}`);
       // The previous stream was stopped before the await and `stopTracks`
       // cleared `streamRef`, so there is no camera to return to — send the
       // user back to idle rather than leaving a "preview" that cannot record.
       setState("idle");
-      logger.warn("camera_access_failed", { error: msg });
+      logger.warn("camera_access_failed", { error: msg, name: domName });
     }
   }, [stopTracks, stopOrphanStream, watchTrackEnded]);
 
