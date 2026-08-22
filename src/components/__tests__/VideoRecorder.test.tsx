@@ -116,11 +116,21 @@ describe("VideoRecorder", () => {
     });
   });
 
-  it("auto-opens camera when autoOpen is true", async () => {
-    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" autoOpen />);
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument();
-    });
+  // Regression: the setter's recorder used to call getUserMedia straight from
+  // its mount effect. WebKit refuses a prompt-raising request that no gesture
+  // asked for, denies it for the rest of the page load, and never shows the
+  // prompt — so every iOS browser reported "Camera access denied" for a
+  // permission the user was never offered. No permission state may open the
+  // camera unprompted except one already granted.
+  it("never calls getUserMedia before a gesture when permission is unknown", async () => {
+    setupMockPermissions("throws");
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Open Camera/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument());
   });
 
   it("handles camera permission denied error", async () => {
@@ -638,14 +648,6 @@ describe("VideoRecorder", () => {
 
     await waitFor(() => expect(screen.getByText(/Open Camera/)).toBeInTheDocument());
     expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
-  });
-
-  it("opens the camera once when autoOpen and permission are both set", async () => {
-    setupMockPermissions({ camera: "granted", microphone: "granted" });
-    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" autoOpen />);
-
-    await waitFor(() => expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument());
-    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
   });
 
   it("shows the Safari-specific permission tip on iOS Safari", () => {

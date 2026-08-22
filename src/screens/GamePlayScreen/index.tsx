@@ -97,7 +97,6 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           <VideoRecorder
             onRecorded={c.handleRecorded}
             label={c.isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
-            autoOpen={c.isSetter}
             doneLabel="Recorded"
           />
         )}
