@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Btn } from "./ui/Btn";
 import { FilmIcon, CameraIcon, RecordIcon, StopIcon, FisheyeIcon, FlipCameraIcon } from "./icons";
 import { FisheyeRenderer } from "./FisheyeRenderer";
@@ -47,13 +47,11 @@ async function hasGrantedCameraAndMic(): Promise<boolean> {
 export function VideoRecorder({
   onRecorded,
   label,
-  autoOpen = false,
   doneLabel = "Recorded",
   maxDurationSeconds = MAX_VIDEO_DURATION_SECONDS,
 }: {
   onRecorded: (blob: Blob | null) => void;
   label: string;
-  autoOpen?: boolean;
   doneLabel?: string;
   /**
    * Hard auto-stop for the take, in seconds. Defaults to the game-turn cap;
@@ -85,19 +83,27 @@ export function VideoRecorder({
 
   const [permissionGranted, setPermissionGranted] = useState(false);
 
-  const autoOpenRef = useRef(autoOpen);
   useEffect(() => {
-    // openCamera is async (it awaits getUserMedia before any setState), so
-    // neither branch is a synchronous set-state-in-effect. Native has its own
-    // entry point.
+    // Never call getUserMedia outside a user gesture.
+    //
+    // WebKit — which backs *every* iOS browser, Chrome and Firefox included —
+    // refuses a request that would need to raise a permission prompt but was
+    // not user-initiated. It rejects with NotAllowedError and shows no prompt
+    // at all, so the user is told access was "denied" for something they were
+    // never asked. The denial then sticks for the rest of the page load: the
+    // "Retry Camera" tap that *would* have prompted is refused too, and a
+    // reload only repeats the gesture-less call. Toggling the camera switch in
+    // iOS Settings never helps either, because no per-site grant was ever
+    // recorded to fix. This screen used to take that path whenever `autoOpen`
+    // was set, which is the setter's "Land Your Trick" recorder.
+    //
+    // So the stream is opened unprompted only when camera AND mic are already
+    // granted — the one case where no prompt appears. Anything else
+    // (prompt/denied/unknown, and iOS is always "unknown" because WebKit ships
+    // no permissions.query for camera) waits for the user to tap Open Camera.
+    // openCamera is async (it awaits getUserMedia before any setState), so this
+    // is not a synchronous set-state-in-effect. Native has its own entry point.
     if (isNative) return;
-    if (autoOpenRef.current) {
-      void openCamera();
-      return;
-    }
-    // Camera + mic already granted → the browser shows no prompt, so open the
-    // stream without making the user tap. Anything else (prompt/denied/unknown)
-    // waits for a gesture so we never trigger an unsolicited prompt.
     let cancelled = false;
     void hasGrantedCameraAndMic().then((granted) => {
       if (cancelled || !granted) return;

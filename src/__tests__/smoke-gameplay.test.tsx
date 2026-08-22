@@ -54,6 +54,35 @@ async function openExpiredDeadlineGame(extraOverrides: Partial<GameDoc> = {}): P
   return game;
 }
 
+/**
+ * Drive the setter through one complete take: name the trick to reveal the
+ * recorder, tap the camera open, record, stop. The tap is not optional — the
+ * recorder never acquires a stream outside a user gesture unless camera and mic
+ * are already granted, which no smoke test arranges. Leaves the screen on the
+ * "Did you land it?" decision.
+ */
+async function setterRecordsATake(trickName: string) {
+  await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument());
+  await userEvent.type(screen.getByLabelText("TRICK NAME"), trickName);
+  await userEvent.click(await screen.findByRole("button", { name: /open camera/i }));
+  await waitFor(() => screen.getByRole("button", { name: /record/i }));
+  await userEvent.click(screen.getByRole("button", { name: /record/i }));
+  await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
+  await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+}
+
+/**
+ * Open the active game from the lobby and land a set trick. Callers differ only
+ * in how they mock `setTrick` and what they expect the screen to say once the
+ * submission resolves — that difference is the test.
+ */
+async function setterLandsATrick(trickName: string) {
+  await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+  await setterRecordsATake(trickName);
+  await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
+  await userEvent.click(screen.getByText(/Landed/));
+}
+
 describe("Smoke: Gameplay", () => {
   it("gameplay screen shows setter UI when it's your turn to set", async () => {
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
@@ -85,7 +114,8 @@ describe("Smoke: Gameplay", () => {
     // Hint disappears once recorder is revealed
     expect(screen.queryByText("Name your trick to start recording")).not.toBeInTheDocument();
 
-    // Camera auto-opens for setter, so record button should appear in preview state
+    // Tapping the camera moves the recorder into preview state
+    await userEvent.click(await screen.findByText(/Open Camera/));
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /Record — Land Your Trick/ })).toBeInTheDocument();
     });
@@ -268,25 +298,7 @@ describe("Smoke: Gameplay", () => {
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
     await userEvent.click(gameButton);
 
-    // Type a trick name to reveal the recorder
-    await waitFor(() => {
-      expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
-    });
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-
-    // Wait for camera to open and VideoRecorder to reach "preview" state
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
-    });
-
-    // Start recording (demo mode)
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-
-    // Stop recording
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /stop recording/i })).toBeInTheDocument();
-    });
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+    await setterRecordsATake("Kickflip");
 
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => {
@@ -315,17 +327,7 @@ describe("Smoke: Gameplay", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
     });
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Hardflip");
-
-    // Recorder is revealed
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
-    });
-
-    // Record and stop
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+    await setterRecordsATake("Hardflip");
 
     // Input is disabled and recorder done state is visible (not unmounted)
     expect(screen.getByLabelText("TRICK NAME")).toBeDisabled();
@@ -354,15 +356,7 @@ describe("Smoke: Gameplay", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
     });
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "360 Flip");
-
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+    await setterRecordsATake("360 Flip");
 
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
@@ -389,7 +383,7 @@ describe("Smoke: Gameplay", () => {
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
     await userEvent.click(gameButton);
 
-    // Matcher: autoOpen=false, must manually open camera
+    // The camera never opens unprompted here, so a tap is required
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /open camera/i })).toBeInTheDocument();
     });
@@ -430,15 +424,7 @@ describe("Smoke: Gameplay", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
     });
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Heelflip");
-
-    // Wait for camera → preview
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /record/i })).toBeInTheDocument();
-    });
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+    await setterRecordsATake("Heelflip");
 
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
@@ -490,13 +476,7 @@ describe("Smoke: Gameplay", () => {
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
     await userEvent.click(gameButton);
 
-    await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument());
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Heelflip");
-
-    await waitFor(() => screen.getByRole("button", { name: /record/i }));
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+    await setterRecordsATake("Heelflip");
 
     // "Did you land it?" appears — click Landed (which will fail)
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
@@ -523,20 +503,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-
-    await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument());
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-
-    await waitFor(() => screen.getByRole("button", { name: /record/i }));
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    // "Did you land it?" appears — click Landed (which will hang)
-    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/Landed/));
+    await setterLandsATrick("Kickflip");
 
     await waitFor(() => {
       expect(screen.getByText(/Sending to @rival/)).toBeInTheDocument();
@@ -577,19 +544,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-    await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument());
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-
-    await waitFor(() => screen.getByRole("button", { name: /record/i }));
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    // "Did you land it?" appears — click Landed (which will fail)
-    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/Landed/));
+    await setterLandsATrick("Kickflip");
 
     await waitFor(() => {
       expect(screen.getByText("Failed to send trick")).toBeInTheDocument();
