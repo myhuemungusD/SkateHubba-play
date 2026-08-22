@@ -18,8 +18,14 @@ function firebaseSwPlugin(): Plugin {
     writeBundle(options) {
       const outDir = options.dir ?? "dist";
       const swPath = resolve(outDir, "firebase-messaging-sw.js");
+      let content: string;
       try {
-        let content = readFileSync(swPath, "utf-8");
+        content = readFileSync(swPath, "utf-8");
+      } catch {
+        // SW file may not exist in test builds — skip silently
+        return;
+      }
+      {
         const replacements: Record<string, string | undefined> = {
           __PLACEHOLDER_API_KEY__: process.env.VITE_FIREBASE_API_KEY,
           __PLACEHOLDER_AUTH_DOMAIN__: process.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -37,13 +43,20 @@ function firebaseSwPlugin(): Plugin {
           }
         }
         if (unreplaced.length > 0) {
-          console.warn(
-            `[firebase-sw-config] Warning: ${unreplaced.length} placeholder(s) not replaced in SW (missing env vars): ${unreplaced.join(", ")}`,
-          );
+          const message = `[firebase-sw-config] ${unreplaced.length} placeholder(s) not replaced in SW (missing env vars): ${unreplaced.join(", ")}`;
+          // Store/release builds must never ship a service worker with dead
+          // placeholder config — background web push would silently break.
+          // REQUIRE_SW_CONFIG=1 turns the warning into a hard build failure.
+          // Set in android-aab.yml and release.yml; the Vercel production
+          // deploy needs it added as a project env var (dashboard) to get the
+          // same guarantee. Local builds without a .env keep working with the
+          // query-string fallback the SW ships.
+          if (process.env.REQUIRE_SW_CONFIG) {
+            throw new Error(message);
+          }
+          console.warn(`${message} — set REQUIRE_SW_CONFIG=1 to make this fatal.`);
         }
         writeFileSync(swPath, content);
-      } catch {
-        // SW file may not exist in test builds — skip silently
       }
     },
   };
