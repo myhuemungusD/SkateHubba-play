@@ -168,6 +168,12 @@ const IN_APP_BROWSER = /GSA\/|FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|Snapchat|Mi
  * requires users to toggle the permission in system Settings (the in-app
  * re-prompt is permanent after the first denial); desktop Chrome/Firefox allow
  * re-granting from the URL bar. We tailor the copy so users know *where* to look.
+ *
+ * Getting this wrong is not cosmetic. Every branch here sends the user to a
+ * specific switch, and a switch that does not govern their situation costs them
+ * the same effort as one that does — then leaves the app looking broken instead
+ * of un-permissioned. Each case below exists because a real report proved the
+ * previous copy pointed somewhere that could not help.
  */
 function permissionHint(): string {
   if (typeof navigator === "undefined") return "Check your browser permissions and try again.";
@@ -192,7 +198,19 @@ function permissionHint(): string {
     if (IN_APP_BROWSER.test(ua)) {
       return "You're in an app's built-in browser, which blocks camera access. Open this page in Chrome or Safari and try again.";
     }
-    if (/CriOS/.test(ua)) return "Open Settings → Chrome → Camera and allow access, then reload.";
+    // Chrome gates the camera TWICE, and naming only the iOS switch is the
+    // same dead end as naming the wrong browser: a user can grant
+    // Settings → Chrome → Camera, watch nothing change, and reasonably
+    // conclude their phone is broken. The second gate is Chrome's own
+    // per-site permission, which iOS Settings cannot reach. It is also the
+    // one this app is most likely to have tripped itself — before the camera
+    // was gated behind a tap, the unprompted request could land a stored
+    // denial for the origin, and that record survives reloads and redeploys.
+    // Confirmed on a device where Safari worked and Chrome did not with the
+    // iOS permission already granted.
+    if (/CriOS/.test(ua)) {
+      return "Chrome needs two: turn on Settings → Chrome → Camera, then tap the icon left of Chrome's address bar → Permissions → Camera. Reload after both.";
+    }
     if (/FxiOS/.test(ua)) return "Open Settings → Firefox → Camera and allow access, then reload.";
     if (/EdgiOS/.test(ua)) return "Open Settings → Edge → Camera and allow access, then reload.";
     return "Open Settings → Safari → Camera and allow access, then reload.";
