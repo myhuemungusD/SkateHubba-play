@@ -455,6 +455,25 @@ describe("useMediaRecorder", () => {
       hint: "Open Settings → Chrome → Camera and allow access, then reload.",
     },
     {
+      // Tapping a search result in the Google app opens that app's own
+      // WKWebView, not Chrome. It carries no CriOS token, so it used to fall
+      // through to the Safari hint — sending the user to a switch governing a
+      // different app, which is why toggling it changed nothing.
+      name: "the Google app's in-app browser is told to leave it, not to open Safari settings",
+      ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 GSA/345.0.700851927 Safari/604.1",
+      hint: "You're in an app's built-in browser, which blocks camera access. Open this page in Chrome or Safari and try again.",
+    },
+    {
+      name: "the Instagram in-app browser gets the same escape hatch",
+      ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Instagram 331.0.0.37.90",
+      hint: "You're in an app's built-in browser, which blocks camera access. Open this page in Chrome or Safari and try again.",
+    },
+    {
+      name: "the Facebook in-app browser gets the same escape hatch",
+      ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 [FBAN/FBIOS;FBAV/450.0.0.38.108]",
+      hint: "You're in an app's built-in browser, which blocks camera access. Open this page in Chrome or Safari and try again.",
+    },
+    {
       name: "iOS Firefox is sent to Firefox's settings",
       ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/121.0 Mobile/15E148 Safari/605.1.15",
       hint: "Open Settings → Firefox → Camera and allow access, then reload.",
@@ -495,6 +514,41 @@ describe("useMediaRecorder", () => {
       }
     });
   }
+
+  // The recovery copy above is identical for NotAllowedError and SecurityError,
+  // which are different bugs with different fixes. Without the name exposed
+  // separately, a screenshot of the error cannot tell them apart.
+  it("exposes the DOMException name behind a permission failure", async () => {
+    mockGetUserMedia.mockRejectedValue(new DOMException("Blocked", "SecurityError"));
+    const view = mountRecorder();
+    await openCamera(view);
+
+    expect(view.result.current.cameraError).toContain("Camera access denied.");
+    expect(view.result.current.cameraErrorDetail).toBe("SecurityError");
+  });
+
+  it("leaves the detail empty when the rejection is not a DOMException", async () => {
+    mockGetUserMedia.mockRejectedValue(new Error("Device not found"));
+    const view = mountRecorder();
+    await openCamera(view);
+
+    expect(view.result.current.cameraError).toContain("Camera unavailable:");
+    expect(view.result.current.cameraErrorDetail).toBeNull();
+  });
+
+  // A stale name under an unrelated later message points at the wrong cause,
+  // so the two always move together.
+  it("clears a previous detail when a later failure has no DOMException", async () => {
+    mockGetUserMedia.mockRejectedValueOnce(new DOMException("Denied", "NotAllowedError"));
+    const view = mountRecorder();
+    await openCamera(view);
+    expect(view.result.current.cameraErrorDetail).toBe("NotAllowedError");
+
+    act(() => view.result.current.startRec());
+
+    expect(view.result.current.cameraError).toContain("no active stream");
+    expect(view.result.current.cameraErrorDetail).toBeNull();
+  });
 
   it("falls back to generic permission copy when there is no navigator", async () => {
     const realNavigator = globalThis.navigator;

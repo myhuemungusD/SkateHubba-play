@@ -66,6 +66,7 @@ export function VideoRecorder({
     blobUrl,
     seconds,
     cameraError,
+    cameraErrorDetail,
     isNative,
     facingMode,
     setVideoRef,
@@ -251,6 +252,10 @@ export function VideoRecorder({
       {cameraError && (
         <div className="w-full max-w-[360px] p-3 rounded-xl bg-[rgba(255,61,0,0.08)] border border-brand-red text-center">
           <p className="font-body text-sm text-brand-red mb-2">{cameraError}</p>
+          {/* Small print, but the part that makes a bug report actionable: the
+              friendly copy above reads the same whether the browser refused the
+              permission or a policy blocked the API outright. */}
+          {cameraErrorDetail && <p className="font-body text-[11px] text-subtle mb-2">{cameraErrorDetail}</p>}
           <Btn onClick={openCamera} variant="secondary">
             Retry Camera
           </Btn>
