@@ -154,6 +154,16 @@ function captureFrameRate(stream: MediaStream | null): number {
 }
 
 /**
+ * UA markers for iOS apps that render web pages in their own embedded
+ * WKWebView. `GSA/` is the Google app — the one that catches people out, since
+ * tapping a search result there looks like Chrome but is not. None of these
+ * carry a `CriOS`/`FxiOS`/`EdgiOS` token, so without this list they fall
+ * through to the Safari hint and send the user to a switch that governs a
+ * different app entirely.
+ */
+const IN_APP_BROWSER = /GSA\/|FBAN|FBAV|FB_IAB|Instagram|LinkedInApp|Snapchat|MicroMessenger|TikTok|Pinterest\/|Line\//;
+
+/**
  * Platform-specific recovery hint for a denied camera permission. iOS Safari
  * requires users to toggle the permission in system Settings (the in-app
  * re-prompt is permanent after the first denial); desktop Chrome/Firefox allow
@@ -170,8 +180,18 @@ function permissionHint(): string {
     // user there is a dead end: they follow the instruction exactly, nothing
     // changes, and the app looks broken rather than un-permissioned.
     //
-    // Order matters. These tokens must be checked BEFORE falling through to
-    // Safari, because every one of them also carries a `Safari/` token.
+    // Order matters. Every token below also carries a `Safari/` token, so each
+    // must be checked BEFORE the Safari fallthrough.
+
+    // In-app browsers first, because they are the case no settings screen can
+    // fix. Tapping a link inside the Google app, Instagram, Facebook, etc.
+    // opens a WKWebView owned by *that* app, so camera access is governed by
+    // the host app's own permission — not Chrome's and not Safari's. Several
+    // of these webviews refuse getUserMedia no matter what is granted. Naming
+    // a browser here would send the user to a switch that cannot apply.
+    if (IN_APP_BROWSER.test(ua)) {
+      return "You're in an app's built-in browser, which blocks camera access. Open this page in Chrome or Safari and try again.";
+    }
     if (/CriOS/.test(ua)) return "Open Settings → Chrome → Camera and allow access, then reload.";
     if (/FxiOS/.test(ua)) return "Open Settings → Firefox → Camera and allow access, then reload.";
     if (/EdgiOS/.test(ua)) return "Open Settings → Edge → Camera and allow access, then reload.";
@@ -192,6 +212,14 @@ export interface MediaRecorderController {
   seconds: number;
   /** User-facing camera failure, or null. */
   cameraError: string | null;
+  /**
+   * The underlying DOMException name for a camera failure, or null. Rendered
+   * as small print under the error because the friendly copy alone cannot
+   * distinguish the causes: NotAllowedError (a real refusal) and SecurityError
+   * (blocked by Permissions-Policy or an insecure context) need entirely
+   * different fixes, and a screenshot without this leaves both in play.
+   */
+  cameraErrorDetail: string | null;
   /** True when running inside a Capacitor native shell. */
   isNative: boolean;
   /** Which camera is currently requested. */
@@ -256,7 +284,16 @@ export function useMediaRecorder(
   const [state, setState] = useState<CaptureState>("idle");
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [seconds, setSeconds] = useState(0);
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  // Message and diagnostic detail move together. Every failure path other than
+  // a rejected getUserMedia has no DOMException behind it, so the default
+  // clears the detail — otherwise the name from an earlier failure would sit
+  // under an unrelated later message and point at the wrong cause.
+  const [cameraErrorState, setCameraErrorState] = useState<{ message: string; detail: string | null } | null>(null);
+  const setCameraError = useCallback((message: string | null, detail: string | null = null) => {
+    setCameraErrorState(message === null ? null : { message, detail });
+  }, []);
+  const cameraError = cameraErrorState?.message ?? null;
+  const cameraErrorDetail = cameraErrorState?.detail ?? null;
 
   const [fisheyeOn, setFisheyeOn] = useState(false);
   const fisheyeCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -352,7 +389,7 @@ export function useMediaRecorder(
       trackEndedCleanupRef.current = () => track.removeEventListener("ended", handleEnded);
       /* v8 ignore stop */
     },
-    [discardRecorder, stopTracks],
+    [discardRecorder, stopTracks, setCameraError],
   );
 
   /**
@@ -409,14 +446,17 @@ export function useMediaRecorder(
       const domName = err instanceof DOMException ? err.name : "";
       const isPermission = domName === "NotAllowedError" || domName === "SecurityError";
       const msg = parseFirebaseError(err);
-      setCameraError(isPermission ? `Camera access denied. ${permissionHint()}` : `Camera unavailable: ${msg}`);
+      setCameraError(
+        isPermission ? `Camera access denied. ${permissionHint()}` : `Camera unavailable: ${msg}`,
+        domName || null,
+      );
       // The previous stream was stopped before the await and `stopTracks`
       // cleared `streamRef`, so there is no camera to return to — send the
       // user back to idle rather than leaving a "preview" that cannot record.
       setState("idle");
       logger.warn("camera_access_failed", { error: msg, name: domName });
     }
-  }, [stopTracks, stopOrphanStream, watchTrackEnded]);
+  }, [stopTracks, stopOrphanStream, watchTrackEnded, setCameraError]);
 
   /**
    * Swap between the rear and selfie camera. Pre-record only (see the toggle's
@@ -536,7 +576,7 @@ export function useMediaRecorder(
       }
     }, maxDurationRef.current * 1000);
     /* v8 ignore stop */
-  }, [onRecorded, fisheyeOn, discardRecorder, stopTracks]);
+  }, [onRecorded, fisheyeOn, discardRecorder, stopTracks, setCameraError]);
 
   const stopRec = useCallback(() => {
     clearInterval(timerRef.current);
@@ -611,7 +651,7 @@ export function useMediaRecorder(
     } finally {
       nativeAbortRef.current = null;
     }
-  }, [onRecorded]);
+  }, [onRecorded, setCameraError]);
 
   /** Stop button on the native path — the service stops on abort. */
   const stopNativeRec = useCallback(() => {
@@ -638,6 +678,7 @@ export function useMediaRecorder(
     blobUrl,
     seconds,
     cameraError,
+    cameraErrorDetail,
     isNative,
     facingMode,
     setVideoRef,
