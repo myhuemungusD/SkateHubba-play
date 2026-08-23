@@ -100,6 +100,22 @@ afterEach(() => {
   if (originalUserAgent) Object.defineProperty(navigator, "userAgent", originalUserAgent);
 });
 
+/**
+ * Arm getUserMedia to reject with `err`, then tap Open Camera. The tap is the
+ * only route to the error box — nothing acquires a stream unprompted unless
+ * camera and mic are already granted.
+ */
+async function failToOpenCamera(err: unknown) {
+  Object.defineProperty(navigator, "mediaDevices", {
+    writable: true,
+    configurable: true,
+    value: { getUserMedia: vi.fn().mockRejectedValueOnce(err) },
+  });
+
+  render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+  await userEvent.click(screen.getByText(/Open Camera/));
+}
+
 describe("VideoRecorder", () => {
   it("renders idle state with open camera button", () => {
     render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
@@ -134,14 +150,7 @@ describe("VideoRecorder", () => {
   });
 
   it("handles camera permission denied error", async () => {
-    Object.defineProperty(navigator, "mediaDevices", {
-      writable: true,
-      configurable: true,
-      value: { getUserMedia: vi.fn().mockRejectedValueOnce(new DOMException("Not allowed", "NotAllowedError")) },
-    });
-
-    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
-    await userEvent.click(screen.getByText(/Open Camera/));
+    await failToOpenCamera(new DOMException("Not allowed", "NotAllowedError"));
 
     await waitFor(() => {
       expect(screen.getByText(/Camera access denied/)).toBeInTheDocument();
@@ -149,15 +158,16 @@ describe("VideoRecorder", () => {
     });
   });
 
-  it("handles SecurityError camera error as permission error", async () => {
-    Object.defineProperty(navigator, "mediaDevices", {
-      writable: true,
-      configurable: true,
-      value: { getUserMedia: vi.fn().mockRejectedValueOnce(new DOMException("Security", "SecurityError")) },
-    });
+  // The friendly copy reads identically for both permission failures, so the
+  // exception name is what makes a screenshot of this box actionable.
+  it("shows the underlying exception name under the camera error", async () => {
+    await failToOpenCamera(new DOMException("Not allowed", "NotAllowedError"));
 
-    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
-    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByText("NotAllowedError")).toBeInTheDocument());
+  });
+
+  it("handles SecurityError camera error as permission error", async () => {
+    await failToOpenCamera(new DOMException("Security", "SecurityError"));
 
     await waitFor(() => {
       expect(screen.getByText(/Camera access denied/)).toBeInTheDocument();
@@ -165,14 +175,7 @@ describe("VideoRecorder", () => {
   });
 
   it("handles generic camera error", async () => {
-    Object.defineProperty(navigator, "mediaDevices", {
-      writable: true,
-      configurable: true,
-      value: { getUserMedia: vi.fn().mockRejectedValueOnce(new Error("Device not found")) },
-    });
-
-    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
-    await userEvent.click(screen.getByText(/Open Camera/));
+    await failToOpenCamera(new Error("Device not found"));
 
     await waitFor(() => {
       expect(screen.getByText(/Camera unavailable: Device not found/)).toBeInTheDocument();
