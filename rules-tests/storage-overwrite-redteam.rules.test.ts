@@ -35,7 +35,7 @@
  */
 import { describe, it } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
-import { setupStorageRulesTestEnv } from "./_fixtures";
+import { gameVideoPaths, setupStorageRulesTestEnv } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-storage-overwrite-redteam";
 
@@ -64,9 +64,7 @@ function asUserB(): RulesTestContext {
   return getEnv().authenticatedContext(UID_B, { email_verified: true });
 }
 
-function videoPath(role: "set" | "match" = "set", ext: "webm" | "mp4" = "webm"): string {
-  return `games/${GAME_ID}/${TURN_PATH}/${role}.${ext}`;
-}
+const { videoPath } = gameVideoPaths(GAME_ID, TURN_PATH, UID_A);
 
 /**
  * Seed a file owned by the given uid via an authenticated context so

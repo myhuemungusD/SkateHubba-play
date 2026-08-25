@@ -210,7 +210,7 @@ export function ChallengeScreen({
         <div className="w-14" aria-hidden="true" />
       </div>
 
-      <div className="max-w-md mx-auto px-6">
+      <div className="max-w-[430px] mx-auto px-6">
         <h1 className="font-display text-fluid-4xl text-white mb-2">Challenge</h1>
         <p className="font-body text-sm text-muted mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
 

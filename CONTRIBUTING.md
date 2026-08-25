@@ -119,7 +119,7 @@ See [`.github/BRANCH_PROTECTION.md`](.github/BRANCH_PROTECTION.md) for the full 
 
 Before opening a PR, confirm:
 
-- [ ] `npm run verify` passes (`tsc -b && lint && test:coverage && build`)
+- [ ] `npm run verify` passes (`tsc -b && lint && test:coverage && build && check:test-dup`)
 - [ ] New features have tests (unit + smoke + rules tests where applicable)
 - [ ] 100% coverage thresholds on `src/services/**` and `src/hooks/**` still hold
 - [ ] No console.log statements left in code (use `console.warn` for expected error paths only)
@@ -147,7 +147,7 @@ See [docs/TESTING.md](docs/TESTING.md) for patterns and examples.
 
 To keep this repo focused:
 
-- No backend / API servers — this is a Firebase-first app with no application-authored Cloud Functions. The `firestore-send-fcm` Firebase Extension is the one managed exception (Cloud Run dispatcher we configure but do not author); its files live under `extensions/`, outside the `functions/src/` CI gate.
+- No backend / API servers — this is a Firebase-first app. The only approved server-side code is the maintainer-approved stats close-out function (`functions/src/`, pinned to an exact file set by the `verify-no-cloud-functions` CI gate) and the existing narrow `api/` serverless endpoints (cron sweeps, push drain, account deletion, social cards). New code in either location requires maintainer sign-off — see `docs/CHARTER.md` §4.14.
 - No new database engines (PostgreSQL, Redis, etc.)
 - No state management libraries (Redux, Zustand, etc.) — local state + hooks are sufficient
 - No UI component libraries — we use Tailwind with custom components

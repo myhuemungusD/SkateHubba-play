@@ -208,11 +208,11 @@ export async function submitMatchAttempt(
       // "landed" claim is NOT resolved here: it now faces the setter's 24h
       // accept/dispute decision (docs/DISPUTE_BINDING_DESIGN.md §3.3).
       // currentSetter/currentTurn/turnNumber/letters/turnHistory stay pinned
-      // (nothing is written for them). The landed clips and the "Trick Landed"
-      // notification are DEFERRED to acceptLanded / the referee resolution — a
-      // claim that later BAILS must not leave a landed clip or a premature
-      // "you landed" notification behind. reviewFor names the matcher;
-      // reviewDeadline opens the accept window.
+      // (nothing is written for them). The landed clips and the RESULT
+      // notification ("Trick Landed") are DEFERRED to acceptLanded / the
+      // referee resolution — a claim that later BAILS must not leave a landed
+      // clip or a premature "you landed" notification behind. reviewFor names
+      // the matcher; reviewDeadline opens the accept window.
       tx.update(gameRef, {
         phase: "pendingReview",
         reviewFor: matcherUid,
@@ -220,6 +220,25 @@ export async function submitMatchAttempt(
         matchVideoUrl,
         updatedAt: serverTimestamp(),
       });
+
+      // Alert the setter that the accept/dispute window is open — atomically
+      // with the freeze, exactly like the judge branch above. This is NOT the
+      // deferred result notification: it announces the review window, and the
+      // window auto-accepts the claim on expiry, so a setter who never learns
+      // it opened silently loses the turn. It must commit with the freeze or
+      // not at all.
+      writeNotificationInTx(
+        tx,
+        {
+          senderUid: matcherUid,
+          recipientUid: game.currentSetter,
+          type: "your_turn",
+          title: "Land Claimed",
+          body: `@${matcherUsernameVal} claims they landed your trick. Accept or dispute before the timer runs out.`,
+          gameId,
+        },
+        pushOutbox,
+      );
 
       return {
         outcome: "pending_review" as const,

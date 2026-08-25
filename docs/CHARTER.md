@@ -140,7 +140,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - React 19.2 + Vite 8 (SPA only — no SSR)
 - TypeScript 5.6 strict
 - Tailwind CSS 4 — **CSS-based config in `src/index.css`** via `@import "tailwindcss"` + `@theme { ... }`. No `tailwind.config.js`.
-- React Router DOM v7 (all routes in `App.tsx`; transitions via `NavigationContext.setScreen`)
+- React Router v8 (`react-router` package; all routes in `App.tsx`; transitions via `NavigationContext.setScreen`)
 - Bebas Neue (display) + DM Sans (body)
 - Single-package architecture (npm, Node 22+; no pnpm, no workspaces)
 - React Context for state (Auth, Navigation, Game, Notification, Onboarding) — no Redux/Zustand/MobX/TanStack Query
@@ -289,7 +289,7 @@ SkateHubba-play/
 ### 4.11 Firestore collections
 
 ```
-users/{uid}                          — public profile, stance, stats, emailVerified
+users/{uid}                          — public profile, stance, stats, avatar URL
 users/{uid}/private/profile          — owner-only: fcmTokens, sensitive flags
 usernames/{username}                 — uid reservation mapping
 games/{gameId}                       — full game state, turns, scores, timers
@@ -306,18 +306,22 @@ billingAlerts/{id}
 
 ### 4.12 Production dependencies (approved majors)
 
-React 19.2, react-dom 19.2, react-router-dom 7, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 3, @vercel/analytics 2, @vercel/speed-insights 2, @capacitor/core 8 (+ android/ios/camera/haptics/splash-screen/push-notifications), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
+React 19.2, react-dom 19.2, react-router 8, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 3, @vercel/analytics 2, @vercel/speed-insights 2, @capacitor/core 8 (+ android/ios/camera/haptics/splash-screen/push-notifications), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
 
 These are the approved majors. Minors and patches track upstream via the caret ranges in `package.json`; `package-lock.json` is the deterministic record installed in CI and in production. New production deps require written justification and Chief Engineer approval.
 
 ### 4.13 Documentation index (`docs/`)
 
 ```
-API.md, ARCHITECTURE.md, CHARTER.md (this file), DATABASE.md, DECISIONS.md,
-DEPLOYMENT.md, DEVELOPMENT.md, GAME_MECHANICS.md, GAME_STATE_MACHINE.md,
-NOTIFICATION_AUDIT.md, P0-SECURITY-AUDIT.md, PERMISSION_DENIED_RUNBOOK.md,
-SENTRY_ALERTS.md, STATUS_REPORT.md, TESTING.md
-archive/   — superseded audits (COMPREHENSIVE_GAP_ANALYSIS, etc.)
+API.md, APPCHECK_ROLLOUT.md, APP_STORE_PRIVACY.md, ARCHITECTURE.md,
+CHARTER.md (this file), DATABASE.md, DECISIONS.md, DEPLOYMENT.md,
+DEVELOPMENT.md, DISPUTE_BINDING_DESIGN.md, ECONOMY.md, GAME_MECHANICS.md,
+GAME_STATE_MACHINE.md, MAPBOX_STYLE.md, NOTIFICATION_AUDIT.md,
+P0-SECURITY-AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md,
+STATUS_REPORT.md, STORE_PRIVACY_ANSWERS.md, TESTING.md
+archive/   — superseded audits (COMPREHENSIVE_GAP_ANALYSIS, AUDIT_2026-05 +
+             ALIGNMENT, PENTEST_2026-05-22, SECURITY_SCAN_2026-07-30,
+             STATS_AUDIT, IDEAS_PRO_SKATER_PRIZE, etc.)
 screenshots/
 ```
 
@@ -355,7 +359,7 @@ screenshots/
 - No deep nesting
 - Files readable in isolation
 - Services layer holds all Firebase SDK calls; components never import Firebase directly
-- Routing via `react-router-dom` only; transitions through `NavigationContext.setScreen`
+- Routing via `react-router` only; transitions through `NavigationContext.setScreen`
 
 ### 5.3 UX & accessibility
 

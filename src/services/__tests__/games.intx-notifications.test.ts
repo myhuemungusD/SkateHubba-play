@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import {
   installGamesTestBeforeEach,
@@ -19,7 +19,32 @@ import {
   resolveDispute,
 } from "../games";
 
+/* ── capture push-outbox drains ──────────────────────────────────
+ * The outbox itself is created inside each service function, so the only
+ * observation point is the drain call after runTransaction returns. Keep
+ * create/reset real (tx-retry semantics stay under test) and swap only the
+ * drain, which would otherwise do real /pushTargets reads.
+ */
+const pushHoisted = vi.hoisted(() => ({ drained: [] as unknown[][] }));
+
+vi.mock("../pushDispatch", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../pushDispatch")>();
+  return {
+    ...actual,
+    drainPushDispatchOutbox: vi.fn(async (outbox: { staged: unknown[] }) => {
+      pushHoisted.drained.push([...outbox.staged]);
+      outbox.staged.length = 0;
+    }),
+  };
+});
+
+const drainedPushes = pushHoisted.drained;
+
 installGamesTestBeforeEach();
+
+beforeEach(() => {
+  drainedPushes.length = 0;
+});
 
 /* ── H-G9 regression: notifications staged inside transactions ─── */
 
@@ -57,7 +82,7 @@ describe("games service", () => {
       expect(notif?.title).toBe("Your Turn to Set!");
     });
 
-    it("submitMatchAttempt (honor-system landed) FREEZES without staging any notification", async () => {
+    it("submitMatchAttempt (honor-system landed) stages the setter's review-window alert in-tx", async () => {
       const matching = {
         ...baseGame,
         phase: "matching",
@@ -68,10 +93,22 @@ describe("games service", () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(matching));
       await submitMatchAttempt("g1", null, true);
 
-      // The claim now freezes into pendingReview; the "Trick Landed"
-      // notification is deferred to acceptLanded (covered in games.match.test),
-      // so nothing is staged in this transaction.
-      expect(mockTxSetCalls).toHaveLength(0);
+      // The claim freezes into pendingReview and auto-accepts on expiry, so
+      // the setter MUST be told the window opened — atomically with the
+      // freeze. The "Trick Landed" RESULT notification stays deferred to
+      // acceptLanded (covered in games.match.test).
+      expect(mockTxSetCalls).toHaveLength(1);
+      const notif = findInTxNotification("your_turn", "p1");
+      expect(notif).toBeDefined();
+      expect(notif?.senderUid).toBe("p2"); // matcher
+      expect(notif?.title).toBe("Land Claimed");
+
+      // …and the OS push for it is staged in the outbox, drained after the
+      // transaction commits (never inside it).
+      expect(drainedPushes).toHaveLength(1);
+      expect(drainedPushes[0]).toEqual([
+        expect.objectContaining({ recipientUid: "p1", senderUid: "p2", type: "your_turn", title: "Land Claimed" }),
+      ]);
     });
 
     it("submitMatchAttempt (missed, game over) stages a game_won notification in-tx", async () => {

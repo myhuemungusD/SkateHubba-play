@@ -83,7 +83,7 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 | Testing   | Vitest, @testing-library/react, Playwright (E2E)             |
 | CI        | GitHub Actions                                               |
 
-No custom backend. No application-authored Cloud Functions. The client talks directly to Firebase with security enforced by Firestore rules. The one managed exception is the `firestore-send-fcm` Firebase Extension, which provisions a Cloud Run push dispatcher we configure but do not author.
+No custom backend for game logic — the client talks directly to Firebase with security enforced by Firestore rules. The only server-side code is the maintainer-approved stats close-out Cloud Function (pinned by CI to an exact file set) and a handful of narrow `api/` serverless endpoints: scheduled sweeps for expired turns and disputes, FCM push delivery, account deletion, and social cards for shared `/player` links.
 
 ---
 
@@ -110,10 +110,10 @@ No custom backend. No application-authored Cloud Functions. The client talks dir
 - **Invite & share** — SMS, link copy, and native share for invites and trick clips
 - **Push notifications** — FCM "your turn" alerts that deep-link into the game
 - **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips
-- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules _(vote-driven ranking in progress)_
+- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
-- **Spots map** _(in progress)_ — geo-tagged skate spots with gnar rating + bust risk
+- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, and challenge-from-spot
 
 ### Platform
 
@@ -145,23 +145,30 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 
 ## Scripts
 
-| Command                    | Description                                                   |
-| -------------------------- | ------------------------------------------------------------- |
-| `npm run dev`              | Start the Vite dev server at `http://localhost:5173`          |
-| `npm run build`            | Type-check + production build → `dist/`                       |
-| `npm run preview`          | Preview the production build locally                          |
-| `npm test`                 | Run the unit + component test suite once                      |
-| `npm run test:watch`       | Run tests in watch mode                                       |
-| `npm run test:coverage`    | Run tests with coverage report (CI gate)                      |
-| `npm run test:rules`       | Run Firestore security-rules tests against the rules emulator |
-| `npm run test:e2e`         | Run Playwright E2E tests (auto-starts emulators)              |
-| `npm run lint`             | Lint source files with ESLint                                 |
-| `npm run lint:fix`         | Lint and auto-fix where possible                              |
-| `npm run format`           | Format `src/**/*.{ts,tsx}` with Prettier                      |
-| `npm run emulators`        | Start the Firebase emulator suite locally                     |
-| `npm run cap:sync`         | Sync the web build into iOS/Android Capacitor projects        |
-| `npm run cap:open:ios`     | Open the iOS project in Xcode                                 |
-| `npm run cap:open:android` | Open the Android project in Android Studio                    |
+| Command                     | Description                                                   |
+| --------------------------- | ------------------------------------------------------------- |
+| `npm run dev`               | Start the Vite dev server at `http://localhost:5173`          |
+| `npm run build`             | Type-check + production build → `dist/`                       |
+| `npm run preview`           | Preview the production build locally                          |
+| `npm run typecheck`         | Run `tsc -b` only                                             |
+| `npm test`                  | Run the unit + component test suite once                      |
+| `npm run test:watch`        | Run tests in watch mode                                       |
+| `npm run test:coverage`     | Run tests with coverage report (CI gate)                      |
+| `npm run test:rules`        | Run Firestore security-rules tests against the rules emulator |
+| `npm run test:e2e`          | Run Playwright E2E tests (auto-starts emulators)              |
+| `npm run test:e2e:ui`       | Same as above in the Playwright UI runner                     |
+| `npm run lint`              | Lint `src/` and `api/` with ESLint                            |
+| `npm run lint:fix`          | Lint and auto-fix where possible                              |
+| `npm run format`            | Format `src/**/*.{ts,tsx}` with Prettier                      |
+| `npm run check:test-dup`    | Flag duplicated test cases (CI gate)                          |
+| `npm run check:file-length` | Report files over the LOC budgets (non-blocking)              |
+| `npm run verify`            | Full CI gate: type-check, lint, coverage, build, test-dup     |
+| `npm run emulators`         | Start the Firebase emulator suite locally                     |
+| `npm run cap:sync`          | Sync the web build into iOS/Android Capacitor projects        |
+| `npm run cap:open:ios`      | Open the iOS project in Xcode                                 |
+| `npm run cap:open:android`  | Open the Android project in Android Studio                    |
+| `npm run cap:run:ios`       | Build and run the app on an iOS device/simulator              |
+| `npm run cap:run:android`   | Build and run the app on an Android device/emulator           |
 
 ---
 
@@ -194,6 +201,8 @@ skatehubba-play/
 │   ├── lib/                   # Third-party bridges (Sentry, Mapbox)
 │   ├── utils/                 # Helpers, retry logic, error parsing
 │   └── types/                 # Shared TypeScript types
+├── api/                       # Vercel serverless endpoints (cron sweeps, push drain, account deletion, social cards)
+├── functions/                 # Maintainer-approved stats close-out Cloud Function (CI-pinned file set)
 ├── e2e/                       # Playwright E2E tests (auth, game, map)
 ├── rules-tests/               # Firestore rules unit tests (clips, spots, notifications)
 ├── docs/                      # Documentation suite
@@ -253,6 +262,8 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 | [docs/GAME_STATE_MACHINE.md](docs/GAME_STATE_MACHINE.md) | State transitions and lifecycle             |
 | [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md)           | Per-feature completion status               |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                   | Architecture decision records               |
+| [ROADMAP.md](ROADMAP.md)                                 | Direction, exit criteria, and the icebox    |
+| [docs/ECONOMY.md](docs/ECONOMY.md)                       | Long-term economy and creator ecosystem     |
 | [CONTRIBUTING.md](CONTRIBUTING.md)                       | How to contribute                           |
 | [SECURITY.md](SECURITY.md)                               | Security policy and vulnerability reporting |
 | [CHANGELOG.md](CHANGELOG.md)                             | Version history                             |
@@ -329,7 +340,7 @@ Each step maps 1:1 to a tracked event. Drop-off between any two stages is visibl
 
 ## Roadmap: Async Gameplay → Network Effects
 
-For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md).
+For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md). For direction, exit criteria, and what's deliberately parked, see [ROADMAP.md](ROADMAP.md).
 
 > **Legend:** ✅ shipped · 🚧 in progress · 🧑‍⚖️ in review · 🧊 deferred · ⏳ planned
 
@@ -356,8 +367,8 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 - ✅ **Block & report** — moderation tooling backed by Firestore rules
 - ✅ **Cross-game clips feed** — landed tricks become a discovery surface with an autoplaying top-slot that rotates through the visible clips
 - ✅ **Clip upvotes** — single-tap, no-undo upvotes on every clip (per-vote rules + double-vote guard)
-- 🚧 **Vote-driven clip ranking** — promote the feed from chronological to upvote-ranked (next up)
-- 🧊 **Spectator mode** — deferred; revisit after vote-driven ranking lands
+- ✅ **Vote-driven clip ranking** — feed defaults to upvote-ranked with a Top/New toggle and a fallback to chronological if the composite index is missing
+- 🧊 **Spectator mode** — deferred; eligible for revisit now that ranked clips produce engagement data
 
 ### Phase 4 — Network Effects Flywheel 🟡 in progress
 

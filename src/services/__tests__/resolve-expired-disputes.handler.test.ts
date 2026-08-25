@@ -317,6 +317,7 @@ describe("resolve handler — communityReview verdicts (binding + stats + close-
     const gw = txUpdate.mock.calls[0][1] as Record<string, unknown>;
     expect(gw.phase).toBe("setting");
     expect(gw.currentSetter).toBe("p2");
+    expect(gw.lastResolvedDisputeTurnNumber).toBe(3);
 
     const { claimer, disputer } = statWrites(txSet);
     expect(claimer.tricksDisputed).toEqual({ __inc: 1 });
@@ -328,7 +329,9 @@ describe("resolve handler — communityReview verdicts (binding + stats + close-
     expect(setsOfKind(txSet, "clip").length).toBeGreaterThan(0);
 
     const d = disputeWrite(txSet);
-    expect(d).toMatchObject({ status: "resolved", verdict: "land", resolutionApplied: true });
+    // 'closed' is the DisputeStatus the client mapper understands; anything
+    // else read back as 'open'.
+    expect(d).toMatchObject({ status: "closed", verdict: "land", resolutionApplied: true });
   });
 
   it("zero-vote 'none' → same honor swap, raw counts increment, no right/wrong, verdict none", async () => {
@@ -411,20 +414,23 @@ describe("resolve handler — communityReview verdicts (binding + stats + close-
     expect(disputeWrite(txSet)).toMatchObject({ verdict: "tie" });
   });
 
-  it("IDEMPOTENT: an already-resolved dispute no-ops (no stats, no game write)", async () => {
-    const { db, txUpdate, txSet } = makeDb({
-      game: rawGame({ phase: "communityReview" }),
-      dispute: { status: "resolved", resolutionApplied: true, verdict: "land", landVotes: 2, bailVotes: 0 },
-    });
-    getFirestoreMock.mockReturnValue(db);
+  it.each(["closed", "resolved"])(
+    "IDEMPOTENT: an already-%s dispute no-ops (no stats, no game write)",
+    async (status) => {
+      const { db, txUpdate, txSet } = makeDb({
+        game: rawGame({ phase: "communityReview" }),
+        dispute: { status, resolutionApplied: true, verdict: "land", landVotes: 2, bailVotes: 0 },
+      });
+      getFirestoreMock.mockReturnValue(db);
 
-    const { res, out } = makeRes();
-    await handler(authedGet(), res);
+      const { res, out } = makeRes();
+      await handler(authedGet(), res);
 
-    expect(out.body).toMatchObject({ scanned: 1, resolved: 0, skipped: 1 });
-    expect(txUpdate).not.toHaveBeenCalled();
-    expect(setsOfKind(txSet, "user")).toHaveLength(0);
-  });
+      expect(out.body).toMatchObject({ scanned: 1, resolved: 0, skipped: 1 });
+      expect(txUpdate).not.toHaveBeenCalled();
+      expect(setsOfKind(txSet, "user")).toHaveLength(0);
+    },
+  );
 
   it("skips a communityReview game whose dispute doc is missing (no fabricated write)", async () => {
     const { db, txUpdate, txSet } = makeDb({ game: rawGame({ phase: "communityReview" }), dispute: null });

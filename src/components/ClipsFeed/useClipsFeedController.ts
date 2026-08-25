@@ -7,26 +7,16 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  AlreadyUpvotedError,
-  NotUpvotedError,
-  fetchClipUpvoteState,
-  fetchClipsFeed,
-  removeUpvote,
-  upvoteClip,
-  type ClipDoc,
-  type ClipUpvoteState,
-  type ClipsFeedSort,
-} from "../../services/clips";
+import { fetchClipsFeed, type ClipDoc, type ClipsFeedSort } from "../../services/clips";
+import { fetchClipVoteState, removeClipVote, voteClip, type ClipVoteState } from "../../services/clips.upvotes";
 import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
 import { parseFirebaseError } from "../../utils/helpers";
 import { useBlockedUsers } from "../../hooks/useBlockedUsers";
+import { NO_VOTE, applyVote, nextVoteFor, sameVoteState, type VoteValue } from "./clipVoteMath";
 import { copyForError, errorCodeFor } from "./utils";
 
 const PAGE_SIZE = 12;
-
-const NO_VOTE: ClipUpvoteState = { count: 0, alreadyUpvoted: false };
 
 export function useClipsFeedController(viewerUid: string) {
   const [sort, setSort] = useState<ClipsFeedSort>("top");
@@ -35,10 +25,11 @@ export function useClipsFeedController(viewerUid: string) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  // Clips removed from THIS session's feed: reported (hidden immediately so
-  // the reporter stops seeing the content) or thumbed down (passed).
+  // Clips removed from THIS session's feed. Reporting is now the only thing
+  // that does this — a thumbs down is a rating the clip carries, not a "hide
+  // it from me", so it deliberately leaves the clip in place.
   const [dismissedClipIds, setDismissedClipIds] = useState<ReadonlySet<string>>(new Set());
-  const [upvoteState, setUpvoteState] = useState<ReadonlyMap<string, ClipUpvoteState>>(new Map());
+  const [voteState, setVoteState] = useState<ReadonlyMap<string, ClipVoteState>>(new Map());
   const [votingIds, setVotingIds] = useState<ReadonlySet<string>>(new Set());
 
   const blockedUids = useBlockedUsers(viewerUid);
@@ -62,10 +53,10 @@ export function useClipsFeedController(viewerUid: string) {
   useEffect(() => {
     votingIdsRef.current = votingIds;
   }, [votingIds]);
-  const upvoteStateRef = useRef<ReadonlyMap<string, ClipUpvoteState>>(upvoteState);
+  const voteStateRef = useRef<ReadonlyMap<string, ClipVoteState>>(voteState);
   useEffect(() => {
-    upvoteStateRef.current = upvoteState;
-  }, [upvoteState]);
+    voteStateRef.current = voteState;
+  }, [voteState]);
   // sortRef lets the vote handlers tag analytics with the active sort
   // without rebuilding the callbacks when the user toggles Top/New.
   const sortRef = useRef<ClipsFeedSort>(sort);
@@ -91,22 +82,22 @@ export function useClipsFeedController(viewerUid: string) {
   }, []);
 
   /**
-   * Hydrate upvote state for a freshly-loaded pool. The service reads the
-   * denormalized `upvoteCount` off the clip docs and batches the viewer's
-   * vote-doc check into a single `where(__name__, in, [...])` query — at
-   * PAGE_SIZE=12 that is 1 read total. Own clips are filtered inside the
-   * service since self-upvote is rejected there.
+   * Hydrate vote state for a freshly-loaded pool. The service reads the
+   * denormalized `upvoteCount` / `downvoteCount` off the clip docs and batches
+   * the viewer's vote-doc check into a single `where(__name__, in, [...])`
+   * query — at PAGE_SIZE=12 that is 1 read total.
    *
-   * Best-effort: a page-wide failure leaves the seeded count + not-upvoted
-   * state in place so the UI still renders accurate vote counts.
+   * Best-effort: a page-wide failure leaves the seeded counts and a null
+   * `myVote` in place, so the tallies still render and only the viewer's own
+   * highlight is missing.
    */
-  const hydrateUpvotes = useCallback(
+  const hydrateVotes = useCallback(
     async (pageClips: readonly ClipDoc[]) => {
       if (pageClips.length === 0) return;
       try {
-        const map = await fetchClipUpvoteState(viewerUid, pageClips);
+        const map = await fetchClipVoteState(viewerUid, pageClips);
         if (!mountedRef.current) return;
-        setUpvoteState((prev) => {
+        setVoteState((prev) => {
           const next = new Map(prev);
           for (const [id, state] of map) {
             // Race guard: don't clobber an in-flight optimistic vote with the
@@ -117,7 +108,7 @@ export function useClipsFeedController(viewerUid: string) {
           return next;
         });
       } catch (err) {
-        logger.warn("clips_feed_upvote_hydrate_failed", { error: parseFirebaseError(err) });
+        logger.warn("clips_feed_vote_hydrate_failed", { error: parseFirebaseError(err) });
       }
     },
     [viewerUid],
@@ -134,7 +125,7 @@ export function useClipsFeedController(viewerUid: string) {
       setCurrentIndex(0);
       // Hydration is fire-and-forget — spotlight renders immediately,
       // vote counts pop in once the batch resolves.
-      void hydrateUpvotes(page.clips);
+      void hydrateVotes(page.clips);
     } catch (err) {
       const code = errorCodeFor(err);
       logger.warn("clips_feed_load_failed", { code, error: parseFirebaseError(err) });
@@ -145,7 +136,7 @@ export function useClipsFeedController(viewerUid: string) {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [hydrateUpvotes, sort]);
+  }, [hydrateVotes, sort]);
 
   useEffect(() => {
     loadPool();
@@ -184,31 +175,44 @@ export function useClipsFeedController(viewerUid: string) {
     });
   }, []);
 
-  const handleUpvote = useCallback(
-    async (clip: ClipDoc) => {
+  /**
+   * Cast, flip, or withdraw a vote.
+   *
+   * Both thumbs are toggles over the same single vote doc, so they share one
+   * handler: tapping the thumb you already gave withdraws it, tapping the
+   * other flips it. A downvote is a real, persisted negative tally now — it
+   * does NOT hide the clip. Passing on a clip is what NEXT TRICK is for, and
+   * conflating the two meant a viewer who wanted to register "that was not a
+   * make" also lost the clip they were about to comment on.
+   *
+   * Self-votes are rejected here as well as in the UI: `isOwnClip` disables
+   * the controls, but the handler is the guard that survives a stale prop.
+   */
+  const castVote = useCallback(
+    async (clip: ClipDoc, pressed: 1 | -1) => {
       if (clip.playerUid === viewerUid) return;
       // Read the latest state from refs so this callback's identity stays
       // stable across vote-map / votingIds mutations.
-      const current = upvoteStateRef.current.get(clip.id) ?? NO_VOTE;
-      if (current.alreadyUpvoted || votingIdsRef.current.has(clip.id)) return;
+      if (votingIdsRef.current.has(clip.id)) return;
+      const current = voteStateRef.current.get(clip.id) ?? NO_VOTE;
+      const next: VoteValue = nextVoteFor(current, pressed);
 
       beginVote(clip.id);
-      const optimistic: ClipUpvoteState = { count: current.count + 1, alreadyUpvoted: true };
-      setUpvoteState((prev) => new Map(prev).set(clip.id, optimistic));
+      const optimistic = applyVote(current, next);
+      setVoteState((prev) => new Map(prev).set(clip.id, optimistic));
 
       try {
-        const nextCount = await upvoteClip(viewerUid, clip.id);
+        const confirmed =
+          next === null ? await removeClipVote(viewerUid, clip.id) : await voteClip(viewerUid, clip.id, next);
         if (!mountedRef.current) return;
-        // Fire on success so AlreadyUpvotedError replays don't double-count.
-        // trackEvent is consent-gated inside services/analytics.
-        trackEvent("clip_upvoted", { clipId: clip.id, fromSort: sortRef.current, newCount: nextCount });
-        setUpvoteState((prev) => new Map(prev).set(clip.id, { count: nextCount, alreadyUpvoted: true }));
+        // Fire on success so a retried write can't double-count. trackEvent is
+        // consent-gated inside services/analytics.
+        trackEvent("clip_voted", { clipId: clip.id, fromSort: sortRef.current, vote: next ?? 0 });
+        setVoteState((prev) => new Map(prev).set(clip.id, confirmed));
       } catch (err) {
-        // Already-upvoted means the server agrees with our optimistic state.
-        if (err instanceof AlreadyUpvotedError) return;
-        logger.warn("clips_feed_upvote_failed", { clipId: clip.id, error: parseFirebaseError(err) });
+        logger.warn("clips_feed_vote_failed", { clipId: clip.id, vote: next ?? 0, error: parseFirebaseError(err) });
         if (!mountedRef.current) return;
-        rollback(setUpvoteState, clip.id, optimistic, current);
+        rollback(setVoteState, clip.id, optimistic, current);
       } finally {
         endVote(clip.id);
       }
@@ -216,49 +220,8 @@ export function useClipsFeedController(viewerUid: string) {
     [viewerUid, beginVote, endVote],
   );
 
-  /**
-   * Thumbs down: always drops the clip from this session's feed, and — when
-   * the viewer had previously thumbed it up — withdraws that vote server-side
-   * via `removeUpvote`. There is no negative tally in the data model, so this
-   * is "take it back / not for me", not a dislike counter.
-   */
-  const handleDownvote = useCallback(
-    async (clip: ClipDoc) => {
-      if (clip.playerUid === viewerUid) return;
-      if (votingIdsRef.current.has(clip.id)) return;
-
-      const current = upvoteStateRef.current.get(clip.id) ?? NO_VOTE;
-      // Dismiss first: the clip leaves the feed on this tap either way, and
-      // doing it up front keeps the UI responsive while the write is in
-      // flight. `visibleClips` recomputes, so the next clip slides in.
-      dismissClip(clip.id);
-
-      if (!current.alreadyUpvoted) {
-        trackEvent("clip_passed", { clipId: clip.id, fromSort: sortRef.current });
-        return;
-      }
-
-      beginVote(clip.id);
-      const optimistic: ClipUpvoteState = { count: Math.max(0, current.count - 1), alreadyUpvoted: false };
-      setUpvoteState((prev) => new Map(prev).set(clip.id, optimistic));
-
-      try {
-        const nextCount = await removeUpvote(viewerUid, clip.id);
-        if (!mountedRef.current) return;
-        trackEvent("clip_upvote_withdrawn", { clipId: clip.id, fromSort: sortRef.current, newCount: nextCount });
-        setUpvoteState((prev) => new Map(prev).set(clip.id, { count: nextCount, alreadyUpvoted: false }));
-      } catch (err) {
-        // No vote to withdraw — the server already agrees with our state.
-        if (err instanceof NotUpvotedError) return;
-        logger.warn("clips_feed_downvote_failed", { clipId: clip.id, error: parseFirebaseError(err) });
-        if (!mountedRef.current) return;
-        rollback(setUpvoteState, clip.id, optimistic, current);
-      } finally {
-        endVote(clip.id);
-      }
-    },
-    [viewerUid, beginVote, endVote, dismissClip],
-  );
+  const handleUpvote = useCallback((clip: ClipDoc) => castVote(clip, 1), [castVote]);
+  const handleDownvote = useCallback((clip: ClipDoc) => castVote(clip, -1), [castVote]);
 
   const handleSortChange = useCallback(
     (next: ClipsFeedSort) => {
@@ -281,7 +244,7 @@ export function useClipsFeedController(viewerUid: string) {
     nextClip,
     safeIndex,
     exhausted,
-    upvoteFor: (clipId: string) => upvoteState.get(clipId) ?? NO_VOTE,
+    voteFor: (clipId: string) => voteState.get(clipId) ?? NO_VOTE,
     isVoting: (clipId: string) => votingIds.has(clipId),
     loadPool,
     handleNext,
@@ -299,16 +262,14 @@ export function useClipsFeedController(viewerUid: string) {
  * the server has since moved past.
  */
 function rollback(
-  setState: React.Dispatch<React.SetStateAction<ReadonlyMap<string, ClipUpvoteState>>>,
+  setState: React.Dispatch<React.SetStateAction<ReadonlyMap<string, ClipVoteState>>>,
   clipId: string,
-  optimistic: ClipUpvoteState,
-  previous: ClipUpvoteState,
+  optimistic: ClipVoteState,
+  previous: ClipVoteState,
 ): void {
   setState((prev) => {
     const cur = prev.get(clipId);
-    if (!cur || cur.count !== optimistic.count || cur.alreadyUpvoted !== optimistic.alreadyUpvoted) {
-      return prev;
-    }
+    if (!cur || !sameVoteState(cur, optimistic)) return prev;
     return new Map(prev).set(clipId, previous);
   });
 }

@@ -56,7 +56,7 @@ vi.mock("../analytics", () => ({
   },
 }));
 
-import { uploadVideo, deleteGameVideos } from "../storage";
+import { uploadVideo, uploadUserClip, deleteGameVideos, deleteUserClipVideo } from "../storage";
 
 /** Create a blob that passes the min-size (>1 KB) validation. */
 function validBlob(type = "video/webm"): Blob {
@@ -81,13 +81,26 @@ describe("storage service", () => {
       const blob = validBlob();
       const url = await uploadVideo("game1", 3, "set", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-3/set.webm");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-3/set-test-uid.webm");
       expect(mockUploadBytesResumable).toHaveBeenCalledWith(
-        "games/game1/turn-3/set.webm",
+        "games/game1/turn-3/set-test-uid.webm",
         blob,
         expect.objectContaining({ contentType: "video/webm" }),
       );
       expect(url).toBe("https://cdn.example.com/video.webm");
+    });
+
+    it("suffixes the filename with the uploader uid so no other account can squat the path", async () => {
+      // Anti-griefing contract with storage.rules: the create rule pins
+      // fileName to `{role}-{request.auth.uid}.{ext}`. If this builder ever
+      // drops the uid, every game upload starts failing AND the squat attack
+      // (pre-creating the victim's next path to force a timer forfeit) is
+      // back. Assert the bare legacy name is never produced.
+      await uploadVideo("game1", 4, "match", validBlob());
+
+      const path = mockRef.mock.calls[0][1];
+      expect(path).toBe("games/game1/turn-4/match-test-uid.webm");
+      expect(path).not.toBe("games/game1/turn-4/match.webm");
     });
 
     it("sets correct custom metadata", async () => {
@@ -286,9 +299,9 @@ describe("storage service", () => {
       const blob = validBlob("video/mp4");
       const url = await uploadVideo("game1", 1, "set", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.mp4");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set-test-uid.mp4");
       expect(mockUploadBytesResumable).toHaveBeenCalledWith(
-        "games/game1/turn-1/set.mp4",
+        "games/game1/turn-1/set-test-uid.mp4",
         blob,
         expect.objectContaining({ contentType: "video/mp4" }),
       );
@@ -344,7 +357,7 @@ describe("storage service", () => {
 
       await uploadVideo("game1", 1, "set", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.mp4");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set-test-uid.mp4");
       const [, uploadedBlob, options] = mockUploadBytesResumable.mock.calls[0];
       expect(options.contentType).toBe("video/mp4");
       // Blob was rewrapped with the coerced content-type so the SDK's
@@ -359,7 +372,7 @@ describe("storage service", () => {
 
       await uploadVideo("game1", 1, "set", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set.webm");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/set-test-uid.webm");
       const [, uploadedBlob, options] = mockUploadBytesResumable.mock.calls[0];
       expect(options.contentType).toBe("video/webm");
       expect((uploadedBlob as Blob).type).toBe("video/webm");
@@ -373,7 +386,7 @@ describe("storage service", () => {
 
       await uploadVideo("game1", 1, "match", blob);
 
-      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/match.mp4");
+      expect(mockRef).toHaveBeenCalledWith(expect.anything(), "games/game1/turn-1/match-test-uid.mp4");
       const [, uploadedBlob, options] = mockUploadBytesResumable.mock.calls[0];
       expect(options.contentType).toBe("video/mp4");
       expect((uploadedBlob as Blob).type).toBe("video/mp4");
@@ -523,5 +536,118 @@ describe("storage service", () => {
       const deleted = await deleteGameVideos("g1");
       expect(deleted).toBe(0);
     });
+  });
+});
+
+/* ── user-posted clips ──────────────────────────────────────── */
+
+describe("uploadUserClip", () => {
+  it("uploads under the caller's own userClips prefix and returns the URL", async () => {
+    const url = await uploadUserClip("test-uid", "uc1", validBlob());
+
+    expect(mockRef).toHaveBeenCalledWith(expect.anything(), "userClips/test-uid/uc1.webm");
+    expect(url).toBe("https://cdn.example.com/video.webm");
+  });
+
+  it("uses the mp4 extension and content-type for a native blob", async () => {
+    await uploadUserClip("test-uid", "uc1", validBlob("video/mp4"));
+
+    expect(mockRef).toHaveBeenCalledWith(expect.anything(), "userClips/test-uid/uc1.mp4");
+    expect(mockUploadBytesResumable.mock.calls[0][2].contentType).toBe("video/mp4");
+  });
+
+  it("binds uploaderUid and the clip id into the object metadata", async () => {
+    await uploadUserClip("test-uid", "uc1", validBlob());
+
+    const metadata = mockUploadBytesResumable.mock.calls[0][2];
+    expect(metadata.customMetadata.uploaderUid).toBe("test-uid");
+    expect(metadata.customMetadata.clipId).toBe("uc1");
+    // No game to attribute the upload to — those keys must be absent.
+    expect(metadata.customMetadata.gameId).toBeUndefined();
+    expect(metadata.cacheControl).toBe("public, max-age=31536000, immutable");
+  });
+
+  it("shares the size bounds with the game upload path", async () => {
+    const tiny = new Blob(["x"], { type: "video/webm" });
+    Object.defineProperty(tiny, "size", { value: 1024 });
+    await expect(uploadUserClip("test-uid", "uc1", tiny)).rejects.toThrow(/too small/);
+
+    const huge = new Blob(["x"], { type: "video/webm" });
+    Object.defineProperty(huge, "size", { value: 50 * 1024 * 1024 });
+    await expect(uploadUserClip("test-uid", "uc1", huge)).rejects.toThrow(/50 MB/);
+  });
+
+  it("refuses to upload into another user's prefix", async () => {
+    await expect(uploadUserClip("someone-else", "uc1", validBlob())).rejects.toThrow(/must be signed in/);
+    expect(mockUploadBytesResumable).not.toHaveBeenCalled();
+  });
+
+  it("rejects path segments that would escape the prefix", async () => {
+    await expect(uploadUserClip("", "uc1", validBlob())).rejects.toThrow(/Invalid user id/);
+    await expect(uploadUserClip("a/b", "uc1", validBlob())).rejects.toThrow(/Invalid user id/);
+    await expect(uploadUserClip("test-uid", "", validBlob())).rejects.toThrow(/Invalid clip id/);
+    await expect(uploadUserClip("test-uid", "../x", validBlob())).rejects.toThrow(/Invalid clip id/);
+    expect(mockUploadBytesResumable).not.toHaveBeenCalled();
+  });
+
+  it("rejects immediately when the signal is already aborted", async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(uploadUserClip("test-uid", "uc1", validBlob(), undefined, 2, controller.signal)).rejects.toThrow(
+      /cancelled/,
+    );
+    expect(mockUploadBytesResumable).not.toHaveBeenCalled();
+  });
+
+  it("reports progress through the shared upload core", async () => {
+    const progressFn = vi.fn();
+    mockUploadBytesResumable.mockImplementation(() => ({
+      snapshot: { ref: "mock-ref" },
+      on: vi.fn((_event: string, progress: (s: unknown) => void, _error: unknown, complete: () => void) => {
+        progress({ bytesTransferred: 512, totalBytes: 2048 });
+        complete();
+      }),
+    }));
+
+    await uploadUserClip("test-uid", "uc1", validBlob(), progressFn);
+
+    expect(progressFn).toHaveBeenCalledWith({ bytesTransferred: 512, totalBytes: 2048, percent: 25 });
+  });
+});
+
+describe("deleteUserClipVideo", () => {
+  it("attempts both candidate extensions and counts what it removed", async () => {
+    const deleted = await deleteUserClipVideo("u1", "uc1");
+
+    expect(mockRef).toHaveBeenCalledWith(expect.anything(), "userClips/u1/uc1.webm");
+    expect(mockRef).toHaveBeenCalledWith(expect.anything(), "userClips/u1/uc1.mp4");
+    expect(deleted).toBe(2);
+  });
+
+  it("does not count the extension that was never written", async () => {
+    mockDeleteObject
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "storage/object-not-found" }));
+
+    await expect(deleteUserClipVideo("u1", "uc1")).resolves.toBe(1);
+  });
+
+  it("survives a real delete failure without throwing", async () => {
+    mockDeleteObject.mockRejectedValue(new Error("network down"));
+
+    await expect(deleteUserClipVideo("u1", "uc1")).resolves.toBe(0);
+  });
+
+  it("logs a non-Error rejection without crashing on `.message`", async () => {
+    mockDeleteObject.mockRejectedValue("just a string");
+
+    await expect(deleteUserClipVideo("u1", "uc1")).resolves.toBe(0);
+  });
+
+  it("is a no-op on unusable path segments", async () => {
+    await expect(deleteUserClipVideo("", "uc1")).resolves.toBe(0);
+    await expect(deleteUserClipVideo("u1", "a/b")).resolves.toBe(0);
+    expect(mockDeleteObject).not.toHaveBeenCalled();
   });
 });

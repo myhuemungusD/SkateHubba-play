@@ -24,6 +24,7 @@ const mockDoc = vi.fn((...args: unknown[]) => {
   if (args.length === 1) return { auto: true, parent: args[0] };
   return args;
 });
+const mockGetDoc = vi.fn<AnyMock>();
 const mockUpdateDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
 const mockDeleteDoc = vi.fn<AnyMock>(() => Promise.resolve(undefined));
 const mockGetDocs = vi.fn<AnyMock>();
@@ -42,6 +43,7 @@ vi.mock("firebase/firestore", () => ({
   serverTimestamp: () => "SERVER_TS",
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
   deleteDoc: (...args: unknown[]) => mockDeleteDoc(...args),
+  getDoc: (...args: unknown[]) => mockGetDoc(...args),
   getDocs: (...args: unknown[]) => mockGetDocs(...args),
   onSnapshot: (...args: unknown[]) => (mockOnSnapshot as unknown as (...a: unknown[]) => unknown)(...args),
   query: (...args: unknown[]) => mockQuery(...args),
@@ -61,9 +63,11 @@ vi.mock("../pushDispatch", () => ({
 
 vi.mock("../../firebase");
 
+import { logger } from "../logger";
 import {
   writeNotification,
   writeNotificationInTx,
+  getNotificationGame,
   _resetNotificationRateLimit,
   markNotificationRead,
   deleteNotification,
@@ -257,6 +261,41 @@ describe("writeNotification", () => {
     });
   });
 
+  it("awaits the push dispatch when the caller opts in (navigation-safe path)", async () => {
+    // createGame passes awaitPush because it returns straight into a
+    // navigation: an unawaited dispatch dies with the page.
+    let dispatched = false;
+    mockDispatchPushNotification.mockImplementationOnce(async () => {
+      await Promise.resolve();
+      dispatched = true;
+    });
+    await writeNotification(
+      {
+        senderUid: "s1",
+        recipientUid: "r1",
+        type: "new_challenge",
+        title: "New Challenge!",
+        body: "@alice challenged you",
+        gameId: "g-await",
+      },
+      { awaitPush: true },
+    );
+    // Resolved by the time writeNotification's promise settles — not merely queued.
+    expect(dispatched).toBe(true);
+  });
+
+  it("logs a warning when the cooldown suppresses a notification", async () => {
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+    const params = yourTurnParams();
+    await writeNotification(params);
+    await writeNotification(params);
+    expect(warn).toHaveBeenCalledWith(
+      "notification_suppressed_cooldown",
+      expect.objectContaining({ gameId: "game456" }),
+    );
+    warn.mockRestore();
+  });
+
   it("_resetNotificationRateLimit clears rate-limit state", async () => {
     const params = yourTurnParams();
 
@@ -343,6 +382,28 @@ describe("deleteNotification", () => {
   it("propagates errors", async () => {
     mockDeleteDoc.mockRejectedValueOnce(new Error("Permission denied"));
     await expect(deleteNotification("notif1")).rejects.toThrow("Permission denied");
+  });
+});
+
+describe("getNotificationGame", () => {
+  it("maps the game doc for bell click-through", async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      id: "g1",
+      data: () => ({ player1Uid: "p1", player2Uid: "p2", status: "active" }),
+    });
+    const game = await getNotificationGame("g1");
+    expect(game).toMatchObject({ id: "g1", player1Uid: "p1", status: "active" });
+  });
+
+  it("returns null when the game no longer exists", async () => {
+    mockGetDoc.mockResolvedValueOnce({ exists: () => false });
+    await expect(getNotificationGame("gone")).resolves.toBeNull();
+  });
+
+  it("returns null when the read is denied instead of throwing at the bell", async () => {
+    mockGetDoc.mockRejectedValueOnce(new Error("permission-denied"));
+    await expect(getNotificationGame("g1")).resolves.toBeNull();
   });
 });
 

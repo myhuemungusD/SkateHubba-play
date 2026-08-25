@@ -16,6 +16,7 @@ import {
 import { requireAuth, requireDb } from "../firebase";
 import { ratedWinRate } from "../constants/stats";
 import { withRetry } from "../utils/retry";
+import { parseFirebaseError } from "../utils/helpers";
 import { deleteGameVideos } from "./storage";
 import { deleteUserClips, deleteUserClipVotes } from "./clips";
 import { deleteUserDisputeVotes, deleteUserDisputes } from "./disputes";
@@ -55,6 +56,14 @@ export interface UserProfile {
   currentWinStreak?: number;
   /** Lifetime high-water mark for {@link currentWinStreak}. Server-written. */
   bestWinStreak?: number;
+  /**
+   * Lifetime letters this user handed out (opponent failed a trick they set).
+   * Aggregated from each game's turnHistory by the stats close-out function.
+   * Server-written; absent on any profile whose games predate the counter.
+   */
+  lettersGiven?: number;
+  /** Lifetime letters this user received. Server-written; see {@link lettersGiven}. */
+  lettersTaken?: number;
   /** # of this user's landed claims that were disputed. Written to the claimer by the dispute referee (admin SDK). Server-written. */
   tricksDisputed?: number;
   /** # of disputes this user initiated. Written to the disputer by the dispute referee (admin SDK). Server-written. */
@@ -63,6 +72,43 @@ export interface UserProfile {
   disputesRight?: number;
   /** Of raised disputes, count the community sided against (land verdict). Server-written. */
   disputesWrong?: number;
+  /**
+   * Wins where this player never took a letter — a shutout. Server-written by
+   * the stats close-out function; absent on any doc predating the counter.
+   */
+  cleanWins?: number;
+  /** Wins from a deficit (peaked at S-K-A-T or worse). Server-written. */
+  comebackWins?: number;
+  /**
+   * Losses by forfeit — games this player abandoned rather than finished.
+   * Server-written. Deliberately NOT surfaced raw on the public profile: the
+   * public surface shows the positive framing (challenge completion rate).
+   */
+  forfeitLosses?: number;
+  /** Lifetime tricks this player landed when matching. Server-written. */
+  tricksLanded?: number;
+  /** Lifetime tricks this player missed when matching. Server-written. */
+  tricksFailed?: number;
+  /** Summed wall-clock duration of every completed game, in ms. Server-written. */
+  totalGameDurationMs?: number;
+  /**
+   * Games that contributed to {@link totalGameDurationMs} — incremented in
+   * lockstep with it. It is the correct denominator for average game length:
+   * `gamesPlayed` also counts games closed out before the duration counter
+   * shipped (and games whose timestamps were unusable), which would drag the
+   * average toward zero. Server-written.
+   */
+  gamesWithDuration?: number;
+  /**
+   * Most recent results, oldest first, capped at 10 by the stats close-out
+   * function. Entries are "W" or "L"; typed as `string[]` because the field is
+   * external data — consumers must narrow before rendering.
+   */
+  recentResults?: string[];
+  /** Games this player refereed to completion as an accepted judge. Server-written. */
+  gamesJudged?: number;
+  /** Individual turns this player judged across those games. Server-written. */
+  turnsJudged?: number;
   /** Whether this user is a verified pro. Only settable via Admin SDK / Firebase console. */
   isVerifiedPro?: boolean;
   /** UID of the user or admin who granted verified-pro status. */
@@ -108,10 +154,40 @@ interface UserPrivateProfile {
    * Owner-only readable. Rules cap this list at ≤10 entries.
    */
   fcmTokens?: string[];
+  /**
+   * Push notification opt-out. ABSENT MEANS ENABLED — push is on by default
+   * and only the Settings screen can turn it off (see
+   * src/services/pushPreferences.ts). Encoding the default as absence keeps
+   * every pre-existing account opted in without a migration.
+   */
+  pushEnabled?: boolean;
 }
 
 /** Document id of the canonical private profile doc. */
 export const PRIVATE_PROFILE_DOC_ID = "profile" as const;
+
+/**
+ * Read the user's push preference, defaulting to enabled.
+ *
+ * Lives here (not in pushPreferences.ts) because the token-registration paths
+ * in fcm.ts / pushNotifications.ts must consult it, and those modules already
+ * depend on this one — putting the read in pushPreferences.ts would make the
+ * dependency circular. pushPreferences.ts re-exports it as the public API.
+ *
+ * Fails OPEN: a missing doc or a failed read means enabled. A transient
+ * Firestore error must never present as "you turned push off".
+ */
+export async function getPushEnabled(uid: string): Promise<boolean> {
+  try {
+    const snap = await getDoc(doc(requireDb(), "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
+    if (!snap.exists()) return true;
+    const value = (snap.data() as UserPrivateProfile).pushEnabled;
+    return typeof value === "boolean" ? value : true;
+  } catch (err) {
+    logger.warn("push_pref_read_failed", { uid, error: parseFirebaseError(err) });
+    return true;
+  }
+}
 
 /**
  * Get user profile by UID. Returns the PUBLIC profile doc — readable
@@ -337,7 +413,8 @@ export async function createProfile(
  *         keep a uid→device map readable by every signed-in user.
  * Phase 4: Atomically delete profile + username reservation + private
  *         profile doc (where sensitive fields live since the
- *         public-doc privacy split).
+ *         public-doc privacy split) + the owner-deletable
+ *         achievements/locker subcollections.
  */
 export async function deleteUserData(uid: string, username: string): Promise<void> {
   const db = requireDb();
@@ -417,14 +494,24 @@ export async function deleteUserData(uid: string, username: string): Promise<voi
   // auth context still resolves isOwner(uid) cleanly against the
   // private-subcollection rule.
   //
-  // Achievements subcollection is folded into the same batch so a single
-  // commit either wipes the whole identity surface or none of it. Without
-  // this, a partial failure could leave orphan achievement docs after the
-  // parent user doc was gone — the GDPR/CCPA gap audit B10/S15 calls out.
-  const achievementsSnap = await getDocs(collection(db, "users", uid, "achievements"));
+  // The achievements AND locker subcollections are folded into the same batch
+  // so a single commit either wipes the whole identity surface or none of it.
+  // Without this, a partial failure could leave orphan docs after the parent
+  // user doc was gone — the GDPR/CCPA gap audit B10/S15 calls out.
+  //
+  // Both are server-minted (Admin SDK) and owner-deletable per
+  // `firestore.rules`; they are the only two subcollections under users/{uid}
+  // that the owner can enumerate and delete, so any new one added there must
+  // be swept here too or it silently orphans personal data. Fetched in
+  // parallel — they are independent reads and the batch needs both before it
+  // can commit.
+  const [achievementsSnap, lockerSnap] = await Promise.all([
+    getDocs(collection(db, "users", uid, "achievements")),
+    getDocs(collection(db, "users", uid, "locker")),
+  ]);
   const batch = writeBatch(db);
-  for (const achievementDoc of achievementsSnap.docs) {
-    batch.delete(achievementDoc.ref);
+  for (const ownedDoc of [...achievementsSnap.docs, ...lockerSnap.docs]) {
+    batch.delete(ownedDoc.ref);
   }
   batch.delete(doc(db, "users", uid, "private", PRIVATE_PROFILE_DOC_ID));
   batch.delete(doc(db, "users", uid));

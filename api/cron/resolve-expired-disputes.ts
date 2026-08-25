@@ -28,7 +28,7 @@
  *   • Idempotent: each transaction re-reads the game and re-checks phase +
  *     expiry; a resolved game no longer matches (phase advanced away from
  *     pending/communityReview), so a re-run is a no-op. The communityReview pass
- *     ALSO gates on the dispute doc's `resolutionApplied`/`status=='resolved'`
+ *     ALSO gates on the dispute doc's `resolutionApplied`/`status=='closed'`
  *     flag — a belt-and-braces second layer so overlapping runs can never
  *     double-count a stat increment.
  *   • Time-boxed: processes at most MAX_PER_RUN games per phase.
@@ -163,6 +163,9 @@ export function toAdminDisputeUpdate(update: DisputeGameUpdate): Record<string, 
   if (update.turnNumber !== undefined) out.turnNumber = update.turnNumber;
   if (update.p1Letters !== undefined) out.p1Letters = update.p1Letters;
   if (update.p2Letters !== undefined) out.p2Letters = update.p2Letters;
+  if (update.lastResolvedDisputeTurnNumber !== undefined) {
+    out.lastResolvedDisputeTurnNumber = update.lastResolvedDisputeTurnNumber;
+  }
   // matchVideoUrl is cleared (null) only on the tie/retry branch.
   if (update.matchVideoUrl !== undefined) out.matchVideoUrl = update.matchVideoUrl;
   // Always cleared — the review phase is resolved.
@@ -393,11 +396,11 @@ async function resolvePendingReview(
  * Pass (b): a `communityReview` game whose 24h vote window lapsed → tally the
  * dispute's votes and apply the verdict via the shared helper, in ONE admin
  * transaction: the game update, the four §2 stat deltas, the landed clips (on a
- * land/none verdict), and the dispute doc close-out (open → resolved).
+ * land/none verdict), and the dispute doc close-out (open → closed).
  *
  * Idempotency is defence-in-depth: the game phase re-check (a resolved game is
  * no longer communityReview) is the primary gate; the dispute doc's
- * `resolutionApplied`/`status=='resolved'` flag is the second. Either alone
+ * `resolutionApplied`/`status=='closed'` flag is the second. Either alone
  * makes a re-run a no-op, so a stat increment can never double-count.
  */
 async function resolveCommunityReview(
@@ -431,7 +434,9 @@ async function resolveCommunityReview(
     }
     const dispute = disputeSnap.data() as Record<string, unknown>;
     // Secondary idempotency gate: an already-resolved dispute no-ops.
-    if (dispute.status === "resolved" || dispute.resolutionApplied === true) {
+    // 'resolved' is the legacy literal written before the close-out was aligned
+    // with DisputeStatus; docs carrying it must still no-op.
+    if (dispute.status === "closed" || dispute.status === "resolved" || dispute.resolutionApplied === true) {
       return { resolved: false, push: null };
     }
 
@@ -470,7 +475,10 @@ async function resolveCommunityReview(
     tx.set(
       disputeRef,
       {
-        status: "resolved",
+        // 'closed' is the value the client model understands (DisputeStatus in
+        // src/types/dispute.ts). Writing anything else made the close-out
+        // invisible to readers — the mapper coerced it straight back to 'open'.
+        status: "closed",
         verdict: decision.verdict,
         resolutionApplied: true,
         updatedAt: FieldValue.serverTimestamp(),

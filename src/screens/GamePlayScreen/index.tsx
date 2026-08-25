@@ -97,7 +97,6 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
           <VideoRecorder
             onRecorded={c.handleRecorded}
             label={c.isSetter ? "Land Your Trick" : `Match the ${game.currentTrickName || "Trick"}`}
-            autoOpen={c.isSetter}
             doneLabel="Recorded"
           />
         )}
@@ -172,7 +171,13 @@ export function GamePlayScreen({ game, profile, onBack }: { game: GameDoc; profi
         )}
 
         {c.isCommunityReview && (
-          <ReviewStatusPanel kind="community" opponentUsername={c.opponentName} deadline={c.deadline} />
+          <ReviewStatusPanel
+            kind="community"
+            opponentUsername={c.opponentName}
+            deadline={c.deadline}
+            dispute={c.communityDispute}
+            disputeState={c.communityDisputeState}
+          />
         )}
 
         {c.isJudgeInvitePending && (

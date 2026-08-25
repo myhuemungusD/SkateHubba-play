@@ -30,6 +30,13 @@ const BENIGN_AUTH_CODES: ReadonlySet<string> = new Set([
   "auth/web-storage-unsupported",
   "auth/missing-or-invalid-nonce",
   "auth/timeout",
+  // Second-factor sign-in: the challenge itself and every code the user can
+  // provoke while resolving it. All are expected states of a correctly
+  // configured account, not outages.
+  "auth/multi-factor-auth-required",
+  "auth/invalid-verification-code",
+  "auth/missing-verification-code",
+  "auth/code-expired",
 ]);
 
 export function isBenignAuthCode(code: string): boolean {
@@ -82,6 +89,16 @@ export function getAuthErrorMessage(code: string): string | null {
       return "Sign-in is temporarily unavailable. Please try again in a moment.";
     case "auth/missing-or-invalid-nonce":
       return "Sign-in token expired. Please reload the page and try again.";
+    case "auth/multi-factor-auth-required":
+      // Fallback wording only: the sign-in flow intercepts this code and hands
+      // off to MfaVerifyCard before any mapping happens. This is what shows if
+      // the challenge could not be built (see getMfaChallenge's null paths).
+      return "This account uses two-step verification. Complete the extra step to sign in.";
+    case "auth/invalid-verification-code":
+    case "auth/missing-verification-code":
+      return "That code didn't match. Try again.";
+    case "auth/code-expired":
+      return "That code expired. Request a new one.";
     default:
       return null;
   }

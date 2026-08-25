@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useId, type ReactNode } from "react";
-import { playOlliePop } from "../utils/ollieSound";
 import { hapticForVariant, playHaptic } from "../services/haptics";
 
 /**
@@ -31,7 +30,6 @@ export function SkateButton({
   const handleClick = () => {
     if (disabled) return;
     setPopping(true);
-    playOlliePop();
     // SkateButton is a branded primary CTA — share the Btn variant=primary
     // haptic so the tap stays aligned if the table is ever retuned.
     playHaptic(hapticForVariant("primary"));

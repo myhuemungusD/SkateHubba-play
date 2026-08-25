@@ -21,6 +21,11 @@ vi.mock("../../services/blocking", () => ({
   getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
 }));
 
+// Economy Phase A reads the controller fires alongside the profile load —
+// mocked to resolve empty so these specs stay on record/history behaviour.
+vi.mock("../../services/achievements", () => ({ fetchAchievements: vi.fn().mockResolvedValue([]) }));
+vi.mock("../../services/locker", () => ({ fetchLockerItems: vi.fn().mockResolvedValue([]) }));
+
 const mockUsePlayerProfile = vi.fn();
 
 vi.mock("../../hooks/usePlayerProfile", () => ({
@@ -72,6 +77,94 @@ describe("PlayerProfileScreen", () => {
     expect(screen.getByLabelText("Tricks you disputed: 3")).toBeInTheDocument();
     expect(screen.getByLabelText("Disputes you got right: 2")).toBeInTheDocument();
     expect(screen.getByLabelText("Disputes you got wrong: 1")).toBeInTheDocument();
+  });
+
+  it("shows the letter counters, defaulting missing fields to 0", () => {
+    render(<PlayerProfileScreen {...baseProps} />);
+    expect(screen.getByLabelText("Letters given: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Letters taken: 0")).toBeInTheDocument();
+  });
+
+  it("reads letter counters straight off the profile doc", () => {
+    const currentUserProfile = { ...baseProps.currentUserProfile, lettersGiven: 9, lettersTaken: 4 };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByLabelText("Letters given: 9")).toBeInTheDocument();
+    expect(screen.getByLabelText("Letters taken: 4")).toBeInTheDocument();
+  });
+
+  it("defaults every stats-overhaul counter to zero on a legacy profile doc", () => {
+    // A doc written before these counters shipped simply lacks the fields.
+    // Reading them as 0 is what keeps the new sections from rendering NaN.
+    render(<PlayerProfileScreen {...baseProps} />);
+    expect(screen.getByLabelText("Clean wins: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Comeback wins: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Games judged: 0")).toBeInTheDocument();
+    expect(screen.getByLabelText("Total games: 0")).toBeInTheDocument();
+    expect(screen.queryByTestId("last-ten-row")).not.toBeInTheDocument();
+  });
+
+  it("reads the game-style counters straight off the profile doc", () => {
+    const currentUserProfile = {
+      ...baseProps.currentUserProfile,
+      gamesPlayed: 20,
+      forfeitLosses: 1,
+      cleanWins: 6,
+      comebackWins: 3,
+      gamesJudged: 5,
+    };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByLabelText("Clean wins: 6")).toBeInTheDocument();
+    expect(screen.getByLabelText("Comeback wins: 3")).toBeInTheDocument();
+    expect(screen.getByLabelText("Games judged: 5")).toBeInTheDocument();
+    // (20 games - 1 abandoned) / 20 = 95%.
+    expect(screen.getByLabelText("Games finished: 95 percent")).toBeInTheDocument();
+  });
+
+  it("prefers the gamesPlayed counter over wins + losses for total games", () => {
+    // PlayerDirectory has always read gamesPlayed; the profile derived its own
+    // total from wins + losses, so a game that incremented one counter and not
+    // the other made the two surfaces disagree in front of the user.
+    const currentUserProfile = { ...baseProps.currentUserProfile, wins: 4, losses: 2, gamesPlayed: 9 };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByLabelText("Total games: 9")).toBeInTheDocument();
+  });
+
+  it("falls back to wins + losses when the gamesPlayed counter is absent", () => {
+    const currentUserProfile = { ...baseProps.currentUserProfile, wins: 4, losses: 2 };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByLabelText("Total games: 6")).toBeInTheDocument();
+  });
+
+  it("renders the last-10 form guide from recentResults", () => {
+    const currentUserProfile = { ...baseProps.currentUserProfile, recentResults: ["W", "L", "W"] };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByRole("img", { name: "Last 3 games: 2 wins, 1 loss" })).toBeInTheDocument();
+  });
+
+  it("drops unrecognised entries in recentResults rather than rendering them", () => {
+    // The field is external data typed as string[] — a corrupt or future
+    // value must not become an unlabelled pip.
+    const currentUserProfile = { ...baseProps.currentUserProfile, recentResults: ["W", "X", "L"] };
+    render(<PlayerProfileScreen {...baseProps} currentUserProfile={currentUserProfile} />);
+    expect(screen.getByRole("img", { name: "Last 2 games: 1 win, 1 loss" })).toBeInTheDocument();
+  });
+
+  it("offers the owner-only My Stats entry point on your own profile", async () => {
+    const onViewMyStats = vi.fn();
+    render(<PlayerProfileScreen {...baseProps} onViewMyStats={onViewMyStats} />);
+    await userEvent.click(screen.getByTestId("my-stats-button"));
+    expect(onViewMyStats).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides the My Stats entry point when viewing another player", () => {
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile }));
+    render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} onViewMyStats={vi.fn()} />);
+    expect(screen.queryByTestId("my-stats-button")).not.toBeInTheDocument();
+  });
+
+  it("omits the My Stats entry point when the caller has not wired it", () => {
+    render(<PlayerProfileScreen {...baseProps} />);
+    expect(screen.queryByTestId("my-stats-button")).not.toBeInTheDocument();
   });
 
   it("shows empty game history message for own profile", () => {
@@ -137,6 +230,17 @@ describe("PlayerProfileScreen", () => {
     mockUsePlayerProfile.mockReturnValue(fetchedState());
     render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
     expect(screen.getByText("Player not found")).toBeInTheDocument();
+  });
+
+  it("still requests games for a signed-in viewer", () => {
+    // Counterpart to the signed-out case in PlayerProfileScreen.signedout.test.tsx,
+    // which asserts `includeGames: false`. Pinning the signed-in shape too is what
+    // makes that pair meaningful: without this, flipping the default to `false`
+    // would silently strip game history from every signed-in profile view and the
+    // signed-out test would keep passing.
+    mockUsePlayerProfile.mockReturnValue(fetchedState({ profile: opponentProfile, games: [buildCompletedGame()] }));
+    render(<PlayerProfileScreen {...baseProps} viewedUid="u2" isOwnProfile={false} />);
+    expect(mockUsePlayerProfile).toHaveBeenCalledWith("u2", "me", true);
   });
 
   it("renders other player's profile with correct header", () => {

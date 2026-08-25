@@ -49,6 +49,15 @@ describe("classifyVerdict", () => {
 });
 
 describe("decideDisputeResolution", () => {
+  it.each([
+    ["land", { landVotes: 2, bailVotes: 1 }],
+    ["bail", { landVotes: 0, bailVotes: 2 }],
+    ["tie", { landVotes: 1, bailVotes: 1 }],
+    ["none", { landVotes: 0, bailVotes: 0 }],
+  ] as const)("records the disputed turn for a %s resolution", (_verdict, tally) => {
+    expect(decideDisputeResolution(baseGame(), tally, NOW).gameUpdate.lastResolvedDisputeTurnNumber).toBe(3);
+  });
+
   it("land verdict → honor swap, no letter, disputesWrong+1", () => {
     const d = decideDisputeResolution(baseGame(), { landVotes: 2, bailVotes: 1 }, NOW);
 

@@ -58,11 +58,28 @@ vi.mock("firebase/firestore", () => ({
   Timestamp: FakeTimestamp,
 }));
 
+// clips.cascade now deletes a user clip's Storage object as part of the
+// cascade, which pulls the storage SDK into this module graph. Stubbed at
+// the SDK boundary rather than mocking ../storage so the cascade still runs
+// the real deleteUserClipVideo branch logic.
+const { mockStorageRef, mockDeleteObject } = vi.hoisted(() => ({
+  mockStorageRef: vi.fn((_storage: unknown, path: string) => ({ __path: path })),
+  mockDeleteObject: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("firebase/storage", () => ({
+  ref: mockStorageRef,
+  uploadBytesResumable: vi.fn(),
+  getDownloadURL: vi.fn(),
+  deleteObject: mockDeleteObject,
+  listAll: vi.fn(),
+}));
+
 vi.mock("../../firebase");
 
 import {
   writeLandedClipsInTransaction,
   fetchClipsFeed,
+  deleteClipComments,
   deleteUserClips,
   deleteUserClipVotes,
   upvoteClip,
@@ -78,6 +95,7 @@ import {
 // Not mocked: the orphan-cleanup path logs through the real logger, so the
 // test spies on the exported object to assert the event name it emits.
 import { logger } from "../logger";
+import { captureTx, present } from "./txCapture.test-helpers";
 
 /* ── Helpers ────────────────────────────────── */
 
@@ -111,6 +129,11 @@ function baseCtx(overrides: Partial<LandedClipContext> = {}): LandedClipContext 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Fallback for reads a test doesn't explicitly wire — notably the
+  // per-clip comment sweep inside deleteUserClips. `mockResolvedValueOnce`
+  // queues ahead of this, so tests that do wire a read are unaffected.
+  mockGetDocs.mockResolvedValue({ docs: [] });
+  mockDeleteObject.mockResolvedValue(undefined);
 });
 
 /* ── writeLandedClipsInTransaction ───────────── */
@@ -127,6 +150,8 @@ describe("writeLandedClipsInTransaction", () => {
 
     const [, setPayload] = tx.set.mock.calls[0];
     expect(setPayload).toMatchObject({
+      source: "game",
+      downvoteCount: 0,
       gameId: "g1",
       turnNumber: 3,
       role: "set",
@@ -142,6 +167,8 @@ describe("writeLandedClipsInTransaction", () => {
 
     const [, matchPayload] = tx.set.mock.calls[1];
     expect(matchPayload).toMatchObject({
+      source: "game",
+      downvoteCount: 0,
       role: "match",
       playerUid: "p2",
       playerUsername: "bob",
@@ -686,7 +713,10 @@ describe("fetchClipsFeed (failed-precondition fallback)", () => {
 describe("deleteUserClips", () => {
   it("queries clips by playerUid and deletes each one", async () => {
     mockGetDocs.mockResolvedValueOnce({
-      docs: [{ id: "g1_2_set" }, { id: "g7_4_match" }],
+      docs: [
+        { id: "g1_2_set", data: () => ({ source: "game" }) },
+        { id: "g7_4_match", data: () => ({ source: "game" }) },
+      ],
     });
 
     await deleteUserClips("p1");
@@ -716,7 +746,10 @@ describe("deleteUserClips", () => {
 
   it("tolerates per-doc delete failures without throwing", async () => {
     mockGetDocs.mockResolvedValueOnce({
-      docs: [{ id: "ok" }, { id: "fails" }],
+      docs: [
+        { id: "ok", data: () => ({ source: "game" }) },
+        { id: "fails", data: () => ({ source: "game" }) },
+      ],
     });
     mockDeleteDoc.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("transient"));
 
@@ -912,7 +945,10 @@ describe("upvoteClip", () => {
         get: vi.fn().mockImplementation(async (ref: { __path?: string }) => {
           const path = ref.__path ?? "";
           if (path.startsWith("clipVotes/")) {
-            return { exists: () => voteExists };
+            // Legacy-shaped vote body (no `value`): the service reads that
+            // as an upvote, which is exactly what these upvote-path cases
+            // are asserting.
+            return { exists: () => voteExists, data: () => ({}) };
           }
           if (path.startsWith("clips/")) {
             // 'no-clip-doc' covers the legacy / pre-backfill branch where
@@ -1058,7 +1094,7 @@ describe("upvoteClip", () => {
     // The catch block must let SelfUpvoteError pass through untouched — a
     // self-upvote is a distinct business state from a duplicate upvote.
     captureTxOnce(false, 0, "me");
-    await expect(upvoteClip("me", "g1_2_set")).rejects.toThrow(/^self_upvote:g1_2_set$/);
+    await expect(upvoteClip("me", "g1_2_set")).rejects.toThrow(/^self_vote:g1_2_set$/);
   });
 
   it("propagates unexpected transaction errors", async () => {
@@ -1224,7 +1260,7 @@ describe("removeUpvote", () => {
         const tx: RemoveTx = {
           get: vi.fn().mockImplementation(async (ref: { __path?: string }) => {
             const path = ref.__path ?? "";
-            if (path.startsWith("clipVotes/")) return { exists: () => attempt.vote };
+            if (path.startsWith("clipVotes/")) return { exists: () => attempt.vote, data: () => ({ value: 1 }) };
             if (path.startsWith("clips/")) {
               const disk = attempt.clip;
               if (disk === "missing") return { exists: () => false };
@@ -1285,7 +1321,7 @@ describe("removeUpvote", () => {
     expect(err).toBeInstanceOf(NotUpvotedError);
     // Callers key off the clipId to advance the feed past the un-upvoted clip.
     expect((err as NotUpvotedError).clipId).toBe("g1_2_set");
-    expect((err as Error).message).toBe("not_upvoted:g1_2_set");
+    expect((err as Error).message).toBe("not_voted:g1_2_set");
 
     const [tx] = cap.txs();
     expect(tx.delete).not.toHaveBeenCalled();
@@ -1327,7 +1363,7 @@ describe("removeUpvote", () => {
     await expect(removeUpvote("me", "g1_2_set")).resolves.toBe(0);
 
     expect(warn).toHaveBeenCalledWith(
-      "clip_upvote_orphan_vote_delete_failed",
+      "clip_vote_orphan_delete_failed",
       expect.objectContaining({ clipId: "g1_2_set" }),
     );
   });
@@ -1350,5 +1386,230 @@ describe("removeUpvote", () => {
     expect(retry.delete).toHaveBeenCalledTimes(1);
     expect(retry.update).toHaveBeenCalledWith(expect.anything(), { upvoteCount: 1 });
     expect(mockDeleteDoc).not.toHaveBeenCalled();
+  });
+});
+
+/* ── toClipDoc: the source discriminant ─────────────────────── */
+
+describe("toClipDoc source variants (via fetchClipsFeed)", () => {
+  it("maps a user-source clip with null game coordinates instead of throwing", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        makeClipSnap("user-clip-1", {
+          source: "user",
+          gameId: null,
+          turnNumber: null,
+          role: null,
+          playerUid: "p9",
+          playerUsername: "casey",
+          trickName: "nollie heel",
+          videoUrl: "https://example.com/u.webm",
+          spotId: null,
+          createdAt: new FakeTimestamp(1_700_000_000_000),
+          moderationStatus: "active",
+          upvoteCount: 3,
+          downvoteCount: 1,
+        }),
+      ],
+    });
+
+    const page = await fetchClipsFeed(null, 20, "new");
+
+    expect(page.clips).toHaveLength(1);
+    expect(page.clips[0]).toMatchObject({
+      id: "user-clip-1",
+      source: "user",
+      gameId: null,
+      turnNumber: null,
+      role: null,
+      upvoteCount: 3,
+      downvoteCount: 1,
+    });
+  });
+
+  it("defaults a legacy doc with no `source` to 'game' and its counts to 0", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("legacy-1", validClipData({ upvoteCount: undefined, downvoteCount: undefined }))],
+    });
+
+    const page = await fetchClipsFeed(null, 20, "new");
+
+    expect(page.clips[0]).toMatchObject({ source: "game", upvoteCount: 0, downvoteCount: 0, gameId: "g1" });
+  });
+
+  it("still drops a game-source doc missing its game coordinates", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        makeClipSnap("broken-1", validClipData({ gameId: undefined })),
+        makeClipSnap("broken-2", validClipData({ role: undefined })),
+        makeClipSnap("broken-3", validClipData({ playerUid: undefined })),
+        makeClipSnap("ok-1", validClipData()),
+      ],
+    });
+
+    const page = await fetchClipsFeed(null, 20, "new");
+
+    // One bad doc must not blank the page — only the malformed ones drop.
+    expect(page.clips.map((c) => c.id)).toEqual(["ok-1"]);
+  });
+
+  it("reads a negative or non-numeric count as 0 rather than propagating it", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [makeClipSnap("drift-1", validClipData({ upvoteCount: -4, downvoteCount: "lots" }))],
+    });
+
+    const page = await fetchClipsFeed(null, 20, "new");
+
+    expect(page.clips[0]).toMatchObject({ upvoteCount: 0, downvoteCount: 0 });
+  });
+});
+
+/* ── cascade: user clips carry Storage + comments ────────────── */
+
+describe("deleteUserClips (user-source clips)", () => {
+  it("deletes the Storage object and the comment docs before the clip doc", async () => {
+    mockGetDocs
+      // 1) the clips-by-owner query
+      .mockResolvedValueOnce({
+        docs: [{ id: "uc1", data: () => ({ source: "user" }) }],
+      })
+      // 2) the comment sweep for uc1
+      .mockResolvedValueOnce({
+        docs: [{ id: "c1", ref: { __path: "clips/uc1/comments/c1" } }],
+      });
+
+    await deleteUserClips("p1");
+
+    // Both candidate extensions are attempted — the doc doesn't record which
+    // container the clip was filmed in.
+    expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "userClips/p1/uc1.webm");
+    expect(mockStorageRef).toHaveBeenCalledWith(expect.anything(), "userClips/p1/uc1.mp4");
+    expect(mockDeleteObject).toHaveBeenCalledTimes(2);
+
+    // The comment doc and the clip doc are both deleted, comment first.
+    const deleted = mockDeleteDoc.mock.calls.map(([ref]) => ref as { __path?: string; id?: string });
+    expect(deleted[0]).toMatchObject({ __path: "clips/uc1/comments/c1" });
+    expect(deleted[1]).toMatchObject({ id: "uc1" });
+  });
+
+  it("does not touch userClips Storage for a game-source clip", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: "g1_2_set", data: () => ({ source: "game" }) }],
+    });
+
+    await deleteUserClips("p1");
+
+    expect(mockDeleteObject).not.toHaveBeenCalled();
+  });
+
+  it("treats object-not-found on the sibling extension as the expected outcome", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: "uc1", data: () => ({ source: "user" }) }],
+    });
+    mockDeleteObject
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error("nope"), { code: "storage/object-not-found" }));
+
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    await expect(deleteUserClips("p1")).resolves.toBeUndefined();
+
+    expect(warn).not.toHaveBeenCalledWith("user_clip_video_delete_failed", expect.anything());
+    warn.mockRestore();
+  });
+
+  it("logs (but survives) a real Storage delete failure", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: "uc1", data: () => ({ source: "user" }) }],
+    });
+    mockDeleteObject.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("network down"));
+
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    await expect(deleteUserClips("p1")).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith("user_clip_video_delete_failed", {
+      clipId: "uc1",
+      error: "network down",
+    });
+    warn.mockRestore();
+  });
+});
+
+/* ── deleteClipComments ─────────────────────────────────────── */
+
+describe("deleteClipComments", () => {
+  it("bounds the sweep and deletes each comment it finds", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: "c1", ref: { __path: "a" } },
+        { id: "c2", ref: { __path: "b" } },
+      ],
+    });
+
+    await deleteClipComments("uc1");
+
+    expect(mockCollection).toHaveBeenCalledWith(expect.anything(), "clips", "uc1", "comments");
+    expect(mockLimit).toHaveBeenCalledWith(300);
+    expect(mockDeleteDoc).toHaveBeenCalledTimes(2);
+  });
+
+  it("swallows a failed query so the clip delete still proceeds", async () => {
+    mockGetDocs.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    await expect(deleteClipComments("uc1")).resolves.toBeUndefined();
+
+    expect(mockDeleteDoc).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith("clip_comments_delete_query_failed", expect.anything());
+    warn.mockRestore();
+  });
+
+  it("logs a partial sweep when somebody else's comment refuses to delete", async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        { id: "mine", ref: { __path: "a" } },
+        { id: "theirs", ref: { __path: "b" } },
+      ],
+    });
+    mockDeleteDoc
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    const warn = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+    await expect(deleteClipComments("uc1")).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledWith("clip_comments_delete_partial", { clipId: "uc1", total: 2, failed: 1 });
+    warn.mockRestore();
+  });
+});
+
+/* ── cascade: downvotes decrement their own counter ──────────── */
+
+describe("deleteUserClipVotes (downvotes)", () => {
+  /** Run the cascade over a single value:-1 vote against the given clip counters. */
+  async function cascadeOneDownvote(counters: Record<string, number>) {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [{ id: "p1_c1", data: () => ({ clipId: "c1", value: -1 }) }],
+    });
+    const cap = captureTx(mockRunTransaction, () => present(counters));
+    await deleteUserClipVotes("p1");
+    return cap.observed();
+  }
+
+  it("decrements downvoteCount for a value:-1 vote", async () => {
+    const tx = await cascadeOneDownvote({ upvoteCount: 7, downvoteCount: 2 });
+
+    expect(tx.delete).toHaveBeenCalledTimes(1);
+    expect(tx.update).toHaveBeenCalledWith(expect.anything(), { downvoteCount: 1 });
+  });
+
+  it("leaves upvoteCount alone even when it has room to move", async () => {
+    // The counter that matches the vote is at its floor; the OTHER one is
+    // high. Touching it would be the exact bug this asserts against.
+    const tx = await cascadeOneDownvote({ upvoteCount: 9, downvoteCount: 0 });
+
+    expect(tx.delete).toHaveBeenCalledTimes(1);
+    expect(tx.update).not.toHaveBeenCalled();
   });
 });

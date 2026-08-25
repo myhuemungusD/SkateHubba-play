@@ -3,6 +3,7 @@ import { render, screen, waitFor, type RenderOptions } from "@testing-library/re
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { AuthScreen } from "../AuthScreen";
+import type { MfaChallenge } from "../../services/mfa";
 import { NotificationProvider } from "../../context/NotificationContext";
 import { ToastContainer } from "../../components/ToastContainer";
 
@@ -70,6 +71,18 @@ vi.mock("../../lib/sentry", () => ({
   captureException: (...args: unknown[]) => mockCaptureException(...args),
 }));
 
+// MfaVerifyCard (rendered by AuthScreen when a challenge is pending) reaches
+// the Firebase SDK through this service — stub it so the screen test keeps a
+// jsdom-safe import graph while still rendering the real card.
+vi.mock("../../services/mfa", () => ({
+  startSmsMfaSignIn: vi.fn().mockResolvedValue("vid-1"),
+  completeSmsMfaSignIn: vi.fn(),
+  completeTotpMfaSignIn: vi.fn(),
+  hintPhoneNumber: (h: { phoneNumber?: string }) => h.phoneNumber ?? "",
+  isPhoneHint: (h: { factorId: string }) => h.factorId === "phone",
+  isTotpHint: (h: { factorId: string }) => h.factorId === "totp",
+}));
+
 beforeEach(() => vi.clearAllMocks());
 
 const defaultProps = {
@@ -80,6 +93,10 @@ const defaultProps = {
   googleLoading: false,
   googleError: "",
   onGoogleErrorDismiss: vi.fn(),
+  // Default: no pending second factor, and every error is a normal error.
+  mfaChallenge: null,
+  onMfaBegin: () => false,
+  onMfaCancel: vi.fn(),
 };
 
 describe("AuthScreen", () => {
@@ -422,6 +439,68 @@ describe("AuthScreen", () => {
     expect(pws[0].value).toBe("password123");
   });
 
+  describe("password visibility toggle", () => {
+    it("flips the password input between masked and plain text", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      const input = screen.getAllByPlaceholderText(/•/)[0];
+      expect(input).toHaveAttribute("type", "password");
+
+      await userEvent.click(screen.getByRole("button", { name: "Show password" }));
+      expect(input).toHaveAttribute("type", "text");
+
+      await userEvent.click(screen.getByRole("button", { name: "Hide password" }));
+      expect(input).toHaveAttribute("type", "password");
+    });
+
+    it("reflects reveal state in aria-pressed", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      const toggle = screen.getByRole("button", { name: "Show password" });
+      expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+      await userEvent.click(toggle);
+      expect(screen.getByRole("button", { name: "Hide password" })).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("keeps the typed value and does not submit the form when toggled", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      const input = screen.getAllByPlaceholderText(/•/)[0] as HTMLInputElement;
+      await userEvent.type(input, "password123");
+
+      await userEvent.click(screen.getByRole("button", { name: "Show password" }));
+
+      expect(input.value).toBe("password123");
+      expect(mockSignIn).not.toHaveBeenCalled();
+      expect(mockSignInAttempt).not.toHaveBeenCalled();
+    });
+
+    it("leaves focus on the password input while toggling", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      const input = screen.getAllByPlaceholderText(/•/)[0];
+      await userEvent.type(input, "hunter22");
+
+      await userEvent.click(screen.getByRole("button", { name: "Show password" }));
+
+      expect(input).toHaveFocus();
+    });
+
+    it("toggles the confirm field independently of the password field", async () => {
+      renderWithProviders(<AuthScreen {...defaultProps} mode="signup" />);
+      const [password, confirmInput] = screen.getAllByPlaceholderText(/•/);
+
+      await userEvent.click(screen.getByRole("button", { name: "Show confirm password" }));
+
+      expect(confirmInput).toHaveAttribute("type", "text");
+      expect(password).toHaveAttribute("type", "password");
+      expect(screen.getByRole("button", { name: "Show password" })).toHaveAttribute("aria-pressed", "false");
+    });
+
+    it("renders no confirm toggle in sign-in mode", () => {
+      renderWithProviders(<AuthScreen {...defaultProps} />);
+      expect(screen.queryByRole("button", { name: /confirm password/ })).not.toBeInTheDocument();
+    });
+  });
+
   describe("auth telemetry (outage detection)", () => {
     it("fires sign_in_attempt + sign_in success on successful email sign-in", async () => {
       mockSignIn.mockResolvedValueOnce({ uid: "uid-success" });
@@ -544,6 +623,70 @@ describe("AuthScreen", () => {
       await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
       await waitFor(() => expect(mockSignInFailure).toHaveBeenCalledWith("email", "unknown"));
+    });
+  });
+
+  describe("second factor (MFA)", () => {
+    const totpChallenge = {
+      resolver: { hints: [], session: {} },
+      hints: [{ uid: "f1", factorId: "totp", displayName: "Authy", enrollmentTime: "" }],
+    } as unknown as MfaChallenge;
+
+    it("replaces the form with the verification card while a challenge is pending", () => {
+      renderWithProviders(<AuthScreen {...defaultProps} mfaChallenge={totpChallenge} />);
+
+      expect(screen.getByRole("heading", { name: "Two-Step Verification" })).toBeInTheDocument();
+      expect(screen.getByText(/code from your authenticator app/)).toBeInTheDocument();
+      // The sign-in form is gone — the card takes the whole screen.
+      expect(screen.queryByPlaceholderText("you@email.com")).not.toBeInTheDocument();
+    });
+
+    it("hands an MFA rejection to onMfaBegin instead of the error banner", async () => {
+      // The raw "Firebase: Error (auth/multi-factor-auth-required)" banner is
+      // the production bug this replaces: the user could not proceed at all.
+      mockSignIn.mockRejectedValueOnce({ code: "auth/multi-factor-auth-required" });
+      const onMfaBegin = vi.fn(() => true);
+      renderWithProviders(<AuthScreen {...defaultProps} onMfaBegin={onMfaBegin} />);
+
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "mfa@test.com");
+      await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "password123");
+      await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      await waitFor(() => expect(onMfaBegin).toHaveBeenCalledTimes(1));
+      // Tagged with the originating method so AuthContext can attribute the
+      // deferred sign_in event once the challenge clears.
+      expect(onMfaBegin).toHaveBeenCalledWith({ code: "auth/multi-factor-auth-required" }, "email");
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(mockCaptureException).not.toHaveBeenCalled();
+      // A challenge is NOT a failure. Recording one made every MFA sign-in
+      // register as attempt=1/failure=1/success=0 — dashboards read growing MFA
+      // adoption as a rising sign-in failure rate.
+      expect(mockSignInFailure).not.toHaveBeenCalled();
+      expect(mockMetricSignInFailure).not.toHaveBeenCalled();
+    });
+
+    it("still shows the banner when onMfaBegin declines the error", async () => {
+      mockSignIn.mockRejectedValueOnce({ code: "auth/wrong-password" });
+      const onMfaBegin = vi.fn(() => false);
+      renderWithProviders(<AuthScreen {...defaultProps} onMfaBegin={onMfaBegin} />);
+
+      await userEvent.type(screen.getByPlaceholderText("you@email.com"), "user@test.com");
+      await userEvent.type(screen.getAllByPlaceholderText(/•/)[0], "nope123456");
+      await userEvent.click(screen.getByRole("button", { name: "Sign In" }));
+
+      await waitFor(() => expect(screen.getByText("Invalid email or password")).toBeInTheDocument());
+      expect(onMfaBegin).toHaveBeenCalledTimes(1);
+      // The failure-telemetry guard is narrow: every non-MFA code still counts.
+      expect(mockSignInFailure).toHaveBeenCalledWith("email", "auth/wrong-password");
+      expect(mockMetricSignInFailure).toHaveBeenCalledWith("email", "auth/wrong-password");
+    });
+
+    it("routes the card's back link to onMfaCancel", async () => {
+      const onMfaCancel = vi.fn();
+      renderWithProviders(<AuthScreen {...defaultProps} mfaChallenge={totpChallenge} onMfaCancel={onMfaCancel} />);
+
+      await userEvent.click(screen.getByRole("button", { name: "Back to sign in" }));
+      expect(onMfaCancel).toHaveBeenCalledTimes(1);
     });
   });
 

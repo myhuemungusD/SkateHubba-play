@@ -53,8 +53,14 @@ function fixture(): FakeStore {
     users: { [UID]: { username: "TonyH" }, [OTHER]: { username: "rival" } },
     "users/u1/private": { profile: { email: "tony@example.com", dob: "1990-01-01" } },
     "users/u1/achievements": { first_win: {}, ten_games: {} },
+    // Economy Phase A: server-minted gear lives in its own subcollection.
+    // Firestore does NOT cascade into subcollections when the parent doc is
+    // deleted, so the sweep has to name it explicitly — u2's copy proves the
+    // sweep stays scoped to the account being erased.
+    "users/u1/locker": { deck_baker: {}, wheels_spitfire: {} },
     "users/u1/blocked_users": { u3: { blockedAt: 1 } },
     "users/u2/achievements": { first_win: {} },
+    "users/u2/locker": { deck_baker: {} },
     usernames: { tonyh: { uid: UID }, rival: { uid: OTHER } },
     games: {
       gActive: { player1Uid: UID, player2Uid: OTHER, status: "active" },
@@ -119,6 +125,7 @@ describe("full cascade over a populated account", () => {
       nudges: 2,
       reports: 1,
       achievements: 2,
+      locker: 2,
       blockedUsers: 1,
       avatarObjects: 1,
       usernameReleased: true,
@@ -147,6 +154,7 @@ describe("full cascade over a populated account", () => {
       "usernames/rival",
       "users/u2",
       "users/u2/achievements/first_win",
+      "users/u2/locker/deck_baker",
     ]);
   });
 
@@ -188,19 +196,33 @@ describe("full cascade over a populated account", () => {
   });
 
   it("erases the identity surface last, in a single batch", async () => {
-    // achievements + blocked_users + private profile + public profile. Identity
-    // documents are what a retry needs in order to find everything else, so
-    // they must outlive every other phase.
+    // achievements + locker + blocked_users + private profile + public profile.
+    // Identity documents are what a retry needs in order to find everything
+    // else, so they must outlive every other phase.
     const store = fixture();
     await deleteUserDataAsAdmin(store.deps, UID);
 
-    // 2 achievements + 1 blocked user + the private profile + the public one.
-    expect(store.commitSizes.at(-1)).toBe(5);
+    // 2 achievements + 2 locker items + 1 blocked user + the private profile
+    // + the public one.
+    expect(store.commitSizes.at(-1)).toBe(7);
     expect(eventIndex(store, "delete:users/u1")).toBeGreaterThan(eventIndex(store, "delete:notifications/mine"));
     expect(eventIndex(store, "delete:users/u1/private/profile")).toBeGreaterThan(
       eventIndex(store, "delete:reports/filed"),
     );
     expect(eventIndex(store, "tx:delete:usernames/tonyh")).toBeGreaterThan(eventIndex(store, "delete:clips/mine"));
+  });
+
+  it("erases the locker subcollection and leaves another account's gear alone", async () => {
+    // Regression: users/{uid}/locker was minted by the economy work but never
+    // added to the sweep, so erasure left owned-item docs orphaned under a
+    // users/{uid} doc that no longer existed.
+    const store = fixture();
+    const summary = await deleteUserDataAsAdmin(store.deps, UID);
+
+    expect(summary.locker).toBe(2);
+    expect(store.docs.has("users/u1/locker/deck_baker")).toBe(false);
+    expect(store.docs.has("users/u1/locker/wheels_spitfire")).toBe(false);
+    expect(store.docs.has("users/u2/locker/deck_baker")).toBe(true);
   });
 
   it("reads every page from the injected bucket and tolerates missing objects", async () => {
@@ -666,6 +688,7 @@ describe("idempotency", () => {
       nudges: 0,
       reports: 0,
       achievements: 0,
+      locker: 0,
       blockedUsers: 0,
       avatarObjects: 0,
       usernameReleased: false,

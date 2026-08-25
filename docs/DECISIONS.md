@@ -165,3 +165,100 @@ again. Scope:
 
 This work is **not** scheduled — it belongs to whoever picks up the perf
 follow-up. Tracking in `docs/STATUS_REPORT.md`.
+
+---
+
+## DEC-006 — Admin custom claim: the first client-reachable privileged write path
+
+**Date:** 2026-08-17
+**Status:** Accepted
+**Category:** Security / Firestore Rules
+
+### Context
+
+Until now, every privileged mutation in the app was **Admin-SDK-only**. The
+rules said so explicitly:
+
+- `users/{uid}` — `isVerifiedPro` / `verifiedBy` / `verifiedAt` were denied to
+  every client (owner updates are blocked by the `affectedKeys().hasAny([...])`
+  backstop); the only writer was `scripts/grant-pro.ts`.
+- `users/{uid}/achievements/*` and `users/{uid}/locker/*` — `allow create,
+update: if false`, commented "minted server-side by the Admin SDK".
+- `reports/{reportId}` — `allow update: if false`, readable only by the
+  reporter, so there was no in-app moderation queue at all.
+
+That posture meant every operational action (verify a pro, award a badge or a
+locker item, action a report) required a maintainer with a service-account key
+on a laptop. It does not scale past the founder, and it leaves reports
+un-triaged because nobody can even _see_ them without Firestore console access.
+
+The admin console (this change's sibling work) needs those four surfaces from
+the client, and the project charter forbids a custom backend — Firebase rules
+are the authorization layer.
+
+### Decision
+
+Introduce a Firebase **custom claim** `admin: true`, set out-of-band via the
+Admin SDK (`scripts/set-admin-claim.mjs`), and authorize four narrowly-scoped
+client write paths on it:
+
+```
+function isAdmin() {
+  return isSignedIn() && request.auth.token.admin == true;
+}
+```
+
+| Surface                         | Admin may                        | Guard                                                                                                                                                                                                         |
+| ------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users/{uid}`                   | grant / revoke Verified Pro      | `affectedKeys().hasOnly(['isVerifiedPro','verifiedBy','verifiedAt'])`, `isVerifiedPro is bool`, `verifiedBy == request.auth.uid`, `verifiedAt == request.time`, **`uid != request.auth.uid`**                 |
+| `users/{uid}/achievements/{id}` | award (create) + revoke (delete) | keys exactly `['earnedAt','reason']`, `earnedAt == request.time`, `reason` string ≤ 200. `update` stays `false`                                                                                               |
+| `users/{uid}/locker/{id}`       | award (create) + revoke (delete) | keys exactly the seven item fields, strings length-capped, `acquiredAt == request.time`, `provenance` map with only a ≤ 200-char `reason`. `update` stays `false`                                             |
+| `reports/{id}`                  | read the queue + close out       | `affectedKeys().hasOnly(['status','resolvedBy','resolvedAt'])`, `status in ['resolved','dismissed']`, `resolvedBy == request.auth.uid`, `resolvedAt == request.time`, and `resource.data.status == 'pending'` |
+
+Three design rules make this safe to widen:
+
+1. **The claim widens WHO, never WHAT.** Every admin path is field-scoped by
+   `affectedKeys().hasOnly(...)` (updates) or `keys().hasOnly(...)` (creates),
+   so a stolen admin token still cannot rewrite a username, inflate `wins`,
+   edit a report's evidence, or mutate an already-awarded item. Timestamps are
+   pinned to `request.time` and attribution fields to `request.auth.uid`, so
+   nothing can be back-dated or forged onto another moderator.
+2. **Self-grant of Verified Pro is FORBIDDEN** (`uid != request.auth.uid`). A
+   single compromised admin token must not be able to mint its own pro badge,
+   and the four-eyes shape keeps every client-side grant attributable to a
+   different operator than its subject. Founder / first-admin self-verification
+   remains possible via `scripts/grant-pro.ts`, which runs on the Admin SDK and
+   bypasses rules entirely — deliberately not client-reachable.
+3. **Moderation close-out is one-way.** Only a still-`pending` report may be
+   actioned, so a second admin (or a replayed token) cannot overwrite an
+   existing verdict and its `resolvedBy` / `resolvedAt` audit trail.
+
+The admin clause on `users/{uid}` is an **additional** `allow update` statement,
+not a relaxation of the owner one — Firestore ORs allow rules, so the owner's
+accepted set is unchanged byte-for-byte (regression-tested).
+
+### Consequences
+
+- The "writes stay Admin-SDK-only" comments on achievements / locker / reports
+  are now historically inaccurate and have been rewritten in `firestore.rules`.
+  Anyone reading the rules for the old posture should read those blocks fresh.
+- Custom claims are baked into the ID token: **granting or revoking `admin`
+  does not take effect until the token refreshes** (≤1h, or a forced
+  `getIdToken(true)`). Revocation is therefore not instantaneous — treat an
+  admin token as valid for up to an hour after the claim is removed.
+- `scripts/grant-pro.ts` writes `verifiedBy: "admin"` (a literal), while the
+  console path writes the acting admin's UID. The field is polymorphic in
+  production data; consumers must not assume it is a UID.
+- Legacy achievement docs seeded by the older pipeline use a different shape
+  (`achievementId` / `awardedAt` / `label`) than the shape the rules now pin for
+  client-created badges (`earnedAt` / `reason`). Admin SDK writes bypass rules,
+  so old docs remain valid; new client-side awards must use the pinned shape.
+
+### Verification
+
+`rules-tests/admin.rules.test.ts` covers all four surfaces: admin can do the
+action, a plain signed-in user cannot, an `admin: false` token is treated as a
+non-admin, anonymous is denied, and an admin cannot exceed any field guard
+(self-grant, ride-along `wins` edit, extra badge key, report reopen, verdict
+overwrite, back-dated timestamps). The pre-existing owner paths are
+regression-asserted in the same file.

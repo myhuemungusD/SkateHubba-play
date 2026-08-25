@@ -37,7 +37,7 @@ vi.mock("firebase/firestore", () => ({
 
 vi.mock("../../firebase");
 
-import { submitReport } from "../reports";
+import { REPORT_REASON_LABELS, submitReport } from "../reports";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -138,5 +138,64 @@ describe("submitReport", () => {
   it("drops an empty clipId rather than writing an empty string", async () => {
     await submitReport({ ...validParams, clipId: "" });
     expect(reportSetCall()).not.toHaveProperty("clipId");
+  });
+});
+
+/* ── clip-only reports (no backing game) ────────────────────── */
+
+describe("submitReport (user-clip targets)", () => {
+  const base = {
+    reporterUid: "r1",
+    reportedUid: "u2",
+    reportedUsername: "bob",
+    reason: "non_skate_content" as const,
+    description: "not skating",
+  };
+
+  it("writes gameId: null when the target is a user clip", async () => {
+    await submitReport({ ...base, clipId: "uc1" });
+
+    const payload = reportSetCall();
+    // Explicit null, not an omitted key — the queue distinguishes "no game"
+    // from a doc that lost the field.
+    expect(payload.gameId).toBeNull();
+    expect(payload.clipId).toBe("uc1");
+    expect(payload.reason).toBe("non_skate_content");
+  });
+
+  it("accepts an omitted gameId entirely", async () => {
+    await submitReport({ ...base, clipId: "uc1", gameId: undefined });
+
+    expect(reportSetCall().gameId).toBeNull();
+  });
+
+  it("normalises a blank gameId to null", async () => {
+    await submitReport({ ...base, clipId: "uc1", gameId: "" });
+
+    expect(reportSetCall().gameId).toBeNull();
+  });
+
+  it("refuses a report that identifies neither a game nor a clip", async () => {
+    await expect(submitReport({ ...base })).rejects.toThrow(/Nothing to report/);
+    expect(batchSet).not.toHaveBeenCalled();
+  });
+
+  it("still carries the gameId when one is supplied", async () => {
+    await submitReport({ ...base, gameId: "g1" });
+
+    expect(reportSetCall().gameId).toBe("g1");
+  });
+
+  it("caps an over-long clipId at 128 chars", async () => {
+    await submitReport({ ...base, clipId: "c".repeat(200) });
+
+    expect(reportSetCall().clipId).toBe("c".repeat(128));
+  });
+});
+
+describe("REPORT_REASON_LABELS", () => {
+  it("labels the non-skate reason distinctly from 'inappropriate'", () => {
+    expect(REPORT_REASON_LABELS.non_skate_content).toBe("Not skateboarding");
+    expect(REPORT_REASON_LABELS.non_skate_content).not.toBe(REPORT_REASON_LABELS.inappropriate_video);
   });
 });
