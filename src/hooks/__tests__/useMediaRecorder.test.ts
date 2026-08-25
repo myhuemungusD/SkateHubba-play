@@ -450,9 +450,14 @@ describe("useMediaRecorder", () => {
       // not a cosmetic slip — the user follows it exactly, nothing changes,
       // and the app reads as broken. Every iOS browser also carries a
       // `Safari/` token, which is what made this easy to get wrong.
-      name: "iOS Chrome is sent to Chrome's settings, not Safari's",
+      //
+      // Chrome then adds a second gate the iOS switch cannot reach: its own
+      // per-site permission. Naming only the first one reproduced the same
+      // dead end on a device where Safari worked and Chrome did not, so both
+      // must appear.
+      name: "iOS Chrome is given both its gates, not just the iOS switch",
       ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.0.0 Mobile/15E148 Safari/604.1",
-      hint: "Open Settings → Chrome → Camera and allow access, then reload.",
+      hint: "Chrome needs two: turn on Settings → Chrome → Camera, then tap the icon left of Chrome's address bar → Permissions → Camera. Reload after both.",
     },
     {
       // Tapping a search result in the Google app opens that app's own
