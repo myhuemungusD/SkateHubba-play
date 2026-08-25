@@ -8,6 +8,8 @@ import {
   mockOrderBy,
   mockLimit,
   mockGetDocs,
+  mockOnSnapshot,
+  mockGetDoc,
   mockDeleteDoc,
   captureTxOnce,
   mockRunTransaction,
@@ -25,7 +27,9 @@ import {
   deleteUserDisputes,
   fetchDisputeViewerState,
   fetchOpenDisputes,
+  fetchResolvedDispute,
   raiseDispute,
+  subscribeToGameDispute,
   type Dispute,
 } from "../disputes";
 import { auth } from "../../firebase";
@@ -109,6 +113,53 @@ beforeEach(() => {
   signIn("setter");
 });
 
+describe("fetchResolvedDispute", () => {
+  it.each(["land", "bail", "tie", "none"] as const)(
+    "parses a closed %s result by deterministic turn id",
+    async (verdict) => {
+      mockGetDoc.mockResolvedValueOnce({
+        id: "g1_3",
+        exists: () => true,
+        data: () => validDisputeData({ status: "closed", verdict, landVotes: 4, bailVotes: 2 }),
+      });
+
+      await expect(fetchResolvedDispute("g1", 3)).resolves.toMatchObject({
+        verdict,
+        status: "closed",
+        landVotes: 4,
+        bailVotes: 2,
+      });
+      expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "disputes", "g1_3");
+    },
+  );
+
+  it("preserves a legacy closed result without inventing a verdict", async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      id: "g1_3",
+      exists: () => true,
+      data: () => validDisputeData({ status: "closed" }),
+    });
+    const result = await fetchResolvedDispute("g1", 3);
+    expect(result).not.toHaveProperty("verdict");
+  });
+
+  it("normalizes the referee's legacy resolved status to closed", async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      id: "g1_3",
+      exists: () => true,
+      data: () => validDisputeData({ status: "resolved", verdict: "tie" }),
+    });
+    await expect(fetchResolvedDispute("g1", 3)).resolves.toMatchObject({ status: "closed", verdict: "tie" });
+  });
+
+  it("returns null for a missing or still-open deterministic document", async () => {
+    mockGetDoc.mockResolvedValueOnce({ id: "g1_3", exists: () => false });
+    await expect(fetchResolvedDispute("g1", 3)).resolves.toBeNull();
+    mockGetDoc.mockResolvedValueOnce({ id: "g1_3", exists: () => true, data: () => validDisputeData() });
+    await expect(fetchResolvedDispute("g1", 3)).resolves.toBeNull();
+  });
+});
+
 /* ── canRaiseDispute (the setter-facing UI gate) ─────────────── */
 
 describe("canRaiseDispute", () => {
@@ -140,6 +191,74 @@ describe("canRaiseDispute", () => {
 
   it("is false when there is no match video for the community to watch", () => {
     expect(canRaiseDispute(gate({ matchVideoUrl: null }), "setter")).toBe(false);
+  });
+});
+
+describe("subscribeToGameDispute", () => {
+  it("subscribes to the deterministic document and maps every tally update", () => {
+    const unsubscribe = vi.fn();
+    mockOnSnapshot.mockReturnValueOnce(unsubscribe);
+    const onChange = vi.fn();
+    const onError = vi.fn();
+
+    expect(subscribeToGameDispute("g1", 3, onChange, onError)).toBe(unsubscribe);
+    expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "disputes", "g1_3");
+
+    const [, next] = mockOnSnapshot.mock.calls[0] as unknown as [unknown, (snap: unknown) => void];
+    next({ id: "g1_3", exists: () => true, data: () => validDisputeData({ landVotes: 2, bailVotes: 1 }) });
+    next({ id: "g1_3", exists: () => true, data: () => validDisputeData({ landVotes: 4, bailVotes: 3 }) });
+    expect(onChange).toHaveBeenNthCalledWith(1, expect.objectContaining({ landVotes: 2, bailVotes: 1 }));
+    expect(onChange).toHaveBeenNthCalledWith(2, expect.objectContaining({ landVotes: 4, bailVotes: 3 }));
+  });
+
+  it("reports missing documents and forwards listener errors", () => {
+    mockOnSnapshot.mockReturnValueOnce(vi.fn());
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    subscribeToGameDispute("g1", 3, onChange, onError);
+    const [, next, fail] = mockOnSnapshot.mock.calls[0] as unknown as [
+      unknown,
+      (snap: unknown) => void,
+      (error: Error) => void,
+    ];
+    next({ id: "g1_3", exists: () => false, data: () => undefined });
+    const denied = Object.assign(new Error("denied"), { code: "permission-denied" });
+    fail(denied);
+    expect(onChange).toHaveBeenCalledWith(null);
+    expect(onError).toHaveBeenCalledWith(denied);
+  });
+
+  it("routes malformed snapshots through the listener error callback", () => {
+    mockOnSnapshot.mockReturnValueOnce(vi.fn());
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    subscribeToGameDispute("g1", 3, onChange, onError);
+    const [, next] = mockOnSnapshot.mock.calls[0] as unknown as [unknown, (snap: unknown) => void];
+
+    next({ id: "g1_3", exists: () => true, data: () => ({ gameId: "g1" }) });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringContaining("Malformed") }));
+  });
+
+  it("wraps a non-Error mapper throw so onError always receives an Error", () => {
+    mockOnSnapshot.mockReturnValueOnce(vi.fn());
+    const onChange = vi.fn();
+    const onError = vi.fn();
+    subscribeToGameDispute("g1", 3, onChange, onError);
+    const [, next] = mockOnSnapshot.mock.calls[0] as unknown as [unknown, (snap: unknown) => void];
+
+    next({
+      id: "g1_3",
+      exists: () => true,
+      data: () => {
+        // Non-Error throw — the subscription must still hand onError an Error.
+        throw "not-an-error";
+      },
+    });
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "Failed to read dispute document" }));
   });
 });
 
@@ -570,9 +689,23 @@ describe("castDisputeVerdict", () => {
     await expect(castDisputeVerdict("viewer", "g1_3", "land")).rejects.toBeInstanceOf(DisputeClosedError);
   });
 
-  it("converts a permission-denied rejection into AlreadyRuledError", async () => {
+  it("converts permission-denied into AlreadyRuledError when the caller's vote doc exists", async () => {
     mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    mockGetDoc.mockResolvedValueOnce({ exists: () => true });
     await expect(castDisputeVerdict("viewer", "g1_3", "land")).rejects.toBeInstanceOf(AlreadyRuledError);
+    expect(mockDoc).toHaveBeenCalledWith(expect.anything(), "disputeVotes", "viewer_g1_3");
+  });
+
+  it("converts permission-denied into DisputeClosedError when no vote doc exists (closed-read denial race)", async () => {
+    mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    mockGetDoc.mockResolvedValueOnce({ exists: () => false });
+    await expect(castDisputeVerdict("viewer", "g1_3", "land")).rejects.toBeInstanceOf(DisputeClosedError);
+  });
+
+  it("treats a failed vote-doc disambiguation read as closed — the safe terminal state", async () => {
+    mockRunTransaction.mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "permission-denied" }));
+    mockGetDoc.mockRejectedValueOnce(new Error("offline"));
+    await expect(castDisputeVerdict("viewer", "g1_3", "land")).rejects.toBeInstanceOf(DisputeClosedError);
   });
 
   it("propagates unexpected transaction errors verbatim", async () => {

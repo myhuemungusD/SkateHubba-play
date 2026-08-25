@@ -16,6 +16,7 @@ const mockDeclineJudgeInvite = vi.fn();
 const mockAcceptLanded = vi.fn();
 const mockRaiseDispute = vi.fn();
 const mockCanRaiseDispute = vi.fn();
+const mockSubscribeToGameDispute = vi.fn();
 
 vi.mock("../../services/games", () => ({
   setTrick: (...args: unknown[]) => mockSetTrick(...args),
@@ -35,6 +36,7 @@ vi.mock("../../services/games", () => ({
 vi.mock("../../services/disputes", () => ({
   raiseDispute: (...args: unknown[]) => mockRaiseDispute(...args),
   canRaiseDispute: (...args: unknown[]) => mockCanRaiseDispute(...args),
+  subscribeToGameDispute: (...args: unknown[]) => mockSubscribeToGameDispute(...args),
 }));
 
 vi.mock("../../services/storage", () => ({
@@ -84,6 +86,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: a landed claim is disputable unless a test says otherwise.
   mockCanRaiseDispute.mockReturnValue(true);
+  mockSubscribeToGameDispute.mockReturnValue(vi.fn());
 });
 
 afterEach(() => {
@@ -111,6 +114,22 @@ class DataProducingMR {
     }
     this.onstop?.();
   });
+}
+
+/**
+ * Drive the setter through one complete take: name the trick to reveal the
+ * recorder, tap the camera open, record, stop. The tap is not optional — the
+ * recorder never acquires a stream outside a user gesture unless camera and mic
+ * are already granted, which no test here arranges. Leaves the screen on the
+ * "Did you land it?" decision.
+ */
+async function setterRecordsATake() {
+  await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+  await userEvent.click(await screen.findByText(/Open Camera/));
+  await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+  await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
+  await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
 }
 
 describe("GamePlayScreen", () => {
@@ -305,16 +324,7 @@ describe("GamePlayScreen", () => {
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
-    // Type a trick name to reveal the VideoRecorder (autoOpen=true for setter)
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-
-    // Wait for VideoRecorder to auto-open and show Record button
-    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await setterRecordsATake();
 
     // "Did you land it?" appears — click Landed to submit
     await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
@@ -404,6 +414,7 @@ describe("GamePlayScreen", () => {
 
     // Type a trick name to show the recorder
     await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
+    await userEvent.click(await screen.findByText(/Open Camera/));
     await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
 
     // Clear the trick name — recorder stays visible via ref
@@ -433,12 +444,7 @@ describe("GamePlayScreen", () => {
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await setterRecordsATake();
 
     // "Did you land it?" appears — click Landed to trigger setTrick
     await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
@@ -452,14 +458,7 @@ describe("GamePlayScreen", () => {
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
-    // Type a trick name to reveal VideoRecorder
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-
-    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await setterRecordsATake();
 
     // "Did you land it?" appears — click Landed to trigger setTrick
     await waitFor(() => expect(screen.getByRole("group", { name: "Did you land the trick?" })).toBeInTheDocument());
@@ -476,12 +475,7 @@ describe("GamePlayScreen", () => {
   it("setter sees 'Did you land it?' immediately after recording", async () => {
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await setterRecordsATake();
 
     // Decision buttons appear immediately — no review step
     await waitFor(() => {
@@ -496,12 +490,7 @@ describe("GamePlayScreen", () => {
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await setterRecordsATake();
 
     await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Missed/));
@@ -520,12 +509,7 @@ describe("GamePlayScreen", () => {
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await setterRecordsATake();
 
     await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Missed/));
@@ -549,12 +533,7 @@ describe("GamePlayScreen", () => {
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await setterRecordsATake();
 
     await waitFor(() => expect(screen.getByText(/Missed/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Missed/));
@@ -569,12 +548,7 @@ describe("GamePlayScreen", () => {
 
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
-    await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
-    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
-
-    await userEvent.click(screen.getByRole("button", { name: /Record/ }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
-    await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
+    await setterRecordsATake();
 
     await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
     await userEvent.click(screen.getByText(/Landed/));
@@ -1109,6 +1083,28 @@ describe("GamePlayScreen", () => {
     });
   }
 
+  function makeCommunityDispute(overrides: Record<string, unknown> = {}) {
+    return {
+      id: "game1_1",
+      gameId: "game1",
+      landVotes: 0,
+      turnNumber: 1,
+      trickName: "Kickflip",
+      setterUid: "u1",
+      setterUsername: "sk8r",
+      status: "open",
+      matcherUid: "u2",
+      matcherUsername: "rival",
+      setVideoUrl: null,
+      matchVideoUrl: "https://example.com/match.webm",
+      spotId: null,
+      createdAt: null,
+      moderationStatus: "active",
+      bailVotes: 0,
+      ...overrides,
+    };
+  }
+
   it("shows the setter Accept/Dispute surface with the matcher's attempt in pendingReview", () => {
     render(<GamePlayScreen game={makePendingReviewGame()} profile={profile} onBack={vi.fn()} />);
 
@@ -1166,13 +1162,73 @@ describe("GamePlayScreen", () => {
     expect(screen.queryByText("Dispute")).not.toBeInTheDocument();
   });
 
-  it("shows both players a frozen community-review surface", () => {
+  it("shows both players the current community tally", () => {
     const game = makePendingReviewGame({ phase: "communityReview" });
-    render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
+    const dispute = makeCommunityDispute({ landVotes: 2, bailVotes: 1 });
+    mockSubscribeToGameDispute.mockImplementation(
+      (_gameId: string, _turn: number, onChange: (value: unknown) => void) => {
+        onChange(dispute);
+        return vi.fn();
+      },
+    );
+    const { unmount } = render(<GamePlayScreen game={game} profile={profile} onBack={vi.fn()} />);
 
     expect(screen.getByText("UNDER COMMUNITY REVIEW")).toBeInTheDocument();
-    expect(screen.getByText(/The community is deciding/)).toBeInTheDocument();
-    expect(screen.queryByText("Accept")).not.toBeInTheDocument();
+    expect(screen.getByText("LAND 2")).toBeInTheDocument();
+    expect(screen.getByText("1 BAIL")).toBeInTheDocument();
+    expect(screen.getByText("3 TOTAL")).toBeInTheDocument();
+    unmount();
+
+    render(<GamePlayScreen game={game} profile={{ ...profile, uid: "u2", username: "rival" }} onBack={vi.fn()} />);
+    expect(screen.getByText("LAND 2")).toBeInTheDocument();
+    expect(screen.getByText("1 BAIL")).toBeInTheDocument();
+  });
+
+  it("keeps the visible community tally current and handles a closed update", async () => {
+    let push: ((value: unknown) => void) | undefined;
+    mockSubscribeToGameDispute.mockImplementation(
+      (_gameId: string, _turn: number, onChange: (value: unknown) => void) => {
+        push = onChange;
+        return vi.fn();
+      },
+    );
+    render(
+      <GamePlayScreen game={makePendingReviewGame({ phase: "communityReview" })} profile={profile} onBack={vi.fn()} />,
+    );
+    push?.(makeCommunityDispute({ landVotes: 1 }));
+    expect(await screen.findByText("LAND 1")).toBeInTheDocument();
+    push?.(makeCommunityDispute({ status: "closed", landVotes: 3, bailVotes: 2 }));
+    expect(await screen.findByText("LAND 3")).toBeInTheDocument();
+    expect(screen.getByText("2 BAIL")).toBeInTheDocument();
+    expect(screen.getByText(/Voting has closed/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["missing document", "The vote count is not available yet.", null],
+    ["permission denial", "You don't have permission to view the vote count.", "permission-denied"],
+    ["listener failure", "The vote count is temporarily unavailable.", "unavailable"],
+  ])("keeps gameplay visible during a %s", async (_case, message, errorCode) => {
+    mockSubscribeToGameDispute.mockImplementation(
+      (
+        _gameId: string,
+        _turn: number,
+        onChange: (value: unknown) => void,
+        onError: (error: Error & { code?: string }) => void,
+      ) => {
+        if (errorCode === null) onChange(null);
+        else onError(Object.assign(new Error("listener failed"), { code: errorCode }));
+        return vi.fn();
+      },
+    );
+
+    render(
+      <GamePlayScreen game={makePendingReviewGame({ phase: "communityReview" })} profile={profile} onBack={vi.fn()} />,
+    );
+
+    expect(await screen.findByText(message)).toBeInTheDocument();
+    expect(screen.getByText("UNDER COMMUNITY REVIEW")).toBeInTheDocument();
+    expect(screen.getByTestId("letter-display-sk8r")).toBeInTheDocument();
+    expect(screen.getByTestId("letter-display-rival")).toBeInTheDocument();
   });
 
   it("does not fire a forfeit for a frozen game with a lapsed turnDeadline", () => {

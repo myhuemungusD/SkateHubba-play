@@ -81,6 +81,8 @@ export interface DisputeGameUpdate {
   reviewDeadline: null;
   /** TurnRecord to append via the SDK's arrayUnion. Absent on tie/retry (turn not resolved). */
   appendTurnRecord?: TurnRecord;
+  /** Server-authored pointer to the deterministic dispute result document. */
+  lastResolvedDisputeTurnNumber?: number;
 }
 
 /**
@@ -196,7 +198,10 @@ export function decideDisputeResolution(game: GameDoc, tally: DisputeTally, nowM
     return {
       verdict,
       winnerUid: null,
-      gameUpdate: honorSwapUpdate(game, matcherUid, nowMs),
+      gameUpdate: {
+        ...honorSwapUpdate(game, matcherUid, nowMs),
+        lastResolvedDisputeTurnNumber: game.turnNumber,
+      },
       statDeltas,
     };
   }
@@ -207,6 +212,7 @@ export function decideDisputeResolution(game: GameDoc, tally: DisputeTally, nowM
       verdict,
       winnerUid: null,
       gameUpdate: {
+        lastResolvedDisputeTurnNumber: game.turnNumber,
         phase: "matching",
         // Setter unchanged; the matcher is back on the clock to re-attempt.
         currentSetter: disputerUid,
@@ -239,6 +245,7 @@ export function decideDisputeResolution(game: GameDoc, tally: DisputeTally, nowM
       verdict,
       winnerUid: disputerUid,
       gameUpdate: {
+        lastResolvedDisputeTurnNumber: game.turnNumber,
         status: "complete",
         winner: disputerUid,
         p1Letters,
@@ -256,6 +263,7 @@ export function decideDisputeResolution(game: GameDoc, tally: DisputeTally, nowM
     verdict,
     winnerUid: null,
     gameUpdate: {
+      lastResolvedDisputeTurnNumber: game.turnNumber,
       phase: "setting",
       currentSetter: disputerUid,
       currentTurn: disputerUid,

@@ -126,6 +126,12 @@ export interface GameDoc {
    * so pre-feature docs are unaffected; server-cleared when the review resolves.
    */
   reviewDeadline?: Timestamp | null;
+  /**
+   * Turn number of the most recently resolved community dispute. Written only
+   * by the server referee so completed-game clients can address the matching
+   * deterministic dispute document even after later turns advance the game.
+   */
+  lastResolvedDisputeTurnNumber?: number;
 }
 
 /** Parse a Firestore document snapshot into a typed GameDoc. */

@@ -163,6 +163,9 @@ export function toAdminDisputeUpdate(update: DisputeGameUpdate): Record<string, 
   if (update.turnNumber !== undefined) out.turnNumber = update.turnNumber;
   if (update.p1Letters !== undefined) out.p1Letters = update.p1Letters;
   if (update.p2Letters !== undefined) out.p2Letters = update.p2Letters;
+  if (update.lastResolvedDisputeTurnNumber !== undefined) {
+    out.lastResolvedDisputeTurnNumber = update.lastResolvedDisputeTurnNumber;
+  }
   // matchVideoUrl is cleared (null) only on the tie/retry branch.
   if (update.matchVideoUrl !== undefined) out.matchVideoUrl = update.matchVideoUrl;
   // Always cleared — the review phase is resolved.

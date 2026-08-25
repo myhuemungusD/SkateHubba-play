@@ -2853,7 +2853,9 @@ service cloud.firestore {
     //
     //   - update allowed ONLY as a direction flip (up ⇄ down); a vote can
     //     never be silently rewritten into a different shape or retargeted.
-    //   - delete owner-only — backs any future account-deletion cascade.
+    //   - delete owner-only AND self-correcting: it must carry the matching
+    //     counter decrement (or prove there is none to carry), which closes
+    //     the cast → delete → cast stuffing cycle. See the delete rule.
     //
     // Reads are open to signed-in users because the clips feed aggregates
     // votes via `getCountFromServer` and checks whether the current user
@@ -2915,8 +2917,48 @@ service cloud.firestore {
         && request.resource.data.value != resource.data.get('value', 1)
         && request.resource.data.createdAt == request.time;
 
+      // Owner-only delete, and — crucially — the delete must CARRY ITS OWN
+      // COUNTER CORRECTION. A bare delete would reset the create rule's
+      // implicit one-vote-per-(uid, clipId) guard (the deterministic doc id
+      // is free again) while leaving the earlier +1 on the clip, so a single
+      // account could cycle cast → delete → cast → … and add +1 to the same
+      // clip every lap. Forcing the paired -1 makes that cycle net zero:
+      // stuffing is blocked by arithmetic, not by forbidding the delete,
+      // which is what keeps the withdraw path (clips.votes.ts#removeClipVote)
+      // and the account-deletion cascade (clips.cascade.ts) working.
+      // A FLIP is delete + set of the same voteId in one transaction, which
+      // Firestore coalesces into an UPDATE — it lands on the flip clause
+      // above, never here.
       allow delete: if isSignedIn()
-        && request.auth.uid == resource.data.uid;
+        && request.auth.uid == resource.data.uid
+        && (
+          // Legacy/malformed vote carrying no clipId: no counter to target,
+          // so there is nothing to keep consistent (the cascade drops these
+          // bare — see deleteUserClipVotes).
+          !('clipId' in resource.data)
+          // Orphan: the clip is already gone, and its aggregates with it.
+          || !exists(/databases/$(database)/documents/clips/$(resource.data.clipId))
+          // Nothing to subtract: the counter this vote fed is already at its
+          // floor (drifted aggregate, Admin-SDK edit, or a legacy clip that
+          // pre-dates the aggregates). Blocking the delete here would strand
+          // the vote doc forever. Not a stuffing vector — re-voting from a
+          // zeroed base still only ever contributes a single +1.
+          // Direction default matches voteValueBefore: legacy votes pre-date
+          // `value` and were all upvotes → 1.
+          || (resource.data.get('value', 1) == 1
+              && get(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('upvoteCount', 0) <= 0)
+          || (resource.data.get('value', 1) == -1
+              && get(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('downvoteCount', 0) <= 0)
+          // The normal path: the SAME atomic write must decrement the counter
+          // this vote incremented. A downvote can only ever pull downvoteCount
+          // down — never upvoteCount.
+          || (resource.data.get('value', 1) == 1
+              && getAfter(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('upvoteCount', 0)
+                 == get(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('upvoteCount', 0) - 1)
+          || (resource.data.get('value', 1) == -1
+              && getAfter(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('downvoteCount', 0)
+                 == get(/databases/$(database)/documents/clips/$(resource.data.clipId)).data.get('downvoteCount', 0) - 1)
+        );
     }
 
     // ── Disputes (community-judged trick calls) ──
@@ -2937,10 +2979,32 @@ service cloud.firestore {
     //   4. matchVideoUrl is bucket-pinned — it renders in a public feed, the
     //      same exfil / content-spoof surface clips.videoUrl guards against.
     //
-    // Reads are open to any signed-in user: blocklist filtering is applied
-    // client-side (see useBlockedUsers), matching clips.
+    // Open disputes form the signed-in judging feed. Closed results are game
+    // history: readable by the two players named on the dispute, and by any
+    // voter who ruled on it (their vote doc is the proof — the "see how you
+    // ruled" contract fetchDisputeViewerState documents, and what lets
+    // deleteUserDisputeVotes pair its erasure delete with the -1 tally move
+    // on a closed dispute). The uid pins are trustworthy because the create
+    // rule below binds setterUid/matcherUid to the backing game's real
+    // players, so no cross-doc get() is needed — which also keeps
+    // deleteUserDisputes' setterUid erasure QUERY provable (a get()-based arm
+    // cannot be evaluated for list requests and would deny the whole query).
+    //
+    // `resource == null` keeps reads of MISSING docs open to any signed-in
+    // user: raiseDispute's transactional exists-check and the game-over
+    // screen's legacy fallback probe both get() deterministic ids that may
+    // not exist, and a rule that dereferences resource.data denies those
+    // reads outright. This arm leaks only existence — strictly less than the
+    // app-wide read it replaces.
     match /disputes/{disputeId} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn()
+        && (
+          resource == null
+          || resource.data.status == 'open'
+          || request.auth.uid == resource.data.setterUid
+          || request.auth.uid == resource.data.matcherUid
+          || exists(/databases/$(database)/documents/disputeVotes/$(request.auth.uid + '_' + disputeId))
+        );
 
       allow create: if isSignedIn()
         && request.auth.token.email_verified == true

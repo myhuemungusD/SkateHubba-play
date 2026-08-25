@@ -186,7 +186,7 @@ describe("games service", () => {
       judgeStatus: "accepted",
     };
 
-    it("honor-system landed — FREEZES into pendingReview (no swap, clip or notification yet)", async () => {
+    it("honor-system landed — FREEZES into pendingReview (no swap, no clip, review alert only)", async () => {
       mockTxGet.mockResolvedValueOnce(makeGameSnap(matchingGame));
 
       const result = await submitMatchAttempt("g1", "https://vid.url/match.webm", true);
@@ -204,9 +204,18 @@ describe("games service", () => {
       expect(updates.currentTurn).toBeUndefined();
       expect(updates.turnNumber).toBeUndefined();
       expect(updates.turnHistory).toBeUndefined();
-      // The landed clip and the "Trick Landed" notification are DEFERRED to
-      // acceptLanded / resolution — nothing is written to the feed here.
-      expect(mockTxSetCalls).toHaveLength(0);
+      // The landed clip and the RESULT ("Trick Landed") notification are
+      // DEFERRED to acceptLanded / resolution — nothing is written to the
+      // feed here. The only in-tx write is the setter's review-window alert.
+      expect(mockTxSetCalls).toHaveLength(1);
+      const notif = mockTxSetCalls[0].data;
+      expect(notif.recipientUid).toBe("p1"); // setter
+      expect(notif.senderUid).toBe("p2"); // matcher
+      expect(notif.type).toBe("your_turn");
+      expect(notif.title).toBe("Land Claimed");
+      expect(notif.body).toContain("@bob");
+      expect(notif.gameId).toBe("g1");
+      expect(notif.read).toBe(false);
     });
 
     it("judge-active landed — enters disputable phase routed to judge, no letters change", async () => {

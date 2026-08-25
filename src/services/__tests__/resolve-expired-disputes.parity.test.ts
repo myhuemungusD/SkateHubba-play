@@ -76,6 +76,9 @@ function toWebDisputeUpdate(update: DisputeGameUpdate): Record<string, unknown> 
   if (update.turnNumber !== undefined) out.turnNumber = update.turnNumber;
   if (update.p1Letters !== undefined) out.p1Letters = update.p1Letters;
   if (update.p2Letters !== undefined) out.p2Letters = update.p2Letters;
+  if (update.lastResolvedDisputeTurnNumber !== undefined) {
+    out.lastResolvedDisputeTurnNumber = update.lastResolvedDisputeTurnNumber;
+  }
   if (update.matchVideoUrl !== undefined) out.matchVideoUrl = update.matchVideoUrl;
   out.reviewFor = update.reviewFor;
   out.reviewDeadline = update.reviewDeadline;
