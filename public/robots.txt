@@ -1,5 +1,12 @@
 User-agent: *
 Allow: /
 Disallow: /assets/
+# Player profiles are shareable, not publishable. `users/{uid}` is publicly
+# gettable so a link sent to a friend resolves without an account — that is
+# consent to share with a recipient, not consent to be indexed. Googlebot
+# renders JS, so without this it would surface usernames, avatars, records and
+# verified-pro status as search results. Crawlers still receive the per-profile
+# OG card for link previews; only indexing is refused.
+Disallow: /player/
 
 Sitemap: https://skatehubba.com/sitemap.xml

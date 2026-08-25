@@ -3,7 +3,7 @@ import { doc, setDoc, arrayUnion, arrayRemove, serverTimestamp } from "firebase/
 import app, { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
-import { PRIVATE_PROFILE_DOC_ID } from "./users";
+import { PRIVATE_PROFILE_DOC_ID, getPushEnabled } from "./users";
 import { PUSH_TARGETS_COLLECTION } from "./pushDispatch";
 
 /**
@@ -83,6 +83,11 @@ export function _resetSwRegistration(): void {
 // context. Returns null only for benign no-ops (missing vapid key, empty
 // token).
 async function acquireAndStoreToken(uid: string): Promise<string | null> {
+  // Respect the Settings opt-out (src/services/pushPreferences.ts). Skipping
+  // here is what stops the sign-in refresh from re-mirroring a token for a user
+  // who explicitly turned push off.
+  if (!(await getPushEnabled(uid))) return null;
+
   const messaging = getMessagingInstance();
   const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY;
   if (!vapidKey) {

@@ -65,17 +65,17 @@ export function Lobby({
         onSignOut={onSignOut}
       />
 
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-[430px] mx-auto">
         <PushPermissionBanner uid={profile.uid} />
       </div>
 
-      <div className="px-5 pt-7 max-w-lg mx-auto">
+      <div className="px-5 pt-7 max-w-[430px] mx-auto">
         <ClipsFeed profile={profile} onViewPlayer={onViewPlayer ?? (() => {})} onChallengeUser={onChallengeUser} />
 
         <div className="mb-7">
           <h1 className="font-display text-fluid-4xl leading-none text-white tracking-wide">Your Games</h1>
           {games.length > 0 && (
-            <p className="font-body text-xs text-brand-green mt-1.5">
+            <p className="font-body text-xs text-muted mt-1.5">
               {c.liveActive.length > 0 ? `${c.liveActive.length} active` : "No active games"}
               {c.done.length > 0 ? ` · ${c.done.length} completed` : ""}
             </p>

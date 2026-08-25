@@ -13,6 +13,13 @@ import { clipId, type ClipModerationStatus, type ClipRole, type LandedClipContex
  * ──────────────────────────────────────────── */
 
 interface ClipWritePayload {
+  /**
+   * Discriminant, pinned to 'game' by the create rule. Written explicitly
+   * even though the read mapper defaults a missing value to "game": the
+   * default exists for the legacy corpus, not for new writes, and the rule
+   * requires the field.
+   */
+  source: "game";
   gameId: string;
   turnNumber: number;
   role: ClipRole;
@@ -24,6 +31,8 @@ interface ClipWritePayload {
   createdAt: FieldValue;
   moderationStatus: ClipModerationStatus;
   upvoteCount: number;
+  /** Seeds at 0 — the create rule accepts absent-or-0 and nothing else. */
+  downvoteCount: number;
 }
 
 function buildClipPayload(ctx: Omit<ClipWritePayload, "createdAt">, createdAt: FieldValue): ClipWritePayload {
@@ -48,6 +57,7 @@ export function writeLandedClipsInTransaction(tx: Transaction, ctx: LandedClipCo
       setRef,
       buildClipPayload(
         {
+          source: "game",
           gameId: ctx.gameId,
           turnNumber: ctx.turnNumber,
           role: "set",
@@ -58,6 +68,7 @@ export function writeLandedClipsInTransaction(tx: Transaction, ctx: LandedClipCo
           spotId: ctx.spotId,
           moderationStatus: "active",
           upvoteCount: 0,
+          downvoteCount: 0,
         },
         createdAt,
       ),
@@ -70,6 +81,7 @@ export function writeLandedClipsInTransaction(tx: Transaction, ctx: LandedClipCo
       matchRef,
       buildClipPayload(
         {
+          source: "game",
           gameId: ctx.gameId,
           turnNumber: ctx.turnNumber,
           role: "match",
@@ -80,6 +92,7 @@ export function writeLandedClipsInTransaction(tx: Transaction, ctx: LandedClipCo
           spotId: ctx.spotId,
           moderationStatus: "active",
           upvoteCount: 0,
+          downvoteCount: 0,
         },
         createdAt,
       ),

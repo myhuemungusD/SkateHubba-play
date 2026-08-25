@@ -9,11 +9,14 @@
  * The rule grants the owner read + delete, and denies client create/update
  * outright (achievements are minted server-side via the Admin SDK only).
  *
+ * READ is now signed-in-wide (badges are public reputation on /player/:uid) —
+ * that posture, plus the parallel /locker subcollection, is covered in
+ * locker-achievements.rules.test.ts. This file owns the owner-only WRITE side.
+ *
  * Verifies:
  *  - owner CAN read + delete their own achievement docs
- *  - non-owner CANNOT read or delete
+ *  - non-owner CANNOT delete
  *  - client create/update denied even for the owner
- *  - anonymous denied
  *
  * Run via:  npm run test:rules
  */
@@ -93,19 +96,14 @@ describe("users/{uid}/achievements — owner read + delete (GDPR erasure)", () =
 });
 
 describe("users/{uid}/achievements — non-owner + anonymous denied", () => {
-  it("stranger CANNOT read another user's achievement doc", async () => {
-    await seedAchievement();
-    await assertFails(getDoc(doc(asStranger().firestore(), ...achPath())));
-  });
-
   it("stranger CANNOT delete another user's achievement doc", async () => {
     await seedAchievement();
     await assertFails(deleteDoc(doc(asStranger().firestore(), ...achPath())));
   });
 
-  it("anonymous CANNOT read an achievement doc", async () => {
+  it("anonymous CANNOT delete an achievement doc", async () => {
     await seedAchievement();
-    await assertFails(getDoc(doc(testEnv.unauthenticatedContext().firestore(), ...achPath())));
+    await assertFails(deleteDoc(doc(testEnv.unauthenticatedContext().firestore(), ...achPath())));
   });
 });
 

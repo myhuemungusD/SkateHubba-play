@@ -1,5 +1,6 @@
 import { memo } from "react";
 import type { ClipsFeedSort } from "../../services/clips";
+import { CameraIcon } from "../icons";
 import { TopNewToggle } from "./TopNewToggle";
 
 export interface ClipsFeedHeaderProps {
@@ -9,6 +10,8 @@ export interface ClipsFeedHeaderProps {
   disabled?: boolean;
   /** Position pill ("3/12"). Omitted while loading or when the pool is empty. */
   position?: { index: number; total: number };
+  /** Opens the user-clip upload modal. */
+  onPostClip: () => void;
 }
 
 /**
@@ -23,6 +26,7 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
   onSortChange,
   disabled,
   position,
+  onPostClip,
 }: ClipsFeedHeaderProps) {
   return (
     <div className="flex items-center justify-between gap-2 mb-3">
@@ -34,7 +38,22 @@ export const ClipsFeedHeader = memo(function ClipsFeedHeader({
           </span>
         )}
       </div>
-      <TopNewToggle sort={sort} onChange={onSortChange} disabled={disabled} />
+      <div className="flex items-center gap-2">
+        {/* Posting lives in the feed header rather than the lobby's main CTA
+            column: it's the same surface you're already browsing, and the
+            lobby's primary action is starting a game, which this must not
+            compete with. */}
+        <button
+          type="button"
+          onClick={onPostClip}
+          aria-label="Post a clip to the feed"
+          className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-brand-orange/30 bg-brand-orange/[0.08] px-3 font-display text-[11px] tracking-[0.15em] text-brand-orange transition-all duration-300 hover:bg-brand-orange/15 active:scale-[0.97] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+        >
+          <CameraIcon size={13} />
+          POST
+        </button>
+        <TopNewToggle sort={sort} onChange={onSortChange} disabled={disabled} />
+      </div>
     </div>
   );
 });

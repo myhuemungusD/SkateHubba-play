@@ -26,6 +26,15 @@ vi.mock(
 
 vi.mock("../../firebase");
 
+// The Settings push preference gates token acquisition. Mocked here so these
+// tests exercise the FCM surface rather than the preference read; the disabled
+// branch has its own case below.
+const mockGetPushEnabled = vi.hoisted(() => vi.fn<() => Promise<boolean>>(() => Promise.resolve(true)));
+vi.mock("../users", () => ({
+  PRIVATE_PROFILE_DOC_ID: "profile",
+  getPushEnabled: () => mockGetPushEnabled(),
+}));
+
 /* ── tests ───────────────────────────────────── */
 
 import {
@@ -286,6 +295,20 @@ describe("refreshWebPushTokenIfGranted", () => {
       { tokens: { _op: "arrayUnion", value: "fcm-token-refresh-123" }, updatedAt: "SERVER_TS" },
       { merge: true },
     );
+  });
+
+  it("acquires nothing when the user disabled push in Settings", async () => {
+    // The mirror must stay empty for an opted-out user — otherwise the
+    // sign-in refresh silently re-arms their notifications.
+    mockGetPushEnabled.mockResolvedValueOnce(false);
+    globalThis.Notification = {
+      requestPermission: mockRequestPermission,
+      permission: "granted",
+    } as unknown as typeof Notification;
+
+    await expect(refreshWebPushTokenIfGranted("u1")).resolves.toBeNull();
+    expect(mockGetToken).not.toHaveBeenCalled();
+    expect(mockSetDoc).not.toHaveBeenCalled();
   });
 
   it("returns null when VAPID key is not set", async () => {

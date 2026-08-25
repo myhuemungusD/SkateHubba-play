@@ -1,15 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useNotifications } from "../context/NotificationContext";
-import { notificationIcon, notificationAccentText } from "../lib/notificationMeta";
+import { useNotifications, type AppNotification } from "../context/NotificationContext";
+import { NotificationRow } from "./NotificationRow";
+import { getNotificationGame } from "../services/notifications";
 import type { GameDoc } from "../services/games";
-
-function relativeTime(ts: number): string {
-  const diff = Math.max(0, Math.floor((Date.now() - ts) / 1000));
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  return `${Math.floor(diff / 86400)}d ago`;
-}
 
 export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onOpenGame?: (g: GameDoc) => void }) {
   const {
@@ -24,18 +17,32 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
     toggleSound,
   } = useNotifications();
   const [open, setOpen] = useState(false);
+  // Row whose game is being fetched, and the row whose fetch came back empty.
+  // Both are single-valued: only one row can be activated at a time.
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [missingId, setMissingId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * Close the panel and drop the "no longer available" marker with it —
+   * the message describes one activation attempt, so it must not survive
+   * into the next time the panel is opened.
+   */
+  const closePanel = useCallback(() => {
+    setOpen(false);
+    setMissingId(null);
+  }, []);
 
   // Close on outside click or Escape
   useEffect(() => {
     if (!open) return;
     const onMouseDown = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setOpen(false);
+        closePanel();
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape") closePanel();
     };
     document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("keydown", onKeyDown);
@@ -43,11 +50,53 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
       document.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [open]);
+  }, [open, closePanel]);
 
   const handleToggle = useCallback(() => {
     setOpen((prev) => !prev);
+    setMissingId(null);
   }, []);
+
+  /** Dismiss a row, clearing its missing marker so the message can't outlive it. */
+  const handleDismiss = useCallback(
+    (id: string) => {
+      dismissNotification(id);
+      setMissingId((prev) => (prev === id ? null : prev));
+    },
+    [dismissNotification],
+  );
+
+  /**
+   * Activate a notification row.
+   *
+   * Marking as read never depends on the game being resolvable — an entry the
+   * caller can't open is still an entry the user wants off their unread pile.
+   * When the game isn't in the caller's list (a completed game, a stale push,
+   * or a list that hasn't hydrated yet) we fetch it on demand instead of
+   * rendering a dead row.
+   */
+  const activate = useCallback(
+    async (n: AppNotification, cached: GameDoc | undefined) => {
+      if (!n.read) markRead(n.id);
+      if (!n.gameId || !onOpenGame) return;
+      if (cached) {
+        onOpenGame(cached);
+        closePanel();
+        return;
+      }
+      setPendingId(n.id);
+      setMissingId(null);
+      const game = await getNotificationGame(n.gameId);
+      setPendingId(null);
+      if (!game) {
+        setMissingId(n.id);
+        return;
+      }
+      onOpenGame(game);
+      closePanel();
+    },
+    [markRead, onOpenGame, closePanel],
+  );
 
   return (
     <div className="relative" ref={panelRef}>
@@ -168,70 +217,22 @@ export function NotificationBell({ games, onOpenGame }: { games?: GameDoc[]; onO
             ) : (
               notifications.map((n) => {
                 const game = n.gameId && games ? games.find((g) => g.id === n.gameId) : undefined;
-                const clickable = !!(game && onOpenGame);
-                const activate = () => {
-                  if (!clickable) return;
-                  if (!n.read) markRead(n.id);
-                  onOpenGame(game);
-                  setOpen(false);
-                };
-                // Row is div[role="button"] (not <button>) so the Delete <button>
-                // can safely live inside without invalid nested interactives.
+                // A row is interactive if there's anything for it to do:
+                // open a game, or clear its own unread state.
+                const clickable = !!(n.gameId && onOpenGame) || !n.read;
                 return (
-                  <div
-                    role="button"
-                    tabIndex={clickable ? 0 : -1}
-                    aria-disabled={!clickable}
+                  <NotificationRow
                     key={n.id}
-                    onClick={activate}
-                    onKeyDown={(e) => {
-                      if (!clickable) return;
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        activate();
-                      }
+                    notification={n}
+                    clickable={clickable}
+                    loading={pendingId === n.id}
+                    missing={missingId === n.id}
+                    onActivate={() => {
+                      if (!clickable || pendingId) return;
+                      void activate(n, game);
                     }}
-                    className={`group w-full text-left flex items-start gap-3 px-4 py-3 border-b border-border last:border-0 transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand-orange ${n.read ? "opacity-60" : ""} ${clickable ? "hover:bg-[rgba(255,107,0,0.04)] cursor-pointer" : ""}`}
-                  >
-                    <span className={`shrink-0 text-sm mt-0.5 ${notificationAccentText[n.type]}`}>
-                      {notificationIcon[n.type]}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className={`font-body text-xs leading-tight ${n.read ? "text-muted" : "text-white"}`}>
-                        <span className="font-semibold">{n.title}</span>
-                        {" · "}
-                        <span className="text-subtle">{n.message}</span>
-                      </p>
-                      <p className="font-body text-[10px] text-faint mt-0.5">{relativeTime(n.timestamp)}</p>
-                    </div>
-                    {!n.read && (
-                      <span className="shrink-0 w-2 h-2 rounded-full bg-brand-orange mt-1.5" aria-label="Unread" />
-                    )}
-                    <button
-                      type="button"
-                      aria-label="Delete notification"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        dismissNotification(n.id);
-                      }}
-                      className="shrink-0 p-1 text-faint hover:text-brand-red transition-colors opacity-60 hover:opacity-100 focus-visible:opacity-100"
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        aria-hidden="true"
-                      >
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  </div>
+                    onDismiss={() => handleDismiss(n.id)}
+                  />
                 );
               })
             )}

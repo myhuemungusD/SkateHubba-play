@@ -59,14 +59,62 @@ function setupMockStream() {
   return { mockStop, mockStream };
 }
 
+type MediaPermissionName = "camera" | "microphone";
+
+/**
+ * Stub `navigator.permissions.query` with per-name states, or model the two
+ * failure shapes the recorder must survive: a `query` that throws (Safari and
+ * Firefox reject the "camera"/"microphone" names) and no Permissions API at
+ * all. Returns the query spy so tests can assert the names asked for.
+ */
+function setupMockPermissions(states: Record<MediaPermissionName, PermissionState> | "throws" | "missing") {
+  if (states === "missing") {
+    Object.defineProperty(navigator, "permissions", { writable: true, configurable: true, value: undefined });
+    return vi.fn();
+  }
+  const query =
+    states === "throws"
+      ? vi.fn().mockImplementation(() => {
+          throw new TypeError("unsupported permission name");
+        })
+      : vi
+          .fn()
+          .mockImplementation(({ name }: { name: MediaPermissionName }) => Promise.resolve({ state: states[name] }));
+  Object.defineProperty(navigator, "permissions", { writable: true, configurable: true, value: { query } });
+  return query;
+}
+
+const originalPermissions = Object.getOwnPropertyDescriptor(navigator, "permissions");
+const originalUserAgent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
+
 beforeEach(() => {
   vi.clearAllMocks();
   setupMockStream();
+  // Default for every existing test: no Permissions API → no auto-open.
+  setupMockPermissions("missing");
 });
 
 afterEach(() => {
   vi.useRealTimers();
+  if (originalPermissions) Object.defineProperty(navigator, "permissions", originalPermissions);
+  if (originalUserAgent) Object.defineProperty(navigator, "userAgent", originalUserAgent);
 });
+
+/**
+ * Arm getUserMedia to reject with `err`, then tap Open Camera. The tap is the
+ * only route to the error box — nothing acquires a stream unprompted unless
+ * camera and mic are already granted.
+ */
+async function failToOpenCamera(err: unknown) {
+  Object.defineProperty(navigator, "mediaDevices", {
+    writable: true,
+    configurable: true,
+    value: { getUserMedia: vi.fn().mockRejectedValueOnce(err) },
+  });
+
+  render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+  await userEvent.click(screen.getByText(/Open Camera/));
+}
 
 describe("VideoRecorder", () => {
   it("renders idle state with open camera button", () => {
@@ -84,22 +132,25 @@ describe("VideoRecorder", () => {
     });
   });
 
-  it("auto-opens camera when autoOpen is true", async () => {
-    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" autoOpen />);
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument();
-    });
+  // Regression: the setter's recorder used to call getUserMedia straight from
+  // its mount effect. WebKit refuses a prompt-raising request that no gesture
+  // asked for, denies it for the rest of the page load, and never shows the
+  // prompt — so every iOS browser reported "Camera access denied" for a
+  // permission the user was never offered. No permission state may open the
+  // camera unprompted except one already granted.
+  it("never calls getUserMedia before a gesture when permission is unknown", async () => {
+    setupMockPermissions("throws");
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Open Camera/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument());
   });
 
   it("handles camera permission denied error", async () => {
-    Object.defineProperty(navigator, "mediaDevices", {
-      writable: true,
-      configurable: true,
-      value: { getUserMedia: vi.fn().mockRejectedValueOnce(new DOMException("Not allowed", "NotAllowedError")) },
-    });
-
-    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
-    await userEvent.click(screen.getByText(/Open Camera/));
+    await failToOpenCamera(new DOMException("Not allowed", "NotAllowedError"));
 
     await waitFor(() => {
       expect(screen.getByText(/Camera access denied/)).toBeInTheDocument();
@@ -107,15 +158,16 @@ describe("VideoRecorder", () => {
     });
   });
 
-  it("handles SecurityError camera error as permission error", async () => {
-    Object.defineProperty(navigator, "mediaDevices", {
-      writable: true,
-      configurable: true,
-      value: { getUserMedia: vi.fn().mockRejectedValueOnce(new DOMException("Security", "SecurityError")) },
-    });
+  // The friendly copy reads identically for both permission failures, so the
+  // exception name is what makes a screenshot of this box actionable.
+  it("shows the underlying exception name under the camera error", async () => {
+    await failToOpenCamera(new DOMException("Not allowed", "NotAllowedError"));
 
-    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
-    await userEvent.click(screen.getByText(/Open Camera/));
+    await waitFor(() => expect(screen.getByText("NotAllowedError")).toBeInTheDocument());
+  });
+
+  it("handles SecurityError camera error as permission error", async () => {
+    await failToOpenCamera(new DOMException("Security", "SecurityError"));
 
     await waitFor(() => {
       expect(screen.getByText(/Camera access denied/)).toBeInTheDocument();
@@ -123,14 +175,7 @@ describe("VideoRecorder", () => {
   });
 
   it("handles generic camera error", async () => {
-    Object.defineProperty(navigator, "mediaDevices", {
-      writable: true,
-      configurable: true,
-      value: { getUserMedia: vi.fn().mockRejectedValueOnce(new Error("Device not found")) },
-    });
-
-    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
-    await userEvent.click(screen.getByText(/Open Camera/));
+    await failToOpenCamera(new Error("Device not found"));
 
     await waitFor(() => {
       expect(screen.getByText(/Camera unavailable: Device not found/)).toBeInTheDocument();
@@ -443,6 +488,36 @@ describe("VideoRecorder", () => {
     });
   });
 
+  it("scales the auto-stop warning to a caller-supplied cap (30 s user clips)", async () => {
+    // The warning window is relative to the cap, so at 30 s nothing should
+    // appear at the moment a 20 s take would already be warning.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    setupMockStream();
+    const cap = 30;
+    render(<VideoRecorder onRecorded={vi.fn()} label="Clip" maxDurationSeconds={cap} />);
+
+    await act(async () => {
+      await userEvent.click(screen.getByText(/Open Camera/));
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
+    await act(async () => {
+      await userEvent.click(screen.getByRole("button", { name: /Record/ }));
+    });
+
+    // 16 s in: inside the 20 s cap's warning window, but well outside the
+    // 30 s cap's. If the component still read the constant, this would warn.
+    act(() => {
+      vi.advanceTimersByTime(16_000);
+    });
+    expect(screen.queryByText(/Auto-stop in/)).not.toBeInTheDocument();
+
+    // 26 s in: one second inside the 30 s cap's window.
+    act(() => {
+      vi.advanceTimersByTime(10_000);
+    });
+    await waitFor(() => expect(screen.getByText("Auto-stop in 4s")).toBeInTheDocument());
+  });
+
   it("retries camera after error", async () => {
     Object.defineProperty(navigator, "mediaDevices", {
       writable: true,
@@ -532,6 +607,61 @@ describe("VideoRecorder", () => {
     await userEvent.click(screen.getByLabelText("Enable fisheye"));
     expect(screen.getByLabelText("Disable fisheye")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("camera-crosshair")).toBeInTheDocument();
+  });
+
+  it("auto-opens the camera on mount when camera and mic are already granted", async () => {
+    const query = setupMockPermissions({ camera: "granted", microphone: "granted" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Record — Land It/ })).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledWith({ name: "camera" });
+    expect(query).toHaveBeenCalledWith({ name: "microphone" });
+  });
+
+  it("does not auto-open when only one of camera/mic is granted", async () => {
+    setupMockPermissions({ camera: "granted", microphone: "prompt" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText("Tap to open camera")).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByText(/Allow camera & mic once/)).toBeInTheDocument();
+  });
+
+  it("does not auto-open when permission is denied", async () => {
+    setupMockPermissions({ camera: "denied", microphone: "denied" });
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Allow camera & mic once/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("stays idle without crashing when permissions.query throws", async () => {
+    setupMockPermissions("throws");
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Allow camera & mic once/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+    expect(screen.getByText(/Open Camera/)).toBeInTheDocument();
+  });
+
+  it("stays idle when navigator.permissions is unavailable", async () => {
+    setupMockPermissions("missing");
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+
+    await waitFor(() => expect(screen.getByText(/Open Camera/)).toBeInTheDocument());
+    expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("shows the Safari-specific permission tip on iOS Safari", () => {
+    Object.defineProperty(navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Safari/604.1",
+    });
+
+    render(<VideoRecorder onRecorded={vi.fn()} label="Land It" />);
+    expect(screen.getByText(/Website Settings → Camera: Allow/)).toBeInTheDocument();
+    expect(screen.queryByText(/Allow camera & mic once/)).not.toBeInTheDocument();
   });
 
   it("cleans up on unmount (revokes blob URL and stops tracks)", async () => {

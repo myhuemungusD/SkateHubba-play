@@ -30,7 +30,7 @@ function voteDoc(uid: string) {
 }
 
 function makeVote(uid: string): Record<string, unknown> {
-  return { uid, clipId: CLIP_ID, createdAt: serverTimestamp() };
+  return { uid, clipId: CLIP_ID, value: 1, createdAt: serverTimestamp() };
 }
 
 beforeEach(async () => {

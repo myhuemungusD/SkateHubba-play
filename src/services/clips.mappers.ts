@@ -7,13 +7,13 @@
 
 import { collection, Timestamp, type DocumentSnapshot } from "firebase/firestore";
 import { requireDb } from "../firebase";
-import type { Clip, ClipModerationStatus, ClipRole } from "../types/clip";
+import type { Clip, ClipModerationStatus, ClipRole, ClipSource } from "../types/clip";
 
 /* ────────────────────────────────────────────
  * Types
  * ──────────────────────────────────────────── */
 
-export type { Clip, ClipModerationStatus, ClipRole } from "../types/clip";
+export type { Clip, ClipComment, ClipModerationStatus, ClipRole, ClipSource, GameClip, UserClip } from "../types/clip";
 
 /** Persisted clip document — alias retained for callers that already import this name. */
 export type ClipDoc = Clip;
@@ -91,17 +91,40 @@ export function clipVoteId(uid: string, clipId: string): string {
  * Doc mapping
  * ──────────────────────────────────────────── */
 
+/**
+ * Non-negative integer read with a 0 default.
+ *
+ * Legacy clips predate both vote aggregates; a missing, negative or
+ * non-numeric value reads as 0 — the same default the firestore rules apply
+ * via `get('upvoteCount', 0)`, so the mapper and the rule never disagree
+ * about what a pre-backfill clip's count is.
+ */
+function toCountOrZero(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+/**
+ * Map a clip snapshot to the `Clip` union.
+ *
+ * Two shapes are accepted, discriminated by `source`:
+ *
+ *   • `source: 'game'` (or missing — every clip written before user uploads
+ *     existed was game-sourced) requires the full game coordinate set. A
+ *     game clip missing `gameId` / `turnNumber` / `role` is genuinely
+ *     malformed and still THROWS: the feed can't render it and, worse,
+ *     silently coercing it to a user clip would hide a real write-path bug.
+ *
+ *   • `source: 'user'` carries `gameId`/`turnNumber`/`role` as explicit
+ *     `null`s and skips those checks entirely.
+ */
 export function toClipDoc(snap: DocumentSnapshot): ClipDoc {
   const raw = snap.data() as Record<string, unknown> | undefined;
   if (!raw) throw new Error(`Malformed clip document: ${snap.id}`);
 
-  const role = raw.role;
-  if (role !== "set" && role !== "match") {
-    throw new Error(`Malformed clip document (role): ${snap.id}`);
-  }
+  // Missing `source` means a pre-feature doc, all of which were game clips.
+  const source: ClipSource = raw.source === "user" ? "user" : "game";
+
   if (
-    typeof raw.gameId !== "string" ||
-    typeof raw.turnNumber !== "number" ||
     typeof raw.playerUid !== "string" ||
     typeof raw.playerUsername !== "string" ||
     typeof raw.trickName !== "string" ||
@@ -123,15 +146,12 @@ export function toClipDoc(snap: DocumentSnapshot): ClipDoc {
   // is already excluded upstream by the feed query's where() filter.
   const moderationStatus: ClipModerationStatus = raw.moderationStatus === "hidden" ? "hidden" : "active";
 
-  // Pre-aggregate clips lack the field; default to 0 until the backfill
-  // (scripts/backfill-clip-upvote-count.mjs) runs.
-  const upvoteCount = typeof raw.upvoteCount === "number" && raw.upvoteCount >= 0 ? raw.upvoteCount : 0;
-
-  return {
+  // Pre-aggregate clips lack these fields; default to 0 until the backfill
+  // (scripts/backfill-clip-upvote-count.mjs) runs. `downvoteCount` has no
+  // backfill at all — it is simply absent on every clip written before
+  // downvoting shipped, and 0 is the correct reading of that absence.
+  const common = {
     id: snap.id,
-    gameId: raw.gameId,
-    turnNumber: raw.turnNumber,
-    role,
     playerUid: raw.playerUid,
     playerUsername: raw.playerUsername,
     trickName: raw.trickName,
@@ -139,6 +159,21 @@ export function toClipDoc(snap: DocumentSnapshot): ClipDoc {
     spotId: typeof raw.spotId === "string" ? raw.spotId : null,
     createdAt,
     moderationStatus,
-    upvoteCount,
+    upvoteCount: toCountOrZero(raw.upvoteCount),
+    downvoteCount: toCountOrZero(raw.downvoteCount),
   };
+
+  if (source === "user") {
+    return { ...common, source: "user", gameId: null, turnNumber: null, role: null };
+  }
+
+  const role = raw.role;
+  if (role !== "set" && role !== "match") {
+    throw new Error(`Malformed clip document (role): ${snap.id}`);
+  }
+  if (typeof raw.gameId !== "string" || typeof raw.turnNumber !== "number") {
+    throw new Error(`Malformed clip document (fields): ${snap.id}`);
+  }
+
+  return { ...common, source: "game", gameId: raw.gameId, turnNumber: raw.turnNumber, role };
 }

@@ -173,36 +173,60 @@ export async function createGame(
       });
     },
   );
-  // Notify opponent about the new challenge (best-effort). createGame is not
-  // transactional, so this stays outside — the only perceivable race is a
-  // missed toast if the tab dies in the narrow window between the two writes.
+  // Notify opponent about the new challenge.
+  //
+  // AWAITED (and the push dispatch with it). It cannot ride the game write's
+  // transaction: the /notifications create rule resolves the recipient against
+  // `get(/games/{gameId})` — a PRE-commit read — so an in-tx notification for a
+  // game that doesn't exist yet is denied outright. The next best guarantee is
+  // to not return until both the notification batch and the /push_dispatch doc
+  // have committed, because the caller navigates on return and an unawaited
+  // write dies with the page. api/cron/sweep-expired-turns.ts carries a
+  // server-side reconcile pass as the backstop for the residual window.
+  //
   // Append the agreed constraint ("— Flat Bar", or the custom rules text) so
   // the invite states the game up front; "any"/legacy games announce nothing.
   const headline = trickCategoryHeadline(safeCategory, safeCustomRules);
-  writeNotification({
-    senderUid: challengerUid,
-    recipientUid: opponentUid,
-    type: "new_challenge",
-    title: "New Challenge!",
-    body: headline
-      ? `@${authoritativeChallengerUsername} challenged you to S.K.A.T.E. — ${headline}`
-      : `@${authoritativeChallengerUsername} challenged you to S.K.A.T.E.`,
-    gameId: newGameId,
-  });
+  const pending: Array<Promise<void>> = [
+    writeNotification(
+      {
+        senderUid: challengerUid,
+        recipientUid: opponentUid,
+        type: "new_challenge",
+        title: "New Challenge!",
+        body: headline
+          ? `@${authoritativeChallengerUsername} challenged you to S.K.A.T.E. — ${headline}`
+          : `@${authoritativeChallengerUsername} challenged you to S.K.A.T.E.`,
+        gameId: newGameId,
+      },
+      { awaitPush: true },
+    ),
+  ];
   // Notify the referee (if any) that they've been nominated (best-effort).
   // The notification `type` code stays "judge_invite" for schema stability —
   // existing docs and any listeners keyed on it must keep working. Only the
   // user-visible title copy is renamed.
   if (hasValidJudge) {
-    writeNotification({
-      senderUid: challengerUid,
-      recipientUid: judgeUid,
-      type: "judge_invite",
-      title: "You've been asked to referee",
-      body: `@${authoritativeChallengerUsername} vs @${opponentUsername} — accept to rule on disputes`,
-      gameId: newGameId,
-    });
+    pending.push(
+      writeNotification(
+        {
+          senderUid: challengerUid,
+          recipientUid: judgeUid,
+          type: "judge_invite",
+          title: "You've been asked to referee",
+          body: `@${authoritativeChallengerUsername} vs @${opponentUsername} — accept to rule on disputes`,
+          gameId: newGameId,
+        },
+        { awaitPush: true },
+      ),
+    );
   }
+  // Concurrent, not sequential: the two notifications are independent writes to
+  // different recipients, and the caller navigates on return — serializing them
+  // doubled the perceived create latency for judged games. Still fully AWAITED
+  // (writeNotification never rejects), so the delivery guarantee is unchanged:
+  // both batches and both /push_dispatch docs have committed before we return.
+  await Promise.all(pending);
   return newGameId;
 }
 

@@ -41,6 +41,12 @@ describe("Field", () => {
     expect(container.querySelector("[aria-hidden]")?.textContent).toBe("@");
   });
 
+  it("renders rightSlot content and reserves input padding for it", () => {
+    render(<Field value="" onChange={vi.fn()} placeholder="pw" rightSlot={<button type="button">toggle</button>} />);
+    expect(screen.getByRole("button", { name: "toggle" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("pw").className).toContain("pr-14");
+  });
+
   it("disables input when disabled prop is true", () => {
     render(<Field value="" onChange={vi.fn()} placeholder="test" disabled />);
     expect(screen.getByPlaceholderText("test")).toBeDisabled();

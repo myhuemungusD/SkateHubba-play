@@ -2,7 +2,7 @@ import { collection, doc, getDoc, serverTimestamp, writeBatch, type Timestamp } 
 import { requireDb } from "../firebase";
 import { logger } from "./logger";
 import { parseFirebaseError } from "../utils/helpers";
-import { dispatchPushNotification } from "./pushDispatch";
+import { writeNotification } from "./notifications";
 
 /** Cooldown between nudges for the same (sender, game) pair. Mirrors the 1-hour
  *  window enforced server-side by the /nudge_limits rules. */
@@ -37,11 +37,13 @@ function localCooldownKey(senderUid: string, gameId: string): string {
 /**
  * Send a nudge to an opponent. Writes a doc to the /nudges collection.
  *
- * DELIVERY: two channels, both required.
+ * DELIVERY: three channels, all required.
  *  1. In-app — the recipient's `subscribeToNudges` listener turns the /nudges
  *     doc into a toast if their tab is open.
  *  2. OS push — a /push_dispatch doc with type "nudge", drained by
  *     `api/cron/drain-push-dispatch.ts` and delivered by FCM within ~5 minutes.
+ *  3. Bell — a /notifications doc with type "nudge", so the nudge survives
+ *     being missed instead of evaporating with the toast/push.
  *
  * Channel 2 is the whole point of the feature and used to be missing: nudges
  * were in-app only, which meant a nudge reached exactly one kind of user — the
@@ -83,7 +85,6 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
     recipientUid,
     gameId,
     createdAt: serverTimestamp(),
-    delivered: false,
   });
   batch.set(limitRef, { senderUid, gameId, lastNudgedAt: serverTimestamp() });
 
@@ -102,15 +103,28 @@ export async function sendNudge({ gameId, senderUid, senderUsername, recipientUi
   // Record locally for the client-side fast-path.
   localStorage.setItem(key, String(Date.now()));
 
-  // OS-level wake-up. Fire-and-forget AFTER the commit, mirroring
-  // writeNotification: a dispatch failure (no registered devices, dispatch
-  // cooldown) must never undo a nudge that already landed or throw into the
-  // caller. Title/body match the in-app toast copy in GameNotificationWatcher
-  // so the push and the toast read identically.
-  void dispatchPushNotification({
+  // Bell entry + OS-level wake-up, in one call AFTER the commit.
+  //
+  // writeNotification does both: the Path A batch (/notifications +
+  // /notification_limits companion) and the fire-and-forget /push_dispatch.
+  // Routing through it rather than dispatching directly is what gives a nudge a
+  // PERSISTENT record — previously a nudge that arrived while the app was closed
+  // left nothing behind but a push the user could swipe away, and the bell was
+  // empty when they opened the app.
+  //
+  // The /notifications create rule validates `type == 'nudge'` docs against an
+  // EXACT key set — writeNotification's shape is that key set, so it must not
+  // grow fields for this path. The 5s writeNotification cooldown is moot here:
+  // /nudge_limits already bounds a (sender, game) pair to one nudge per hour.
+  //
+  // Errors stay swallowed inside writeNotification — a bell/push failure must
+  // never undo a nudge that already landed or throw into the caller.
+  await writeNotification({
     senderUid,
     recipientUid,
     type: "nudge",
+    // Title/body match the in-app toast copy in GameNotificationWatcher so the
+    // push, the toast, and the bell entry all read identically.
     title: "You got nudged!",
     body: `@${senderUsername} is waiting for your move`,
     gameId,

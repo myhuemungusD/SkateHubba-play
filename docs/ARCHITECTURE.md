@@ -2,7 +2,7 @@
 
 ## Overview
 
-SkateHubba S.K.A.T.E. is a zero-backend web application. There is no Express server, no REST API, and no application-authored Cloud Functions. The React SPA talks directly to Firebase services, with Firestore security rules serving as the sole authorization layer. The one managed exception is the `firestore-send-fcm` Firebase Extension, which provisions a Cloud Run push dispatcher we configure but do not author; the `verify-no-cloud-functions` CI gate scopes to `functions/src/`, which extensions do not touch.
+SkateHubba S.K.A.T.E. is a client-first web application. There is no Express server and no general-purpose API — the React SPA talks directly to Firebase services, with Firestore security rules serving as the authorization layer. Server-side code is limited to the maintainer-approved stats close-out Cloud Function (`functions/src/`, pinned to an exact file set by the `verify-no-cloud-functions` CI gate) and the narrow Vercel serverless endpoints under `api/`: scheduled sweeps for expired turns and disputes, the FCM push drain (`api/cron/drain-push-dispatch.ts` — this replaced a `firestore-send-fcm` Firebase Extension that turned out not to exist, see `docs/CHARTER.md` §4.4), account deletion, and social-card metadata for shared `/player` links.
 
 This means:
 
@@ -16,7 +16,7 @@ This means:
 
 ### React 19 + TypeScript + Vite 8
 
-- SPA only — no SSR. Routing is handled by `react-router-dom` v7. All `<Route>` declarations live in `App.tsx`; navigation goes through `NavigationContext.setScreen` (or `useNavigate` for parameterised routes like `/player/:uid` and `/spots/:id`).
+- SPA only — no SSR. Routing is handled by `react-router` v8. All `<Route>` declarations live in `App.tsx`; navigation goes through `NavigationContext.setScreen` (or `useNavigate` for parameterised routes like `/player/:uid` and `/spots/:id`).
 - Non-critical screens — gameplay, profile, map, settings, legal pages, NotFound — are imported via `lazy()` and rendered inside a single top-level `<Suspense>`. Landing, AuthScreen, ProfileSetup, and Lobby are eager so first paint never has to wait on a chunk fetch.
 - Code splitting is driven by those `lazy()` imports plus Vite's automatic vendor chunking; no manual `manualChunks` config is required.
 - `import.meta.env.VERCEL` is injected via `vite.config.ts` so the app can detect a missing Firebase config in a Vercel context and show a helpful error message.
@@ -43,13 +43,13 @@ This means:
 - Framework set to `vite`. Build output is `dist/`. All paths rewrite to `index.html` for SPA navigation.
 - `X-Robots-Tag: noindex, nofollow` is injected on all non-production hosts (any host that is not `skatehubba.com`) via `vercel.json`. This prevents Vercel preview deployment URLs from appearing in search engines.
 - 301 redirects are configured for `skatehubba.xyz`, `www.skatehubba.xyz`, and `www.skatehubba.com` → `skatehubba.com` to complete the domain migration and preserve SEO equity.
-- No Vercel serverless functions are used. The only server-side worker in the stack is the managed Cloud Run dispatcher provisioned by the `firestore-send-fcm` Firebase Extension (see Overview).
+- Vercel serverless functions are limited to the narrow endpoints under `api/` — the scheduled sweeps (expired turns, expired disputes), the FCM push drain, account deletion, and social-card metadata (see Overview). None of them serve gameplay reads or writes; Firestore rules remain the authorization layer.
 
 ---
 
 ## Application State Machine
 
-`App.tsx` manages screen state through `react-router-dom` `<Route>` declarations plus `NavigationContext`. Each route renders a screen; auth/profile state gates which routes are reachable.
+`App.tsx` manages screen state through `react-router` `<Route>` declarations plus `NavigationContext`. Each route renders a screen; auth/profile state gates which routes are reachable.
 
 ### Route map
 

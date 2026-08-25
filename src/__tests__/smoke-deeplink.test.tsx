@@ -16,9 +16,10 @@
  * observable by rendering the real route table.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { act, render, screen, type RenderResult } from "@testing-library/react";
+import { act, render, screen, waitFor, type RenderResult } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router";
 import userEvent from "@testing-library/user-event";
+import type { ReactElement } from "react";
 import App from "../App";
 import { verifiedUser, testProfile } from "./smoke-helpers";
 import type { UserProfile } from "../services/users";
@@ -44,7 +45,9 @@ function LocationProbe() {
   return <span data-testid="location">{`${location.pathname}${location.search}`}</span>;
 }
 
-async function renderAt(initialPath: string): Promise<RenderResult> {
+/** Mount the real route table at a URL. No readiness wait — callers pick the
+ *  signal that suits their route (see renderAt vs. the public-profile block). */
+async function mountApp(initialPath: string): Promise<RenderResult> {
   let result!: RenderResult;
   await act(async () => {
     result = render(
@@ -54,6 +57,11 @@ async function renderAt(initialPath: string): Promise<RenderResult> {
       </MemoryRouter>,
     );
   });
+  return result;
+}
+
+async function renderAt(initialPath: string): Promise<RenderResult> {
+  const result = await mountApp(initialPath);
   // Wait for the persistent BottomNav to mount — it only renders on the
   // four authed primary screens (lobby/map/record/player), so its presence
   // confirms the route resolved past the Suspense fallback. Asserting on a
@@ -142,5 +150,170 @@ describe("Smoke: /record own-profile affordances", () => {
     await renderAt("/record");
     await screen.findByRole("button", { name: /add a spot/i });
     expect(screen.queryByLabelText(/^Level /)).not.toBeInTheDocument();
+  });
+
+  it("routes the MY STATS button to the owner-only analytics screen", async () => {
+    await renderAt("/record");
+    await userEvent.click(await screen.findByTestId("my-stats-button"));
+    // A lazy route only commits its URL once the chunk resolves — poll rather
+    // than asserting on the first paint (same reason as the /spots restore).
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/my-stats");
+    });
+    expect(await screen.findByRole("heading", { name: "My Stats" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * `/my-stats` shows counters that are nobody else's business. The route has no
+ * Screen identity (same as /settings), so the `activeProfile` guard on the
+ * route element is the entire own-profile gate — worth pinning at the route
+ * level, because a guard that silently stops guarding looks identical from
+ * inside the screen's own specs.
+ */
+describe("Smoke: /my-stats is owner-only", () => {
+  it("loads directly for a signed-in user", async () => {
+    await mountApp("/my-stats");
+    expect(await screen.findByRole("heading", { name: "My Stats" })).toBeInTheDocument();
+  });
+
+  it("bounces a visitor with no profile to the landing page", async () => {
+    mocks.auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    await mountApp("/my-stats");
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/");
+    });
+    expect(screen.queryByRole("heading", { name: "My Stats" })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * A shared /spots/<id> link opened by someone who isn't signed in.
+ *
+ * Two independent mechanisms redirect that visitor — the route element's
+ * signed-out <Navigate>, and NavigationContext's auth router (which only
+ * started seeing this URL once /spots/:id got a screen identity). Only the
+ * real route table renders both at once, which is what makes this an
+ * App-level spec: it pins that they agree on a destination rather than
+ * fighting over the URL, and that the spot id outlives the round trip.
+ */
+describe("Smoke: /spots/:id deep link survives the auth bounce", () => {
+  const SPOT_ID = "11111111-2222-3333-4444-555555555555";
+  const DETAIL_KEY = "skate.pendingSpotDetail";
+
+  it("bounces a signed-out visitor to a single settled URL, then restores the spot", async () => {
+    sessionStorage.clear();
+    mocks.auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+
+    // Fresh element per pass — re-rendering the identical element object makes
+    // React bail out of reconciliation, so the auth change would never land.
+    const tree = (): ReactElement => (
+      <MemoryRouter initialEntries={[`/spots/${SPOT_ID}`]}>
+        <App />
+        <LocationProbe />
+      </MemoryRouter>
+    );
+    let view!: RenderResult;
+    await act(async () => {
+      view = render(tree());
+    });
+
+    // One settled destination, not a ping-pong between "/auth" and "/".
+    expect(screen.getByTestId("location").textContent).toBe("/");
+    expect(sessionStorage.getItem(DETAIL_KEY)).toBe(SPOT_ID);
+
+    // Sign-in resolves: the auth router would normally land them on /lobby.
+    mocks.auth.refs.useAuth.mockReturnValue({
+      loading: false,
+      user: verifiedUser,
+      profile: testProfile as UserProfile,
+      refreshProfile: vi.fn(),
+    });
+    await act(async () => {
+      view.rerender(tree());
+    });
+
+    // The restore navigation is a router transition into a React.lazy route,
+    // so the URL only commits once the chunk resolves — poll rather than
+    // asserting on the first paint.
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe(`/spots/${SPOT_ID}`);
+    });
+    expect(sessionStorage.getItem(DETAIL_KEY)).toBeNull();
+  });
+});
+
+/**
+ * The same route table, one deep-link, and NO account.
+ *
+ * `/player/:uid` is the app's share surface, and it used to bounce logged-out
+ * visitors to `/` twice over — once from the route guard in `App.tsx`, once
+ * from the auth router in `NavigationContext` — so a shared profile link could
+ * only ever reach people who already had accounts. Both gates are exercised
+ * here by mounting the real route table with a null auth user.
+ */
+describe("Smoke: public /player/:uid for a signed-out visitor", () => {
+  /** The public doc a logged-out client is allowed to `get`. */
+  const publicProfile: UserProfile = {
+    uid: "u2",
+    username: "sk8rboi",
+    stance: "goofy",
+    createdAt: null,
+    wins: 10,
+    losses: 3,
+  };
+
+  async function renderPublicProfile(): Promise<void> {
+    await mountApp("/player/u2");
+    // The screen is lazy — waiting on its content (rather than a route-agnostic
+    // signal) is what proves the chunk actually mounted instead of bouncing.
+    await screen.findByText("@sk8rboi");
+  }
+
+  beforeEach(() => {
+    // Overrides the file-scope signed-in user.
+    mocks.auth.refs.useAuth.mockReturnValue({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    mocks.users.refs.getUserProfile.mockResolvedValue(publicProfile);
+  });
+
+  it("renders the shared profile instead of bouncing to the landing page", async () => {
+    await renderPublicProfile();
+    expect(screen.getByTestId("location").textContent).toBe("/player/u2");
+    expect(screen.getByText("goofy")).toBeInTheDocument();
+    expect(screen.getByLabelText("Lifetime wins: 10")).toBeInTheDocument();
+  });
+
+  it("reads only the public profile doc, never the participant-gated games", async () => {
+    await renderPublicProfile();
+    expect(mocks.users.refs.getUserProfile).toHaveBeenCalledWith("u2");
+    // `fetchPlayerCompletedGames` is absent from the games mock module, so a
+    // query attempt would throw and take the screen down with it. Reaching
+    // this assertion at all is the proof it was skipped.
+    expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
+  });
+
+  it("routes the sign-up call to action into the auth flow", async () => {
+    await renderPublicProfile();
+    await userEvent.click(screen.getByRole("button", { name: "Sign up to challenge @sk8rboi" }));
+    expect(screen.getByTestId("location").textContent).toBe("/auth");
+  });
+
+  it("withholds every affordance that needs an account", async () => {
+    await renderPublicProfile();
+    expect(screen.queryByText("Challenge @sk8rboi")).not.toBeInTheDocument();
+    expect(screen.queryByText("Block this player")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("share-my-profile-button")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("added-spots-placeholder")).not.toBeInTheDocument();
+    expect(screen.queryByText("GAMES VS YOU")).not.toBeInTheDocument();
+  });
+
+  it("hides the bottom tab bar, whose destinations are all auth-gated", async () => {
+    await renderPublicProfile();
+    expect(screen.queryByRole("navigation", { name: "Primary navigation" })).not.toBeInTheDocument();
   });
 });

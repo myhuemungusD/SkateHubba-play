@@ -52,6 +52,12 @@ vi.mock("../../services/blocking", () => ({
   unblockUser: vi.fn(),
 }));
 
+// Economy Phase A reads the controller fires alongside the profile load —
+// mocked to resolve empty so the placeholder-visibility specs below see the
+// earned-nothing state (both sections render null / owner-only hint).
+vi.mock("../../services/achievements", () => ({ fetchAchievements: vi.fn().mockResolvedValue([]) }));
+vi.mock("../../services/locker", () => ({ fetchLockerItems: vi.fn().mockResolvedValue([]) }));
+
 const fetchedProfile = vi.fn();
 vi.mock("../../hooks/usePlayerProfile", () => ({
   usePlayerProfile: (...args: unknown[]) => fetchedProfile(...args),
@@ -141,6 +147,32 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
       withOpponentFetch([]);
       render(<PlayerProfileScreen {...props} viewedUid="u2" isOwnProfile={false} />);
       expect(screen.queryByTestId("share-my-profile-button")).not.toBeInTheDocument();
+    });
+  });
+
+  // ── "Edit profile" (own-profile) ────────────────────
+
+  describe("Edit profile", () => {
+    it("routes EDIT PROFILE to the caller's settings navigation", async () => {
+      const onEditProfile = vi.fn();
+      render(<PlayerProfileScreen {...props} onEditProfile={onEditProfile} />);
+      await userEvent.click(screen.getByTestId("edit-profile-button"));
+      expect(onEditProfile).toHaveBeenCalledTimes(1);
+    });
+
+    it("omits the button entirely when the caller wires no edit route", () => {
+      // An inert button sitting next to Share reads as a broken app; the
+      // screen renders nothing rather than a dead affordance.
+      render(<PlayerProfileScreen {...props} />);
+      expect(screen.queryByTestId("edit-profile-button")).not.toBeInTheDocument();
+    });
+
+    it("does not render the edit button on another player's profile", () => {
+      // App passes `isOwn ? onEditProfile : undefined`, but the screen must
+      // hold the line itself — you cannot edit someone else's profile.
+      withOpponentFetch([]);
+      render(<PlayerProfileScreen {...props} viewedUid="u2" isOwnProfile={false} onEditProfile={vi.fn()} />);
+      expect(screen.queryByTestId("edit-profile-button")).not.toBeInTheDocument();
     });
   });
 

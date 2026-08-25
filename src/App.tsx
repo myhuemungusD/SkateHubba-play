@@ -18,6 +18,7 @@ import { GameNotificationWatcher, OPEN_GAME_EVENT } from "./components/GameNotif
 import { OfflineBanner } from "./components/OfflineBanner";
 import { BottomNav } from "./components/BottomNav";
 import { useBlockedUsers } from "./hooks/useBlockedUsers";
+import { useIsAdmin } from "./hooks/useIsAdmin";
 import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
@@ -50,6 +51,8 @@ const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default:
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
+const MyStatsScreen = lazy(() => import("./screens/MyStatsScreen").then((m) => ({ default: m.MyStatsScreen })));
+const AdminScreen = lazy(() => import("./screens/AdminScreen").then((m) => ({ default: m.AdminScreen })));
 
 function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
   return (
@@ -94,7 +97,7 @@ function AppEmailVerifyBanner() {
   if (!auth.user) return null;
   if (BANNER_HIDDEN_PATHS.has(location.pathname)) return null;
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-[430px] mx-auto">
       <VerifyEmailBanner emailVerified={auth.user.emailVerified} onManualReload={auth.reloadAuthUser} />
     </div>
   );
@@ -130,7 +133,14 @@ function NotificationAuthBridge({ children }: { children: ReactNode }) {
   return <NotificationProvider uid={auth.user?.uid ?? null}>{children}</NotificationProvider>;
 }
 
-/** Wrapper that extracts :uid from URL params and renders PlayerProfileScreen. */
+/**
+ * Wrapper that extracts :uid from URL params and renders PlayerProfileScreen.
+ *
+ * `currentUserProfile` is nullable because `/player/:uid` is a public share
+ * surface — a logged-out visitor must be able to open a shared profile link
+ * (see PUBLIC_SCREENS in NavigationContext). PlayerProfileScreen withholds
+ * every viewer-scoped affordance when it's absent.
+ */
 function PlayerProfileRoute({
   currentUserProfile,
   ownGames,
@@ -141,8 +151,11 @@ function PlayerProfileRoute({
   blockedUids,
   onAddSpot,
   onRefreshProfile,
+  onSignUp,
+  onEditProfile,
+  onViewMyStats,
 }: {
-  currentUserProfile: import("./services/users").UserProfile;
+  currentUserProfile: import("./services/users").UserProfile | null;
   ownGames: import("./services/games").GameDoc[];
   onOpenGame: (g: import("./services/games").GameDoc) => void;
   onBack: () => void;
@@ -151,11 +164,14 @@ function PlayerProfileRoute({
   blockedUids: Set<string>;
   onAddSpot: () => void;
   onRefreshProfile: () => Promise<void>;
+  onSignUp: () => void;
+  onEditProfile: () => void;
+  onViewMyStats: () => void;
 }) {
   const { uid } = useParams<{ uid: string }>();
-  if (!uid) return <Navigate to="/lobby" replace />;
+  if (!uid) return <Navigate to={currentUserProfile ? "/lobby" : "/"} replace />;
 
-  const isOwn = uid === currentUserProfile.uid;
+  const isOwn = uid === currentUserProfile?.uid;
 
   return (
     <PlayerProfileScreen
@@ -171,8 +187,26 @@ function PlayerProfileRoute({
       blockedUids={blockedUids}
       onAddSpot={onAddSpot}
       onRefreshProfile={onRefreshProfile}
+      onSignUp={onSignUp}
+      onEditProfile={isOwn ? onEditProfile : undefined}
+      onViewMyStats={isOwn ? onViewMyStats : undefined}
     />
   );
+}
+
+/**
+ * Guard for the unlisted `/admin` console. While the admin claim is resolving
+ * we render the same full-screen Spinner every lazy route falls back to; a
+ * non-admin (or signed-out visitor) gets the NotFound screen rather than a
+ * redirect, because a redirect would confirm the route exists. The claim check
+ * lives here, not in AppRoutes, so it only runs for someone who actually opens
+ * the URL — and the admin chunk is never fetched for anyone else.
+ */
+function AdminRoute({ uid, onBack }: { uid: string | null; onBack: () => void }) {
+  const { isAdmin, loading } = useIsAdmin(uid ?? "");
+  if (loading) return <Spinner />;
+  if (!uid || !isAdmin) return <NotFound onBack={onBack} />;
+  return <AdminScreen adminUid={uid} onBack={onBack} />;
 }
 
 /** Shared toast fired whenever an unverified user attempts to challenge —
@@ -296,6 +330,9 @@ function AppRoutes() {
                   googleLoading={auth.googleLoading}
                   googleError={auth.googleError}
                   onGoogleErrorDismiss={() => auth.setGoogleError("")}
+                  mfaChallenge={auth.mfaChallenge}
+                  onMfaBegin={auth.beginMfaChallenge}
+                  onMfaCancel={auth.clearMfaChallenge}
                   showAgeFields={nav.authMode === "signup"}
                   onAgeVerified={nav.setAgeGateResult}
                   onAgeGateReset={nav.clearAgeGate}
@@ -481,6 +518,8 @@ function AppRoutes() {
                     onViewPlayer={nav.navigateToPlayer}
                     onAddSpot={nav.navigateToMapWithAddSpot}
                     onRefreshProfile={auth.refreshProfile}
+                    onEditProfile={() => navigate("/settings")}
+                    onViewMyStats={() => navigate("/my-stats")}
                   />
                 ) : (
                   <Navigate to="/" replace />
@@ -488,24 +527,30 @@ function AppRoutes() {
               }
             />
 
+            {/* Public: a shared profile link has to open for someone without
+                an account, or it can never bring them in. No auth guard here
+                — "player" is in PUBLIC_SCREENS so the auth router leaves it
+                alone too, and both mechanisms have to agree. */}
             <Route
               path="/player/:uid"
               element={
-                auth.activeProfile ? (
-                  <PlayerProfileRoute
-                    currentUserProfile={auth.activeProfile}
-                    ownGames={game.games}
-                    onOpenGame={game.openGame}
-                    onBack={() => nav.setScreen("lobby")}
-                    onChallenge={(_uid, username) => directChallenge(username)}
-                    onViewPlayer={nav.navigateToPlayer}
-                    blockedUids={blockedUids}
-                    onAddSpot={nav.navigateToMapWithAddSpot}
-                    onRefreshProfile={auth.refreshProfile}
-                  />
-                ) : (
-                  <Navigate to="/" replace />
-                )
+                <PlayerProfileRoute
+                  currentUserProfile={auth.activeProfile}
+                  ownGames={game.games}
+                  onOpenGame={game.openGame}
+                  onBack={() => nav.setScreen(auth.activeProfile ? "lobby" : "landing")}
+                  onChallenge={(_uid, username) => directChallenge(username)}
+                  onViewPlayer={nav.navigateToPlayer}
+                  blockedUids={blockedUids}
+                  onAddSpot={nav.navigateToMapWithAddSpot}
+                  onRefreshProfile={auth.refreshProfile}
+                  onSignUp={() => {
+                    nav.setAuthMode("signup");
+                    nav.setScreen("auth");
+                  }}
+                  onEditProfile={() => navigate("/settings")}
+                  onViewMyStats={() => navigate("/my-stats")}
+                />
               }
             />
 
@@ -532,12 +577,43 @@ function AppRoutes() {
               }
             />
 
+            {/* Owner-only analytics. Same shape as /settings: a lazy screen
+                behind an activeProfile guard, reached with navigate() rather
+                than NavigationContext (neither path has a Screen identity). The
+                guard is the whole own-profile gate — the screen only ever
+                receives the signed-in user's own profile doc. */}
+            <Route
+              path="/my-stats"
+              element={
+                auth.activeProfile ? (
+                  <MyStatsScreen profile={auth.activeProfile} onBack={() => nav.setScreen("record")} />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
+
             <Route path="/map" element={auth.user ? <MapPage /> : <Navigate to="/auth" replace />} />
-            <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/auth" replace />} />
+            {/* Signed-out target is "/" (not "/auth") to match the auth
+              router's bounce for gated screens — /spots/:id now resolves to
+              the "spotdetail" screen, so both mechanisms fire and must agree
+              on a destination or they fight over the URL. The auth router
+              stashes the spot id before bouncing and restores it post-login. */}
+            <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/" replace />} />
 
             {/* /feed used to live as its own route + tab — it's now embedded in
               the lobby. Redirect lingering deep-links so old shares still land. */}
             <Route path="/feed" element={<Navigate to="/lobby" replace />} />
+
+            <Route
+              path="/admin"
+              element={
+                <AdminRoute
+                  uid={auth.user?.uid ?? null}
+                  onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")}
+                />
+              }
+            />
 
             <Route path="/404" element={<NotFound onBack={() => nav.setScreen(auth.user ? "lobby" : "landing")} />} />
 
@@ -547,7 +623,10 @@ function AppRoutes() {
         </Suspense>
       </main>
 
-      <BottomNav />
+      {/* Every tab behind this nav is auth-gated. `/player/:uid` is now
+          reachable signed-out, so without this check a visitor would get a
+          tab bar whose three destinations all bounce them straight back. */}
+      {auth.activeProfile && <BottomNav />}
       <ConsentBanner onNav={nav.setScreen} />
       {analyticsAllowed && (
         <>

@@ -45,6 +45,12 @@ vi.mock("../../hooks/usePlayerProfile", () => ({
   usePlayerProfile: (...args: unknown[]) => mockUsePlayerProfile(...args),
 }));
 
+// The controller's Economy Phase A reads fire alongside the profile load. They
+// resolve empty here so a late badge/locker render can never settle mid-gesture
+// and perturb the offsets these specs assert on.
+vi.mock("../../services/achievements", () => ({ fetchAchievements: vi.fn().mockResolvedValue([]) }));
+vi.mock("../../services/locker", () => ({ fetchLockerItems: vi.fn().mockResolvedValue([]) }));
+
 const baseProps = buildBaseProps();
 
 describe("PlayerProfileScreen — pull-to-refresh integration", () => {

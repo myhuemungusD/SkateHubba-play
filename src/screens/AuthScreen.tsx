@@ -4,11 +4,15 @@ import { EMAIL_RE, getErrorCode, parseFirebaseError, getUserMessage } from "../u
 import { isMinorDob, parseDob } from "../utils/age";
 import { Btn } from "../components/ui/Btn";
 import { Field } from "../components/ui/Field";
+import { PasswordToggle } from "../components/ui/PasswordToggle";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { DobConsentFields } from "../components/DobConsentFields";
 import { PasswordStrengthMeter } from "../components/PasswordStrengthMeter";
 import { GoogleButton } from "../components/GoogleButton";
 import { CoppaBlockedCard } from "../components/CoppaBlockedCard";
+import { MfaVerifyCard } from "../components/MfaVerifyCard";
+import type { MfaChallenge } from "../services/mfa";
+import type { MfaMethod } from "../context/AuthContext";
 import { logger, metrics } from "../services/logger";
 import { analytics } from "../services/analytics";
 import { captureException } from "../lib/sentry";
@@ -23,6 +27,9 @@ export function AuthScreen({
   googleLoading,
   googleError,
   onGoogleErrorDismiss,
+  mfaChallenge,
+  onMfaBegin,
+  onMfaCancel,
   showAgeFields = false,
   onAgeVerified,
   onAgeGateReset,
@@ -35,6 +42,16 @@ export function AuthScreen({
   googleLoading: boolean;
   googleError: string;
   onGoogleErrorDismiss: () => void;
+  /** Pending second-factor challenge (from either sign-in path). While set,
+   *  the form is replaced by the verification card. */
+  mfaChallenge: MfaChallenge | null;
+  /** Hand a caught sign-in error to the MFA flow, tagged with the sign-in
+   *  method so the deferred success event is attributed correctly. Returns true
+   *  when it was a second-factor challenge and this screen should stop its
+   *  error handling. */
+  onMfaBegin: (err: unknown, method: MfaMethod) => boolean;
+  /** Abandon the pending challenge and return to the form. */
+  onMfaCancel: () => void;
   /** Render DOB + parental-consent inputs inline in signup mode (COPPA/CCPA). */
   showAgeFields?: boolean;
   /** Called with the verified DOB string + consent flag BEFORE signUp runs. */
@@ -50,6 +67,8 @@ export function AuthScreen({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [month, setMonth] = useState("");
   const [day, setDay] = useState("");
   const [year, setYear] = useState("");
@@ -173,6 +192,12 @@ export function AuthScreen({
       // network call. Otherwise the DOB persists past the failed signup and
       // pollutes a subsequent sign-in with a different (existing) account.
       if (isSignup && verifiedDob) onAgeGateReset?.();
+      // Second factor pending: the password was correct, so there is nothing to
+      // surface in the banner, nothing for Sentry, and — critically — no
+      // failure to record. Counting the challenge as a sign-in failure made MFA
+      // adoption read as a rising failure rate; the matching `sign_in` is
+      // emitted by AuthContext once the challenge clears. The card takes over.
+      if (onMfaBegin(err, "email")) return;
       if (isSignup) analytics.signUpFailure("email", code || "unknown");
       else analytics.signInFailure("email", code || "unknown");
       if (isSignup) metrics.signUpFailure("email", code || "unknown");
@@ -251,6 +276,10 @@ export function AuthScreen({
     return null;
   })();
 
+  if (mfaChallenge) {
+    return <MfaVerifyCard challenge={mfaChallenge} onDone={onDone} onCancel={onMfaCancel} />;
+  }
+
   if (ageBlocked) {
     return (
       <CoppaBlockedCard
@@ -316,7 +345,8 @@ export function AuthScreen({
             onChange={setPassword}
             placeholder="••••••••"
             icon="🔒"
-            type="password"
+            type={showPassword ? "text" : "password"}
+            rightSlot={<PasswordToggle visible={showPassword} onToggle={() => setShowPassword((v) => !v)} />}
             autoComplete={isSignup ? "new-password" : "current-password"}
             enterKeyHint={isSignup ? "next" : "go"}
           />
@@ -329,7 +359,14 @@ export function AuthScreen({
               onChange={setConfirm}
               placeholder="••••••••"
               icon="🔒"
-              type="password"
+              type={showConfirm ? "text" : "password"}
+              rightSlot={
+                <PasswordToggle
+                  visible={showConfirm}
+                  onToggle={() => setShowConfirm((v) => !v)}
+                  label="confirm password"
+                />
+              }
               autoComplete="new-password"
               enterKeyHint={showDob ? "next" : "go"}
             />

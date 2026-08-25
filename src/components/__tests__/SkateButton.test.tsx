@@ -3,12 +3,6 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SkateButton } from "../SkateButton";
 
-const mockPlayOlliePop = vi.fn();
-
-vi.mock("../../utils/ollieSound", () => ({
-  playOlliePop: () => mockPlayOlliePop(),
-}));
-
 const mockPlayHaptic = vi.fn();
 
 // Stub `playHaptic` (the side-effect) but defer to the real `hapticForVariant`
@@ -37,13 +31,12 @@ describe("SkateButton", () => {
     expect(screen.getByRole("button", { name: "Kickflip" })).toBeInTheDocument();
   });
 
-  it("calls onClick and plays sound + haptic on click", async () => {
+  it("calls onClick and plays haptic on click", async () => {
     vi.useRealTimers();
     const onClick = vi.fn();
     render(<SkateButton onClick={onClick}>Go</SkateButton>);
     await userEvent.click(screen.getByRole("button", { name: "Go" }));
     expect(onClick).toHaveBeenCalledTimes(1);
-    expect(mockPlayOlliePop).toHaveBeenCalledTimes(1);
     expect(mockPlayHaptic).toHaveBeenCalledWith("button_primary");
   });
 
@@ -58,7 +51,7 @@ describe("SkateButton", () => {
     expect(animDiv.className).not.toContain("animate-ollie");
   });
 
-  it("does not fire onClick or sound when disabled (manual guard)", () => {
+  it("does not fire onClick or haptic when disabled (manual guard)", () => {
     const onClick = vi.fn();
     render(
       <SkateButton onClick={onClick} disabled>
@@ -71,7 +64,6 @@ describe("SkateButton", () => {
     // fireEvent bypasses the HTML disabled attribute, testing the manual guard
     fireEvent.click(btn);
     expect(onClick).not.toHaveBeenCalled();
-    expect(mockPlayOlliePop).not.toHaveBeenCalled();
     expect(mockPlayHaptic).not.toHaveBeenCalled();
   });
 
@@ -97,7 +89,7 @@ describe("SkateButton", () => {
 
   it("works without onClick prop", () => {
     render(<SkateButton>Solo</SkateButton>);
-    fireEvent.click(screen.getByRole("button", { name: "Solo" }));
-    expect(mockPlayOlliePop).toHaveBeenCalledTimes(1);
+    expect(() => fireEvent.click(screen.getByRole("button", { name: "Solo" }))).not.toThrow();
+    expect(mockPlayHaptic).toHaveBeenCalledTimes(1);
   });
 });

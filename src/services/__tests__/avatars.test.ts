@@ -12,16 +12,24 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
  *   so we replace the methods we touch.
  */
 
-const { mockUploadBytes, mockDeleteObject, mockGetDownloadURL, mockRef, mockIsAvatarSafe, currentUserUidRef } =
-  vi.hoisted(() => ({
-    mockUploadBytes: vi.fn(),
-    mockDeleteObject: vi.fn(),
-    mockGetDownloadURL: vi.fn(),
-    mockRef: vi.fn((_storage: unknown, path: string) => ({ path })),
-    mockIsAvatarSafe: vi.fn(),
-    // Mutable holder so individual tests can swap in a mismatching auth uid.
-    currentUserUidRef: { value: "user-1" as string | null },
-  }));
+const {
+  mockUploadBytes,
+  mockDeleteObject,
+  mockGetDownloadURL,
+  mockRef,
+  mockIsAvatarSafe,
+  mockAvatarDeleted,
+  currentUserUidRef,
+} = vi.hoisted(() => ({
+  mockUploadBytes: vi.fn(),
+  mockDeleteObject: vi.fn(),
+  mockGetDownloadURL: vi.fn(),
+  mockRef: vi.fn((_storage: unknown, path: string) => ({ path })),
+  mockIsAvatarSafe: vi.fn(),
+  mockAvatarDeleted: vi.fn(),
+  // Mutable holder so individual tests can swap in a mismatching auth uid.
+  currentUserUidRef: { value: "user-1" as string | null },
+}));
 
 vi.mock("firebase/storage", () => ({
   ref: mockRef,
@@ -35,6 +43,12 @@ vi.mock("../../firebase", () => ({
     currentUser: currentUserUidRef.value === null ? null : { uid: currentUserUidRef.value },
   }),
   requireStorage: () => ({}),
+}));
+
+vi.mock("../analytics", () => ({
+  analytics: {
+    avatarDeleted: (...args: unknown[]) => mockAvatarDeleted(...args),
+  },
 }));
 
 vi.mock("../avatarModeration", () => ({
@@ -254,11 +268,15 @@ describe("deleteAvatar", () => {
     expect(mockRef).toHaveBeenCalledWith(expect.anything(), "users/user-1/avatar.jpeg");
     expect(mockRef).toHaveBeenCalledWith(expect.anything(), "users/user-1/avatar.png");
     expect(result).toEqual({ removed: true });
+    expect(mockAvatarDeleted).toHaveBeenCalledWith("user-1");
   });
 
   it("reports removed=false when every variant is not-found", async () => {
     mockDeleteObject.mockRejectedValue(Object.assign(new Error("nf"), { code: "storage/object-not-found" }));
     await expect(deleteAvatar("user-1")).resolves.toEqual({ removed: false });
+    // Telemetry fires on every resolved delete attempt — `removed: false` is a
+    // meaningful outcome ("no avatar was set"), not a non-event.
+    expect(mockAvatarDeleted).toHaveBeenCalledWith("user-1");
   });
 
   it("logs a warning on non-not-found errors but does not throw, removed=false", async () => {

@@ -5,7 +5,7 @@ interface Props {
 
 export function EmptyLobbyState({ emailVerified, onChallenge }: Props) {
   return (
-    <div className="flex flex-col items-center py-12 px-6 border border-dashed border-white/[0.06] rounded-2xl mb-6 bg-surface/30 backdrop-blur-sm text-center">
+    <div className="flex flex-col items-center py-12 px-6 border border-white/[0.06] rounded-2xl mb-6 bg-surface shadow-card text-center">
       <svg
         className="text-brand-orange mb-4"
         width="38"

@@ -1,6 +1,6 @@
 import { ProfileHeader } from "./ProfileHeader";
 
-export function ProfileSkeleton({ onBack }: { onBack: () => void }) {
+export function ProfileSkeleton({ onBack, backLabel }: { onBack: () => void; backLabel?: string }) {
   return (
     <div
       className="min-h-dvh pb-24 overflow-y-auto bg-profile-glow"
@@ -8,11 +8,11 @@ export function ProfileSkeleton({ onBack }: { onBack: () => void }) {
       aria-busy="true"
       aria-label="Loading player profile"
     >
-      <ProfileHeader onBack={onBack} />
+      <ProfileHeader onBack={onBack} backLabel={backLabel} />
 
-      <div className="px-5 pt-7 max-w-lg mx-auto animate-pulse">
+      <div className="px-5 pt-7 max-w-[430px] mx-auto animate-pulse">
         <div className="flex items-center gap-4 mb-8">
-          <div className="w-14 h-14 rounded-full bg-surface-alt border border-border shrink-0" />
+          <div className="w-20 h-20 rounded-full bg-surface-alt border border-border shrink-0" />
           <div className="flex-1 space-y-2">
             <div className="h-6 w-40 rounded-md bg-surface-alt" />
             <div className="h-3 w-20 rounded-md bg-surface-alt/70" />

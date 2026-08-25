@@ -78,7 +78,7 @@ export function ActiveGamesSection({
           })}
         </div>
       ) : (
-        <div className="flex flex-col items-center py-8 border border-dashed border-white/[0.06] rounded-2xl bg-surface/30 backdrop-blur-sm">
+        <div className="flex flex-col items-center py-8 border border-white/[0.06] rounded-2xl bg-surface shadow-card">
           <SkateboardIcon size={24} className="mb-2 text-faint" />
           <p className="font-body text-xs text-faint">No active games right now</p>
           <p className="font-body text-[11px] text-subtle mt-0.5">Challenge someone to start a new round</p>

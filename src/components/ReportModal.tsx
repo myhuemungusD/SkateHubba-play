@@ -18,8 +18,14 @@ export function ReportModal({
   reporterUid: string;
   reportedUid: string;
   reportedUsername: string;
-  gameId: string;
-  /** Deterministic clip id when reporting a feed clip; omit for game-level reports. */
+  /**
+   * Game the report is filed from. Optional: a user-posted clip belongs to no
+   * game, and inventing an id for it would put a dead reference in front of a
+   * moderator. Omitted (or null) reports are surfaced as clip-only in the
+   * admin queue.
+   */
+  gameId?: string | null;
+  /** Clip id when reporting a feed clip; omit for game-level reports. */
   clipId?: string;
   onClose: () => void;
   onSubmitted: () => void;
@@ -45,7 +51,7 @@ export function ReportModal({
         reporterUid,
         reportedUid,
         reportedUsername,
-        gameId,
+        gameId: gameId ?? null,
         reason,
         description,
         ...(clipId ? { clipId } : {}),

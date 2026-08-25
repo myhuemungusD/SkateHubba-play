@@ -14,7 +14,7 @@ import {
   type DocumentSnapshot,
 } from "firebase/firestore";
 import { requireDb } from "../firebase";
-import type { Dispute, DisputeModerationStatus, DisputeStatus } from "../types/dispute";
+import type { Dispute, DisputeModerationStatus, DisputeOutcome, DisputeStatus } from "../types/dispute";
 
 /* ────────────────────────────────────────────
  * Types
@@ -23,6 +23,7 @@ import type { Dispute, DisputeModerationStatus, DisputeStatus } from "../types/d
 export type {
   Dispute,
   DisputeModerationStatus,
+  DisputeOutcome,
   DisputeStatus,
   DisputeTally,
   DisputeVerdict,
@@ -72,6 +73,15 @@ export function coerceVoteCount(raw: unknown): number {
   return typeof raw === "number" && Number.isFinite(raw) && raw >= 0 ? raw : 0;
 }
 
+/**
+ * Narrow a persisted `verdict` to the referee's union. Anything unexpected —
+ * missing (dispute still open), a legacy literal, or a corrupted value — reads
+ * as undefined so consumers only ever see a ruling they can render.
+ */
+export function coerceVerdict(raw: unknown): DisputeOutcome | undefined {
+  return raw === "land" || raw === "bail" || raw === "tie" || raw === "none" ? raw : undefined;
+}
+
 export function toDisputeDoc(snap: DocumentSnapshot): Dispute {
   const raw = snap.data() as Record<string, unknown> | undefined;
   if (!raw) throw new Error(`Malformed dispute document: ${snap.id}`);
@@ -102,8 +112,13 @@ export function toDisputeDoc(snap: DocumentSnapshot): Dispute {
   // Unknown/missing status reads as 'open' so a doc written before a future
   // status value existed still renders; the feed query already filters
   // server-side, so this only affects direct reads.
-  const status: DisputeStatus = raw.status === "closed" ? "closed" : "open";
+  // Early referee deployments used "resolved" before the client contract was
+  // standardised on "closed". Normalize both persisted forms so participant
+  // history remains visible without widening the public status union.
+  const status: DisputeStatus = raw.status === "closed" || raw.status === "resolved" ? "closed" : "open";
   const moderationStatus: DisputeModerationStatus = raw.moderationStatus === "hidden" ? "hidden" : "active";
+
+  const verdict = coerceVerdict(raw.verdict);
 
   return {
     id: snap.id,
@@ -122,5 +137,8 @@ export function toDisputeDoc(snap: DocumentSnapshot): Dispute {
     moderationStatus,
     landVotes: coerceVoteCount(raw.landVotes),
     bailVotes: coerceVoteCount(raw.bailVotes),
+    // Omit rather than set undefined so the object shape matches a doc that
+    // never carried the field (exactOptionalPropertyTypes-friendly).
+    ...(verdict === undefined ? {} : { verdict }),
   };
 }
