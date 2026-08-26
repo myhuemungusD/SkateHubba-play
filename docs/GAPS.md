@@ -25,11 +25,15 @@ Every item lists the evidence so it can be picked up cold.
 
 ### P0-1 · `clipVotes` bare delete has no paired decrement → unbounded upvote inflation
 
+**Status: CLOSED** — fixed in `e7ef1a8` (delete now carries its paired counter decrement, with orphan/zero-floor/legacy escapes; red-team suite `rules-tests/clipvotes-delete-stuffing-redteam.rules.test.ts` covers the full stuffing cycle). Verified green against the emulator 2026-08-26.
+
 **Security hole. Feed ranking is corruptible from a single account.**
 `firestore.rules:2918-2919` allows `delete` on a clip vote with only an owner check. The CAST branch of `clipVoteDeltaOk` (`firestore.rules:207-211`) only checks `!exists → existsAfter`. So `cast(+1) → deleteDoc(voteRef) → cast(+1) → …` adds +1 to `clips.upvoteCount` every lap, forever. The client already has the bare-delete path (`src/services/clips.votes.ts:316-318`).
 **Fix:** port the `disputeVotes` delete clause verbatim — it already solves exactly this (`firestore.rules:3169-3193`, confirmed present: requires the same write to decrement the counter, with zero-floor and orphan escapes). Add a rules-test for the stuffing loop (current test `rules-tests/clips.rules.test.ts:572-585` only covers count==0).
 
 ### P0-2 · Storage game-video path can be squatted → forged forfeit wins
+
+**Status: CLOSED** — fixed in `3afa0d0` (game-video filenames pinned to `{role}-{uploaderUid}.{ext}` by exact-string equality, so no account can occupy another player's path; squat tests in `rules-tests/storage-redteam.rules.test.ts` "path squatting" block). Verified green against the emulator 2026-08-26.
 
 **Security hole. Deterministic griefing.**
 `storage.rules:10-32` lets any signed-in user `create` at `games/{gameId}/{turnPath}/{fileName}` with no game-membership check, `update` is `if false`, and `delete` requires the object's own `uploaderUid`. An opponent who knows `gameId` pre-creates `turn-{n}/set.webm|mp4` and `match.webm|mp4` with their own uid. The victim's `uploadVideo` (`src/services/storage.ts:301-330`) then hits `update` → denied permanently; they can't set a trick, the deadline expires, and the squatter takes the forfeit win (`firestore.rules:1784-1829`). Not covered by the storage red-team suites (they only test overwrite of an already-occupied path).
