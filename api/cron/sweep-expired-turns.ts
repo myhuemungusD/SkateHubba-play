@@ -1,8 +1,8 @@
 /**
  * Auto-referee cron sweep — server-side forfeit of expired turns.
  *
- * Scheduled by GitHub Actions, NOT Vercel Cron — see
- * `.github/workflows/sweep-expired-turns.yml` (`*/15 * * * *`), which curls this
+ * Scheduled by GitHub Actions, NOT Vercel Cron — see the every-15-minutes
+ * schedule in `.github/workflows/sweep-expired-turns.yml`, which curls this
  * endpoint over HTTPS. Vercel's Hobby plan caps `crons` at once per day and a
  * sub-daily `crons` block breaks PR preview deploys, so `vercel.json` has no
  * `crons` key at all. For each ACTIVE game whose
