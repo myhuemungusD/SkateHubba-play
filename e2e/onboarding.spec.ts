@@ -24,6 +24,7 @@
 import { test, expect, type BrowserContext, type Page, type Locator } from "@playwright/test";
 import { clearAll } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { expectOnLobby } from "./helpers/lobby-nav";
 
 // ─── Constants pinned from production source ─────────────────────────────────
 //
@@ -152,7 +153,7 @@ async function expectDismissedAndPersisted(page: Page, uid: string) {
   const stored = await page.evaluate((key) => window.localStorage.getItem(key), dismissedKey(uid));
   expect(stored).toBe("1");
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
+  await expectOnLobby(page);
   await expect(tourProgress(page)).toBeHidden();
 }
 
@@ -197,7 +198,7 @@ test("tour pauses (does not show) on the gameplay screen, resumes on lobby", asy
 
   // Navigate back — tour resumes at the same step.
   await page.goto("/lobby");
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
+  await expectOnLobby(page);
   const resumed = tourProgress(page);
   await expect(resumed).toBeVisible({ timeout: 10_000 });
   await expect(resumed).toHaveAttribute("aria-valuenow", "2");
@@ -220,7 +221,7 @@ test("cross-tab dismissal propagates via storage event", async ({ browser }) => 
     // Tab B: same context, same origin → shares localStorage with Tab A.
     const pageB = await ctx.newPage();
     await pageB.goto("/lobby");
-    await expect(pageB.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
+    await expectOnLobby(pageB);
     await expect(tourProgress(pageB)).toBeVisible({ timeout: 10_000 });
 
     // Tab A dismisses via Escape.
@@ -257,7 +258,7 @@ test("Settings → Replay onboarding re-arms the tour at step 0", async ({ page 
   // lobby (manually, in case Settings doesn't auto-route in this build) and
   // assert the tour re-arms from step 0.
   await page.goto("/lobby");
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
+  await expectOnLobby(page);
 
   const reArmed = tourProgress(page);
   await expect(reArmed).toBeVisible({ timeout: 10_000 });

@@ -42,7 +42,7 @@ test("first-time signup writes users/{uid}, users/{uid}/private/profile, and use
   // walks the signup card → profile setup → lobby exactly as a real user
   // would; the underlying createProfile runs as the 3-write transaction
   // that the May 2026 regression broke. The helper already asserts the
-  // "Your Games" lobby heading on success — the UI passing is the
+  // viewer landed on the lobby on success — the UI passing is the
   // PRECONDITION for this spec, not its claim. The claim is the back-end
   // shape verified below.
   await signUpAndSetupProfile(page, email, password, username);

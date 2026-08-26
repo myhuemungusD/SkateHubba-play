@@ -1,8 +1,8 @@
 /**
  * E2E for the community clips spotlight upvote flow (audit F8).
  *
- * The lobby embeds <ClipsFeed> which fetches the top-ranked landed-trick
- * clip and lets a viewer tap the flame button to upvote it. The optimistic
+ * The Clips tab (/feed) renders <ClipsFeed>, which fetches the top-ranked
+ * landed-trick clip and lets a viewer tap the flame button to upvote it. The optimistic
  * UI flips `aria-pressed=true` and increments the count immediately, then
  * the transactional `upvoteClip` write reconciles the authoritative count
  * from Firestore.
@@ -14,6 +14,7 @@
 import { test, expect } from "@playwright/test";
 import { clearAll, createUser, createProfile, createClip, verifyEmail, forceTokenRefresh } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { openClipsFeed } from "./helpers/lobby-nav";
 
 const VIEWER = { email: "viewer@test.com", password: "password123", username: "viewer1" };
 const AUTHOR = { email: "author@test.com", password: "password123", username: "tricklord" };
@@ -30,7 +31,8 @@ test("viewer upvotes another player's clip → button flips to pressed and count
   // One landed-trick clip authored by AUTHOR — visible to any signed-in viewer.
   await createClip("seeded-game-id", 1, "set", author.uid, AUTHOR.username);
 
-  // Viewer signs up through the UI and lands on the lobby (which mounts ClipsFeed).
+  // Viewer signs up through the UI, then opens the Clips tab — the feed moved
+  // off the lobby onto its own /feed route.
   // Both `clipVotes` create and the `clips.upvoteCount` increment require
   // `email_verified == true` in firestore.rules — without verifyEmail +
   // forceTokenRefresh the upvote transaction would be permission-denied.
@@ -38,6 +40,7 @@ test("viewer upvotes another player's clip → button flips to pressed and count
   await verifyEmail(VIEWER.email);
   await page.reload();
   await forceTokenRefresh(page);
+  await openClipsFeed(page);
 
   // Wait for the spotlight card to hydrate. The upvote button's aria-label
   // is `Upvote clip by @<username> · current count <n>` when not yet voted.
@@ -72,8 +75,10 @@ test("clip viewer cannot upvote their own clip — upvote button not rendered", 
 
   await createClip("own-clip-game", 1, "set", uid as string, VIEWER.username);
 
-  // Reload so the freshly-seeded clip appears in the feed pool.
+  // Reload so the freshly-seeded clip appears in the feed pool, then open the
+  // Clips tab where <ClipsFeed> is mounted.
   await page.reload();
+  await openClipsFeed(page);
 
   // The author chip is still rendered so we can wait on it as a hydration
   // anchor — but the flame upvote control is omitted entirely (ClipActions

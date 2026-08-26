@@ -12,6 +12,13 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
   testDir: "./e2e",
+  // Playwright's default testMatch also picks up `*.test.ts`, which would sweep
+  // in the vitest-based helper unit tests under `e2e/helpers/__tests__/`. Those
+  // import from "vitest", and loading @vitest/expect alongside Playwright's own
+  // expect throws "Cannot redefine property: Symbol($$jest-matchers-object)"
+  // during collection — killing the whole run before any spec executes.
+  // Playwright specs are `*.spec.ts`; vitest files stay on `*.test.ts`.
+  testMatch: "**/*.spec.ts",
   // Tests share emulator state, so run sequentially to avoid cross-test interference.
   fullyParallel: false,
   workers: 1,

@@ -16,6 +16,7 @@
 import { test, expect } from "@playwright/test";
 import { clearAll, createUser, createProfile, createGame } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { expectOnLobby, revealActiveGameInLobby } from "./helpers/lobby-nav";
 
 const RECIPIENT = { email: "deeplink@test.com", password: "password123", username: "deepuser" };
 const CHALLENGER = { email: "challenger@test.com", password: "password123", username: "rivalfox" };
@@ -51,9 +52,10 @@ test("dispatching skatehubba:open-game routes recipient into the referenced game
   // Wait for the recipient's lobby to surface the game (the listener in
   // App.tsx only fires when `game.games.find(...)` resolves — so we must
   // wait for the games snapshot before dispatching).
-  await expect(page.getByRole("button", { name: new RegExp(`vs @${CHALLENGER.username}`, "i") }).first()).toBeVisible({
-    timeout: 15_000,
-  });
+  // The challenger holds the turn, so the recipient's card lives behind the
+  // collapsed "N waiting on them" disclosure — expand it to prove the game
+  // reached this client's snapshot.
+  await revealActiveGameInLobby(page, CHALLENGER.username);
 
   // Dispatch the deep-link CustomEvent exactly as <GameNotificationWatcher>
   // would after the SW posts OPEN_GAME. The App.tsx listener calls
@@ -76,7 +78,7 @@ test("deep-link event for an unknown game id is a no-op (no navigation)", async 
   // guard in App.tsx.
   await signUpAndSetupProfile(page, RECIPIENT.email, RECIPIENT.password, RECIPIENT.username);
 
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
+  await expectOnLobby(page);
   const urlBefore = page.url();
 
   await page.evaluate(() => {
@@ -84,6 +86,6 @@ test("deep-link event for an unknown game id is a no-op (no navigation)", async 
   });
 
   // Give any micro-task / state flush a beat to settle, then re-check the URL.
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible();
+  await expectOnLobby(page);
   expect(page.url()).toBe(urlBefore);
 });

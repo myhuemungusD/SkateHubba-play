@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { clearAll, verifyEmail } from "./helpers/emulator";
-import { signUpViaUI, completeProfileSetup, fillAgeFields } from "./helpers/auth-flow";
+import { signUpViaUI, completeProfileSetup, fillAgeFields, emailAuthOptions } from "./helpers/auth-flow";
+import { challengeTab, expectOnLobby, openChallengeForm } from "./helpers/lobby-nav";
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -13,7 +14,8 @@ test("emulator connectivity: sign up via SDK works", async ({ page }) => {
   // In CI headless Chrome, the Firebase SDK's first request to the emulator can
   // hang unless the browser has already established a connection to the host.
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Use email", exact: true })).toBeVisible({ timeout: 10_000 });
+  const createAccount = emailAuthOptions(page).getByRole("button", { name: "Create account" });
+  await expect(createAccount).toBeVisible({ timeout: 10_000 });
 
   // Verify emulator mode is active
   const connected = await page.evaluate(() => "__e2eFirebaseAuth" in globalThis);
@@ -27,7 +29,7 @@ test("emulator connectivity: sign up via SDK works", async ({ page }) => {
   });
 
   // Do a full sign-up flow through the UI
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
+  await createAccount.click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill("warmup@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -46,13 +48,13 @@ test("sign up → profile setup → lobby", async ({ page }) => {
   await completeProfileSetup(page, "sk8player");
 
   // Should be on the lobby
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 10_000 });
+  await expectOnLobby(page);
   await expect(page.getByText("@sk8player")).toBeVisible();
 });
 
 test("sign up form rejects mismatched passwords", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
+  await emailAuthOptions(page).getByRole("button", { name: "Create account" }).click();
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -65,7 +67,7 @@ test("sign up form rejects mismatched passwords", async ({ page }) => {
 
 test("sign up form rejects short passwords", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
+  await emailAuthOptions(page).getByRole("button", { name: "Create account" }).click();
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -85,9 +87,15 @@ test("email verification banner visible after sign up, hidden after verification
   const banner = page.getByText("VERIFY YOUR EMAIL", { exact: true });
   await expect(banner).toBeVisible({ timeout: 10_000 });
 
-  // "Challenge Someone" is disabled for unverified users
-  const challengeBtn = page.getByRole("button", { name: "Challenge Someone" });
-  await expect(challengeBtn).toBeDisabled();
+  // The lobby's own "Challenge Someone" button is gone — challenging now
+  // starts from the always-enabled Challenge tab, and the gate moved to the
+  // /challenge route guard (App.tsx: UnverifiedChallengeRedirect). So the
+  // guarantee to assert is the bounce, not a disabled control: an unverified
+  // user who taps Challenge is told why and is put back on the lobby.
+  await expect(page.getByText("Verify your email to start a game")).toBeVisible();
+  await challengeTab(page).click();
+  await expect(page.getByText("Verify your email to challenge someone.")).toBeVisible({ timeout: 10_000 });
+  await expectOnLobby(page);
 
   // Verify the email via the emulator REST API (simulates clicking the email link)
   await verifyEmail(email);
@@ -95,9 +103,9 @@ test("email verification banner visible after sign up, hidden after verification
   // Reload so Firebase SDK re-reads the updated emailVerified flag
   await page.reload();
 
-  // Banner should be gone and challenge button enabled
+  // Banner should be gone and the same tap now reaches the challenge form.
   await expect(banner).not.toBeVisible({ timeout: 10_000 });
-  await expect(challengeBtn).toBeEnabled();
+  await openChallengeForm(page);
 });
 
 test("sign in with existing account reaches lobby", async ({ page }) => {
@@ -110,12 +118,12 @@ test("sign in with existing account reaches lobby", async ({ page }) => {
   await expect(page.getByText("S.K.A.T.E.")).toBeVisible({ timeout: 5_000 });
 
   // Sign back in
-  await page.getByRole("button", { name: "Account" }).click();
+  await emailAuthOptions(page).getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill("returner@test.com");
   await page.getByPlaceholder("••••••••").fill("password123");
   await page.getByRole("button", { name: "Sign In" }).click();
   await page.waitForURL("**/lobby**", { timeout: 15_000 });
 
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 10_000 });
+  await expectOnLobby(page);
 });

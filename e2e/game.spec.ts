@@ -15,25 +15,16 @@ import {
   createUser,
   createProfile,
   createGame,
-  verifyEmail,
   expireGameDeadline,
-  forceTokenRefresh,
 } from "./helpers/emulator";
-import { MEDIA_MOCK_SCRIPT } from "./helpers/media-mock";
-import { signUpAndSetupProfile, signInViaUI } from "./helpers/auth-flow";
+import { signInViaUI } from "./helpers/auth-flow";
+import { openMatcherSession, openSetterSession } from "./helpers/game-flow";
+import { openActiveGameFromLobby, openFinishedGameFromLobby } from "./helpers/lobby-nav";
 
 // ─── Fixed test data ──────────────────────────────────────────────────────────
 
 const P1 = { email: "p1@test.com", password: "password123", username: "p1skater" };
 const P2 = { email: "p2@test.com", password: "password123", username: "p2skater" };
-
-/**
- * Enable the fake camera/MediaRecorder for the given page.
- * Must be called before `page.goto()`.
- */
-async function mockMedia(page: Page) {
-  await page.addInitScript(MEDIA_MOCK_SCRIPT);
-}
 
 /**
  * Complete a VideoRecorder interaction:
@@ -70,27 +61,13 @@ test.beforeEach(async () => {
 // ─── Challenge ────────────────────────────────────────────────────────────────
 
 test("player 1 challenges player 2 → waiting screen shown", async ({ browser }) => {
-  // Set up P2 programmatically (no need to go through the UI)
-  const p2 = await createUser(P2.email, P2.password);
-  await createProfile(p2.uid, P2.username, P2.email, false);
-
-  // P1 signs up through the UI and verifies their email
-  const p1Ctx: BrowserContext = await browser.newContext();
-  const p1: Page = await p1Ctx.newPage();
-  await signUpAndSetupProfile(p1, P1.email, P1.password, P1.username);
-  await verifyEmail(P1.email);
-  await p1.reload();
-  await forceTokenRefresh(p1);
-
-  // Challenge P2
-  await p1.getByRole("button", { name: "Challenge Someone" }).click();
-  await expect(p1.getByRole("heading", { name: "Challenge" })).toBeVisible();
-  await p1.getByPlaceholder("their_handle").fill(P2.username);
-  await p1.getByRole("button", { name: /Send Challenge/i }).click();
+  // P2 is seeded via the emulator REST API; P1 signs up through the UI,
+  // verifies their email, and challenges P2.
+  const { ctx: p1Ctx, page: p1 } = await openSetterSession(browser, P1, P2);
 
   // P1 set the challenge so now P1 is the setter — game is in "setting" phase
   // and it IS P1's turn, so P1 should see the setter UI, not the waiting screen
-  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
+  await expect(p1.getByPlaceholder("Name your trick")).toBeVisible({ timeout: 10_000 });
 
   await p1Ctx.close();
 });
@@ -98,24 +75,11 @@ test("player 1 challenges player 2 → waiting screen shown", async ({ browser }
 // ─── Set trick ────────────────────────────────────────────────────────────────
 
 test("setter records trick → game moves to matching phase", async ({ browser }) => {
-  const p2 = await createUser(P2.email, P2.password);
-  await createProfile(p2.uid, P2.username, P2.email, false);
-
-  const p1Ctx: BrowserContext = await browser.newContext();
-  const p1: Page = await p1Ctx.newPage();
-  await mockMedia(p1);
-  await signUpAndSetupProfile(p1, P1.email, P1.password, P1.username);
-  await verifyEmail(P1.email);
-  await p1.reload();
-  await forceTokenRefresh(p1);
-
-  // Challenge P2 to create a game
-  await p1.getByRole("button", { name: "Challenge Someone" }).click();
-  await p1.getByPlaceholder("their_handle").fill(P2.username);
-  await p1.getByRole("button", { name: /Send Challenge/i }).click();
+  // Seed P2, then sign up + verify + challenge as P1, landing on the setter's
+  // trick-name step with the fake camera installed.
+  const { ctx: p1Ctx, page: p1 } = await openSetterSession(browser, P1, P2);
 
   // P1 is the setter — name the trick (this reveals the recorder)
-  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
   await p1.getByPlaceholder("Name your trick").fill("Kickflip");
 
   // The VideoRecorder should auto-open the camera
@@ -137,40 +101,16 @@ test("setter records trick → game moves to matching phase", async ({ browser }
 
 test("matcher records response and misses → earns a letter", async ({ browser }) => {
   // Create both users
-  const p2 = await createUser(P2.email, P2.password);
-  await createProfile(p2.uid, P2.username, P2.email, false);
+  // P1 flow: seed P2, sign up, verify, challenge, set trick
+  const { ctx: p1Ctx, page: p1 } = await openSetterSession(browser, P1, P2);
 
-  // P1 flow: sign up, verify, challenge, set trick
-  const p1Ctx: BrowserContext = await browser.newContext();
-  const p1: Page = await p1Ctx.newPage();
-  await mockMedia(p1);
-  await signUpAndSetupProfile(p1, P1.email, P1.password, P1.username);
-  await verifyEmail(P1.email);
-  await p1.reload();
-  await forceTokenRefresh(p1);
-
-  await p1.getByRole("button", { name: "Challenge Someone" }).click();
-  await p1.getByPlaceholder("their_handle").fill(P2.username);
-  await p1.getByRole("button", { name: /Send Challenge/i }).click();
-
-  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
   await p1.getByPlaceholder("Name your trick").fill("Heelflip");
   await recordVideo(p1, "Land Your Trick", "Recorded");
   await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
 
-  // Grab the game ID from the URL or wait — we need P2 to open this game.
-  // P2 doesn't know the game ID yet, but their lobby will list it.
-  const p2Ctx: BrowserContext = await browser.newContext();
-  const p2Page: Page = await p2Ctx.newPage();
-  await mockMedia(p2Page);
-  await signInViaUI(p2Page, P2.email, P2.password);
-
-  // P2's lobby should show the active game with P1 (card shows "vs @p1skater")
-  await expect(p2Page.getByRole("button").filter({ hasText: P1.username })).toBeVisible({
-    timeout: 10_000,
-  });
-  // Click the game card (it's the matcher's turn)
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  // P2 doesn't know the game ID — they find the game on their own lobby,
+  // where it sits in the "YOUR TURN" stack (card reads "vs @p1skater").
+  const { ctx: p2Ctx, page: p2Page } = await openMatcherSession(browser, P2, P1.username);
 
   // P2 should see the matching UI
   await expect(p2Page.getByText(/Match @p1skater's Heelflip/i)).toBeVisible({ timeout: 10_000 });
@@ -210,34 +150,15 @@ test("matcher records response and misses → earns a letter", async ({ browser 
 test("matcher records response and lands → roles swap, no letters earned", async ({ browser }) => {
   // Covers submitMatchAttempt(landed=true) honor-system path — the most
   // important game mechanic that was previously uncovered end-to-end.
-  const p2 = await createUser(P2.email, P2.password);
-  await createProfile(p2.uid, P2.username, P2.email, false);
+  // P1 seeds P2, signs up, verifies, challenges P2, and sets a trick.
+  const { ctx: p1Ctx, page: p1 } = await openSetterSession(browser, P1, P2);
 
-  // P1 signs up, verifies, challenges P2, and sets a trick.
-  const p1Ctx: BrowserContext = await browser.newContext();
-  const p1: Page = await p1Ctx.newPage();
-  await mockMedia(p1);
-  await signUpAndSetupProfile(p1, P1.email, P1.password, P1.username);
-  await verifyEmail(P1.email);
-  await p1.reload();
-  await forceTokenRefresh(p1);
-
-  await p1.getByRole("button", { name: "Challenge Someone" }).click();
-  await p1.getByPlaceholder("their_handle").fill(P2.username);
-  await p1.getByRole("button", { name: /Send Challenge/i }).click();
-
-  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
   await p1.getByPlaceholder("Name your trick").fill("Ollie");
   await recordVideo(p1, "Land Your Trick", "Recorded");
   await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
 
   // P2 signs in, opens the game, records a match, and claims LANDED.
-  const p2Ctx: BrowserContext = await browser.newContext();
-  const p2Page: Page = await p2Ctx.newPage();
-  await mockMedia(p2Page);
-  await signInViaUI(p2Page, P2.email, P2.password);
-
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  const { ctx: p2Ctx, page: p2Page } = await openMatcherSession(browser, P2, P1.username);
   await expect(p2Page.getByText(/Match @p1skater's Ollie/i)).toBeVisible({ timeout: 10_000 });
 
   await recordVideo(p2Page, "Match the Ollie", "Recorded");
@@ -292,8 +213,9 @@ test("expired turn deadline → forfeit screen shown to both players", async ({ 
   const p2Page: Page = await p2Ctx.newPage();
   await signInViaUI(p2Page, P2.email, P2.password);
 
-  // Open the game from the lobby (card shows "vs @p1skater")
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  // Open the game from the lobby — it's still active and P2 holds the turn,
+  // so it sits in the "YOUR TURN" stack.
+  await openActiveGameFromLobby(p2Page, P1.username);
 
   // The GamePlayScreen's useEffect fires forfeitExpiredTurn() which sets
   // status="forfeit" on the game.  The GameContext subscription then routes
@@ -305,7 +227,10 @@ test("expired turn deadline → forfeit screen shown to both players", async ({ 
   const p1Ctx: BrowserContext = await browser.newContext();
   const p1Page: Page = await p1Ctx.newPage();
   await signInViaUI(p1Page, P1.email, P1.password);
-  await p1Page.getByRole("button").filter({ hasText: P2.username }).click();
+  // P2 already forfeited, so for P1 this game is FINISHED: it left the lobby
+  // stack for the "N finished · W–L" roll-up, and the recap is reached from
+  // P1's own profile.
+  await openFinishedGameFromLobby(p1Page, P2.username);
 
   await expect(p1Page.getByText("You Win")).toBeVisible({ timeout: 10_000 });
   await expect(p1Page.getByText(/@p2skater ran out of time/i)).toBeVisible();
@@ -336,12 +261,7 @@ test("completing a game shows game over screen with winner and rematch option", 
   });
 
   // P2 opens the game and submits a miss → should trigger game over
-  const p2Ctx: BrowserContext = await browser.newContext();
-  const p2Page: Page = await p2Ctx.newPage();
-  await mockMedia(p2Page);
-  await signInViaUI(p2Page, P2.email, P2.password);
-
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  const { ctx: p2Ctx, page: p2Page } = await openMatcherSession(browser, P2, P1.username);
   await expect(p2Page.getByText(/Match @p1skater's 360 Flip/i)).toBeVisible({ timeout: 10_000 });
 
   await recordVideo(p2Page, "Match the 360 Flip", "Recorded");
@@ -355,7 +275,9 @@ test("completing a game shows game over screen with winner and rematch option", 
   const p1Ctx: BrowserContext = await browser.newContext();
   const p1Page: Page = await p1Ctx.newPage();
   await signInViaUI(p1Page, P1.email, P1.password);
-  await p1Page.getByRole("button").filter({ hasText: P2.username }).click();
+  // The game is over, so it's in the finished roll-up rather than the lobby
+  // stack — open the recap from P1's own profile.
+  await openFinishedGameFromLobby(p1Page, P2.username);
   await expect(p1Page.getByText("You Win")).toBeVisible({ timeout: 10_000 });
   await expect(p1Page.getByRole("button", { name: /Rematch/i })).toBeVisible();
 

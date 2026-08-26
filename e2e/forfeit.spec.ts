@@ -18,6 +18,7 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { clearAll, createUser, createProfile, createGame, expireGameDeadline } from "./helpers/emulator";
 import { signInViaUI } from "./helpers/auth-flow";
+import { openActiveGameFromLobby, openFinishedGameFromLobby } from "./helpers/lobby-nav";
 
 const P1 = { email: "p1@test.com", password: "password123", username: "settercat" };
 const P2 = { email: "p2@test.com", password: "password123", username: "matcherdog" };
@@ -49,22 +50,19 @@ test("setter's deadline passes → setter forfeits and matcher wins on game-over
   const p1Ctx: BrowserContext = await browser.newContext();
   const p1Page: Page = await p1Ctx.newPage();
   await signInViaUI(p1Page, P1.email, P1.password);
-  await p1Page
-    .getByRole("button", { name: new RegExp(`vs @${P2.username}`, "i") })
-    .first()
-    .click();
+  await openActiveGameFromLobby(p1Page, P2.username);
 
   await expect(p1Page.getByText("Forfeit")).toBeVisible({ timeout: 15_000 });
   await expect(p1Page.getByText("You ran out of time.")).toBeVisible();
 
-  // P2 opens the same game from their lobby and sees the winning view.
+  // P2 opens the same game and sees the winning view. P1's forfeit already
+  // landed, so for P2 this game is FINISHED — finished games left the lobby
+  // stack for the "N finished · W–L" roll-up, and the recap is reached from
+  // P2's own profile.
   const p2Ctx: BrowserContext = await browser.newContext();
   const p2Page: Page = await p2Ctx.newPage();
   await signInViaUI(p2Page, P2.email, P2.password);
-  await p2Page
-    .getByRole("button", { name: new RegExp(`vs @${P1.username}`, "i") })
-    .first()
-    .click();
+  await openFinishedGameFromLobby(p2Page, P1.username);
 
   await expect(p2Page.getByText("You Win")).toBeVisible({ timeout: 15_000 });
   await expect(p2Page.getByText(new RegExp(`@${P1.username} ran out of time`, "i"))).toBeVisible();
