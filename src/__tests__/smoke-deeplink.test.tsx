@@ -136,7 +136,9 @@ describe("Smoke: direct-URL deep-linking", () => {
   it("loads /lobby directly and renders the lobby", async () => {
     await renderAt("/lobby");
     expect(activeNavTab()).toBe("Home");
-    expect(await screen.findByText("Your Games")).toBeInTheDocument();
+    // Nothing is subscribed into the games list here, so the lobby's empty
+    // state is the proof the Lobby screen itself rendered.
+    expect(await screen.findByText(/Ready to S\.K\.A\.T\.E\.\?/i)).toBeInTheDocument();
   });
 });
 
@@ -158,8 +160,12 @@ describe("Smoke: /record own-profile affordances", () => {
     await renderAt("/record");
     await userEvent.click(await screen.findByRole("button", { name: /add a spot/i }));
     // `?add=1` is the whole point: plain /map leaves the sheet shut because
-    // its open state is local to SpotMap.
-    expect(screen.getByTestId("location").textContent).toBe("/map?add=1");
+    // its open state is local to SpotMap. /map is a lazy route, so the URL
+    // only commits once the chunk resolves — poll rather than asserting on
+    // the first paint (same reason as the /my-stats case below).
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/map?add=1");
+    });
   });
 
   it("does not render the achievements ribbon", async () => {

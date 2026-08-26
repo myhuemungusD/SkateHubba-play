@@ -30,9 +30,14 @@ const { withGameSub, renderLobby, renderVerifiedLobby } = createMockHelpers({
   mockSubscribeToGame: games.refs.subscribeToGame,
 });
 
-/** Navigate to challenge screen and wait for lazy load to resolve. */
+/**
+ * Navigate to the challenge screen and wait for lazy load to resolve.
+ *
+ * The lobby no longer carries a challenge CTA — Challenge is a bottom-nav tab,
+ * so that's the route a user takes.
+ */
 async function goToChallenge() {
-  await userEvent.click(await screen.findByText(/Challenge Someone/));
+  await userEvent.click(await screen.findByRole("link", { name: "Challenge" }));
   await screen.findByPlaceholderText("their_handle");
 }
 
@@ -61,7 +66,9 @@ describe("Smoke: Challenge", () => {
     games.refs.createGame.mockResolvedValueOnce("game1");
 
     await goToChallenge();
-    expect(await screen.findByText("Challenge")).toBeInTheDocument();
+    // Scoped to the heading: "Challenge" is also the bottom-nav tab label,
+    // which renders on this screen.
+    expect(await screen.findByRole("heading", { name: "Challenge", level: 1 })).toBeInTheDocument();
     expect(screen.getByText(/First to S.K.A.T.E. loses/)).toBeInTheDocument();
 
     const input = screen.getByPlaceholderText("their_handle");
@@ -144,13 +151,13 @@ describe("Smoke: Challenge", () => {
     await renderLobby([]);
 
     // The /challenge route requires emailVerified — unverified users are
-    // redirected back to /lobby by the route guard in App.tsx.
-    const challengeBtn = await screen.findByText(/Challenge Someone/);
-    await userEvent.click(challengeBtn);
+    // redirected back to /lobby by the route guard in App.tsx. The tab is
+    // still reachable, so the guard is the only thing standing in the way.
+    await userEvent.click(await screen.findByRole("link", { name: "Challenge" }));
 
-    // Should stay on lobby, not reach the challenge screen
+    // Should bounce back to the lobby, not reach the challenge screen
     await waitFor(() => {
-      expect(screen.getByText("Your Games")).toBeInTheDocument();
+      expect(screen.getByText(/Ready to S\.K\.A\.T\.E\.\?/i)).toBeInTheDocument();
     });
     expect(screen.queryByPlaceholderText("their_handle")).not.toBeInTheDocument();
     expect(games.refs.createGame).not.toHaveBeenCalled();
@@ -160,12 +167,12 @@ describe("Smoke: Challenge", () => {
     await renderVerifiedLobby([]);
 
     await goToChallenge();
-    expect(await screen.findByText("Challenge")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Challenge", level: 1 })).toBeInTheDocument();
 
-    await userEvent.click(screen.getByText("← Back"));
+    await userEvent.click(screen.getByRole("button", { name: "Back to lobby" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Your Games")).toBeInTheDocument();
+      expect(screen.getByText(/Ready to S\.K\.A\.T\.E\.\?/i)).toBeInTheDocument();
     });
   });
 

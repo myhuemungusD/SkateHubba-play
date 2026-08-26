@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { activeGame, createMockHelpers } from "./smoke-helpers";
+import { activeGame, createMockHelpers, openGameFromLobby } from "./smoke-helpers";
 import type { GameDoc } from "../services/games";
 
 /* ── Hoisted mocks ──────────────────────────── */
@@ -48,8 +48,7 @@ async function openExpiredDeadlineGame(extraOverrides: Partial<GameDoc> = {}): P
   await renderLobby([game]);
   withGameSub(game);
 
-  const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-  await userEvent.click(gameButton);
+  await openGameFromLobby();
 
   return game;
 }
@@ -77,28 +76,70 @@ async function setterRecordsATake(trickName: string) {
  * submission resolves — that difference is the test.
  */
 async function setterLandsATrick(trickName: string) {
-  await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+  await openGameFromLobby();
   await setterRecordsATake(trickName);
   await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
   await userEvent.click(screen.getByText(/Landed/));
 }
 
+/**
+ * Render the lobby with a single game where the viewer is the setter, open it,
+ * and wait for the setter UI. Returns the game doc so callers can assert
+ * against its id/fields. Most setter cases differ only in how they mock
+ * `setTrick` and what they expect afterwards — that difference is the test.
+ */
+async function openSetterGame(): Promise<GameDoc> {
+  const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
+  await renderLobby([game]);
+  withGameSub(game);
+
+  await openGameFromLobby();
+
+  await waitFor(() => {
+    expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
+  });
+  return game;
+}
+
+/**
+ * Render the lobby with a matching-phase game where the viewer is the matcher,
+ * open it, and drive one full take through to the landed claim. The matcher
+ * has no trick name to type, so the whole take is camera → record → stop →
+ * "✓ Landed".
+ */
+async function matcherOpensAndLands(overrides: Partial<GameDoc> = {}): Promise<void> {
+  const game = activeGame({
+    phase: "matching",
+    currentTurn: "u1",
+    currentSetter: "u2",
+    currentTrickName: "Kickflip",
+    ...overrides,
+  });
+  await renderLobby([game]);
+  withGameSub(game);
+
+  await openGameFromLobby();
+
+  await waitFor(() => screen.getByRole("button", { name: /open camera/i }));
+  await userEvent.click(screen.getByRole("button", { name: /open camera/i }));
+  await waitFor(() => screen.getByRole("button", { name: /record/i }));
+  await userEvent.click(screen.getByRole("button", { name: /record/i }));
+  await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
+  await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
+
+  await waitFor(() => screen.getByText(/✓ Landed/));
+  await userEvent.click(screen.getByText(/✓ Landed/));
+}
+
 describe("Smoke: Gameplay", () => {
   it("gameplay screen shows setter UI when it's your turn to set", async () => {
-    const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    await renderLobby([game]);
-    withGameSub(game);
+    await openSetterGame();
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
-    });
+    expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
 
     // Trick name input is shown with hint; recorder is hidden until name is entered
     const trickInput = screen.getByLabelText("TRICK NAME");
-    expect(trickInput).toBeInTheDocument();
+    expect(trickInput).toBeEnabled();
     expect(trickInput).toBeEnabled();
     expect(screen.getByText("Name your trick to start recording")).toBeInTheDocument();
 
@@ -122,17 +163,8 @@ describe("Smoke: Gameplay", () => {
   });
 
   it("setter auto-submits trick after recording", async () => {
-    const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     games.refs.setTrick.mockResolvedValueOnce(undefined);
-    await renderLobby([game]);
-    withGameSub(game);
-
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
-    });
+    await openSetterGame();
 
     // Verify the phase banner shows correct text for setter
     expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
@@ -143,8 +175,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     await waitFor(() => {
       expect(screen.getByText(/Waiting on @rival/)).toBeInTheDocument();
@@ -161,8 +192,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     await waitFor(() => {
       expect(screen.getByText(/Match.*Tre Flip/)).toBeInTheDocument();
@@ -179,23 +209,14 @@ describe("Smoke: Gameplay", () => {
   });
 
   it("game screen back button returns to lobby", async () => {
-    const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    await renderLobby([game]);
-    withGameSub(game);
-
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
-    });
+    const game = await openSetterGame();
 
     // Re-setup lobby for return
     withGames([game]);
     await userEvent.click(screen.getByText("← Games"));
 
     await waitFor(() => {
-      expect(screen.getByText("Your Games")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "YOUR TURN" })).toBeInTheDocument();
     });
   });
 
@@ -204,8 +225,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     await waitFor(() => {
       // Timer shows hours/minutes/seconds format
@@ -218,8 +238,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     await waitFor(() => {
       expect(screen.getByText(/setting a trick for you/)).toBeInTheDocument();
@@ -231,8 +250,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     await waitFor(() => {
       expect(screen.getByText(/attempting to match your trick/)).toBeInTheDocument();
@@ -250,8 +268,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     const videoUrl = `https://firebasestorage.googleapis.com/v0/b/${import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "sk8hub-d7806.firebasestorage.app"}/o/trick.webm?alt=media`;
     await waitFor(() => {
@@ -279,8 +296,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     await waitFor(() => {
       expect(screen.getByText("VS")).toBeInTheDocument();
@@ -295,8 +311,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     await setterRecordsATake("Kickflip");
 
@@ -316,17 +331,8 @@ describe("Smoke: Gameplay", () => {
   });
 
   it("trick name input locks after recording and recorder stays mounted", async () => {
-    const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     games.refs.setTrick.mockResolvedValueOnce(undefined);
-    await renderLobby([game]);
-    withGameSub(game);
-
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
-    });
+    await openSetterGame();
     await setterRecordsATake("Hardflip");
 
     // Input is disabled and recorder done state is visible (not unmounted)
@@ -349,8 +355,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     // Type trick name to reveal recorder
     await waitFor(() => {
@@ -380,8 +385,7 @@ describe("Smoke: Gameplay", () => {
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
 
     // The camera never opens unprompted here, so a tap is required
     await waitFor(() => {
@@ -412,18 +416,8 @@ describe("Smoke: Gameplay", () => {
   });
 
   it("setter submits trick after confirming landed (upload skipped in demo mode)", async () => {
-    const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     games.refs.setTrick.mockResolvedValueOnce(undefined);
-    await renderLobby([game]);
-    withGameSub(game);
-
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-
-    // Type trick name to reveal recorder
-    await waitFor(() => {
-      expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
-    });
+    await openSetterGame();
     await setterRecordsATake("Heelflip");
 
     // "Did you land it?" appears — click Landed to submit
@@ -437,30 +431,9 @@ describe("Smoke: Gameplay", () => {
   });
 
   it("matcher submit error shows error banner", async () => {
-    const game = activeGame({
-      phase: "matching",
-      currentTurn: "u1",
-      currentSetter: "u2",
-      currentTrickName: "Kickflip",
-    });
     games.refs.submitMatchAttempt.mockRejectedValueOnce(new Error("Submit failed"));
-    await renderLobby([game]);
-    withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-
-    await waitFor(() => screen.getByRole("button", { name: /open camera/i }));
-    await userEvent.click(screen.getByRole("button", { name: /open camera/i }));
-
-    await waitFor(() => screen.getByRole("button", { name: /record/i }));
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-
-    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    await waitFor(() => screen.getByText(/✓ Landed/));
-    await userEvent.click(screen.getByText(/✓ Landed/));
+    await matcherOpensAndLands();
 
     await waitFor(() => {
       expect(screen.getByText("Submit failed")).toBeInTheDocument();
@@ -468,14 +441,8 @@ describe("Smoke: Gameplay", () => {
   });
 
   it("setter landed failure shows error and retry button", async () => {
-    const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
     games.refs.setTrick.mockRejectedValueOnce(new Error("Network error"));
-    await renderLobby([game]);
-    withGameSub(game);
-
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-
+    await openSetterGame();
     await setterRecordsATake("Heelflip");
 
     // "Did you land it?" appears — click Landed (which will fail)
@@ -511,27 +478,9 @@ describe("Smoke: Gameplay", () => {
   });
 
   it("matcher shows fallback error when submitMatchAttempt throws non-Error", async () => {
-    const game = activeGame({
-      phase: "matching",
-      currentTurn: "u1",
-      currentSetter: "u2",
-      currentTrickName: "Kickflip",
-    });
     games.refs.submitMatchAttempt.mockRejectedValueOnce("string error");
-    await renderLobby([game]);
-    withGameSub(game);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
-    await waitFor(() => screen.getByRole("button", { name: /open camera/i }));
-    await userEvent.click(screen.getByRole("button", { name: /open camera/i }));
-    await waitFor(() => screen.getByRole("button", { name: /record/i }));
-    await userEvent.click(screen.getByRole("button", { name: /record/i }));
-    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
-    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
-
-    await waitFor(() => screen.getByText(/✓ Landed/));
-    await userEvent.click(screen.getByText(/✓ Landed/));
+    await matcherOpensAndLands();
 
     await waitFor(() => {
       expect(screen.getByText("Failed to submit attempt")).toBeInTheDocument();
@@ -581,8 +530,7 @@ describe("Smoke: Gameplay", () => {
     });
     await renderLobby([game]);
 
-    const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
-    await userEvent.click(gameButton);
+    await openGameFromLobby();
     // App should not crash
     await waitFor(() => expect(screen.getByText("← Games")).toBeInTheDocument());
   });
