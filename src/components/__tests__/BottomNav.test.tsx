@@ -179,8 +179,12 @@ describe("BottomNav", () => {
     }
   });
 
-  it("keeps the onboarding tour's target on the Me tab", () => {
+  // The tour anchors two steps by data-tutorial id and silently auto-skips a
+  // step whose anchor is missing, so a stale id degrades the tour without
+  // failing anything. Both steps run on the lobby screen, where the nav shows.
+  it("carries the onboarding tour's anchors on the Me and Challenge tabs", () => {
     renderNav("/lobby");
     expect(screen.getByRole("link", { name: "Me" })).toHaveAttribute("data-tutorial", "record-button");
+    expect(screen.getByRole("link", { name: "Challenge" })).toHaveAttribute("data-tutorial", "challenge-cta");
   });
 });

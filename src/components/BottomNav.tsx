@@ -12,6 +12,12 @@ interface NavItem {
   label: string;
   Icon: (props: { size?: number; className?: string }) => ReactNode;
   /**
+   * Anchor id for the onboarding tour. Two steps point at tabs now that the
+   * lobby no longer carries its own challenge CTA — the tour auto-skips a
+   * step whose anchor is missing, so a stale id degrades the tour silently.
+   */
+  tutorialId?: string;
+  /**
    * Renders as the raised centre action instead of a flat tab. Reserved for
    * the single creation action in the app.
    */
@@ -31,9 +37,9 @@ interface NavItem {
 const NAV_ITEMS: readonly NavItem[] = [
   { screen: "lobby", label: "Home", Icon: HomeIcon },
   { screen: "feed", label: "Clips", Icon: FilmIcon },
-  { screen: "challenge", label: "Challenge", Icon: SkateboardIcon, primary: true },
+  { screen: "challenge", label: "Challenge", Icon: SkateboardIcon, primary: true, tutorialId: "challenge-cta" },
   { screen: "map", label: "Map", Icon: MapPinIcon },
-  { screen: "me", label: "Me", Icon: UserIcon },
+  { screen: "me", label: "Me", Icon: UserIcon, tutorialId: "record-button" },
 ];
 
 /**
@@ -68,7 +74,7 @@ export function BottomNav() {
                   to={path}
                   aria-current={active ? "page" : undefined}
                   aria-label={badgeCount > 0 ? `${item.label} (${badgeCount} unread)` : item.label}
-                  data-tutorial={item.screen === "me" ? "record-button" : undefined}
+                  data-tutorial={item.tutorialId}
                   className={`group relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 px-0.5 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
                     active
                       ? "text-brand-orange"
