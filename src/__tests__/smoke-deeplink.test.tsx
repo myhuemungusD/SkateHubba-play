@@ -63,7 +63,7 @@ async function mountApp(initialPath: string): Promise<RenderResult> {
 async function renderAt(initialPath: string): Promise<RenderResult> {
   const result = await mountApp(initialPath);
   // Wait for the persistent BottomNav to mount — it only renders on the
-  // four authed primary screens (lobby/map/record/player), so its presence
+  // five authed tab screens (lobby/feed/challenge/map/me), so its presence
   // confirms the route resolved past the Suspense fallback. Asserting on a
   // route-agnostic readiness signal (rather than the global "Loading"
   // spinner) keeps the helper insensitive to per-screen status overlays
@@ -106,9 +106,31 @@ describe("Smoke: direct-URL deep-linking", () => {
   });
 
   it("loads /player/:uid directly without bouncing to /lobby", async () => {
-    await renderAt("/player/u2");
-    // BottomNav's matchPaths config lights up "Me" for /player/* deep links.
+    // No renderAt() here: /player/:uid is another skater's profile — a pushed
+    // detail screen, not a tab destination — so the nav deliberately does not
+    // render and can't serve as the readiness signal. The URL standing still
+    // is the assertion that matters: the bounce this file exists to catch
+    // would have rewritten it to /lobby.
+    await mountApp("/player/u2");
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/player/u2");
+    });
+    expect(screen.queryByRole("navigation", { name: "Primary navigation" })).not.toBeInTheDocument();
+  });
+
+  it("redirects the legacy /record deep-link to /me", async () => {
+    await renderAt("/record");
+    expect(screen.getByTestId("location").textContent).toBe("/me");
+  });
+
+  it("loads /me directly without bouncing to /lobby", async () => {
+    await renderAt("/me");
     expect(activeNavTab()).toBe("Me");
+  });
+
+  it("loads /feed directly and lights up the Clips tab", async () => {
+    await renderAt("/feed");
+    expect(activeNavTab()).toBe("Clips");
   });
 
   it("loads /lobby directly and renders the lobby", async () => {
