@@ -132,4 +132,23 @@ if (Capacitor.isNativePlatform()) {
       });
     }
   });
+
+  // Shell-level native integrations: dark status bar + Android hardware-back
+  // routed through SPA history. Same dynamic-import rationale as the splash
+  // screen above — keeps @capacitor/app and @capacitor/status-bar out of the
+  // web bundle's critical path. The back-button subscription lives for the
+  // app's whole lifetime, so the unsubscribe handle is deliberately dropped.
+  void (async () => {
+    try {
+      const { initStatusBar, subscribeToBackButton } = await import("./services/nativeApp");
+      subscribeToBackButton();
+      await initStatusBar();
+    } catch (err) {
+      addBreadcrumb({
+        category: "lifecycle",
+        message: "native_shell_init_failed",
+        data: { error: String(err) },
+      });
+    }
+  })();
 }

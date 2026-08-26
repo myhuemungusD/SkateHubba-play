@@ -6,6 +6,10 @@ on:
         description: 'Run gradle with --info (verbose logs for debugging)'
         type: boolean
         default: false
+      upload_to_play:
+        description: 'Upload the built AAB to the Google Play internal track via fastlane'
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -76,6 +80,9 @@ jobs:
           # Empty versionName on non-tag builds falls through to the git sha.
           VITE_APP_VERSION: ${{ steps.version.outputs.name }}
           VITE_GIT_SHA: ${{ github.sha }}
+          # Store builds must fail, not warn, when the service-worker Firebase
+          # config would ship with unreplaced placeholders (see vite.config.ts).
+          REQUIRE_SW_CONFIG: '1'
       - name: Sync Capacitor
         run: npx cap sync android
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -95,19 +102,23 @@ jobs:
         env:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
-          KEYSTORE_FILE: ${{ github.workspace }}/android/app/skatehubba-upload.keystore
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          # Deliberately NOT named KEYSTORE_FILE/KEYSTORE_PASSWORD/KEY_ALIAS/
+          # KEY_PASSWORD: build.gradle reads those env names as a signing
+          # source of its own, and CI should have exactly one live source —
+          # the -Pandroid.injected.signing.* properties below.
+          SIGNING_STORE_FILE: ${{ github.workspace }}/android/app/skatehubba-upload.keystore
+          SIGNING_STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
           VERBOSE: ${{ inputs.verbose }}
         run: |
           GRADLE_ARGS=(
             bundleRelease
             -PversionCode="${VERSION_CODE}"
-            -Pandroid.injected.signing.store.file="${KEYSTORE_FILE}"
-            -Pandroid.injected.signing.store.password="${KEYSTORE_PASSWORD}"
-            -Pandroid.injected.signing.key.alias="${KEY_ALIAS}"
-            -Pandroid.injected.signing.key.password="${KEY_PASSWORD}"
+            -Pandroid.injected.signing.store.file="${SIGNING_STORE_FILE}"
+            -Pandroid.injected.signing.store.password="${SIGNING_STORE_PASSWORD}"
+            -Pandroid.injected.signing.key.alias="${SIGNING_KEY_ALIAS}"
+            -Pandroid.injected.signing.key.password="${SIGNING_KEY_PASSWORD}"
           )
           if [ -n "${VERSION_NAME}" ]; then
             GRADLE_ARGS+=(-PversionName="${VERSION_NAME}")
@@ -127,3 +138,17 @@ jobs:
           name: skatehubba-release
           path: android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 30
+      # Optional Play Store publish — manual dispatch only. Reuses the AAB
+      # built above via the upload-only fastlane lane (no second Gradle run),
+      # so the artifact attached to the workflow and the one on the internal
+      # track are byte-identical.
+      - uses: ruby/setup-ruby@e5517072e87f198d9533967ae13d97c11b604005 # v1.99.0
+        if: inputs.upload_to_play == true
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+      - name: Upload to Google Play internal track
+        if: inputs.upload_to_play == true
+        env:
+          GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        run: bundle exec fastlane android publish_internal

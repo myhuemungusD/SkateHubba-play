@@ -40,6 +40,9 @@
     "check:test-dup": "node scripts/check-test-duplication.mjs",
     "check:file-length": "node scripts/check-file-length.mjs",
     "verify": "tsc -b && npm run lint && npm run test:coverage && npm run build && npm run check:test-dup",
+    "postinstall": "node scripts/patch-ios-spm.mjs",
+    "capacitor:update:after": "node scripts/patch-ios-spm.mjs",
+    "capacitor:sync:after": "node scripts/patch-ios-spm.mjs",
     "prepare": "husky"
   },
   "dependencies": {
@@ -47,6 +50,7 @@
     "@capacitor-firebase/app-check": "^8.3.0",
     "@capacitor-firebase/authentication": "^8.3.0",
     "@capacitor/android": "^8.5.0",
+    "@capacitor/app": "^8.1.1",
     "@capacitor/camera": "^8.2.2",
     "@capacitor/core": "^8.2.0",
     "@capacitor/haptics": "^8.0.2",
@@ -54,6 +58,7 @@
     "@capacitor/keyboard": "^8.0.4",
     "@capacitor/push-notifications": "^8.1.2",
     "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@sentry/capacitor": "4.2.0",
     "@sentry/react": "10.60.0",
     "@vercel/analytics": "^2.0.1",

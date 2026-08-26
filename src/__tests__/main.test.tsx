@@ -42,6 +42,23 @@ vi.mock("../lib/posthog", () => ({
   initPosthog: vi.fn(() => Promise.resolve()),
 }));
 
+/* ── mock ./services/nativeApp — main.tsx dynamically imports it on native.
+   Mocking keeps this a unit test of the entry point AND stops the real
+   module executing here: a second, partially-exercised load of
+   nativeApp.ts registers a separate coverage entry whose branch map does
+   not merge cleanly with the dedicated test's — intermittently dropping
+   src/services/** branch coverage below 100% (the 99.76% CI failure). ── */
+
+const { mockInitStatusBar, mockSubscribeToBackButton } = vi.hoisted(() => ({
+  mockInitStatusBar: vi.fn(() => Promise.resolve()),
+  mockSubscribeToBackButton: vi.fn(() => () => {}),
+}));
+
+vi.mock("../services/nativeApp", () => ({
+  initStatusBar: mockInitStatusBar,
+  subscribeToBackButton: mockSubscribeToBackButton,
+}));
+
 /* ── mock ./App — entry point under test must not boot the real tree ── */
 
 vi.mock("../App", () => ({
@@ -75,13 +92,16 @@ async function waitForHideSettled(): Promise<void> {
   await new Promise<void>((resolve) => {
     requestAnimationFrame(() => resolve());
   });
-  // Poll macrotask-boundaries so the dynamic import resolves. 50 iterations
-  // with a 0ms timeout is ample for an already-registered vi.mock lookup.
+  // Poll macrotask-boundaries so the dynamic imports resolve. 50 iterations
+  // with a 0ms timeout is ample for already-registered vi.mock lookups.
+  // Wait for BOTH native side-effects — the splash hide and the shell
+  // integrations run in independent async blocks, so the first settling
+  // says nothing about the second.
   for (let i = 0; i < 50; i += 1) {
     await new Promise<void>((resolve) => {
       setTimeout(resolve, 0);
     });
-    if (mockHide.mock.calls.length > 0) return;
+    if (mockHide.mock.calls.length > 0 && mockSubscribeToBackButton.mock.calls.length > 0) return;
   }
 }
 
@@ -109,6 +129,11 @@ describe("main entry — splash screen hide", () => {
       category: "lifecycle",
       message: "splash_hidden",
     });
+
+    // Shell integrations mount alongside the splash hide. Their dynamic
+    // import shares the same macrotask window waitForHideSettled flushed.
+    expect(mockSubscribeToBackButton).toHaveBeenCalledTimes(1);
+    expect(mockInitStatusBar).toHaveBeenCalledTimes(1);
   });
 
   it("does not call SplashScreen.hide on the web", async () => {
@@ -127,6 +152,8 @@ describe("main entry — splash screen hide", () => {
     }
 
     expect(mockHide).not.toHaveBeenCalled();
+    expect(mockSubscribeToBackButton).not.toHaveBeenCalled();
+    expect(mockInitStatusBar).not.toHaveBeenCalled();
     // And no splash lifecycle breadcrumb on web.
     const splashCrumbs = mockAddBreadcrumb.mock.calls.filter(([rawCrumb]) => {
       const crumb = rawCrumb as { message?: string } | undefined;

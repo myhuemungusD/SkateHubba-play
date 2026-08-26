@@ -50,6 +50,14 @@ const config: CapacitorConfig = {
     Keyboard: {
       resize: "native", // keeps fixed bottom sheets above the iOS keyboard
     },
+    StatusBar: {
+      // Applied natively before the JS bundle runs, so the first frame is
+      // already correct; src/services/nativeApp.ts re-asserts the same values
+      // at startup. "DARK" = light icons on the dark #0A0A0A shell.
+      style: "DARK",
+      backgroundColor: "#0A0A0A",
+      overlaysWebView: false,
+    },
     SplashScreen: {
       // Keep the splash visible until the bundled JS signals ready (via
       // SplashScreen.hide()). `0` on launchShowDuration + manual hide gives
