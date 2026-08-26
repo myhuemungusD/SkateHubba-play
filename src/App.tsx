@@ -378,13 +378,8 @@ function AppRoutes() {
                       setChallengeTarget("");
                       nav.setScreen("challenge");
                     }}
-                    onChallengeUser={(username: string) => {
-                      directChallenge(username);
-                    }}
                     onOpenGame={game.openGame}
                     onSignOut={auth.handleSignOut}
-                    onDeleteAccount={auth.handleDeleteAccount}
-                    onDownloadData={auth.handleDownloadData}
                     onViewRecord={() => nav.setScreen("me")}
                     onOpenSettings={() => navigate("/settings")}
                     hasMoreGames={game.hasMoreGames}
