@@ -11,6 +11,7 @@ import { Field } from "../components/ui/Field";
 import { ErrorBanner } from "../components/ui/ErrorBanner";
 import { InviteButton } from "../components/InviteButton";
 import { Leaderboard } from "../components/Leaderboard";
+import { OpponentPicker } from "../components/OpponentPicker";
 import { RulesSheet } from "../components/RulesSheet";
 import { TrickCategoryPicker } from "../components/TrickCategoryPicker";
 import { FlameIcon, MapPinIcon } from "../components/icons";
@@ -188,7 +189,8 @@ export function ChallengeScreen({
   };
 
   return (
-    <div className="min-h-dvh bg-background">
+    // pb-24 clears the bottom nav, which renders on this screen (Challenge is a tab).
+    <div className="min-h-dvh bg-background pb-24">
       {/* Header */}
       <div className="px-5 pt-safe pb-4 border-b border-white/[0.04] glass flex justify-between items-center mb-6">
         <button
@@ -213,6 +215,15 @@ export function ChallengeScreen({
       <div className="max-w-[430px] mx-auto px-6">
         <h1 className="font-display text-fluid-4xl text-white mb-2">Challenge</h1>
         <p className="font-body text-sm text-muted mb-8">Call someone out. First to S.K.A.T.E. loses.</p>
+
+        {/* Step 1 — pick an opponent from the roster. Collapses once the
+            field has a name so the rest of the form takes over. */}
+        <OpponentPicker
+          viewerUid={profile.uid}
+          collapsed={opponent.trim().length > 0}
+          onSelect={setOpponent}
+          onViewPlayer={onViewPlayer}
+        />
 
         <form
           onSubmit={(e) => {

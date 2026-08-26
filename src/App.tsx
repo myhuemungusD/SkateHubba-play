@@ -572,7 +572,12 @@ function AppRoutes() {
               path="/settings"
               element={
                 auth.activeProfile ? (
-                  <Settings profile={auth.activeProfile} onBack={() => nav.setScreen("lobby")} />
+                  <Settings
+                    profile={auth.activeProfile}
+                    onBack={() => nav.setScreen("lobby")}
+                    onDownloadData={auth.handleDownloadData}
+                    onDeleteAccount={auth.handleDeleteAccount}
+                  />
                 ) : (
                   <Navigate to="/" replace />
                 )

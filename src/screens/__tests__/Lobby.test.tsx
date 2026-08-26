@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act, type RenderOptions } from "@testing-library/react";
+import { render, screen, within, type RenderOptions } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Timestamp } from "firebase/firestore";
 import { Lobby } from "../Lobby";
 import { NotificationProvider } from "../../context/NotificationContext";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import type { GameDoc } from "../../services/games";
+import type { UserProfile } from "../../services/users";
 
 function Wrapper({ children }: { children: ReactNode }) {
   return <NotificationProvider uid="u1">{children}</NotificationProvider>;
@@ -21,32 +23,15 @@ vi.mock("../../services/auth", () => ({
   resendVerification: vi.fn(),
 }));
 
-vi.mock("../../services/users", () => ({
-  getPlayerDirectory: vi.fn(),
-}));
-vi.mock("../../services/blocking", () => ({
-  getBlockedUserIds: vi.fn().mockResolvedValue(new Set()),
-  // useBlockedUsers (used transitively by the embedded ClipsFeed) calls
-  // subscribeToBlockedUsers; return a no-op unsubscribe so the hook is happy.
-  subscribeToBlockedUsers: vi.fn(() => () => {}),
-}));
-// ClipsFeed (embedded in Lobby) calls fetchClipsFeed + fetchClipUpvoteState
-// + upvoteClip. The feed has its own test file — here we just keep it from
-// hitting Firebase.
-vi.mock("../../services/clips", () => ({
-  fetchClipsFeed: vi.fn().mockResolvedValue({ clips: [], cursor: null }),
-  fetchClipUpvoteState: vi.fn().mockResolvedValue(new Map()),
-  upvoteClip: vi.fn().mockResolvedValue(0),
-  AlreadyUpvotedError: class extends Error {},
-}));
+type LobbyProps = ComponentProps<typeof Lobby>;
 
-import { getPlayerDirectory } from "../../services/users";
+const profile: UserProfile = { uid: "u1", username: "sk8r", stance: "regular", createdAt: null };
+const judgeProfile: UserProfile = { uid: "j1", username: "ref", stance: "regular", createdAt: null };
 
-const mockGetPlayerDirectory = getPlayerDirectory as ReturnType<typeof vi.fn>;
+const future = (ms: number) => Timestamp.fromMillis(Date.now() + ms);
+const past = (ms: number) => Timestamp.fromMillis(Date.now() - ms);
 
-const profile = { uid: "u1", username: "sk8r", stance: "regular", emailVerified: true, createdAt: null };
-
-function makeGame(overrides: Record<string, unknown> = {}) {
+function makeGame(overrides: Partial<GameDoc> = {}): GameDoc {
   return {
     id: "game1",
     player1Uid: "u1",
@@ -62,252 +47,53 @@ function makeGame(overrides: Record<string, unknown> = {}) {
     currentTrickName: null,
     currentTrickVideoUrl: null,
     matchVideoUrl: null,
-    turnDeadline: { toMillis: () => Date.now() + 86400000 },
+    turnDeadline: future(86_400_000),
     turnNumber: 1,
     winner: null,
     createdAt: null,
     updatedAt: null,
     ...overrides,
-  } as any;
+  };
 }
 
-const defaultProps = {
+const defaultProps: LobbyProps = {
   profile,
-  games: [] as any[],
+  games: [],
   onChallenge: vi.fn(),
-  onChallengeUser: vi.fn(),
   onOpenGame: vi.fn(),
   onSignOut: vi.fn(),
-  onDeleteAccount: vi.fn(),
   onViewRecord: vi.fn(),
   user: { emailVerified: true },
 };
 
+function renderLobby(overrides: Partial<LobbyProps> = {}) {
+  return renderWithProviders(<Lobby {...defaultProps} {...overrides} />);
+}
+
+/** THEIR TURN is collapsed by default; its cards only exist once expanded. */
+async function renderExpanded(overrides: Partial<LobbyProps> = {}) {
+  const result = renderLobby(overrides);
+  await userEvent.click(screen.getByRole("button", { name: /waiting on them/ }));
+  return result;
+}
+
+const yourTurnSection = () => screen.queryByRole("region", { name: "YOUR TURN" });
+const theirTurnToggle = () => screen.queryByRole("button", { name: /waiting on them/ });
+const cardByOpponent = (name: RegExp) => screen.getByRole("button", { name });
+
 beforeEach(() => {
   vi.clearAllMocks();
-  mockGetPlayerDirectory.mockResolvedValue([]);
 });
 
 describe("Lobby", () => {
-  it("helper functions compute correct values", () => {
-    const game = makeGame({ player1Uid: "u1", player2Uid: "u2", currentTurn: "u2", p1Letters: 1, p2Letters: 3 });
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
+  it("helper functions compute correct values", async () => {
+    const game = makeGame({ currentTurn: "u2", p1Letters: 1, p2Letters: 3 });
+    await renderExpanded({ games: [game] });
 
     // opponent name is rival
-    expect(screen.getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
+    expect(cardByOpponent(/vs @rival/i)).toBeInTheDocument();
     // not my turn → phase-specific waiting text
     expect(screen.getByText("They're setting a trick")).toBeInTheDocument();
-  });
-
-  it("shows completed game with You won/lost labels", () => {
-    const won = makeGame({ status: "complete", winner: "u1" });
-    const lost = makeGame({ id: "g2", status: "complete", winner: "u2", player2Username: "winner" });
-    renderWithProviders(<Lobby {...defaultProps} games={[won, lost]} />);
-
-    expect(screen.getByText("You won")).toBeInTheDocument();
-    expect(screen.getByText("You lost")).toBeInTheDocument();
-  });
-
-  it("shows forfeit label on forfeit game", () => {
-    const game = makeGame({ status: "forfeit", winner: "u1" });
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
-
-    expect(screen.getByText(/forfeit/)).toBeInTheDocument();
-  });
-
-  it("delete modal overlay click closes modal", async () => {
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await userEvent.click(screen.getByText("Delete Account"));
-    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
-
-    // Click the overlay
-    const dialog = screen.getByRole("dialog");
-    await act(async () => {
-      dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument();
-    });
-  });
-
-  it("delete modal Escape key closes modal", async () => {
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await userEvent.click(screen.getByText("Delete Account"));
-    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
-
-    const dialog = screen.getByRole("dialog");
-    await act(async () => {
-      dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument();
-    });
-  });
-
-  it("delete modal does not close during deleting", async () => {
-    defaultProps.onDeleteAccount.mockImplementation(() => new Promise(() => {}));
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await userEvent.click(screen.getByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Deleting...")).toBeInTheDocument();
-    });
-
-    // Try clicking overlay — should NOT close
-    const dialog = screen.getByRole("dialog");
-    await act(async () => {
-      dialog.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    });
-
-    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
-
-    // Try Escape — should NOT close
-    await act(async () => {
-      dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    });
-
-    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
-  });
-
-  it("active game card keyboard Enter opens game", async () => {
-    const onOpenGame = vi.fn();
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
-
-    const card = screen.getByRole("button", { name: /vs @rival/i });
-    card.focus();
-    await userEvent.keyboard("{Enter}");
-
-    expect(onOpenGame).toHaveBeenCalledWith(game);
-  });
-
-  it("active game card keyboard Space opens game", async () => {
-    const onOpenGame = vi.fn();
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
-
-    const card = screen.getByRole("button", { name: /vs @rival/i });
-    card.focus();
-    await userEvent.keyboard(" ");
-
-    expect(onOpenGame).toHaveBeenCalledWith(game);
-  });
-
-  it("completed game card keyboard Enter opens game", async () => {
-    const onOpenGame = vi.fn();
-    const game = makeGame({ status: "complete", winner: "u1" });
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
-
-    const card = screen.getByRole("button", { name: /vs @rival/i });
-    card.focus();
-    await userEvent.keyboard("{Enter}");
-
-    expect(onOpenGame).toHaveBeenCalledWith(game);
-  });
-
-  it("completed game card keyboard Space opens game", async () => {
-    const onOpenGame = vi.fn();
-    const game = makeGame({ status: "complete", winner: "u1" });
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
-
-    const card = screen.getByRole("button", { name: /vs @rival/i });
-    card.focus();
-    await userEvent.keyboard(" ");
-
-    expect(onOpenGame).toHaveBeenCalledWith(game);
-  });
-
-  it("delete error shows in modal and can be dismissed", async () => {
-    defaultProps.onDeleteAccount.mockRejectedValueOnce(new Error("Delete failed"));
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await userEvent.click(screen.getByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Delete failed")).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByText("×"));
-    expect(screen.queryByText("Delete failed")).not.toBeInTheDocument();
-  });
-
-  it("delete non-Error shows fallback message", async () => {
-    defaultProps.onDeleteAccount.mockRejectedValueOnce("string error");
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await userEvent.click(screen.getByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Deletion failed — try again")).toBeInTheDocument();
-    });
-  });
-
-  it("hides Download My Data button when handler is not provided", () => {
-    renderWithProviders(<Lobby {...defaultProps} />);
-    expect(screen.queryByRole("button", { name: /download a copy of my data/i })).not.toBeInTheDocument();
-  });
-
-  it("invokes onDownloadData when the button is clicked", async () => {
-    const onDownloadData = vi.fn().mockResolvedValue(undefined);
-    renderWithProviders(<Lobby {...defaultProps} onDownloadData={onDownloadData} />);
-
-    await userEvent.click(screen.getByRole("button", { name: /download a copy of my data/i }));
-
-    await waitFor(() => {
-      expect(onDownloadData).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  it("surfaces download error message", async () => {
-    const onDownloadData = vi.fn().mockRejectedValueOnce(new Error("network down"));
-    renderWithProviders(<Lobby {...defaultProps} onDownloadData={onDownloadData} />);
-
-    await userEvent.click(screen.getByRole("button", { name: /download a copy of my data/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("network down");
-    });
-  });
-
-  it("falls back to generic message when download error is not an Error", async () => {
-    const onDownloadData = vi.fn().mockRejectedValueOnce("boom");
-    renderWithProviders(<Lobby {...defaultProps} onDownloadData={onDownloadData} />);
-
-    await userEvent.click(screen.getByRole("button", { name: /download a copy of my data/i }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Export failed — try again");
-    });
-  });
-
-  it("ignores re-clicks while an export is in flight", async () => {
-    let resolver: (() => void) | undefined;
-    const onDownloadData = vi.fn().mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolver = resolve;
-        }),
-    );
-    renderWithProviders(<Lobby {...defaultProps} onDownloadData={onDownloadData} />);
-
-    const btn = screen.getByRole("button", { name: /download a copy of my data/i });
-    await userEvent.click(btn);
-    await waitFor(() => expect(btn).toBeDisabled());
-    // Second click is ignored because the button is disabled while loading.
-    await userEvent.click(btn);
-
-    resolver?.();
-    await waitFor(() => expect(btn).not.toBeDisabled());
-
-    expect(onDownloadData).toHaveBeenCalledTimes(1);
   });
 
   it("helper functions work for player2 perspective", () => {
@@ -320,335 +106,280 @@ describe("Lobby", () => {
       p1Letters: 2,
       p2Letters: 4,
     });
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
+    renderLobby({ games: [game] });
 
     // opponent should be player1's username since profile is player2
-    expect(screen.getByRole("button", { name: /vs @someone/i })).toBeInTheDocument();
+    expect(cardByOpponent(/vs @someone/i)).toBeInTheDocument();
     // my turn → phase-specific turn text
     expect(screen.getByText("Your turn to set")).toBeInTheDocument();
   });
 
-  it("non-matching key on done game card does not open game", async () => {
-    const onOpenGame = vi.fn();
-    const game = makeGame({ status: "complete", winner: "u1" });
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+  // ── Turn routing ──
 
-    const card = screen.getByRole("button", { name: /vs @rival/i });
-    card.focus();
-    await userEvent.keyboard("a");
+  it("puts games awaiting the viewer in YOUR TURN and leaves the rest out", () => {
+    const mine = makeGame({ id: "mine", currentTurn: "u1", player2Username: "rival" });
+    const theirs = makeGame({ id: "theirs", currentTurn: "u2", player2Username: "other" });
+    renderLobby({ games: [mine, theirs] });
 
-    expect(onOpenGame).not.toHaveBeenCalled();
+    const region = yourTurnSection();
+    expect(region).toBeInTheDocument();
+    expect(within(region!).getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
+    expect(within(region!).queryByRole("button", { name: /vs @other/i })).not.toBeInTheDocument();
+    expect(theirTurnToggle()).toHaveTextContent("1 waiting on them");
   });
 
-  it("inner modal click stops propagation", async () => {
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await userEvent.click(screen.getByText("Delete Account"));
-    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
-
-    // Click inside the modal content (inner div) — should NOT close
-    await userEvent.click(screen.getByText("Delete Account?"));
-
-    expect(screen.getByText("Delete Account?")).toBeInTheDocument();
-  });
-
-  it("renders player directory with usernames", async () => {
-    const fakePlayers = [
-      {
-        uid: "u2",
-        username: "kickflip_king",
-        stance: "Regular",
-        createdAt: Timestamp.fromMillis(Date.now() - 3600000 * 2),
-        emailVerified: true,
-      },
-      {
-        uid: "u3",
-        username: "heelflip_hero",
-        stance: "Goofy",
-        createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 3),
-        emailVerified: true,
-      },
-      {
-        uid: "u4",
-        username: "treflip_pro",
-        stance: "Regular",
-        createdAt: Timestamp.fromMillis(Date.now() - 86400000 * 10),
-        emailVerified: true,
-      },
+  it("sorts YOUR TURN by soonest deadline, deadline-less games last", () => {
+    const games = [
+      makeGame({ id: "none", player2Username: "nodeadline", turnDeadline: undefined as unknown as Timestamp }),
+      makeGame({ id: "later", player2Username: "later", turnDeadline: future(10_000_000) }),
+      makeGame({ id: "soon", player2Username: "soon", turnDeadline: future(60_000) }),
     ];
-    mockGetPlayerDirectory.mockResolvedValue([
-      { uid: "u1", username: "sk8r", stance: "regular", createdAt: null, emailVerified: true },
-      ...fakePlayers,
-    ]);
+    renderLobby({ games });
 
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
-      expect(screen.getByText("@heelflip_hero")).toBeInTheDocument();
-      expect(screen.getByText("@treflip_pro")).toBeInTheDocument();
-    });
+    const order = within(yourTurnSection()!)
+      .getAllByRole("button")
+      .map((el) => el.textContent ?? "");
+    expect(order).toHaveLength(3);
+    expect(order[0]).toContain("@soon");
+    expect(order[1]).toContain("@later");
+    expect(order[2]).toContain("@nodeadline");
   });
 
-  it("filters out current user from player directory", async () => {
-    mockGetPlayerDirectory.mockResolvedValue([
-      { uid: "u1", username: "sk8r", stance: "regular", createdAt: null, emailVerified: true },
-      { uid: "u2", username: "other_skater", stance: "Goofy", createdAt: null, emailVerified: true },
-    ]);
+  // Each guard in isActionableTurn gets its own case: these decide whether a
+  // game shows up as a task or as passive context, and a wrong answer either
+  // nags the viewer about a game they cannot move on or hides a real turn.
+  const routingCases: Array<{ name: string; viewer: UserProfile; game: Partial<GameDoc>; actionable: boolean }> = [
+    {
+      name: "an expired turn deadline keeps the viewer's own turn out of YOUR TURN",
+      viewer: profile,
+      game: { currentTurn: "u1", turnDeadline: past(1000) },
+      actionable: false,
+    },
+    {
+      name: "disputable freezes the player out of YOUR TURN",
+      viewer: profile,
+      game: { phase: "disputable", currentTurn: "u1", judgeId: "j1", judgeUsername: "ref" },
+      actionable: false,
+    },
+    {
+      name: "disputable puts the referee in YOUR TURN",
+      viewer: judgeProfile,
+      game: { phase: "disputable", currentTurn: "j1", judgeId: "j1", judgeUsername: "ref" },
+      actionable: true,
+    },
+    {
+      name: "setReview freezes the player out of YOUR TURN",
+      viewer: profile,
+      game: { phase: "setReview", currentTurn: "u1", judgeId: "j1", judgeUsername: "ref" },
+      actionable: false,
+    },
+    {
+      name: "setReview puts the referee in YOUR TURN",
+      viewer: judgeProfile,
+      game: { phase: "setReview", currentTurn: "j1", judgeId: "j1", judgeUsername: "ref" },
+      actionable: true,
+    },
+    {
+      name: "communityReview freezes the player out of YOUR TURN",
+      viewer: profile,
+      game: { phase: "communityReview", currentTurn: "u1" },
+      actionable: false,
+    },
+    {
+      name: "communityReview freezes the referee too",
+      viewer: judgeProfile,
+      game: { phase: "communityReview", currentTurn: "j1", judgeId: "j1", judgeUsername: "ref" },
+      actionable: false,
+    },
+    {
+      name: "pendingReview puts the current setter in YOUR TURN",
+      viewer: profile,
+      game: { phase: "pendingReview", currentSetter: "u1", currentTurn: "u2" },
+      actionable: true,
+    },
+    {
+      name: "pendingReview leaves the non-setter out of YOUR TURN",
+      viewer: profile,
+      game: { phase: "pendingReview", currentSetter: "u2", currentTurn: "u1" },
+      actionable: false,
+    },
+  ];
 
-    renderWithProviders(<Lobby {...defaultProps} />);
+  it.each(routingCases)("$name", ({ viewer, game, actionable }) => {
+    renderLobby({ profile: viewer, games: [makeGame(game)] });
 
-    await waitFor(() => {
-      expect(screen.getByText("@other_skater")).toBeInTheDocument();
-    });
-
-    // Current user should not appear in the player directory
-    // The header shows @sk8r, but there should be no player card for sk8r
-    const playerCards = screen.getAllByText("@sk8r");
-    // Only the header avatar shows @sk8r, not a player card
-    expect(playerCards).toHaveLength(1);
+    expect(!!yourTurnSection()).toBe(actionable);
+    expect(theirTurnToggle()).toBe(actionable ? null : screen.getByRole("button", { name: "1 waiting on them" }));
   });
 
-  it("clicking a player name navigates to their profile", async () => {
-    const onViewPlayer = vi.fn();
-    mockGetPlayerDirectory.mockResolvedValue([
-      { uid: "u2", username: "kickflip_king", stance: "Regular", createdAt: null, emailVerified: true },
-    ]);
+  // ── THEIR TURN section ──
 
-    renderWithProviders(<Lobby {...defaultProps} onViewPlayer={onViewPlayer} />);
+  it("collapses THEIR TURN by default and reports the waiting count", () => {
+    const games = [
+      makeGame({ id: "a", currentTurn: "u2" }),
+      makeGame({ id: "b", currentTurn: "u2", player2Username: "other" }),
+    ];
+    renderLobby({ games });
 
-    await waitFor(() => {
-      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByText("@kickflip_king"));
-
-    expect(onViewPlayer).toHaveBeenCalledWith("u2");
+    const toggle = theirTurnToggle()!;
+    expect(toggle).toHaveTextContent("2 waiting on them");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: /vs @rival/i })).not.toBeInTheDocument();
   });
 
-  it("clicking challenge button triggers onChallengeUser with their username", async () => {
-    const onChallengeUser = vi.fn();
-    mockGetPlayerDirectory.mockResolvedValue([
-      { uid: "u2", username: "kickflip_king", stance: "Regular", createdAt: null, emailVerified: true },
-    ]);
+  it("renders THEIR TURN cards once expanded", async () => {
+    await renderExpanded({ games: [makeGame({ currentTurn: "u2" })] });
 
-    renderWithProviders(<Lobby {...defaultProps} onChallengeUser={onChallengeUser} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByRole("button", { name: "Challenge @kickflip_king" }));
-
-    expect(onChallengeUser).toHaveBeenCalledWith("kickflip_king");
+    expect(theirTurnToggle()).toHaveAttribute("aria-expanded", "true");
+    expect(cardByOpponent(/vs @rival/i)).toBeInTheDocument();
   });
 
-  it("shows loading state while fetching players", async () => {
-    let resolve!: (v: unknown[]) => void;
-    mockGetPlayerDirectory.mockReturnValue(
-      new Promise((r) => {
-        resolve = r;
-      }),
-    );
+  // The urgent treatment is forced per-section, so a stale currentTurn pointing
+  // at the viewer on an expired game must not light the card up as a task.
+  it("never applies the urgent treatment to THEIR TURN cards", async () => {
+    await renderExpanded({ games: [makeGame({ currentTurn: "u1", turnDeadline: past(1000) })] });
 
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    // Loading state is a content-shaped skeleton announced via
-    // role="status" + aria-busy so assistive tech picks up the wait
-    // while sighted users see the placeholder rows.
-    const status = screen.getByRole("status", { name: /loading skaters/i });
-    expect(status).toBeInTheDocument();
-    expect(status).toHaveAttribute("aria-busy", "true");
-
-    await act(async () => {
-      resolve([]);
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByRole("status", { name: /loading skaters/i })).not.toBeInTheDocument();
-    });
+    expect(cardByOpponent(/vs @rival/i)).toBeInTheDocument();
+    expect(screen.queryByText("PLAY")).not.toBeInTheDocument();
   });
 
-  it("hides SKATERS section when no other users exist", async () => {
-    mockGetPlayerDirectory.mockResolvedValue([
-      { uid: "u1", username: "sk8r", stance: "regular", createdAt: null, emailVerified: true },
-    ]);
+  it("applies the urgent treatment to YOUR TURN cards", () => {
+    renderLobby({ games: [makeGame()] });
 
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await waitFor(() => {
-      expect(screen.queryByRole("status", { name: /loading skaters/i })).not.toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("SKATERS")).not.toBeInTheDocument();
+    expect(screen.getByText("PLAY")).toBeInTheDocument();
   });
 
-  it("disables player challenge buttons when email not verified", async () => {
-    mockGetPlayerDirectory.mockResolvedValue([
-      { uid: "u2", username: "kickflip_king", stance: "Regular", createdAt: null, emailVerified: true },
-    ]);
+  // ── Completed summary ──
 
-    renderWithProviders(<Lobby {...defaultProps} user={{ emailVerified: false }} />);
+  it("summarises completed games as total and W–L", () => {
+    const games = [
+      makeGame({ id: "w", status: "complete", winner: "u1" }),
+      makeGame({ id: "l", status: "complete", winner: "u2" }),
+      makeGame({ id: "f", status: "forfeit", winner: "u2" }),
+    ];
+    renderLobby({ games });
 
-    await waitFor(() => {
-      expect(screen.getByText("@kickflip_king")).toBeInTheDocument();
-    });
-
-    const challengeBtn = screen.getByRole("button", { name: "Challenge @kickflip_king" });
-    expect(challengeBtn).toBeDisabled();
+    expect(screen.getByRole("button", { name: "3 finished · 1–2" })).toBeInTheDocument();
   });
 
-  it("displays games-played counts with correct pluralization", async () => {
-    mockGetPlayerDirectory.mockResolvedValue([
-      {
-        uid: "u2",
-        username: "many_games",
-        stance: "Regular",
-        createdAt: null,
-        gamesPlayed: 17,
-        emailVerified: true,
-      },
-      {
-        uid: "u3",
-        username: "one_game",
-        stance: "Goofy",
-        createdAt: null,
-        gamesPlayed: 1,
-        emailVerified: true,
-      },
-      {
-        uid: "u4",
-        username: "no_games",
-        stance: "Regular",
-        createdAt: null,
-        gamesPlayed: 0,
-        emailVerified: true,
-      },
-    ]);
+  it("counts judge-only completed games toward the total but not W–L", () => {
+    const games = [
+      makeGame({ id: "judged", status: "complete", winner: "u1", judgeId: "j1", judgeUsername: "ref" }),
+      makeGame({ id: "played", status: "complete", winner: "j1", player1Uid: "j1", player2Uid: "u2" }),
+    ];
+    renderLobby({ profile: judgeProfile, games });
 
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Regular · 17 games/)).toBeInTheDocument();
-      expect(screen.getByText(/Goofy · 1 game$/)).toBeInTheDocument();
-      expect(screen.getByText(/Regular · No games yet/)).toBeInTheDocument();
-    });
+    expect(screen.getByRole("button", { name: "2 finished · 1–0" })).toBeInTheDocument();
   });
 
-  it("falls back to wins + losses when gamesPlayed is absent", async () => {
-    mockGetPlayerDirectory.mockResolvedValue([
-      {
-        uid: "u2",
-        username: "legacy_doc",
-        stance: "Goofy",
-        createdAt: null,
-        wins: 3,
-        losses: 2,
-        emailVerified: true,
-      },
-      {
-        uid: "u3",
-        username: "blank_doc",
-        stance: "Regular",
-        createdAt: null,
-        emailVerified: true,
-      },
-    ]);
+  it("hides the completed summary when nothing is finished", () => {
+    renderLobby({ games: [makeGame()] });
 
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await waitFor(() => {
-      expect(screen.getByText(/Goofy · 5 games/)).toBeInTheDocument();
-      expect(screen.getByText(/Regular · No games yet/)).toBeInTheDocument();
-    });
+    expect(screen.queryByRole("button", { name: /finished/ })).not.toBeInTheDocument();
   });
 
-  it("handles getPlayerDirectory fetch failure gracefully", async () => {
-    mockGetPlayerDirectory.mockRejectedValue(new Error("Network error"));
+  it("completed summary line fires onViewRecord", async () => {
+    const onViewRecord = vi.fn();
+    renderLobby({ games: [makeGame({ status: "complete", winner: "u1" })], onViewRecord });
 
-    renderWithProviders(<Lobby {...defaultProps} />);
+    await userEvent.click(screen.getByRole("button", { name: /finished/ }));
 
-    await waitFor(() => {
-      expect(screen.queryByRole("status", { name: /loading skaters/i })).not.toBeInTheDocument();
-    });
-
-    // No SKATERS section, no crash
-    expect(screen.queryByText("SKATERS")).not.toBeInTheDocument();
+    expect(onViewRecord).toHaveBeenCalledTimes(1);
   });
 
-  it("shows player count badge with correct number", async () => {
-    mockGetPlayerDirectory.mockResolvedValue([
-      { uid: "u2", username: "player_one", stance: "Regular", createdAt: null, emailVerified: true },
-      { uid: "u3", username: "player_two", stance: "Goofy", createdAt: null, emailVerified: true },
-    ]);
+  // ── Empty state & verification notice ──
 
-    renderWithProviders(<Lobby {...defaultProps} />);
-
-    await waitFor(() => {
-      expect(screen.getByText("SKATERS")).toBeInTheDocument();
-    });
-
-    // Badge should show "2" (both players, current user filtered out)
-    const badge = screen.getByText("SKATERS").parentElement!.querySelector(".tabular-nums")!;
-    expect(badge.textContent).toBe("2");
+  it("shows the empty state only when the viewer has no games at all", () => {
+    renderLobby({ games: [] });
+    expect(screen.getByText("Ready to S.K.A.T.E.?")).toBeInTheDocument();
   });
 
-  it("header counter excludes games whose turn deadline has passed", () => {
-    const liveGame = makeGame({ id: "live", turnDeadline: { toMillis: () => Date.now() + 3600_000 } });
-    const expired = makeGame({ id: "exp", turnDeadline: { toMillis: () => Date.now() - 1000 } });
-    renderWithProviders(<Lobby {...defaultProps} games={[liveGame, expired]} />);
-
-    // Only the live game counts — header should say "1 active", not "2 active"
-    expect(screen.getByText("1 active")).toBeInTheDocument();
+  it("hides the empty state when any game exists", () => {
+    renderLobby({ games: [makeGame({ status: "complete", winner: "u2" })] });
+    expect(screen.queryByText("Ready to S.K.A.T.E.?")).not.toBeInTheDocument();
   });
 
-  it("header counter shows 'No active games' when every active game is expired", () => {
-    const expired1 = makeGame({ id: "e1", turnDeadline: { toMillis: () => Date.now() - 1000 } });
-    const expired2 = makeGame({
-      id: "e2",
-      turnDeadline: { toMillis: () => Date.now() - 5000 },
-      currentTurn: "u2",
-    });
-    const completed = makeGame({ id: "c1", status: "complete", winner: "u1" });
-    renderWithProviders(<Lobby {...defaultProps} games={[expired1, expired2, completed]} />);
+  it("empty state Challenge CTA fires onChallenge when email is verified", async () => {
+    const onChallenge = vi.fn();
+    renderLobby({ onChallenge });
 
-    expect(screen.getByText(/No active games/)).toBeInTheDocument();
-    expect(screen.getByText(/1 completed/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Challenge your first opponent/i }));
+
+    expect(onChallenge).toHaveBeenCalledTimes(1);
   });
 
-  it("ACTIVE section badge reflects only live games", () => {
-    const live = makeGame({ id: "live", turnDeadline: { toMillis: () => Date.now() + 3600_000 } });
-    const expired = makeGame({ id: "exp", turnDeadline: { toMillis: () => Date.now() - 1000 } });
-    renderWithProviders(<Lobby {...defaultProps} games={[live, expired]} />);
+  it("shows the unverified-email notice when the account is not verified", () => {
+    renderLobby({ user: { emailVerified: false } });
 
-    const badge = screen.getByText("ACTIVE").parentElement!.querySelector(".tabular-nums")!;
-    expect(badge.textContent).toBe("1");
+    expect(screen.getByText("Verify your email to start challenging.")).toBeInTheDocument();
   });
+
+  it("hides the unverified-email notice for a verified account", () => {
+    renderLobby({ user: { emailVerified: true } });
+
+    expect(screen.queryByText("Verify your email to start challenging.")).not.toBeInTheDocument();
+  });
+
+  // ── Card interaction contract ──
 
   // Regression: game cards must not nest an interactive element inside another.
   // The Profile sub-button used to live inside the card <button>, which is
   // invalid HTML (no interactive descendants of <button>) and relied on
   // stopPropagation to keep the card's onClick from firing on Profile clicks.
   it("active game card does not nest a button inside another button", () => {
-    const game = makeGame();
-    const { container } = renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
+    const { container } = renderLobby({ games: [makeGame()], onViewPlayer: vi.fn() });
     expect(container.querySelectorAll("button button").length).toBe(0);
   });
 
-  it("completed game card does not nest a button inside another button", () => {
-    const game = makeGame({ status: "complete", winner: "u1" });
-    const { container } = renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
-    expect(container.querySelectorAll("button button").length).toBe(0);
+  it("active game card keyboard Enter opens game", async () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame();
+    renderLobby({ games: [game], onOpenGame });
+
+    cardByOpponent(/vs @rival/i).focus();
+    await userEvent.keyboard("{Enter}");
+
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
+  it("active game card keyboard Space opens game", async () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame();
+    renderLobby({ games: [game], onOpenGame });
+
+    cardByOpponent(/vs @rival/i).focus();
+    await userEvent.keyboard(" ");
+
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
+  it("active game card click opens game", async () => {
+    const onOpenGame = vi.fn();
+    const game = makeGame();
+    renderLobby({ games: [game], onOpenGame });
+
+    await userEvent.click(cardByOpponent(/vs @rival/i));
+
+    expect(onOpenGame).toHaveBeenCalledWith(game);
+  });
+
+  it("non-matching key on a game card does not open the game", async () => {
+    const onOpenGame = vi.fn();
+    renderLobby({ games: [makeGame()], onOpenGame });
+
+    cardByOpponent(/vs @rival/i).focus();
+    await userEvent.keyboard("a");
+
+    expect(onOpenGame).not.toHaveBeenCalled();
   });
 
   // A held key (auto-repeat) should not re-fire navigation — matches native
   // <button> semantics and avoids stuttered double-navigation on the card.
   it("active game card ignores repeated keydown from a held key", () => {
     const onOpenGame = vi.fn();
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+    renderLobby({ games: [makeGame()], onOpenGame });
 
-    const card = screen.getByRole("button", { name: /vs @rival/i });
+    const card = cardByOpponent(/vs @rival/i);
     // Simulate auto-repeat (e.repeat === true on held key)
     card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, repeat: true }));
     card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, repeat: true }));
@@ -661,20 +392,18 @@ describe("Lobby", () => {
   // move focus off the card to cancel before releasing.
   it("active game card fires Enter on keydown (native <button> parity)", () => {
     const onOpenGame = vi.fn();
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+    renderLobby({ games: [makeGame()], onOpenGame });
 
-    const card = screen.getByRole("button", { name: /vs @rival/i });
-    card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    cardByOpponent(/vs @rival/i).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+
     expect(onOpenGame).toHaveBeenCalledTimes(1);
   });
 
   it("active game card fires Space on keyup, not on keydown alone", () => {
     const onOpenGame = vi.fn();
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+    renderLobby({ games: [makeGame()], onOpenGame });
 
-    const card = screen.getByRole("button", { name: /vs @rival/i });
+    const card = cardByOpponent(/vs @rival/i);
     card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
     expect(onOpenGame).not.toHaveBeenCalled();
 
@@ -684,10 +413,9 @@ describe("Lobby", () => {
 
   it("active game card cancels a primed Space when focus leaves before keyup", () => {
     const onOpenGame = vi.fn();
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
+    renderLobby({ games: [makeGame()], onOpenGame });
 
-    const card = screen.getByRole("button", { name: /vs @rival/i });
+    const card = cardByOpponent(/vs @rival/i);
     card.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
     // User tabs away or otherwise blurs the card — native buttons abort here.
     // React delegates onBlur via the bubbling `focusout` event at the root.
@@ -697,11 +425,10 @@ describe("Lobby", () => {
     expect(onOpenGame).not.toHaveBeenCalled();
   });
 
-  it("Profile button on active game card opens profile without opening game", async () => {
+  it("Profile button on a game card opens the profile without opening the game", async () => {
     const onOpenGame = vi.fn();
     const onViewPlayer = vi.fn();
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} onViewPlayer={onViewPlayer} />);
+    renderLobby({ games: [makeGame()], onOpenGame, onViewPlayer });
 
     await userEvent.click(screen.getByRole("button", { name: /View @rival's profile/i }));
 
@@ -709,71 +436,11 @@ describe("Lobby", () => {
     expect(onOpenGame).not.toHaveBeenCalled();
   });
 
-  it("Profile button on completed game card opens profile without opening game", async () => {
-    const onOpenGame = vi.fn();
-    const onViewPlayer = vi.fn();
-    const game = makeGame({ status: "complete", winner: "u1" });
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} onViewPlayer={onViewPlayer} />);
-
-    await userEvent.click(screen.getByRole("button", { name: /View @rival's profile/i }));
-
-    expect(onViewPlayer).toHaveBeenCalledWith("u2");
-    expect(onOpenGame).not.toHaveBeenCalled();
-  });
-
-  it("active game card click opens game", async () => {
-    const onOpenGame = vi.fn();
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
-
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
-
-    expect(onOpenGame).toHaveBeenCalledWith(game);
-  });
-
-  it("completed game card click opens game", async () => {
-    const onOpenGame = vi.fn();
-    const game = makeGame({ status: "complete", winner: "u1" });
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} onOpenGame={onOpenGame} />);
-
-    await userEvent.click(screen.getByRole("button", { name: /vs @rival/i }));
-
-    expect(onOpenGame).toHaveBeenCalledWith(game);
-  });
-
-  it("primary Challenge Someone CTA fires onChallenge when email verified", async () => {
-    const onChallenge = vi.fn();
-    renderWithProviders(<Lobby {...defaultProps} onChallenge={onChallenge} />);
-
-    await userEvent.click(screen.getByRole("button", { name: /Challenge Someone/i }));
-
-    expect(onChallenge).toHaveBeenCalledTimes(1);
-  });
-
-  it("primary Challenge Someone CTA is disabled when email not verified", () => {
-    renderWithProviders(<Lobby {...defaultProps} user={{ emailVerified: false }} />);
-
-    expect(screen.getByRole("button", { name: /Challenge Someone/i })).toBeDisabled();
-    expect(screen.getByText("Verify your email to start challenging")).toBeInTheDocument();
-  });
-
-  it("@mikewhite fallback link fires onChallengeUser", async () => {
-    const onChallengeUser = vi.fn();
-    renderWithProviders(<Lobby {...defaultProps} onChallengeUser={onChallengeUser} />);
-
-    await userEvent.click(screen.getByRole("button", { name: /Challenge @mikewhite/i }));
-
-    expect(onChallengeUser).toHaveBeenCalledWith("mikewhite");
-  });
-
-  it("@mikewhite fallback link is hidden when email not verified", () => {
-    renderWithProviders(<Lobby {...defaultProps} user={{ emailVerified: false }} />);
-    expect(screen.queryByRole("button", { name: /Challenge @mikewhite/i })).not.toBeInTheDocument();
-  });
+  // ── Header & pagination ──
 
   it("Sign Out button fires onSignOut", async () => {
     const onSignOut = vi.fn();
-    renderWithProviders(<Lobby {...defaultProps} onSignOut={onSignOut} />);
+    renderLobby({ onSignOut });
 
     await userEvent.click(screen.getByRole("button", { name: "Sign Out" }));
 
@@ -782,19 +449,17 @@ describe("Lobby", () => {
 
   it("View my record header button fires onViewRecord", async () => {
     const onViewRecord = vi.fn();
-    renderWithProviders(<Lobby {...defaultProps} onViewRecord={onViewRecord} />);
+    renderLobby({ onViewRecord });
 
     // Accessible name comes from the `title` tooltip on the avatar/username button
-    const btn = screen.getByTitle("View my record");
-    await userEvent.click(btn);
+    await userEvent.click(screen.getByTitle("View my record"));
 
     expect(onViewRecord).toHaveBeenCalledTimes(1);
   });
 
   it("Load More button fires onLoadMore", async () => {
     const onLoadMore = vi.fn();
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} hasMoreGames={true} onLoadMore={onLoadMore} />);
+    renderLobby({ games: [makeGame()], hasMoreGames: true, onLoadMore });
 
     await userEvent.click(screen.getByRole("button", { name: "Load More Games" }));
 
@@ -802,29 +467,18 @@ describe("Lobby", () => {
   });
 
   it("Load More button is disabled while gamesLoading", () => {
-    const game = makeGame();
-    renderWithProviders(<Lobby {...defaultProps} games={[game]} hasMoreGames={true} gamesLoading={true} />);
-    expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
-  });
+    renderLobby({ games: [makeGame()], hasMoreGames: true, gamesLoading: true });
 
-  it("Delete Account trigger button has type='button'", () => {
-    renderWithProviders(<Lobby {...defaultProps} />);
-    const btn = screen.getByRole("button", { name: "Delete Account" });
-    expect(btn).toHaveAttribute("type", "button");
+    expect(screen.getByRole("button", { name: "Loading..." })).toBeDisabled();
   });
 
   // ── Judge/referee game card tests ──
 
   describe("judge-aware game cards", () => {
-    const judgeProfile = { uid: "j1", username: "ref", stance: "regular", emailVerified: true, createdAt: null };
-    const judgeProps = { ...defaultProps, profile: judgeProfile };
+    const judgeProps: Partial<LobbyProps> = { profile: judgeProfile };
 
-    function makeJudgeGame(overrides: Record<string, unknown> = {}) {
+    function makeJudgeGame(overrides: Partial<GameDoc> = {}): GameDoc {
       return makeGame({
-        player1Uid: "u1",
-        player2Uid: "u2",
-        player1Username: "sk8r",
-        player2Username: "rival",
         judgeId: "j1",
         judgeUsername: "ref",
         judgeStatus: "accepted",
@@ -832,46 +486,40 @@ describe("Lobby", () => {
       });
     }
 
-    it("shows REF label and both player names for judge viewer on active game", () => {
-      const game = makeJudgeGame();
-      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+    it("shows REF label and both player names for judge viewer on active game", async () => {
+      await renderExpanded({ ...judgeProps, games: [makeJudgeGame()] });
 
       expect(screen.getByText(/REF/)).toBeInTheDocument();
       expect(screen.getByText(/@sk8r vs @rival/)).toBeInTheDocument();
     });
 
     it("shows RULE badge instead of PLAY when it is the judge's turn", () => {
-      const game = makeJudgeGame({ currentTurn: "j1", phase: "disputable" });
-      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+      renderLobby({ ...judgeProps, games: [makeJudgeGame({ currentTurn: "j1", phase: "disputable" })] });
 
       expect(screen.getByText("RULE")).toBeInTheDocument();
       expect(screen.queryByText("PLAY")).not.toBeInTheDocument();
     });
 
     it("shows 'Rule: landed or missed?' for judge during disputable phase", () => {
-      const game = makeJudgeGame({ currentTurn: "j1", phase: "disputable" });
-      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+      renderLobby({ ...judgeProps, games: [makeJudgeGame({ currentTurn: "j1", phase: "disputable" })] });
 
       expect(screen.getByText("Rule: landed or missed?")).toBeInTheDocument();
     });
 
     it("shows 'Rule: clean or sketchy?' for judge during setReview phase", () => {
-      const game = makeJudgeGame({ currentTurn: "j1", phase: "setReview" });
-      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+      renderLobby({ ...judgeProps, games: [makeJudgeGame({ currentTurn: "j1", phase: "setReview" })] });
 
       expect(screen.getByText("Rule: clean or sketchy?")).toBeInTheDocument();
     });
 
-    it("shows 'Setting a trick' for judge during setting phase", () => {
-      const game = makeJudgeGame({ currentTurn: "u1", phase: "setting" });
-      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+    it("shows 'Setting a trick' for judge during setting phase", async () => {
+      await renderExpanded({ ...judgeProps, games: [makeJudgeGame({ currentTurn: "u1", phase: "setting" })] });
 
       expect(screen.getByText("Setting a trick")).toBeInTheDocument();
     });
 
-    it("shows both players' letter scores (not You/Them) for judge viewer", () => {
-      const game = makeJudgeGame({ p1Letters: 2, p2Letters: 3 });
-      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
+    it("shows both players' letter scores (not You/Them) for judge viewer", async () => {
+      await renderExpanded({ ...judgeProps, games: [makeJudgeGame({ p1Letters: 2, p2Letters: 3 })] });
 
       expect(screen.getByText("@sk8r")).toBeInTheDocument();
       expect(screen.getByText("@rival")).toBeInTheDocument();
@@ -879,23 +527,14 @@ describe("Lobby", () => {
       expect(screen.queryByText("Them")).not.toBeInTheDocument();
     });
 
-    it("shows '@winner won' for judge viewer on completed game", () => {
-      const game = makeJudgeGame({ status: "complete", winner: "u1" });
-      renderWithProviders(<Lobby {...judgeProps} games={[game]} />);
-
-      expect(screen.getByText(/@sk8r won/)).toBeInTheDocument();
-    });
-
-    it("shows referee reviewing label for players during disputable phase", () => {
-      const game = makeJudgeGame({ currentTurn: "j1", phase: "disputable" });
-      renderWithProviders(<Lobby {...defaultProps} games={[game]} />);
+    it("shows referee reviewing label for players during disputable phase", async () => {
+      await renderExpanded({ games: [makeJudgeGame({ currentTurn: "j1", phase: "disputable" })] });
 
       expect(screen.getByText("Referee @ref reviewing")).toBeInTheDocument();
     });
 
-    it("hides Profile button on active judge game card (judge is not a player)", () => {
-      const game = makeJudgeGame();
-      renderWithProviders(<Lobby {...judgeProps} games={[game]} onViewPlayer={vi.fn()} />);
+    it("hides Profile button on active judge game card (judge is not a player)", async () => {
+      await renderExpanded({ ...judgeProps, games: [makeJudgeGame()], onViewPlayer: vi.fn() });
 
       expect(screen.queryByRole("button", { name: /View.*profile/i })).not.toBeInTheDocument();
     });

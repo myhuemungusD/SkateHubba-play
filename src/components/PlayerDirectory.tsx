@@ -1,6 +1,6 @@
-import type { UserProfile } from "../../../services/users";
-import type { usePlayerDirectory } from "../../../hooks/usePlayerDirectory";
-import { ProUsername } from "../../../components/ProUsername";
+import type { UserProfile } from "../services/users";
+import type { usePlayerDirectory } from "../hooks/usePlayerDirectory";
+import { ProUsername } from "./ProUsername";
 
 type Player = ReturnType<typeof usePlayerDirectory>["players"][number];
 
