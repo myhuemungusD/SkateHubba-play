@@ -163,7 +163,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-3 · Release hygiene
 
-`package.json` still `1.1.0`, no git tags, and the CHANGELOG has **no `[Unreleased]` section at all** (only a dangling link at `:365`) despite ~25 merged feature commits and three docs citing that section as evidence. Cut the referee release tag (ROADMAP "Now" item #1) and reconstruct the changelog.
+`package.json` still `1.1.0` and the repo has **no git tags at all**. The missing `[Unreleased]` section (dangling link at `:365`) and the stale referee-unshipped claims were fixed in the 2026-08-26 doc pass; the changelog now carries the ~4 months of merged work. **Still open:** cut an actual release tag.
 
 ### P3-4 · File-length budget enforced nowhere; 10 files over
 

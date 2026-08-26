@@ -57,7 +57,7 @@ Firebase Storage rules (`storage.rules`) enforce:
 - Only authenticated users can upload or download videos.
 - Video size: minimum 1 KB (prevents stub uploads), maximum 50 MB.
 - Content type: must be `video/webm` (web) or `video/mp4` (native/Capacitor).
-- Filename: only `set.webm`, `set.mp4`, `match.webm`, or `match.mp4` are accepted — this prevents path traversal via crafted filenames.
+- Filename: only `set-{uid}.webm`, `set-{uid}.mp4`, `match-{uid}.webm`, `match-{uid}.mp4` are accepted, matched by **exact string equality** against the authenticated uploader's UID. This prevents path traversal via crafted filenames, and pins each upload slot to one account so an opponent cannot squat a path to force a forfeit. `update` is denied outright — slots are write-once.
 - The uploader's UID is bound into `customMetadata.uploaderUid` at upload time. Update and delete writes require `resource.metadata.uploaderUid == request.auth.uid`, so signed-in users cannot overwrite or delete each other's videos.
 
 ### XSS Prevention
