@@ -29,7 +29,7 @@
 - **PR-gate job list corrected.** **Nine** jobs: `enforce-pr-policy`, `guard-as-any-casts`, `verify-no-cloud-functions`, `guard-todo-fixme-hack`, `verify-workflow-changes`, `check-test-duplication`, `check-file-length`, `validate-firebase-rules`, `build-functions`.
 - **`firestore.rules` size corrected** to **3260 lines / ~189 KB** (measured 2026-08-26). Earlier figures of ~1546 and ~1805 LOC were both stale. At ~74% of Firebase's 256 KB hard limit — see `docs/GAPS.md` P2-9.
 - **Pre-flight gate corrected** to use the `verify` script (which includes `check:test-dup`).
-- **Tech-debt source corrected.** `COMPREHENSIVE_GAP_ANALYSIS.md` was archived to `docs/archive/COMPREHENSIVE_GAP_ANALYSIS.md`. Active debt now lives in `docs/DECISIONS.md` and `docs/STATUS_REPORT.md`, with security debt in `docs/P0-SECURITY-AUDIT.md`.
+- **Tech-debt source corrected.** `COMPREHENSIVE_GAP_ANALYSIS.md` was archived to `docs/archive/COMPREHENSIVE_GAP_ANALYSIS.md`. Active debt now lives in `docs/DECISIONS.md` and `docs/STATUS_REPORT.md`, with security debt in `docs/GAPS.md`.
 
 ---
 
@@ -312,15 +312,22 @@ These are the approved majors. Minors and patches track upstream via the caret r
 ### 4.13 Documentation index (`docs/`)
 
 ```
-API.md, APPCHECK_ROLLOUT.md, APP_STORE_PRIVACY.md, ARCHITECTURE.md,
-CHARTER.md (this file), DATABASE.md, DECISIONS.md, DEPLOYMENT.md,
-DEVELOPMENT.md, DISPUTE_BINDING_DESIGN.md, ECONOMY.md, GAME_MECHANICS.md,
-GAME_STATE_MACHINE.md, MAPBOX_STYLE.md, NOTIFICATION_AUDIT.md,
-P0-SECURITY-AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md,
-STATUS_REPORT.md, STORE_PRIVACY_ANSWERS.md, TESTING.md
-archive/   — superseded audits (COMPREHENSIVE_GAP_ANALYSIS, AUDIT_2026-05 +
-             ALIGNMENT, PENTEST_2026-05-22, SECURITY_SCAN_2026-07-30,
-             STATS_AUDIT, IDEAS_PRO_SKATER_PRIZE, etc.)
+API.md, APPCHECK_ROLLOUT.md, ARCHITECTURE.md, CHARTER.md (this file),
+DATABASE.md, DECISIONS.md, DEPLOYMENT.md, DEVELOPMENT.md,
+DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md,
+GAME_MECHANICS.md, GAME_STATE_MACHINE.md, GAPS.md, MAPBOX_STYLE.md,
+NOTIFICATION_AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md,
+STATS.md, STATUS_REPORT.md, STORE_PRIVACY_ANSWERS.md, TESTING.md
+
+archive/   — superseded audits and plans; history only, never a current
+             risk register:
+             AUDIT_2026-05-ALIGNMENT.md, AUDIT_2026-05.md,
+             COMPREHENSIVE_GAP_ANALYSIS.md, DATABASE_AUDIT.md,
+             DEEPDIVE_PLAN.md, FIRESTORE_SECURITY_AUDIT.md,
+             IDEAS_PRO_SKATER_PRIZE.md, P0-SECURITY-AUDIT.md,
+             PENTEST_2026-05-22.md, PRODUCTION_AUDIT.md,
+             PRODUCTION_GAP_ANALYSIS.md, SECURITY_SCAN_2026-07-30.md,
+             STATS_AUDIT.md
 screenshots/
 ```
 
@@ -465,7 +472,7 @@ CI failures override deadlines.
 7. **P3 — Captions on user-uploaded videos** (a11y A2).
 8. **P3 — CSP nonces** for inline scripts (S2).
 
-Tech debt lives in `docs/DECISIONS.md`, `docs/STATUS_REPORT.md`, and `docs/P0-SECURITY-AUDIT.md`. Historical audits archived under `docs/archive/`. Never hide debt.
+Tech debt lives in `docs/DECISIONS.md`, `docs/STATUS_REPORT.md`, and `docs/GAPS.md`. Historical audits archived under `docs/archive/`. Never hide debt.
 
 ---
 

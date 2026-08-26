@@ -45,10 +45,10 @@ Every item lists the evidence so it can be picked up cold.
 When a matcher claims a land on the honor path, `src/services/games.match.ts:216-222` writes `phase: "pendingReview"` + `reviewDeadline` and **writes no notification** — the in-code comment says it's "DEFERRED." Every other branch in that file notifies (`:60,:113,:180,:304,:317,:430`). `notifications.ts:32` has no dispute-related `NotificationDocType`. The setter is never told a claim is waiting on their 24h accept/dispute decision; they find out only if they happen to open the lobby, otherwise the window expires and `api/cron/resolve-expired-disputes.ts` auto-accepts. Same silence on `disputes.raise.ts` (claimer isn't told their land was disputed).
 **Fix:** add a `dispute_pending` / `dispute_raised` `NotificationDocType` and `writeNotificationInTx` calls in both transitions, plus push. (Verified by hand: the branch returns `outcome: "pending_review"` which is consumed nowhere in the repo.)
 
-### P0-4 · DSA compliance: zero controls, hard Feb 17 deadline with external lead time
+### P0-4 · DSA compliance: zero controls, hard deadline of 2026-02-17 **already missed**
 
 **Compliance blocker. The trader/DUNS items cannot be compressed at the deadline.**
-Repo-wide grep for `dsa|illegal content|statement of reasons|appeal|trusted flagger|trader|d-u-n-s` returns nothing across `docs/`, `src/`, `fastlane/`. The app ships to Apple and Google. The `dsa-compliance-checkpoint` skill tracks a **Feb 17** gate. The account-level items — Apple Individual→Organization conversion, D-U-N-S issuance (days-to-weeks), DSA point-of-contact — bear external lead time and block submission regardless of code.
+**Escalated 2026-08-26: the deadline passed ~6 months ago and every account-level row in `docs/DSA_COMPLIANCE.md` is still 🔴.** Repo-wide grep for `appeal|transparency|statement of reasons|trusted flagger|d-u-n-s` still returns nothing across `src/` and `fastlane/` (`docs/DSA_COMPLIANCE.md` now exists, so the `docs/` half of the original grep is stale). The app ships to Apple and Google. The `dsa-compliance-checkpoint` skill tracks a **17 February 2026** gate, now overdue. The account-level items — Apple Individual→Organization conversion, D-U-N-S issuance (days-to-weeks), DSA point-of-contact — bear external lead time and block submission regardless of code.
 **Fix (start immediately, non-code):** kick off D-U-N-S + Apple org conversion now; designate a DSA point of contact (Art. 11/12) in `TermsOfService.tsx`. Code items in P1-5.
 
 ---
@@ -150,7 +150,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 ### P3-1 · Documentation describes a product two releases old (highest-value P3)
 
 - **`GAME_MECHANICS.md` / `GAME_STATE_MACHINE.md` describe a state machine that no longer exists.** They say a landed claim "swaps roles immediately, no review" (`GAME_MECHANICS.md:58,142-145`); the code freezes into `pendingReview` with a 24h window (`games.match.ts:207-222`). The state tables omit `pendingReview`/`communityReview` (`games.mappers.ts:27`). These are the two docs a new contributor reads for the core loop.
-- **`P0-SECURITY-AUDIT.md:187-224` declares a fixed P0 as still-open** (server-side turn timer — the sweeper exists at `api/cron/sweep-expired-turns.ts` + `sweep-expired-turns.yml`). A stale P0 hides that the risk closed and makes the whole doc untrustworthy.
+- **`P0-SECURITY-AUDIT.md` declared a fixed P0 as still-open** (server-side turn timer — the sweeper exists at `api/cron/sweep-expired-turns.ts` + `sweep-expired-turns.yml`). **Resolved 2026-08-26:** moved to `docs/archive/P0-SECURITY-AUDIT.md` with a superseded banner; this file is now the risk register of record.
 - **ECONOMY.md + two service docstrings claim client writes are denied "outright"** for achievements/locker (`ECONOMY.md:34,62`; `achievements.ts:14`; `locker.ts:22`) — the rules actually allow `isAdmin()` _client_ writes (`firestore.rules:765,791`). Materially wrong security claim.
 - **CHARTER §4.11 collection inventory is missing ~12 live collections** (disputes, disputeVotes, clipVotes, comments, pushTargets, push_dispatch×2, reports_limits, bans, achievements, locker).
 - **CHARTER §4.12 approved-deps list omits three shipped prod deps** — `nsfwjs` (a TF-backed ML model, opposite of "keep the bundle lean"), `firebase-admin`, `@capacitor/keyboard`.

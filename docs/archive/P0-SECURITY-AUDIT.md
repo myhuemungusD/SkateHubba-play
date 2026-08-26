@@ -1,5 +1,19 @@
 # P0 Security & Data Integrity Audit
 
+> **ARCHIVED 2026-08-26 — superseded by [`docs/GAPS.md`](../GAPS.md).**
+>
+> This audit is kept for history. Do not treat it as a current risk register:
+>
+> - Its **headline P0 (client-only turn timer) is CLOSED.** A server-side sweep
+>   now runs every 15 minutes — `api/cron/sweep-expired-turns.ts`, scheduled by
+>   `.github/workflows/sweep-expired-turns.yml`. Sections below that describe the
+>   client path as the only enforcement are stale.
+> - Its collection table covers **7 of 26** rule blocks (19 top-level + 6
+>   subcollections) against a `firestore.rules` that has since grown to 3260
+>   lines / ~189 KB.
+> - It cites `src/services/games.ts` as the implementation; that file is now a
+>   22-line barrel re-export. See [`docs/GAME_STATE_MACHINE.md`](../GAME_STATE_MACHINE.md).
+
 **Date:** 2026-03-21
 **Scope:** Firestore rules, Storage rules, Auth domain config, turn timer enforcement
 
