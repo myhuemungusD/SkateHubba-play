@@ -20,12 +20,13 @@ function gamesLabel(player: Player): string {
 interface Props {
   players: Player[];
   loading: boolean;
-  user: { emailVerified?: boolean } | null;
+  /** False disables every row's Challenge button (unverified viewer). */
+  canChallenge: boolean;
   onViewPlayer?: (uid: string) => void;
   onChallengeUser: (username: string) => void;
 }
 
-export function PlayerDirectory({ players, loading, user, onViewPlayer, onChallengeUser }: Props) {
+export function PlayerDirectory({ players, loading, canChallenge, onViewPlayer, onChallengeUser }: Props) {
   if (loading) {
     return (
       <div className="mb-6" role="status" aria-busy="true" aria-label="Loading skaters">
@@ -94,8 +95,8 @@ export function PlayerDirectory({ players, loading, user, onViewPlayer, onChalle
             <button
               type="button"
               onClick={() => onChallengeUser(p.username)}
-              disabled={!user?.emailVerified}
-              className={`font-display text-xs shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${user?.emailVerified ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
+              disabled={!canChallenge}
+              className={`font-display text-xs shrink-0 min-h-[44px] px-3 inline-flex items-center justify-center rounded-lg border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${canChallenge ? "text-brand-orange border-brand-orange/30 hover:bg-brand-orange/10 cursor-pointer" : "text-subtle border-border cursor-not-allowed opacity-60"}`}
               aria-label={`Challenge @${p.username}`}
             >
               Challenge

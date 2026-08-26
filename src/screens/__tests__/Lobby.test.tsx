@@ -86,6 +86,17 @@ beforeEach(() => {
 });
 
 describe("Lobby", () => {
+  // The redesign dropped the "Your Games" section header; the screen name lives
+  // on as an sr-only h1 so the primary signed-in destination still has one
+  // (and only one) level-1 heading for the document outline.
+  it("exposes exactly one level-1 heading naming the screen", () => {
+    renderLobby({ games: [makeGame()] });
+
+    const h1s = screen.getAllByRole("heading", { level: 1 });
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]).toHaveTextContent("Your games");
+  });
+
   it("helper functions compute correct values", async () => {
     const game = makeGame({ currentTurn: "u2", p1Letters: 1, p2Letters: 3 });
     await renderExpanded({ games: [game] });
@@ -210,6 +221,27 @@ describe("Lobby", () => {
 
     expect(!!yourTurnSection()).toBe(actionable);
     expect(theirTurnToggle()).toBe(actionable ? null : screen.getByRole("button", { name: "1 waiting on them" }));
+  });
+
+  // The routing cases above pin WHERE an expired game lands; these pin what the
+  // card says once it gets there. The two used to contradict each other: the
+  // disclosure read "1 waiting on them" over a card reading "Your turn to set".
+  it("labels an expired turn the viewer let lapse without claiming it's their turn", async () => {
+    await renderExpanded({ games: [makeGame({ currentTurn: "u1", turnDeadline: past(1000) })] });
+
+    expect(screen.getByText("Your time ran out — resolving")).toBeInTheDocument();
+    expect(screen.queryByText("Your turn to set")).not.toBeInTheDocument();
+  });
+
+  it("labels an expired turn on the opponent's side as theirs, not as a live turn", async () => {
+    await renderExpanded({
+      games: [
+        makeGame({ currentTurn: "u2", phase: "matching", currentTrickName: "kickflip", turnDeadline: past(1000) }),
+      ],
+    });
+
+    expect(screen.getByText("Their time ran out — resolving")).toBeInTheDocument();
+    expect(screen.queryByText("Matching: kickflip")).not.toBeInTheDocument();
   });
 
   // ── THEIR TURN section ──

@@ -39,9 +39,8 @@ export function OpponentPicker({ viewerUid, collapsed, onSelect, onViewPlayer }:
       players={players}
       loading={loading}
       // The /challenge route only mounts for a verified user, so the row
-      // buttons are always enabled here. UserProfile carries no emailVerified
-      // signal, and the gate already lives upstream in App.tsx.
-      user={{ emailVerified: true }}
+      // buttons are always enabled here — the gate lives upstream in App.tsx.
+      canChallenge
       onViewPlayer={onViewPlayer}
       onChallengeUser={(username) => {
         onSelect(username);

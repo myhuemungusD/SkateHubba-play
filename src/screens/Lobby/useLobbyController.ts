@@ -78,6 +78,14 @@ export function useLobbyController({ profile, games }: Args): LobbyController {
   const turnLabel = useCallback(
     (g: GameDoc) => {
       const trick = g.currentTrickName || "Trick";
+      // An expired deadline freezes the game for everyone until the
+      // auto-forfeit sweep lands (GameContext dispatches forfeitExpiredTurn
+      // from the games snapshot), so guard first — same order as
+      // isActionableTurn below — or the branches after this would still claim
+      // it's someone's turn. The outcome depends on the phase (forfeit,
+      // dispute auto-accepted, set auto-cleared), so the label only says the
+      // clock ran out, split by which side let it run out.
+      if (isGameExpired(g)) return isMyTurn(g) ? "Your time ran out — resolving" : "Their time ran out — resolving";
       if (isJudge(g) && !isPlayer(g)) {
         if (isMyTurn(g)) {
           if (g.phase === "disputable") return "Rule: landed or missed?";

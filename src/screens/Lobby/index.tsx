@@ -57,6 +57,12 @@ export function Lobby({
       </div>
 
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
+        {/* The redesign leads with the turn stack, so the screen name is
+            screen-reader-only: it restores the h1 every other screen has and
+            anchors the heading outline without bringing back the "Your Games"
+            section header the redesign removed. */}
+        <h1 className="sr-only">Your games</h1>
+
         {!emailVerified && <p className="mb-5 font-body text-xs text-muted">Verify your email to start challenging.</p>}
 
         <TurnStack games={c.myTurn} c={c} onOpenGame={onOpenGame} onViewPlayer={onViewPlayer} />

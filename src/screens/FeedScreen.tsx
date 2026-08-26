@@ -10,10 +10,10 @@ interface Props {
 }
 
 /**
- * Standalone Clips tab. A thin wrapper: all feed behaviour lives in
- * `<ClipsFeed>`, which the lobby also renders. This screen only owns the
- * page chrome (safe-area header, 430px column, bottom-nav clearance) so the
- * two mount sites share one implementation instead of forking.
+ * Standalone Clips tab — the only place clips are shown since the lobby
+ * redesign dropped its feed. A thin wrapper: all feed behaviour lives in
+ * `<ClipsFeed>`, and this screen only owns the page chrome (safe-area header,
+ * 430px column, bottom-nav clearance).
  */
 export function FeedScreen({ profile, onViewPlayer, onChallengeUser }: Props) {
   return (
