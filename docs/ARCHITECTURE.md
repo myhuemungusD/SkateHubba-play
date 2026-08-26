@@ -103,7 +103,7 @@ All Firebase SDK calls live in `src/services/`. Components and hooks import from
 | `src/services/auth.ts`          | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
 | `src/services/users.ts`         | User profile CRUD, atomic username reservation, verified-pro lookup          |
 | `src/services/userData.ts`      | Account-deletion cascade + GDPR data export                                  |
-| `src/services/games.ts`         | Game creation, turn actions (transactions), real-time subscriptions          |
+| `src/services/games.*`          | Game creation, turn actions (transactions), judging, real-time subscriptions. `games.ts` itself is a barrel; logic lives in `games.{create,match,judge,turns,mappers,subscriptions}.ts` |
 | `src/services/clips.ts`         | Landed-trick clips feed + upvotes                                            |
 | `src/services/spots.ts`         | Geo-tagged skate spot CRUD + comments                                        |
 | `src/services/storage.ts`       | Video upload (WebM web / MP4 native) with retry + progress                   |

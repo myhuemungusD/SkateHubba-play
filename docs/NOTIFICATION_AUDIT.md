@@ -312,7 +312,7 @@ No further action required for the judge-invite path. Do not add a separate `/pu
 | Firestore rules (`notifications`)       | `notifications-redteam.rules.test.ts`           | Recipient delete, sender immutability, cross-user reads — covered                                                                                       | **Good** |
 | Firestore rules (`nudge_limits`)        | `nudges-redteam.rules.test.ts` (145 lines)      | Companion-write requirement, 1h cooldown gate, delete-denial — covered                                                                                  | **Good** |
 | Firestore rules (`nudges`)              | `nudges-redteam.rules.test.ts` (145 lines)      | Create requires companion `nudge_limits` write; stale-cooldown bypass blocked — covered                                                                 | **Good** |
-| Cloud Functions                         | _None in repo_                                  | Historical `onNudgeCreated`, `onGameCreated`, `onGameUpdated`, `checkExpiredTurns` were removed with the `functions/` package — no current code to test | **N/A**  |
+| Cloud Functions                         | Stats close-out only                            | Historical `onNudgeCreated`, `onGameCreated`, `onGameUpdated`, `checkExpiredTurns` were removed. `functions/src/` now holds only the allowlisted stats close-out (`applyGameStats.ts`), which sends no notifications; `pr-gate.yml` builds and tests it | **N/A**  |
 
 ### Notable test gaps:
 
@@ -351,4 +351,4 @@ No further action required for the judge-invite path. Do not add a separate `/pu
 | ROBUST-2 | **Low**    | Service worker Firebase SDK version manually synced                        | Robustness  | Open                                                                   |
 | ROBUST-3 | **Low**    | `judge_invite` has no dedicated chime or FCM push path                     | Robustness  | Resolved (chime mapping); judge-role `/push_dispatch` write still TODO |
 | TEST-1   | **Medium** | No Firestore rules tests for `/notifications`, `/nudges`, `/nudge_limits`  | Coverage    | Partially resolved (`/notifications` covered)                          |
-| TEST-2   | **Medium** | No Cloud Function unit tests                                               | Coverage    | N/A (no `functions/` package; extension is managed)                    |
+| TEST-2   | **Medium** | No notification-related Cloud Function tests                               | Coverage    | N/A (the only function is the stats close-out, which sends no pushes; it has its own tests) |

@@ -4,8 +4,9 @@ name: Deploy Firebase Rules
 # indexes, and Cloud Storage rules whenever those files land on `main`.
 #
 # Only the rules/indexes surface is deployed — Cloud Functions, Hosting, and
-# app code are explicitly excluded to preserve the "no Cloud Functions in
-# PRs" invariant documented in .github/BRANCH_PROTECTION.md and CLAUDE.md.
+# app code are explicitly excluded. Functions are deployed out-of-band by the
+# maintainer; pr-gate.yml allowlists exactly the four approved stats close-out
+# files under functions/src/ (see .github/BRANCH_PROTECTION.md and CLAUDE.md).
 #
 # Project resolution:
 #   The deploy job reads the target project ID from the `FIREBASE_PROJECT_ID`
