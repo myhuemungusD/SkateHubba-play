@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { clearAll, verifyEmail } from "./helpers/emulator";
 import { signUpViaUI, completeProfileSetup, fillAgeFields, emailAuthOptions } from "./helpers/auth-flow";
-import { challengeTab, expectOnLobby, openChallengeForm } from "./helpers/lobby-nav";
+import { expectOnLobby, openChallengeForm, tapChallengeTab } from "./helpers/lobby-nav";
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
@@ -93,8 +93,11 @@ test("email verification banner visible after sign up, hidden after verification
   // guarantee to assert is the bounce, not a disabled control: an unverified
   // user who taps Challenge is told why and is put back on the lobby.
   await expect(page.getByText("Verify your email to start a game")).toBeVisible();
-  await challengeTab(page).click();
-  await expect(page.getByText("Verify your email to challenge someone.")).toBeVisible({ timeout: 10_000 });
+  await tapChallengeTab(page);
+  // `.first()`: the dev server runs React StrictMode, which mounts the
+  // redirect component twice and therefore fires the toast twice. The
+  // contract under test is the message, not how many times it rendered.
+  await expect(page.getByText("Verify your email to challenge someone.").first()).toBeVisible({ timeout: 10_000 });
   await expectOnLobby(page);
 
   // Verify the email via the emulator REST API (simulates clicking the email link)

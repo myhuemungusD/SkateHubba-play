@@ -4,7 +4,12 @@
  * each test that exercises the VideoRecorder component.
  *
  * Fake behaviour:
- *  - getUserMedia resolves immediately with a minimal fake MediaStream.
+ *  - getUserMedia resolves immediately with a REAL MediaStream captured from
+ *    an off-screen canvas. A plain object with getTracks() is not enough:
+ *    useMediaRecorder assigns the stream to `video.srcObject`, and the DOM
+ *    rejects anything that isn't a MediaStream — the component then renders
+ *    "Camera unavailable: Failed to set the 'srcObject' property...". The
+ *    canvas keeps painting so the track actually produces frames.
  *  - MediaRecorder produces a fake video Blob when stopped that is large
  *    enough (> 1024 bytes) to clear the minimum-size gate in
  *    `uploadVideo` (src/services/storage.ts) AND `storage.rules`, so the
@@ -20,24 +25,30 @@ export const MEDIA_MOCK_SCRIPT = `
 (function () {
   'use strict';
 
-  // ── Fake MediaStream ──────────────────────────────────────────────────────
-  // Mirrors the full MediaStreamTrack surface: every real track exposes the
-  // event-target pair (the app listens for 'ended' to detect a revoked camera)
-  // and getSettings() (read for the canvas capture frame rate).
-  const fakeTrack = {
-    stop: () => {},
-    kind: 'video',
-    enabled: true,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    getSettings: () => ({ frameRate: 30 }),
-  };
-  const fakeStream = {
-    getTracks: () => [fakeTrack],
-    getVideoTracks: () => [fakeTrack],
-    getAudioTracks: () => [],
-    active: true,
-  };
+  // ── Fake camera stream ────────────────────────────────────────────────────
+  // canvas.captureStream() yields a genuine MediaStream (real
+  // MediaStreamTrack, real event-target surface, real getSettings()), which is
+  // what the app needs: it assigns the stream to video.srcObject and calls
+  // play(). The canvas is repainted on a timer so the track keeps emitting
+  // frames instead of going idle after the first one.
+  let fakeStream = null;
+  function getFakeStream() {
+    if (fakeStream) return fakeStream;
+    const canvas = document.createElement('canvas');
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext('2d');
+    let tick = 0;
+    const paint = () => {
+      tick += 1;
+      ctx.fillStyle = tick % 2 === 0 ? '#FF6B00' : '#1a1a1a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    };
+    paint();
+    setInterval(paint, 100);
+    fakeStream = canvas.captureStream(30);
+    return fakeStream;
+  }
 
   // Override getUserMedia regardless of whether mediaDevices already exists.
   if (!navigator.mediaDevices) {
@@ -48,7 +59,7 @@ export const MEDIA_MOCK_SCRIPT = `
     });
   }
   Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
-    value: () => Promise.resolve(fakeStream),
+    value: () => Promise.resolve(getFakeStream()),
     writable: true,
     configurable: true,
   });

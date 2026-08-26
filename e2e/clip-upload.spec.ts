@@ -2,13 +2,12 @@
  * E2E coverage for the core user action: recording a clip during a turn and
  * uploading it to Firebase Storage.
  *
- * game.spec.ts exercises the setter UI up to "Recorded" but does NOT click the
- * "✓ Landed" decision button, so it never triggers submitSetterTrick() — which
- * is the function that actually runs `uploadVideo()` and then persists the
- * resulting download URL via `setTrick()`. As a result the real upload path
- * (record → upload to Storage emulator → write currentTrickVideoUrl → advance
- * to the matching phase) had no end-to-end assertion: a regression that broke
- * upload-then-persist could not be caught here.
+ * game.spec.ts drives the same setter flow, but it stops at the UI outcome:
+ * the game reaches the matching phase. Nothing there looks at what was
+ * actually stored, so a regression that advanced the phase while dropping (or
+ * corrupting) the uploaded clip's URL would pass unnoticed. The real upload
+ * path is record → upload to Storage emulator → write currentTrickVideoUrl →
+ * advance the phase, and only the URL assertion below covers its back half.
  *
  * This spec drives the setter upload path (single-player reachable with
  * mockMedia) and asserts the OUTCOME of the upload rather than a transient
@@ -63,11 +62,14 @@ test("setter records a clip → upload completes and download URL is persisted t
   // Name the trick (this reveals the recorder).
   await p1.getByPlaceholder("Name your trick").fill("Kickflip");
 
-  // Record and stop the fake clip (camera auto-opens for the setter).
+  // Open the camera, then record and stop the fake clip. The recorder only
+  // opens the stream unprompted when camera AND mic are already granted —
+  // headless Chromium grants neither, so the tap is required.
+  await p1.getByRole("button", { name: "Open Camera" }).click();
   await p1.getByRole("button", { name: /Record.*Land Your Trick/i }).click();
   await p1.waitForTimeout(200);
   await p1.getByRole("button", { name: "Stop Recording" }).click();
-  await expect(p1.getByText("Recorded", { exact: false })).toBeVisible({ timeout: 5_000 });
+  await expect(p1.getByText("✓ Recorded", { exact: true })).toBeVisible({ timeout: 5_000 });
 
   // (1) Confirm the trick was LANDED. This is the click game.spec.ts omits —
   // it is what triggers submitSetterTrick() → uploadVideo() → setTrick().

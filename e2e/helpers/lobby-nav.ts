@@ -22,6 +22,68 @@
  */
 import { expect, type Locator, type Page } from "@playwright/test";
 
+/**
+ * Dismiss the two overlays that sit on top of the bottom nav and would
+ * otherwise swallow a tab tap: the onboarding coach mark (anchored just above
+ * the nav for fresh accounts, `z-[60]`) and the consent banner (pinned to the
+ * bottom of every screen until answered, `z-50`).
+ *
+ * This is what a real user has to do — both are dismissible controls and both
+ * persist their answer — so it is setup, not a workaround: Playwright refuses
+ * to click through an intercepting element, exactly as a thumb cannot.
+ *
+ * Order matters: the coach mark outranks the banner, so it goes first or its
+ * primary CTA eats the tap aimed at the banner's "OK". A dismissal that is
+ * itself intercepted (the coach mark mounts asynchronously, so it can appear
+ * between the two steps) is swallowed rather than thrown — `clickPastOverlays`
+ * runs the whole sequence again, which converges once both are on screen.
+ *
+ * Safe to call at any point — each branch no-ops when its overlay is absent.
+ */
+export async function dismissBottomOverlays(page: Page): Promise<void> {
+  const tour = page.locator('[data-testid="tutorial-overlay"]');
+  await dismiss(tour, tour.getByRole("button", { name: /close tour/i }));
+
+  const consent = page.getByRole("region", { name: "Cookie and analytics notice" });
+  await dismiss(consent, consent.getByRole("button", { name: "OK", exact: true }));
+}
+
+/** Close `overlay` via `closeButton` when it is on screen. */
+async function dismiss(overlay: Locator, closeButton: Locator): Promise<void> {
+  if (!(await closeButton.isVisible().catch(() => false))) return;
+  try {
+    await closeButton.click({ timeout: 3_000 });
+  } catch {
+    // Something on top of this overlay took the tap — leave it to the caller's
+    // next pass, which dismisses the higher overlay first.
+    return;
+  }
+  await expect(overlay).toHaveCount(0);
+}
+
+/**
+ * Click `target`, clearing the bottom overlays first and again if one of them
+ * mounts late and intercepts the tap.
+ *
+ * Both overlays appear only after their async gate resolves (consent state on
+ * app mount, the coach mark once the onboarding doc loads), so a single
+ * up-front dismissal can lose the race on a page that has just navigated. The
+ * retry is bounded and every attempt re-runs the dismissal, so a control that
+ * is genuinely unreachable still fails the test instead of being force-clicked.
+ */
+async function clickPastOverlays(page: Page, target: Locator): Promise<void> {
+  const attempts = 3;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    await dismissBottomOverlays(page);
+    try {
+      await target.click({ timeout: 4_000 });
+      return;
+    } catch (err) {
+      if (attempt === attempts) throw err;
+    }
+  }
+}
+
 /** The persistent bottom tab bar (`aria-label="Primary navigation"`). */
 function primaryNav(page: Page): Locator {
   return page.getByRole("navigation", { name: "Primary navigation" });
@@ -43,8 +105,17 @@ export async function expectOnLobby(page: Page, timeout = 15_000): Promise<void>
  * The bottom nav's Challenge tab. Always enabled — the email-verification
  * gate lives on the /challenge route, not on this control.
  */
-export function challengeTab(page: Page): Locator {
+function challengeTab(page: Page): Locator {
   return primaryNav(page).getByRole("link", { name: "Challenge" });
+}
+
+/**
+ * Tap the Challenge tab. Where that lands depends on the viewer: verified
+ * users get the challenge form, unverified users are bounced back to the
+ * lobby by the /challenge route guard — so this helper asserts neither.
+ */
+export async function tapChallengeTab(page: Page): Promise<void> {
+  await clickPastOverlays(page, challengeTab(page));
 }
 
 /**
@@ -53,7 +124,7 @@ export function challengeTab(page: Page): Locator {
  * Someone" button.
  */
 export async function openChallengeForm(page: Page): Promise<void> {
-  await challengeTab(page).click();
+  await tapChallengeTab(page);
   await expect(page.getByRole("heading", { name: "Challenge", exact: true })).toBeVisible({ timeout: 10_000 });
 }
 
@@ -62,7 +133,7 @@ export async function openChallengeForm(page: Page): Promise<void> {
  * embeds <ClipsFeed> — it lives on its own /feed route.
  */
 export async function openClipsFeed(page: Page): Promise<void> {
-  await primaryNav(page).getByRole("link", { name: "Clips" }).click();
+  await clickPastOverlays(page, primaryNav(page).getByRole("link", { name: "Clips" }));
   await page.waitForURL("**/feed**", { timeout: 10_000 });
 }
 
@@ -83,6 +154,7 @@ function activeGameCard(page: Page, opponentHandle: string): Locator {
  * Returns the card locator so callers can assert on it.
  */
 export async function revealActiveGameInLobby(page: Page, opponentHandle: string): Promise<Locator> {
+  await dismissBottomOverlays(page);
   const card = activeGameCard(page, opponentHandle);
   const disclosure = page.getByRole("button", { name: /waiting on them/ });
 
@@ -98,7 +170,7 @@ export async function revealActiveGameInLobby(page: Page, opponentHandle: string
 /** Open an active game from the lobby by opponent handle. */
 export async function openActiveGameFromLobby(page: Page, opponentHandle: string): Promise<void> {
   const card = await revealActiveGameInLobby(page, opponentHandle);
-  await card.click();
+  await clickPastOverlays(page, card);
 }
 
 /**
@@ -110,9 +182,9 @@ export async function openActiveGameFromLobby(page: Page, opponentHandle: string
  * destination the old completed-game lobby card had.
  */
 export async function openFinishedGameFromLobby(page: Page, opponentHandle: string): Promise<void> {
-  await page.getByRole("button", { name: /finished ·/ }).click();
+  await clickPastOverlays(page, page.getByRole("button", { name: /finished ·/ }));
   await page.waitForURL("**/me**", { timeout: 10_000 });
 
-  await page.getByRole("button").filter({ hasText: `vs @${opponentHandle}` }).click();
-  await page.getByRole("button", { name: "View Full Recap" }).click();
+  await clickPastOverlays(page, page.getByRole("button").filter({ hasText: `vs @${opponentHandle}` }));
+  await clickPastOverlays(page, page.getByRole("button", { name: "View Full Recap" }));
 }

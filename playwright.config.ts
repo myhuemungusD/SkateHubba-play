@@ -19,6 +19,14 @@ export default defineConfig({
   // during collection — killing the whole run before any spec executes.
   // Playwright specs are `*.spec.ts`; vitest files stay on `*.test.ts`.
   testMatch: "**/*.spec.ts",
+  // Every spec drives a real sign-up or sign-in against the Auth + Firestore
+  // emulators before it can assert anything, which costs 15-20s on its own;
+  // the flows that also record and upload a clip run past 60s. Playwright's
+  // 30s default expires mid-flow and reports it as an assertion failure at
+  // whatever step the clock happened to land on, which is a misleading
+  // failure. Per-assertion timeouts are unchanged, so a genuinely stuck
+  // locator still fails fast.
+  timeout: 90_000,
   // Tests share emulator state, so run sequentially to avoid cross-test interference.
   fullyParallel: false,
   workers: 1,
