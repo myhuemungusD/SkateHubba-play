@@ -1,7 +1,8 @@
 /**
  * Auto-referee cron sweep — server-side forfeit of expired turns.
  *
- * Runs on Vercel Cron (see `vercel.json` → `crons`). For each ACTIVE game whose
+ * Scheduled by GitHub Actions (`.github/workflows/sweep-expired-turns.yml`,
+ * every 15 min, authenticated via `CRON_SECRET`). For each ACTIVE game whose
  * current turn is past its deadline, it applies the SAME game-state transition
  * the client's `forfeitExpiredTurn` would, computed via the shared
  * `decideExpiredForfeit` helper so the two paths can never diverge.

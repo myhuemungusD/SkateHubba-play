@@ -3061,7 +3061,7 @@ service cloud.firestore {
                 && request.resource.data.spotId.size() <= 64))
         && request.resource.data.createdAt == request.time
         // A dispute always opens accepting verdicts. The close-out
-        // (open → 'resolved', plus the referee's verdict/resolutionApplied
+        // (open → 'closed', plus the referee's verdict/resolutionApplied
         // fields) is an Admin-SDK-only transition — a client can only ever seed
         // 'open' here, and the update rule below denies any status/verdict
         // write, so clients can never resolve a dispute.
@@ -3168,7 +3168,7 @@ service cloud.firestore {
       // Survivable only while the verdict was non-binding; now that a verdict
       // writes real letters/turn order, that reset is a forgery vector, so the
       // client delete is REMOVED entirely. The dispute lifecycle is now
-      // Admin-SDK-only: the server referee's `open → resolved` close-out (not a
+      // Admin-SDK-only: the server referee's `open → closed` close-out (not a
       // client delete) ends a dispute, and the deterministic id already caps it
       // at one dispute per turn.
       //
