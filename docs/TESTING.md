@@ -301,7 +301,7 @@ Every exported service function and custom hook has dedicated unit tests with 10
 ## Security-Rules Tests (`rules-tests/`)
 
 `firestore.rules` and `storage.rules` are the real backend, so they get their own
-suite — currently 53 files — run against the emulators with
+suite — currently 52 files — run against the emulators with
 `@firebase/rules-unit-testing`:
 
 ```bash
@@ -358,11 +358,26 @@ targeting `main`, and on a nightly schedule. The relevant jobs:
 | `lighthouse`     | `npx @lhci/cli autorun` against the built artifact                                                                                           |
 | `audit-nightly`  | Blocking dependency audit against the `main` lockfile                                                                                        |
 
-A failing test blocks merge. Note that CI runs `npm run test:coverage`, not bare
+A failing unit/component test blocks merge. Note that CI runs `npm run test:coverage`, not bare
 `npm test` — a change that keeps every test green but drops a directory below its
 coverage floor still fails the gate.
 
 Rules tests (`npm run test:rules`) are **not** part of `main.yml`; run them
 locally whenever you touch `firestore.rules`, `storage.rules`, or
 `firestore.indexes.json`. Rules deployment has its own workflow
-(`.github/workflows/firebase-rules-deploy.yml`).
+(`.github/workflows/firebase-rules-deploy.yml`) — which is **currently failing**;
+see [DEVELOPMENT.md](DEVELOPMENT.md#deploying-security-rules).
+
+> **⚠️ The `e2e` job did not actually gate merges.** Its step ran
+> `npm run test:e2e | tee e2e-output.log` under GitHub's default `bash -e {0}`,
+> which has no `pipefail` — so the step's exit status was `tee`'s, always 0. The
+> "Fail if E2E tests failed" gate never fired and a red suite reported green.
+> Underneath that, Playwright's default `testMatch` also collected
+> `e2e/helpers/__tests__/*.test.ts` (a **Vitest** suite), whose `@vitest/expect`
+> import collides with Playwright's `expect` over the shared
+> `Symbol($$jest-matchers-object)` and aborted the run before any test executed.
+> Both are fixed in
+> [#538](https://github.com/myhuemungusD/SkateHubba-play/pull/538) (a
+> `shell: bash -eo pipefail {0}` pin and `testMatch: "**/*.spec.ts"`). Until
+> that lands, treat a green `e2e` job as unproven — and expect `main` to go red
+> once it does, because the suite is genuinely failing.

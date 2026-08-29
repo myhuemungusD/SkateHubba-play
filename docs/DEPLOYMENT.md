@@ -81,6 +81,14 @@ Rules changes are **not** part of the Vercel pipeline — but they are **not man
 > freshness guard, so a hand-rollback in the Firebase console is reverted within
 > 24 hours — the fix for a bad rule is a revert commit, not a console edit.
 >
+> **⚠️ As of 2026-08-29 this pipeline is failing and has been since 2026-08-20**
+> (last success: run #793; 15 consecutive failures since;
+> `google-github-actions/auth` rejects `FIREBASE_WIF_PROVIDER` with
+> `Invalid value for "audience"`, tracked as
+> [#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519)).
+> Production is enforcing a **stale** ruleset and the 24-hour guarantee is not
+> holding. Do not assume `firestore.rules` on `main` is live.
+>
 > This paragraph previously claimed rules were deployed by hand. That was stale
 > and actively dangerous: it invited safety checks to be written as runbook
 > prose for a pipeline with no human in it. Any gate that matters belongs in the

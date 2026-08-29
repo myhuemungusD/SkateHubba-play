@@ -191,6 +191,26 @@ skatehubba-play/
 
 ## Deploying Security Rules
 
+> ## ⚠️ THE RULES DEPLOY IS CURRENTLY BROKEN — PRODUCTION RULES ARE STALE
+>
+> Verified 2026-08-29 against the workflow run history. The last **successful**
+> deploy was run #793 on **2026-08-20** (a manual `workflow_dispatch`). Every
+> run since has failed — 15 consecutive failures across push, schedule, and
+> dispatch triggers. `google-github-actions/auth` rejects the
+> `FIREBASE_WIF_PROVIDER` secret with `Invalid value for "audience"`: the value
+> passes the workflow's own regex but is rejected by Google. Tracked as
+> [#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519).
+>
+> **Consequences while this holds:**
+>
+> - `firestore.rules` on `main` is **not** what production is enforcing. Several
+>   rules commits are undeployed. Before reasoning about a live authorization
+>   decision, diff against the last deployed commit rather than `HEAD`.
+> - The "drift can never exceed 24h" guarantee below describes the design, not
+>   the current state. It has not held since 2026-08-20.
+>
+> This is a secret/GCP-configuration fix, not a code fix.
+
 Firestore rules/indexes and Storage rules are deployed by the
 `.github/workflows/firebase-rules-deploy.yml` workflow whenever `firestore.rules`,
 `firestore.indexes.json`, `storage.rules`, `firebase.json`, or `.firebaserc`
@@ -217,7 +237,8 @@ production rules drift for ~3 months unnoticed. Two guards now prevent a repeat:
   rules" command to diff against `HEAD`, so re-deploying daily is the simplest
   implementable guarantee — the deploy is idempotent, so drift between `main`
   and production can never exceed 24h, and a failed scheduled deploy trips the
-  same alert step above.
+  same alert step above. **This guarantee is not currently holding — see the
+  warning above.**
 
 `firebase-tools` in the deploy step is pinned to `@15` to match the version in
 `package.json` (`firebase-tools@^15`). The deploy runs with `set -euo pipefail`

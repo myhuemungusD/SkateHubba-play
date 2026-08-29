@@ -77,8 +77,15 @@ arg to `initializeFirestore`). Rules must be deployed to that named DB — NOT t
 - `.github/workflows/firebase-rules-deploy.yml` runs on every push to `main` that
   touches `firestore.rules`, `firestore.indexes.json`, `storage.rules`,
   `firebase.json`, `.firebaserc`, or the workflow file itself — **plus a daily
-  `schedule` re-deploy at `0 7 * * *`**. That daily run matters during triage: a
-  hand-edit made in the Firebase Console is reverted within 24 h. The deploy can
+  `schedule` re-deploy at `0 7 * * *`**. That daily run normally matters during
+  triage — a hand-edit made in the Firebase Console is reverted within 24 h —
+  but **as of 2026-08-29 every deploy since 2026-08-20 has failed**
+  ([#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519):
+  `google-github-actions/auth` rejects `FIREBASE_WIF_PROVIDER` with
+  `Invalid value for "audience"`). While that holds, production runs a **stale
+  ruleset** — which makes "the deployed rules differ from `main`" a _leading_
+  hypothesis for an unexplained `permission-denied`, not a footnote. Check the
+  last successful deploy before you check anything else. The deploy can
   also hard-fail on its PII-scan gate when the repo authenticates with the legacy
   `FIREBASE_TOKEN`, so "rules are stale" is not always an auth problem — read the
   job log, don't just re-check the credentials.

@@ -304,7 +304,7 @@ Reserved for server-written billing-alert records. No client access. Nothing wri
 
 ### `spots/{spotId}` and `spots/{spotId}/comments/{commentId}`
 
-User-contributed skate spots. Active spots (`isActive == true`) are publicly readable so anonymous visitors landing on a `/challenge?spot=` link can preview the spot before signing in. Only email-verified signed-in users can create spots; creators may update their own spot but cannot mutate immutable fields (`latitude`, `longitude`, `createdBy`, `isVerified`, `isActive`). Spot creation is rate-limited to one per 30 s per user via `users/{uid}.lastSpotCreatedAt`.
+User-contributed skate spots. Active spots (`isActive == true`) are readable by **signed-in users only** — `allow read: if isSignedIn() && resource.data.isActive == true`. Requiring auth is deliberate: it closes anonymous enumeration of the spot graph, which could otherwise be joined against `clips` and `users` to build a user-location graph (a privacy incident, and App-Store location-data disclosure exposure). Inactive spots — soft-deleted or moderation-hidden — are unreadable by anyone through this rule. A signed-out visitor following a `/spots/:id` or `/challenge?spot=` deep link therefore lands on the sign-in gate first; the bounce stashes the spot id for post-login restore. Only email-verified signed-in users can create spots; creators may update their own spot but cannot mutate immutable fields (`latitude`, `longitude`, `createdBy`, `isVerified`, `isActive`). Spot creation is rate-limited to one per 30 s per user via `users/{uid}.lastSpotCreatedAt`.
 
 The `comments` subcollection is signed-in-readable; comments require email verification, are immutable once posted, and are deletable only by the author.
 
