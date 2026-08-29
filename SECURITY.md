@@ -57,7 +57,7 @@ Firebase Storage rules (`storage.rules`) enforce:
 - Only authenticated users can upload or download videos.
 - Video size: minimum 1 KB (prevents stub uploads), maximum 50 MB.
 - Content type: must be `video/webm` (web) or `video/mp4` (native/Capacitor).
-- Filename: only `set.webm`, `set.mp4`, `match.webm`, or `match.mp4` are accepted — this prevents path traversal via crafted filenames.
+- Filename: only `set-{uid}.webm`, `set-{uid}.mp4`, `match-{uid}.webm`, `match-{uid}.mp4` are accepted, matched by **exact string equality** against the authenticated uploader's UID. This prevents path traversal via crafted filenames, and pins each upload slot to one account so an opponent cannot squat a path to force a forfeit. `update` is denied outright — slots are write-once.
 - The uploader's UID is bound into `customMetadata.uploaderUid` at upload time. Update and delete writes require `resource.metadata.uploaderUid == request.auth.uid`, so signed-in users cannot overwrite or delete each other's videos.
 
 ### XSS Prevention
@@ -80,7 +80,7 @@ The Firestore security rules treat the client as untrusted. Any attempt to manip
 
 - **Self-judging**: Players report whether they landed a trick. There is no server-side video analysis. This is an honor-system game.
 - **Storage rules cannot cross-reference Firestore**: Firebase Storage rules can't verify that the uploading user is a player in the game. They rely on the Firestore rules to enforce game membership. An authenticated user who knows a `gameId` could upload to that game's storage path, though they could not write the resulting URL into Firestore without being a player in the game.
-- **Client-side turn deadline**: Turn expiry (`turnDeadline`) is checked on the client when a game is opened. A malicious client could avoid triggering the forfeit by not opening the game. The integrity of the deadline is enforced when the forfeit is submitted — Firestore rules validate that the winning player is the opponent of the current-turn player.
+- **Turn deadline enforcement**: `turnDeadline` is checked on the client when a game is opened, *and* swept server-side. `api/cron/sweep-expired-turns.ts` runs every 15 minutes (`.github/workflows/sweep-expired-turns.yml`), re-reads each expired game in an Admin-SDK transaction, and applies the same transition the client would via the shared `decideExpiredForfeit` helper — so the two paths cannot diverge. Declining to open the app no longer avoids a forfeit; it delays it by at most one sweep. Firestore rules independently validate that the winner is the opponent of the current-turn player. (GitHub Actions `schedule` is best-effort, so the sweep can run late under platform load.)
 
 ---
 
@@ -92,7 +92,7 @@ Key safeguards:
 
 - **All changes to `main` must go through a pull request** with at least one CODEOWNER approval
 - **Required CI checks** must pass: lint, type check, tests, build
-- **Cloud Functions guard**: a CI job rejects PRs that introduce new Cloud Functions code
+- **Cloud Functions allowlist guard**: a CI job permits only the four maintainer-approved files under `functions/src/` (the stats close-out, approved 2026-07) and rejects any other addition there
 - **Workflow change detection**: modifications to `.github/workflows/` are flagged for manual review
 - **Force pushes and branch deletion are blocked** on `main`
 
@@ -115,6 +115,13 @@ These are low-priority improvements identified during the auth security audit (M
 The following are not considered security vulnerabilities for this project:
 
 - Self-judging cheating (a player lying about landing a trick) — this is a design decision
-- Abuse of the game creation system (challenging the same person repeatedly) — rate limiting is not implemented in the MVP
 - Enumeration of usernames — all authenticated users can query the `usernames` collection by design (needed for opponent lookup)
 - Vercel preview deployments indexed by search engines — `noindex` headers are set for non-production hosts
+
+> **Note — game-creation abuse is no longer out of scope; it is enforced.**
+> `firestore.rules:1162` applies a 30-second per-user cooldown on game creation,
+> anchored to `request.time` so a client cannot back-date the marker. Ten
+> distinct limiters run across the rules — game create, spot create, user-clip
+> create, per-turn actions (2s), notifications, push dispatch, reports (1/hr)
+> and nudges (1/hr). `rules-tests/rate-limit-bypass-redteam.rules.test.ts`
+> covers the anti-bypass hardening in 24 tests.

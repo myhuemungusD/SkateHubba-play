@@ -28,7 +28,7 @@ Status legend:
 | Challenge by username          | **Done** | `src/screens/ChallengeScreen.tsx`                                                                                                                                                                                                                                                                                                                                                                |
 | Setting phase (record + name)  | **Done** | `src/screens/GamePlayScreen/`, `src/components/VideoRecorder.tsx`                                                                                                                                                                                                                                                                                                                                |
 | Matching phase (watch+attempt) | **Done** | `src/screens/GamePlayScreen/`                                                                                                                                                                                                                                                                                                                                                                    |
-| Self-judging (landed/missed)   | **Done** | `src/services/games.ts`                                                                                                                                                                                                                                                                                                                                                                          |
+| Self-judging (landed/missed)   | **Done** | `src/services/games.match.ts`                                                                                                                                                                                                                                                                                                                                                                    |
 | S.K.A.T.E. letter accumulation | **Done** | `src/components/LetterDisplay.tsx`, rules in `firestore.rules`                                                                                                                                                                                                                                                                                                                                   |
 | Win condition (5 letters)      | **Done** | `src/screens/GameOverScreen.tsx`, `firestore.rules`                                                                                                                                                                                                                                                                                                                                              |
 | Real-time game updates         | **Done** | `src/services/games.subscriptions.ts` (triple `onSnapshot` for the OR query — player1/player2/judge)                                                                                                                                                                                                                                                                                             |
@@ -110,7 +110,7 @@ Status legend:
 
 ---
 
-## 5. Unreleased — Referee System (`[Unreleased]` in CHANGELOG)
+## 5. Shipped — Referee System (released in v1.1.0, 2026-04-19)
 
 > **STALE (2026-08-26):** this section predates the v1.1.0 release. The referee/dispute system shipped in `[1.1.0]` (2026-04-19, CHANGELOG `9f7f27c`) and its expiry cron (`resolve-expired-disputes.yml`) runs in production — the "In Review" rows and §8's "Unreleased" tallies below no longer reflect reality and are pending a rewrite.
 
@@ -119,19 +119,19 @@ Status legend:
 > migration for in-flight games. Rows that reference product behavior use
 > "referee"; rows that reference schema fields keep the literal `judge*` names.
 
-| Feature                               | Status        | Evidence                                                    |
-| ------------------------------------- | ------------- | ----------------------------------------------------------- |
-| Optional referee nomination at create | **In Review** | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[Unreleased]` |
-| Referee accept / decline notification | **In Review** | `src/services/notifications.ts`                             |
-| Dispute → referee ruling (24 h)       | **In Review** | `src/services/games.ts`, `firestore.rules`                  |
-| "Call BS" on setter (24 h)            | **In Review** | `src/services/games.ts`                                     |
-| Referee-only `setReview` phase        | **In Review** | New `GamePhase` value                                       |
-| Honor system path (no referee)        | **In Review** | CHANGELOG `Changed` section                                 |
-| `judgeId` / `judgeStatus` schema      | **In Review** | `GameDoc` extension (internal names preserved)              |
-| `TurnRecord.judgedBy`                 | **In Review** | Schema change (internal name preserved)                     |
-| Rules: referee immutability + scoping | **In Review** | `firestore.rules` updates                                   |
+| Feature                               | Status               | Evidence                                            |
+| ------------------------------------- | -------------------- | --------------------------------------------------- |
+| Optional referee nomination at create | **Shipped** (v1.1.0) | `src/screens/ChallengeScreen.tsx`, CHANGELOG v1.1.0 |
+| Referee accept / decline notification | **Shipped** (v1.1.0) | `src/services/notifications.ts`                     |
+| Dispute → referee ruling (24 h)       | **Shipped** (v1.1.0) | `src/services/games.judge.ts`, `firestore.rules`    |
+| "Call BS" on setter (24 h)            | **Shipped** (v1.1.0) | `src/services/games.judge.ts`                       |
+| Referee-only `setReview` phase        | **Shipped** (v1.1.0) | New `GamePhase` value                               |
+| Honor system path (no referee)        | **Shipped** (v1.1.0) | CHANGELOG v1.1.0                                    |
+| `judgeId` / `judgeStatus` schema      | **Shipped** (v1.1.0) | `GameDoc` extension (internal names preserved)      |
+| `TurnRecord.judgedBy`                 | **Shipped** (v1.1.0) | Schema change (internal name preserved)             |
+| Rules: referee immutability + scoping | **Shipped** (v1.1.0) | `firestore.rules` updates                           |
 
-**Verdict:** Code complete, awaiting next release tag. Honor-system path replaces the old `disputable` mid-turn pause for non-refereed games.
+**Verdict:** Shipped in **v1.1.0** (2026-04-19) — see the judge/referee entries in that CHANGELOG block. The honor-system path replaced the old `disputable` mid-turn pause for non-refereed games; it has since been superseded again by the `pendingReview` → `communityReview` flow (see `docs/GAME_STATE_MACHINE.md`).
 
 ---
 
@@ -189,23 +189,23 @@ Status legend:
 
 ## 8. Roadmap Completion Summary
 
-| Phase                              | Items | Done | In Review | In Progress | Deferred | Planned |     % Shipped |
-| ---------------------------------- | ----: | ---: | --------: | ----------: | -------: | ------: | ------------: |
-| Phase 1 — Core Loop                |    31 |   31 |         0 |           0 |        0 |       0 |      **100%** |
-| Phase 2 — Viral Mechanics          |     9 |    9 |         0 |           0 |        0 |       0 |      **100%** |
-| Phase 3 — Social Graph & Discovery |     9 |    8 |         0 |           0 |        1 |       0 |       **89%** |
-| Phase 4 — Network Effects          |     9 |    5 |         0 |           1 |        0 |       3 |       **56%** |
-| Unreleased — Referee System        |     9 |    0 |         9 |           0 |        0 |       0 | **In review** |
+| Phase                              | Items | Done | In Review | In Progress | Deferred | Planned |   % Shipped |
+| ---------------------------------- | ----: | ---: | --------: | ----------: | -------: | ------: | ----------: |
+| Phase 1 — Core Loop                |    31 |   31 |         0 |           0 |        0 |       0 |    **100%** |
+| Phase 2 — Viral Mechanics          |     9 |    9 |         0 |           0 |        0 |       0 |    **100%** |
+| Phase 3 — Social Graph & Discovery |     9 |    8 |         0 |           0 |        1 |       0 |     **89%** |
+| Phase 4 — Network Effects          |     9 |    5 |         0 |           1 |        0 |       3 |     **56%** |
+| Referee System (v1.1.0)            |     9 |    9 |         0 |           0 |        0 |       0 | **Shipped** |
 
 **Overall product completion (shipped + in-review, excluding deferred):** 62 of 66 non-deferred items ≈ **94%**. Including the single deferred item (spectator), 62 of 67 ≈ 93%.
-**Active focus:** Cut Referee System release tag (Unreleased § rolls into v1.x.0); custom Mapbox style (Phase 4 — design/infra).
+**Active focus:** Cut a release tag — the repo has no git tags and ~4 months of shipped work sits in `[Unreleased]`; custom Mapbox style (Phase 4 — design/infra).
 **Production gate:** Green (per gap analysis: 9.7/10, all P0 closed).
 
 ---
 
 ## 9. Recommended Next Actions
 
-1. **Cut a release tag** _(active focus)_ for the Referee System so CHANGELOG `[Unreleased]` rolls into a `v1.x.0`.
+1. **Cut a release tag** _(active focus)_. The referee system already shipped in v1.1.0, but the repo has no git tags at all and `[Unreleased]` now holds ~4 months of merged work.
 2. **Custom Mapbox style** ([#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191)) — design a branded dark-base style in Mapbox Studio and set `VITE_MAPBOX_STYLE_URL` in Vercel. No code change needed; `src/lib/mapbox.ts` already reads the env var.
 3. ~~Spec spectator mode~~ — **deferred**; revisit once vote-driven ranking has shipped engagement data to read against.
 4. **Schedule the P1 ops items** (rules deploy, backups, video purge, branch protection) — these are blockers for scaling, not for shipping.

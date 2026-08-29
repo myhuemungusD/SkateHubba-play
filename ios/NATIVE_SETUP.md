@@ -144,4 +144,4 @@ After §1–§4 on a Mac:
 - [ ] App launches on a physical device with no Firebase / App Check crash.
 - [ ] Email/password and Google sign-in both complete and return to the app.
 - [ ] App Store Connect **App Privacy** answers match
-      `ios/App/App/PrivacyInfo.xcprivacy` (see `docs/APP_STORE_PRIVACY.md`).
+      `ios/App/App/PrivacyInfo.xcprivacy` (see `docs/STORE_PRIVACY_ANSWERS.md`).
