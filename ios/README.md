@@ -30,25 +30,23 @@ by `@capacitor/ios` and should not be edited by hand unless noted below.
 
 See the repository-root `.gitignore` for the canonical list. In short:
 `Pods/`, `xcuserdata/`, `build/`, `DerivedData/`, `ios/build/`. There is no
-`Podfile.lock` — see the note below.
+`Podfile.lock` because the project uses Swift Package Manager — see below.
 
-## ⚠️ Native dependency path is unresolved (SPM vs CocoaPods)
+## Native dependency path: Swift Package Manager
 
-The tracked Xcode project references `CapApp-SPM/Package.swift` as a local
-**Swift Package Manager** package (`XCLocalSwiftPackageReference`), and no
-`Podfile` exists in the repo. The CocoaPods workflow described below — and in
-[`NATIVE_SETUP.md`](./NATIVE_SETUP.md) — predates that and has **not** been
-verified against the current project. Some Capacitor plugins (`@sentry/capacitor`,
-`@capacitor-firebase/*`) historically shipped CocoaPods podspecs, so this may
-be a half-finished SPM migration. Which path actually builds can only be
-determined with Xcode on a Mac. Until then, treat the `pod install` steps below
-as provisional — do not assume a `Podfile.lock` is the right lockfile to commit.
+The tracked Xcode project resolves native plugins through the local
+**Swift Package Manager** package `CapApp-SPM/Package.swift`
+(`XCLocalSwiftPackageReference`). There is **no** `Podfile`, `Podfile.lock`,
+`Pods/`, or `App.xcworkspace` in the repo — do not run `pod install` and do
+not commit a `Podfile.lock`. `npx cap sync ios` regenerates the SPM manifest
+from the installed `@capacitor/*` npm packages. If a plugin ever turns out to
+be CocoaPods-only, that is a project-structure change to discuss first — see
+the hedged note in [`NATIVE_SETUP.md`](./NATIVE_SETUP.md) §3.
 
 ## Developer workflow on macOS
 
 The Linux CI environment that initially materialised this directory cannot
-run CocoaPods or open Xcode. Finish the setup on a Mac with Xcode 15+ (resolve
-the SPM-vs-CocoaPods question above first):
+open Xcode. Finish the setup on a Mac with Xcode 15+:
 
 ```bash
 # 1. Install JS deps + build the web bundle so `dist/` exists.
@@ -61,7 +59,7 @@ npm run build
 #    after the command finishes.
 npx cap add ios   # usually skipped; already added in this repo
 
-# 3. Pull the web bundle into ios/App/App/public and install CocoaPods.
+# 3. Pull the web bundle into ios/App/App/public and refresh the SPM manifest.
 npx cap sync ios
 
 # 4. Open in Xcode and configure signing (Team, Bundle Identifier stays
@@ -93,7 +91,7 @@ npm run build && npx cap sync ios
 bundle exec fastlane ios beta
 ```
 
-The `beta` lane expects `App_STORE_CONNECT_API_KEY_PATH` to be exported and
+The `beta` lane expects `APP_STORE_CONNECT_API_KEY_PATH` to be exported and
 fastlane match credentials to be configured via CI secrets. See
 `fastlane/Fastfile` for the full lane definitions.
 
@@ -110,23 +108,18 @@ manages. Hand-authored keys (all the `NS*UsageDescription` entries,
 
 ## Native Sentry SDK (iOS)
 
-`@sentry/capacitor` (installed via `npm install`) ships a CocoaPods
-podspec (`Sentry-Capacitor.podspec`) that is picked up automatically
-the first time `npx cap sync ios` runs after the npm install. That
-sync regenerates `ios/App/Podfile`, and the subsequent `pod install`
-(run implicitly by `cap sync`, or manually via
-`cd ios/App && pod install`) pulls in the Sentry Cocoa SDK as a
-transitive dependency. No manual Xcode steps are required to link
-the framework — the plugin does it for you.
+`@sentry/capacitor` (installed via `npm install`) is resolved like every
+other native plugin: `npx cap sync ios` regenerates
+`CapApp-SPM/Package.swift` and SPM pulls in the Sentry Cocoa SDK as a
+dependency of the plugin. No manual Xcode steps are required to link the
+framework — the plugin does it for you.
 
 Verify after the first sync:
 
-1. `ios/App/Podfile.lock` contains entries for `Sentry-Capacitor` and
-   the upstream `Sentry` cocoa pod.
-2. In Xcode, _App → Frameworks, Libraries, and Embedded Content_
-   lists the `Sentry.framework` entry — if it is missing after a
-   fresh checkout, run `cd ios/App && pod install --repo-update`.
-3. At runtime on a physical device, a deliberate
+1. `ios/App/CapApp-SPM/Package.swift` lists the Sentry Capacitor plugin,
+   and Xcode's package resolution (Project navigator → Package
+   Dependencies) shows the upstream `Sentry` package.
+2. At runtime on a physical device, a deliberate
    `Sentry.nativeCrash()` call (exported by `@sentry/capacitor`)
    must surface in the Sentry dashboard as an `ios` platform event
    with a symbolicated Swift stack trace. Swift / Obj-C crashes
@@ -149,8 +142,9 @@ the change alongside the `package.json` bump.
 ## Troubleshooting
 
 - **"No such module 'Capacitor'" in Xcode** — run `npx cap sync ios` and
-  reopen the workspace (`App.xcworkspace`, not `.xcodeproj`).
-- **Pods out of date** — `cd ios/App && pod install --repo-update`.
+  reopen `ios/App/App.xcodeproj` (there is no `.xcworkspace` in this
+  SPM-based project), then let Xcode re-resolve packages (File → Packages →
+  Resolve Package Versions).
 - **App crashes on launch with a permission error** — you added a plugin
   that needs a new `NS*UsageDescription`; add it to `Info.plist` and
   re-run `cap sync`.

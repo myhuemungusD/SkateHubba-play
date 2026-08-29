@@ -3,7 +3,8 @@
 # Automates beta + production releases for iOS (TestFlight + App Store) and
 # Android (internal + closed + production tracks on Google Play). All lanes
 # read credentials from GitHub Actions secrets (see `.github/workflows/
-# fastlane-*.yml` once they're added) so nothing sensitive lives in the repo.
+# android-aab.yml`, which calls `android publish_internal`) so nothing
+# sensitive lives in the repo.
 #
 # Run a lane locally:
 #   bundle exec fastlane ios beta

@@ -1,7 +1,7 @@
 # SkateHubba Gap Analysis & Prioritization
 
 **Date:** 2026-08-21
-**Scope:** `SkateHubba-play` (full audit) + `DesignMainline` (static-site pass)
+**Scope:** `SkateHubba-play` (full audit). _(The original report also carried a DesignMainline static-site pass; that section was removed 2026-08-26 as out-of-repo scope — those findings live with that repo.)_
 **Method:** Five parallel code audits (roadmap-vs-code, rules/service parity, test coverage, security/infra/ops, code-quality/UX), plus the full `npm run verify` gate. Highest-severity findings were re-verified by hand against source. Line references are `file:line` at the audited commit (`5091db4`).
 
 The verify gate is **green** end to end (`tsc -b`, lint, coverage thresholds, build, test-dup all pass). The gaps below are things the gate does not catch: security-rule holes, a silent gameplay dead-end, missing compliance controls, doc drift, and coverage/observability blind spots.
@@ -41,11 +41,15 @@ Every item lists the evidence so it can be picked up cold.
 
 ### P0-3 · `pendingReview` transition fires no notification → the 24h dispute window is silent
 
+**Status: PARTIALLY CLOSED** — `1b98ec6` notifies the setter when a land claim opens the review window (`writeNotificationInTx` inside the `pendingReview` freeze in `games.match.ts`, reusing the existing `your_turn` type rather than a new `dispute_pending` type). Still open: `disputes.raise.ts` writes no notification, so the claimer is never told their land was disputed.
+
 **Active user-facing breakage. A shipped feature silently defeats itself.**
 When a matcher claims a land on the honor path, `src/services/games.match.ts:216-222` writes `phase: "pendingReview"` + `reviewDeadline` and **writes no notification** — the in-code comment says it's "DEFERRED." Every other branch in that file notifies (`:60,:113,:180,:304,:317,:430`). `notifications.ts:32` has no dispute-related `NotificationDocType`. The setter is never told a claim is waiting on their 24h accept/dispute decision; they find out only if they happen to open the lobby, otherwise the window expires and `api/cron/resolve-expired-disputes.ts` auto-accepts. Same silence on `disputes.raise.ts` (claimer isn't told their land was disputed).
 **Fix:** add a `dispute_pending` / `dispute_raised` `NotificationDocType` and `writeNotificationInTx` calls in both transitions, plus push. (Verified by hand: the branch returns `outcome: "pending_review"` which is consumed nowhere in the repo.)
 
 ### P0-4 · DSA compliance: zero controls, hard Feb 17 deadline with external lead time
+
+**Status: PARTIALLY CLOSED** — `docs/DSA_COMPLIANCE.md` now exists as the tracker for the account-level items (D-U-N-S, Apple org conversion, point of contact). The code items remain open under P1-5, and the "repo-wide grep returns nothing" claim below no longer holds for `docs/`.
 
 **Compliance blocker. The trader/DUNS items cannot be compressed at the deadline.**
 Repo-wide grep for `dsa|illegal content|statement of reasons|appeal|trusted flagger|trader|d-u-n-s` returns nothing across `docs/`, `src/`, `fastlane/`. The app ships to Apple and Google. The `dsa-compliance-checkpoint` skill tracks a **Feb 17** gate. The account-level items — Apple Individual→Organization conversion, D-U-N-S issuance (days-to-weeks), DSA point-of-contact — bear external lead time and block submission regardless of code.
@@ -178,7 +182,6 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 - Client clip-vote flip skips the decrement when drop counter is 0 (`clips.votes.ts:231-235`) but rule FLIP branch requires both deltas to move (`firestore.rules:226-232`) → whole tx denied. Client/rule divergence.
 - `init_failed` 500 echoes raw `JSON.parse` message (may embed input snippet of the service-account key) — `sweep-expired-turns.ts:682`; match `delete.ts:228`'s flat "Server misconfiguration."
 - `public/sw-cleanup.js:4-5` has 2 real lint errors, invisible because lint is scoped to `src/ api/`.
-- `firebase.json:10-13` declares a `functions` predeploy that a bare `firebase deploy` would trip, contradicting the no-Cloud-Functions guardrail.
 - `@tensorflow/tfjs` is an undeclared direct dep (auto-peer-installed via nsfwjs) → unmanaged by Dependabot, floating version, ships in bundle.
 - `LevelChip.tsx` is a hardcoded `level = 1` stub already removed from its only call site — dead code.
 - `guard-as-any-casts` / `guard-todo-fixme-hack` don't scan `api/` — the most privileged code can carry `as any` and TODOs unchecked.
@@ -192,22 +195,11 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ---
 
-## DesignMainline (static marketing site)
-
-Small static site; findings are minor.
-
-- **D1 (P2) · Broken/missing image references.** `sleeves.html` references `/assets/sleeves/01.webp`–`06.webp` but only `01/02/03.webp` exist — `04/05/06` 404. `index.html` slideshow references `02-igrinder.jpg`, `03-skatehubba.jpg`, `04-studio.jpg` but `assets/slides/` contains only `01-originals.jpg` — three of four slides 404.
-- **D2 (P3) · `/forge` is deployed but unlinked.** `SETUP.md` step 3 ("Link from the main site") was never done — `index.html` has zero `forge` references, so the paid tool has no entry point from the homepage.
-- **D3 (P3) · Repo hygiene.** `2d to 3d generator.zip` (296 KB) and a `scraps/` napkin file are committed into the site root and deploy to production.
-- **D4 (info) · Forge unlock is honor-system `localStorage`** — already documented as an accepted tradeoff in `SETUP.md`; noting only for completeness.
-
----
-
 ## Recommended sequence
 
 1. **Today:** P0-1, P0-2, P0-4 (rules fixes are small and self-contained; DSA account tasks have external lead time — start the clock).
 2. **This cycle:** P0-3 + P1-1..P1-8 (the notification gap, the banned-write surfaces, and cron alerting are the user-facing/abuse cluster).
 3. **Schedule:** P2 block — `api/` observability + coverage, App Check rollout, moderation.
-4. **Batch:** P3 doc rewrite (P3-1 first — the state-machine docs actively mislead), release hygiene, DesignMainline image fixes.
+4. **Batch:** P3 doc rewrite (P3-1 first — the state-machine docs actively mislead), release hygiene.
 
 Nothing here blocks the current green build; everything here is what the green build doesn't see.

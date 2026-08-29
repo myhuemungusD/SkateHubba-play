@@ -63,9 +63,9 @@ Unlocks after the traction numbers hold, in whatever order the data argues for:
 - [ ] Tournaments — bracket competitions for appointment engagement
 - [ ] Spectator mode — deferred 2026-04-15, eligible for revisit now that ranked clips ship engagement data
 
-## Then — economy phase A
+## Shipped — economy phase A
 
-Achievement badges, Verified Pro, Hubba Locker v1, collection showcase. Gated on the traction criteria above. See [docs/ECONOMY.md](docs/ECONOMY.md) for the full phasing and the rules that constrain it.
+Achievement badges (`src/services/achievements.ts`, `src/constants/badges.ts`), Verified Pro (`src/components/ProUsername.tsx`), Hubba Locker v1 + collection showcase (`src/services/locker.ts`, `src/components/LockerShowcase.tsx`) are all live on `main`. See [docs/ECONOMY.md](docs/ECONOMY.md) for the phasing and the rules that constrain later phases (B/C remain gated on traction).
 
 ---
 
@@ -73,9 +73,9 @@ Achievement badges, Verified Pro, Hubba Locker v1, collection showcase. Gated on
 
 Not features, not optional. Tracked in [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md) §7:
 
-- [ ] Automate Firestore rules deploy in CI
-- [ ] Daily Firestore managed exports
-- [ ] Storage lifecycle rule for old videos
+- [x] Automate Firestore rules deploy in CI — `.github/workflows/firebase-rules-deploy.yml` (deploy on merge to `main` + daily freshness check)
+- [ ] Daily Firestore managed exports — tooling built (`.github/workflows/firebase-infra-setup.yml`, manual dispatch); confirm it has been run against production
+- [ ] Storage lifecycle rule for old videos — same workflow, same caveat
 - [ ] GitHub branch protection rules applied
 - [ ] Accessibility (axe-core) in CI
 - [ ] TTL cleanup for username reservations
