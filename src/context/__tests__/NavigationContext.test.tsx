@@ -146,6 +146,13 @@ describe("useNavigationContext", () => {
     // SpotMap with no other external entry point, which is exactly why the
     // profile's "ADD A SPOT" CTA used to be a dead end. The param is the
     // contract MapPage reads — mirrors navigateToChallengeWithSpot's ?spot=.
+    //
+    // Signed IN, because /map is not a public screen: spot reads require auth
+    // (firestore.rules), so the auth router bounces a signed-out visitor off
+    // /map to "/" before any of this runs. Every real caller of this helper
+    // (the profile "ADD A SPOT" CTA) is inside the authenticated app anyway.
+    mockAuth = { loading: false, user: { uid: "u1" }, profile: { username: "skater" } };
+
     function TestComponent() {
       const ctx = useNavigationContext();
       return (

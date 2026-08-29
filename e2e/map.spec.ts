@@ -6,15 +6,19 @@
  * stubbing an HTTP API. There is no apps/api server — the map talks
  * to Firestore exclusively, and so does this test.
  *
- * Auth-agnostic: the /map route is in PUBLIC_SCREENS, so we exercise
- * the full marker → preview card → "Challenge from here" flow without
- * touching Firebase Auth. The "Challenge from here" click as an
- * unauthenticated user lets us also assert the auth-bounce stash
- * (sessionStorage `skate.pendingChallengeSpot`) added to NavigationContext.
+ * SIGNED IN, deliberately. This spec used to open /map cold and assert the
+ * signed-out auth-bounce stash, on the premise that /map was public. It is
+ * not, and cannot be: `firestore.rules` gates spot reads behind
+ * `isSignedIn()` to close anonymous enumeration of the spot graph, so a
+ * signed-out /map has no markers to click even with the route guard opened
+ * up. The signed-out share surface is /spots/:id, whose bounce is what
+ * stashes `skate.pendingChallengeSpot`; that belongs to a spot-link spec,
+ * not to the map.
  */
 
 import { test, expect, type Page } from "@playwright/test";
 import { clearAll, createSpot } from "./helpers/emulator";
+import { signUpAndSetupProfile } from "./helpers/auth-flow";
 
 const SPOT_ID = "11111111-2222-3333-4444-555555555555";
 const SPOT_NAME = "Test Ledge";
@@ -92,7 +96,7 @@ async function stubMapbox(page: Page, capturedStyleUrls?: string[]): Promise<voi
 }
 
 test.describe("Map → challenge wiring", () => {
-  test("Challenge from here forwards the spot id and stashes it across auth", async ({ page }) => {
+  test("Challenge from here forwards the spot id to the challenge screen", async ({ page }) => {
     await relaxCspForEmulators(page);
     // Capture the style URL mapbox-gl actually requests so we can assert
     // the env-var → lib/mapbox → SpotMap → mapbox-gl wiring at the network
@@ -112,13 +116,8 @@ test.describe("Map → challenge wiring", () => {
       consoleMessages.push(`[pageerror] ${err.message}`);
     });
 
-    // Capture every URL change. The auth router will bounce an
-    // unauthenticated user off /challenge, so we need to assert the
-    // intermediate /challenge?spot=<id> URL existed before the bounce.
-    const navigatedUrls: string[] = [];
-    page.on("framenavigated", (frame) => {
-      if (frame === page.mainFrame()) navigatedUrls.push(frame.url());
-    });
+    const unique = Date.now();
+    await signUpAndSetupProfile(page, `mapper+${unique}@example.com`, "sk8pass123", `mapper${unique}`);
 
     await page.goto("/map");
 
@@ -139,20 +138,10 @@ test.describe("Map → challenge wiring", () => {
     // "Challenge from here" is the primary (orange) button on the card.
     await page.getByRole("button", { name: "Challenge from here" }).click();
 
-    // The intermediate URL must have included ?spot=<id>. Poll the captured
-    // list so we don't race the auth router's bounce.
-    await expect
-      .poll(() => navigatedUrls.some((u) => u.includes(`/challenge?spot=${SPOT_ID}`)), {
-        timeout: 5_000,
-      })
-      .toBe(true);
-
-    // The auth-bounce polish stashes the spot in sessionStorage so a
-    // post-login restore can reapply it. Verifying the stash survived the
-    // bounce is what makes shared /challenge?spot= links work for
-    // logged-out recipients.
-    const stashed = await page.evaluate(() => window.sessionStorage.getItem("skate.pendingChallengeSpot"));
-    expect(stashed).toBe(SPOT_ID);
+    // A signed-in user is not bounced: the spot id rides the query param
+    // straight onto the challenge screen, which is the contract
+    // ChallengeScreen reads.
+    await page.waitForURL(`**/challenge?spot=${SPOT_ID}`, { timeout: 10_000 });
 
     // Wiring guard: with VITE_MAPBOX_STYLE_URL unset (the e2e default),
     // mapbox-gl must request the dark-v11 style. This is the network-level
