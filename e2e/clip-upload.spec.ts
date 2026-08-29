@@ -82,7 +82,9 @@ test("setter records a clip → upload completes and download URL is persisted t
   await p1.getByRole("button", { name: /Record.*Land Your Trick/i }).click();
   await p1.waitForTimeout(200);
   await p1.getByRole("button", { name: "Stop Recording" }).click();
-  await expect(p1.getByText("Recorded", { exact: false })).toBeVisible({ timeout: 5_000 });
+  // "✓ Recorded" exactly — a bare "Recorded" is a case-insensitive substring
+  // match that also hits "No video recorded …" copy elsewhere on the screen.
+  await expect(p1.getByText("✓ Recorded")).toBeVisible({ timeout: 5_000 });
 
   // (1) Confirm the trick was LANDED. This is the click game.spec.ts omits —
   // it is what triggers submitSetterTrick() → uploadVideo() → setTrick().

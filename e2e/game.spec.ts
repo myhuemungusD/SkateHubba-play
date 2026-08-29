@@ -98,8 +98,41 @@ async function recordVideo(page: Page, recordLabel: string, doneLabel = "Recorde
   await page.waitForTimeout(200);
   await page.getByRole("button", { name: "Stop Recording" }).click();
 
-  // Wait for the "done" indicator
-  await expect(page.getByText(doneLabel, { exact: false })).toBeVisible({ timeout: 5_000 });
+  // Wait for the "done" indicator. The ✓ prefix is load-bearing:
+  // getByText matches case-insensitive substrings, so a bare "Recorded"
+  // also matches the matcher screen's "No video recorded — just match the
+  // trick!" copy and dies as a strict-mode violation whenever both render.
+  await expect(page.getByText(`✓ ${doneLabel}`)).toBeVisible({ timeout: 5_000 });
+}
+
+/**
+ * Confirm the recorded set trick as landed. Recording alone submits nothing:
+ * the decision panel ("Did you land it?") appears after the take, and the
+ * "✓ Landed" click is what triggers submitSetterTrick() → uploadVideo() →
+ * setTrick(). These specs predate that panel — the setter used to
+ * auto-submit — and clip-upload.spec's own comment has flagged the omission
+ * ("the click game.spec.ts omits") for as long as the panel has existed.
+ */
+async function setterConfirmsLanded(page: Page) {
+  await expect(page.getByRole("group", { name: "Did you land the trick?" })).toBeVisible({ timeout: 5_000 });
+  await page.getByRole("button", { name: "✓ Landed" }).click();
+}
+
+/**
+ * P1's half of a two-player game: challenge P2, name `trickName`, record the
+ * take, confirm it landed, and wait for the turn to hand over. Shared by the
+ * matcher specs, which then differ only in what P2 does with the trick.
+ */
+async function setterOpensGameAndSetsTrick(p1: Page, trickName: string) {
+  await p1.getByRole("button", { name: "Challenge Someone" }).click();
+  await p1.getByPlaceholder("their_handle").fill(P2.username);
+  await p1.getByRole("button", { name: /Send Challenge/i }).click();
+
+  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
+  await p1.getByPlaceholder("Name your trick").fill(trickName);
+  await recordVideo(p1, "Land Your Trick", "Recorded");
+  await setterConfirmsLanded(p1);
+  await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
 }
 
 // ─── Setup / teardown ─────────────────────────────────────────────────────────
@@ -167,6 +200,7 @@ test("setter records trick → game moves to matching phase", async ({ browser }
 
   // Record and stop
   await recordVideo(p1, "Land Your Trick", "Recorded");
+  await setterConfirmsLanded(p1);
 
   // After submitting the trick the game moves to "matching" phase —
   // P1 should see the waiting screen (it's now P2's turn to match)
@@ -191,14 +225,7 @@ test("matcher records response and misses → earns a letter", async ({ browser 
   await p1.reload();
   await forceTokenRefresh(p1);
 
-  await p1.getByRole("button", { name: "Challenge Someone" }).click();
-  await p1.getByPlaceholder("their_handle").fill(P2.username);
-  await p1.getByRole("button", { name: /Send Challenge/i }).click();
-
-  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
-  await p1.getByPlaceholder("Name your trick").fill("Heelflip");
-  await recordVideo(p1, "Land Your Trick", "Recorded");
-  await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
+  await setterOpensGameAndSetsTrick(p1, "Heelflip");
 
   // Grab the game ID from the URL or wait — we need P2 to open this game.
   // P2 doesn't know the game ID yet, but their lobby will list it.
@@ -264,14 +291,7 @@ test("matcher records response and lands → roles swap, no letters earned", asy
   await p1.reload();
   await forceTokenRefresh(p1);
 
-  await p1.getByRole("button", { name: "Challenge Someone" }).click();
-  await p1.getByPlaceholder("their_handle").fill(P2.username);
-  await p1.getByRole("button", { name: /Send Challenge/i }).click();
-
-  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
-  await p1.getByPlaceholder("Name your trick").fill("Ollie");
-  await recordVideo(p1, "Land Your Trick", "Recorded");
-  await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
+  await setterOpensGameAndSetsTrick(p1, "Ollie");
 
   // P2 signs in, opens the game, records a match, and claims LANDED.
   const p2Ctx: BrowserContext = await browser.newContext();
