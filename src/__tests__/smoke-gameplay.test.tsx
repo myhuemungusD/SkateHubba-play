@@ -400,15 +400,8 @@ describe("Smoke: Gameplay", () => {
     // firestore.rules (setting→matching requires a bucket-pinned
     // currentTrickVideoUrl), so the behaviour it locked in was a guaranteed
     // permission-denied and a setter who could not advance the turn.
-    const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    await renderLobby([game]);
-    withGameSub(game);
+    await openSetterGame();
 
-    await openGameFromLobby();
-
-    await waitFor(() => {
-      expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
-    });
     // The global test MediaRecorder emits nothing — exactly the zero-byte
     // encoder result useMediaRecorder reports as a failed take.
     await userEvent.type(screen.getByLabelText("TRICK NAME"), "360 Flip");
