@@ -12,21 +12,14 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
   testDir: "./e2e",
-  // Playwright's default testMatch also picks up `*.test.ts`, which would sweep
-  // in the vitest-based helper unit tests under `e2e/helpers/__tests__/`. Those
-  // import from "vitest", and loading @vitest/expect alongside Playwright's own
-  // expect throws "Cannot redefine property: Symbol($$jest-matchers-object)"
-  // during collection — killing the whole run before any spec executes.
-  // Playwright specs are `*.spec.ts`; vitest files stay on `*.test.ts`.
+  // Playwright's default testMatch is `**/*.@(spec|test).?(c|m)[jt]s?(x)`,
+  // which also matched `e2e/helpers/__tests__/*.test.ts` — a VITEST unit
+  // suite. Loading it pulled `@vitest/expect` into the Playwright worker,
+  // which collides with Playwright's own expect over the shared
+  // `Symbol($$jest-matchers-object)` and aborted the ENTIRE run before a
+  // single test executed ("TypeError: Cannot redefine property"). Every real
+  // browser test here is a `.spec.ts`, so pin the glob to that.
   testMatch: "**/*.spec.ts",
-  // Every spec drives a real sign-up or sign-in against the Auth + Firestore
-  // emulators before it can assert anything, which costs 15-20s on its own;
-  // the flows that also record and upload a clip run past 60s. Playwright's
-  // 30s default expires mid-flow and reports it as an assertion failure at
-  // whatever step the clock happened to land on, which is a misleading
-  // failure. Per-assertion timeouts are unchanged, so a genuinely stuck
-  // locator still fails fast.
-  timeout: 90_000,
   // Tests share emulator state, so run sequentially to avoid cross-test interference.
   fullyParallel: false,
   workers: 1,
@@ -51,7 +44,21 @@ export default defineConfig({
           // environments without a real GPU (CI containers, sandboxed
           // runners). Without these flags mapbox-gl throws "Failed to
           // initialize WebGL" and MapErrorBoundary swallows the error.
-          args: ["--use-gl=swiftshader", "--enable-webgl", "--ignore-gpu-blocklist"],
+          args: [
+            "--use-gl=swiftshader",
+            "--enable-webgl",
+            "--ignore-gpu-blocklist",
+            // Chromium 138+ enforces Local Network Access: a page served from
+            // localhost:5173 may not reach the `loopback` address space
+            // without permission, so every browser→emulator call died as
+            //   "blocked by CORS policy: Permission was denied for this
+            //    request to access the `loopback` address space"
+            // and the Firestore SDK fell back to offline mode. Any spec that
+            // needed a live listen (the recording flows, the map's spot
+            // query) then timed out waiting for data that was never coming.
+            // Nothing in the app or the emulators changed — the browser did.
+            "--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests",
+          ],
         },
       },
     },

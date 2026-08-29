@@ -2,6 +2,8 @@
 
 All Firebase operations are contained in `src/services/`. Components and hooks import from these files — never from the Firebase SDK directly. Services are pure async functions with no React dependencies, which makes them straightforward to mock in tests.
 
+> **Scope:** this reference covers the core auth / user / game / storage surface. `src/services/` holds 54 modules in total; the domains not expanded here (clips, disputes, spots, notifications, push, achievements, locker, admin, MFA, avatars, blocking, reports, GDPR export) are summarised in [ARCHITECTURE.md](ARCHITECTURE.md#service-layer), and every exported function carries JSDoc at its definition.
+
 ---
 
 ## Types
@@ -47,7 +49,7 @@ interface UserPrivateProfile {
 // uses the request.auth.token.email_verified JWT claim instead.
 ```
 
-### `GameDoc` (`src/services/games.ts`)
+### `GameDoc` (`src/services/games.mappers.ts`)
 
 ```ts
 interface GameDoc {
@@ -62,7 +64,7 @@ interface GameDoc {
   p2Letters: number; // 0–5
   status: GameStatus; // "active" | "complete" | "forfeit"
   currentTurn: string; // UID of the player (or judge) who must act next
-  phase: GamePhase; // "setting" | "matching" | "setReview" | "disputable"
+  phase: GamePhase; // see GamePhase below
   currentSetter: string; // UID of the current trick setter
   currentTrickName: string | null; // null during setting phase, set after setTrick()
   currentTrickVideoUrl: string | null; // Storage download URL, or null
@@ -76,12 +78,17 @@ interface GameDoc {
   judgeUsername?: string | null;
   judgeStatus?: JudgeStatus; // null | "pending" | "accepted" | "declined"
   judgeReviewFor?: string | null; // UID under judge review (setReview/disputable)
+  reviewFor?: string | null; // Honor-system claimer under review (pendingReview/communityReview)
+  reviewDeadline?: Timestamp | null; // Review-window deadline, separate from turnDeadline
+  statsApplied?: boolean; // Set by the stats close-out function; idempotency guard
   createdAt: Timestamp | null;
   updatedAt: Timestamp | null;
 }
 
 type GameStatus = "active" | "complete" | "forfeit";
-type GamePhase = "setting" | "matching" | "setReview" | "disputable";
+// setReview / disputable  → judge-active games only
+// pendingReview / communityReview → honor-system games only; both FREEZE the game
+type GamePhase = "setting" | "matching" | "setReview" | "disputable" | "pendingReview" | "communityReview";
 type JudgeStatus = "pending" | "accepted" | "declined" | null;
 ```
 
@@ -260,7 +267,9 @@ Looks up `usernames/{normalized}` and returns the UID, or `null` if the username
 
 ---
 
-## `src/services/games.ts`
+## `src/services/games.*`
+
+> `games.ts` is a barrel re-export; each function below lives in a sibling module — `games.create.ts`, `games.match.ts`, `games.judge.ts`, `games.turns.ts`, `games.subscriptions.ts`, `games.mappers.ts`.
 
 ### `createGame(challengerUid, challengerUsername, opponentUid, opponentUsername)`
 
@@ -291,6 +300,20 @@ setTrick(
 
 Submits the setter's trick. Sanitizes the trick name (trim + slice to 100 chars) at the service boundary. Runs a transaction to validate `phase === "setting"` and transition the game to `phase: "matching"`, switching `currentTurn` to the matcher.
 
+> **`videoUrl` is typed nullable but a `null` is rejected by the rules.** The
+> setting→matching branch in `firestore.rules` requires a bucket-pinned
+> `currentTrickVideoUrl`, and that pin fails for `null` — so `setTrick(id, name,
+null)` comes back `permission-denied` and the turn cannot advance. This was
+> reachable from the UI: `useMediaRecorder` reports `onRecorded(null)` for a
+> take that produced no bytes (the iOS Safari zero-byte encoder result), and the
+> game screen used to mark that take recorded anyway, leaving the setter stuck
+> retrying a write that could never succeed or taking the letter. The setter
+> path now refuses a failed take up front
+> ([#538](https://github.com/myhuemungusD/SkateHubba-play/pull/538)).
+>
+> The matcher's `matchVideoUrl` **is** genuinely nullable in the rules — the
+> asymmetry is deliberate, so don't "fix" the type here.
+
 **Throws:** `"Trick name cannot be empty"`, `"Game not found"`, `"Not in setting phase"`
 
 ---
@@ -307,11 +330,20 @@ submitMatchAttempt(
 
 Runs a transaction to record the match attempt. Letter assignment and next-phase logic depend on whether the game has an accepted judge (`judgeId != null && judgeStatus == "accepted"`):
 
-| `landed` | Judge active? | Letter assigned          | Next state                                              |
-| -------- | ------------- | ------------------------ | ------------------------------------------------------- |
-| `true`   | no            | None                     | Roles swap immediately, `phase: "setting"`              |
-| `true`   | yes           | None                     | `phase: "disputable"`, `currentTurn` flips to the judge |
-| `false`  | either        | Matcher earns one letter | Same setter keeps setting, `phase: "setting"`           |
+| `landed` | Judge active? | Letter assigned          | Next state                                                                                                                                              |
+| -------- | ------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `true`   | no            | None _(deferred)_        | `phase: "pendingReview"` — the game **freezes** and the setter gets a 24 h accept/dispute window (`reviewFor` = matcher, `reviewDeadline` = now + 24 h) |
+| `true`   | yes           | None                     | `phase: "disputable"`, `currentTurn` flips to the judge                                                                                                 |
+| `false`  | either        | Matcher earns one letter | Same setter keeps setting, `phase: "setting"`                                                                                                           |
+
+> **The honor path no longer swaps roles immediately.** A landed claim parks the
+> game in `pendingReview`; letters, turn order, `turnHistory`, and the landed
+> clip are all deferred until the claim is accepted (by `acceptLanded`, or by the
+> 24 h auto-accept in `api/cron/resolve-expired-disputes.ts`). A claim that later
+> **bails** must not leave a landed clip or a premature "you landed" notification
+> behind. If the setter disputes instead, the game moves to `communityReview` and
+> the crowd's majority vote is binding. See
+> [DISPUTE_BINDING_DESIGN.md](DISPUTE_BINDING_DESIGN.md).
 
 If either player reaches 5 letters, the transaction sets `status: "complete"` and `winner` to the opponent of the 5-letter player. Returns `{ gameOver: true, winner }`.
 
@@ -331,7 +363,7 @@ Checks whether `turnDeadline` has passed and, if so, sets `status: "forfeit"` an
 
 ---
 
-### `subscribeToMyGames(uid, onUpdate)`
+### `subscribeToMyGames(uid, onUpdate, limitCount?)`
 
 ```ts
 subscribeToMyGames(
@@ -360,7 +392,7 @@ Single-document `onSnapshot` listener. Calls `onUpdate(null)` if the document do
 
 ## `src/services/storage.ts`
 
-### `uploadVideo(gameId, turnNumber, role, blob, onProgress?, maxRetries?)`
+### `uploadVideo(gameId, turnNumber, role, blob, onProgress?, maxRetries?, signal?)`
 
 ```ts
 uploadVideo(
@@ -370,12 +402,32 @@ uploadVideo(
   blob: Blob,
   onProgress?: (progress: UploadProgress) => void,
   maxRetries?: number, // defaults to 2
+  signal?: AbortSignal,
 ): Promise<string>
 ```
 
-Uploads a video blob to Firebase Storage at `games/{gameId}/turn-{turnNumber}/{role}.{webm|mp4}`. The extension is derived from the blob's MIME type — `video/mp4` for native (Capacitor) recordings and `video/webm` for web (MediaRecorder). Content-Type is set to match. Pre-validates 1 KB ≤ size ≤ 50 MB before any network call. Uses `uploadBytesResumable` for progress tracking and retries with exponential backoff (1 s, 2 s) on transient failures. Returns the Firebase Storage download URL.
+Uploads a video blob to Firebase Storage at `games/{gameId}/turn-{turnNumber}/{role}-{uploaderUid}.{webm|mp4}`. The uid suffix is mandatory — `storage.rules` pins the filename to `{role}-{request.auth.uid}.{ext}` so no account can occupy another player's upload path. The extension is derived from the blob's MIME type — `video/mp4` for native (Capacitor) recordings and `video/webm` for web (MediaRecorder). Content-Type is set to match. Pre-validates 1 KB ≤ size ≤ 50 MB before any network call. Uses `uploadBytesResumable` for progress tracking and retries with exponential backoff (1 s, 2 s) on transient failures. Returns the Firebase Storage download URL.
 
 Custom metadata stored per upload: `uploaderUid` (required by storage rules for ownership enforcement), `gameId`, `turn` (string), `role`, `uploadedAt` (ISO 8601), `retainUntil` (90-day lifecycle hint).
+
+Passing an `AbortSignal` cancels an in-flight upload: the running resumable task is torn down via `task.cancel()` and the promise rejects with `DOMException("Upload cancelled", "AbortError")`.
+
+---
+
+### `uploadUserClip(uid, clipId, blob, onProgress?, maxRetries?, signal?)`
+
+```ts
+uploadUserClip(
+  uid: string,
+  clipId: string,
+  blob: Blob,
+  onProgress?: (progress: UploadProgress) => void,
+  maxRetries?: number, // defaults to 2
+  signal?: AbortSignal,
+): Promise<string>
+```
+
+Feed uploads that have no backing game. Writes to `userClips/{uid}/{clipId}.{webm|mp4}` — here the uid _is_ the path prefix, so `storage.rules` enforces ownership structurally rather than via a filename suffix. Same size bounds, retry policy, and `retainUntil` hint as `uploadVideo`.
 
 ---
 
@@ -389,16 +441,18 @@ useAuth(): {
   user: User | null;
   profile: UserProfile | null;
   refreshProfile: () => Promise<void>;
+  reloadAuthUser: () => Promise<boolean>;
 }
 ```
 
 React hook that wraps `onAuthChange` and Firestore profile fetching.
 
-| Property           | Description                                                                |
-| ------------------ | -------------------------------------------------------------------------- |
-| `loading`          | `true` until the first `onAuthStateChanged` event fires                    |
-| `user`             | Firebase `User` object, or `null` if not signed in                         |
-| `profile`          | Firestore `UserProfile`, or `null` if not loaded or not created yet        |
-| `refreshProfile()` | Re-fetches the profile for the current user — call after `createProfile()` |
+| Property           | Description                                                                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `loading`          | `true` until the first `onAuthStateChanged` event fires                                                                                                    |
+| `user`             | Firebase `User` object, or `null` if not signed in                                                                                                         |
+| `profile`          | Firestore `UserProfile`, or `null` if not loaded or not created yet                                                                                        |
+| `refreshProfile()` | Re-fetches the profile for the current user — call after `createProfile()`                                                                                 |
+| `reloadAuthUser()` | Re-reads the Firebase Auth user so a freshly confirmed `emailVerified` is picked up without a sign-out. Resolves `true` when the reloaded user is verified |
 
 **Implementation note:** `refreshProfile` uses a `useRef` to track the current user, avoiding stale closure issues that would occur if it captured `user` from state at the time the callback was created.

@@ -78,7 +78,7 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 | Storage   | Firebase Storage (trick videos — WebM on web, MP4 on native) |
 | Native    | Capacitor (iOS + Android)                                    |
 | Hosting   | Vercel                                                       |
-| Analytics | Vercel Analytics (cookie-free, GDPR-safe)                    |
+| Analytics | Vercel Analytics + PostHog (consent-gated via in-app banner) |
 | Errors    | Sentry                                                       |
 | Testing   | Vitest, @testing-library/react, Playwright (E2E)             |
 | CI        | GitHub Actions                                               |
@@ -95,7 +95,8 @@ No custom backend for game logic — the client talks directly to Firebase with 
 - **Video tricks** — one-take recording in-browser (WebM) or native app (MP4)
 - **Real-time updates** — both players see state changes the moment they happen via Firestore snapshots
 - **24-hour turn timer** — games don't stall; expired turns auto-forfeit
-- **Optional referee** _(in review)_ — nominate a neutral third player to rule on disputes and "Call BS"
+- **Optional referee** — nominate a neutral third player to rule on disputes and "Call BS"
+- **Binding community disputes** — on honor-system games a landed claim freezes the game for a 24 h accept/dispute window; a dispute goes to a binding community vote
 
 ### Identity & Trust
 
@@ -104,6 +105,10 @@ No custom backend for game logic — the client talks directly to Firebase with 
 - **Atomic username reservation** — no two players share a handle (Firestore transaction)
 - **Block & report** — moderation tools backed by Firestore rules
 - **Server-side game logic** — Firestore rules enforce turn order, scores, and rate limits — clients can't cheat
+- **Multi-factor auth** — optional TOTP/SMS second factor (`src/services/mfa.ts`)
+- **Avatar upload with NSFW screening** — client-side moderation via nsfwjs before an avatar goes live
+- **Age gating** — DOB collection with COPPA-compliant blocking for under-13 sign-ups
+- **Data export & account deletion** — GDPR-grade self-service flows (`/data-deletion`, `api/account/delete.ts`)
 
 ### Social & Discovery
 
@@ -114,13 +119,17 @@ No custom backend for game logic — the client talks directly to Firebase with 
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
 - **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, and challenge-from-spot
+- **Achievements & badges** — earned badges (century club, streaks, OG, …) shown on profiles
+- **Hubba Locker** — collectible locker items with a profile showcase (economy Phase A)
+- **Verified Pro** — gold username treatment for verified professional skaters
+- **Admin console** — in-app moderation surface for bans, badge awards, and dispute oversight
 
 ### Platform
 
 - **Native apps** — Capacitor builds for iOS and Android
 - **PWA-ready** — installable from the browser
 - **Offline support** — Firestore local cache lets you read games without internet
-- **Cookie-free analytics** — Vercel Analytics with full funnel instrumentation (GDPR-safe)
+- **Consent-gated analytics** — Vercel Analytics + PostHog behind an in-app consent banner, with full funnel instrumentation
 
 ---
 
@@ -187,18 +196,25 @@ skatehubba-play/
 │   ├── screens/               # Full-page components (Lobby, GamePlay, MapPage, …)
 │   ├── context/               # AuthContext, GameContext, NavigationContext, NotificationContext, OnboardingContext
 │   ├── hooks/                 # Key hooks — useAuth, useOnlineStatus, usePlayerProfile, useBlockedUsers, …
-│   ├── services/              # Single entry point for all Firebase calls (split into domain modules below)
+│   ├── services/              # Single entry point for all Firebase calls, split by domain (54 modules)
 │   │   ├── auth.ts            #   sign up / sign in / Google OAuth / password reset
 │   │   ├── users.ts           #   profiles + atomic username reservation
-│   │   ├── games.ts           #   game CRUD + transactions + real-time subscriptions
-│   │   ├── clips.ts           #   landed-trick clips feed + upvotes
+│   │   ├── games.*.ts         #   game domain — games.ts is a barrel over create/match/judge/turns/mappers/subscriptions
+│   │   ├── disputes.*.ts      #   referee + community dispute system (raise, votes, feed, resolution, cascade)
+│   │   ├── clips.*.ts         #   landed-trick clips feed, upvotes, comments, user uploads
 │   │   ├── spots.ts           #   skate spots (geo-tagged map)
 │   │   ├── storage.ts         #   video upload (WebM/MP4, 1KB–50MB, retry)
-│   │   ├── notifications.ts   #   in-app + FCM push notifications
+│   │   ├── notifications.ts   #   in-app notifications; fcm.ts / pushDispatch.ts for push delivery
+│   │   ├── achievements.ts    #   badge economy (with locker.ts — Hubba Locker showcase)
+│   │   ├── admin.ts           #   admin console ops (+ admin.bans.ts)
+│   │   ├── mfa.ts             #   multi-factor auth enrollment/verification
+│   │   ├── avatars.ts         #   avatar upload (+ avatarModeration.ts NSFW screening)
 │   │   ├── blocking.ts        #   block / unblock users
 │   │   ├── reports.ts         #   user + content reports
-│   │   └── analytics.ts       #   Vercel Analytics event wrapper
-│   ├── lib/                   # Third-party bridges (Sentry, Mapbox)
+│   │   ├── userData.ts        #   GDPR data export / account-deletion cascade
+│   │   └── analytics.ts       #   consent-gated event wrapper (Vercel Analytics + PostHog)
+│   ├── constants/             # Shared constants (badges, trick categories, stats, UI, video)
+│   ├── lib/                   # Third-party bridges (Sentry, Mapbox, PostHog, consent)
 │   ├── utils/                 # Helpers, retry logic, error parsing
 │   └── types/                 # Shared TypeScript types
 ├── api/                       # Vercel serverless endpoints (cron sweeps, push drain, account deletion, social cards)
@@ -245,6 +261,13 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 | `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs              |
 | `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`  |
 | `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                 |
+
+**Server-only (Vercel project env, never `VITE_`-prefixed — see `.env.example`)**
+
+| Variable                        | Purpose                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------------------- |
+| `CRON_SECRET`                   | Bearer token the scheduled GitHub Actions sweeps present to the `api/cron/*` endpoints |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Admin SDK credentials for the serverless endpoints (cron sweeps, account deletion)     |
 
 ---
 
@@ -300,7 +323,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 
 ## Event Instrumentation & Core Funnel
 
-All analytics flow through a single wrapper (`src/services/analytics.ts`) backed by [Vercel Analytics](https://vercel.com/docs/analytics) — cookie-free, GDPR-safe, zero-config. Swapping providers is a one-file change.
+All analytics flow through a single wrapper (`src/services/analytics.ts`) that fans each event out to [Vercel Analytics](https://vercel.com/docs/analytics) and [PostHog](https://posthog.com) (`src/lib/posthog.ts`). Both are gated on user consent (`isAnalyticsAllowed()` in `src/lib/consent.ts`, collected by the in-app consent banner); PostHog only activates when `VITE_POSTHOG_KEY` is set. Swapping providers is a one-file change.
 
 ### Instrumented Events
 
@@ -381,15 +404,15 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 - ⏳ **Trick library** — community trick index with video proof, a defensible content layer
 - ⏳ **Tournaments** — bracket-style competitions for appointment engagement
 
-### Unreleased — Referee System 🧑‍⚖️ in review
+### Referee System 🧑‍⚖️ — shipped in v1.1.0
 
-Optional third player who arbitrates disputes. See `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
+Optional third player who arbitrates disputes. Shipped 2026-04-19 — see the `[1.1.0]` entries in [CHANGELOG.md](CHANGELOG.md).
 
 - Nominate a referee at challenge time; honor system runs by default if declined or absent
 - **Dispute path** — referee rules on a matcher's "landed" claim (24 h, then auto-accept)
 - **Call BS path** — matcher can flag the setter's video before attempting (24 h, then set stands)
 - New `setReview` phase + `judgeId` / `judgeStatus` / `judgeReviewFor` schema fields (internal names preserved to avoid a migration for in-flight games)
-- Honor-system games skip the `disputable` phase entirely — landed swaps roles instantly
+- Honor-system games skip the `disputable` phase entirely; they use the binding community-dispute path instead (`pendingReview` → `communityReview`), documented in [docs/DISPUTE_BINDING_DESIGN.md](docs/DISPUTE_BINDING_DESIGN.md)
 
 **The thesis:** Each game produces shareable video content. Each shared clip is a free acquisition channel. Each new player brings their crew. The game mechanic (asynchronous, video-first) removes the coordination cost that kills most multiplayer apps — you don't need to be online at the same time or at the same spot.
 

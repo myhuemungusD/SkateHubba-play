@@ -10,18 +10,7 @@
  * The signup helper primes emulator connections via no-cors fetch — harmless
  * for warm connections, prevents Firebase SDK first-request hangs in CI.
  */
-import { expect, type Locator, type Page } from "@playwright/test";
-import { expectOnLobby } from "./lobby-nav";
-
-/**
- * Landing's secondary email row (`role="group"`, "Email sign-in options").
- * The single "Use email" button was split into "Sign in" / "Create account",
- * and the top-nav "Account" button is a third entry to the same screen —
- * scoping to the group keeps each query unambiguous.
- */
-export function emailAuthOptions(page: Page): Locator {
-  return page.getByRole("group", { name: "Email sign-in options" });
-}
+import { expect, type Page } from "@playwright/test";
 
 /**
  * Fill the inline DOB fields on the AuthScreen signup card with a valid adult
@@ -49,7 +38,10 @@ export async function signUpViaUI(page: Page, email: string, password: string): 
     await fetch("http://localhost:9099/", { mode: "no-cors" }).catch(() => {});
     await fetch("http://localhost:8080/", { mode: "no-cors" }).catch(() => {});
   });
-  await emailAuthOptions(page).getByRole("button", { name: "Create account" }).click();
+  // The landing hero's email row is "Sign in · Create account" — there is no
+  // longer a "Use email" button, and the stale locator failed every spec that
+  // signs up (i.e. nearly the whole suite) the moment it was reached.
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   // Fill both password fields (Password + Confirm).
@@ -71,7 +63,7 @@ export async function completeProfileSetup(page: Page, username: string): Promis
   // Wait for availability check to resolve (debounced 400 ms).
   await expect(page.getByText(`@${username} is available ✓`)).toBeVisible({ timeout: 5_000 });
   await page.getByRole("button", { name: "Lock It In" }).click();
-  await expectOnLobby(page);
+  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
 }
 
 /**
@@ -93,11 +85,14 @@ export async function signUpAndSetupProfile(
  */
 export async function signInViaUI(page: Page, email: string, password: string): Promise<void> {
   await page.goto("/");
-  await emailAuthOptions(page).getByRole("button", { name: "Sign in" }).click();
+  // `exact` is load-bearing: the landing page carries BOTH a nav "Account"
+  // button and a hero "Create account" button, and a substring match resolves
+  // to two elements — a Playwright strict-mode violation, not a miss.
+  await page.getByRole("button", { name: "Account", exact: true }).click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(password);
   await page.getByRole("button", { name: "Sign In" }).click();
   await page.waitForURL("**/lobby**", { timeout: 15_000 });
-  await expectOnLobby(page);
+  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
 }

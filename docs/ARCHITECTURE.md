@@ -17,8 +17,8 @@ This means:
 ### React 19 + TypeScript + Vite 8
 
 - SPA only — no SSR. Routing is handled by `react-router` v8. All `<Route>` declarations live in `App.tsx`; navigation goes through `NavigationContext.setScreen` (or `useNavigate` for parameterised routes like `/player/:uid` and `/spots/:id`).
-- Non-critical screens — gameplay, profile, map, settings, legal pages, NotFound — are imported via `lazy()` and rendered inside a single top-level `<Suspense>`. Landing, AuthScreen, ProfileSetup, and Lobby are eager so first paint never has to wait on a chunk fetch.
-- Code splitting is driven by those `lazy()` imports plus Vite's automatic vendor chunking; no manual `manualChunks` config is required.
+- Non-critical screens — gameplay, game-over, profile, map, spot detail, settings, my-stats, admin, legal pages, NotFound — are imported via `lazy()` and rendered inside a single top-level `<Suspense>`. Landing, AuthScreen, ProfileSetup, and Lobby are eager so first paint never has to wait on a chunk fetch.
+- Code splitting is driven by those `lazy()` imports plus an explicit `build.rollupOptions.output.manualChunks` function in `vite.config.ts` that pins `firebase` (all `firebase/` + `@firebase/` modules) and `react` (`react` + `react-dom`) into their own vendor chunks. Everything else falls back to Rollup's automatic chunking.
 - `import.meta.env.VERCEL` is injected via `vite.config.ts` so the app can detect a missing Firebase config in a Vercel context and show a helpful error message.
 
 ### Firebase Auth
@@ -31,12 +31,14 @@ This means:
 
 - Named database `"skatehubba"` (not the default Firestore database). This is set as the third argument to `initializeFirestore()`. **This affects the Firebase CLI**: deploy commands must target this named database explicitly.
 - Offline persistence is enabled via `persistentLocalCache` + `persistentMultipleTabManager`, which means reads work without a network connection and writes queue and flush on reconnect.
-- No compound queries — all game queries use single-field equality filters (`player1Uid == uid`, `player2Uid == uid`) which are indexed automatically by Firestore.
+- The real-time lobby listeners use single-field equality filters (`player1Uid == uid`, `player2Uid == uid`, `judgeId == uid`), which Firestore indexes automatically. Queries that add ordering or a second filter — completed-game history, the clips feed, the dispute feed, unread notifications, and the cron sweeps — do need composite indexes; all of them are declared in `firestore.indexes.json` and listed in [DATABASE.md](DATABASE.md#firestore-indexes).
 
 ### Firebase Storage
 
 - Used exclusively for trick videos. Web (MediaRecorder) emits WebM; native (Capacitor) emits MP4.
-- Storage rules enforce authentication, file size (1 KB – 50 MB), content type (`video/webm` or `video/mp4`), and an exact filename allowlist (`set.webm`, `set.mp4`, `match.webm`, `match.mp4`). The uploader's UID is bound into `customMetadata.uploaderUid` at upload time so update/delete can verify ownership. Storage rules cannot cross-reference Firestore, so game membership is not verified at the storage layer — see [SECURITY.md](../SECURITY.md) for implications.
+- Storage rules enforce authentication, file size (1 KB – 50 MB), content type (`video/webm` or `video/mp4`), and a uid-pinned filename allowlist: the object name must be exactly `set-{request.auth.uid}.{ext}` or `match-{request.auth.uid}.{ext}`, with the extension and the content type required to agree. The uid suffix stops one account from squatting another player's upload path. `update` is denied outright — a committed video is append-only, because `clips/*` docs reference its URL as the moderation audit trail — so a retry must `delete` then `create`. `read` and `delete` stay filename-agnostic so objects written under the pre-uid scheme (`set.webm` / `match.mp4`) remain playable and deletable by their uploader.
+- Two other prefixes are governed by the same rules file: `users/{uid}/avatar.{webp|jpeg|png}` (owner-only create/delete, ≤2 MB, per-extension content-type pinning, `update: false`) and `userClips/{uid}/{clipId}.{webm|mp4}` (feed uploads with no backing game; the uid is the path prefix, so ownership is structural).
+- Storage rules cannot cross-reference Firestore — cross-service `firestore.get()` only reaches the `(default)` database and this app uses the named database `"skatehubba"` — so game membership and the `users/{uid}.banned` flag are not verified at the storage layer. See [SECURITY.md](../SECURITY.md) for implications.
 
 ### Vercel
 
@@ -66,6 +68,8 @@ This means:
 /map            MapPage              (skate spots — Mapbox)
 /spots/:id      SpotDetailPage
 /settings       Settings
+/my-stats       MyStatsScreen        (owner-only analytics)
+/admin          AdminScreen          (admin-only moderation console)
 /privacy        PrivacyPolicy
 /terms          TermsOfService
 /data-deletion  DataDeletion
@@ -98,31 +102,40 @@ Service helper functions (`requireDb()`, `requireAuth()`, `requireStorage()`) th
 
 All Firebase SDK calls live in `src/services/`. Components and hooks import from services — never from the Firebase SDK directly. This keeps Firebase logic testable (services are easily mocked) and keeps `App.tsx` readable.
 
-| File                            | Responsibility                                                               |
-| ------------------------------- | ---------------------------------------------------------------------------- |
-| `src/services/auth.ts`          | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
-| `src/services/users.ts`         | User profile CRUD, atomic username reservation, verified-pro lookup          |
-| `src/services/userData.ts`      | Account-deletion cascade + GDPR data export                                  |
-| `src/services/games.ts`         | Game creation, turn actions (transactions), real-time subscriptions          |
-| `src/services/clips.ts`         | Landed-trick clips feed + upvotes                                            |
-| `src/services/spots.ts`         | Geo-tagged skate spot CRUD + comments                                        |
-| `src/services/storage.ts`       | Video upload (WebM web / MP4 native) with retry + progress                   |
-| `src/services/notifications.ts` | In-app notification writes + subscriptions                                   |
-| `src/services/fcm.ts`           | FCM token registration + service-worker wiring                               |
-| `src/services/nudge.ts`         | Push-notification "your turn" nudges                                         |
-| `src/services/blocking.ts`      | Block / unblock users                                                        |
-| `src/services/reports.ts`       | UGC content + player reports                                                 |
-| `src/services/analytics.ts`     | Vercel Analytics + PostHog event wrapper                                     |
-| `src/services/logger.ts`        | Structured log + metrics emitter                                             |
-| `src/hooks/useAuth.ts`          | React hook that wraps `onAuthStateChanged` + profile fetch                   |
+| File                            | Responsibility                                                                                                                                                                          |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/services/auth.ts`          | Sign up, sign in, sign out, Google OAuth, password reset, email verification                                                                                                            |
+| `src/services/users.ts`         | User profile CRUD, atomic username reservation, verified-pro lookup                                                                                                                     |
+| `src/services/userData.ts`      | Account-deletion cascade + GDPR data export                                                                                                                                             |
+| `src/services/games.*`          | Game creation, turn actions (transactions), judging, real-time subscriptions. `games.ts` itself is a barrel; logic lives in `games.{create,match,judge,turns,mappers,subscriptions}.ts` |
+| `src/services/clips.ts`         | Landed-trick clips feed + upvotes                                                                                                                                                       |
+| `src/services/spots.ts`         | Geo-tagged skate spot CRUD + comments                                                                                                                                                   |
+| `src/services/storage.ts`       | Video upload (WebM web / MP4 native) with retry + progress                                                                                                                              |
+| `src/services/notifications.ts` | In-app notification writes + subscriptions                                                                                                                                              |
+| `src/services/fcm.ts`           | FCM token registration + service-worker wiring                                                                                                                                          |
+| `src/services/nudge.ts`         | Push-notification "your turn" nudges                                                                                                                                                    |
+| `src/services/blocking.ts`      | Block / unblock users                                                                                                                                                                   |
+| `src/services/reports.ts`       | UGC content + player reports                                                                                                                                                            |
+| `src/services/analytics.ts`     | Vercel Analytics + PostHog event wrapper                                                                                                                                                |
+| `src/services/logger.ts`        | Structured log + metrics emitter                                                                                                                                                        |
+| `src/services/disputes.*.ts`    | Community dispute system — raise, votes, feed, resolution, cascade                                                                                                                      |
+| `src/services/achievements.ts`  | Badge awards (with `locker.ts` for Hubba Locker items)                                                                                                                                  |
+| `src/services/admin.ts`         | Admin console operations (with `admin.bans.ts`)                                                                                                                                         |
+| `src/services/mfa.ts`           | Multi-factor auth enrollment + verification                                                                                                                                             |
+| `src/services/avatars.ts`       | Avatar upload (with `avatarModeration.ts` for nsfwjs screening)                                                                                                                         |
+| `src/services/pushDispatch.ts`  | Queues `push_dispatch` docs the cron drain delivers via FCM                                                                                                                             |
+| `src/services/onboarding.ts`    | Tutorial progress persistence                                                                                                                                                           |
+| `src/hooks/useAuth.ts`          | React hook that wraps `onAuthStateChanged` + profile fetch                                                                                                                              |
+
+The table above is a map of the main domains, not an exhaustive list — `src/services/` holds 54 modules, several of them slices of a barrel (`games.*`, `clips.*`, `disputes.*`). [API.md](API.md) documents the exported signatures for the most-used ones.
 
 ### Why all write operations use transactions
 
 Game state transitions (`setTrick`, `submitMatchAttempt`, `forfeitExpiredTurn`) use `runTransaction`. This ensures that the read-then-write sequence is atomic — if another client modifies the document between the read and the write, Firestore will retry the transaction. Without transactions, two simultaneous actions (e.g., one player submits a trick while the opponent's client triggers a forfeit) could produce inconsistent state.
 
-### `subscribeToMyGames` — dual query merge
+### `subscribeToMyGames` — triple query merge
 
-Firestore does not support OR queries across different fields in a single query. To find all games where a user is either `player1Uid` or `player2Uid`, two parallel `onSnapshot` queries run. Their results are merged in memory, deduplicated by document ID, and sorted (active games first, then by `turnNumber` descending). Both listeners share a single unsubscribe function returned to the caller.
+Firestore does not support OR queries across different fields in a single query. To find all games a user is involved in — as `player1Uid`, `player2Uid`, or `judgeId` — **three** parallel `onSnapshot` queries run (`games.subscriptions.ts:176-178`). Each is capped at `limitCount` (default **20**, `games.subscriptions.ts:82`; grown by 20 per "load more" from `GameContext.tsx:41`), so the listener set holds at most 3 × limit documents. Results are merged in memory, deduplicated by document ID, and sorted (active games first, then by `turnNumber` descending). All three share a single unsubscribe function, and each slice has isolated error handling so one failing query does not blank the lobby.
 
 ---
 
@@ -135,9 +148,9 @@ Firestore (server)
     │       │
     │       └─ App.tsx game state → gameplay screen re-renders
     │
-    └─ onSnapshot (games where player=uid)  ← subscribeToMyGames (×2 queries)
-            │
-            └─ merged + sorted → lobby screen re-renders
+    └─ onSnapshot (player1Uid / player2Uid / judgeId == uid)
+            │                                   ← subscribeToMyGames (×3 queries)
+            └─ merged + deduped + sorted → lobby screen re-renders
 ```
 
 Both listeners call their callbacks synchronously when cached data is available (Firestore offline persistence), and again when the server confirms or updates the data.

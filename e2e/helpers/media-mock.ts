@@ -4,12 +4,7 @@
  * each test that exercises the VideoRecorder component.
  *
  * Fake behaviour:
- *  - getUserMedia resolves immediately with a REAL MediaStream captured from
- *    an off-screen canvas. A plain object with getTracks() is not enough:
- *    useMediaRecorder assigns the stream to `video.srcObject`, and the DOM
- *    rejects anything that isn't a MediaStream — the component then renders
- *    "Camera unavailable: Failed to set the 'srcObject' property...". The
- *    canvas keeps painting so the track actually produces frames.
+ *  - getUserMedia resolves immediately with a minimal fake MediaStream.
  *  - MediaRecorder produces a fake video Blob when stopped that is large
  *    enough (> 1024 bytes) to clear the minimum-size gate in
  *    `uploadVideo` (src/services/storage.ts) AND `storage.rules`, so the
@@ -25,30 +20,31 @@ export const MEDIA_MOCK_SCRIPT = `
 (function () {
   'use strict';
 
-  // ── Fake camera stream ────────────────────────────────────────────────────
-  // canvas.captureStream() yields a genuine MediaStream (real
-  // MediaStreamTrack, real event-target surface, real getSettings()), which is
-  // what the app needs: it assigns the stream to video.srcObject and calls
-  // play(). The canvas is repainted on a timer so the track keeps emitting
-  // frames instead of going idle after the first one.
-  let fakeStream = null;
-  function getFakeStream() {
-    if (fakeStream) return fakeStream;
-    const canvas = document.createElement('canvas');
-    canvas.width = 320;
-    canvas.height = 240;
-    const ctx = canvas.getContext('2d');
-    let tick = 0;
-    const paint = () => {
-      tick += 1;
-      ctx.fillStyle = tick % 2 === 0 ? '#FF6B00' : '#1a1a1a';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    };
-    paint();
-    setInterval(paint, 100);
-    fakeStream = canvas.captureStream(30);
-    return fakeStream;
+  // ── Fake MediaStream ──────────────────────────────────────────────────────
+  // A REAL MediaStream, produced by capturing a blank canvas. It used to be a
+  // plain object duck-typing the MediaStream surface, which Chromium now
+  // rejects outright:
+  //   "Failed to set the 'srcObject' property on 'HTMLMediaElement': The
+  //    provided value is not of type '(MediaSourceHandle or MediaStream)'"
+  // The recorder caught that as camera_access_failed and never left the
+  // "Open Camera" state, so every recording spec timed out waiting for
+  // controls that could not appear. captureStream() gives a genuine
+  // MediaStream whose tracks carry the real EventTarget and getSettings()
+  // surface the app reads (it listens for 'ended' to detect a revoked camera,
+  // and reads frameRate for the fisheye canvas capture).
+  const captureCanvas = document.createElement('canvas');
+  captureCanvas.width = 320;
+  captureCanvas.height = 240;
+  const captureCtx = captureCanvas.getContext('2d');
+  if (captureCtx) {
+    captureCtx.fillStyle = '#111';
+    captureCtx.fillRect(0, 0, captureCanvas.width, captureCanvas.height);
   }
+  // Held on the window so the canvas backing the stream is not garbage
+  // collected mid-test, which would end the track and look like a revoked
+  // camera.
+  window.__e2eCaptureCanvas = captureCanvas;
+  const fakeStream = captureCanvas.captureStream(30);
 
   // Override getUserMedia regardless of whether mediaDevices already exists.
   if (!navigator.mediaDevices) {
@@ -59,7 +55,7 @@ export const MEDIA_MOCK_SCRIPT = `
     });
   }
   Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
-    value: () => Promise.resolve(getFakeStream()),
+    value: () => Promise.resolve(fakeStream),
     writable: true,
     configurable: true,
   });

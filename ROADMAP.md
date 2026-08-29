@@ -26,7 +26,8 @@ Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
 | Phase 2 — Viral Mechanics          | Shipped                                                                   |
 | Phase 3 — Social Graph & Discovery | Shipped except spectator mode (deferred)                                  |
 | Phase 4 — Network Effects          | Partial — spots/map shipped; crew, trick library, tournaments not started |
-| Referee System                     | Code complete, awaiting release tag                                       |
+| Referee System                     | Shipped (v1.1.0)                                                          |
+| Binding community disputes         | Shipped post-v1.1.0 (`pendingReview` → `communityReview`)                 |
 
 **The core loop is built.** Async games, video proof, push delivery, clips feed with vote-driven ranking, leaderboard, profiles, spot map, moderation — all in production. The open question is no longer _can we build it_. It is _do skaters use it_.
 
@@ -38,7 +39,7 @@ Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
 
 Feature work in this stretch is only justified if it removes friction from that number.
 
-- [ ] **Cut the referee release tag** — the `[Unreleased]` referee system is code-complete and sitting unshipped. Ship it or explicitly park it.
+- [ ] **Cut a release tag** — the referee system already shipped in the v1.1.0 CHANGELOG block, but the repo has **no git tags at all** and `package.json` still reads `1.1.0` while ~4 months of work sits unreleased. Tag what is out, then keep `[Unreleased]` current.
 - [ ] **Instrument the traction number** — `game_completed` already fires (`src/services/analytics.ts`). Stand up the reporting so completed-game count and completion rate are visible without hand-counting.
 - [ ] **Close the abandonment gaps** — read drop-off across `game_created → trick_set → match_submitted → game_completed` and fix whichever stage bleeds hardest.
 - [ ] **Return rate** — do players who finish a game start a second one within 7 days?
@@ -63,9 +64,9 @@ Unlocks after the traction numbers hold, in whatever order the data argues for:
 - [ ] Tournaments — bracket competitions for appointment engagement
 - [ ] Spectator mode — deferred 2026-04-15, eligible for revisit now that ranked clips ship engagement data
 
-## Then — economy phase A
+## Shipped — economy phase A
 
-Achievement badges, Verified Pro, Hubba Locker v1, collection showcase. Gated on the traction criteria above. See [docs/ECONOMY.md](docs/ECONOMY.md) for the full phasing and the rules that constrain it.
+Achievement badges (`src/services/achievements.ts`, `src/constants/badges.ts`), Verified Pro (`src/components/ProUsername.tsx`), Hubba Locker v1 + collection showcase (`src/services/locker.ts`, `src/components/LockerShowcase.tsx`) are all live on `main`. See [docs/ECONOMY.md](docs/ECONOMY.md) for the phasing and the rules that constrain later phases (B/C remain gated on traction).
 
 ---
 
@@ -73,9 +74,9 @@ Achievement badges, Verified Pro, Hubba Locker v1, collection showcase. Gated on
 
 Not features, not optional. Tracked in [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md) §7:
 
-- [ ] Automate Firestore rules deploy in CI
-- [ ] Daily Firestore managed exports
-- [ ] Storage lifecycle rule for old videos
+- [x] Automate Firestore rules deploy in CI — `.github/workflows/firebase-rules-deploy.yml` (deploy on merge to `main` + daily freshness check)
+- [ ] Daily Firestore managed exports — tooling built (`.github/workflows/firebase-infra-setup.yml`, manual dispatch); confirm it has been run against production
+- [ ] Storage lifecycle rule for old videos — same workflow, same caveat
 - [ ] GitHub branch protection rules applied
 - [ ] Accessibility (axe-core) in CI
 - [ ] TTL cleanup for username reservations

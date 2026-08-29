@@ -9,6 +9,8 @@ const mockSubmitMatchAttempt = vi.fn();
 const mockResolveDispute = vi.fn();
 const mockForfeitExpiredTurn = vi.fn();
 const mockUploadVideo = vi.fn();
+/** The download URL every successful take resolves to in this suite. */
+const VIDEO_URL = "https://firebasestorage.googleapis.com/v0/b/test/o/video.webm";
 const mockCallBS = vi.fn();
 const mockJudgeRuleSetTrick = vi.fn();
 const mockAcceptJudgeInvite = vi.fn();
@@ -87,6 +89,11 @@ beforeEach(() => {
   // Default: a landed claim is disputable unless a test says otherwise.
   mockCanRaiseDispute.mockReturnValue(true);
   mockSubscribeToGameDispute.mockReturnValue(vi.fn());
+  // Every take that produces bytes uploads before setTrick/submitMatchAttempt
+  // runs, so the upload has to resolve to a URL by default. Without it the
+  // upload settles as `undefined` and the screen sits on the progress bar
+  // instead of the submit copy the assertions look for.
+  mockUploadVideo.mockResolvedValue(VIDEO_URL);
 });
 
 afterEach(() => {
@@ -124,6 +131,14 @@ class DataProducingMR {
  * "Did you land it?" decision.
  */
 async function setterRecordsATake() {
+  // A REAL take. The global default MockMediaRecorder emits no data, so the
+  // recorder reports the take as failed (onRecorded(null)) — the setter then
+  // has nothing to upload and setTrick would go out with a null videoUrl,
+  // which firestore.rules rejects outright (the setting→matching branch
+  // requires a bucket-pinned currentTrickVideoUrl). These cases are about
+  // what happens AFTER a successful take, so install the recorder that
+  // actually produces bytes.
+  (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
   await userEvent.type(screen.getByLabelText("TRICK NAME"), "Kickflip");
   await userEvent.click(await screen.findByText(/Open Camera/));
   await waitFor(() => expect(screen.getByRole("button", { name: /Record/ })).toBeInTheDocument());
@@ -410,6 +425,8 @@ describe("GamePlayScreen", () => {
   it("setTrick receives empty string when trickName is cleared before recording", async () => {
     mockSetTrick.mockRejectedValueOnce(new Error("Trick name cannot be empty"));
 
+    (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
+
     render(<GamePlayScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
 
     // Type a trick name to show the recorder
@@ -420,7 +437,10 @@ describe("GamePlayScreen", () => {
     // Clear the trick name — recorder stays visible via ref
     await userEvent.clear(screen.getByLabelText("TRICK NAME"));
 
-    // Record and stop (default MockMediaRecorder → null blob → no upload)
+    // Record and stop. The take has to produce real bytes: a setter whose
+    // recording yields nothing never reaches the decision panel at all (the
+    // null-take guard in useGamePlayController), and this case is about the
+    // trick NAME, not the video.
     await userEvent.click(screen.getByRole("button", { name: /Record/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Stop Recording/ })).toBeInTheDocument());
     await userEvent.click(screen.getByRole("button", { name: /Stop Recording/ }));
@@ -430,7 +450,7 @@ describe("GamePlayScreen", () => {
     await userEvent.click(screen.getByText(/Landed/));
 
     await waitFor(() => {
-      expect(mockSetTrick).toHaveBeenCalledWith("game1", "", null);
+      expect(mockSetTrick).toHaveBeenCalledWith("game1", "", VIDEO_URL);
     });
 
     // Service-level validation surfaces the error

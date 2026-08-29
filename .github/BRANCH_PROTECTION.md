@@ -7,10 +7,10 @@ This document defines the branch protection rules for the `main` branch. These r
 In early 2026, unsupervised AI coding agents (Claude Code, GitHub Copilot) pushed changes directly to `main` that:
 
 1. Rewrote working game logic without approval
-2. Added Cloud Functions that were never requested
+2. Added Cloud Functions that were never requested (the guard is now an allowlist, not a blanket ban — see below)
 3. Modified CI workflows without review
 
-The CI pipeline has since been pruned to `build-and-test` only. The rules below prevent this class of incident from recurring.
+The rules below prevent this class of incident from recurring. (`main.yml` today defines four jobs — `build-and-test`, `e2e`, `lighthouse`, and `audit-nightly` — see the table below.)
 
 ---
 
@@ -32,11 +32,25 @@ Configure these in **GitHub → Settings → Branches → Add rule** (pattern: `
   - `build-and-test` (from `.github/workflows/main.yml`)
   - `enforce-pr-policy` (from `.github/workflows/pr-gate.yml`)
   - `verify-no-cloud-functions` (from `.github/workflows/pr-gate.yml`)
-  - `validate-firebase-rules` (from `.github/workflows/pr-gate.yml`)
+  - `Validate Firebase rules changes` (from `.github/workflows/pr-gate.yml`)
 
-> **Automation:** `scripts/apply-branch-protection.sh` applies all of the
-> rules below via `gh api`. Run it whenever this checklist changes so the
-> remote repo stays in sync with the documented policy.
+> ⚠️ **Use the display name, not the job id.** That job sets
+> `name: Validate Firebase rules changes` (`pr-gate.yml:153`), so GitHub
+> publishes the check run under that string. A required check registered as
+> `validate-firebase-rules` never reports and leaves every PR stuck on
+> "Expected — Waiting for status to be reported".
+> `scripts/apply-branch-protection.sh` currently carries the job-id form and
+> needs the same correction.
+
+> **Automation:** `scripts/apply-branch-protection.sh` applies every rule
+> below **except §5 (push restrictions)** via `gh api`. Run it whenever this
+> checklist changes so the remote repo stays in sync with the documented
+> policy.
+>
+> ⚠️ The script sends `"restrictions": null`, which _clears_ push
+> restrictions. If §5 was set through the UI, running the script silently
+> removes it — re-apply §5 in the UI afterwards, or fix the payload to
+> `{"users": ["myhuemungusD"], "teams": [], "apps": []}`.
 
 ### 3. Require conversation resolution before merging
 
@@ -65,17 +79,23 @@ Configure these in **GitHub → Settings → Branches → Add rule** (pattern: `
 
 In addition to GitHub's branch protection settings, the following CI checks run on every PR to `main` (plus the out-of-band `audit-nightly` job at the bottom of the table, which runs on a schedule rather than per PR):
 
-| Check                       | Workflow                    | Purpose                                                                                                |
-| --------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `enforce-pr-policy`         | `pr-gate.yml`               | Confirms the change arrived via PR                                                                     |
-| `verify-no-cloud-functions` | `pr-gate.yml`               | Rejects new Cloud Functions code in `functions/src/`                                                   |
-| `verify-workflow-changes`   | `pr-gate.yml`               | Warns when `.github/workflows/` files are modified                                                     |
-| `validate-firebase-rules`   | `pr-gate.yml`               | Runs emulator rules tests when Firestore/Storage rules change                                          |
-| `build-and-test`            | `main.yml`                  | Lint, type check, tests, build (blocking `npm audit` when this PR touches deps; report-only otherwise) |
-| `lighthouse`                | `main.yml`                  | Performance regression check                                                                           |
-| Rules deploy                | `firebase-rules-deploy.yml` | Pushes `firestore.rules` / `storage.rules` / indexes to production on merge to `main`                  |
-| Infra setup                 | `firebase-infra-setup.yml`  | Manual workflow for daily Firestore backups + 90-day Storage lifecycle (`workflow_dispatch`)           |
-| `audit-nightly`             | `main.yml`                  | Nightly `npm audit` against main's lockfile — catches drift no PR can gate (schedule + dispatch)       |
+| Check                             | Workflow                    | Purpose                                                                                                |
+| --------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `enforce-pr-policy`               | `pr-gate.yml`               | Confirms the change arrived via PR                                                                     |
+| `verify-no-cloud-functions`       | `pr-gate.yml`               | Enforces the `functions/src/` **allowlist** — the 4 approved files pass, anything else is rejected     |
+| `verify-workflow-changes`         | `pr-gate.yml`               | Warns when `.github/workflows/` files are modified                                                     |
+| `Validate Firebase rules changes` | `pr-gate.yml`               | Runs emulator rules tests when Firestore/Storage rules change (job id `validate-firebase-rules`)       |
+| `guard-as-any-casts`              | `pr-gate.yml`               | Rejects `as any` in `src/` and `functions/src/` production code                                        |
+| `guard-todo-fixme-hack`           | `pr-gate.yml`               | Rejects `TODO` / `FIXME` / `HACK` in production code                                                   |
+| `check-test-duplication`          | `pr-gate.yml`               | Flags duplicated test blocks                                                                           |
+| `check-file-length`               | `pr-gate.yml`               | Reports files over the LOC budgets (`continue-on-error: true` — non-blocking)                          |
+| `build-functions`                 | `pr-gate.yml`               | Builds and tests the approved Cloud Functions codebase when it changes                                 |
+| `e2e`                             | `main.yml`                  | Playwright end-to-end suite against the Firebase emulators                                             |
+| `build-and-test`                  | `main.yml`                  | Lint, type check, tests, build (blocking `npm audit` when this PR touches deps; report-only otherwise) |
+| `lighthouse`                      | `main.yml`                  | Performance regression check                                                                           |
+| Rules deploy                      | `firebase-rules-deploy.yml` | Pushes `firestore.rules` / `storage.rules` / indexes to production on merge to `main`                  |
+| Infra setup                       | `firebase-infra-setup.yml`  | Manual workflow for daily Firestore backups + 90-day Storage lifecycle (`workflow_dispatch`)           |
+| `audit-nightly`                   | `main.yml`                  | Nightly `npm audit` against main's lockfile — catches drift no PR can gate (schedule + dispatch)       |
 
 ---
 
@@ -90,7 +110,11 @@ The `.github/CODEOWNERS` file assigns `@myhuemungusD` as the default owner for a
 1. **Always work on a feature branch** — never commit directly to `main`
 2. **Open a pull request** — all changes must go through PR review
 3. **Do not modify CI workflows** without explicit maintainer approval
-4. **Do not add Cloud Functions** — the app is a serverless Firebase SPA by design
+4. **Do not add Cloud Functions outside the allowlist** — the app is a serverless
+   Firebase SPA by design. `pr-gate.yml` permits exactly four maintainer-approved
+   files under `functions/src/` (`index.ts`, `index.test.ts`, `applyGameStats.ts`,
+   `applyGameStats.test.ts` — the stats close-out, approved 2026-07). Editing those
+   is fine; adding any other file there hard-fails the gate
 5. **Do not rewrite existing game logic** without a linked issue and approval
 
 ---
@@ -114,9 +138,9 @@ Or click through the UI:
 - [ ] Enable "Require approval of the most recent reviewable push"
 - [ ] Enable "Require status checks to pass before merging"
 - [ ] Enable "Require branches to be up to date before merging"
-- [ ] Add required status checks: `build-and-test`, `enforce-pr-policy`, `verify-no-cloud-functions`, `validate-firebase-rules`
+- [ ] Add required status checks: `build-and-test`, `enforce-pr-policy`, `verify-no-cloud-functions`, `Validate Firebase rules changes` (display name — see the warning above)
 - [ ] Enable "Require conversation resolution before merging"
 - [ ] Enable "Do not allow bypassing the above settings"
-- [ ] Enable "Restrict who can push to matching branches" (add `@myhuemungusD`)
+- [ ] Enable "Restrict who can push to matching branches" (add `@myhuemungusD`) — **UI only**, `apply-branch-protection.sh` does not set this
 - [ ] Disable "Allow force pushes"
 - [ ] Disable "Allow deletions"

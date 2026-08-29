@@ -33,22 +33,28 @@ Open [http://localhost:5173](http://localhost:5173).
 
 ## Available Scripts
 
-| Command                 | Description                                                                 |
-| ----------------------- | --------------------------------------------------------------------------- |
-| `npm run dev`           | Start Vite dev server at `localhost:5173` with HMR                          |
-| `npm run build`         | TypeScript check + production build → `dist/`                               |
-| `npm run preview`       | Serve the production build locally                                          |
-| `npm run typecheck`     | Run `tsc -b` only                                                           |
-| `npm test`              | Run the full test suite once (CI mode)                                      |
-| `npm run test:watch`    | Run tests in watch mode while editing                                       |
-| `npm run test:coverage` | Run tests with coverage report (CI gate enforces thresholds)                |
-| `npm run test:rules`    | Run Firestore rules tests against the rules emulator                        |
-| `npm run test:e2e`      | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators) |
-| `npm run lint`          | Lint `src/` and `api/` with ESLint                                          |
-| `npm run lint:fix`      | Lint and auto-fix where possible                                            |
-| `npm run format`        | Format `src/**/*.{ts,tsx}` with Prettier                                    |
-| `npm run verify`        | Full CI gate: `tsc -b && lint && test:coverage && build && check:test-dup`  |
-| `npm run emulators`     | Start the Firebase emulator suite locally                                   |
+| Command                                     | Description                                                                 |
+| ------------------------------------------- | --------------------------------------------------------------------------- |
+| `npm run dev`                               | Start Vite dev server at `localhost:5173` with HMR                          |
+| `npm run build`                             | TypeScript check + production build → `dist/`                               |
+| `npm run preview`                           | Serve the production build locally                                          |
+| `npm run typecheck`                         | Run `tsc -b` only                                                           |
+| `npm test`                                  | Run the full test suite once (CI mode)                                      |
+| `npm run test:watch`                        | Run tests in watch mode while editing                                       |
+| `npm run test:coverage`                     | Run tests with coverage report (CI gate enforces thresholds)                |
+| `npm run test:rules`                        | Run Firestore rules tests against the rules emulator                        |
+| `npm run test:e2e`                          | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators) |
+| `npm run test:e2e:ui`                       | Same as above in the Playwright UI runner                                   |
+| `npm run lint`                              | Lint `src/` and `api/` with ESLint                                          |
+| `npm run lint:fix`                          | Lint and auto-fix where possible                                            |
+| `npm run format`                            | Format `src/**/*.{ts,tsx}` with Prettier                                    |
+| `npm run check:test-dup`                    | Flag duplicated test cases (CI gate, part of `verify`)                      |
+| `npm run check:file-length`                 | Report files over the LOC budgets (non-blocking)                            |
+| `npm run verify`                            | Full CI gate: `tsc -b && lint && test:coverage && build && check:test-dup`  |
+| `npm run emulators`                         | Start the Firebase emulator suite locally                                   |
+| `npm run cap:sync`                          | Sync the web build into the iOS/Android Capacitor projects                  |
+| `npm run cap:open:ios` / `cap:open:android` | Open the native project in Xcode / Android Studio                           |
+| `npm run cap:run:ios` / `cap:run:android`   | Build and run on a device or simulator/emulator                             |
 
 ---
 
@@ -76,8 +82,13 @@ Using the Firebase emulators lets you develop without touching the production da
 ```bash
 firebase login            # First time only
 firebase use <project-id> # First time only
-firebase emulators:start
+npm run emulators         # = firebase emulators:start --only auth,firestore,storage
 ```
+
+`npm run emulators` is for driving the app by hand against local data. The test
+scripts (`npm run test:rules`, `npm run test:e2e`) wrap `firebase emulators:exec`
+and manage their own emulator lifecycle — don't run both at once, the ports
+collide.
 
 Default ports:
 
@@ -113,7 +124,7 @@ skatehubba-play/
 │   ├── firebase.ts          # Firebase initialization
 │   ├── main.tsx             # React entry point
 │   ├── index.css            # Tailwind v4 @theme + custom animations
-│   ├── context/             # AuthContext, GameContext, NavigationContext, NotificationContext
+│   ├── context/             # AuthContext, GameContext, NavigationContext, NotificationContext, OnboardingContext
 │   ├── hooks/               # useAuth, usePlayerProfile, useBlockedUsers, …
 │   ├── services/            # Single entry point for every Firebase SDK call
 │   │   ├── auth.ts          # Sign-up, sign-in, Google OAuth, password reset
@@ -124,6 +135,9 @@ skatehubba-play/
 │   │   └── storage.ts       # Video upload (WebM/MP4)
 │   ├── components/          # Reusable UI (Tailwind classes only)
 │   ├── screens/             # Full-page screen components
+│   ├── constants/           # Shared constants (badges, trick categories, stats, UI, video)
+│   ├── utils/               # Helpers, retry logic, error parsing, PII scrubbing
+│   ├── types/               # Shared TypeScript types (clip, dispute, spot)
 │   ├── lib/                 # Sentry, PostHog, env validation, mapbox, consent
 │   └── __tests__/           # Smoke tests (one file per screen area)
 │       ├── setup.ts         # Global test setup (jest-dom matchers)
@@ -134,6 +148,7 @@ skatehubba-play/
 ├── e2e/                     # Playwright E2E tests
 ├── rules-tests/             # Firestore rules tests (@firebase/rules-unit-testing)
 ├── firestore.rules          # Firestore security rules
+├── firestore.indexes.json   # Composite index declarations
 ├── storage.rules            # Storage security rules
 ├── vercel.json              # Vercel SPA config + noindex headers
 ├── firebase.json            # Firebase CLI config (named DB: skatehubba)
@@ -159,7 +174,7 @@ skatehubba-play/
 
 ### Component architecture
 
-- `App.tsx` is the intentional monolith — it owns the full route table, auth-gated `<Route>`s, and the global provider tree (Auth/Navigation/Notification/Game). Do not split it into route-based files without discussion.
+- `App.tsx` is the intentional monolith — it owns the full route table, auth-gated `<Route>`s, and the global provider tree (Auth/Navigation/Notification/Game/Onboarding). Do not split it into route-based files without discussion.
 - URL routing uses `react-router` v8. All `<Route>` elements live in `App.tsx`. Screen transitions go through `NavigationContext.setScreen` (or `useNavigate` for parameterised routes).
 - Non-critical screens (gameplay, profile, map, settings, legal pages) are `lazy()`-imported and wrapped in `<Suspense>`; Landing/AuthScreen/ProfileSetup/Lobby are eager for first paint.
 - New Firebase operations belong in the relevant `src/services/*.ts` file — components never import the Firebase SDK directly.
@@ -175,6 +190,26 @@ skatehubba-play/
 ---
 
 ## Deploying Security Rules
+
+> ## ⚠️ THE RULES DEPLOY IS CURRENTLY BROKEN — PRODUCTION RULES ARE STALE
+>
+> Verified 2026-08-29 against the workflow run history. The last **successful**
+> deploy was run #793 on **2026-08-20** (a manual `workflow_dispatch`). Every
+> run since has failed — 15 consecutive failures across push, schedule, and
+> dispatch triggers. `google-github-actions/auth` rejects the
+> `FIREBASE_WIF_PROVIDER` secret with `Invalid value for "audience"`: the value
+> passes the workflow's own regex but is rejected by Google. Tracked as
+> [#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519).
+>
+> **Consequences while this holds:**
+>
+> - `firestore.rules` on `main` is **not** what production is enforcing. Several
+>   rules commits are undeployed. Before reasoning about a live authorization
+>   decision, diff against the last deployed commit rather than `HEAD`.
+> - The "drift can never exceed 24h" guarantee below describes the design, not
+>   the current state. It has not held since 2026-08-20.
+>
+> This is a secret/GCP-configuration fix, not a code fix.
 
 Firestore rules/indexes and Storage rules are deployed by the
 `.github/workflows/firebase-rules-deploy.yml` workflow whenever `firestore.rules`,
@@ -202,7 +237,8 @@ production rules drift for ~3 months unnoticed. Two guards now prevent a repeat:
   rules" command to diff against `HEAD`, so re-deploying daily is the simplest
   implementable guarantee — the deploy is idempotent, so drift between `main`
   and production can never exceed 24h, and a failed scheduled deploy trips the
-  same alert step above.
+  same alert step above. **This guarantee is not currently holding — see the
+  warning above.**
 
 `firebase-tools` in the deploy step is pinned to `@15` to match the version in
 `package.json` (`firebase-tools@^15`). The deploy runs with `set -euo pipefail`
@@ -235,10 +271,17 @@ npm run verify    # tsc -b && lint && test:coverage && build && check:test-dup
 Or step through individually:
 
 ```bash
-npx tsc -b              # Type check
-npm run lint            # ESLint
-npm run test:coverage   # Tests with 100% services/hooks threshold
-npm run build           # Production build
+npx tsc -b                # Type check
+npm run lint              # ESLint over src/ and api/
+npm run test:coverage     # Tests + coverage thresholds
+npm run build             # Production build
+npm run check:test-dup    # Duplicated-test gate
 ```
 
-All four must pass before a PR can merge.
+All five must pass before a PR can merge. Two checks are **not** in `verify` and
+have to be run separately:
+
+```bash
+npm run test:rules        # Whenever you touch firestore.rules / storage.rules
+npm run test:e2e          # Playwright, emulator-backed
+```

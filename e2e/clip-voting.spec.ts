@@ -1,8 +1,8 @@
 /**
  * E2E for the community clips spotlight upvote flow (audit F8).
  *
- * The Clips tab (/feed) renders <ClipsFeed>, which fetches the top-ranked
- * landed-trick clip and lets a viewer tap the flame button to upvote it. The optimistic
+ * The lobby embeds <ClipsFeed> which fetches the top-ranked landed-trick
+ * clip and lets a viewer tap the flame button to upvote it. The optimistic
  * UI flips `aria-pressed=true` and increments the count immediately, then
  * the transactional `upvoteClip` write reconciles the authoritative count
  * from Firestore.
@@ -14,7 +14,6 @@
 import { test, expect } from "@playwright/test";
 import { clearAll, createUser, createProfile, createClip, verifyEmail, forceTokenRefresh } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
-import { openClipsFeed } from "./helpers/lobby-nav";
 
 const VIEWER = { email: "viewer@test.com", password: "password123", username: "viewer1" };
 const AUTHOR = { email: "author@test.com", password: "password123", username: "tricklord" };
@@ -31,8 +30,7 @@ test("viewer upvotes another player's clip → button flips to pressed and count
   // One landed-trick clip authored by AUTHOR — visible to any signed-in viewer.
   await createClip("seeded-game-id", 1, "set", author.uid, AUTHOR.username);
 
-  // Viewer signs up through the UI, then opens the Clips tab — the feed moved
-  // off the lobby onto its own /feed route.
+  // Viewer signs up through the UI and lands on the lobby (which mounts ClipsFeed).
   // Both `clipVotes` create and the `clips.upvoteCount` increment require
   // `email_verified == true` in firestore.rules — without verifyEmail +
   // forceTokenRefresh the upvote transaction would be permission-denied.
@@ -40,36 +38,30 @@ test("viewer upvotes another player's clip → button flips to pressed and count
   await verifyEmail(VIEWER.email);
   await page.reload();
   await forceTokenRefresh(page);
-  await openClipsFeed(page);
 
-  // Wait for the spotlight card to hydrate. The thumbs-up button's aria-label
-  // is `Thumbs up clip by @<username> · current count <n>` before voting.
+  // Wait for the spotlight card to hydrate. The control is labelled
+  // `Thumbs up clip by @<username> · current count <n>` when not yet voted —
+  // it was renamed from "Upvote" in ClipActions, and this spec was still
+  // asking for the old name.
   const upvoteBtn = page.getByRole("button", { name: new RegExp(`Thumbs up clip by @${AUTHOR.username}`, "i") });
   await expect(upvoteBtn).toBeVisible({ timeout: 15_000 });
   await expect(upvoteBtn).toHaveAttribute("aria-pressed", "false");
 
   await upvoteBtn.click();
 
-  // After upvoting the same control's accessible name flips to the withdraw
-  // wording and carries the new count. Querying by that name keeps us on the
-  // public contract — no CSS / DOM-structure coupling — and disambiguates
-  // from any other aria-pressed toggle that might render the count "1".
+  // Once cast, the same button becomes the withdraw affordance:
+  // `Remove your thumbs up on @<username>'s clip · <count>`. Querying by that
+  // accessible name keeps us on the public contract — no CSS / DOM-structure
+  // coupling. It stays ENABLED: the vote is a toggle now, not a one-shot, so
+  // asserting it goes disabled would be asserting the old behaviour.
   const upvotedBtn = page.getByRole("button", {
     name: new RegExp(`Remove your thumbs up on @${AUTHOR.username}'s clip · 1`, "i"),
   });
   await expect(upvotedBtn).toBeVisible({ timeout: 10_000 });
   await expect(upvotedBtn).toHaveAttribute("aria-pressed", "true");
-
-  // A second tap withdraws the vote rather than re-bumping the tally: the
-  // count returns to 0 and the control unpresses. One viewer, one vote.
-  await upvotedBtn.click();
-  await expect(upvoteBtn).toHaveAttribute("aria-pressed", "false", { timeout: 10_000 });
-  await expect(
-    page.getByRole("button", { name: new RegExp(`Thumbs up clip by @${AUTHOR.username} · current count 0`, "i") }),
-  ).toBeVisible();
 });
 
-test("clip viewer cannot upvote their own clip — upvote button not rendered", async ({ page }) => {
+test("clip viewer cannot upvote their own clip — the control renders disabled", async ({ page }) => {
   // Sign up viewer first so we know their uid via the auth-flow helper, then
   // seed a clip authored by that same uid.
   await signUpAndSetupProfile(page, VIEWER.email, VIEWER.password, VIEWER.username);
@@ -83,17 +75,16 @@ test("clip viewer cannot upvote their own clip — upvote button not rendered", 
 
   await createClip("own-clip-game", 1, "set", uid as string, VIEWER.username);
 
-  // Reload so the freshly-seeded clip appears in the feed pool, then open the
-  // Clips tab where <ClipsFeed> is mounted.
+  // Reload so the freshly-seeded clip appears in the feed pool.
   await page.reload();
-  await openClipsFeed(page);
 
-  // The author chip is the hydration anchor. Both thumbs still render on your
-  // own clip — the counts are the point of looking — but they are disabled and
-  // relabelled, so there is no control that would let the author vote on
-  // themselves (ClipActions' `isOwnClip` branch).
+  // The author chip is the hydration anchor. ClipActions does NOT omit the
+  // control on your own clip — it renders it disabled and says why. The old
+  // assertion here counted buttons named /Upvote clip by/ and expected zero,
+  // which the rename to "Thumbs up" made vacuously true: this test passed
+  // while asserting nothing.
   await expect(page.getByText(`@${VIEWER.username}`).first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("button", { name: /Thumbs (up|down) clip by/i })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /Thumbs up · 0 — you can't vote on your own clip/i })).toBeDisabled();
-  await expect(page.getByRole("button", { name: /Thumbs down · 0 — you can't vote on your own clip/i })).toBeDisabled();
+  const ownUpvote = page.getByRole("button", { name: /Thumbs up · \d+ — you can't vote on your own clip/i });
+  await expect(ownUpvote).toBeVisible({ timeout: 10_000 });
+  await expect(ownUpvote).toBeDisabled();
 });

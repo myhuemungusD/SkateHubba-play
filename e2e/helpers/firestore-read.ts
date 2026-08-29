@@ -70,12 +70,6 @@ export async function readDocByPath(path: string): Promise<Record<string, unknow
  * (account wipe), not GET (list). Admin scope is granted by the
  * `Bearer owner` header, matching the same admin shortcut used by the
  * write helpers in `emulator.ts` (writeDoc, expireGameDeadline).
- *
- * The request body carries `returnUserInfo` ONLY: the Auth emulator answers
- * any request that sets `limit` with `501 limit is not implemented`, so
- * sending one fails the lookup outright. The emulator returns every account
- * for the project, which is all these specs ever need (they `clearAuth()`
- * between tests).
  */
 export async function uidForEmail(email: string): Promise<string> {
   const url = `${AUTH}/identitytoolkit.googleapis.com/v1/projects/${PROJECT_ID}/accounts:query`;
@@ -85,6 +79,10 @@ export async function uidForEmail(email: string): Promise<string> {
       "Content-Type": "application/json",
       Authorization: "Bearer owner",
     },
+    // No `limit`: the Auth emulator answers `accounts:query` carrying one with
+    // 501 NOT_IMPLEMENTED ("limit is not implemented"), which failed every
+    // lookup here. The emulator is cleared per test, so the unpaged default
+    // covers the handful of accounts a spec creates.
     body: JSON.stringify({ returnUserInfo: true }),
   });
   if (!res.ok) throw new Error(`accounts lookup failed: ${res.status} ${await res.text()}`);
