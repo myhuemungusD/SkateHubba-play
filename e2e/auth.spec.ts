@@ -13,7 +13,10 @@ test("emulator connectivity: sign up via SDK works", async ({ page }) => {
   // In CI headless Chrome, the Firebase SDK's first request to the emulator can
   // hang unless the browser has already established a connection to the host.
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Use email", exact: true })).toBeVisible({ timeout: 10_000 });
+  // The landing hero's email row is "Sign in · Create account"; the old
+  // "Use email" button is gone. `exact` matters on both — a substring match
+  // for "Account" also picks up "Create account" and trips strict mode.
+  await expect(page.getByRole("button", { name: "Create account", exact: true })).toBeVisible({ timeout: 10_000 });
 
   // Verify emulator mode is active
   const connected = await page.evaluate(() => "__e2eFirebaseAuth" in globalThis);
@@ -27,7 +30,7 @@ test("emulator connectivity: sign up via SDK works", async ({ page }) => {
   });
 
   // Do a full sign-up flow through the UI
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill("warmup@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -52,7 +55,7 @@ test("sign up → profile setup → lobby", async ({ page }) => {
 
 test("sign up form rejects mismatched passwords", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -65,7 +68,7 @@ test("sign up form rejects mismatched passwords", async ({ page }) => {
 
 test("sign up form rejects short passwords", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
 
   await page.getByPlaceholder("you@email.com").fill("test@test.com");
   const pwFields = page.getByPlaceholder("••••••••");
@@ -110,7 +113,7 @@ test("sign in with existing account reaches lobby", async ({ page }) => {
   await expect(page.getByText("S.K.A.T.E.")).toBeVisible({ timeout: 5_000 });
 
   // Sign back in
-  await page.getByRole("button", { name: "Account" }).click();
+  await page.getByRole("button", { name: "Account", exact: true }).click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill("returner@test.com");
   await page.getByPlaceholder("••••••••").fill("password123");

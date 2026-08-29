@@ -20,6 +20,7 @@ import {
   forceTokenRefresh,
 } from "./helpers/emulator";
 import { MEDIA_MOCK_SCRIPT } from "./helpers/media-mock";
+import { CONSENT_ANSWERED_SCRIPT } from "./helpers/consent";
 import { signUpAndSetupProfile, signInViaUI } from "./helpers/auth-flow";
 
 // ─── Fixed test data ──────────────────────────────────────────────────────────
@@ -28,37 +29,116 @@ const P1 = { email: "p1@test.com", password: "password123", username: "p1skater"
 const P2 = { email: "p2@test.com", password: "password123", username: "p2skater" };
 
 /**
+ * The lobby card for the game against `username`.
+ *
+ * `getByRole("button").filter({ hasText: username })` matched TWO elements:
+ * the card itself and the "View @<user>'s profile" button nested inside it.
+ * Whether the inner one had rendered depended on when the opponent's profile
+ * data arrived, so the ambiguity only tripped strict mode some of the time.
+ * The card's accessible name starts "vs @<user>", which the inner button's
+ * never does.
+ */
+function gameCard(page: Page, username: string) {
+  return page.getByRole("button", { name: new RegExp(`^vs @${username}`) });
+}
+
+/**
  * Enable the fake camera/MediaRecorder for the given page.
  * Must be called before `page.goto()`.
  */
 async function mockMedia(page: Page) {
   await page.addInitScript(MEDIA_MOCK_SCRIPT);
+  // The consent banner is fixed to the bottom of the viewport and covers the
+  // recorder's controls until it is answered.
+  await page.addInitScript(CONSENT_ANSWERED_SCRIPT);
+  echoBrowserErrors(page);
+}
+
+/**
+ * Relay browser-side errors into the Playwright stdout stream.
+ *
+ * These specs drive real uploads and real Firestore writes, so when one
+ * stalls the reason is almost always something the PAGE logged — a rejected
+ * write, a failed upload — and the job log shows only the Playwright-side
+ * timeout. Without this the failure reads as "the waiting screen never
+ * appeared" and says nothing about why.
+ */
+function echoBrowserErrors(page: Page) {
+  page.on("console", (msg) => {
+    if (msg.type() === "error" || msg.type() === "warning") {
+      console.log(`[browser:${msg.type()}] ${msg.text()}`);
+    }
+  });
+  page.on("pageerror", (err) => console.log(`[browser:pageerror] ${err.message}`));
 }
 
 /**
  * Complete a VideoRecorder interaction:
- *  1. Click "Open Camera" (if shown — not shown when autoOpen=true)
+ *  1. Click "Open Camera" (always required — the stream needs a gesture)
  *  2. Click "Record — {label}"
  *  3. Wait briefly, then click "Stop Recording"
  *  4. Wait for the "done" state to indicate the blob was captured
  */
 async function recordVideo(page: Page, recordLabel: string, doneLabel = "Recorded") {
-  // For matchers (autoOpen=false) the "Open Camera" button must be clicked.
-  // For setters (autoOpen=true) the camera opens automatically — the button
-  // is absent or disappears very quickly.  We use a generous 5 s timeout so
-  // CI latency doesn't cause the check to time-out and skip the click.
+  // The camera does NOT auto-open for anyone. The recorder only acquires a
+  // stream inside a user gesture (see useMediaRecorder), so "Open Camera" has
+  // to be tapped — by the setter as much as the matcher. This helper used to
+  // treat the tap as optional-for-setters, which is why every recording spec
+  // then failed at the Record button that the tap is what reveals.
+  //
+  // The click is bounded: unbounded, it sat in Playwright's actionability
+  // retry loop and burned the whole 30 s test budget, reporting "Test ended"
+  // against this line instead of anything diagnostic.
   const openBtn = page.getByRole("button", { name: /Open Camera/i });
-  if (await openBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await openBtn.click();
-  }
+  await expect(openBtn).toBeVisible({ timeout: 5_000 });
+  await openBtn.click({ timeout: 5_000 });
 
   await page.getByRole("button", { name: new RegExp(`Record.*${recordLabel}`, "i") }).click();
   // Let the fake recording "run" for 200 ms before stopping
   await page.waitForTimeout(200);
   await page.getByRole("button", { name: "Stop Recording" }).click();
 
-  // Wait for the "done" indicator
-  await expect(page.getByText(doneLabel, { exact: false })).toBeVisible({ timeout: 5_000 });
+  // Wait for the "done" indicator. The ✓ prefix is load-bearing:
+  // getByText matches case-insensitive substrings, so a bare "Recorded"
+  // also matches the matcher screen's "No video recorded — just match the
+  // trick!" copy and dies as a strict-mode violation whenever both render.
+  await expect(page.getByText(`✓ ${doneLabel}`)).toBeVisible({ timeout: 5_000 });
+}
+
+/**
+ * Confirm the recorded set trick as landed. Recording alone submits nothing:
+ * the decision panel ("Did you land it?") appears after the take, and the
+ * "✓ Landed" click is what triggers submitSetterTrick() → uploadVideo() →
+ * setTrick(). These specs predate that panel — the setter used to
+ * auto-submit — and clip-upload.spec's own comment has flagged the omission
+ * ("the click game.spec.ts omits") for as long as the panel has existed.
+ */
+async function setterConfirmsLanded(page: Page) {
+  await expect(page.getByRole("group", { name: "Did you land the trick?" })).toBeVisible({ timeout: 5_000 });
+  // Wait out the turn-action rate limit before submitting. firestore.rules
+  // rejects a game update within 2 s of the doc's updatedAt (anti-flood), and
+  // Playwright gets from "Send Challenge" (which stamps updatedAt) to this
+  // click in ~1.8 s — faster than any human, so setTrick came back
+  // permission-denied on exactly the writes a real player would land.
+  await page.waitForTimeout(2_100);
+  await page.getByRole("button", { name: "✓ Landed" }).click();
+}
+
+/**
+ * P1's half of a two-player game: challenge P2, name `trickName`, record the
+ * take, confirm it landed, and wait for the turn to hand over. Shared by the
+ * matcher specs, which then differ only in what P2 does with the trick.
+ */
+async function setterOpensGameAndSetsTrick(p1: Page, trickName: string) {
+  await p1.getByRole("button", { name: "Challenge Someone" }).click();
+  await p1.getByPlaceholder("their_handle").fill(P2.username);
+  await p1.getByRole("button", { name: /Send Challenge/i }).click();
+
+  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
+  await p1.getByPlaceholder("Name your trick").fill(trickName);
+  await recordVideo(p1, "Land Your Trick", "Recorded");
+  await setterConfirmsLanded(p1);
+  await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
 }
 
 // ─── Setup / teardown ─────────────────────────────────────────────────────────
@@ -118,13 +198,15 @@ test("setter records trick → game moves to matching phase", async ({ browser }
   await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
   await p1.getByPlaceholder("Name your trick").fill("Kickflip");
 
-  // The VideoRecorder should auto-open the camera
-  await expect(p1.getByRole("button", { name: /Stop Recording|Record/i })).toBeVisible({
+  // The VideoRecorder is revealed by the trick name, showing its "Open Camera"
+  // affordance — it does not auto-open. recordVideo() does the tapping.
+  await expect(p1.getByRole("button", { name: /Open Camera/i })).toBeVisible({
     timeout: 5_000,
   });
 
   // Record and stop
   await recordVideo(p1, "Land Your Trick", "Recorded");
+  await setterConfirmsLanded(p1);
 
   // After submitting the trick the game moves to "matching" phase —
   // P1 should see the waiting screen (it's now P2's turn to match)
@@ -149,14 +231,7 @@ test("matcher records response and misses → earns a letter", async ({ browser 
   await p1.reload();
   await forceTokenRefresh(p1);
 
-  await p1.getByRole("button", { name: "Challenge Someone" }).click();
-  await p1.getByPlaceholder("their_handle").fill(P2.username);
-  await p1.getByRole("button", { name: /Send Challenge/i }).click();
-
-  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
-  await p1.getByPlaceholder("Name your trick").fill("Heelflip");
-  await recordVideo(p1, "Land Your Trick", "Recorded");
-  await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
+  await setterOpensGameAndSetsTrick(p1, "Heelflip");
 
   // Grab the game ID from the URL or wait — we need P2 to open this game.
   // P2 doesn't know the game ID yet, but their lobby will list it.
@@ -166,11 +241,11 @@ test("matcher records response and misses → earns a letter", async ({ browser 
   await signInViaUI(p2Page, P2.email, P2.password);
 
   // P2's lobby should show the active game with P1 (card shows "vs @p1skater")
-  await expect(p2Page.getByRole("button").filter({ hasText: P1.username })).toBeVisible({
+  await expect(gameCard(p2Page, P1.username)).toBeVisible({
     timeout: 10_000,
   });
   // Click the game card (it's the matcher's turn)
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  await gameCard(p2Page, P1.username).click();
 
   // P2 should see the matching UI
   await expect(p2Page.getByText(/Match @p1skater's Heelflip/i)).toBeVisible({ timeout: 10_000 });
@@ -207,9 +282,17 @@ test("matcher records response and misses → earns a letter", async ({ browser 
 
 // ─── Match trick (land → roles swap) ─────────────────────────────────────────
 
-test("matcher records response and lands → roles swap, no letters earned", async ({ browser }) => {
+test("matcher lands → setter accepts the claim → roles swap, no letters earned", async ({ browser }) => {
   // Covers submitMatchAttempt(landed=true) honor-system path — the most
   // important game mechanic that was previously uncovered end-to-end.
+  //
+  // A landed claim is NOT self-certifying any more. submitMatchAttempt
+  // freezes the game into phase "pendingReview" and the SETTER gets a 24 h
+  // accept/dispute window (docs/DISPUTE_BINDING_DESIGN.md §3.3); the role
+  // swap, the clips, and the result notification are all deferred to
+  // acceptLanded. This test used to expect the pre-redesign behaviour — an
+  // immediate swap — and waited for a setter UI that deliberately never
+  // comes.
   const p2 = await createUser(P2.email, P2.password);
   await createProfile(p2.uid, P2.username, P2.email, false);
 
@@ -222,14 +305,7 @@ test("matcher records response and lands → roles swap, no letters earned", asy
   await p1.reload();
   await forceTokenRefresh(p1);
 
-  await p1.getByRole("button", { name: "Challenge Someone" }).click();
-  await p1.getByPlaceholder("their_handle").fill(P2.username);
-  await p1.getByRole("button", { name: /Send Challenge/i }).click();
-
-  await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
-  await p1.getByPlaceholder("Name your trick").fill("Ollie");
-  await recordVideo(p1, "Land Your Trick", "Recorded");
-  await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
+  await setterOpensGameAndSetsTrick(p1, "Ollie");
 
   // P2 signs in, opens the game, records a match, and claims LANDED.
   const p2Ctx: BrowserContext = await browser.newContext();
@@ -237,15 +313,31 @@ test("matcher records response and lands → roles swap, no letters earned", asy
   await mockMedia(p2Page);
   await signInViaUI(p2Page, P2.email, P2.password);
 
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  await gameCard(p2Page, P1.username).click();
   await expect(p2Page.getByText(/Match @p1skater's Ollie/i)).toBeVisible({ timeout: 10_000 });
 
   await recordVideo(p2Page, "Match the Ollie", "Recorded");
   await p2Page.getByRole("button", { name: "✓ Landed" }).click();
 
-  // Roles swap: P2 becomes the setter for turn 2 (GamePlayScreen remounts via
-  // `key={game.turnNumber}` in App.tsx). P2 should see the fresh setter UI
-  // with the trick-name input (NOT a stale matcher confirmation).
+  // The claim freezes the game into pendingReview: P2 waits on P1's call.
+  await expect(p2Page.getByText(/Waiting for @p1skater to accept or dispute/i)).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // P1's screen offers the accept/dispute window; P1 accepts the claim.
+  await expect(p1.getByRole("group", { name: "Accept the landed claim or dispute it" })).toBeVisible({
+    timeout: 15_000,
+  });
+  // Same 2 s turn-action cooldown as the setter path: P2's claim stamped
+  // updatedAt moments ago, P1's panel appears via the live snapshot almost
+  // instantly, and an immediate Accept is permission-denied (observed 0.45 s
+  // after the claim in CI).
+  await p1.waitForTimeout(2_100);
+  await p1.getByRole("button", { name: "Accept", exact: true }).click();
+
+  // NOW the roles swap: P2 becomes the setter for turn 2 (GamePlayScreen
+  // remounts via `key={game.turnNumber}` in App.tsx) and sees the fresh
+  // setter UI with the trick-name input.
   await expect(p2Page.getByPlaceholder("Name your trick")).toBeVisible({ timeout: 15_000 });
 
   // No letters were earned on either side.
@@ -258,8 +350,7 @@ test("matcher records response and lands → roles swap, no letters earned", asy
     "0",
   );
 
-  // P1 reloads — still watching, but now waiting on P2 (who is the new setter).
-  await p1.reload();
+  // P1 — still watching — is now waiting on P2 (who is the new setter).
   await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
 
   await p1Ctx.close();
@@ -293,7 +384,7 @@ test("expired turn deadline → forfeit screen shown to both players", async ({ 
   await signInViaUI(p2Page, P2.email, P2.password);
 
   // Open the game from the lobby (card shows "vs @p1skater")
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  await gameCard(p2Page, P1.username).click();
 
   // The GamePlayScreen's useEffect fires forfeitExpiredTurn() which sets
   // status="forfeit" on the game.  The GameContext subscription then routes
@@ -305,7 +396,7 @@ test("expired turn deadline → forfeit screen shown to both players", async ({ 
   const p1Ctx: BrowserContext = await browser.newContext();
   const p1Page: Page = await p1Ctx.newPage();
   await signInViaUI(p1Page, P1.email, P1.password);
-  await p1Page.getByRole("button").filter({ hasText: P2.username }).click();
+  await gameCard(p1Page, P2.username).click();
 
   await expect(p1Page.getByText("You Win")).toBeVisible({ timeout: 10_000 });
   await expect(p1Page.getByText(/@p2skater ran out of time/i)).toBeVisible();
@@ -341,7 +432,7 @@ test("completing a game shows game over screen with winner and rematch option", 
   await mockMedia(p2Page);
   await signInViaUI(p2Page, P2.email, P2.password);
 
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  await gameCard(p2Page, P1.username).click();
   await expect(p2Page.getByText(/Match @p1skater's 360 Flip/i)).toBeVisible({ timeout: 10_000 });
 
   await recordVideo(p2Page, "Match the 360 Flip", "Recorded");
@@ -355,7 +446,7 @@ test("completing a game shows game over screen with winner and rematch option", 
   const p1Ctx: BrowserContext = await browser.newContext();
   const p1Page: Page = await p1Ctx.newPage();
   await signInViaUI(p1Page, P1.email, P1.password);
-  await p1Page.getByRole("button").filter({ hasText: P2.username }).click();
+  await gameCard(p1Page, P2.username).click();
   await expect(p1Page.getByText("You Win")).toBeVisible({ timeout: 10_000 });
   await expect(p1Page.getByRole("button", { name: /Rematch/i })).toBeVisible();
 

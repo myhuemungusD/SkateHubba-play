@@ -114,10 +114,20 @@ export function screenToPath(screen: Screen): string {
  * place isn't enough — the `/player/:uid` route guard in App.tsx has to allow
  * the signed-out render too, or the two mechanisms fight.
  */
+/*
+ * "map" is deliberately NOT here. The spots read rule requires auth
+ * (`firestore.rules` → `match /spots/{spotId}`: `allow read: if isSignedIn()
+ * && resource.data.isActive == true`), a decision taken to close anonymous
+ * enumeration of the spot graph — a signed-out /map would render an empty
+ * basemap, not a public map. The `/map` route guard in App.tsx already
+ * bounces signed-out visitors to /auth, so listing "map" here only created a
+ * contradiction between the two gates; the route guard won and the entry was
+ * dead. The signed-out share surface is /spots/:id, whose bounce stashes the
+ * spot id for post-login restore.
+ */
 const PUBLIC_SCREENS: ReadonlySet<Screen> = new Set([
   "landing",
   "auth",
-  "map",
   "player",
   "privacy",
   "terms",
