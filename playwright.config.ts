@@ -44,7 +44,21 @@ export default defineConfig({
           // environments without a real GPU (CI containers, sandboxed
           // runners). Without these flags mapbox-gl throws "Failed to
           // initialize WebGL" and MapErrorBoundary swallows the error.
-          args: ["--use-gl=swiftshader", "--enable-webgl", "--ignore-gpu-blocklist"],
+          args: [
+            "--use-gl=swiftshader",
+            "--enable-webgl",
+            "--ignore-gpu-blocklist",
+            // Chromium 138+ enforces Local Network Access: a page served from
+            // localhost:5173 may not reach the `loopback` address space
+            // without permission, so every browser→emulator call died as
+            //   "blocked by CORS policy: Permission was denied for this
+            //    request to access the `loopback` address space"
+            // and the Firestore SDK fell back to offline mode. Any spec that
+            // needed a live listen (the recording flows, the map's spot
+            // query) then timed out waiting for data that was never coming.
+            // Nothing in the app or the emulators changed — the browser did.
+            "--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests",
+          ],
         },
       },
     },
