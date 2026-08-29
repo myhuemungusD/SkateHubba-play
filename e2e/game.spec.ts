@@ -328,6 +328,11 @@ test("matcher lands → setter accepts the claim → roles swap, no letters earn
   await expect(p1.getByRole("group", { name: "Accept the landed claim or dispute it" })).toBeVisible({
     timeout: 15_000,
   });
+  // Same 2 s turn-action cooldown as the setter path: P2's claim stamped
+  // updatedAt moments ago, P1's panel appears via the live snapshot almost
+  // instantly, and an immediate Accept is permission-denied (observed 0.45 s
+  // after the claim in CI).
+  await p1.waitForTimeout(2_100);
   await p1.getByRole("button", { name: "Accept", exact: true }).click();
 
   // NOW the roles swap: P2 becomes the setter for turn 2 (GamePlayScreen
