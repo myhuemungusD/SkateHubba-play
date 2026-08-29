@@ -8,42 +8,76 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Version
 
 ## [Unreleased]
 
-Everything below has shipped to production but has not yet been rolled into a
-tagged release. Note that `git tag` is currently empty — the `v1.0.0` and
-`v1.1.0` links at the foot of this file point at release pages that do not yet
-exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
+Reconstructed by hand on 2026-08-26. The v1.1.0 release was cut 2026-04-19 and
+nothing was recorded for the ~4 months since, despite 167 `feat`/`fix`/`perf`
+commits landing. This section groups that work by area rather than listing every
+commit; the git history between `v1.1.0` and `HEAD` is the exhaustive record.
 
-### Features
+**Release hygiene note:** the repository has **no git tags at all**, and
+`package.json` still reads `1.1.0`. Cutting a real tag is tracked in `ROADMAP.md`.
 
-- **Binding community trick disputes** ([#474](https://github.com/myhuemungusD/SkateHubba-play/pull/474), [#463](https://github.com/myhuemungusD/SkateHubba-play/pull/463)) — on honor-system games a "landed" claim no longer resolves instantly. It freezes the game into a `pendingReview` phase, giving the setter 24 h to accept or dispute; a dispute opens a 24 h `communityReview` vote whose majority verdict is binding on letters, turn order, and four new public dispute counters. Resolved server-side by `api/cron/resolve-expired-disputes.ts`. See [docs/DISPUTE_BINDING_DESIGN.md](docs/DISPUTE_BINDING_DESIGN.md).
-- **Live community vote tally** during `communityReview` ([#522](https://github.com/myhuemungusD/SkateHubba-play/pull/522))
-- **User-uploaded clips** with up/down judging, comments, and admin bans ([#516](https://github.com/myhuemungusD/SkateHubba-play/pull/516))
-- **Hidden admin console** with custom-claim authorization ([#510](https://github.com/myhuemungusD/SkateHubba-play/pull/510))
-- **Profile badges, Hubba Locker, and public profile links** ([#508](https://github.com/myhuemungusD/SkateHubba-play/pull/508))
-- **Mobile store setup** — native shell, release signing, store CI, and Fastlane metadata ([#526](https://github.com/myhuemungusD/SkateHubba-play/pull/526))
-- **Per-profile social cards** for shared `/player` links ([#500](https://github.com/myhuemungusD/SkateHubba-play/pull/500))
-- **Tier-1 stat counters** and public profile stat display ([#469](https://github.com/myhuemungusD/SkateHubba-play/pull/469)), plus the notification overhaul and expanded stats that followed
-- **Gaps & Stairs trick category** ([#467](https://github.com/myhuemungusD/SkateHubba-play/pull/467))
-- Camera capture improvements — crosshair overlay ([#460](https://github.com/myhuemungusD/SkateHubba-play/pull/460)), aim instruction bubble ([#462](https://github.com/myhuemungusD/SkateHubba-play/pull/462)), auto-open when already permitted ([#464](https://github.com/myhuemungusD/SkateHubba-play/pull/464))
-- Show/hide toggle on password fields ([#509](https://github.com/myhuemungusD/SkateHubba-play/pull/509))
-- Mobile polish pass — neutral surfaces, darker background, compact lists
+### Added
 
-### Fixed
+- **Binding community trick disputes.** A landed claim on an honor-system game
+  no longer swaps roles instantly — it freezes the game into `pendingReview`
+  for a 24-hour setter accept/dispute window, escalating to a `communityReview`
+  LAND/BAIL vote resolved by a server referee. ([#463](https://github.com/myhuemungusD/SkateHubba-play/pull/463),
+  [#474](https://github.com/myhuemungusD/SkateHubba-play/pull/474), live vote tally [#522](https://github.com/myhuemungusD/SkateHubba-play/pull/522))
+- **User-uploaded clips** with up/down judging, comments, and admin bans. ([#516](https://github.com/myhuemungusD/SkateHubba-play/pull/516))
+- **Hidden admin console** with custom-claim authorization — reports queue,
+  Verified Pro grants, locker awards, user lookup. ([#510](https://github.com/myhuemungusD/SkateHubba-play/pull/510))
+- **Economy Phase A** — profile badges, Hubba locker, and public profile links. ([#508](https://github.com/myhuemungusD/SkateHubba-play/pull/508))
+- **Mobile store setup** — native shell, release signing, store CI and metadata. ([#526](https://github.com/myhuemungusD/SkateHubba-play/pull/526))
+- **Avatar upload** with on-device NSFWjs screening and a modern profile UX.
+- **Server-side auto-referee** for expired turns, closing the client-only turn
+  timer gap. ([#383](https://github.com/myhuemungusD/SkateHubba-play/pull/383), [#419](https://github.com/myhuemungusD/SkateHubba-play/pull/419))
+- **Per-profile social cards** for shared `/player` links. ([#500](https://github.com/myhuemungusD/SkateHubba-play/pull/500))
+- **Multi-factor authentication**, with a show/hide toggle on password fields. ([#509](https://github.com/myhuemungusD/SkateHubba-play/pull/509))
+- **Trick categories** — game-level category pinned through rules and UI, plus
+  custom game rules and a Gaps & Stairs category. ([#408](https://github.com/myhuemungusD/SkateHubba-play/pull/408), [#467](https://github.com/myhuemungusD/SkateHubba-play/pull/467))
+- **Vote-driven clip ranking** with a Top/New toggle and an `upvoteCount` aggregate.
+- **Hubz mascot onboarding tour** with screen-binding and durable dismissal.
+- **Tier-1 stat counters** — `gamesPlayed`, `currentWinStreak`, `bestWinStreak`. ([#469](https://github.com/myhuemungusD/SkateHubba-play/pull/469))
+- **Notification overhaul** and expanded stats, plus a mobile polish pass.
+- Custom Mapbox style via env var; public landing-map teaser with locked pins.
 
-- **Storage path squatting** (`3afa0d0`) — game-video filenames are now pinned to `{role}-{uploaderUid}.{ext}` by exact-string equality. Previously an opponent who knew a `gameId` could pre-create the victim's upload path; because `update` is denied, the victim's own upload collided and they forfeited on the turn timer.
-- **Upvote inflation via `clipVotes` delete** (`e7ef1a8`) — a bare delete now requires its paired counter decrement, closing a cast→delete→cast loop that inflated `clips.upvoteCount` without bound.
-- **Game-state forgery and turn-seize gaps** in Firestore rules ([#472](https://github.com/myhuemungusD/SkateHubba-play/pull/472))
-- **Username impersonation** — game usernames are now bound to the authoritative profile ([#473](https://github.com/myhuemungusD/SkateHubba-play/pull/473))
-- **Account deletion moved server-side** so it actually erases data ([#496](https://github.com/myhuemungusD/SkateHubba-play/pull/496))
-- **Push delivery** — replaced a non-existent Firebase extension with the `api/cron/drain-push-dispatch.ts` courier and repaired nudge delivery ([#466](https://github.com/myhuemungusD/SkateHubba-play/pull/466))
-- **PostHog now starts only after the visitor accepts the consent banner** ([#497](https://github.com/myhuemungusD/SkateHubba-play/pull/497))
-- **Multi-factor sign-in** completes instead of dead-ending on error ([#513](https://github.com/myhuemungusD/SkateHubba-play/pull/513))
-- Setter is notified when a land claim opens the review window (`1b98ec6`)
-- Disputes read-rule regressions from participant scoping (`971b31e`); resolved dispute turn retained (`d7e9f16`)
-- iOS Safari recording hardened against empty and unplayable takes; camera-permission hints name the right browser and never request the camera without a user gesture ([#527](https://github.com/myhuemungusD/SkateHubba-play/pull/527), [#529](https://github.com/myhuemungusD/SkateHubba-play/pull/529), [#530](https://github.com/myhuemungusD/SkateHubba-play/pull/530))
-- Shared `/spots/:id` links carried through sign-in ([#501](https://github.com/myhuemungusD/SkateHubba-play/pull/501))
-- `FIREBASE_SERVICE_ACCOUNT_JSON` tolerates hand-paste mangling ([#471](https://github.com/myhuemungusD/SkateHubba-play/pull/471))
-- Dead-end stats closed out — verdict surfacing, letter aggregation, vestigial fields ([#512](https://github.com/myhuemungusD/SkateHubba-play/pull/512))
+### Fixed — security
+
+- Pinned game-video filenames to the uploader UID, closing a path-squatting
+  attack that could force a forfeit win. (`3afa0d0`)
+- Required a paired counter decrement on `clipVotes` delete, closing unbounded
+  upvote inflation. (`e7ef1a8`)
+- Moved account deletion server-side so it actually erases data. ([#496](https://github.com/myhuemungusD/SkateHubba-play/pull/496))
+- Moved win/loss stats server-side to stop replay corruption. ([#432](https://github.com/myhuemungusD/SkateHubba-play/pull/432))
+- Closed game-state forgery and turn-seize gaps in Firestore rules. ([#472](https://github.com/myhuemungusD/SkateHubba-play/pull/472))
+- Bound game usernames to the authoritative profile to stop impersonation. ([#473](https://github.com/myhuemungusD/SkateHubba-play/pull/473))
+- Blocked stale-timestamp bypass of Firestore rate limits. (`57eb544`)
+- Moved sensitive user fields out of the cross-user-readable document. (`b778797`)
+- Wiped the `pushTargets` mirror and notifications on account deletion. ([#388](https://github.com/myhuemungusD/SkateHubba-play/pull/388))
+- Hashed UIDs for third parties and aligned the privacy policy with the code. ([#403](https://github.com/myhuemungusD/SkateHubba-play/pull/403))
+- Started PostHog only after the visitor accepts the consent banner. ([#497](https://github.com/myhuemungusD/SkateHubba-play/pull/497))
+
+### Fixed — gameplay & reliability
+
+- Notified the setter when a land claim opens the review window. (`1b98ec6`)
+- Repaired dispute read-rule regressions from participant scoping. (`971b31e`)
+- Closed out dead-end stats — verdict surfacing, letter aggregation. ([#512](https://github.com/myhuemungusD/SkateHubba-play/pull/512))
+- Completed multi-factor sign-in instead of dead-ending on error. ([#513](https://github.com/myhuemungusD/SkateHubba-play/pull/513))
+- Capped `games.turnDeadline` at 48h to prevent forfeit lockout. (`3bbd3bb`)
+- Replaced a non-existent push extension and repaired nudge delivery. ([#466](https://github.com/myhuemungusD/SkateHubba-play/pull/466))
+- Extensive iOS/Safari camera work: capture correctness, empty-take handling,
+  permission-gate copy, and never requesting the camera without a user gesture.
+  ([#468](https://github.com/myhuemungusD/SkateHubba-play/pull/468), [#515](https://github.com/myhuemungusD/SkateHubba-play/pull/515), [#527](https://github.com/myhuemungusD/SkateHubba-play/pull/527), [#529](https://github.com/myhuemungusD/SkateHubba-play/pull/529), [#530](https://github.com/myhuemungusD/SkateHubba-play/pull/530))
+
+### Changed
+
+- Automated Firestore rules and index deploys in CI, with a daily freshness
+  re-deploy, WIF auth, a PII gate, and auto-filed failure issues.
+- `src/services/games.ts` decomposed into `games.{create,match,judge,turns,mappers,subscriptions}.ts`;
+  the original file is now a barrel re-export.
+- Performance: batched clip upvote hydration, memoized spotlight subtree,
+  inlined `@font-face` to remove render-blocking CSS, immutable cache headers
+  on clip uploads.
 
 ---
 
@@ -57,24 +91,19 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - add haptic feedback on trick calls, toasts, and primary buttons ([f4a5033](https://github.com/myhuemungusD/SkateHubba-play/commit/f4a503390e26d15b64dcacc4fa92dc567e8cc5e5))
 - add individual clip sharing across waiting screen, game over, and archive ([80ac59b](https://github.com/myhuemungusD/SkateHubba-play/commit/80ac59b45f76fe35c4433491b8101d8462ae9945))
 - add landed-trick clips feed backed by /clips collection ([315b2fa](https://github.com/myhuemungusD/SkateHubba-play/commit/315b2faba395ba643cc800e0b02f0d40205c3ab6))
-- add landed-trick clips feed backed by /clips collection ([37598fc](https://github.com/myhuemungusD/SkateHubba-play/commit/37598fcb98e95bb9dccdb101e2b9cff1e30bb46f))
 - add looping demo video section below hero on landing page ([2ccc81d](https://github.com/myhuemungusD/SkateHubba-play/commit/2ccc81d799d94a66a1daa053e0b7815c8caa859f))
 - add MP4 storage support and in-app content reporting ([a997cad](https://github.com/myhuemungusD/SkateHubba-play/commit/a997cad5eba6a04bc4c41a8b2c794d1ffd7ba48b))
 - add persistent bottom tab bar for Home/Map/Me ([c20f38e](https://github.com/myhuemungusD/SkateHubba-play/commit/c20f38e2e689efead9f5fe5fa9c1a664c0a43fdc))
-- add persistent bottom tab bar for Home/Map/Me ([ed35162](https://github.com/myhuemungusD/SkateHubba-play/commit/ed35162766675128e406dbf3ef0ec2d460db1cf6))
 - add public player profile with game history and tappable names ([bf798a1](https://github.com/myhuemungusD/SkateHubba-play/commit/bf798a1dd0fba49416d5b3e5403fa261da5664d5))
 - add release-please + PostHog + Fastlane scaffolding (Tier 2) ([324bbb0](https://github.com/myhuemungusD/SkateHubba-play/commit/324bbb0368ed0f1a5248f67fe49c378ce228df18))
 - add route-level code splitting, fix PWA icons, add lazy loading ([c587633](https://github.com/myhuemungusD/SkateHubba-play/commit/c587633494652f0805a87bc7566b16d1e33548f1))
 - add safe-area-inset utilities and apply to top/bottom edge layouts ([75e7309](https://github.com/myhuemungusD/SkateHubba-play/commit/75e7309aed46a8e69422615d1a91c0d3ecccaa8a))
 - add setter dispute flow for matcher "landed" claims ([a2513a2](https://github.com/myhuemungusD/SkateHubba-play/commit/a2513a2a03b65ad2ed4db65a6fd6e3688a16c51d))
 - add spot map feature with full-stack implementation ([17ac8e6](https://github.com/myhuemungusD/SkateHubba-play/commit/17ac8e63d82aa5d7913eddc2bfe2d080f1d95f87))
-- add spot map feature with full-stack implementation ([0709da2](https://github.com/myhuemungusD/SkateHubba-play/commit/0709da2b5621710920633e5d8fb184bf6b5e6961))
 - add total turns, landed, missed stats and coming soon placeholder ([0175767](https://github.com/myhuemungusD/SkateHubba-play/commit/017576772995a4e4861123f7249e815e86349216))
 - add user blocking for App Store UGC compliance ([fcce679](https://github.com/myhuemungusD/SkateHubba-play/commit/fcce679e54b675da6344b0e5aa883212989b2031))
-- add user blocking, video deletion on account delete, and video … ([ecb6892](https://github.com/myhuemungusD/SkateHubba-play/commit/ecb68921803d012d7c0e3a07a77b51b2b89bf8ce))
 - add user blocking, video deletion on account delete, and video validation ([651bc87](https://github.com/myhuemungusD/SkateHubba-play/commit/651bc876603fd3240ff59bd69f2aeae3c3dda3e4))
 - add verified pro profile system with gold username treatment ([4e97aa6](https://github.com/myhuemungusD/SkateHubba-play/commit/4e97aa6cf5ac75a1c734f04a7077254fcd88850c))
-- add verified pro profile system with gold username treatment ([d9dfab6](https://github.com/myhuemungusD/SkateHubba-play/commit/d9dfab692e7a83bb5ff9b337852dc09d938811ee))
 - adopt "For the love of the game" as brand slogan ([8568674](https://github.com/myhuemungusD/SkateHubba-play/commit/856867464de4bdb0ee43f8cbcaf3dc40a3960cf3))
 - **analytics:** instrument full map funnel ([0e7841a](https://github.com/myhuemungusD/SkateHubba-play/commit/0e7841a05a9dc502f6fa4e6ef3c312de0475c11a))
 - animated skateboard button with ollie pop sound ([d941b3b](https://github.com/myhuemungusD/SkateHubba-play/commit/d941b3b9e568ffb75c869ceb5724f16d8b0ccb0a))
@@ -92,11 +121,9 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - harden nudge rules, add notification tests, wire E2E CI, add infra scripts ([ad43f19](https://github.com/myhuemungusD/SkateHubba-play/commit/ad43f192be94ee0c50d59dfefc70cd549b552b88))
 - improve accessibility, notifications, and coverage quality ([17912c1](https://github.com/myhuemungusD/SkateHubba-play/commit/17912c1f94456005684eac0686b985c763d18b44))
 - initialize Android platform for Google Play Store ([1c4e816](https://github.com/myhuemungusD/SkateHubba-play/commit/1c4e81699b1a5e09d62c524013a657a332bcd90f))
-- initialize Android platform for Google Play Store ([c3ebd92](https://github.com/myhuemungusD/SkateHubba-play/commit/c3ebd9272a4ec5c6edb59c31e148e27eff83346b))
 - judge-gated dispute system with honor-system fallback ([9f7f27c](https://github.com/myhuemungusD/SkateHubba-play/commit/9f7f27cc236d92c35c06b24c5010ca8c80ea24cf))
 - **landing:** polish nav, section anchors, and accessibility ([d66cb2b](https://github.com/myhuemungusD/SkateHubba-play/commit/d66cb2be4ef6695ddc3f59a5b56869b5473ca3f1))
 - **lobby,feed:** content-matching skeleton loaders for skaters + clips ([1db496a](https://github.com/myhuemungusD/SkateHubba-play/commit/1db496ae6c6531c4011b51937e59e830b7f80aa8))
-- **lobby:** add Featured Clip card with upvote + challenge ([d1283b2](https://github.com/myhuemungusD/SkateHubba-play/commit/d1283b24f9249810ab0e0f6fc64cfbc0df8c6b3e))
 - **lobby:** add Featured Clip card with upvote + challenge CTAs ([3949e2d](https://github.com/myhuemungusD/SkateHubba-play/commit/3949e2d68029fabcb284f8ad4f01012448c50e0a))
 - **lobby:** pull-to-refresh gesture with haptic commitment cue ([1ac6fea](https://github.com/myhuemungusD/SkateHubba-play/commit/1ac6feaa95e72c572f5be82f0d3e6b9d20ad610c))
 - **map:** polish map feature for app-store shipping quality ([203a346](https://github.com/myhuemungusD/SkateHubba-play/commit/203a34692272df537aba98f05ab1edd2deb4d65f))
@@ -125,7 +152,6 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 
 - add age gate step to E2E sign-up flows ([7e1293a](https://github.com/myhuemungusD/SkateHubba-play/commit/7e1293a83d5e6fde4f1402882601922c203d5d33))
 - add blocking service mocks to screen tests ([7a44569](https://github.com/myhuemungusD/SkateHubba-play/commit/7a44569c8a3e4b30b7ceda2f98404489109be1a2))
-- add blocking service mocks to screen tests ([c6b65d0](https://github.com/myhuemungusD/SkateHubba-play/commit/c6b65d04a3d6cbc058609992847d1f28ce8a2ed7))
 - add chunk-load retry, remove lazy on above-fold img, harden tests ([fb0eaf0](https://github.com/myhuemungusD/SkateHubba-play/commit/fb0eaf0b158ff431750c76f5c052339a02a88d27))
 - add DATABASE_URL runtime guard in db init ([3a735ee](https://github.com/myhuemungusD/SkateHubba-play/commit/3a735eeff9129c862f433a2d9c2de04870c6d107))
 - add E2E diagnostics — global setup, console capture, list reporter ([ba70239](https://github.com/myhuemungusD/SkateHubba-play/commit/ba70239d164aabee32c64b959e20856f1c988e00))
@@ -136,7 +162,6 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - additional async findBy queries in smoke-auth tests ([283bc6b](https://github.com/myhuemungusD/SkateHubba-play/commit/283bc6b3e234132d3b9be50e0e4640ae586697a0))
 - address PR [#221](https://github.com/myhuemungusD/SkateHubba-play/issues/221) review feedback ([e876cf9](https://github.com/myhuemungusD/SkateHubba-play/commit/e876cf9db3ca04cf9eca1030e6a70feb064429c8))
 - apply 5-minute cooldown on email verification rate limit ([febb3ca](https://github.com/myhuemungusD/SkateHubba-play/commit/febb3cae3ae2e956c7b11b42954c087a3404b525))
-- apply 5-minute cooldown on email verification rate limit ([be4bf9f](https://github.com/myhuemungusD/SkateHubba-play/commit/be4bf9f1ac6c34b691021b45164de73008c8324f))
 - audit follow-up — COPPA, stats race, CVE patches, robustness ([33749ec](https://github.com/myhuemungusD/SkateHubba-play/commit/33749eca1c64173e54bcca999a566b364c7ad6fd))
 - audit-driven polish for judge/referee feature ([b3642b9](https://github.com/myhuemungusD/SkateHubba-play/commit/b3642b9a666ccd90a2fb8b6e9eb80da80b2ca15f))
 - **auth:** drop duplicate className from merge conflict ([0e2a956](https://github.com/myhuemungusD/SkateHubba-play/commit/0e2a95649b18f6d885576e72d7c31b9205a1408b))
@@ -145,7 +170,6 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - auto-detect email verification without re-login ([c658d19](https://github.com/myhuemungusD/SkateHubba-play/commit/c658d19db2953d104a1c6f9cf994f7e6a53bfedf))
 - auto-detect email verification without requiring re-login ([db0de49](https://github.com/myhuemungusD/SkateHubba-play/commit/db0de497e67a852da0e2371cd3c48c11bcc98128))
 - await sendEmailVerification and surface failures to users ([631c60e](https://github.com/myhuemungusD/SkateHubba-play/commit/631c60eebb9147b42fd29eb3510cf328e7a0458f))
-- bump java version to 21 for capacitor android ([f36c58a](https://github.com/myhuemungusD/SkateHubba-play/commit/f36c58a3b85999c890b16e867c166858e039ff6c))
 - bump java version to 21 for capacitor android ([f36c58a](https://github.com/myhuemungusD/SkateHubba-play/commit/f36c58a3b85999c890b16e867c166858e039ff6c))
 - bump touch targets on rules trigger and sheet close to 44px ([f0ba347](https://github.com/myhuemungusD/SkateHubba-play/commit/f0ba34733240207d42ac388cdd56968cab3e6cb2))
 - **challenge:** parallelize judge + opponent UID lookups ([8359c89](https://github.com/myhuemungusD/SkateHubba-play/commit/8359c89d4418b85510f3b65fa882b4f0582bba48))
@@ -158,22 +182,17 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - cover non-Error throw branch in fcm.test.ts to restore 100% coverage ([2f3d11b](https://github.com/myhuemungusD/SkateHubba-play/commit/2f3d11b46481f5970717a6bf18db1b971bfd7e0e))
 - deduplicate TOAST_DURATION and extract inline chevron SVGs to icons.tsx ([8755421](https://github.com/myhuemungusD/SkateHubba-play/commit/8755421151377f077281fc35a9405e74cc3821cc))
 - don't redirect after user closes the Google popup ([6026cda](https://github.com/myhuemungusD/SkateHubba-play/commit/6026cda59e73410e1ba5ae9dd4ea9ae9c1ffc6ea))
-- don't redirect after user closes the Google popup ([4209072](https://github.com/myhuemungusD/SkateHubba-play/commit/4209072e043cb5346c6b1dbec65588a50a6c174e))
 - downgrade eslint to v9 for react-hooks plugin compatibility ([75c430c](https://github.com/myhuemungusD/SkateHubba-play/commit/75c430ce2d4cb0ba71b89142ae8efefc65acc00b))
 - **e2e:** address review blockers on letter-display selectors ([257da91](https://github.com/myhuemungusD/SkateHubba-play/commit/257da911fe496cb93a41dada538ee3ad6c51fccb))
 - enforce 44px min touch target on small text controls ([e27b08b](https://github.com/myhuemungusD/SkateHubba-play/commit/e27b08bb53b7f3a13a530e24bc7ad192911f7f49))
-- enforce 44px min touch target on small text controls ([4651c33](https://github.com/myhuemungusD/SkateHubba-play/commit/4651c3336c76d8b7628deafaeef59b5b56bc0ac6))
 - enforce COPPA dob at createProfile service boundary ([31c06dc](https://github.com/myhuemungusD/SkateHubba-play/commit/31c06dcd2848a172f546672955ae4187d2c99d9b))
 - **feed:** derive effective top-clip id to close first-paint race ([92276f2](https://github.com/myhuemungusD/SkateHubba-play/commit/92276f2f8b0535a5128109ca1afffaa96d2b3866))
 - **feed:** rotate top clip + move feed to top of lobby ([e57593a](https://github.com/myhuemungusD/SkateHubba-play/commit/e57593a3724832dd4601cbd192b6705603406806))
 - **feed:** stabilize top-clip rotation + restore single-clip loop ([2922068](https://github.com/myhuemungusD/SkateHubba-play/commit/2922068744f04e3d79a475a3c026b4364c0b1d89))
-- **feed:** stabilize top-clip rotation + restore single-clip loop ([021b228](https://github.com/myhuemungusD/SkateHubba-play/commit/021b228bd58c42947afc70c52508cc3173f711c4))
 - **feed:** surface load-more failures instead of silently stalling ([9aca262](https://github.com/myhuemungusD/SkateHubba-play/commit/9aca2626f967e9b6e20a466bcb73e0787e8992f3))
-- force-refresh ID token after email verification ([b997961](https://github.com/myhuemungusD/SkateHubba-play/commit/b9979618d12f44af614b50bfd25b482aa80bee9d))
 - force-refresh ID token after email verification to unblock Firestore rules ([5b425e1](https://github.com/myhuemungusD/SkateHubba-play/commit/5b425e1d31bd3f8d8e157c8bc9cd1912978db05b))
 - **functions:** use transactions for forfeit + stats writes ([08d1211](https://github.com/myhuemungusD/SkateHubba-play/commit/08d12113124ff270908d57230187ee7ea2305637))
 - give Use email CTA a 44px tap target ([4d89fa5](https://github.com/myhuemungusD/SkateHubba-play/commit/4d89fa560c7ac047d9c69dee89a1820785d03105))
-- handle notification permission failure instead of silently dismi… ([681df31](https://github.com/myhuemungusD/SkateHubba-play/commit/681df31a16fc644e9bda80a447b0a1fb2946561d))
 - handle notification permission failure instead of silently dismissing banner ([7735a18](https://github.com/myhuemungusD/SkateHubba-play/commit/7735a18c25b685f53ecd5d588c94eab8ede59154))
 - harden capacitor config for production ([d822a21](https://github.com/myhuemungusD/SkateHubba-play/commit/d822a2197062cc273a3cc27e1228e7a116fedbff))
 - harden email auth — enumeration, password min, App Check ([b2b524d](https://github.com/myhuemungusD/SkateHubba-play/commit/b2b524df176d55cbf75a51c698d2a762cafee4dd))
@@ -200,7 +219,6 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - prefer in-app remount over full reload; bump dim-state contrast; native key parity on card role=button ([22026d1](https://github.com/myhuemungusD/SkateHubba-play/commit/22026d156c6941f774ff6fdff3fc2870d5308325))
 - prevent cookie banner from blocking Start Playing button on mobile ([5bc52b3](https://github.com/myhuemungusD/SkateHubba-play/commit/5bc52b317e633380078a6546d50ef94037f65880))
 - prevent games fetch failure from blocking profile display ([1e851f6](https://github.com/myhuemungusD/SkateHubba-play/commit/1e851f615d39f4988c2bb2df510211b2767416f2))
-- prevent games fetch failure from blocking profile display ([d0442cf](https://github.com/myhuemungusD/SkateHubba-play/commit/d0442cfb8d195cf5d3875ad963feec94204f7341))
 - prime browser-to-emulator connections before SDK signup ([88bc7da](https://github.com/myhuemungusD/SkateHubba-play/commit/88bc7daa8e8e2ac4ea6b5252631d686f8a4caa8a))
 - production audit — security, memory leaks, CSP, and UX hardening ([cc2fbdf](https://github.com/myhuemungusD/SkateHubba-play/commit/cc2fbdf2fbd63eeb91e479d326c9b1f5f2098b4f))
 - **ptr:** review fixes — export TRIGGER_DISTANCE, latch committed visual state ([6740ced](https://github.com/myhuemungusD/SkateHubba-play/commit/6740ced7a38fe5853806f5f392c7f8e18cd5c82f))
@@ -218,7 +236,6 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - replace bare JSX.Element with React.ReactNode for React 19 compat ([df2ccf9](https://github.com/myhuemungusD/SkateHubba-play/commit/df2ccf9dd599958e110e16cb9013bca70b15de2b))
 - replace corrupted utf-8 character in workflow comment ([7b5ae85](https://github.com/myhuemungusD/SkateHubba-play/commit/7b5ae855f193b13e2d12c74405386a68e096a277))
 - replace missing demo video with AVPARKEDIT.mp4 clip on landing page ([047a40c](https://github.com/myhuemungusD/SkateHubba-play/commit/047a40c816bb26375241a533044a4d50793ff38f))
-- replace read-then-write stats with FieldValue.increment() to avo… ([20e8de2](https://github.com/myhuemungusD/SkateHubba-play/commit/20e8de20644f80cb1ac7d2e61509ea53abea4aa7))
 - replace read-then-write stats with FieldValue.increment() to avoid contention ([049d575](https://github.com/myhuemungusD/SkateHubba-play/commit/049d575d9e0f935a9a64aea0c5ae792edd4e151b))
 - report video download failures to Sentry ([703da0f](https://github.com/myhuemungusD/SkateHubba-play/commit/703da0f9c4971ba70a4fe057479d8d313a76a1ce))
 - resolve coverage threshold failure in useBlockedUsers hook ([8759fe7](https://github.com/myhuemungusD/SkateHubba-play/commit/8759fe768a589d0b1562dcb576f39d377beb58bb))
@@ -241,7 +258,6 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - **security:** validate spotId at service layer and tighten rules ([af651c5](https://github.com/myhuemungusD/SkateHubba-play/commit/af651c5d35683bb2d80d4f96d9321b25e035d32f))
 - **settings:** address review — touch target, type guard, batch reads, null sentinel ([ad0fc68](https://github.com/myhuemungusD/SkateHubba-play/commit/ad0fc68599c7cd90a49694e2ea111c02e1c9b24f))
 - skip getRedirectResult in emulator mode, add profile fetch timeout ([700f001](https://github.com/myhuemungusD/SkateHubba-play/commit/700f0017588bac81b0363e8ed2bfdb46afaa90a5))
-- skip getRedirectResult in emulator mode, add profile fetch timeout ([3df7ead](https://github.com/myhuemungusD/SkateHubba-play/commit/3df7eada3b43afa6cdb406155272d988f55f0dc9))
 - skip profile setup for returning users whose profile fetch timed out ([#165](https://github.com/myhuemungusD/SkateHubba-play/issues/165)) ([2cc180b](https://github.com/myhuemungusD/SkateHubba-play/commit/2cc180bc366018387e6a2138ab5b2efef005250f))
 - snapshot rate-limit maps before iterating to prevent mutation bugs ([eba5e64](https://github.com/myhuemungusD/SkateHubba-play/commit/eba5e6427ded9aa8aaa69835f68b0a6759d7ad08))
 - stop MediaRecorder on VideoRecorder unmount ([663a877](https://github.com/myhuemungusD/SkateHubba-play/commit/663a87775ac154354d99f550a75cae7e78908c91))
@@ -272,7 +288,6 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 
 - add --color-bright token and replace remaining reviewer-flagged hex ([535407e](https://github.com/myhuemungusD/SkateHubba-play/commit/535407e6f5bd9b8a9a45b2736a26379e7e7320bb))
 - close P3 dev-side gaps from comprehensive gap analysis ([7eb0b2d](https://github.com/myhuemungusD/SkateHubba-play/commit/7eb0b2da3233b18e49740b2a11d2e87628baa9b7))
-- close P3 dev-side gaps from comprehensive gap analysis ([9bfd146](https://github.com/myhuemungusD/SkateHubba-play/commit/9bfd1463f8f82873f971e8d152171d135c2038c4))
 - consolidate duplicate turnLabel returns for judge phases ([3f74e3d](https://github.com/myhuemungusD/SkateHubba-play/commit/3f74e3dfe6d1f177b4d71f4638df619dc71a2bab))
 - consolidate hero CTAs to reduce decision friction ([469e2b0](https://github.com/myhuemungusD/SkateHubba-play/commit/469e2b022cff7fb6d21c2d9fd2a1f5e9acd66ac0))
 - extract data-fetching hooks from Lobby and ProfileSetup ([8cc0dfa](https://github.com/myhuemungusD/SkateHubba-play/commit/8cc0dfa78d74afc6a6c4c2f84402554ebe66021b))
@@ -280,7 +295,6 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - **feed:** remove FeaturedClipCard, rely on ClipsFeed top-clip rotation ([3a7ea17](https://github.com/myhuemungusD/SkateHubba-play/commit/3a7ea173ee9dd5d194885940c68c90f5a677d5e3))
 - fold FeaturedClipCard into ClipsFeed; surface load-more errors ([70ff9fc](https://github.com/myhuemungusD/SkateHubba-play/commit/70ff9fcdda5c5ee9389c615225376f7d3f436360))
 - **hooks:** route usePlayerProfile errors through logger.warn ([1b3377d](https://github.com/myhuemungusD/SkateHubba-play/commit/1b3377dc6c85dc7b42c8ac198577070655793788))
-- **hooks:** route usePlayerProfile errors through logger.warn ([c290308](https://github.com/myhuemungusD/SkateHubba-play/commit/c290308af764a96706a92c6dd87399ef5cbc26e9))
 - **landing:** polish auth handlers, a11y, and video hardening ([c3469b0](https://github.com/myhuemungusD/SkateHubba-play/commit/c3469b05b3471ea9645990625b0b00657c4c5e0c))
 - **lobby:** move auto-forfeit to GameContext ([77b0838](https://github.com/myhuemungusD/SkateHubba-play/commit/77b08380184aef9f2e8982f7866a5a088ddd40b9))
 - **lobby:** polish game-card activation for production ([74cef99](https://github.com/myhuemungusD/SkateHubba-play/commit/74cef9990000e4d5381cffe8f4b9380b078691f0))
@@ -289,7 +303,6 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - polish hero CTA consolidation ([3d6824f](https://github.com/myhuemungusD/SkateHubba-play/commit/3d6824fe9292aa321cabc9c51770721f99a06496))
 - polish player profile — dedupe queries, fix stats display, add tests ([e5d4998](https://github.com/myhuemungusD/SkateHubba-play/commit/e5d49981e72c7c628c5387fc4435015bda40619c))
 - progressively disclose Challenge screen extras ([a239631](https://github.com/myhuemungusD/SkateHubba-play/commit/a239631263af66cea029f7e391f7810b65f891d6))
-- progressively disclose Challenge screen extras ([9b6af3f](https://github.com/myhuemungusD/SkateHubba-play/commit/9b6af3f6b118ce9fea5f5edba0707b76f4a74d8e))
 - prune rate-limit maps on every record ([0c837ae](https://github.com/myhuemungusD/SkateHubba-play/commit/0c837ae6a92eb6460fd4837a8514350cd66d652f))
 - remove zustand dependency and eliminate any types in tests ([49f0fde](https://github.com/myhuemungusD/SkateHubba-play/commit/49f0fde3d0eb965e207fdf9ce819523b19dc360b))
 - replace hardcoded hex colors with Tailwind tokens (batch 1) ([f524697](https://github.com/myhuemungusD/SkateHubba-play/commit/f5246971949d40a4a2c24e0e918b530b869b4d47))
@@ -318,9 +331,7 @@ exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
 - address review nits on STATUS_REPORT (PR [#215](https://github.com/myhuemungusD/SkateHubba-play/issues/215)) ([7411efa](https://github.com/myhuemungusD/SkateHubba-play/commit/7411efad12ea804fc05a2d6ec7b48f3162531be8))
 - **changelog:** record referee rename, latency fix, and waiting-screen fix ([91ac93c](https://github.com/myhuemungusD/SkateHubba-play/commit/91ac93cbf41dfdedc850ced6bd0a967e2c157ad2))
 - close charter gaps in chief-engineer SKILL.md ([76f3c89](https://github.com/myhuemungusD/SkateHubba-play/commit/76f3c898011cb01be7c0146e94bd358a39e27325))
-- close charter gaps in chief-engineer SKILL.md ([bc9e4ae](https://github.com/myhuemungusD/SkateHubba-play/commit/bc9e4aed27b7e33df69626776a4eac91b3ff6aaf))
 - drop stale DEPENDENCY_AUDIT.md references ([ada8a69](https://github.com/myhuemungusD/SkateHubba-play/commit/ada8a691eee5ad629719c6896c58a9a83a90b26d))
-- drop stale DEPENDENCY_AUDIT.md references ([2e17ae4](https://github.com/myhuemungusD/SkateHubba-play/commit/2e17ae4aaac1d0b42a385f070bcad703a9b18725))
 - fix documentation drift and add traction/analytics/roadmap sections ([70ba3cc](https://github.com/myhuemungusD/SkateHubba-play/commit/70ba3ccb04716b220a35c02a32a767e3b6a6240f))
 - **lobby:** clarify activateOnKey comment re: native button parity ([a97663f](https://github.com/myhuemungusD/SkateHubba-play/commit/a97663f629b5ab3091dceb9a896dff5ee74ea4e2))
 - pivot — defer spectator, focus on vote-driven clip ranking ([873cff6](https://github.com/myhuemungusD/SkateHubba-play/commit/873cff63146d4f37191f31a81d65c11dce55b306))
@@ -403,6 +414,6 @@ Initial production release of the SkateHubba S.K.A.T.E. async trick battle game.
 
 ---
 
-[Unreleased]: https://github.com/myhuemungusD/skatehubba-play/compare/v1.1.0...HEAD
-[1.1.0]: https://github.com/myhuemungusD/skatehubba-play/releases/tag/v1.1.0
-[1.0.0]: https://github.com/myhuemungusD/skatehubba-play/releases/tag/v1.0.0
+[Unreleased]: https://github.com/myhuemungusD/SkateHubba-play/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/myhuemungusD/SkateHubba-play/releases/tag/v1.1.0
+[1.0.0]: https://github.com/myhuemungusD/SkateHubba-play/releases/tag/v1.0.0

@@ -49,7 +49,7 @@ interface UserPrivateProfile {
 // uses the request.auth.token.email_verified JWT claim instead.
 ```
 
-### `GameDoc` (`src/services/games.ts`)
+### `GameDoc` (`src/services/games.mappers.ts`)
 
 ```ts
 interface GameDoc {
@@ -267,7 +267,9 @@ Looks up `usernames/{normalized}` and returns the UID, or `null` if the username
 
 ---
 
-## `src/services/games.ts`
+## `src/services/games.*`
+
+> `games.ts` is a barrel re-export; each function below lives in a sibling module — `games.create.ts`, `games.match.ts`, `games.judge.ts`, `games.turns.ts`, `games.subscriptions.ts`, `games.mappers.ts`.
 
 ### `createGame(challengerUid, challengerUsername, opponentUid, opponentUsername)`
 

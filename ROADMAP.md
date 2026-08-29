@@ -27,7 +27,7 @@ Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
 | Phase 3 — Social Graph & Discovery | Shipped except spectator mode (deferred)                                  |
 | Phase 4 — Network Effects          | Partial — spots/map shipped; crew, trick library, tournaments not started |
 | Referee System                     | Shipped (v1.1.0)                                                          |
-| Binding community disputes         | Shipped post-v1.1.0 (not yet in a CHANGELOG release section)              |
+| Binding community disputes         | Shipped post-v1.1.0 (`pendingReview` → `communityReview`)                 |
 
 **The core loop is built.** Async games, video proof, push delivery, clips feed with vote-driven ranking, leaderboard, profiles, spot map, moderation — all in production. The open question is no longer _can we build it_. It is _do skaters use it_.
 
@@ -39,7 +39,7 @@ Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
 
 Feature work in this stretch is only justified if it removes friction from that number.
 
-- [ ] **Reconstruct the CHANGELOG and cut the missing git tags** — `git tag` is empty despite the CHANGELOG linking to `v1.0.0` and `v1.1.0` release pages, and the ~16 `feat:` commits since v1.1.0 (admin console, user clips, community disputes, badges/locker, store pipeline, social cards) have no entry.
+- [ ] **Cut a release tag** — the referee system already shipped in the v1.1.0 CHANGELOG block, but the repo has **no git tags at all** and `package.json` still reads `1.1.0` while ~4 months of work sits unreleased. Tag what is out, then keep `[Unreleased]` current.
 - [ ] **Instrument the traction number** — `game_completed` already fires (`src/services/analytics.ts`). Stand up the reporting so completed-game count and completion rate are visible without hand-counting.
 - [ ] **Close the abandonment gaps** — read drop-off across `game_created → trick_set → match_submitted → game_completed` and fix whichever stage bleeds hardest.
 - [ ] **Return rate** — do players who finish a game start a second one within 7 days?

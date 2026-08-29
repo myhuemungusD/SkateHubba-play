@@ -14,7 +14,9 @@ you corrupt game state for real users.
 - `/CLAUDE.md` — golden rules.
 - `/.skills/skatehubba-chief-engineer/SKILL.md` — security model.
 - `/docs/DATABASE.md`, `/docs/GAME_STATE_MACHINE.md`.
-- `/docs/P0-SECURITY-AUDIT.md` — known sharp edges.
+- `/docs/GAPS.md` — the live risk register (known sharp edges, prioritized).
+  The older `/docs/archive/P0-SECURITY-AUDIT.md` is history only; its headline
+  P0 is closed and its rules table covers 7 of 26 blocks.
 - `/docs/PERMISSION_DENIED_RUNBOOK.md` — debug playbook for rule
   rejections in production.
 

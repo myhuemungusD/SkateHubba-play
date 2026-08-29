@@ -102,30 +102,30 @@ Service helper functions (`requireDb()`, `requireAuth()`, `requireStorage()`) th
 
 All Firebase SDK calls live in `src/services/`. Components and hooks import from services — never from the Firebase SDK directly. This keeps Firebase logic testable (services are easily mocked) and keeps `App.tsx` readable.
 
-| File                            | Responsibility                                                               |
-| ------------------------------- | ---------------------------------------------------------------------------- |
-| `src/services/auth.ts`          | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
-| `src/services/users.ts`         | User profile CRUD, atomic username reservation, verified-pro lookup          |
-| `src/services/userData.ts`      | Account-deletion cascade + GDPR data export                                  |
-| `src/services/games.ts`         | Game creation, turn actions (transactions), real-time subscriptions          |
-| `src/services/clips.ts`         | Landed-trick clips feed + upvotes                                            |
-| `src/services/spots.ts`         | Geo-tagged skate spot CRUD + comments                                        |
-| `src/services/storage.ts`       | Video upload (WebM web / MP4 native) with retry + progress                   |
-| `src/services/notifications.ts` | In-app notification writes + subscriptions                                   |
-| `src/services/fcm.ts`           | FCM token registration + service-worker wiring                               |
-| `src/services/nudge.ts`         | Push-notification "your turn" nudges                                         |
-| `src/services/blocking.ts`      | Block / unblock users                                                        |
-| `src/services/reports.ts`       | UGC content + player reports                                                 |
-| `src/services/analytics.ts`     | Vercel Analytics + PostHog event wrapper                                     |
-| `src/services/logger.ts`        | Structured log + metrics emitter                                             |
-| `src/services/disputes.*.ts`    | Community dispute system — raise, votes, feed, resolution, cascade           |
-| `src/services/achievements.ts`  | Badge awards (with `locker.ts` for Hubba Locker items)                       |
-| `src/services/admin.ts`         | Admin console operations (with `admin.bans.ts`)                              |
-| `src/services/mfa.ts`           | Multi-factor auth enrollment + verification                                  |
-| `src/services/avatars.ts`       | Avatar upload (with `avatarModeration.ts` for nsfwjs screening)              |
-| `src/services/pushDispatch.ts`  | Queues `push_dispatch` docs the cron drain delivers via FCM                  |
-| `src/services/onboarding.ts`    | Tutorial progress persistence                                                |
-| `src/hooks/useAuth.ts`          | React hook that wraps `onAuthStateChanged` + profile fetch                   |
+| File                            | Responsibility                                                                                                                                                                          |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/services/auth.ts`          | Sign up, sign in, sign out, Google OAuth, password reset, email verification                                                                                                            |
+| `src/services/users.ts`         | User profile CRUD, atomic username reservation, verified-pro lookup                                                                                                                     |
+| `src/services/userData.ts`      | Account-deletion cascade + GDPR data export                                                                                                                                             |
+| `src/services/games.*`          | Game creation, turn actions (transactions), judging, real-time subscriptions. `games.ts` itself is a barrel; logic lives in `games.{create,match,judge,turns,mappers,subscriptions}.ts` |
+| `src/services/clips.ts`         | Landed-trick clips feed + upvotes                                                                                                                                                       |
+| `src/services/spots.ts`         | Geo-tagged skate spot CRUD + comments                                                                                                                                                   |
+| `src/services/storage.ts`       | Video upload (WebM web / MP4 native) with retry + progress                                                                                                                              |
+| `src/services/notifications.ts` | In-app notification writes + subscriptions                                                                                                                                              |
+| `src/services/fcm.ts`           | FCM token registration + service-worker wiring                                                                                                                                          |
+| `src/services/nudge.ts`         | Push-notification "your turn" nudges                                                                                                                                                    |
+| `src/services/blocking.ts`      | Block / unblock users                                                                                                                                                                   |
+| `src/services/reports.ts`       | UGC content + player reports                                                                                                                                                            |
+| `src/services/analytics.ts`     | Vercel Analytics + PostHog event wrapper                                                                                                                                                |
+| `src/services/logger.ts`        | Structured log + metrics emitter                                                                                                                                                        |
+| `src/services/disputes.*.ts`    | Community dispute system — raise, votes, feed, resolution, cascade                                                                                                                      |
+| `src/services/achievements.ts`  | Badge awards (with `locker.ts` for Hubba Locker items)                                                                                                                                  |
+| `src/services/admin.ts`         | Admin console operations (with `admin.bans.ts`)                                                                                                                                         |
+| `src/services/mfa.ts`           | Multi-factor auth enrollment + verification                                                                                                                                             |
+| `src/services/avatars.ts`       | Avatar upload (with `avatarModeration.ts` for nsfwjs screening)                                                                                                                         |
+| `src/services/pushDispatch.ts`  | Queues `push_dispatch` docs the cron drain delivers via FCM                                                                                                                             |
+| `src/services/onboarding.ts`    | Tutorial progress persistence                                                                                                                                                           |
+| `src/hooks/useAuth.ts`          | React hook that wraps `onAuthStateChanged` + profile fetch                                                                                                                              |
 
 The table above is a map of the main domains, not an exhaustive list — `src/services/` holds 54 modules, several of them slices of a barrel (`games.*`, `clips.*`, `disputes.*`). [API.md](API.md) documents the exported signatures for the most-used ones.
 
@@ -135,7 +135,7 @@ Game state transitions (`setTrick`, `submitMatchAttempt`, `forfeitExpiredTurn`) 
 
 ### `subscribeToMyGames` — triple query merge
 
-Firestore does not support OR queries across different fields in a single query. To find every game a user is involved in — as `player1Uid`, as `player2Uid`, or as the nominated referee (`judgeId`) — three parallel `onSnapshot` queries run (`src/services/games.subscriptions.ts`). Their results are merged in memory, deduplicated by document ID, and sorted (active games first, then by `turnNumber` descending). All three listeners share a single composite unsubscribe function returned to the caller.
+Firestore does not support OR queries across different fields in a single query. To find all games a user is involved in — as `player1Uid`, `player2Uid`, or `judgeId` — **three** parallel `onSnapshot` queries run (`games.subscriptions.ts:176-178`). Each is capped at `limitCount` (default **20**, `games.subscriptions.ts:82`; grown by 20 per "load more" from `GameContext.tsx:41`), so the listener set holds at most 3 × limit documents. Results are merged in memory, deduplicated by document ID, and sorted (active games first, then by `turnNumber` descending). All three share a single unsubscribe function, and each slice has isolated error handling so one failing query does not blank the lobby.
 
 ---
 

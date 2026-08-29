@@ -39,8 +39,12 @@ results. You do not edit code.
    - `console.log` calls (use `console.warn` or Sentry).
    - Firebase SDK import outside `src/services/**` or `src/firebase.ts`.
    - New CSS file or inline `style=` in JSX.
-   - New Cloud Functions code under `functions/src/**` outside the approved
-     stats close-out allowlist.
+   - New code under `functions/src/**` **outside the CI allowlist**.
+     `pr-gate.yml` allowlists exactly four maintainer-approved files
+     (`index.ts`, `index.test.ts`, `applyGameStats.ts`,
+     `applyGameStats.test.ts` — the stats close-out, approved 2026-07).
+     Edits to those four are legitimate; do NOT block them. Any _other_
+     file added under `functions/src/` hard-fails the gate.
    - Game state mutation without `runTransaction`.
    - New Firestore write path without a corresponding
      `firestore.rules` change.

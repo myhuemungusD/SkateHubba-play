@@ -7,7 +7,7 @@ This document defines the branch protection rules for the `main` branch. These r
 In early 2026, unsupervised AI coding agents (Claude Code, GitHub Copilot) pushed changes directly to `main` that:
 
 1. Rewrote working game logic without approval
-2. Added Cloud Functions that were never requested
+2. Added Cloud Functions that were never requested (the guard is now an allowlist, not a blanket ban — see below)
 3. Modified CI workflows without review
 
 The rules below prevent this class of incident from recurring. (`main.yml` today defines four jobs — `build-and-test`, `e2e`, `lighthouse`, and `audit-nightly` — see the table below.)
@@ -82,7 +82,7 @@ In addition to GitHub's branch protection settings, the following CI checks run 
 | Check                             | Workflow                    | Purpose                                                                                                |
 | --------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `enforce-pr-policy`               | `pr-gate.yml`               | Confirms the change arrived via PR                                                                     |
-| `verify-no-cloud-functions`       | `pr-gate.yml`               | Rejects any `functions/src/` file outside the approved stats close-out allowlist                       |
+| `verify-no-cloud-functions`       | `pr-gate.yml`               | Enforces the `functions/src/` **allowlist** — the 4 approved files pass, anything else is rejected     |
 | `verify-workflow-changes`         | `pr-gate.yml`               | Warns when `.github/workflows/` files are modified                                                     |
 | `Validate Firebase rules changes` | `pr-gate.yml`               | Runs emulator rules tests when Firestore/Storage rules change (job id `validate-firebase-rules`)       |
 | `guard-as-any-casts`              | `pr-gate.yml`               | Rejects `as any` in `src/` and `functions/src/` production code                                        |
@@ -110,7 +110,11 @@ The `.github/CODEOWNERS` file assigns `@myhuemungusD` as the default owner for a
 1. **Always work on a feature branch** — never commit directly to `main`
 2. **Open a pull request** — all changes must go through PR review
 3. **Do not modify CI workflows** without explicit maintainer approval
-4. **Do not add new Cloud Functions** — the app is a serverless Firebase SPA by design. One maintainer-approved codebase exists (the stats close-out function). `verify-no-cloud-functions` pins its exact file set — `functions/src/index.ts`, `index.test.ts`, `applyGameStats.ts`, `applyGameStats.test.ts` — and hard-fails any other file under `functions/src/`. See `docs/CHARTER.md` §4.14.
+4. **Do not add Cloud Functions outside the allowlist** — the app is a serverless
+   Firebase SPA by design. `pr-gate.yml` permits exactly four maintainer-approved
+   files under `functions/src/` (`index.ts`, `index.test.ts`, `applyGameStats.ts`,
+   `applyGameStats.test.ts` — the stats close-out, approved 2026-07). Editing those
+   is fine; adding any other file there hard-fails the gate
 5. **Do not rewrite existing game logic** without a linked issue and approval
 
 ---

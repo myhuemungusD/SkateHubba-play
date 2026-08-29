@@ -1,5 +1,26 @@
 # Deepdive Continuation Plan
 
+> **ARCHIVED / SUPERSEDED — stamped 2026-08-26.** This is not an active ship plan.
+>
+> Batches 1–5 are done or overtaken by events:
+>
+> | Batch                              | Outcome                                                                                                            |
+> | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+> | 1 — honor-system notification copy | Superseded; the honor path was rewritten into `pendingReview` by the binding-dispute feature                       |
+> | 2 — account-deletion cascade       | Shipped server-side (#496); the prescribed `deleteUserBlockedList` helper was never added — a different design won |
+> | 3 — nudge rate-limit rules         | Shipped as `rules-tests/nudges-redteam.rules.test.ts` (not the filename planned here)                              |
+> | 4 — NotificationBell a11y          | Shipped                                                                                                            |
+> | 5 — Settings router links          | Shipped                                                                                                            |
+> | 6 — map subtree off `lucide-react` | **NOT shipped — still open**                                                                                       |
+>
+> Batch 6 has _grown_, not shrunk: `lucide-react` is still a dependency and is now
+> imported in ~15 files (admin console, locker, badges, password toggle) well beyond
+> the map subtree this plan scoped. Treat the estimate here as an undercount.
+>
+> Several file paths below no longer exist (`src/screens/AgeGate.tsx`,
+> `src/services/__tests__/games.test.ts`, `src/screens/Lobby.tsx`), and line numbers
+> against `src/services/games.ts` are meaningless — it is now a 22-line barrel.
+
 Continuation of the "Launch deepdive agents for code and docs analysis" session that crashed on a stream-idle timeout before the plan file could be written. Re-ran the three audits on current `main` (+129 commits past the crash point). This file aggregates findings and partitions them into file-disjoint fix batches.
 
 - Branch: `claude/deepdive-continue`

@@ -4,7 +4,7 @@
 Every row below is derived from what the code actually does on branch
 `claude/skatehubba-health-check-sjv064`, with file citations. Transcribe into
 App Store Connect → App Privacy and Google Play Console → Data safety, then
-check the boxes in `docs/APP_STORE_PRIVACY.md`. Open questions that need an
+see the Per-Release Delta section below. Open questions that need an
 owner decision are flagged inline and summarized at the end.
 
 ---
@@ -162,6 +162,42 @@ in-app (`src/services/userData.ts`).
 
 ---
 
+## Per-Release Delta — Native Permissions & Rebuild Notes
+
+Merged from the former `docs/APP_STORE_PRIVACY.md` (2026-08-26). Update this
+section on any PR that touches a permission, a third-party SDK, or a
+user-facing data flow.
+
+### Avatar upload (shipped)
+
+A signed-in user can upload a profile picture from camera or photo library.
+The image is screened on-device by NSFWjs before upload and stored at
+`users/{uid}/avatar.{webp|jpeg|png}` (≤ 2 MB), served via
+`firebasestorage.googleapis.com`.
+
+**iOS permission strings** — verbatim, as they appear in `Info.plist`:
+
+- `NSCameraUsageDescription` — "SkateHubba needs camera access to record your
+  tricks, capture skate spots, and take a profile picture."
+- `NSPhotoLibraryUsageDescription` — "SkateHubba saves your recorded clips to
+  your library and lets you choose a profile picture from your photos."
+
+**Android permissions** — both already declared for trick recording; the
+avatar feature required no manifest change:
+
+- `android.permission.CAMERA`
+- `android.permission.READ_MEDIA_IMAGES`
+
+### Native rebuild determination
+
+Avatar upload did **not** require an iOS or Android binary change beyond the
+plist copy update. The `@capacitor/camera` plugin registers JavaScript
+bindings only; native runtime support for camera and photo library was already
+present from the trick-recording feature. Run `npx cap sync` only if a native
+rebuild is queued for another reason.
+
+---
+
 ## Owner Actions Checklist
 
 - [ ] Resolve Open Questions 1–3 above (they change three answers).
@@ -170,8 +206,8 @@ in-app (`src/services/userData.ts`).
 - [ ] Google Play Console → App content → Data safety: transcribe Section 3
       (overview answers + per-type grid; encryption in transit = Yes;
       deletion mechanism = Yes with in-app + email paths).
-- [ ] Check the outstanding PR-B boxes in `docs/APP_STORE_PRIVACY.md`
-      (Photos/Videos declarations are covered by Sections 2–3 here).
+- [ ] Transcribe the Photos/Videos declarations (Sections 2–3) and confirm the
+      native permission strings in the Per-Release Delta section above.
 - [ ] Verify the published privacy policy (`src/screens/PrivacyPolicy.tsx` /
       skatehubba.com) matches these declarations before submission.
 

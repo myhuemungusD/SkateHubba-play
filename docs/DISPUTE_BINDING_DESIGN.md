@@ -1,12 +1,12 @@
 # Binding Community Trick Dispute — Engineering Design
 
-Status: **SHIPPED** (owner-approved 2026-07, implemented and live). All five build phases are in
-production — the phases (`pendingReview` / `communityReview`), the freeze fields
-(`reviewFor` / `reviewDeadline`), the four public counters, the server-side referee
-(`api/cron/resolve-expired-disputes.ts` + `.github/workflows/resolve-expired-disputes.yml`), and the
-Phase-5 UI (`PendingReviewPanel`, `DisputeReviewPanel`, `ReviewStatusPanel`, `DisputeLane`). This
-document remains the implementation contract for the feature. Scope: **honor-system games only** (the nominated-referee
-/ judge path is unchanged and out of scope here).
+Status: **SHIPPED** — service + rules + referee landed 2026-07-30 (#474, building on #463); the
+live vote-tally UI completed it 2026-08-21 (#522). Owner-approved 2026-07. Scope:
+**honor-system games only** (the nominated-referee / judge path is unchanged and out of scope here).
+
+This remains the **design of record**, not an archive: it is the only written source for the
+frozen-phase state machine and the stat-increment rules, and the referee cron cites its §3.3/§3.4
+(`.github/workflows/resolve-expired-disputes.yml`). Kept in `docs/`, deliberately.
 
 This document is the single source of truth every implementation phase builds against. If code and
 this doc disagree, fix one of them deliberately — do not let them drift.
@@ -58,10 +58,11 @@ Increment rules (all applied by the referee, in one admin transaction, at resolu
 - **bail** verdict additionally: `disputesRight`+1 on disputer.
 - **tie / zero-vote**: no right/wrong increment.
 
-> OPEN NUANCE (confirm with owner): whether a **zero-vote auto-accept** should still increment the
-> two raw counts (`tricksDisputed`/`disputesRaised`). This doc assumes **yes** (a dispute was raised,
-> so it counts). Trivial to flip in the decision helper if the owner wants zero-vote to be fully
-> neutral.
+> RESOLVED BY SHIPPING: a **zero-vote auto-accept** does increment the two raw counts
+> (`tricksDisputed`/`disputesRaised`) — a dispute was raised, so it counts. Implemented in
+> `src/services/dispute.resolution.shared.ts` and applied by
+> `api/cron/resolve-expired-disputes.ts`. Still a one-line flip in the decision helper if the
+> owner later wants zero-vote to be fully neutral.
 
 Game win/loss stats remain handled by the existing `applyGameStats` function at game end — untouched.
 If a **bail** verdict awards the 5th letter and ends the game, that terminal transition triggers
@@ -142,10 +143,10 @@ non-5 player).
 The existing community-dispute collections and feed UI are reused. Changes:
 
 - `disputes/{gameId}_{turnNumber}` gains a real close-out: `status` transitions `open → closed`.
-  **This shipped inverted relative to the original plan** — the contract standardised on `closed`,
-  not `resolved`. Early referee deployments wrote `resolved`, so `src/services/disputes.mappers.ts`
-  normalizes both persisted forms and `firestore.rules` documents `open → 'closed'`. Treat
-  `resolved` as a legacy alias. The referee writes a
+  **This shipped inverted relative to the plan above** — the client contract standardised on
+  `closed`, not `resolved`. Early referee deployments wrote `resolved`, so
+  `src/services/disputes.mappers.ts` normalizes both persisted forms and `firestore.rules`
+  documents `open → 'closed'`. Treat `resolved` as a legacy alias. The referee writes a
   `verdict: 'land'|'bail'|'tie'|'none'` and a `resolutionApplied: true` idempotency flag inside the
   resolving transaction.
 - Votes stay `land`/`bail` in `disputeVotes/{uid}_{disputeId}` — unchanged mechanically. ("make" in
@@ -160,7 +161,7 @@ The existing community-dispute collections and feed UI are reused. Changes:
   bind `setterUid == game.currentSetter && turnNumber == game.turnNumber && game.phase == 'pendingReview'`.
   The disputer must be the real setter of the frozen turn.
 - **Gap B (delete-and-re-raise resets the tally) — CLOSED.** Remove the client `allow delete` on
-  `disputes`; the server referee's `open → resolved` close-out replaces it. Account-deletion erasure
+  `disputes`; the server referee's `open → closed` close-out replaces it. Account-deletion erasure
   is handled by the existing vote-cascade path, not by deleting the dispute doc.
 - **Stats immutability.** The four new counters are added to the `users` create zero-seed and the
   update `affectedKeys().hasAny([...])` backstop, exactly like the Tier-1 fields. Client can never
@@ -188,7 +189,7 @@ Each phase lands as its own reviewed PR. Nothing merges without owner review.
    implement the pure `decideDisputeResolution` helper (shared, SDK-agnostic, like
    `turnForfeit.shared.ts`) + unit tests. No rules, no wiring.
 2. **Rules + red-team tests (TDD):** new `pendingReview`/`communityReview` update branches; close
-   Gap A + Gap B; `open → resolved` transition; stat-field create/update backstops; negative tests
+   Gap A + Gap B; `open → closed` transition; stat-field create/update backstops; negative tests
    (re-raise cannot reset a bound tally; client cannot write letters/stats/`statsApplied`; only the
    frozen setter can raise; forged verdicts denied).
 3. **Service wiring:** intercept `submitMatchAttempt(landed)` → `pendingReview`; `acceptLanded` and
@@ -211,5 +212,5 @@ Each phase lands as its own reviewed PR. Nothing merges without owner review.
 - `src/services/users.ts` — four new `UserProfile` counters.
 - `firestore.rules` — new phase branches, dispute lifecycle, stat backstops, gap closures.
 - `firestore.indexes.json` — index for the referee's eligibility query.
-- `api/cron/resolve-expired-disputes.ts` — the dispute referee.
+- `api/cron/resolve-expired-disputes.ts` (new) — the dispute referee.
 - `functions/` — untouched (dispute stats are written by the cron referee, not a Cloud Function).

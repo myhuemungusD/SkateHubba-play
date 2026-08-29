@@ -1,6 +1,6 @@
 # Security Scan Record — 2026-07-30
 
-Closes the two verification gaps left open by `docs/PENTEST_2026-05-22.md`, where both
+Closes the two verification gaps left open by `docs/archive/PENTEST_2026-05-22.md`, where both
 `npm audit` and `npm run test:rules` were **BLOCKED** (network 403s) and the pentest
 therefore declined to assert the deployment watertight. Both scans have now been executed
 against `main` @ `caaad110` (post binding-dispute feature, #474).

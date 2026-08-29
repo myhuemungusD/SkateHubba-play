@@ -14,7 +14,7 @@ This app brings that format to mobile, async. You set your trick whenever you wa
 
 - 3–20 characters, lowercase letters, numbers, and underscores only (`[a-z0-9_]+`)
 - Normalized to lowercase at the service boundary (input is case-insensitive)
-- Reserved for the life of the account — a username cannot be changed once chosen. The reservation in `usernames/{username}` is released only when the account itself is deleted (see the account-deletion cascade in `src/services/users.ts` and `api/account/_deleteUserData.ts`)
+- Reserved for the life of the account — a username cannot be changed once chosen. The reservation in `usernames/{username}` is released only when the account itself is deleted (see the cascade in `src/services/users.ts` and `api/account/_deleteUserData.ts`)
 
 **Stance:** Regular (left foot forward) or Goofy (right foot forward). Stored for display only; has no effect on game logic.
 
@@ -55,16 +55,39 @@ The matcher must:
 On submit (`submitMatchAttempt`):
 
 - **Missed:** The matcher admits they missed. A letter is assigned immediately. The setter keeps setting. Turn resolves instantly.
-- **Landed (honor system, no judge):** The game **freezes** into the `pendingReview` phase and the setter gets 24 h to accept or dispute the claim. Nothing resolves yet — no letter, no role swap, no landed clip.
+- **Landed (honor system, no judge):** The game **freezes** into the `pendingReview` phase. Nothing swaps yet — the setter has 24 h to accept the claim or dispute it. See Phase 3a.
 - **Landed (judge accepted):** The game enters the **disputable** phase. The judge — never the setter — has 24 h to rule.
 
-### Phase 3a — Pending review (setter reviews "landed" claim) _— honor-system games_
+### Phase 3a — Pending Review (setter reviews "landed" claim) _— honor system, the default_
 
-See [Community disputes](#community-disputes-crowd-verdict) below for the full
-`pendingReview` → `communityReview` flow. In short: the claim freezes the game and
-the setter has 24 h to accept it or hand the call to the community.
+With no active judge, a "landed" claim does **not** resolve the turn. `submitMatchAttempt` writes `phase: "pendingReview"` and a 24-hour `reviewDeadline`, and leaves `currentSetter`, `turnNumber`, and both letter counts untouched. The game is frozen: neither player can advance it, and it cannot be forfeited for inactivity.
 
-### Phase 3b — Disputable (judge reviews "landed" claim) _— only with an active judge_
+The **setter** — the player whose trick was matched — then has 24 hours to decide:
+
+| Setter's action          | Letter assigned | Next state                                              |
+| ------------------------ | --------------- | ------------------------------------------------------- |
+| Accept (`acceptLanded`)  | None            | Roles swap, `turnNumber++` — matcher becomes the setter |
+| Dispute (`raiseDispute`) | None yet        | `communityReview` — the community votes (Phase 3b)      |
+| No response (24 h)       | None            | Auto-accept by cron — the claim stands, roles swap      |
+
+Only the setter can resolve it (`firestore.rules:1459-1464`); the matcher cannot accept their own claim. The landed clip and the "Trick Landed" notification are deliberately held back until acceptance — a claim is not a landing yet.
+
+### Phase 3b — Community Review (the trick goes to a public vote)
+
+When the setter disputes, a `disputes/{gameId}_{turnNumber}` document opens and the matched trick is posted to the community feed for a **LAND / BAIL** vote with a 24-hour window. The game stays frozen throughout.
+
+No client can move a game out of `communityReview` — there is no rule permitting it. Only the server referee (`api/cron/resolve-expired-disputes.ts`, every 15 minutes) resolves it, once the vote window closes. Quorum is one vote:
+
+| Verdict  | Condition            | Outcome                                              |
+| -------- | -------------------- | ---------------------------------------------------- |
+| LAND     | more land than bail  | Claim stands — roles swap                            |
+| BAIL     | more bail than land  | Matcher earns a letter; setter keeps setting         |
+| Tie      | equal, both non-zero | Retry — the matcher re-attempts (back to `matching`) |
+| No votes | nobody voted         | Auto-accept — the claim stands                       |
+
+Disputing is not free: the outcome increments `disputesRight` or `disputesWrong` on the disputer's public stats.
+
+### Phase 3c — Disputable (judge reviews "landed" claim) _— only with an active judge_
 
 When the matcher claims "landed" and an accepted judge is on the game, the **judge** (not the setter) has 24 hours to review both videos and decide whether to accept or dispute. Honor-system games skip this phase entirely.
 
@@ -77,7 +100,7 @@ On submit (`resolveDispute`, judge-only):
 
 If the judge does not rule within 24 hours, the matcher's "landed" call is **auto-accepted** — no letter is assigned and roles swap. This keeps the game loop moving; a stalled game is worse than an occasionally wrong call.
 
-The `turnNumber` increments after every completed trick round (one full set → match → [optional review] cycle).
+The `turnNumber` increments only when a trick round actually completes. It does **not** advance while a game sits in `pendingReview` or `communityReview`.
 
 ---
 
@@ -106,7 +129,9 @@ A player reaches 5 letters. The player who did **not** reach 5 letters is the wi
 
 ### Forfeit (`status: "forfeit"`)
 
-A player does not submit their turn within 24 hours of the `turnDeadline`. Either player can trigger this by opening the game after the deadline passes — the app calls `forfeitExpiredTurn` on game open, which checks the deadline server-side in a transaction — and the scheduled sweep (`api/cron/sweep-expired-turns.ts`, every 15 min) applies the same transition unattended. The winner is the opponent of the player whose turn it was. Letters do not change on a forfeit — the game ends immediately regardless of score.
+A player does not submit their turn within 24 hours of the `turnDeadline`. Two independent paths apply it: either player opening the game after the deadline (`forfeitExpiredTurn`), **and** a server-side sweep (`api/cron/sweep-expired-turns.ts`) that runs every 15 minutes regardless of whether anyone opens the app. Both compute the outcome through the same shared helper, so they cannot diverge. The winner is the opponent of the player whose turn it was. Letters do not change on a forfeit.
+
+Games frozen in `pendingReview` or `communityReview` are **never** forfeited for inactivity — the sweep skips them by design.
 
 ---
 
@@ -114,8 +139,8 @@ A player does not submit their turn within 24 hours of the `turnDeadline`. Eithe
 
 - Every time a phase transitions (setting → matching or matching → setting), a new `turnDeadline` Timestamp is written to the game document: `Date.now() + 24 hours`.
 - The countdown is displayed in the game screen as `HH:MM:SS`.
-- Enforcement runs on two paths. **Client-triggered:** when either player opens a game where `turnDeadline < Date.now()`, the app calls `forfeitExpiredTurn`. **Server-triggered:** `api/cron/sweep-expired-turns.ts` runs every 15 minutes (scheduled by `.github/workflows/sweep-expired-turns.yml`, authenticated with `CRON_SECRET`) and applies the same transition to any expired game, so a stalled game resolves even if neither player opens the app.
-- Both paths share the same decision helper (`src/services/turnForfeit.shared.ts`), so they cannot diverge — the sweep only ever writes a transition a client could legally have written itself.
+- Enforcement is both client- and server-triggered. Opening a game past its deadline calls `forfeitExpiredTurn`; independently, `api/cron/sweep-expired-turns.ts` sweeps expired turns every 15 minutes. Declining to open the app delays a forfeit by at most one sweep, it does not avoid one.
+- `reviewDeadline` is a **separate** 24-hour field covering `pendingReview` and `communityReview`. It is resolved only by `api/cron/resolve-expired-disputes.ts`, never by a client.
 - The Firestore rules validate the forfeit write — a client cannot claim a forfeit unless the current player's turn has genuinely expired.
 
 ---
@@ -124,7 +149,7 @@ A player does not submit their turn within 24 hours of the `turnDeadline`. Eithe
 
 - One take only. The camera starts recording immediately when the player taps "Record." There is no re-record option before submission.
 - Format: `video/webm` on web (via MediaRecorder API) or `video/mp4` on native (via Capacitor).
-- Storage path: `games/{gameId}/turn-{turnNumber}/{role}-{uploaderUid}.{ext}` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt) and `{ext}` is `webm` (web) or `mp4` (native). The uid suffix is enforced by `storage.rules` so no account can occupy another player's upload path.
+- Storage path: `games/{gameId}/turn-{turnNumber}/{role}-{uploaderUid}.{ext}` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt) and `{ext}` is `webm` (web) or `mp4` (native). **The uploader's UID is part of the filename** and `storage.rules` matches it by exact string equality, so no account can occupy another player's upload path. The object also carries `uploaderUid` metadata, and `update` is denied outright — an upload slot is write-once.
 - Size limits: 1 KB minimum (prevents empty uploads), 50 MB maximum per video.
 - Videos are not kept forever. Every upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`) and a Storage lifecycle rule purges objects past that window. Videos attached to non-active games are also deleted eagerly by the account-deletion cascade (`deleteGameVideos`).
 
@@ -148,18 +173,7 @@ The matcher self-judges whether they landed the trick. If the matcher claims "mi
 
 ### Honor system (default — no judge)
 
-If no judge is nominated, or if a nominated judge declined the invite, a "landed" claim goes to the **binding community dispute** flow instead of the judge path. Honor-system games never enter `disputable` or `setReview`.
-
-1. **`pendingReview` — the setter's 24 h window.** The claim freezes the game: `currentSetter`, `currentTurn`, `turnNumber`, letters, and `turnHistory` all stay pinned, and the review clock runs on `reviewDeadline` (separate from `turnDeadline`, so the turn-forfeit sweep skips frozen games). The setter is notified that the window is open.
-   - **Accept** (`acceptLanded`) → the claim resolves: no letter, roles swap, the landed clip is written, `turnNumber++`.
-   - **No response within 24 h** → **auto-accept**. Same outcome, applied by `api/cron/resolve-expired-disputes.ts`.
-   - **Dispute** → the game moves to `communityReview`.
-2. **`communityReview` — the crowd's 24 h window.** Any signed-in, email-verified user who is not a participant votes `land` or `bail`. The majority verdict is **binding** on letters, turn order, and the four public dispute counters on both players' profiles.
-   - **Quorum is 1** — a single vote decides.
-   - **Tie** → retry: the matcher re-attempts the same trick, fresh video, no letter, same turn.
-   - **Zero votes at the deadline** → auto-accept the claim.
-
-Letters, role swaps, landed clips, and the "Trick Landed" notification are all **deferred** until the claim resolves — a claim that later bails must not leave a landed clip or a premature notification behind.
+If no judge is nominated, or a nominated judge declined, a "landed" claim freezes the game into `pendingReview` and hands the decision to the **setter** for 24 hours: accept, or send it to a community LAND/BAIL vote (`communityReview`). Silence auto-accepts. Most games never enter the judge-only `disputable` phase — they run through `pendingReview` instead. Full detail in Phases 3a/3b above.
 
 ### With an active judge
 
@@ -178,11 +192,3 @@ Before attempting, the matcher can flag the setter's video for judge review (`se
 - **No response (24 h)**: set stands (benefit of the doubt to the setter).
 
 Both players see a "Judge Pending / Judge / No Judge" badge so they always know which resolution path is live. Videos remain stored and visible to both players (and the judge) for transparency.
-
-### Community disputes (crowd verdict)
-
-Separate from the per-game referee, a setter can escalate a matcher's "landed" claim to the **community** rather than to a nominated judge. The dispute lands in the clips feed's dispute lane, where any signed-in, email-verified user who is not a participant votes `land` or `bail`. One vote per user per dispute, enforced by document id (`${uid}_${disputeId}`) in `firestore.rules` — the client's `canVote` flag is a UI affordance, not authorization.
-
-Open disputes that no one resolves are closed out server-side by `api/cron/resolve-expired-disputes.ts` (every 15 minutes). Outcomes feed the `tricksDisputed` / `disputesRaised` / `disputesRight` / `disputesWrong` counters on the player profile.
-
-See [DISPUTE_BINDING_DESIGN.md](DISPUTE_BINDING_DESIGN.md) for the binding rules and [DATABASE.md](DATABASE.md) for the `disputes` / `disputeVotes` schema.

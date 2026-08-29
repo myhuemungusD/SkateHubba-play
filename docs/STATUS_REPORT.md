@@ -28,7 +28,7 @@ Status legend:
 | Challenge by username          | **Done** | `src/screens/ChallengeScreen.tsx`                                                                                                                                                                                                                                                                                                                                                                |
 | Setting phase (record + name)  | **Done** | `src/screens/GamePlayScreen/`, `src/components/VideoRecorder.tsx`                                                                                                                                                                                                                                                                                                                                |
 | Matching phase (watch+attempt) | **Done** | `src/screens/GamePlayScreen/`                                                                                                                                                                                                                                                                                                                                                                    |
-| Self-judging (landed/missed)   | **Done** | `src/services/games.ts`                                                                                                                                                                                                                                                                                                                                                                          |
+| Self-judging (landed/missed)   | **Done** | `src/services/games.match.ts`                                                                                                                                                                                                                                                                                                                                                                    |
 | S.K.A.T.E. letter accumulation | **Done** | `src/components/LetterDisplay.tsx`, rules in `firestore.rules`                                                                                                                                                                                                                                                                                                                                   |
 | Win condition (5 letters)      | **Done** | `src/screens/GameOverScreen.tsx`, `firestore.rules`                                                                                                                                                                                                                                                                                                                                              |
 | Real-time game updates         | **Done** | `src/services/games.subscriptions.ts` (triple `onSnapshot` for the OR query — player1/player2/judge)                                                                                                                                                                                                                                                                                             |
@@ -110,40 +110,40 @@ Status legend:
 
 ---
 
-## 5. Referee & Dispute System — shipped in v1.1.0
+## 5. Shipped — Referee System (released in v1.1.0, 2026-04-19)
 
 > **Naming note:** User-facing copy says **referee** (commit `91b90f1`), but the
 > data model keeps the original `judge*` field names to avoid a Firestore
 > migration for in-flight games. Rows that reference product behavior use
 > "referee"; rows that reference schema fields keep the literal `judge*` names.
 
-| Feature                               | Status   | Evidence                                                                |
-| ------------------------------------- | -------- | ----------------------------------------------------------------------- |
-| Optional referee nomination at create | **Done** | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[1.1.0]`                  |
-| Referee accept / decline notification | **Done** | `src/services/notifications.ts`, `src/services/games.judge.ts`          |
-| Dispute → referee ruling (24 h)       | **Done** | `src/services/games.judge.ts`, `firestore.rules`                        |
-| "Call BS" on setter (24 h)            | **Done** | `src/services/games.judge.ts` (`callBSOnSetTrick`, `judgeRuleSetTrick`) |
-| Referee-only `setReview` phase        | **Done** | `GamePhase` value in `src/services/games.mappers.ts`                    |
-| Honor system path (no referee)        | **Done** | CHANGELOG `[1.1.0]` `Changed` section                                   |
-| `judgeId` / `judgeStatus` schema      | **Done** | `GameDoc` extension (internal names preserved)                          |
-| `TurnRecord.judgedBy`                 | **Done** | Schema change (internal name preserved)                                 |
-| Rules: referee immutability + scoping | **Done** | `firestore.rules`, `rules-tests/judge-redteam.rules.test.ts`            |
+| Feature                               | Status               | Evidence                                                                |
+| ------------------------------------- | -------------------- | ----------------------------------------------------------------------- |
+| Optional referee nomination at create | **Shipped** (v1.1.0) | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[1.1.0]`                  |
+| Referee accept / decline notification | **Shipped** (v1.1.0) | `src/services/notifications.ts`, `src/services/games.judge.ts`          |
+| Dispute → referee ruling (24 h)       | **Shipped** (v1.1.0) | `src/services/games.judge.ts`, `firestore.rules`                        |
+| "Call BS" on setter (24 h)            | **Shipped** (v1.1.0) | `src/services/games.judge.ts` (`callBSOnSetTrick`, `judgeRuleSetTrick`) |
+| Referee-only `setReview` phase        | **Shipped** (v1.1.0) | `GamePhase` value in `src/services/games.mappers.ts`                    |
+| Honor system path (no referee)        | **Shipped** (v1.1.0) | CHANGELOG `[1.1.0]` `Changed` section                                   |
+| `judgeId` / `judgeStatus` schema      | **Shipped** (v1.1.0) | `GameDoc` extension (internal names preserved)                          |
+| `TurnRecord.judgedBy`                 | **Shipped** (v1.1.0) | Schema change (internal name preserved)                                 |
+| Rules: referee immutability + scoping | **Shipped** (v1.1.0) | `firestore.rules`, `rules-tests/judge-redteam.rules.test.ts`            |
 
-**Verdict:** Shipped 2026-04-19 in `[1.1.0]` (CHANGELOG `9f7f27c`). The expiry cron (`resolve-expired-disputes.yml`) runs in production every 15 minutes.
+**Verdict:** Shipped in **v1.1.0** (2026-04-19, CHANGELOG `9f7f27c`); the expiry cron (`resolve-expired-disputes.yml`) runs in production every 15 minutes. The honor-system path it introduced has since been superseded again by the `pendingReview` → `communityReview` flow in §5b (see `docs/GAME_STATE_MACHINE.md`).
 
 ### 5b. Binding community disputes — shipped post-v1.1.0
 
 The honor-system path no longer resolves a "landed" claim instantly. It freezes the game into `pendingReview` (setter's 24 h accept/dispute window) and, if disputed, `communityReview` (24 h binding community vote). Not yet in any CHANGELOG release section.
 
-| Feature                                      | Status   | Evidence                                                                 |
-| -------------------------------------------- | -------- | ------------------------------------------------------------------------ |
-| `pendingReview` / `communityReview` phases   | **Done** | `src/services/games.mappers.ts`, `src/services/games.match.ts`           |
-| `reviewFor` / `reviewDeadline` freeze fields | **Done** | `games.mappers.ts`; sweep skips frozen games (`turnForfeit.shared.ts`)   |
-| Raise dispute (setter-only)                  | **Done** | `src/services/disputes.raise.ts`, `firestore.rules` `/disputes`          |
-| Community land/bail voting, 1-vote quorum    | **Done** | `src/services/disputes.votes.ts`, `firestore.rules` `/disputeVotes`      |
-| Server-side dispute referee (expiry + tally) | **Done** | `api/cron/resolve-expired-disputes.ts`, `dispute.resolution.shared.ts`   |
-| Four public dispute counters on profiles     | **Done** | `src/services/users.ts`, zero-seeded + immutable in `firestore.rules`    |
-| Dispute lane UI + review panels              | **Done** | `src/components/ClipsFeed/DisputeLane.tsx`, `GamePlayScreen/components/` |
+| Feature                                      | Status               | Evidence                                                                 |
+| -------------------------------------------- | -------------------- | ------------------------------------------------------------------------ |
+| `pendingReview` / `communityReview` phases   | **Shipped** (v1.1.0) | `src/services/games.mappers.ts`, `src/services/games.match.ts`           |
+| `reviewFor` / `reviewDeadline` freeze fields | **Shipped** (v1.1.0) | `games.mappers.ts`; sweep skips frozen games (`turnForfeit.shared.ts`)   |
+| Raise dispute (setter-only)                  | **Shipped** (v1.1.0) | `src/services/disputes.raise.ts`, `firestore.rules` `/disputes`          |
+| Community land/bail voting, 1-vote quorum    | **Shipped** (v1.1.0) | `src/services/disputes.votes.ts`, `firestore.rules` `/disputeVotes`      |
+| Server-side dispute referee (expiry + tally) | **Shipped** (v1.1.0) | `api/cron/resolve-expired-disputes.ts`, `dispute.resolution.shared.ts`   |
+| Four public dispute counters on profiles     | **Shipped** (v1.1.0) | `src/services/users.ts`, zero-seeded + immutable in `firestore.rules`    |
+| Dispute lane UI + review panels              | **Shipped** (v1.1.0) | `src/components/ClipsFeed/DisputeLane.tsx`, `GamePlayScreen/components/` |
 
 **Gap:** `disputes.raise.ts` writes no notification, so a claimer is never told their land was disputed — see GAPS.md P0-3 (partially closed).
 
@@ -231,14 +231,14 @@ work that has never been folded into a phase table and is excluded from these
 totals — they under-report what is actually built.
 
 **Overall product completion (excluding deferred):** 64 of 68 non-deferred items ≈ **94%**. Including the single deferred item (spectator), 64 of 69 ≈ 93%.
-**Active focus:** custom Mapbox style (Phase 4 — design/infra); reconstructing the CHANGELOG and cutting the missing git tags.
+**Active focus:** cut a release tag — the repo has no git tags at all and `[Unreleased]` holds ~4 months of merged work; custom Mapbox style (Phase 4 — design/infra).
 **Production gate:** Green on the verify suite. **2 of 4 P0s are fully closed; P0-3 (dispute notifications) and P0-4 (DSA controls) are partially closed** — see [GAPS.md](GAPS.md).
 
 ---
 
 ## 9. Recommended Next Actions
 
-1. **Reconstruct the CHANGELOG and cut the missing tags** _(active focus)_. `git tag` is empty even though CHANGELOG links to `v1.0.0` and `v1.1.0` release pages, and roughly 16 `feat:` commits since v1.1.0 — the admin console, user-uploaded clips, community disputes, badges/locker, store pipeline, social cards — have no CHANGELOG entry at all.
+1. **Cut a release tag** _(active focus)_. The referee system already shipped in v1.1.0, but the repo has no git tags at all and `[Unreleased]` now holds ~4 months of merged work.
 2. **Custom Mapbox style** ([#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191)) — design a branded dark-base style in Mapbox Studio and set `VITE_MAPBOX_STYLE_URL` in Vercel. No code change needed; `src/lib/mapbox.ts` already reads the env var.
 3. ~~Spec spectator mode~~ — **deferred**; revisit once vote-driven ranking has shipped engagement data to read against.
 4. **Schedule the P1 ops items** (rules deploy, backups, video purge, branch protection) — these are blockers for scaling, not for shipping.
