@@ -78,7 +78,7 @@ This app brings that to your phone, async. Set your trick whenever, opponent mat
 | Storage   | Firebase Storage (trick videos — WebM on web, MP4 on native) |
 | Native    | Capacitor (iOS + Android)                                    |
 | Hosting   | Vercel                                                       |
-| Analytics | Vercel Analytics (cookie-free, GDPR-safe)                    |
+| Analytics | Vercel Analytics + PostHog (consent-gated via in-app banner) |
 | Errors    | Sentry                                                       |
 | Testing   | Vitest, @testing-library/react, Playwright (E2E)             |
 | CI        | GitHub Actions                                               |
@@ -104,6 +104,10 @@ No custom backend for game logic — the client talks directly to Firebase with 
 - **Atomic username reservation** — no two players share a handle (Firestore transaction)
 - **Block & report** — moderation tools backed by Firestore rules
 - **Server-side game logic** — Firestore rules enforce turn order, scores, and rate limits — clients can't cheat
+- **Multi-factor auth** — optional TOTP/SMS second factor (`src/services/mfa.ts`)
+- **Avatar upload with NSFW screening** — client-side moderation via nsfwjs before an avatar goes live
+- **Age gating** — DOB collection with COPPA-compliant blocking for under-13 sign-ups
+- **Data export & account deletion** — GDPR-grade self-service flows (`/data-deletion`, `api/account/delete.ts`)
 
 ### Social & Discovery
 
@@ -114,13 +118,17 @@ No custom backend for game logic — the client talks directly to Firebase with 
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
 - **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, and challenge-from-spot
+- **Achievements & badges** — earned badges (century club, streaks, OG, …) shown on profiles
+- **Hubba Locker** — collectible locker items with a profile showcase (economy Phase A)
+- **Verified Pro** — gold username treatment for verified professional skaters
+- **Admin console** — in-app moderation surface for bans, badge awards, and dispute oversight
 
 ### Platform
 
 - **Native apps** — Capacitor builds for iOS and Android
 - **PWA-ready** — installable from the browser
 - **Offline support** — Firestore local cache lets you read games without internet
-- **Cookie-free analytics** — Vercel Analytics with full funnel instrumentation (GDPR-safe)
+- **Consent-gated analytics** — Vercel Analytics + PostHog behind an in-app consent banner, with full funnel instrumentation
 
 ---
 
@@ -187,18 +195,25 @@ skatehubba-play/
 │   ├── screens/               # Full-page components (Lobby, GamePlay, MapPage, …)
 │   ├── context/               # AuthContext, GameContext, NavigationContext, NotificationContext, OnboardingContext
 │   ├── hooks/                 # Key hooks — useAuth, useOnlineStatus, usePlayerProfile, useBlockedUsers, …
-│   ├── services/              # Single entry point for all Firebase calls (split into domain modules below)
+│   ├── services/              # Single entry point for all Firebase calls, split by domain (~57 modules)
 │   │   ├── auth.ts            #   sign up / sign in / Google OAuth / password reset
 │   │   ├── users.ts           #   profiles + atomic username reservation
-│   │   ├── games.ts           #   game CRUD + transactions + real-time subscriptions
-│   │   ├── clips.ts           #   landed-trick clips feed + upvotes
+│   │   ├── games.*.ts         #   game domain — games.ts is a barrel over create/match/judge/turns/mappers/subscriptions
+│   │   ├── disputes.*.ts      #   referee + community dispute system (raise, votes, feed, resolution, cascade)
+│   │   ├── clips.*.ts         #   landed-trick clips feed, upvotes, comments, user uploads
 │   │   ├── spots.ts           #   skate spots (geo-tagged map)
 │   │   ├── storage.ts         #   video upload (WebM/MP4, 1KB–50MB, retry)
-│   │   ├── notifications.ts   #   in-app + FCM push notifications
+│   │   ├── notifications.ts   #   in-app notifications; fcm.ts / pushDispatch.ts for push delivery
+│   │   ├── achievements.ts    #   badge economy (with locker.ts — Hubba Locker showcase)
+│   │   ├── admin.ts           #   admin console ops (+ admin.bans.ts)
+│   │   ├── mfa.ts             #   multi-factor auth enrollment/verification
+│   │   ├── avatars.ts         #   avatar upload (+ avatarModeration.ts NSFW screening)
 │   │   ├── blocking.ts        #   block / unblock users
 │   │   ├── reports.ts         #   user + content reports
-│   │   └── analytics.ts       #   Vercel Analytics event wrapper
-│   ├── lib/                   # Third-party bridges (Sentry, Mapbox)
+│   │   ├── userData.ts        #   GDPR data export / account-deletion cascade
+│   │   └── analytics.ts       #   consent-gated event wrapper (Vercel Analytics + PostHog)
+│   ├── constants/             # Shared constants (badges, trick categories, stats, UI, video)
+│   ├── lib/                   # Third-party bridges (Sentry, Mapbox, PostHog, consent)
 │   ├── utils/                 # Helpers, retry logic, error parsing
 │   └── types/                 # Shared TypeScript types
 ├── api/                       # Vercel serverless endpoints (cron sweeps, push drain, account deletion, social cards)
@@ -245,6 +260,13 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 | `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs              |
 | `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`  |
 | `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                 |
+
+**Server-only (Vercel project env, never `VITE_`-prefixed — see `.env.example`)**
+
+| Variable                        | Purpose                                                                                |
+| ------------------------------- | -------------------------------------------------------------------------------------- |
+| `CRON_SECRET`                   | Bearer token the scheduled GitHub Actions sweeps present to the `api/cron/*` endpoints |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Admin SDK credentials for the serverless endpoints (cron sweeps, account deletion)     |
 
 ---
 
@@ -300,7 +322,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 
 ## Event Instrumentation & Core Funnel
 
-All analytics flow through a single wrapper (`src/services/analytics.ts`) backed by [Vercel Analytics](https://vercel.com/docs/analytics) — cookie-free, GDPR-safe, zero-config. Swapping providers is a one-file change.
+All analytics flow through a single wrapper (`src/services/analytics.ts`) that fans each event out to [Vercel Analytics](https://vercel.com/docs/analytics) and [PostHog](https://posthog.com) (`src/lib/posthog.ts`). Both are gated on user consent (`isAnalyticsAllowed()` in `src/lib/consent.ts`, collected by the in-app consent banner); PostHog only activates when `VITE_POSTHOG_KEY` is set. Swapping providers is a one-file change.
 
 ### Instrumented Events
 

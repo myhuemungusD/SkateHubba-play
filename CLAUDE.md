@@ -72,7 +72,7 @@ Never skip the type check. `tsc -b` catches what ESLint can't.
 ### Step 4: Prove Correctness
 
 - Run the full verification gate (see above)
-- For service changes: 100% test coverage is required on `src/services/` and `src/hooks/`
+- For service changes: 100% test coverage is required on `src/services/` and `src/hooks/`. Coverage floors also apply elsewhere (`vite.config.ts` thresholds): `src/firebase.ts` at 93/100/80/93 and `src/components/**` / `src/screens/**` at 80/80/75/80 — a UI-only change can still fail the coverage gate
 - For UI changes: add or update smoke tests if behavior changed
 - For Firestore rule changes: test against emulators before merge
 
@@ -120,22 +120,22 @@ When something breaks, work through this in order:
 
 ## File-Specific Knowledge
 
-| File                      | What to Know                                                                                           |
-| ------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `src/App.tsx`             | The entire app state machine. Intentionally large. Don't refactor without discussion                   |
-| `src/firebase.ts`         | Firebase init + emulator conditional. Named database `"skatehubba"` (not default)                      |
-| `src/services/games.ts`   | **22-line barrel re-export — no logic lives here.** Real implementation is in the `games.*` modules below |
-| `src/services/games.mappers.ts` | Game types (`GameStatus`, `GamePhase`, `JudgeStatus`), `toGameDoc`, `isJudgeActive`               |
-| `src/services/games.create.ts` | `createGame`, judge invite accept/decline                                                          |
-| `src/services/games.match.ts` | `setTrick`, `failSetTrick`, `submitMatchAttempt`, `acceptLanded`. All `runTransaction`              |
-| `src/services/games.judge.ts` | `callBSOnSetTrick`, `judgeRuleSetTrick`, `resolveDispute` (judge-only paths)                        |
-| `src/services/games.turns.ts` | `forfeitExpiredTurn`, client-side rate limits                                                       |
-| `src/services/games.subscriptions.ts` | `subscribeToGame`, `subscribeToMyGames` (**three** `onSnapshot` listeners for the OR query: player1Uid, player2Uid, judgeId) |
-| `src/services/auth.ts`    | Google OAuth uses popup with redirect fallback (Safari/mobile compatibility)                           |
-| `src/services/storage.ts` | Video upload/download. WebM (web) and MP4 (native/Capacitor), 1KB–50MB. Retry with exponential backoff |
-| `firestore.rules`         | The real backend. Enforces turn order, score increments, timer, rate limits                            |
-| `storage.rules`           | `set` or `match` filenames with `.webm` (web) or `.mp4` (native). Content-type must match extension    |
-| `vercel.json`             | CSP headers, HSTS, SPA rewrites, domain redirects. Touch carefully                                     |
+| File                                  | What to Know                                                                                                                                                                                          |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/App.tsx`                         | The entire app state machine. Intentionally large. Don't refactor without discussion                                                                                                                  |
+| `src/firebase.ts`                     | Firebase init + emulator conditional. Named database `"skatehubba"` (not default)                                                                                                                     |
+| `src/services/games.ts`               | **22-line barrel re-export — no logic lives here.** Real implementation is in the `games.*` modules below                                                                                             |
+| `src/services/games.mappers.ts`       | Game types (`GameStatus`, `GamePhase`, `JudgeStatus`), `toGameDoc`, `isJudgeActive`                                                                                                                   |
+| `src/services/games.create.ts`        | `createGame`, judge invite accept/decline                                                                                                                                                             |
+| `src/services/games.match.ts`         | `setTrick`, `failSetTrick`, `submitMatchAttempt`, `acceptLanded`. All `runTransaction`                                                                                                                |
+| `src/services/games.judge.ts`         | `callBSOnSetTrick`, `judgeRuleSetTrick`, `resolveDispute` (judge-only paths)                                                                                                                          |
+| `src/services/games.turns.ts`         | `forfeitExpiredTurn`, client-side rate limits                                                                                                                                                         |
+| `src/services/games.subscriptions.ts` | `subscribeToGame`, `subscribeToMyGames` (**three** `onSnapshot` listeners for the OR query: player1Uid, player2Uid, judgeId)                                                                          |
+| `src/services/auth.ts`                | Google OAuth uses popup with redirect fallback (Safari/mobile compatibility)                                                                                                                          |
+| `src/services/storage.ts`             | Video upload/download. WebM (web) and MP4 (native/Capacitor), 1KB–50MB. Retry with exponential backoff                                                                                                |
+| `firestore.rules`                     | The real backend. Enforces turn order, score increments, timer, rate limits                                                                                                                           |
+| `storage.rules`                       | Game videos: `set-{uid}` / `match-{uid}` filenames (uid-pinned) with `.webm` (web) or `.mp4` (native); content-type must match extension. Also governs `users/{uid}/avatar.*` and `userClips/{uid}/*` |
+| `vercel.json`                         | CSP headers, HSTS, SPA rewrites, domain redirects. Touch carefully                                                                                                                                    |
 
 ---
 
