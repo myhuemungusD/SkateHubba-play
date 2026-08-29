@@ -282,9 +282,17 @@ test("matcher records response and misses → earns a letter", async ({ browser 
 
 // ─── Match trick (land → roles swap) ─────────────────────────────────────────
 
-test("matcher records response and lands → roles swap, no letters earned", async ({ browser }) => {
+test("matcher lands → setter accepts the claim → roles swap, no letters earned", async ({ browser }) => {
   // Covers submitMatchAttempt(landed=true) honor-system path — the most
   // important game mechanic that was previously uncovered end-to-end.
+  //
+  // A landed claim is NOT self-certifying any more. submitMatchAttempt
+  // freezes the game into phase "pendingReview" and the SETTER gets a 24 h
+  // accept/dispute window (docs/DISPUTE_BINDING_DESIGN.md §3.3); the role
+  // swap, the clips, and the result notification are all deferred to
+  // acceptLanded. This test used to expect the pre-redesign behaviour — an
+  // immediate swap — and waited for a setter UI that deliberately never
+  // comes.
   const p2 = await createUser(P2.email, P2.password);
   await createProfile(p2.uid, P2.username, P2.email, false);
 
@@ -311,9 +319,20 @@ test("matcher records response and lands → roles swap, no letters earned", asy
   await recordVideo(p2Page, "Match the Ollie", "Recorded");
   await p2Page.getByRole("button", { name: "✓ Landed" }).click();
 
-  // Roles swap: P2 becomes the setter for turn 2 (GamePlayScreen remounts via
-  // `key={game.turnNumber}` in App.tsx). P2 should see the fresh setter UI
-  // with the trick-name input (NOT a stale matcher confirmation).
+  // The claim freezes the game into pendingReview: P2 waits on P1's call.
+  await expect(p2Page.getByText(/Waiting for @p1skater to accept or dispute/i)).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // P1's screen offers the accept/dispute window; P1 accepts the claim.
+  await expect(p1.getByRole("group", { name: "Accept the landed claim or dispute it" })).toBeVisible({
+    timeout: 15_000,
+  });
+  await p1.getByRole("button", { name: "Accept", exact: true }).click();
+
+  // NOW the roles swap: P2 becomes the setter for turn 2 (GamePlayScreen
+  // remounts via `key={game.turnNumber}` in App.tsx) and sees the fresh
+  // setter UI with the trick-name input.
   await expect(p2Page.getByPlaceholder("Name your trick")).toBeVisible({ timeout: 15_000 });
 
   // No letters were earned on either side.
@@ -326,8 +345,7 @@ test("matcher records response and lands → roles swap, no letters earned", asy
     "0",
   );
 
-  // P1 reloads — still watching, but now waiting on P2 (who is the new setter).
-  await p1.reload();
+  // P1 — still watching — is now waiting on P2 (who is the new setter).
   await expect(p1.getByText(/Waiting on @p2skater/i)).toBeVisible({ timeout: 15_000 });
 
   await p1Ctx.close();

@@ -19,6 +19,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { clearAll, createSpot } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { CONSENT_ANSWERED_SCRIPT } from "./helpers/consent";
 
 const SPOT_ID = "11111111-2222-3333-4444-555555555555";
 
@@ -119,6 +120,11 @@ test.describe("Map → challenge wiring", () => {
     // relaxCspForEmulators' rewritten document responses hung it at the
     // post-"Create Account" navigation — every other spec signs up against
     // unintercepted pages, and this one now does too.
+    // Answer the consent banner before it can render: it sits fixed at the
+    // bottom at z-50 and swallowed the "Challenge from here" click exactly
+    // as it did the recorder controls in the recording specs.
+    await page.addInitScript(CONSENT_ANSWERED_SCRIPT);
+
     const unique = Date.now();
     await signUpAndSetupProfile(page, `mapper${unique}@example.com`, "sk8pass123", `mapper${unique}`);
 
