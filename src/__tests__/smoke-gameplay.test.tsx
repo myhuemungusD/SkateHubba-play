@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { activeGame, createMockHelpers } from "./smoke-helpers";
@@ -23,7 +23,46 @@ vi.mock("@sentry/react", () => sentry.module);
 vi.mock("../services/blocking", () => blocking.module);
 vi.mock("../services/onboarding", () => onboarding.module);
 
-beforeEach(() => vi.clearAllMocks());
+/** The download URL a successful take uploads to in these smoke tests. */
+const SET_VIDEO_URL = "https://firebasestorage.googleapis.com/v0/b/test/o/set.webm";
+
+const OriginalMediaRecorder = (globalThis as unknown as Record<string, unknown>).MediaRecorder;
+
+/** A MediaRecorder that emits a real (>1 KB) chunk before firing onstop. */
+class DataProducingMR {
+  static isTypeSupported = vi.fn().mockReturnValue(false);
+  ondataavailable: ((e: { data: Blob }) => void) | null = null;
+  onstop: (() => void) | null = null;
+  state = "inactive";
+  start = vi.fn().mockImplementation(function (this: DataProducingMR) {
+    this.state = "recording";
+  });
+  stop = vi.fn().mockImplementation(function (this: DataProducingMR) {
+    this.state = "inactive";
+    // Must exceed MIN_UPLOAD_BYTES (1 KB) or the recorder treats the take as
+    // a failed encode.
+    this.ondataavailable?.({ data: new Blob(["video-data".padEnd(2048, ".")], { type: "video/webm" }) });
+    this.onstop?.();
+  });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  // `clearAllMocks` only clears CALLS — it leaves queued `…Once` values and
+  // standing implementations in place, so an unconsumed one leaks into the
+  // next test and silently answers a call it was never written for. Reset the
+  // turn-write mocks outright; every test below arranges its own.
+  games.refs.setTrick.mockReset();
+  games.refs.submitMatchAttempt.mockReset();
+  storage.refs.uploadVideo.mockReset();
+  // A real take uploads before setTrick runs, so the upload has to resolve to
+  // a URL by default.
+  storage.refs.uploadVideo.mockResolvedValue(SET_VIDEO_URL);
+});
+
+afterEach(() => {
+  (globalThis as unknown as Record<string, unknown>).MediaRecorder = OriginalMediaRecorder;
+});
 
 const { withGames, withGameSub, renderLobby } = createMockHelpers({
   mockUseAuth: auth.refs.useAuth,
@@ -62,6 +101,13 @@ async function openExpiredDeadlineGame(extraOverrides: Partial<GameDoc> = {}): P
  * "Did you land it?" decision.
  */
 async function setterRecordsATake(trickName: string) {
+  // A take that actually produces bytes. The global test MediaRecorder emits
+  // no data, which the recorder reports as a FAILED take — and a setter with
+  // no video never reaches the decision panel, because setTrick's null
+  // videoUrl is rejected by firestore.rules (the setting→matching branch
+  // requires a bucket-pinned currentTrickVideoUrl). These smoke cases are
+  // about what follows a successful take.
+  (globalThis as unknown as Record<string, unknown>).MediaRecorder = DataProducingMR;
   await waitFor(() => expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument());
   await userEvent.type(screen.getByLabelText("TRICK NAME"), trickName);
   await userEvent.click(await screen.findByRole("button", { name: /open camera/i }));
@@ -308,7 +354,7 @@ describe("Smoke: Gameplay", () => {
 
     // setTrick should have been called with the custom trick name
     await waitFor(() => {
-      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "Kickflip", null);
+      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "Kickflip", SET_VIDEO_URL);
     });
 
     // Input locks after recording completes
@@ -338,35 +384,41 @@ describe("Smoke: Gameplay", () => {
     await userEvent.click(screen.getByText(/Landed/));
 
     await waitFor(() => {
-      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "Hardflip", null);
+      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "Hardflip", SET_VIDEO_URL);
     });
   });
 
-  it("setter submits trick without upload after confirming landed (demo mode)", async () => {
-    // Covers the submitSetterTrick code path when blob is null (demo mode recording)
+  it("setter's failed take is refused, not submitted as a video-less trick", async () => {
+    // This case used to assert the opposite — that a take producing no bytes
+    // still reached setTrick with videoUrl === null. That call is rejected by
+    // firestore.rules (setting→matching requires a bucket-pinned
+    // currentTrickVideoUrl), so the behaviour it locked in was a guaranteed
+    // permission-denied and a setter who could not advance the turn.
     const game = activeGame({ phase: "setting", currentSetter: "u1", currentTurn: "u1" });
-    games.refs.setTrick.mockResolvedValue(undefined);
     await renderLobby([game]);
     withGameSub(game);
 
     const gameButton = await screen.findByRole("button", { name: /vs @rival/i });
     await userEvent.click(gameButton);
 
-    // Type trick name to reveal recorder
     await waitFor(() => {
       expect(screen.getByLabelText("TRICK NAME")).toBeInTheDocument();
     });
-    await setterRecordsATake("360 Flip");
+    // The global test MediaRecorder emits nothing — exactly the zero-byte
+    // encoder result useMediaRecorder reports as a failed take.
+    await userEvent.type(screen.getByLabelText("TRICK NAME"), "360 Flip");
+    await userEvent.click(await screen.findByRole("button", { name: /open camera/i }));
+    await waitFor(() => screen.getByRole("button", { name: /record/i }));
+    await userEvent.click(screen.getByRole("button", { name: /record/i }));
+    await waitFor(() => screen.getByRole("button", { name: /stop recording/i }));
+    await userEvent.click(screen.getByRole("button", { name: /stop recording/i }));
 
-    // "Did you land it?" appears — click Landed to submit
-    await waitFor(() => expect(screen.getByText(/Landed/)).toBeInTheDocument());
-    await userEvent.click(screen.getByText(/Landed/));
-
-    // Confirms submitSetterTrick ran without upload (blob=null in demo mode)
     await waitFor(() => {
-      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "360 Flip", null);
-      expect(storage.refs.uploadVideo).not.toHaveBeenCalled();
+      expect(screen.getByText("That take didn't record. Try again.")).toBeInTheDocument();
     });
+    expect(screen.queryByRole("group", { name: "Did you land the trick?" })).not.toBeInTheDocument();
+    expect(games.refs.setTrick).not.toHaveBeenCalled();
+    expect(storage.refs.uploadVideo).not.toHaveBeenCalled();
   });
 
   it("matcher submits attempt after recording", async () => {
@@ -432,7 +484,7 @@ describe("Smoke: Gameplay", () => {
 
     // setTrick called (no upload since blob=null in demo mode)
     await waitFor(() => {
-      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "Heelflip", null);
+      expect(games.refs.setTrick).toHaveBeenCalledWith("game1", "Heelflip", SET_VIDEO_URL);
     });
   });
 

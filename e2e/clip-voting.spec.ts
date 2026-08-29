@@ -39,26 +39,29 @@ test("viewer upvotes another player's clip → button flips to pressed and count
   await page.reload();
   await forceTokenRefresh(page);
 
-  // Wait for the spotlight card to hydrate. The upvote button's aria-label
-  // is `Upvote clip by @<username> · current count <n>` when not yet voted.
-  const upvoteBtn = page.getByRole("button", { name: new RegExp(`Upvote clip by @${AUTHOR.username}`, "i") });
+  // Wait for the spotlight card to hydrate. The control is labelled
+  // `Thumbs up clip by @<username> · current count <n>` when not yet voted —
+  // it was renamed from "Upvote" in ClipActions, and this spec was still
+  // asking for the old name.
+  const upvoteBtn = page.getByRole("button", { name: new RegExp(`Thumbs up clip by @${AUTHOR.username}`, "i") });
   await expect(upvoteBtn).toBeVisible({ timeout: 15_000 });
   await expect(upvoteBtn).toHaveAttribute("aria-pressed", "false");
 
   await upvoteBtn.click();
 
-  // After upvoting the same button's aria-label flips to `Upvoted · <count>`.
-  // Querying by that accessible name keeps us on the public contract — no
-  // CSS / DOM-structure coupling — and disambiguates from any other
-  // aria-pressed toggle that might happen to render the count "1".
-  const upvotedBtn = page.getByRole("button", { name: "Upvoted · 1" });
+  // Once cast, the same button becomes the withdraw affordance:
+  // `Remove your thumbs up on @<username>'s clip · <count>`. Querying by that
+  // accessible name keeps us on the public contract — no CSS / DOM-structure
+  // coupling. It stays ENABLED: the vote is a toggle now, not a one-shot, so
+  // asserting it goes disabled would be asserting the old behaviour.
+  const upvotedBtn = page.getByRole("button", {
+    name: new RegExp(`Remove your thumbs up on @${AUTHOR.username}'s clip · 1`, "i"),
+  });
   await expect(upvotedBtn).toBeVisible({ timeout: 10_000 });
   await expect(upvotedBtn).toHaveAttribute("aria-pressed", "true");
-  // The same button is now disabled so a double-tap can't re-bump the count.
-  await expect(upvotedBtn).toBeDisabled();
 });
 
-test("clip viewer cannot upvote their own clip — upvote button not rendered", async ({ page }) => {
+test("clip viewer cannot upvote their own clip — the control renders disabled", async ({ page }) => {
   // Sign up viewer first so we know their uid via the auth-flow helper, then
   // seed a clip authored by that same uid.
   await signUpAndSetupProfile(page, VIEWER.email, VIEWER.password, VIEWER.username);
@@ -75,9 +78,13 @@ test("clip viewer cannot upvote their own clip — upvote button not rendered", 
   // Reload so the freshly-seeded clip appears in the feed pool.
   await page.reload();
 
-  // The author chip is still rendered so we can wait on it as a hydration
-  // anchor — but the flame upvote control is omitted entirely (ClipActions
-  // skips both upvote and challenge buttons when `isOwnClip` is true).
+  // The author chip is the hydration anchor. ClipActions does NOT omit the
+  // control on your own clip — it renders it disabled and says why. The old
+  // assertion here counted buttons named /Upvote clip by/ and expected zero,
+  // which the rename to "Thumbs up" made vacuously true: this test passed
+  // while asserting nothing.
   await expect(page.getByText(`@${VIEWER.username}`).first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("button", { name: /Upvote clip by/i })).toHaveCount(0);
+  const ownUpvote = page.getByRole("button", { name: /Thumbs up · \d+ — you can't vote on your own clip/i });
+  await expect(ownUpvote).toBeVisible({ timeout: 10_000 });
+  await expect(ownUpvote).toBeDisabled();
 });

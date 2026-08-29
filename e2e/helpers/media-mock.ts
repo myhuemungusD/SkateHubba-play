@@ -21,23 +21,30 @@ export const MEDIA_MOCK_SCRIPT = `
   'use strict';
 
   // ── Fake MediaStream ──────────────────────────────────────────────────────
-  // Mirrors the full MediaStreamTrack surface: every real track exposes the
-  // event-target pair (the app listens for 'ended' to detect a revoked camera)
-  // and getSettings() (read for the canvas capture frame rate).
-  const fakeTrack = {
-    stop: () => {},
-    kind: 'video',
-    enabled: true,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    getSettings: () => ({ frameRate: 30 }),
-  };
-  const fakeStream = {
-    getTracks: () => [fakeTrack],
-    getVideoTracks: () => [fakeTrack],
-    getAudioTracks: () => [],
-    active: true,
-  };
+  // A REAL MediaStream, produced by capturing a blank canvas. It used to be a
+  // plain object duck-typing the MediaStream surface, which Chromium now
+  // rejects outright:
+  //   "Failed to set the 'srcObject' property on 'HTMLMediaElement': The
+  //    provided value is not of type '(MediaSourceHandle or MediaStream)'"
+  // The recorder caught that as camera_access_failed and never left the
+  // "Open Camera" state, so every recording spec timed out waiting for
+  // controls that could not appear. captureStream() gives a genuine
+  // MediaStream whose tracks carry the real EventTarget and getSettings()
+  // surface the app reads (it listens for 'ended' to detect a revoked camera,
+  // and reads frameRate for the fisheye canvas capture).
+  const captureCanvas = document.createElement('canvas');
+  captureCanvas.width = 320;
+  captureCanvas.height = 240;
+  const captureCtx = captureCanvas.getContext('2d');
+  if (captureCtx) {
+    captureCtx.fillStyle = '#111';
+    captureCtx.fillRect(0, 0, captureCanvas.width, captureCanvas.height);
+  }
+  // Held on the window so the canvas backing the stream is not garbage
+  // collected mid-test, which would end the track and look like a revoked
+  // camera.
+  window.__e2eCaptureCanvas = captureCanvas;
+  const fakeStream = captureCanvas.captureStream(30);
 
   // Override getUserMedia regardless of whether mediaDevices already exists.
   if (!navigator.mediaDevices) {

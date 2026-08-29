@@ -389,10 +389,31 @@ export function useGamePlayController(game: GameDoc, profile: UserProfile): Game
     }
   }, [game.id]);
 
-  const handleRecorded = useCallback((blob: Blob | null) => {
-    setVideoBlob(blob);
-    setVideoRecorded(true);
-  }, []);
+  const handleRecorded = useCallback(
+    (blob: Blob | null) => {
+      if (!blob && isSetter) {
+        // The recorder reports null when the take produced no usable bytes —
+        // the zero-byte encoder output useMediaRecorder documents as the iOS
+        // Safari failure mode. Marking the take RECORDED anyway revealed the
+        // "✓ Landed" button over a null blob, and the setter's submit then
+        // called setTrick with videoUrl === null, which firestore.rules
+        // rejects outright: the setting→matching branch requires a
+        // bucket-pinned currentTrickVideoUrl, so the transaction came back
+        // permission-denied and the turn could not advance at all. Surface
+        // the failed take where "try again" still means something. Mirrors
+        // UserClipUpload#handleRecorded.
+        //
+        // Scoped to the setter deliberately: matchVideoUrl is explicitly
+        // nullable in the rules (`matchVideoUrlOk`), so a matcher's empty
+        // take still submits. Whether it SHOULD is a separate question.
+        setError("That take didn't record. Try again.");
+        return;
+      }
+      setVideoBlob(blob);
+      setVideoRecorded(true);
+    },
+    [isSetter],
+  );
 
   const matchSubmittedRef = useRef(false);
   const submitMatchWithCall = useCallback(

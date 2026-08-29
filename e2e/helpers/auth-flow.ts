@@ -38,7 +38,10 @@ export async function signUpViaUI(page: Page, email: string, password: string): 
     await fetch("http://localhost:9099/", { mode: "no-cors" }).catch(() => {});
     await fetch("http://localhost:8080/", { mode: "no-cors" }).catch(() => {});
   });
-  await page.getByRole("button", { name: "Use email", exact: true }).click();
+  // The landing hero's email row is "Sign in · Create account" — there is no
+  // longer a "Use email" button, and the stale locator failed every spec that
+  // signs up (i.e. nearly the whole suite) the moment it was reached.
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   // Fill both password fields (Password + Confirm).
@@ -82,7 +85,10 @@ export async function signUpAndSetupProfile(
  */
 export async function signInViaUI(page: Page, email: string, password: string): Promise<void> {
   await page.goto("/");
-  await page.getByRole("button", { name: "Account" }).click();
+  // `exact` is load-bearing: the landing page carries BOTH a nav "Account"
+  // button and a hero "Create account" button, and a substring match resolves
+  // to two elements — a Playwright strict-mode violation, not a miss.
+  await page.getByRole("button", { name: "Account", exact: true }).click();
   await expect(page.getByPlaceholder("you@email.com")).toBeVisible({ timeout: 5_000 });
   await page.getByPlaceholder("you@email.com").fill(email);
   await page.getByPlaceholder("••••••••").fill(password);

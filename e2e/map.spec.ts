@@ -6,17 +6,27 @@
  * stubbing an HTTP API. There is no apps/api server — the map talks
  * to Firestore exclusively, and so does this test.
  *
- * Auth-agnostic: the /map route is in PUBLIC_SCREENS, so we exercise
- * the full marker → preview card → "Challenge from here" flow without
- * touching Firebase Auth. The "Challenge from here" click as an
- * unauthenticated user lets us also assert the auth-bounce stash
- * (sessionStorage `skate.pendingChallengeSpot`) added to NavigationContext.
+ * SIGNED IN, deliberately. This spec used to open /map cold and assert the
+ * signed-out auth-bounce stash, on the premise that /map was public. It is
+ * not, and cannot be: `firestore.rules` gates spot reads behind
+ * `isSignedIn()` to close anonymous enumeration of the spot graph, so a
+ * signed-out /map has no markers to click even with the route guard opened
+ * up. The signed-out share surface is /spots/:id, whose bounce is what
+ * stashes `skate.pendingChallengeSpot`; that belongs to a spot-link spec,
+ * not to the map.
  */
 
 import { test, expect, type Page } from "@playwright/test";
 import { clearAll, createSpot } from "./helpers/emulator";
+import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { CONSENT_ANSWERED_SCRIPT } from "./helpers/consent";
 
 const SPOT_ID = "11111111-2222-3333-4444-555555555555";
+
+// Mirrors src/services/onboarding.ts — localDismissedKey(uid) at the current
+// TUTORIAL_VERSION. A version bump shows up here as a focused diff, same as
+// the pinned constants in onboarding.spec.ts.
+const TOUR_DISMISSED_KEY_PREFIX = "skatehubba.onboarding.dismissed.v2.";
 const SPOT_NAME = "Test Ledge";
 
 test.beforeEach(async () => {
@@ -92,14 +102,7 @@ async function stubMapbox(page: Page, capturedStyleUrls?: string[]): Promise<voi
 }
 
 test.describe("Map → challenge wiring", () => {
-  test("Challenge from here forwards the spot id and stashes it across auth", async ({ page }) => {
-    await relaxCspForEmulators(page);
-    // Capture the style URL mapbox-gl actually requests so we can assert
-    // the env-var → lib/mapbox → SpotMap → mapbox-gl wiring at the network
-    // boundary, not just at the JS module level.
-    const capturedStyleUrls: string[] = [];
-    await stubMapbox(page, capturedStyleUrls);
-
+  test("Challenge from here forwards the spot id to the challenge screen", async ({ page }) => {
     // Surface page errors / browser console for actionable CI failures —
     // the MapErrorBoundary otherwise swallows mapbox-gl crashes silently.
     const consoleMessages: string[] = [];
@@ -112,13 +115,39 @@ test.describe("Map → challenge wiring", () => {
       consoleMessages.push(`[pageerror] ${err.message}`);
     });
 
-    // Capture every URL change. The auth router will bounce an
-    // unauthenticated user off /challenge, so we need to assert the
-    // intermediate /challenge?spot=<id> URL existed before the bounce.
-    const navigatedUrls: string[] = [];
-    page.on("framenavigated", (frame) => {
-      if (frame === page.mainFrame()) navigatedUrls.push(frame.url());
+    // Sign in BEFORE the route interception goes on. /map needs a session
+    // (spot reads are auth-gated), and running the signup through
+    // relaxCspForEmulators' rewritten document responses hung it at the
+    // post-"Create Account" navigation — every other spec signs up against
+    // unintercepted pages, and this one now does too.
+    // Answer the consent banner before it can render: it sits fixed at the
+    // bottom at z-50 and swallowed the "Challenge from here" click exactly
+    // as it did the recorder controls in the recording specs.
+    await page.addInitScript(CONSENT_ANSWERED_SCRIPT);
+
+    const unique = Date.now();
+    await signUpAndSetupProfile(page, `mapper${unique}@example.com`, "sk8pass123", `mapper${unique}`);
+
+    // Dismiss the onboarding tour before it can cover the map UI. A fresh
+    // account arms the tour, its mascot bubble renders over /map too, and the
+    // "Challenge from here" click below dies inside Playwright's
+    // actionability retries ("mascot-bubble … intercepts pointer events").
+    // The dismissed flag is per-uid, so it can only be seeded after signup;
+    // the /map navigation below reloads the app, which re-reads it.
+    const uid = await page.evaluate(() => {
+      type E2EAuth = { currentUser?: { uid?: string } };
+      const auth = (globalThis as unknown as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
+      return auth?.currentUser?.uid ?? null;
     });
+    expect(uid, "expected an authenticated user").toBeTruthy();
+    await page.evaluate((key) => window.localStorage.setItem(key, "1"), TOUR_DISMISSED_KEY_PREFIX + uid);
+
+    await relaxCspForEmulators(page);
+    // Capture the style URL mapbox-gl actually requests so we can assert
+    // the env-var → lib/mapbox → SpotMap → mapbox-gl wiring at the network
+    // boundary, not just at the JS module level.
+    const capturedStyleUrls: string[] = [];
+    await stubMapbox(page, capturedStyleUrls);
 
     await page.goto("/map");
 
@@ -139,20 +168,10 @@ test.describe("Map → challenge wiring", () => {
     // "Challenge from here" is the primary (orange) button on the card.
     await page.getByRole("button", { name: "Challenge from here" }).click();
 
-    // The intermediate URL must have included ?spot=<id>. Poll the captured
-    // list so we don't race the auth router's bounce.
-    await expect
-      .poll(() => navigatedUrls.some((u) => u.includes(`/challenge?spot=${SPOT_ID}`)), {
-        timeout: 5_000,
-      })
-      .toBe(true);
-
-    // The auth-bounce polish stashes the spot in sessionStorage so a
-    // post-login restore can reapply it. Verifying the stash survived the
-    // bounce is what makes shared /challenge?spot= links work for
-    // logged-out recipients.
-    const stashed = await page.evaluate(() => window.sessionStorage.getItem("skate.pendingChallengeSpot"));
-    expect(stashed).toBe(SPOT_ID);
+    // A signed-in user is not bounced: the spot id rides the query param
+    // straight onto the challenge screen, which is the contract
+    // ChallengeScreen reads.
+    await page.waitForURL(`**/challenge?spot=${SPOT_ID}`, { timeout: 10_000 });
 
     // Wiring guard: with VITE_MAPBOX_STYLE_URL unset (the e2e default),
     // mapbox-gl must request the dark-v11 style. This is the network-level
