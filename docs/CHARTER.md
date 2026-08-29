@@ -26,10 +26,10 @@
 
 - **Repo tree corrected.** Removed `tailwind.config.js` (Tailwind 4 config is CSS-based in `src/index.css`). Added `src/components/onboarding/`, `OnboardingContext`. Doc index regenerated against actual repo: 15 docs including this charter.
 - **`src/services/games.ts` description corrected.** Game CRUD is decomposed across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, `games.subscriptions.ts`, `games.mappers.ts`. `games.ts` is now a barrel re-export.
-- **PR-gate job list corrected.** Eight jobs, not seven. Added `check-test-duplication` and `check-file-length`; removed nonexistent `build-and-test`.
-- **`firestore.rules` LOC corrected** from ~1546 to ~1805.
+- **PR-gate job list corrected.** **Nine** jobs: `enforce-pr-policy`, `guard-as-any-casts`, `verify-no-cloud-functions`, `guard-todo-fixme-hack`, `verify-workflow-changes`, `check-test-duplication`, `check-file-length`, `validate-firebase-rules`, `build-functions`.
+- **`firestore.rules` size corrected** to **3260 lines / ~189 KB** (measured 2026-08-26). Earlier figures of ~1546 and ~1805 LOC were both stale. At ~74% of Firebase's 256 KB hard limit — see `docs/GAPS.md` P2-9.
 - **Pre-flight gate corrected** to use the `verify` script (which includes `check:test-dup`).
-- **Tech-debt source corrected.** `docs/COMPREHENSIVE_GAP_ANALYSIS.md` was archived to `docs/archive/`. Active debt now lives in `docs/DECISIONS.md` and `docs/STATUS_REPORT.md`, with security debt in `docs/P0-SECURITY-AUDIT.md`.
+- **Tech-debt source corrected.** `COMPREHENSIVE_GAP_ANALYSIS.md` was archived to `docs/archive/COMPREHENSIVE_GAP_ANALYSIS.md`. Active debt now lives in `docs/DECISIONS.md` and `docs/STATUS_REPORT.md`, with security debt in `docs/GAPS.md`.
 
 ---
 
@@ -80,22 +80,21 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - Onboarding tutorial overlays (`HubzMascot`, `MascotBubble`, `SpotlightOverlay`, `TutorialOverlay`)
 - Capacitor Android project initialized; iOS scaffolded; Fastlane scaffolded
 
-### 2.2 In review (`[Unreleased]` in CHANGELOG)
+### 2.2 In review
 
-- Referee system PRs awaiting release tag (v1.x.0)
+- _(nothing currently in review)_ — the referee system shipped in **v1.1.0** (2026-04-19); see §2.1.
 
 ### 2.3 Active focus
 
 - Vote-driven clip ranking (replace chronological with upvote-ranked, add Top/New toggle, backfill `upvoteCount` aggregate, instrument `clip_upvoted` event)
 - Custom Mapbox style for branded dark-base map (`VITE_MAPBOX_STYLE_URL`, no code change)
-- Cut release tag for Referee system
 
 ### 2.4 Known critical gaps
 
 - **Auto-forfeit is speculative.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. Stale active games accumulate when nobody opens.
 - **No Firestore backups.** Workflow file exists (`firebase-infra-setup.yml`); not run.
 - **No video lifecycle purge.** Storage costs grow unbounded.
-- **Pagination cap of 50 on `subscribeToMyGames`** with no cursor (DEC-003). Acceptable short-term.
+- **Per-listener cap of 20 on `subscribeToMyGames`** with no `startAfter` cursor (DEC-003). Three listeners (player1Uid, player2Uid, judgeId), each `limit(20)` by default, grown by +20 per "load more". Acceptable short-term.
 
 ### 2.5 Out of scope (current MVP)
 
@@ -157,10 +156,10 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 - **Firebase Auth** — email/password + Google OAuth (popup with redirect fallback for Safari/mobile)
 - **Cloud Firestore** — primary datastore, named database `"skatehubba"` (not default), offline persistence via `persistentLocalCache` + `persistentMultipleTabManager`
-- **Firebase Storage** — `set.webm` / `match.webm` (web) and `set.mp4` / `match.mp4` (native), 1KB–50MB
+- **Firebase Storage** — `set-{uid}.webm` / `match-{uid}.webm` (web) and `set-{uid}.mp4` / `match-{uid}.mp4` (native), 1KB–50MB, filename pinned to the uploader's UID
 - **Firebase App Check** — reCAPTCHA v3 (web), DeviceCheck/Play Integrity (native)
 - **All game writes use `runTransaction`** — non-negotiable. Enforced across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, plus `spots.ts`, `users.ts`, and `clips.upvotes.ts` / `clips.writes.ts` (the vote and write paths for the clip feed).
-- **Dual `onSnapshot` for OR queries** in `games.subscriptions.ts` (player1Uid + player2Uid merged in memory)
+- **Three `onSnapshot` listeners for OR queries** in `games.subscriptions.ts` (player1Uid + player2Uid + judgeId merged in memory, `limit(20)` each by default)
 
 ### 4.4 Push & background work
 
@@ -184,7 +183,7 @@ The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — the drai
 
 Auto-forfeit (`forfeitExpiredTurn`) remains client-triggered; closing that gap is tracked in §9.2.
 
-### 4.5 Security rules (the real backend, ~1805 LOC)
+### 4.5 Security rules (the real backend, 3260 lines / ~189 KB)
 
 Firestore rules enforce:
 
@@ -248,7 +247,7 @@ SkateHubba-play/
 │   │   ├── games.turns.ts            # turn submission (runTransaction)
 │   │   ├── games.judge.ts            # judge action (runTransaction)
 │   │   ├── games.match.ts            # match action (runTransaction)
-│   │   ├── games.subscriptions.ts    # dual onSnapshot OR-query merge
+│   │   ├── games.subscriptions.ts    # three-listener onSnapshot OR-query merge
 │   │   ├── games.mappers.ts          # Firestore <-> domain shape
 │   │   ├── auth.ts                   # OAuth popup + redirect fallback
 │   │   ├── storage.ts                # webm/mp4, 1KB–50MB, withRetry
@@ -277,7 +276,7 @@ SkateHubba-play/
 ├── scripts/                   # check-test-duplication.mjs, check-file-length.mjs, ...
 ├── docs/                      # 15 docs (see §4.13)
 ├── fastlane/
-├── firestore.rules            # ~1546 LOC — the real backend
+├── firestore.rules            # 3260 lines / ~189 KB — the real backend
 ├── storage.rules
 ├── firebase.json
 ├── vercel.json
@@ -313,15 +312,22 @@ These are the approved majors. Minors and patches track upstream via the caret r
 ### 4.13 Documentation index (`docs/`)
 
 ```
-API.md, APPCHECK_ROLLOUT.md, APP_STORE_PRIVACY.md, ARCHITECTURE.md,
-CHARTER.md (this file), DATABASE.md, DECISIONS.md, DEPLOYMENT.md,
-DEVELOPMENT.md, DISPUTE_BINDING_DESIGN.md, ECONOMY.md, GAME_MECHANICS.md,
-GAME_STATE_MACHINE.md, MAPBOX_STYLE.md, NOTIFICATION_AUDIT.md,
-P0-SECURITY-AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md,
-STATUS_REPORT.md, STORE_PRIVACY_ANSWERS.md, TESTING.md
-archive/   — superseded audits (COMPREHENSIVE_GAP_ANALYSIS, AUDIT_2026-05 +
-             ALIGNMENT, PENTEST_2026-05-22, SECURITY_SCAN_2026-07-30,
-             STATS_AUDIT, IDEAS_PRO_SKATER_PRIZE, etc.)
+API.md, APPCHECK_ROLLOUT.md, ARCHITECTURE.md, CHARTER.md (this file),
+DATABASE.md, DECISIONS.md, DEPLOYMENT.md, DEVELOPMENT.md,
+DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md,
+GAME_MECHANICS.md, GAME_STATE_MACHINE.md, GAPS.md, MAPBOX_STYLE.md,
+NOTIFICATION_AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md,
+STATS.md, STATUS_REPORT.md, STORE_PRIVACY_ANSWERS.md, TESTING.md
+
+archive/   — superseded audits and plans; history only, never a current
+             risk register:
+             AUDIT_2026-05-ALIGNMENT.md, AUDIT_2026-05.md,
+             COMPREHENSIVE_GAP_ANALYSIS.md, DATABASE_AUDIT.md,
+             DEEPDIVE_PLAN.md, FIRESTORE_SECURITY_AUDIT.md,
+             IDEAS_PRO_SKATER_PRIZE.md, P0-SECURITY-AUDIT.md,
+             PENTEST_2026-05-22.md, PRODUCTION_AUDIT.md,
+             PRODUCTION_GAP_ANALYSIS.md, SECURITY_SCAN_2026-07-30.md,
+             STATS_AUDIT.md
 screenshots/
 ```
 
@@ -462,11 +468,11 @@ CI failures override deadlines.
 3. **P1 — Storage video lifecycle not enforced.** Same workflow.
 4. **~~P2 — Stale FCM token pruning.~~** Resolved. `api/cron/drain-push-dispatch.ts` removes any token FCM rejects with `registration-token-not-registered` / `invalid-registration-token` from both `/pushTargets/{uid}.tokens` and `users/{uid}/private/profile.fcmTokens`. Tracked as `PERF-2` in `docs/NOTIFICATION_AUDIT.md`.
 5. **P2 — Username reservation TTL.** Deleted account's username locked forever.
-6. **P2 — `subscribeToMyGames` 50-game cap with no cursor** (DEC-003). Fine until ~50 concurrent games per user.
+6. **P2 — `subscribeToMyGames` 20-per-listener cap with no cursor** (DEC-003). Fine until a user approaches 20 concurrent games on any one slice (player1, player2, or judge).
 7. **P3 — Captions on user-uploaded videos** (a11y A2).
 8. **P3 — CSP nonces** for inline scripts (S2).
 
-Tech debt lives in `docs/DECISIONS.md`, `docs/STATUS_REPORT.md`, and `docs/P0-SECURITY-AUDIT.md`. Historical audits archived under `docs/archive/`. Never hide debt.
+Tech debt lives in `docs/DECISIONS.md`, `docs/STATUS_REPORT.md`, and `docs/GAPS.md`. Historical audits archived under `docs/archive/`. Never hide debt.
 
 ---
 

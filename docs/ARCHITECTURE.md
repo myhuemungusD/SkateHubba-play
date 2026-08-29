@@ -36,7 +36,7 @@ This means:
 ### Firebase Storage
 
 - Used exclusively for trick videos. Web (MediaRecorder) emits WebM; native (Capacitor) emits MP4.
-- Storage rules enforce authentication, file size (1 KB – 50 MB), content type (`video/webm` or `video/mp4`), and an exact filename allowlist (`set.webm`, `set.mp4`, `match.webm`, `match.mp4`). The uploader's UID is bound into `customMetadata.uploaderUid` at upload time so update/delete can verify ownership. Storage rules cannot cross-reference Firestore, so game membership is not verified at the storage layer — see [SECURITY.md](../SECURITY.md) for implications.
+- Storage rules enforce authentication, file size (1 KB – 50 MB), content type (`video/webm` or `video/mp4`), and an exact filename allowlist pinned to the uploader's UID (`set-{uid}.webm`, `set-{uid}.mp4`, `match-{uid}.webm`, `match-{uid}.mp4`, compared by exact string equality). The UID is also bound into `customMetadata.uploaderUid` at upload time so delete can verify ownership; `update` is denied outright. Storage rules cannot cross-reference Firestore, so game membership is not verified at the storage layer — see [SECURITY.md](../SECURITY.md) for implications.
 
 ### Vercel
 
@@ -103,7 +103,7 @@ All Firebase SDK calls live in `src/services/`. Components and hooks import from
 | `src/services/auth.ts`          | Sign up, sign in, sign out, Google OAuth, password reset, email verification |
 | `src/services/users.ts`         | User profile CRUD, atomic username reservation, verified-pro lookup          |
 | `src/services/userData.ts`      | Account-deletion cascade + GDPR data export                                  |
-| `src/services/games.ts`         | Game creation, turn actions (transactions), real-time subscriptions          |
+| `src/services/games.*`          | Game creation, turn actions (transactions), judging, real-time subscriptions. `games.ts` itself is a barrel; logic lives in `games.{create,match,judge,turns,mappers,subscriptions}.ts` |
 | `src/services/clips.ts`         | Landed-trick clips feed + upvotes                                            |
 | `src/services/spots.ts`         | Geo-tagged skate spot CRUD + comments                                        |
 | `src/services/storage.ts`       | Video upload (WebM web / MP4 native) with retry + progress                   |
@@ -122,7 +122,7 @@ Game state transitions (`setTrick`, `submitMatchAttempt`, `forfeitExpiredTurn`) 
 
 ### `subscribeToMyGames` — dual query merge
 
-Firestore does not support OR queries across different fields in a single query. To find all games where a user is either `player1Uid` or `player2Uid`, two parallel `onSnapshot` queries run. Their results are merged in memory, deduplicated by document ID, and sorted (active games first, then by `turnNumber` descending). Both listeners share a single unsubscribe function returned to the caller.
+Firestore does not support OR queries across different fields in a single query. To find all games a user is involved in — as `player1Uid`, `player2Uid`, or `judgeId` — **three** parallel `onSnapshot` queries run (`games.subscriptions.ts:176-178`). Each is capped at `limitCount` (default **20**, `games.subscriptions.ts:82`; grown by 20 per "load more" from `GameContext.tsx:41`), so the listener set holds at most 3 × limit documents. Results are merged in memory, deduplicated by document ID, and sorted (active games first, then by `turnNumber` descending). All three share a single unsubscribe function, and each slice has isolated error handling so one failing query does not blank the lobby.
 
 ---
 

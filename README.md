@@ -403,9 +403,9 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 - ⏳ **Trick library** — community trick index with video proof, a defensible content layer
 - ⏳ **Tournaments** — bracket-style competitions for appointment engagement
 
-### Unreleased — Referee System 🧑‍⚖️ in review
+### Referee System 🧑‍⚖️ — shipped in v1.1.0
 
-Optional third player who arbitrates disputes. See `[Unreleased]` in [CHANGELOG.md](CHANGELOG.md).
+Optional third player who arbitrates disputes. See the v1.1.0 entries in [CHANGELOG.md](CHANGELOG.md).
 
 - Nominate a referee at challenge time; honor system runs by default if declined or absent
 - **Dispute path** — referee rules on a matcher's "landed" claim (24 h, then auto-accept)

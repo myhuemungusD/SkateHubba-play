@@ -1,8 +1,12 @@
 # Binding Community Trick Dispute — Engineering Design
 
-Status: **DESIGN / APPROVED SCOPE** (owner-approved 2026-07). Implementation contract for the
-binding community trick-dispute feature. Scope: **honor-system games only** (the nominated-referee
-/ judge path is unchanged and out of scope here).
+Status: **SHIPPED** — service + rules + referee landed 2026-07-30 (#474, building on #463); the
+live vote-tally UI completed it 2026-08-21 (#522). Owner-approved 2026-07. Scope:
+**honor-system games only** (the nominated-referee / judge path is unchanged and out of scope here).
+
+This remains the **design of record**, not an archive: it is the only written source for the
+frozen-phase state machine and the stat-increment rules, and the referee cron cites its §3.3/§3.4
+(`.github/workflows/resolve-expired-disputes.yml`). Kept in `docs/`, deliberately.
 
 This document is the single source of truth every implementation phase builds against. If code and
 this doc disagree, fix one of them deliberately — do not let them drift.
@@ -54,10 +58,11 @@ Increment rules (all applied by the referee, in one admin transaction, at resolu
 - **bail** verdict additionally: `disputesRight`+1 on disputer.
 - **tie / zero-vote**: no right/wrong increment.
 
-> OPEN NUANCE (confirm with owner): whether a **zero-vote auto-accept** should still increment the
-> two raw counts (`tricksDisputed`/`disputesRaised`). This doc assumes **yes** (a dispute was raised,
-> so it counts). Trivial to flip in the decision helper if the owner wants zero-vote to be fully
-> neutral.
+> RESOLVED BY SHIPPING: a **zero-vote auto-accept** does increment the two raw counts
+> (`tricksDisputed`/`disputesRaised`) — a dispute was raised, so it counts. Implemented in
+> `src/services/dispute.resolution.shared.ts` and applied by
+> `api/cron/resolve-expired-disputes.ts`. Still a one-line flip in the decision helper if the
+> owner later wants zero-vote to be fully neutral.
 
 Game win/loss stats remain handled by the existing `applyGameStats` function at game end — untouched.
 If a **bail** verdict awards the 5th letter and ends the game, that terminal transition triggers

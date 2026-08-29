@@ -38,7 +38,7 @@ Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
 
 Feature work in this stretch is only justified if it removes friction from that number.
 
-- [ ] **Cut the referee release tag** — the `[Unreleased]` referee system is code-complete and sitting unshipped. Ship it or explicitly park it.
+- [ ] **Cut a release tag** — the referee system already shipped in the v1.1.0 CHANGELOG block, but the repo has **no git tags at all** and `package.json` still reads `1.1.0` while ~4 months of work sits unreleased. Tag what is out, then keep `[Unreleased]` current.
 - [ ] **Instrument the traction number** — `game_completed` already fires (`src/services/analytics.ts`). Stand up the reporting so completed-game count and completion rate are visible without hand-counting.
 - [ ] **Close the abandonment gaps** — read drop-off across `game_created → trick_set → match_submitted → game_completed` and fix whichever stage bleeds hardest.
 - [ ] **Return rate** — do players who finish a game start a second one within 7 days?
