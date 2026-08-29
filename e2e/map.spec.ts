@@ -21,6 +21,11 @@ import { clearAll, createSpot } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
 
 const SPOT_ID = "11111111-2222-3333-4444-555555555555";
+
+// Mirrors src/services/onboarding.ts — localDismissedKey(uid) at the current
+// TUTORIAL_VERSION. A version bump shows up here as a focused diff, same as
+// the pinned constants in onboarding.spec.ts.
+const TOUR_DISMISSED_KEY_PREFIX = "skatehubba.onboarding.dismissed.v2.";
 const SPOT_NAME = "Test Ledge";
 
 test.beforeEach(async () => {
@@ -116,6 +121,20 @@ test.describe("Map → challenge wiring", () => {
     // unintercepted pages, and this one now does too.
     const unique = Date.now();
     await signUpAndSetupProfile(page, `mapper${unique}@example.com`, "sk8pass123", `mapper${unique}`);
+
+    // Dismiss the onboarding tour before it can cover the map UI. A fresh
+    // account arms the tour, its mascot bubble renders over /map too, and the
+    // "Challenge from here" click below dies inside Playwright's
+    // actionability retries ("mascot-bubble … intercepts pointer events").
+    // The dismissed flag is per-uid, so it can only be seeded after signup;
+    // the /map navigation below reloads the app, which re-reads it.
+    const uid = await page.evaluate(() => {
+      type E2EAuth = { currentUser?: { uid?: string } };
+      const auth = (globalThis as unknown as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
+      return auth?.currentUser?.uid ?? null;
+    });
+    expect(uid, "expected an authenticated user").toBeTruthy();
+    await page.evaluate((key) => window.localStorage.setItem(key, "1"), TOUR_DISMISSED_KEY_PREFIX + uid);
 
     await relaxCspForEmulators(page);
     // Capture the style URL mapbox-gl actually requests so we can assert

@@ -115,6 +115,12 @@ async function recordVideo(page: Page, recordLabel: string, doneLabel = "Recorde
  */
 async function setterConfirmsLanded(page: Page) {
   await expect(page.getByRole("group", { name: "Did you land the trick?" })).toBeVisible({ timeout: 5_000 });
+  // Wait out the turn-action rate limit before submitting. firestore.rules
+  // rejects a game update within 2 s of the doc's updatedAt (anti-flood), and
+  // Playwright gets from "Send Challenge" (which stamps updatedAt) to this
+  // click in ~1.8 s — faster than any human, so setTrick came back
+  // permission-denied on exactly the writes a real player would land.
+  await page.waitForTimeout(2_100);
   await page.getByRole("button", { name: "✓ Landed" }).click();
 }
 

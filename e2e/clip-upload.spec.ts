@@ -90,6 +90,11 @@ test("setter records a clip → upload completes and download URL is persisted t
   // it is what triggers submitSetterTrick() → uploadVideo() → setTrick().
   // Without it the upload never runs and the phase never advances.
   await expect(p1.getByRole("button", { name: "✓ Landed" })).toBeVisible({ timeout: 5_000 });
+  // Wait out firestore.rules' 2 s turn-action cooldown — Playwright reaches
+  // this click ~1.8 s after game creation stamped updatedAt, and the submit
+  // is permission-denied inside the window (this test's "flaky" pass was the
+  // retry drifting past 2 s).
+  await p1.waitForTimeout(2_100);
   await p1.getByRole("button", { name: "✓ Landed" }).click();
 
   // (2) Upload + setTrick complete → game advances to the matching phase, so
