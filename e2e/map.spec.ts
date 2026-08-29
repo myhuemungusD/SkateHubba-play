@@ -97,13 +97,6 @@ async function stubMapbox(page: Page, capturedStyleUrls?: string[]): Promise<voi
 
 test.describe("Map → challenge wiring", () => {
   test("Challenge from here forwards the spot id to the challenge screen", async ({ page }) => {
-    await relaxCspForEmulators(page);
-    // Capture the style URL mapbox-gl actually requests so we can assert
-    // the env-var → lib/mapbox → SpotMap → mapbox-gl wiring at the network
-    // boundary, not just at the JS module level.
-    const capturedStyleUrls: string[] = [];
-    await stubMapbox(page, capturedStyleUrls);
-
     // Surface page errors / browser console for actionable CI failures —
     // the MapErrorBoundary otherwise swallows mapbox-gl crashes silently.
     const consoleMessages: string[] = [];
@@ -116,8 +109,20 @@ test.describe("Map → challenge wiring", () => {
       consoleMessages.push(`[pageerror] ${err.message}`);
     });
 
+    // Sign in BEFORE the route interception goes on. /map needs a session
+    // (spot reads are auth-gated), and running the signup through
+    // relaxCspForEmulators' rewritten document responses hung it at the
+    // post-"Create Account" navigation — every other spec signs up against
+    // unintercepted pages, and this one now does too.
     const unique = Date.now();
-    await signUpAndSetupProfile(page, `mapper+${unique}@example.com`, "sk8pass123", `mapper${unique}`);
+    await signUpAndSetupProfile(page, `mapper${unique}@example.com`, "sk8pass123", `mapper${unique}`);
+
+    await relaxCspForEmulators(page);
+    // Capture the style URL mapbox-gl actually requests so we can assert
+    // the env-var → lib/mapbox → SpotMap → mapbox-gl wiring at the network
+    // boundary, not just at the JS module level.
+    const capturedStyleUrls: string[] = [];
+    await stubMapbox(page, capturedStyleUrls);
 
     await page.goto("/map");
 

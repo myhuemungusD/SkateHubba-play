@@ -28,6 +28,20 @@ const P1 = { email: "p1@test.com", password: "password123", username: "p1skater"
 const P2 = { email: "p2@test.com", password: "password123", username: "p2skater" };
 
 /**
+ * The lobby card for the game against `username`.
+ *
+ * `getByRole("button").filter({ hasText: username })` matched TWO elements:
+ * the card itself and the "View @<user>'s profile" button nested inside it.
+ * Whether the inner one had rendered depended on when the opponent's profile
+ * data arrived, so the ambiguity only tripped strict mode some of the time.
+ * The card's accessible name starts "vs @<user>", which the inner button's
+ * never does.
+ */
+function gameCard(page: Page, username: string) {
+  return page.getByRole("button", { name: new RegExp(`^vs @${username}`) });
+}
+
+/**
  * Enable the fake camera/MediaRecorder for the given page.
  * Must be called before `page.goto()`.
  */
@@ -49,7 +63,15 @@ async function recordVideo(page: Page, recordLabel: string, doneLabel = "Recorde
   // CI latency doesn't cause the check to time-out and skip the click.
   const openBtn = page.getByRole("button", { name: /Open Camera/i });
   if (await openBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    await openBtn.click();
+    // Bounded, and allowed to fail. The button is already optional here (the
+    // isVisible check above tolerates its absence), but the click was not:
+    // when the setter's camera auto-opened between the check and the click,
+    // the click sat in Playwright's actionability retry loop until the whole
+    // 30 s test budget was gone and the run reported "Test ended" against
+    // this line rather than anything diagnostic. Falling through to the
+    // Record button — the actual goal — either works or fails where it means
+    // something.
+    await openBtn.click({ timeout: 5_000 }).catch(() => {});
   }
 
   await page.getByRole("button", { name: new RegExp(`Record.*${recordLabel}`, "i") }).click();
@@ -166,11 +188,11 @@ test("matcher records response and misses → earns a letter", async ({ browser 
   await signInViaUI(p2Page, P2.email, P2.password);
 
   // P2's lobby should show the active game with P1 (card shows "vs @p1skater")
-  await expect(p2Page.getByRole("button").filter({ hasText: P1.username })).toBeVisible({
+  await expect(gameCard(p2Page, P1.username)).toBeVisible({
     timeout: 10_000,
   });
   // Click the game card (it's the matcher's turn)
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  await gameCard(p2Page, P1.username).click();
 
   // P2 should see the matching UI
   await expect(p2Page.getByText(/Match @p1skater's Heelflip/i)).toBeVisible({ timeout: 10_000 });
@@ -237,7 +259,7 @@ test("matcher records response and lands → roles swap, no letters earned", asy
   await mockMedia(p2Page);
   await signInViaUI(p2Page, P2.email, P2.password);
 
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  await gameCard(p2Page, P1.username).click();
   await expect(p2Page.getByText(/Match @p1skater's Ollie/i)).toBeVisible({ timeout: 10_000 });
 
   await recordVideo(p2Page, "Match the Ollie", "Recorded");
@@ -293,7 +315,7 @@ test("expired turn deadline → forfeit screen shown to both players", async ({ 
   await signInViaUI(p2Page, P2.email, P2.password);
 
   // Open the game from the lobby (card shows "vs @p1skater")
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  await gameCard(p2Page, P1.username).click();
 
   // The GamePlayScreen's useEffect fires forfeitExpiredTurn() which sets
   // status="forfeit" on the game.  The GameContext subscription then routes
@@ -305,7 +327,7 @@ test("expired turn deadline → forfeit screen shown to both players", async ({ 
   const p1Ctx: BrowserContext = await browser.newContext();
   const p1Page: Page = await p1Ctx.newPage();
   await signInViaUI(p1Page, P1.email, P1.password);
-  await p1Page.getByRole("button").filter({ hasText: P2.username }).click();
+  await gameCard(p1Page, P2.username).click();
 
   await expect(p1Page.getByText("You Win")).toBeVisible({ timeout: 10_000 });
   await expect(p1Page.getByText(/@p2skater ran out of time/i)).toBeVisible();
@@ -341,7 +363,7 @@ test("completing a game shows game over screen with winner and rematch option", 
   await mockMedia(p2Page);
   await signInViaUI(p2Page, P2.email, P2.password);
 
-  await p2Page.getByRole("button").filter({ hasText: P1.username }).click();
+  await gameCard(p2Page, P1.username).click();
   await expect(p2Page.getByText(/Match @p1skater's 360 Flip/i)).toBeVisible({ timeout: 10_000 });
 
   await recordVideo(p2Page, "Match the 360 Flip", "Recorded");
@@ -355,7 +377,7 @@ test("completing a game shows game over screen with winner and rematch option", 
   const p1Ctx: BrowserContext = await browser.newContext();
   const p1Page: Page = await p1Ctx.newPage();
   await signInViaUI(p1Page, P1.email, P1.password);
-  await p1Page.getByRole("button").filter({ hasText: P2.username }).click();
+  await gameCard(p1Page, P2.username).click();
   await expect(p1Page.getByText("You Win")).toBeVisible({ timeout: 10_000 });
   await expect(p1Page.getByRole("button", { name: /Rematch/i })).toBeVisible();
 
