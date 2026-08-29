@@ -300,6 +300,20 @@ setTrick(
 
 Submits the setter's trick. Sanitizes the trick name (trim + slice to 100 chars) at the service boundary. Runs a transaction to validate `phase === "setting"` and transition the game to `phase: "matching"`, switching `currentTurn` to the matcher.
 
+> **`videoUrl` is typed nullable but a `null` is rejected by the rules.** The
+> setting→matching branch in `firestore.rules` requires a bucket-pinned
+> `currentTrickVideoUrl`, and that pin fails for `null` — so `setTrick(id, name,
+null)` comes back `permission-denied` and the turn cannot advance. This was
+> reachable from the UI: `useMediaRecorder` reports `onRecorded(null)` for a
+> take that produced no bytes (the iOS Safari zero-byte encoder result), and the
+> game screen used to mark that take recorded anyway, leaving the setter stuck
+> retrying a write that could never succeed or taking the letter. The setter
+> path now refuses a failed take up front
+> ([#538](https://github.com/myhuemungusD/SkateHubba-play/pull/538)).
+>
+> The matcher's `matchVideoUrl` **is** genuinely nullable in the rules — the
+> asymmetry is deliberate, so don't "fix" the type here.
+
 **Throws:** `"Trick name cannot be empty"`, `"Game not found"`, `"Not in setting phase"`
 
 ---

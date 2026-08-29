@@ -77,7 +77,12 @@ rules-tests/                         — Firestore + Storage rules tests (emulat
 
 e2e/                                 — Playwright specs (emulator-backed)
 ├── global-setup.ts
-├── helpers/
+├── helpers/                         — shared page/auth/consent/media helpers
+│   └── __tests__/                   — NOTE: a Vitest suite that nothing runs.
+│                                      Vitest's include is `src/**`, and
+│                                      Playwright's testMatch is now
+│                                      `**/*.spec.ts`. Move it under `src/`
+│                                      or drop it.
 └── *.spec.ts                        — auth, game, forfeit, map, invite, onboarding,
                                        clip-upload, clip-voting, notification-deeplink,
                                        offline-resilience, signup-back-end-state
@@ -195,6 +200,23 @@ and tear down the emulators themselves — you do **not** need `npm run emulator
 running in another shell. They do need the Firebase CLI on your PATH
 (`firebase-tools` is a devDependency, so `npx` resolves it).
 
+> **`test:e2e` runs against a generated ruleset, not `firestore.rules`.** It
+> first runs `node scripts/make-emulator-rules.mjs`, which emits
+> `firestore.emulator.rules` plus a `firebase.emulator.json` pointing at it.
+> This exists because `firestore.rules` pins every video URL to the production
+> Storage bucket (deliberate anti-exfil hardening), while the Storage emulator
+> issues `http://localhost:9199/v0/b/demo-skatehubba.appspot.com/...` URLs that
+> the pin rejects on scheme, host, and bucket at once — so the core loop's
+> setting→matching write could never succeed under E2E. The script rewrites
+> **only** those bucket-pin constants, and asserts an expected occurrence count
+> for each replacement, so a rename or move in `firestore.rules` fails loudly
+> instead of silently testing the wrong ruleset.
+>
+> Both generated files are gitignored and regenerated on every run. **Neither is
+> ever deployed** — the deploy path remains a straight upload of
+> `firestore.rules`. `npm run test:rules` is unaffected and still runs against
+> the real `firestore.rules`.
+
 To see all test names:
 
 ```bash
@@ -301,7 +323,7 @@ Every exported service function and custom hook has dedicated unit tests with 10
 ## Security-Rules Tests (`rules-tests/`)
 
 `firestore.rules` and `storage.rules` are the real backend, so they get their own
-suite — currently 52 files — run against the emulators with
+suite — currently 53 files — run against the emulators with
 `@firebase/rules-unit-testing`:
 
 ```bash
@@ -368,7 +390,7 @@ locally whenever you touch `firestore.rules`, `storage.rules`, or
 (`.github/workflows/firebase-rules-deploy.yml`) — which is **currently failing**;
 see [DEVELOPMENT.md](DEVELOPMENT.md#deploying-security-rules).
 
-> **⚠️ The `e2e` job did not actually gate merges.** Its step ran
+> **The `e2e` job did not gate merges until 2026-08-29.** Its step ran
 > `npm run test:e2e | tee e2e-output.log` under GitHub's default `bash -e {0}`,
 > which has no `pipefail` — so the step's exit status was `tee`'s, always 0. The
 > "Fail if E2E tests failed" gate never fired and a red suite reported green.
@@ -376,8 +398,8 @@ see [DEVELOPMENT.md](DEVELOPMENT.md#deploying-security-rules).
 > `e2e/helpers/__tests__/*.test.ts` (a **Vitest** suite), whose `@vitest/expect`
 > import collides with Playwright's `expect` over the shared
 > `Symbol($$jest-matchers-object)` and aborted the run before any test executed.
-> Both are fixed in
-> [#538](https://github.com/myhuemungusD/SkateHubba-play/pull/538) (a
-> `shell: bash -eo pipefail {0}` pin and `testMatch: "**/*.spec.ts"`). Until
-> that lands, treat a green `e2e` job as unproven — and expect `main` to go red
-> once it does, because the suite is genuinely failing.
+> Both were fixed in
+> [#538](https://github.com/myhuemungusD/SkateHubba-play/pull/538) — a
+> `shell: bash -eo pipefail {0}` pin and `testMatch: "**/*.spec.ts"` — which
+> also repaired the specs the mask had been hiding. Worth knowing when reading
+> any CI history from before that date: a green `e2e` job proved nothing.
