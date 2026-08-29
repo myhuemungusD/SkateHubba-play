@@ -61,7 +61,7 @@ Repo-wide grep for `dsa|illegal content|statement of reasons|appeal|trusted flag
 
 ### P1-1 · `notBanned()` missing from six UGC write surfaces
 
-`firestore.rules:76-77` claims a banned account "loses **every** UGC-producing write." Actually enforced on only 3 paths (user clips `:2766`, comments `:2832`, clipVotes `:2871/:2909`). **Missing** on: `disputes` create (`:2945`), `disputeVotes` create (`:3136` — these write _binding_ letters/turn order), `spots/{id}/comments` (`:2068`), `spots` create (`:1983`), `reports` create (`:2525`), game-source `clips` create (`:2702`). Only the `/games` omission is a documented budget exception (`:79-84`). Red-team suite covers 3 of 9 surfaces.
+`firestore.rules:76-77` claims a banned account "loses **every** UGC-producing write." Actually enforced on only 3 paths (user clips `:2766`, comments `:2832`, clipVotes `:2873/:2911`). **Missing** on: `disputes` create (`:2945`), `disputeVotes` create (`:3136` — these write _binding_ letters/turn order), `spots/{id}/comments` (`:2068`), `spots` create (`:1983`), `reports` create (`:2525`), game-source `clips` create (`:2702`). Only the `/games` omission is a documented budget exception (`:79-84`). Red-team suite covers 3 of 9 surfaces.
 
 ### P1-2 · `users` create not bound to a `usernames` reservation → username uniqueness bypass
 
@@ -125,7 +125,7 @@ The report/ban infrastructure is above-average as abuse tooling (`reports.ts`, `
 
 ### P2-5 · No SAST / CodeQL / secret scanning in CI
 
-11 workflows, none CodeQL/Semgrep/gitleaks. The stated threat model (`SECURITY.md:89`) includes AI agents pushing code, and the repo handles service-account JSON in env — a committed-secret scanner is the obvious missing control.
+12 workflows, none CodeQL/Semgrep/gitleaks. The stated threat model (`SECURITY.md:89`) includes AI agents pushing code, and the repo handles service-account JSON in env — a committed-secret scanner is the obvious missing control.
 
 ### P2-6 · Content moderation is avatar-only, client-side, and fail-open; video unscreened
 
@@ -137,7 +137,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P2-8 · Controller hooks escape the 100% hook coverage rule
 
-~2,400 lines of stateful game/upload logic live next to components (`useGamePlayController.ts` 446 LOC, `useUserClipUpload.ts`, `useClipsFeedController.ts`, etc.) so they face the 80% UI floor, not the 100% `src/hooks/**` floor. No global coverage threshold means `src/context`, `src/lib`, `src/utils` can regress to 0%.
+~2,400 lines of stateful game/upload logic live next to components (`useGamePlayController.ts` 456 LOC, `useUserClipUpload.ts`, `useClipsFeedController.ts`, etc.) so they face the 80% UI floor, not the 100% `src/hooks/**` floor. No global coverage threshold means `src/context`, `src/lib`, `src/utils` can regress to 0%.
 
 ### P2-9 · `firestore.rules` at 74% of Firebase's hard limit, no size guard
 

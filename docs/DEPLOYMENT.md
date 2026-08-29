@@ -2,12 +2,12 @@
 
 ## Architecture
 
-| Concern                   | Service                                         |
-| ------------------------- | ----------------------------------------------- |
-| Code hosting              | Vercel (auto-deploys from GitHub)               |
-| Auth + Database + Storage | Firebase (rules auto-deploy on merge to `main`) |
-| Stats close-out           | Firebase Cloud Functions (manual deploy)        |
-| CI gate                   | GitHub Actions (type check → test → build)      |
+| Concern                   | Service                                                                                                                                                                     |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Code hosting              | Vercel (auto-deploys from GitHub)                                                                                                                                           |
+| Auth + Database + Storage | Firebase (rules auto-deploy on merge to `main`)                                                                                                                             |
+| Stats close-out           | Firebase Cloud Functions (manual deploy)                                                                                                                                    |
+| CI gate                   | GitHub Actions (`main.yml`: audit → `as any` guard → lint → type check → coverage → test-dup → build, plus separate `e2e` and `lighthouse` jobs; `pr-gate.yml` adds 9 more) |
 
 ---
 
@@ -299,8 +299,14 @@ VITE_APP_URL         — Set to https://skatehubba.com in production.
                        (password reset, verification). Falls back to
                        window.location.origin if not set.
 
-VITE_USE_EMULATORS   — Development only. Do NOT set this in Vercel.
-                       Setting it in production will cause Firebase connections to fail.
+VITE_USE_EMULATORS   — Development only. Ignored in production builds: the
+                       emulator path is gated on `import.meta.env.DEV`
+                       (`src/firebase.ts`), which is false for every Vercel
+                       build. The real hazard is validation — `src/lib/env.ts`
+                       accepts only the literal strings "true" or "false".
+                       Any other value fails the Zod parse, which makes
+                       firebaseReady false and locks the app to the
+                       "Setup Required" screen.
 
 FIREBASE_STORAGE_BUCKET
                      — Server-side only (no VITE_ prefix — never exposed to the
@@ -321,6 +327,60 @@ ACCOUNT_DELETE_ALLOWED_ORIGIN
                        (the Capacitor origins are already allowlisted). Useful
                        when testing the native delete flow against a preview
                        deployment from a non-standard origin.
+
+FIREBASE_PROJECT_ID  — Server-side only. Fallback project id for
+                       `api/player-meta.ts` when VITE_FIREBASE_PROJECT_ID is
+                       not present in the serverless runtime.
+
+DRY_RUN              — Server-side only, all three cron endpoints. Set to "1"
+                       or "true" to make a deployment log its intended writes
+                       and commit nothing. The per-request `?dryRun=1` query
+                       param does the same thing for a single call; this is
+                       the switch to reach for when you want the whole
+                       deployment inert without editing a workflow.
+
+VITE_FIREBASE_VAPID_KEY
+                     — FCM web-push VAPID key (Firebase Console → Project
+                       Settings → Cloud Messaging → Web Push certificates).
+                       WITHOUT THIS, PUSH IS ENTIRELY DISABLED: `fcm.ts` logs
+                       `vapid_key_missing` and returns null, no device ever
+                       registers a token, and /push_dispatch stays empty. The
+                       drain cron will run green while delivering nothing.
+
+VITE_FIREBASE_MEASUREMENT_ID
+                     — Firebase Analytics measurement id. Optional.
+
+VITE_RECAPTCHA_SITE_KEY / VITE_APPCHECK_ENABLED
+                     — App Check via reCAPTCHA v3. BOTH are required to turn
+                       App Check on, and it is OFF by default — enabling
+                       Console enforcement without a matching reCAPTCHA domain
+                       allowlist locks every signed-in user out. Follow
+                       docs/APPCHECK_ROLLOUT.md; do not flip these ad hoc.
+
+VITE_SENTRY_DSN      — Sentry error tracking. Without it errors only reach the
+                       browser console. See docs/SENTRY_ALERTS.md.
+
+VITE_POSTHOG_KEY / VITE_POSTHOG_HOST
+                     — PostHog product analytics, consent-gated. Omit the key
+                       to disable. Host defaults to the US cloud.
+
+VITE_APP_VERSION / VITE_GIT_SHA
+                     — Build-time release identifiers stamped into the bundle
+                       and used as the Sentry release string. Set automatically
+                       by release.yml (git tag) and android-aab.yml; Vercel
+                       supplies VERCEL_GIT_COMMIT_SHA for VITE_GIT_SHA. Falls
+                       back to the package.json version.
+
+REQUIRE_SW_CONFIG    — Build-time only. When set to "1", an unreplaced
+                       __PLACEHOLDER__ token in the generated service worker
+                       becomes a HARD BUILD FAILURE instead of a warning
+                       (vite.config.ts). release.yml and android-aab.yml both
+                       set it, because a store build that ships a service
+                       worker with dead Firebase config silently breaks
+                       background web push. **The Vercel production project
+                       still needs this added as a project env var to get the
+                       same guarantee.** Local builds without a .env keep
+                       working via the SW's query-string fallback.
 ```
 
 ### Vercel scoping
@@ -328,6 +388,26 @@ ACCOUNT_DELETE_ALLOWED_ORIGIN
 Set `VITE_FIREBASE_*` and `VITE_MAPBOX_TOKEN` for both **Production** and **Preview** scopes — preview deployments need Firebase and the map to work for testing.
 
 Set `VITE_APP_URL` for **Production only** — preview deployments have auto-generated URLs that you don't know in advance.
+
+`FIREBASE_PROJECT_ID` and `VITE_FIREBASE_API_KEY` must exist in the Vercel
+project env (not merely in the client bundle) because `api/player-meta.ts`
+reads them **server-side** when rendering social cards.
+
+### Workflows that need their own secrets
+
+| Workflow                    | Secrets it needs                                                                                                                           |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `main.yml`                  | none (CI only)                                                                                                                             |
+| `pr-gate.yml`               | none                                                                                                                                       |
+| `firebase-rules-deploy.yml` | `FIREBASE_PROJECT_ID`, plus either `FIREBASE_WIF_PROVIDER` + `FIREBASE_WIF_SERVICE_ACCOUNT` (preferred) or the deprecated `FIREBASE_TOKEN` |
+| `release.yml`               | `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT` — without these, production stack traces stay minified                                 |
+| `android-aab.yml`           | the full `VITE_*` set (Firebase, Mapbox, Sentry, PostHog, App Check) plus the Android signing keystore                                     |
+| `ios-build.yml`             | the same `VITE_*` set plus the Apple signing credentials                                                                                   |
+| the three cron workflows    | `CRON_SECRET` (must match the Vercel project env value exactly, or every run 401s)                                                         |
+
+Also in the repo but not covered above: `release-please.yml` (release PR
+automation), `release-recovery.yml`, and `firebase-infra-setup.yml` (manual
+`workflow_dispatch` for Firestore backups and the 90-day Storage lifecycle).
 
 ### Mapbox token hardening
 
@@ -352,18 +432,29 @@ of view (a game whose landed claim is under review stays frozen forever if
 the dispute referee never runs). This section exists because exactly that
 happened to the first two on 2026-07-27 (~24h outage).
 
-| Endpoint                             | Workflow                                         | Schedule | Job                                      |
-| ------------------------------------ | ------------------------------------------------ | -------- | ---------------------------------------- |
-| `/api/cron/sweep-expired-turns`      | `.github/workflows/sweep-expired-turns.yml`      | \*/15min | Auto-forfeits expired turns              |
-| `/api/cron/drain-push-dispatch`      | `.github/workflows/drain-push-dispatch.yml`      | \*/5min  | Delivers queued push notifications       |
-| `/api/cron/resolve-expired-disputes` | `.github/workflows/resolve-expired-disputes.yml` | \*/15min | Resolves trick-dispute reviews and votes |
+| Endpoint                             | Workflow                                         | Schedule | Job                                                                                                                                                             |
+| ------------------------------------ | ------------------------------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/api/cron/sweep-expired-turns`      | `.github/workflows/sweep-expired-turns.yml`      | \*/15min | Auto-forfeits expired turns **and runs the notification passes** (new-challenge notices, upcoming-deadline reminders) — a failure here silently stops those too |
+| `/api/cron/drain-push-dispatch`      | `.github/workflows/drain-push-dispatch.yml`      | \*/5min  | Delivers queued push notifications                                                                                                                              |
+| `/api/cron/resolve-expired-disputes` | `.github/workflows/resolve-expired-disputes.yml` | \*/15min | Resolves trick-dispute reviews and votes                                                                                                                        |
 
 All three endpoints share the same auth (`CRON_SECRET` bearer), the same
 service-account parser (`api/cron/_serviceAccount.ts`), and the same
 `?dryRun=1` no-side-effects probe, so every pitfall and failure signature
-below applies to each of them identically.
+below applies to each of them identically. All three also honour a
+process-level `DRY_RUN=1` (or `DRY_RUN=true`) environment variable, which is
+the safer switch when you want a Vercel deployment to no-op without editing
+the workflow's query string.
 
-> **A fourth admin endpoint exists but is NOT a cron:**
+> **Two further endpoints exist but are NOT crons:**
+>
+> `GET /api/player-meta` serves Open Graph / social-card metadata for shared
+> `/player/{uid}` links, reached via the crawler-UA rewrite in `vercel.json`.
+> It reads `VITE_FIREBASE_PROJECT_ID` (falling back to `FIREBASE_PROJECT_ID`)
+> and `VITE_FIREBASE_API_KEY` **server-side** — so those two must be present in
+> the Vercel project env, not only baked into the client bundle.
+>
+> And:
 > `POST /api/account/delete` erases a user's data with admin credentials and
 > then deletes their Auth record. It is called by the app, not by a workflow,
 > and it does **not** use `CRON_SECRET` — it authenticates the end user with a
@@ -437,8 +528,9 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 | `500 init_failed … implausible <field>`              | Paste damage in `project_id`/`client_email`/PEM that repair won't guess at |
 | `service_account_json_repaired` warning, run green   | Working, but the stored value is damaged — re-paste it cleanly             |
 
-Both workflows also skip on forks and fail loudly rather than masking curl
-errors — see the comments in the workflow files before changing them.
+All three workflows also skip on forks (`if: github.repository == 'myhuemungusD/SkateHubba-play'`)
+and fail loudly rather than masking curl errors — see the comments in the
+workflow files before changing them.
 
 ---
 
@@ -491,9 +583,13 @@ If you approach these limits, upgrade to the Blaze (pay-as-you-go) plan. Blaze h
 
 ## Troubleshooting
 
-### "Firebase not configured" screen in production
+### "Setup Required" screen in production
 
-The app shows this when `VITE_FIREBASE_API_KEY` is not set.
+The app shows this when **any** of the six required `VITE_FIREBASE_*` variables
+is missing or empty — all six are validated together in `src/lib/env.ts`, and a
+failed parse sets `firebaseReady = false`. It is not specific to
+`VITE_FIREBASE_API_KEY`. A malformed `VITE_USE_EMULATORS` value will also trip
+it (see the environment-variable notes above).
 
 **Fix:** Vercel Dashboard → Project Settings → Environment Variables → verify the variable is set and scoped to the correct environment (Production / Preview).
 
@@ -513,7 +609,7 @@ Run `npx tsc -b` locally to see the errors. Fix type errors before pushing.
 
 ### Build fails on `npm test`
 
-Run `npm test` locally — the suite must pass and `npm run test:coverage` must clear the 100% threshold on `src/services/**` and `src/hooks/**` before CI will approve the build.
+Run `npm test` locally — the suite must pass and `npm run test:coverage` must clear **every** threshold in `vite.config.ts` before CI will approve the build: 100% on `src/services/**` and `src/hooks/**`, 93/100/80/93 on `src/firebase.ts`, and 80/80/75/80 on `src/components/**` and `src/screens/**`. A UI-only change can fail this gate without touching a single service.
 
 ### Firestore `permission-denied` error in production
 

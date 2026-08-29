@@ -1,7 +1,11 @@
 # Binding Community Trick Dispute — Engineering Design
 
-Status: **DESIGN / APPROVED SCOPE** (owner-approved 2026-07). Implementation contract for the
-binding community trick-dispute feature. Scope: **honor-system games only** (the nominated-referee
+Status: **SHIPPED** (owner-approved 2026-07, implemented and live). All five build phases are in
+production — the phases (`pendingReview` / `communityReview`), the freeze fields
+(`reviewFor` / `reviewDeadline`), the four public counters, the server-side referee
+(`api/cron/resolve-expired-disputes.ts` + `.github/workflows/resolve-expired-disputes.yml`), and the
+Phase-5 UI (`PendingReviewPanel`, `DisputeReviewPanel`, `ReviewStatusPanel`, `DisputeLane`). This
+document remains the implementation contract for the feature. Scope: **honor-system games only** (the nominated-referee
 / judge path is unchanged and out of scope here).
 
 This document is the single source of truth every implementation phase builds against. If code and
@@ -137,8 +141,11 @@ non-5 player).
 
 The existing community-dispute collections and feed UI are reused. Changes:
 
-- `disputes/{gameId}_{turnNumber}` gains a real close-out: `status` transitions `open → resolved`
-  (the currently-unused `closed` value is retired in favor of `resolved`). The referee writes a
+- `disputes/{gameId}_{turnNumber}` gains a real close-out: `status` transitions `open → closed`.
+  **This shipped inverted relative to the original plan** — the contract standardised on `closed`,
+  not `resolved`. Early referee deployments wrote `resolved`, so `src/services/disputes.mappers.ts`
+  normalizes both persisted forms and `firestore.rules` documents `open → 'closed'`. Treat
+  `resolved` as a legacy alias. The referee writes a
   `verdict: 'land'|'bail'|'tie'|'none'` and a `resolutionApplied: true` idempotency flag inside the
   resolving transaction.
 - Votes stay `land`/`bail` in `disputeVotes/{uid}_{disputeId}` — unchanged mechanically. ("make" in
@@ -204,5 +211,5 @@ Each phase lands as its own reviewed PR. Nothing merges without owner review.
 - `src/services/users.ts` — four new `UserProfile` counters.
 - `firestore.rules` — new phase branches, dispute lifecycle, stat backstops, gap closures.
 - `firestore.indexes.json` — index for the referee's eligibility query.
-- `api/cron/resolve-expired-disputes.ts` (new) — the dispute referee.
+- `api/cron/resolve-expired-disputes.ts` — the dispute referee.
 - `functions/` — untouched (dispute stats are written by the cron referee, not a Cloud Function).

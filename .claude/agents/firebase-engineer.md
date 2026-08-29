@@ -43,7 +43,8 @@ Firebase SDK.
   CI. Ship the tests with the code, not after.
 - No `console.log`. Use `console.warn` for expected error paths and
   Sentry for everything else.
-- No new Cloud Functions, no `functions/src/` additions — CI rejects.
+- No new Cloud Functions. `functions/src/` is pinned by CI to the approved
+  stats close-out file set; any other file there is rejected.
 
 ## Verification gate (run before declaring done)
 

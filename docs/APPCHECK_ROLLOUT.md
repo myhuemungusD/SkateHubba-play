@@ -53,7 +53,7 @@ Console metrics make the rollout safe without it.)
 | `VITE_APPCHECK_ENABLED`   | `true`                | Vercel → Production scope. Anything other than the literal `true` is off. |
 | `VITE_RECAPTCHA_SITE_KEY` | reCAPTCHA v3 site key | Vercel → Production scope. Empty string is treated as unset.              |
 
-Both are also read by `.github/workflows/android-aab.yml:73–74` from **GitHub
+Both are also read by `.github/workflows/android-aab.yml:77–78` from **GitHub
 Actions secrets of the same names** — a separate switch from Vercel. See
 [Native apps](#native-apps-ios--android).
 
@@ -107,7 +107,7 @@ either way.
 
 ### 0.4 CSP already allows App Check + reCAPTCHA
 
-Verified in `vercel.json:68` — no change needed:
+Verified in `vercel.json:80-81` — no change needed:
 
 - `script-src` includes `https://www.google.com` and `https://www.gstatic.com`
   (reCAPTCHA loader).
@@ -303,7 +303,7 @@ Three things that will bite:
 | ☐   | 0.1   | Web app registered with reCAPTCHA v3 in Console → App Check → Apps; site key copied       |
 | ☐   | 0.2   | reCAPTCHA allowlist contains `skatehubba.com` **and** `www.skatehubba.com`                |
 | ☐   | 0.3   | Preview scope decision made (recommended: leave `VITE_APPCHECK_ENABLED` unset in Preview) |
-| ☐   | 0.4   | CSP confirmed unchanged in `vercel.json:68`; no `'unsafe-inline'` added                   |
+| ☐   | 0.4   | CSP confirmed unchanged in `vercel.json:80-81`; no `'unsafe-inline'` added                |
 | ☐   | 0.5   | Firestore **and** Storage enforcement confirmed **Unenforced**                            |
 | ☐   | 0.6   | Baseline metrics screenshotted                                                            |
 | ☐   | 1     | `VITE_RECAPTCHA_SITE_KEY` set in Vercel Production scope                                  |
@@ -329,4 +329,4 @@ Three things that will bite:
 - `docs/archive/AUDIT_2026-05.md` F5 — the tracked finding this rollout closes.
 - `src/firebase.ts:116–230` — the init path, all log strings.
 - `src/lib/env.ts:30–46` — env parsing (empty string = unset).
-- `.github/workflows/android-aab.yml:73–74` — native build-time flag.
+- `.github/workflows/android-aab.yml:77–78` — native build-time flag.

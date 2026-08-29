@@ -3,6 +3,20 @@
 **Date:** 2026-03-21
 **Scope:** Firestore rules, Storage rules, Auth domain config, turn timer enforcement
 
+> **⚠️ HISTORICAL SNAPSHOT — read the inline status notes before acting on anything here.**
+> This is a point-in-time audit from March 2026, retained for its reasoning and as an
+> audit trail. Several findings have since been fixed, and the rules surface has grown
+> roughly 10× (7 collections reviewed here; `firestore.rules` now has 26 `match` blocks
+> and ~3,260 lines). Specifically:
+>
+> - **§4's P0 (no server-side turn timer) is CLOSED** — see the status note in that section.
+> - The storage filename allowlist described in §3 is superseded by uid-pinned filenames.
+> - The `users/{uid}` read model has changed (`get` is now public, `list` requires sign-in).
+> - The `/games` update surface has grown from 4 branches to 9.
+>
+> For the current state, read [SECURITY.md](../SECURITY.md), [DATABASE.md](DATABASE.md),
+> and the live [GAPS.md](GAPS.md) instead.
+
 ---
 
 ## 1. Firestore Security Rules Audit
@@ -55,7 +69,7 @@ correct — two concurrent creates for the same key will have one fail.
 
 #### PASS: Games collection (with notes)
 
-Thoroughly reviewed all four `allow update` rules:
+Thoroughly reviewed all four `allow update` rules _(there are now nine — judge rulings, Call-BS resolution, dispute auto-accept, and the review phases were added after this audit)_:
 
 1. **Normal turn update (setting phase):** Requires `currentTurn == auth.uid`, status active, valid
    phase transitions only (setting→matching or setting→setting), letters frozen, winner null,
@@ -68,7 +82,7 @@ Thoroughly reviewed all four `allow update` rules:
 3. **Forfeit:** `request.time > resource.data.turnDeadline` server-verified. Winner must be opponent
    of the timed-out player. Letters and player fields frozen. **Solid.**
 
-4. **Delete:** Any player in the game. Acceptable for account deletion flow.
+4. **Delete:** Any player in the game _(later tightened: also requires `resource.data.status != "active"`)_. Acceptable for account deletion flow.
 
 **Attack scenarios tested:**
 
@@ -126,7 +140,7 @@ a comment in the rules file). Any authenticated user can upload a video to any g
   and `matchVideoUrl` fields, so an attacker can upload garbage to a path but can't inject it into
   the game document.
 - Files must be `video/webm` (web) or `video/mp4` (native) and between 1KB–50MB.
-- Filename restricted to `set.webm`, `set.mp4`, `match.webm`, or `match.mp4` — blocks path traversal.
+- Filename restricted to `set.webm`, `set.mp4`, `match.webm`, or `match.mp4` — blocks path traversal. **(Superseded: filenames are now uid-pinned to `set-{uid}.{ext}` / `match-{uid}.{ext}`, and the avatar and `userClips/` prefixes were added later — see [SECURITY.md](../SECURITY.md).)**
 
 **Recommendation:** This is an accepted limitation. The real access control is on the Firestore game
 document, not the storage blob. An attacker could waste storage quota by uploading to arbitrary game
@@ -184,14 +198,25 @@ through) so that Firebase-hosted `/__/auth/action` email links keep working.
 
 ## 4. Turn Timer Enforcement Audit
 
-### Finding: NO server-side turn timer enforcement — CONFIRMED P0
+### Finding: NO server-side turn timer enforcement — ~~CONFIRMED P0~~ **CLOSED**
+
+> **Status: CLOSED.** The external-scheduler sweeper shipped.
+> `api/cron/sweep-expired-turns.ts` is an Admin-SDK auto-referee that
+> `.github/workflows/sweep-expired-turns.yml` invokes every 15 minutes
+> (`*/15 * * * *`) against `https://skatehubba.com/api/cron/sweep-expired-turns`,
+> authenticated with `CRON_SECRET`. It re-checks expiry inside a
+> `runTransaction` using the same `decideExpiredForfeit` helper
+> (`src/services/turnForfeit.shared.ts`) the client path uses, so the two can
+> never diverge — it only writes a transition a client could legally have
+> written itself. The analysis below is retained as the record of why that
+> endpoint exists.
 
 The 24-hour turn timer (`turnDeadline`) is **client-enforced only**. There is no scheduled Cloud
 Function, cron job, or any server-side process that checks expired deadlines and auto-forfeits.
 
 **Current flow:**
 
-1. Client sets `turnDeadline = Date.now() + 24h` on each turn transition (`src/services/games.ts`)
+1. Client sets `turnDeadline = Date.now() + 24h` on each turn transition (`src/services/games.ts` — now a barrel; `forfeitExpiredTurn` lives in `games.turns.ts`, deadline writes in `games.match.ts` / `games.create.ts`)
 2. Client displays countdown via `<Timer>` and `<LobbyTimer>` components
 3. When deadline passes, the **opponent's client** calls `forfeitExpiredTurn()` which writes the
    forfeit to Firestore
@@ -208,19 +233,23 @@ opponent also doesn't open the app, the game stays in limbo indefinitely. More c
 **Historical server-side fix:** A scheduled Cloud Function `checkExpiredTurns` previously ran
 every 15 minutes, queried for active games with expired `turnDeadline`, and auto-forfeited them.
 That function was removed with the rest of the `functions/` package. Only the client-side
-`forfeitExpiredTurn` (`src/services/games.ts`) remains — it fires when any client opens the
+`forfeitExpiredTurn` (`src/services/games.ts` — now a barrel; `forfeitExpiredTurn` lives in `games.turns.ts`, deadline writes in `games.match.ts` / `games.create.ts`) remains — it fires when any client opens the
 game, so a game where neither player returns can linger in "active" state with an expired
 deadline until one of them loads the app. This regression is pending product sign-off;
 re-introducing a server-side sweeper requires an external scheduler since Cloud Functions are
 disallowed by the no-backend guardrail.
 
+**Resolution (post-audit):** exactly that external scheduler was built —
+GitHub Actions hosts the schedule, a Vercel serverless endpoint does the work.
+See the status note at the head of this section.
+
 ---
 
 ## Summary of Changes Made
 
-| #   | Severity     | Issue                                                   | Fix                                                                                                                      |
-| --- | ------------ | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 1   | **CRITICAL** | `notifications` collection has no Firestore rules       | Added rules for read/create/update/delete                                                                                |
-| 2   | **P0**       | Turn timer is client-only — no server enforcement       | Client-side `forfeitExpiredTurn` transaction (server-side `checkExpiredTurns` was removed with the `functions/` package) |
-| 3   | **MEDIUM**   | Storage allows any auth user to upload to any game path | Documented as accepted limitation (Firestore is the real gate)                                                           |
-| 4   | **ACTION**   | Auth domain whitelist needs manual console verification | Documented steps above                                                                                                   |
+| #   | Severity                | Issue                                                   | Fix                                                                                                                                                                  |
+| --- | ----------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **CRITICAL**            | `notifications` collection has no Firestore rules       | Added rules for read/create/update/delete                                                                                                                            |
+| 2   | **P0** — now **CLOSED** | Turn timer is client-only — no server enforcement       | Client-side `forfeitExpiredTurn` transaction, **plus** the `api/cron/sweep-expired-turns.ts` sweeper on a 15-minute GitHub Actions schedule (added after this audit) |
+| 3   | **MEDIUM**              | Storage allows any auth user to upload to any game path | Documented as accepted limitation (Firestore is the real gate)                                                                                                       |
+| 4   | **ACTION**              | Auth domain whitelist needs manual console verification | Documented steps above                                                                                                                                               |

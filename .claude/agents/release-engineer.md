@@ -46,7 +46,9 @@ green and the production deploy healthy.
   document the bundle-size impact.
 - CSP and HSTS headers in `vercel.json` are load-bearing. Test changes
   against `npm run build && npm run preview` before pushing.
-- No Cloud Functions ever — `pr-gate.yml` rejects `functions/src/**`
+- No NEW Cloud Functions — `pr-gate.yml` pins `functions/src/` to the approved
+  stats close-out file set (`index.ts`, `index.test.ts`, `applyGameStats.ts`,
+  `applyGameStats.test.ts`) and rejects anything else
   additions.
 
 ## Verification gate

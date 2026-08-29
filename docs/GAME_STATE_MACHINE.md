@@ -3,20 +3,45 @@
 This document formalizes the implicit state machine that governs every game
 of S.K.A.T.E. in SkateHubba. The source of truth lives in the Firestore
 `games` collection; transitions happen inside atomic Firestore transactions
-in `src/services/games.ts`.
+in the `games.*` service modules.
+
+> **Where the code lives.** `src/services/games.ts` is a barrel re-export. The
+> implementations are split across `games.create.ts` (createGame),
+> `games.match.ts` (setTrick, submitMatchAttempt), `games.judge.ts` (judge
+> invites, resolveDispute, callBSOnSetTrick, judgeRuleSetTrick),
+> `games.turns.ts` (forfeitExpiredTurn, `TURN_DURATION_MS`),
+> `games.mappers.ts`, and `games.subscriptions.ts`. The **File:** lines below
+> name `games.ts` because that is the import path callers use.
 
 ---
 
 ## States
 
-| `status`   | `phase`      | Description                                                                          |
-| ---------- | ------------ | ------------------------------------------------------------------------------------ |
-| `active`   | `setting`    | Current setter must name & record a trick                                            |
-| `active`   | `matching`   | Matcher must attempt the trick (or "Call BS" on the set, if a judge is active)       |
-| `active`   | `setReview`  | Judge reviews the setter's video after a "Call BS" from the matcher (judge-only)     |
-| `active`   | `disputable` | Judge reviews matcher's "landed" claim (judge-only — honor games skip this entirely) |
-| `complete` | —            | A player reached 5 letters; winner is recorded                                       |
-| `forfeit`  | —            | Turn timer expired; opponent wins automatically                                      |
+| `status`   | `phase`           | Description                                                                                             |
+| ---------- | ----------------- | ------------------------------------------------------------------------------------------------------- |
+| `active`   | `setting`         | Current setter must name & record a trick                                                               |
+| `active`   | `matching`        | Matcher must attempt the trick (or "Call BS" on the set, if a judge is active)                          |
+| `active`   | `setReview`       | Judge reviews the setter's video after a "Call BS" from the matcher (judge-only)                        |
+| `active`   | `disputable`      | Judge reviews matcher's "landed" claim (judge-only — honor games skip this entirely)                    |
+| `active`   | `pendingReview`   | Honor-only. Matcher claimed landed; the **setter** has 24 h to accept or dispute. **Freezes the game**  |
+| `active`   | `communityReview` | Honor-only. The setter disputed; the **community** has 24 h to vote `land`/`bail`. **Freezes the game** |
+| `complete` | —                 | A player reached 5 letters; winner is recorded                                                          |
+| `forfeit`  | —                 | Turn timer expired; opponent wins automatically                                                         |
+
+The two paths are mutually exclusive. A judge-active game uses `setReview` /
+`disputable` and never enters `pendingReview` / `communityReview`; an
+honor-system game does the reverse.
+
+### Frozen phases
+
+`pendingReview` and `communityReview` **freeze** the game. While frozen:
+
+- `currentSetter`, `currentTurn`, `turnNumber`, letters, and `turnHistory` are all pinned — no `firestore.rules` update branch matches an ordinary turn write.
+- The clock runs on **`reviewDeadline`**, not `turnDeadline`. This is deliberate: `api/cron/sweep-expired-turns.ts` skips frozen games entirely (`turnForfeit.shared.ts` returns `null` for both phases), and `api/cron/resolve-expired-disputes.ts` closes them out instead.
+- `reviewFor` names the claimer under review (the honor-system mirror of `judgeReviewFor`).
+- Letters, the role swap, the landed clip, and the "Trick Landed" notification are all **deferred** until the claim resolves — a claim that later bails must not leave a landed clip behind.
+
+See [DISPUTE_BINDING_DESIGN.md](DISPUTE_BINDING_DESIGN.md).
 
 ### Judge status (game-level, independent of `phase`)
 
@@ -162,11 +187,45 @@ in `src/services/games.ts`.
 
 #### Path B — Matcher claims landed, no active judge (`landed === true`, honor system)
 
-- No letters awarded
-- Roles swap immediately — `currentSetter` → matcher
-- `phase: "setting"`, `turnNumber++`
-- Turn recorded in `turnHistory` with `landed: true`, `judgedBy: null`
+- Nothing resolves: no letters, no role swap, no `turnHistory` entry, no landed clip
+- `phase: "pendingReview"`, `matchVideoUrl` set
+- `reviewFor` = matcher, `reviewDeadline` = now + 24 h
+- `currentSetter` / `currentTurn` / `turnNumber` / letters stay **pinned** (the game freezes)
+- The setter is notified atomically with the freeze that their accept/dispute window is open
+- **Result state:** `active:pendingReview`
+
+### `acceptLanded(gameId)` — setter accepts the claim
+
+**File:** `src/services/games.match.ts` _(setter-only, from `pendingReview`)_
+
+- **Pre-conditions:** `status === "active"`, `phase === "pendingReview"`, caller is the frozen setter
+- **Writes:** the deferred honor swap — no letters, `currentSetter` → matcher, `phase: "setting"`, `turnNumber++`, landed clip written, `reviewFor` / `reviewDeadline` cleared
 - **Result state:** `active:setting`
+
+### `raiseDispute(gameId, …)` — setter disputes the claim
+
+**File:** `src/services/disputes.raise.ts` _(setter-only, from `pendingReview`)_
+
+- **Pre-conditions:** `status === "active"`, `phase === "pendingReview"`, caller is the frozen setter (mirrored by `firestore.rules`, which is the authoritative check)
+- **Writes:** creates `disputes/{gameId}_{turnNumber}` and flips `phase: "communityReview"`, opening the 24 h vote window. Roles and letters stay pinned.
+- **Result state:** `active:communityReview`
+
+### Community verdict (`api/cron/resolve-expired-disputes.ts`)
+
+Runs every 15 min; the referee is server-side (Admin SDK) so verdicts cannot be
+forged by a client.
+
+| Tally at `reviewDeadline` | Outcome                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| Majority `land`           | Claim stands — no letter, roles swap (same as accept)                         |
+| Majority `bail`           | Claim overturned — matcher earns one letter, setter keeps setting             |
+| Tie                       | Retry — matcher re-attempts the same trick, fresh video, no letter, same turn |
+| Zero votes                | Auto-accept — claim stands                                                    |
+
+Quorum is **1 vote**. Every outcome also updates the four public dispute
+counters (`tricksDisputed`, `disputesRaised`, `disputesRight`, `disputesWrong`)
+on both players' profiles. The same endpoint auto-accepts an expired
+`pendingReview` that was never disputed.
 
 #### Path C — Matcher claims landed, judge accepted (`landed === true`, judge active)
 
@@ -254,7 +313,14 @@ in `src/services/games.ts`.
 - **Writes:** matcher must attempt — `phase: "matching"`, `currentTurn` → matcher, fresh deadline
 - **Result state:** `active:matching` (benefit of the doubt to the setter)
 
-**Trigger:** Called on game-screen mount when deadline has passed
+**Triggers:** (1) client-side, on game-screen mount when the deadline has
+passed; (2) server-side, by `api/cron/sweep-expired-turns.ts` every 15 minutes
+(`.github/workflows/sweep-expired-turns.yml`, authenticated with
+`CRON_SECRET`). Both paths run the same `decideExpiredForfeit` helper in
+`src/services/turnForfeit.shared.ts`, so they cannot diverge — the sweep only
+writes transitions a client could legally have written itself. Expired
+community disputes are closed out on the same cadence by
+`api/cron/resolve-expired-disputes.ts`.
 
 ---
 
@@ -269,6 +335,10 @@ Screen flow:
   landing → auth → profile → lobby → challenge → game → gameover
                                  ↑                         │
                                  └─────────────────────────┘
+
+  From lobby, the bottom tab bar also reaches:
+    map → spot detail → challenge (?spot=)
+    settings · my-stats · player profiles · admin (admin claim only)
 ```
 
 | Condition                            | Screen      |
@@ -294,6 +364,8 @@ These are always true for a valid game document:
 6. `currentSetter` always equals `currentTurn` during the `setting` phase
 7. `turnNumber` increases monotonically (starts at 1)
 8. All state transitions happen inside Firestore transactions (no partial updates)
+9. `reviewFor` and `reviewDeadline` are non-null exactly while `phase` is `pendingReview` or `communityReview`, and are server-cleared when the review resolves
+10. A game is never in a judge phase (`setReview` / `disputable`) and an honor phase (`pendingReview` / `communityReview`) — the two paths are mutually exclusive
 
 ---
 
@@ -301,8 +373,12 @@ These are always true for a valid game document:
 
 - Duration: 24 hours (`TURN_DURATION_MS`)
 - Reset on every phase transition (setTrick / submitMatchAttempt / resolveDispute)
-- Enforced client-side: `forfeitExpiredTurn()` is called when any player
-  opens a game whose deadline has passed
+- Enforced on two paths: `forfeitExpiredTurn()` when any player opens a game
+  whose deadline has passed, and the 15-minute server sweep
+  (`api/cron/sweep-expired-turns.ts`) for games nobody opens
 - For setting/matching: expired deadline → forfeit (opponent wins)
 - For disputable: expired deadline → auto-accept (matcher's call stands, game continues)
+- For `pendingReview` / `communityReview`: `turnDeadline` is **not** the clock —
+  these phases run on `reviewDeadline` and are closed out by
+  `api/cron/resolve-expired-disputes.ts`, never by the turn-forfeit path
 - Firestore security rules prevent fraudulent forfeit and auto-accept claims

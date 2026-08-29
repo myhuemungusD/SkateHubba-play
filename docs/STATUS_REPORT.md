@@ -110,28 +110,57 @@ Status legend:
 
 ---
 
-## 5. Unreleased — Referee System (`[Unreleased]` in CHANGELOG)
-
-> **STALE (2026-08-26):** this section predates the v1.1.0 release. The referee/dispute system shipped in `[1.1.0]` (2026-04-19, CHANGELOG `9f7f27c`) and its expiry cron (`resolve-expired-disputes.yml`) runs in production — the "In Review" rows and §8's "Unreleased" tallies below no longer reflect reality and are pending a rewrite.
+## 5. Referee & Dispute System — shipped in v1.1.0
 
 > **Naming note:** User-facing copy says **referee** (commit `91b90f1`), but the
 > data model keeps the original `judge*` field names to avoid a Firestore
 > migration for in-flight games. Rows that reference product behavior use
 > "referee"; rows that reference schema fields keep the literal `judge*` names.
 
-| Feature                               | Status        | Evidence                                                    |
-| ------------------------------------- | ------------- | ----------------------------------------------------------- |
-| Optional referee nomination at create | **In Review** | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[Unreleased]` |
-| Referee accept / decline notification | **In Review** | `src/services/notifications.ts`                             |
-| Dispute → referee ruling (24 h)       | **In Review** | `src/services/games.ts`, `firestore.rules`                  |
-| "Call BS" on setter (24 h)            | **In Review** | `src/services/games.ts`                                     |
-| Referee-only `setReview` phase        | **In Review** | New `GamePhase` value                                       |
-| Honor system path (no referee)        | **In Review** | CHANGELOG `Changed` section                                 |
-| `judgeId` / `judgeStatus` schema      | **In Review** | `GameDoc` extension (internal names preserved)              |
-| `TurnRecord.judgedBy`                 | **In Review** | Schema change (internal name preserved)                     |
-| Rules: referee immutability + scoping | **In Review** | `firestore.rules` updates                                   |
+| Feature                               | Status   | Evidence                                                                |
+| ------------------------------------- | -------- | ----------------------------------------------------------------------- |
+| Optional referee nomination at create | **Done** | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[1.1.0]`                  |
+| Referee accept / decline notification | **Done** | `src/services/notifications.ts`, `src/services/games.judge.ts`          |
+| Dispute → referee ruling (24 h)       | **Done** | `src/services/games.judge.ts`, `firestore.rules`                        |
+| "Call BS" on setter (24 h)            | **Done** | `src/services/games.judge.ts` (`callBSOnSetTrick`, `judgeRuleSetTrick`) |
+| Referee-only `setReview` phase        | **Done** | `GamePhase` value in `src/services/games.mappers.ts`                    |
+| Honor system path (no referee)        | **Done** | CHANGELOG `[1.1.0]` `Changed` section                                   |
+| `judgeId` / `judgeStatus` schema      | **Done** | `GameDoc` extension (internal names preserved)                          |
+| `TurnRecord.judgedBy`                 | **Done** | Schema change (internal name preserved)                                 |
+| Rules: referee immutability + scoping | **Done** | `firestore.rules`, `rules-tests/judge-redteam.rules.test.ts`            |
 
-**Verdict:** Code complete, awaiting next release tag. Honor-system path replaces the old `disputable` mid-turn pause for non-refereed games.
+**Verdict:** Shipped 2026-04-19 in `[1.1.0]` (CHANGELOG `9f7f27c`). The expiry cron (`resolve-expired-disputes.yml`) runs in production every 15 minutes.
+
+### 5b. Binding community disputes — shipped post-v1.1.0
+
+The honor-system path no longer resolves a "landed" claim instantly. It freezes the game into `pendingReview` (setter's 24 h accept/dispute window) and, if disputed, `communityReview` (24 h binding community vote). Not yet in any CHANGELOG release section.
+
+| Feature                                      | Status   | Evidence                                                                 |
+| -------------------------------------------- | -------- | ------------------------------------------------------------------------ |
+| `pendingReview` / `communityReview` phases   | **Done** | `src/services/games.mappers.ts`, `src/services/games.match.ts`           |
+| `reviewFor` / `reviewDeadline` freeze fields | **Done** | `games.mappers.ts`; sweep skips frozen games (`turnForfeit.shared.ts`)   |
+| Raise dispute (setter-only)                  | **Done** | `src/services/disputes.raise.ts`, `firestore.rules` `/disputes`          |
+| Community land/bail voting, 1-vote quorum    | **Done** | `src/services/disputes.votes.ts`, `firestore.rules` `/disputeVotes`      |
+| Server-side dispute referee (expiry + tally) | **Done** | `api/cron/resolve-expired-disputes.ts`, `dispute.resolution.shared.ts`   |
+| Four public dispute counters on profiles     | **Done** | `src/services/users.ts`, zero-seeded + immutable in `firestore.rules`    |
+| Dispute lane UI + review panels              | **Done** | `src/components/ClipsFeed/DisputeLane.tsx`, `GamePlayScreen/components/` |
+
+**Gap:** `disputes.raise.ts` writes no notification, so a claimer is never told their land was disputed — see GAPS.md P0-3 (partially closed).
+
+### 5c. Other shipped subsystems not tracked in the phase tables above
+
+| Subsystem                                   | Evidence                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------- |
+| Multi-factor auth (TOTP / SMS)              | `src/services/mfa.ts`, `src/components/MfaVerifyCard.tsx`                     |
+| Admin console + custom-claim authz + bans   | `src/screens/AdminScreen/`, `src/services/admin.ts`, `admin.bans.ts`, `bans/` |
+| User-uploaded clips + comments              | `src/services/clips.userWrites.ts`, `clips.comments.ts`, `UserClipUpload/`    |
+| Avatar upload + on-device NSFW screening    | `src/services/avatars.ts`, `avatarModeration.ts` (nsfwjs)                     |
+| My Stats screen + expanded stat counters    | `src/screens/MyStatsScreen/`                                                  |
+| Achievements / badges + Hubba Locker        | `src/services/achievements.ts`, `locker.ts`, `src/constants/badges.ts`        |
+| Server-side account deletion (GDPR erasure) | `api/account/delete.ts`, `api/account/_deleteUserData.ts`                     |
+| Social cards for shared `/player` links     | `api/player-meta.ts`, crawler-UA rewrite in `vercel.json`                     |
+| Stats close-out Cloud Function              | `functions/src/applyGameStats.ts` (CI-pinned allowlist)                       |
+| Mobile store release pipeline               | `fastlane/`, `.github/workflows/ios-build.yml`, `android-aab.yml`             |
 
 ---
 
@@ -189,23 +218,27 @@ Status legend:
 
 ## 8. Roadmap Completion Summary
 
-| Phase                              | Items | Done | In Review | In Progress | Deferred | Planned |     % Shipped |
-| ---------------------------------- | ----: | ---: | --------: | ----------: | -------: | ------: | ------------: |
-| Phase 1 — Core Loop                |    31 |   31 |         0 |           0 |        0 |       0 |      **100%** |
-| Phase 2 — Viral Mechanics          |     9 |    9 |         0 |           0 |        0 |       0 |      **100%** |
-| Phase 3 — Social Graph & Discovery |     9 |    8 |         0 |           0 |        1 |       0 |       **89%** |
-| Phase 4 — Network Effects          |     9 |    5 |         0 |           1 |        0 |       3 |       **56%** |
-| Unreleased — Referee System        |     9 |    0 |         9 |           0 |        0 |       0 | **In review** |
+| Phase                              | Items | Done | In Review | In Progress | Deferred | Planned | % Shipped |
+| ---------------------------------- | ----: | ---: | --------: | ----------: | -------: | ------: | --------: |
+| Phase 1 — Core Loop                |    32 |   32 |         0 |           0 |        0 |       0 |  **100%** |
+| Phase 2 — Viral Mechanics          |    10 |   10 |         0 |           0 |        0 |       0 |  **100%** |
+| Phase 3 — Social Graph & Discovery |     9 |    8 |         0 |           0 |        1 |       0 |   **89%** |
+| Phase 4 — Network Effects          |     9 |    5 |         0 |           1 |        0 |       3 |   **56%** |
+| Referee & Dispute System (§5)      |     9 |    9 |         0 |           0 |        0 |       0 |  **100%** |
 
-**Overall product completion (shipped + in-review, excluding deferred):** 62 of 66 non-deferred items ≈ **94%**. Including the single deferred item (spectator), 62 of 67 ≈ 93%.
-**Active focus:** Cut Referee System release tag (Unreleased § rolls into v1.x.0); custom Mapbox style (Phase 4 — design/infra).
-**Production gate:** Green (per gap analysis: 9.7/10, all P0 closed).
+Counts are the literal row counts of the tables in §1–§5. §5b and §5c are shipped
+work that has never been folded into a phase table and is excluded from these
+totals — they under-report what is actually built.
+
+**Overall product completion (excluding deferred):** 64 of 68 non-deferred items ≈ **94%**. Including the single deferred item (spectator), 64 of 69 ≈ 93%.
+**Active focus:** custom Mapbox style (Phase 4 — design/infra); reconstructing the CHANGELOG and cutting the missing git tags.
+**Production gate:** Green on the verify suite. **2 of 4 P0s are fully closed; P0-3 (dispute notifications) and P0-4 (DSA controls) are partially closed** — see [GAPS.md](GAPS.md).
 
 ---
 
 ## 9. Recommended Next Actions
 
-1. **Cut a release tag** _(active focus)_ for the Referee System so CHANGELOG `[Unreleased]` rolls into a `v1.x.0`.
+1. **Reconstruct the CHANGELOG and cut the missing tags** _(active focus)_. `git tag` is empty even though CHANGELOG links to `v1.0.0` and `v1.1.0` release pages, and roughly 16 `feat:` commits since v1.1.0 — the admin console, user-uploaded clips, community disputes, badges/locker, store pipeline, social cards — have no CHANGELOG entry at all.
 2. **Custom Mapbox style** ([#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191)) — design a branded dark-base style in Mapbox Studio and set `VITE_MAPBOX_STYLE_URL` in Vercel. No code change needed; `src/lib/mapbox.ts` already reads the env var.
 3. ~~Spec spectator mode~~ — **deferred**; revisit once vote-driven ranking has shipped engagement data to read against.
 4. **Schedule the P1 ops items** (rules deploy, backups, video purge, branch protection) — these are blockers for scaling, not for shipping.

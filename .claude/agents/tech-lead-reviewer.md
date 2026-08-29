@@ -39,7 +39,8 @@ results. You do not edit code.
    - `console.log` calls (use `console.warn` or Sentry).
    - Firebase SDK import outside `src/services/**` or `src/firebase.ts`.
    - New CSS file or inline `style=` in JSX.
-   - New Cloud Functions code under `functions/src/**`.
+   - New Cloud Functions code under `functions/src/**` outside the approved
+     stats close-out allowlist.
    - Game state mutation without `runTransaction`.
    - New Firestore write path without a corresponding
      `firestore.rules` change.

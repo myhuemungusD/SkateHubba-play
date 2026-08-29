@@ -6,6 +6,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Version
 
 ---
 
+## [Unreleased]
+
+Everything below has shipped to production but has not yet been rolled into a
+tagged release. Note that `git tag` is currently empty — the `v1.0.0` and
+`v1.1.0` links at the foot of this file point at release pages that do not yet
+exist. Cutting those tags is tracked in [ROADMAP.md](ROADMAP.md).
+
+### Features
+
+- **Binding community trick disputes** ([#474](https://github.com/myhuemungusD/SkateHubba-play/pull/474), [#463](https://github.com/myhuemungusD/SkateHubba-play/pull/463)) — on honor-system games a "landed" claim no longer resolves instantly. It freezes the game into a `pendingReview` phase, giving the setter 24 h to accept or dispute; a dispute opens a 24 h `communityReview` vote whose majority verdict is binding on letters, turn order, and four new public dispute counters. Resolved server-side by `api/cron/resolve-expired-disputes.ts`. See [docs/DISPUTE_BINDING_DESIGN.md](docs/DISPUTE_BINDING_DESIGN.md).
+- **Live community vote tally** during `communityReview` ([#522](https://github.com/myhuemungusD/SkateHubba-play/pull/522))
+- **User-uploaded clips** with up/down judging, comments, and admin bans ([#516](https://github.com/myhuemungusD/SkateHubba-play/pull/516))
+- **Hidden admin console** with custom-claim authorization ([#510](https://github.com/myhuemungusD/SkateHubba-play/pull/510))
+- **Profile badges, Hubba Locker, and public profile links** ([#508](https://github.com/myhuemungusD/SkateHubba-play/pull/508))
+- **Mobile store setup** — native shell, release signing, store CI, and Fastlane metadata ([#526](https://github.com/myhuemungusD/SkateHubba-play/pull/526))
+- **Per-profile social cards** for shared `/player` links ([#500](https://github.com/myhuemungusD/SkateHubba-play/pull/500))
+- **Tier-1 stat counters** and public profile stat display ([#469](https://github.com/myhuemungusD/SkateHubba-play/pull/469)), plus the notification overhaul and expanded stats that followed
+- **Gaps & Stairs trick category** ([#467](https://github.com/myhuemungusD/SkateHubba-play/pull/467))
+- Camera capture improvements — crosshair overlay ([#460](https://github.com/myhuemungusD/SkateHubba-play/pull/460)), aim instruction bubble ([#462](https://github.com/myhuemungusD/SkateHubba-play/pull/462)), auto-open when already permitted ([#464](https://github.com/myhuemungusD/SkateHubba-play/pull/464))
+- Show/hide toggle on password fields ([#509](https://github.com/myhuemungusD/SkateHubba-play/pull/509))
+- Mobile polish pass — neutral surfaces, darker background, compact lists
+
+### Fixed
+
+- **Storage path squatting** (`3afa0d0`) — game-video filenames are now pinned to `{role}-{uploaderUid}.{ext}` by exact-string equality. Previously an opponent who knew a `gameId` could pre-create the victim's upload path; because `update` is denied, the victim's own upload collided and they forfeited on the turn timer.
+- **Upvote inflation via `clipVotes` delete** (`e7ef1a8`) — a bare delete now requires its paired counter decrement, closing a cast→delete→cast loop that inflated `clips.upvoteCount` without bound.
+- **Game-state forgery and turn-seize gaps** in Firestore rules ([#472](https://github.com/myhuemungusD/SkateHubba-play/pull/472))
+- **Username impersonation** — game usernames are now bound to the authoritative profile ([#473](https://github.com/myhuemungusD/SkateHubba-play/pull/473))
+- **Account deletion moved server-side** so it actually erases data ([#496](https://github.com/myhuemungusD/SkateHubba-play/pull/496))
+- **Push delivery** — replaced a non-existent Firebase extension with the `api/cron/drain-push-dispatch.ts` courier and repaired nudge delivery ([#466](https://github.com/myhuemungusD/SkateHubba-play/pull/466))
+- **PostHog now starts only after the visitor accepts the consent banner** ([#497](https://github.com/myhuemungusD/SkateHubba-play/pull/497))
+- **Multi-factor sign-in** completes instead of dead-ending on error ([#513](https://github.com/myhuemungusD/SkateHubba-play/pull/513))
+- Setter is notified when a land claim opens the review window (`1b98ec6`)
+- Disputes read-rule regressions from participant scoping (`971b31e`); resolved dispute turn retained (`d7e9f16`)
+- iOS Safari recording hardened against empty and unplayable takes; camera-permission hints name the right browser and never request the camera without a user gesture ([#527](https://github.com/myhuemungusD/SkateHubba-play/pull/527), [#529](https://github.com/myhuemungusD/SkateHubba-play/pull/529), [#530](https://github.com/myhuemungusD/SkateHubba-play/pull/530))
+- Shared `/spots/:id` links carried through sign-in ([#501](https://github.com/myhuemungusD/SkateHubba-play/pull/501))
+- `FIREBASE_SERVICE_ACCOUNT_JSON` tolerates hand-paste mangling ([#471](https://github.com/myhuemungusD/SkateHubba-play/pull/471))
+- Dead-end stats closed out — verdict surfacing, letter aggregation, vestigial fields ([#512](https://github.com/myhuemungusD/SkateHubba-play/pull/512))
+
+---
+
 ## [1.1.0](https://github.com/myhuemungusD/SkateHubba-play/compare/v1.0.0...v1.1.0) (2026-04-19)
 
 ### Features
