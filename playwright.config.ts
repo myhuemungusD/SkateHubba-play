@@ -12,6 +12,14 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
   testDir: "./e2e",
+  // Playwright's default testMatch is `**/*.@(spec|test).?(c|m)[jt]s?(x)`,
+  // which also matched `e2e/helpers/__tests__/*.test.ts` — a VITEST unit
+  // suite. Loading it pulled `@vitest/expect` into the Playwright worker,
+  // which collides with Playwright's own expect over the shared
+  // `Symbol($$jest-matchers-object)` and aborted the ENTIRE run before a
+  // single test executed ("TypeError: Cannot redefine property"). Every real
+  // browser test here is a `.spec.ts`, so pin the glob to that.
+  testMatch: "**/*.spec.ts",
   // Tests share emulator state, so run sequentially to avoid cross-test interference.
   fullyParallel: false,
   workers: 1,
