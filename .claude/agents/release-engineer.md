@@ -49,7 +49,7 @@ green and the production deploy healthy.
 - `functions/src/` is allowlisted, not banned. `pr-gate.yml` permits exactly
   `index.ts`, `index.test.ts`, `applyGameStats.ts`, `applyGameStats.test.ts`
   (approved 2026-07); any other file added there hard-fails the gate. Note
-  `pr-gate.yml` also *builds and tests* the `functions/` package on change.
+  `pr-gate.yml` also _builds and tests_ the `functions/` package on change.
 
 ## Verification gate
 

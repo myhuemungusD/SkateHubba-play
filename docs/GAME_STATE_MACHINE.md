@@ -40,7 +40,7 @@ letter counts are pinned — nothing advances.
   `request.auth.uid == resource.data.currentSetter`. The matcher who made the
   claim cannot resolve their own claim.
 - **`communityReview`** has **no client `allow update` branch anywhere in
-  `firestore.rules`**. The absence *is* the enforcement — only the Admin SDK
+  `firestore.rules`**. The absence _is_ the enforcement — only the Admin SDK
   referee can move a game out of it. This is invisible to grep; do not "helpfully"
   add a branch for it.
 
@@ -154,6 +154,7 @@ Each entry names the module that actually implements it.
 ### `failSetTrick(gameId)` — `games.match.ts:83`
 
 Setter concedes they cannot land their own set. Next setter, `turnNumber++`.
+
 - **Result:** `active:setting`
 
 ### `submitMatchAttempt(gameId, matchVideoUrl, landed)` — `games.match.ts:143`
@@ -209,6 +210,7 @@ The deferred honor swap, executed once the setter accepts.
 ### `callBSOnSetTrick(gameId)` — `games.judge.ts:24` · judge-active only
 
 Matcher flags the setter's video before attempting.
+
 - **Writes:** `phase: "setReview"`, `currentTurn` → `judgeId`, fresh deadline
 - **Result:** `active:setReview`
 
@@ -230,13 +232,13 @@ Called on game-screen mount when the deadline has passed, and independently by
 the server sweep. Decision logic is shared (`turnForfeit.shared.ts`) so the two
 paths cannot diverge.
 
-| Expired phase              | Outcome                                                        |
-| -------------------------- | -------------------------------------------------------------- |
-| `setting` / `matching`     | `status: "forfeit"`, winner = opponent of `currentTurn`         |
-| `disputable`               | Auto-accept — matcher's call stands, roles swap → `setting`     |
-| `setReview`                | Set stands (benefit of the doubt) → `matching`                  |
-| `pendingReview`            | **Not handled here** — cron only (see below)                    |
-| `communityReview`          | **Not handled here** — cron only (see below)                    |
+| Expired phase          | Outcome                                                     |
+| ---------------------- | ----------------------------------------------------------- |
+| `setting` / `matching` | `status: "forfeit"`, winner = opponent of `currentTurn`     |
+| `disputable`           | Auto-accept — matcher's call stands, roles swap → `setting` |
+| `setReview`            | Set stands (benefit of the doubt) → `matching`              |
+| `pendingReview`        | **Not handled here** — cron only (see below)                |
+| `communityReview`      | **Not handled here** — cron only (see below)                |
 
 ---
 
@@ -257,12 +259,12 @@ written for a silent expiry.
 The community vote is tallied and the verdict applied
 (`dispute.resolution.shared.ts:120-280`). **Quorum is one vote.**
 
-| Verdict         | Condition                    | Outcome                                                         |
-| --------------- | ---------------------------- | --------------------------------------------------------------- |
-| `land`          | `landVotes > bailVotes`      | Claim stands — roles swap, `turnNumber++` → `setting`           |
-| `bail`          | `bailVotes > landVotes`      | Matcher +1 letter, setter keeps setting → `setting` or `complete` |
-| `tie`           | equal, both non-zero         | Retry — `phase: "matching"`, `matchVideoUrl` cleared, no TurnRecord |
-| `none`          | zero votes                   | Auto-accept, same as `land`                                     |
+| Verdict | Condition               | Outcome                                                             |
+| ------- | ----------------------- | ------------------------------------------------------------------- |
+| `land`  | `landVotes > bailVotes` | Claim stands — roles swap, `turnNumber++` → `setting`               |
+| `bail`  | `bailVotes > landVotes` | Matcher +1 letter, setter keeps setting → `setting` or `complete`   |
+| `tie`   | equal, both non-zero    | Retry — `phase: "matching"`, `matchVideoUrl` cleared, no TurnRecord |
+| `none`  | zero votes              | Auto-accept, same as `land`                                         |
 
 The dispute document is then closed with `status: "closed"`, its `verdict`, and
 `resolutionApplied: true`. Community resolution also increments `tricksDisputed`
@@ -273,16 +275,16 @@ disputer.
 
 ## Modules
 
-| Module | Owns |
-| --- | --- |
-| `games.mappers.ts` | types (`GameStatus`, `GamePhase`, `JudgeStatus`), `toGameDoc`, `isJudgeActive` |
-| `games.create.ts` | `createGame`, `acceptJudgeInvite`, `declineJudgeInvite` |
-| `games.match.ts` | `setTrick`, `failSetTrick`, `submitMatchAttempt`, `acceptLanded` |
-| `games.judge.ts` | `callBSOnSetTrick`, `judgeRuleSetTrick`, `resolveDispute` |
-| `games.turns.ts` | `forfeitExpiredTurn`, client-side rate limits |
-| `games.subscriptions.ts` | `subscribeToGame`, `subscribeToMyGames`, `fetchPlayerCompletedGames` |
-| `disputes.raise.ts` | `raiseDispute` (pendingReview → communityReview) |
-| `dispute.resolution.shared.ts` | verdict classification + game/stat deltas, shared with the cron |
+| Module                         | Owns                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `games.mappers.ts`             | types (`GameStatus`, `GamePhase`, `JudgeStatus`), `toGameDoc`, `isJudgeActive` |
+| `games.create.ts`              | `createGame`, `acceptJudgeInvite`, `declineJudgeInvite`                        |
+| `games.match.ts`               | `setTrick`, `failSetTrick`, `submitMatchAttempt`, `acceptLanded`               |
+| `games.judge.ts`               | `callBSOnSetTrick`, `judgeRuleSetTrick`, `resolveDispute`                      |
+| `games.turns.ts`               | `forfeitExpiredTurn`, client-side rate limits                                  |
+| `games.subscriptions.ts`       | `subscribeToGame`, `subscribeToMyGames`, `fetchPlayerCompletedGames`           |
+| `disputes.raise.ts`            | `raiseDispute` (pendingReview → communityReview)                               |
+| `dispute.resolution.shared.ts` | verdict classification + game/stat deltas, shared with the cron                |
 
 ---
 
@@ -322,10 +324,10 @@ screens. Not part of the Firestore state machine.
 Two distinct 24-hour fields, both derived from `TURN_DURATION_MS`
 (`src/services/turnDuration.ts:10`). Do not conflate them.
 
-| Field            | Applies to                              | Expiry handled by             |
-| ---------------- | --------------------------------------- | ----------------------------- |
+| Field            | Applies to                                       | Expiry handled by                                           |
+| ---------------- | ------------------------------------------------ | ----------------------------------------------------------- |
 | `turnDeadline`   | `setting`, `matching`, `setReview`, `disputable` | client on open, **and** `sweep-expired-turns` cron (15 min) |
-| `reviewDeadline` | `pendingReview`, `communityReview`       | `resolve-expired-disputes` cron **only** (15 min) |
+| `reviewDeadline` | `pendingReview`, `communityReview`               | `resolve-expired-disputes` cron **only** (15 min)           |
 
 Firestore rules independently validate every expiry-driven write, so a client
 cannot fabricate a forfeit or an auto-accept.

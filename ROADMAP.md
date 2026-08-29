@@ -26,7 +26,8 @@ Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
 | Phase 2 — Viral Mechanics          | Shipped                                                                   |
 | Phase 3 — Social Graph & Discovery | Shipped except spectator mode (deferred)                                  |
 | Phase 4 — Network Effects          | Partial — spots/map shipped; crew, trick library, tournaments not started |
-| Referee System                     | Code complete, awaiting release tag                                       |
+| Referee System                     | Shipped (v1.1.0)                                                          |
+| Binding community disputes         | Shipped post-v1.1.0 (`pendingReview` → `communityReview`)                 |
 
 **The core loop is built.** Async games, video proof, push delivery, clips feed with vote-driven ranking, leaderboard, profiles, spot map, moderation — all in production. The open question is no longer _can we build it_. It is _do skaters use it_.
 

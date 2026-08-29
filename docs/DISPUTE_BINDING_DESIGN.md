@@ -142,8 +142,11 @@ non-5 player).
 
 The existing community-dispute collections and feed UI are reused. Changes:
 
-- `disputes/{gameId}_{turnNumber}` gains a real close-out: `status` transitions `open → resolved`
-  (the currently-unused `closed` value is retired in favor of `resolved`). The referee writes a
+- `disputes/{gameId}_{turnNumber}` gains a real close-out: `status` transitions `open → closed`.
+  **This shipped inverted relative to the plan above** — the client contract standardised on
+  `closed`, not `resolved`. Early referee deployments wrote `resolved`, so
+  `src/services/disputes.mappers.ts` normalizes both persisted forms and `firestore.rules`
+  documents `open → 'closed'`. Treat `resolved` as a legacy alias. The referee writes a
   `verdict: 'land'|'bail'|'tie'|'none'` and a `resolutionApplied: true` idempotency flag inside the
   resolving transaction.
 - Votes stay `land`/`bail` in `disputeVotes/{uid}_{disputeId}` — unchanged mechanically. ("make" in
@@ -158,7 +161,7 @@ The existing community-dispute collections and feed UI are reused. Changes:
   bind `setterUid == game.currentSetter && turnNumber == game.turnNumber && game.phase == 'pendingReview'`.
   The disputer must be the real setter of the frozen turn.
 - **Gap B (delete-and-re-raise resets the tally) — CLOSED.** Remove the client `allow delete` on
-  `disputes`; the server referee's `open → resolved` close-out replaces it. Account-deletion erasure
+  `disputes`; the server referee's `open → closed` close-out replaces it. Account-deletion erasure
   is handled by the existing vote-cascade path, not by deleting the dispute doc.
 - **Stats immutability.** The four new counters are added to the `users` create zero-seed and the
   update `affectedKeys().hasAny([...])` backstop, exactly like the Tier-1 fields. Client can never
@@ -186,7 +189,7 @@ Each phase lands as its own reviewed PR. Nothing merges without owner review.
    implement the pure `decideDisputeResolution` helper (shared, SDK-agnostic, like
    `turnForfeit.shared.ts`) + unit tests. No rules, no wiring.
 2. **Rules + red-team tests (TDD):** new `pendingReview`/`communityReview` update branches; close
-   Gap A + Gap B; `open → resolved` transition; stat-field create/update backstops; negative tests
+   Gap A + Gap B; `open → closed` transition; stat-field create/update backstops; negative tests
    (re-raise cannot reset a bound tally; client cannot write letters/stats/`statsApplied`; only the
    frozen setter can raise; forged verdicts denied).
 3. **Service wiring:** intercept `submitMatchAttempt(landed)` → `pendingReview`; `acceptLanded` and

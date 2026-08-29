@@ -86,12 +86,13 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ### 2.3 Active focus
 
-- Vote-driven clip ranking (replace chronological with upvote-ranked, add Top/New toggle, backfill `upvoteCount` aggregate, instrument `clip_upvoted` event)
 - Custom Mapbox style for branded dark-base map (`VITE_MAPBOX_STYLE_URL`, no code change)
+- Cut the missing git tags — the repo has no `v1.0.0`/`v1.1.0` tag despite the CHANGELOG linking to both
+- Close the two partially-open P0s in [GAPS.md](GAPS.md) (dispute notifications, DSA controls)
 
 ### 2.4 Known critical gaps
 
-- **Auto-forfeit is speculative.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. Stale active games accumulate when nobody opens.
+- ~~**Auto-forfeit is speculative.**~~ **Closed.** `api/cron/sweep-expired-turns.ts` runs every 15 min (`.github/workflows/sweep-expired-turns.yml`) and applies the same transition via the shared `decideExpiredForfeit` helper, so stale active games no longer accumulate.
 - **No Firestore backups.** Workflow file exists (`firebase-infra-setup.yml`); not run.
 - **No video lifecycle purge.** Storage costs grow unbounded.
 - **Per-listener cap of 20 on `subscribeToMyGames`** with no `startAfter` cursor (DEC-003). Three listeners (player1Uid, player2Uid, judgeId), each `limit(20)` by default, grown by +20 per "load more". Acceptable short-term.
@@ -156,7 +157,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 - **Firebase Auth** — email/password + Google OAuth (popup with redirect fallback for Safari/mobile)
 - **Cloud Firestore** — primary datastore, named database `"skatehubba"` (not default), offline persistence via `persistentLocalCache` + `persistentMultipleTabManager`
-- **Firebase Storage** — `set-{uid}.webm` / `match-{uid}.webm` (web) and `set-{uid}.mp4` / `match-{uid}.mp4` (native), 1KB–50MB, filename pinned to the uploader's UID
+- **Firebase Storage** — `set-{uid}.webm` / `match-{uid}.webm` (web) and `set-{uid}.mp4` / `match-{uid}.mp4` (native), 1KB–50MB, filename pinned to the uploader's UID; plus `users/{uid}/avatar.*` (≤2MB) and `userClips/{uid}/*`
 - **Firebase App Check** — reCAPTCHA v3 (web), DeviceCheck/Play Integrity (native)
 - **All game writes use `runTransaction`** — non-negotiable. Enforced across `games.create.ts`, `games.turns.ts`, `games.judge.ts`, `games.match.ts`, plus `spots.ts`, `users.ts`, and `clips.upvotes.ts` / `clips.writes.ts` (the vote and write paths for the clip feed).
 - **Three `onSnapshot` listeners for OR queries** in `games.subscriptions.ts` (player1Uid + player2Uid + judgeId merged in memory, `limit(20)` each by default)
@@ -181,7 +182,7 @@ Types permitted on the push path are `your_turn`, `new_challenge`, `game_won`, `
 
 The `verify-no-cloud-functions` CI gate scopes to `^functions/src/` — the drain endpoint lives under `api/`, alongside the auto-referee sweep, so the gate remains in force against application-authored Cloud Functions. As of 2026-07 the gate is an allowlist: it permits exactly the maintainer-approved stats close-out file set (see §4.14) and hard-fails any other `functions/src/` addition. Reintroducing further authored functions still requires maintainer sign-off.
 
-Auto-forfeit (`forfeitExpiredTurn`) remains client-triggered; closing that gap is tracked in §9.2.
+Auto-forfeit runs on two paths: the client's `forfeitExpiredTurn` on game open, and `api/cron/sweep-expired-turns.ts` on a 15-minute GitHub Actions schedule. Both share the `decideExpiredForfeit` helper in `src/services/turnForfeit.shared.ts`, so they cannot diverge.
 
 ### 4.5 Security rules (the real backend, 3260 lines / ~189 KB)
 
@@ -289,23 +290,38 @@ SkateHubba-play/
 
 ```
 users/{uid}                          — public profile, stance, stats, avatar URL
-users/{uid}/private/profile          — owner-only: fcmTokens, sensitive flags
+users/{uid}/private/profile          — owner-only: dob, parentalConsent, fcmTokens
+users/{uid}/blocked_users/{uid}      — owner-only block list
+users/{uid}/achievements/{id}        — earned badges (admin-write, public read)
+users/{uid}/locker/{itemId}          — Hubba Locker items (admin-write, public read)
 usernames/{username}                 — uid reservation mapping
+bans/{uid}                           — admin-issued account bans
 games/{gameId}                       — full game state, turns, scores, timers
 spots/{spotId}                       — skate spots (map)
+spots/{spotId}/comments/{id}         — spot comments
 clips/{clipId}                       — landed-trick public clips feed
+clips/{clipId}/comments/{id}         — clip comments
+clipVotes/{uid}_{clipId}             — one upvote per user per clip
+disputes/{gameId}_{turnNumber}       — binding community trick disputes
+disputeVotes/{uid}_{disputeId}       — one land/bail verdict per user per dispute
 notifications/{id}                   — in-app notifications
 notification_limits/{id}             — rate-limit counters
 nudges/{id}                          — turn reminders
 nudge_limits/{uid}                   — daily nudge quotas
-reports/{id}                         — content reports
-blocks/{id}                          — user blocks
-billingAlerts/{id}
+pushTargets/{uid}                    — cross-user-readable FCM token mirror
+push_dispatch/{id}                   — outbound push queue (drained by api/cron)
+push_dispatch_limits/{id}            — per sender/recipient/game/type cooldown
+reports/{id}                         — content + player reports (moderation queue)
+reports_limits/{id}                  — per reporter/target cooldown
+billingAlerts/{id}                   — reserved, fully client-blocked
 ```
+
+That is 26 `match` blocks in `firestore.rules`. [DATABASE.md](DATABASE.md) is the
+authoritative per-collection reference (fields, constraints, access model).
 
 ### 4.12 Production dependencies (approved majors)
 
-React 19.2, react-dom 19.2, react-router 8, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 3, @vercel/analytics 2, @vercel/speed-insights 2, @capacitor/core 8 (+ android/ios/camera/haptics/splash-screen/push-notifications), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
+React 19.2, react-dom 19.2, react-router 8, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 4, @vercel/analytics 2, @vercel/speed-insights 2, nsfwjs 4 (on-device avatar screening), firebase-admin 14 (serverless endpoints only), @capacitor/core 8 (+ android/ios/camera/haptics/keyboard/app/status-bar/splash-screen/push-notifications), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
 
 These are the approved majors. Minors and patches track upstream via the caret ranges in `package.json`; `package-lock.json` is the deterministic record installed in CI and in production. New production deps require written justification and Chief Engineer approval.
 
@@ -318,6 +334,7 @@ DISPUTE_BINDING_DESIGN.md, DSA_COMPLIANCE.md, ECONOMY.md,
 GAME_MECHANICS.md, GAME_STATE_MACHINE.md, GAPS.md, MAPBOX_STYLE.md,
 NOTIFICATION_AUDIT.md, PERMISSION_DENIED_RUNBOOK.md, SENTRY_ALERTS.md,
 STATS.md, STATUS_REPORT.md, STORE_PRIVACY_ANSWERS.md, TESTING.md
+(22 files)
 
 archive/   — superseded audits and plans; history only, never a current
              risk register:
@@ -461,7 +478,7 @@ CI failures override deadlines.
 - Scope creep
 - Client-side mutation safety (rules are the only server-side enforcement)
 
-### 9.2 Known tech debt (May 2026)
+### 9.2 Known tech debt (last reviewed August 2026)
 
 1. **P0 — Auto-forfeit is client-triggered only.** `forfeitExpiredTurn` runs only when a client opens the app and observes an expired turn. `api/cron/sweep-expired-turns.ts` plus `.github/workflows/sweep-expired-turns.yml` exist to close this; confirm the schedule is actually green before treating it as resolved. The push drain (§4.4) does not cover this path.
 2. **P1 — Firestore backups not running.** Run `firebase-infra-setup.yml` on `workflow_dispatch`.

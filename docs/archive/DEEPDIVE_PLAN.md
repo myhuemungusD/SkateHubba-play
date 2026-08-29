@@ -4,16 +4,16 @@
 >
 > Batches 1–5 are done or overtaken by events:
 >
-> | Batch | Outcome |
-> | --- | --- |
-> | 1 — honor-system notification copy | Superseded; the honor path was rewritten into `pendingReview` by the binding-dispute feature |
-> | 2 — account-deletion cascade | Shipped server-side (#496); the prescribed `deleteUserBlockedList` helper was never added — a different design won |
-> | 3 — nudge rate-limit rules | Shipped as `rules-tests/nudges-redteam.rules.test.ts` (not the filename planned here) |
-> | 4 — NotificationBell a11y | Shipped |
-> | 5 — Settings router links | Shipped |
-> | 6 — map subtree off `lucide-react` | **NOT shipped — still open** |
+> | Batch                              | Outcome                                                                                                            |
+> | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+> | 1 — honor-system notification copy | Superseded; the honor path was rewritten into `pendingReview` by the binding-dispute feature                       |
+> | 2 — account-deletion cascade       | Shipped server-side (#496); the prescribed `deleteUserBlockedList` helper was never added — a different design won |
+> | 3 — nudge rate-limit rules         | Shipped as `rules-tests/nudges-redteam.rules.test.ts` (not the filename planned here)                              |
+> | 4 — NotificationBell a11y          | Shipped                                                                                                            |
+> | 5 — Settings router links          | Shipped                                                                                                            |
+> | 6 — map subtree off `lucide-react` | **NOT shipped — still open**                                                                                       |
 >
-> Batch 6 has *grown*, not shrunk: `lucide-react` is still a dependency and is now
+> Batch 6 has _grown_, not shrunk: `lucide-react` is still a dependency and is now
 > imported in ~15 files (admin console, locker, badges, password toggle) well beyond
 > the map subtree this plan scoped. Treat the estimate here as an undercount.
 >

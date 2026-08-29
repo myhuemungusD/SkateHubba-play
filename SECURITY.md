@@ -43,12 +43,13 @@ Push delivery introduces one deliberate privacy trade-off documented inline at `
 
 All access control is enforced by Firestore security rules (`firestore.rules`), not by client-side code. Key guarantees:
 
-- Users can only read/write their own profile. Username and UID are immutable after creation.
+- Profile **writes** are owner-only, and username and UID are immutable after creation. Reads are split by verb: `get` on `users/{uid}` is public (a shared `/player/{uid}` link must resolve for a signed-out visitor), while `list` requires sign-in so an anonymous client cannot enumerate every account.
 - Username reservation is atomic — a Firestore transaction prevents two users from claiming the same handle in a race condition.
 - Only the current-turn player can update a game. Player UIDs are immutable once a game is created.
 - Scores can only increase, never decrease, and only one player gains a letter per update.
 - Game status transitions are validated: `active → complete` requires a player reaching 5 letters; `active → forfeit` requires the current player's turn to have expired.
-- Only the two players in a game can read it.
+- Only the two players **and the nominated referee** can read a game (`isParticipant` = `isPlayer(game) || isJudge(game)`).
+- Game creation is rate-limited to one per 30 s per user, and turn writes to one per 2 s, both anchored on server-pinned timestamps.
 
 ### Storage Security Rules
 
@@ -57,8 +58,17 @@ Firebase Storage rules (`storage.rules`) enforce:
 - Only authenticated users can upload or download videos.
 - Video size: minimum 1 KB (prevents stub uploads), maximum 50 MB.
 - Content type: must be `video/webm` (web) or `video/mp4` (native/Capacitor).
-- Filename: only `set-{uid}.webm`, `set-{uid}.mp4`, `match-{uid}.webm`, `match-{uid}.mp4` are accepted, matched by **exact string equality** against the authenticated uploader's UID. This prevents path traversal via crafted filenames, and pins each upload slot to one account so an opponent cannot squat a path to force a forfeit. `update` is denied outright — slots are write-once.
-- The uploader's UID is bound into `customMetadata.uploaderUid` at upload time. Update and delete writes require `resource.metadata.uploaderUid == request.auth.uid`, so signed-in users cannot overwrite or delete each other's videos.
+- Filename: pinned by exact-string equality to `set-{uid}.{ext}` or `match-{uid}.{ext}`, where `{uid}` is `request.auth.uid`. Exact equality (not a regex) inherently rejects path traversal and encoded separators. The **uid suffix** is the load-bearing part: without it, an attacker who learned a `gameId` could pre-create the victim's next upload path, and because `update` is denied the victim's own upload would collide, be evaluated as an update, be rejected, and they would forfeit on the turn timer.
+- The extension and the `Content-Type` must agree, so a client cannot ship mp4 bytes behind a `.webm` name.
+- The uploader's UID is bound into `customMetadata.uploaderUid` at upload time. **`update` is never granted** on game videos — a committed object is append-only, because `clips/*` docs (immutable) reference its URL as the content-moderation audit trail. A retry must `delete` then `create`, which re-validates size, MIME, filename, and uploader from scratch. `delete` requires `resource.metadata.uploaderUid == request.auth.uid`.
+- `read` and `delete` stay filename-agnostic so objects written under the pre-uid scheme (`set.webm` / `match.mp4`) remain playable and deletable by their uploader.
+
+Two further upload surfaces are governed by the same rules file:
+
+- **Avatars** — `users/{uid}/avatar.{webp|jpeg|png}`, owner-only create and delete, 1 KB – 2 MB, per-extension content-type pinning, `update: if false` so a prior moderation pass cannot be silently overwritten. Avatars are additionally screened on-device with nsfwjs before upload, and the Firestore rule pins `users/{uid}.profileImageUrl` to this bucket and the writer's UID so a malicious profile cannot point at someone else's avatar.
+- **User-posted clips** — `userClips/{uid}/{clipId}.{webm|mp4}`, where the uid is the path prefix so ownership is structural. `update: if false`.
+
+**Known limitation:** Storage rules cannot cross-reference Firestore — a cross-service `firestore.get()` only reaches the `(default)` database and this app uses the named database `"skatehubba"`. So game membership is not verified at the storage layer, and the `users/{uid}.banned` flag is not enforceable there either. The residual is bounded: an attacker can only create junk under their own uid-suffixed names (≤50 MB, auth-only readable, never referenced by any Firestore doc), and it is reaped by the 90-day retention sweep. The Firestore `clips` create rule is the real gate — without a clip doc the object is unreachable from the feed.
 
 ### XSS Prevention
 
@@ -80,7 +90,7 @@ The Firestore security rules treat the client as untrusted. Any attempt to manip
 
 - **Self-judging**: Players report whether they landed a trick. There is no server-side video analysis. This is an honor-system game.
 - **Storage rules cannot cross-reference Firestore**: Firebase Storage rules can't verify that the uploading user is a player in the game. They rely on the Firestore rules to enforce game membership. An authenticated user who knows a `gameId` could upload to that game's storage path, though they could not write the resulting URL into Firestore without being a player in the game.
-- **Turn deadline enforcement**: `turnDeadline` is checked on the client when a game is opened, *and* swept server-side. `api/cron/sweep-expired-turns.ts` runs every 15 minutes (`.github/workflows/sweep-expired-turns.yml`), re-reads each expired game in an Admin-SDK transaction, and applies the same transition the client would via the shared `decideExpiredForfeit` helper — so the two paths cannot diverge. Declining to open the app no longer avoids a forfeit; it delays it by at most one sweep. Firestore rules independently validate that the winner is the opponent of the current-turn player. (GitHub Actions `schedule` is best-effort, so the sweep can run late under platform load.)
+- **Turn deadline enforcement**: `turnDeadline` is checked on the client when a game is opened, _and_ swept server-side. `api/cron/sweep-expired-turns.ts` runs every 15 minutes (`.github/workflows/sweep-expired-turns.yml`), re-reads each expired game in an Admin-SDK transaction, and applies the same transition the client would via the shared `decideExpiredForfeit` helper — so the two paths cannot diverge. Declining to open the app no longer avoids a forfeit; it delays it by at most one sweep. Firestore rules independently validate that the winner is the opponent of the current-turn player. (GitHub Actions `schedule` is best-effort, so the sweep can run late under platform load.)
 
 ---
 
@@ -115,6 +125,7 @@ These are low-priority improvements identified during the auth security audit (M
 The following are not considered security vulnerabilities for this project:
 
 - Self-judging cheating (a player lying about landing a trick) — this is a design decision
+- Sustained challenge spam beyond the rules-enforced cooldowns (30 s per game creation, 2 s per turn write, 1 h per report, 5 s per notification). Per-pair blocking is available to users; a global reputation system is not in scope.
 - Enumeration of usernames — all authenticated users can query the `usernames` collection by design (needed for opponent lookup)
 - Vercel preview deployments indexed by search engines — `noindex` headers are set for non-production hosts
 

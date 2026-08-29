@@ -112,26 +112,55 @@ Status legend:
 
 ## 5. Shipped — Referee System (released in v1.1.0, 2026-04-19)
 
-> **STALE (2026-08-26):** this section predates the v1.1.0 release. The referee/dispute system shipped in `[1.1.0]` (2026-04-19, CHANGELOG `9f7f27c`) and its expiry cron (`resolve-expired-disputes.yml`) runs in production — the "In Review" rows and §8's "Unreleased" tallies below no longer reflect reality and are pending a rewrite.
-
 > **Naming note:** User-facing copy says **referee** (commit `91b90f1`), but the
 > data model keeps the original `judge*` field names to avoid a Firestore
 > migration for in-flight games. Rows that reference product behavior use
 > "referee"; rows that reference schema fields keep the literal `judge*` names.
 
-| Feature                               | Status               | Evidence                                            |
-| ------------------------------------- | -------------------- | --------------------------------------------------- |
-| Optional referee nomination at create | **Shipped** (v1.1.0) | `src/screens/ChallengeScreen.tsx`, CHANGELOG v1.1.0 |
-| Referee accept / decline notification | **Shipped** (v1.1.0) | `src/services/notifications.ts`                     |
-| Dispute → referee ruling (24 h)       | **Shipped** (v1.1.0) | `src/services/games.judge.ts`, `firestore.rules`    |
-| "Call BS" on setter (24 h)            | **Shipped** (v1.1.0) | `src/services/games.judge.ts`                       |
-| Referee-only `setReview` phase        | **Shipped** (v1.1.0) | New `GamePhase` value                               |
-| Honor system path (no referee)        | **Shipped** (v1.1.0) | CHANGELOG v1.1.0                                    |
-| `judgeId` / `judgeStatus` schema      | **Shipped** (v1.1.0) | `GameDoc` extension (internal names preserved)      |
-| `TurnRecord.judgedBy`                 | **Shipped** (v1.1.0) | Schema change (internal name preserved)             |
-| Rules: referee immutability + scoping | **Shipped** (v1.1.0) | `firestore.rules` updates                           |
+| Feature                               | Status               | Evidence                                                                |
+| ------------------------------------- | -------------------- | ----------------------------------------------------------------------- |
+| Optional referee nomination at create | **Shipped** (v1.1.0) | `src/screens/ChallengeScreen.tsx`, CHANGELOG `[1.1.0]`                  |
+| Referee accept / decline notification | **Shipped** (v1.1.0) | `src/services/notifications.ts`, `src/services/games.judge.ts`          |
+| Dispute → referee ruling (24 h)       | **Shipped** (v1.1.0) | `src/services/games.judge.ts`, `firestore.rules`                        |
+| "Call BS" on setter (24 h)            | **Shipped** (v1.1.0) | `src/services/games.judge.ts` (`callBSOnSetTrick`, `judgeRuleSetTrick`) |
+| Referee-only `setReview` phase        | **Shipped** (v1.1.0) | `GamePhase` value in `src/services/games.mappers.ts`                    |
+| Honor system path (no referee)        | **Shipped** (v1.1.0) | CHANGELOG `[1.1.0]` `Changed` section                                   |
+| `judgeId` / `judgeStatus` schema      | **Shipped** (v1.1.0) | `GameDoc` extension (internal names preserved)                          |
+| `TurnRecord.judgedBy`                 | **Shipped** (v1.1.0) | Schema change (internal name preserved)                                 |
+| Rules: referee immutability + scoping | **Shipped** (v1.1.0) | `firestore.rules`, `rules-tests/judge-redteam.rules.test.ts`            |
 
-**Verdict:** Shipped in **v1.1.0** (2026-04-19) — see the judge/referee entries in that CHANGELOG block. The honor-system path replaced the old `disputable` mid-turn pause for non-refereed games; it has since been superseded again by the `pendingReview` → `communityReview` flow (see `docs/GAME_STATE_MACHINE.md`).
+**Verdict:** Shipped in **v1.1.0** (2026-04-19, CHANGELOG `9f7f27c`); the expiry cron (`resolve-expired-disputes.yml`) runs in production every 15 minutes. The honor-system path it introduced has since been superseded again by the `pendingReview` → `communityReview` flow in §5b (see `docs/GAME_STATE_MACHINE.md`).
+
+### 5b. Binding community disputes — shipped post-v1.1.0
+
+The honor-system path no longer resolves a "landed" claim instantly. It freezes the game into `pendingReview` (setter's 24 h accept/dispute window) and, if disputed, `communityReview` (24 h binding community vote). Not yet in any CHANGELOG release section.
+
+| Feature                                      | Status               | Evidence                                                                 |
+| -------------------------------------------- | -------------------- | ------------------------------------------------------------------------ |
+| `pendingReview` / `communityReview` phases   | **Shipped** (v1.1.0) | `src/services/games.mappers.ts`, `src/services/games.match.ts`           |
+| `reviewFor` / `reviewDeadline` freeze fields | **Shipped** (v1.1.0) | `games.mappers.ts`; sweep skips frozen games (`turnForfeit.shared.ts`)   |
+| Raise dispute (setter-only)                  | **Shipped** (v1.1.0) | `src/services/disputes.raise.ts`, `firestore.rules` `/disputes`          |
+| Community land/bail voting, 1-vote quorum    | **Shipped** (v1.1.0) | `src/services/disputes.votes.ts`, `firestore.rules` `/disputeVotes`      |
+| Server-side dispute referee (expiry + tally) | **Shipped** (v1.1.0) | `api/cron/resolve-expired-disputes.ts`, `dispute.resolution.shared.ts`   |
+| Four public dispute counters on profiles     | **Shipped** (v1.1.0) | `src/services/users.ts`, zero-seeded + immutable in `firestore.rules`    |
+| Dispute lane UI + review panels              | **Shipped** (v1.1.0) | `src/components/ClipsFeed/DisputeLane.tsx`, `GamePlayScreen/components/` |
+
+**Gap:** `disputes.raise.ts` writes no notification, so a claimer is never told their land was disputed — see GAPS.md P0-3 (partially closed).
+
+### 5c. Other shipped subsystems not tracked in the phase tables above
+
+| Subsystem                                   | Evidence                                                                      |
+| ------------------------------------------- | ----------------------------------------------------------------------------- |
+| Multi-factor auth (TOTP / SMS)              | `src/services/mfa.ts`, `src/components/MfaVerifyCard.tsx`                     |
+| Admin console + custom-claim authz + bans   | `src/screens/AdminScreen/`, `src/services/admin.ts`, `admin.bans.ts`, `bans/` |
+| User-uploaded clips + comments              | `src/services/clips.userWrites.ts`, `clips.comments.ts`, `UserClipUpload/`    |
+| Avatar upload + on-device NSFW screening    | `src/services/avatars.ts`, `avatarModeration.ts` (nsfwjs)                     |
+| My Stats screen + expanded stat counters    | `src/screens/MyStatsScreen/`                                                  |
+| Achievements / badges + Hubba Locker        | `src/services/achievements.ts`, `locker.ts`, `src/constants/badges.ts`        |
+| Server-side account deletion (GDPR erasure) | `api/account/delete.ts`, `api/account/_deleteUserData.ts`                     |
+| Social cards for shared `/player` links     | `api/player-meta.ts`, crawler-UA rewrite in `vercel.json`                     |
+| Stats close-out Cloud Function              | `functions/src/applyGameStats.ts` (CI-pinned allowlist)                       |
+| Mobile store release pipeline               | `fastlane/`, `.github/workflows/ios-build.yml`, `android-aab.yml`             |
 
 ---
 
@@ -189,17 +218,21 @@ Status legend:
 
 ## 8. Roadmap Completion Summary
 
-| Phase                              | Items | Done | In Review | In Progress | Deferred | Planned |   % Shipped |
-| ---------------------------------- | ----: | ---: | --------: | ----------: | -------: | ------: | ----------: |
-| Phase 1 — Core Loop                |    31 |   31 |         0 |           0 |        0 |       0 |    **100%** |
-| Phase 2 — Viral Mechanics          |     9 |    9 |         0 |           0 |        0 |       0 |    **100%** |
-| Phase 3 — Social Graph & Discovery |     9 |    8 |         0 |           0 |        1 |       0 |     **89%** |
-| Phase 4 — Network Effects          |     9 |    5 |         0 |           1 |        0 |       3 |     **56%** |
-| Referee System (v1.1.0)            |     9 |    9 |         0 |           0 |        0 |       0 | **Shipped** |
+| Phase                              | Items | Done | In Review | In Progress | Deferred | Planned | % Shipped |
+| ---------------------------------- | ----: | ---: | --------: | ----------: | -------: | ------: | --------: |
+| Phase 1 — Core Loop                |    32 |   32 |         0 |           0 |        0 |       0 |  **100%** |
+| Phase 2 — Viral Mechanics          |    10 |   10 |         0 |           0 |        0 |       0 |  **100%** |
+| Phase 3 — Social Graph & Discovery |     9 |    8 |         0 |           0 |        1 |       0 |   **89%** |
+| Phase 4 — Network Effects          |     9 |    5 |         0 |           1 |        0 |       3 |   **56%** |
+| Referee & Dispute System (§5)      |     9 |    9 |         0 |           0 |        0 |       0 |  **100%** |
 
-**Overall product completion (shipped + in-review, excluding deferred):** 62 of 66 non-deferred items ≈ **94%**. Including the single deferred item (spectator), 62 of 67 ≈ 93%.
-**Active focus:** Cut a release tag — the repo has no git tags and ~4 months of shipped work sits in `[Unreleased]`; custom Mapbox style (Phase 4 — design/infra).
-**Production gate:** Green (per gap analysis: 9.7/10, all P0 closed).
+Counts are the literal row counts of the tables in §1–§5. §5b and §5c are shipped
+work that has never been folded into a phase table and is excluded from these
+totals — they under-report what is actually built.
+
+**Overall product completion (excluding deferred):** 64 of 68 non-deferred items ≈ **94%**. Including the single deferred item (spectator), 64 of 69 ≈ 93%.
+**Active focus:** cut a release tag — the repo has no git tags at all and `[Unreleased]` holds ~4 months of merged work; custom Mapbox style (Phase 4 — design/infra).
+**Production gate:** Green on the verify suite. **2 of 4 P0s are fully closed; P0-3 (dispute notifications) and P0-4 (DSA controls) are partially closed** — see [GAPS.md](GAPS.md).
 
 ---
 

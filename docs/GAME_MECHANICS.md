@@ -14,7 +14,7 @@ This app brings that format to mobile, async. You set your trick whenever you wa
 
 - 3–20 characters, lowercase letters, numbers, and underscores only (`[a-z0-9_]+`)
 - Normalized to lowercase at the service boundary (input is case-insensitive)
-- Permanently reserved — usernames cannot be changed or deleted after creation
+- Reserved for the life of the account — a username cannot be changed once chosen. The reservation in `usernames/{username}` is released only when the account itself is deleted (see the cascade in `src/services/users.ts` and `api/account/_deleteUserData.ts`)
 
 **Stance:** Regular (left foot forward) or Goofy (right foot forward). Stored for display only; has no effect on game logic.
 
@@ -64,11 +64,11 @@ With no active judge, a "landed" claim does **not** resolve the turn. `submitMat
 
 The **setter** — the player whose trick was matched — then has 24 hours to decide:
 
-| Setter's action                | Letter assigned          | Next state                                              |
-| ------------------------------ | ------------------------ | -------------------------------------------------------- |
-| Accept (`acceptLanded`)        | None                     | Roles swap, `turnNumber++` — matcher becomes the setter  |
-| Dispute (`raiseDispute`)       | None yet                 | `communityReview` — the community votes (Phase 3b)       |
-| No response (24 h)             | None                     | Auto-accept by cron — the claim stands, roles swap       |
+| Setter's action          | Letter assigned | Next state                                              |
+| ------------------------ | --------------- | ------------------------------------------------------- |
+| Accept (`acceptLanded`)  | None            | Roles swap, `turnNumber++` — matcher becomes the setter |
+| Dispute (`raiseDispute`) | None yet        | `communityReview` — the community votes (Phase 3b)      |
+| No response (24 h)       | None            | Auto-accept by cron — the claim stands, roles swap      |
 
 Only the setter can resolve it (`firestore.rules:1459-1464`); the matcher cannot accept their own claim. The landed clip and the "Trick Landed" notification are deliberately held back until acceptance — a claim is not a landing yet.
 
@@ -78,12 +78,12 @@ When the setter disputes, a `disputes/{gameId}_{turnNumber}` document opens and 
 
 No client can move a game out of `communityReview` — there is no rule permitting it. Only the server referee (`api/cron/resolve-expired-disputes.ts`, every 15 minutes) resolves it, once the vote window closes. Quorum is one vote:
 
-| Verdict | Condition               | Outcome                                                        |
-| ------- | ----------------------- | -------------------------------------------------------------- |
-| LAND    | more land than bail     | Claim stands — roles swap                                      |
-| BAIL    | more bail than land     | Matcher earns a letter; setter keeps setting                   |
-| Tie     | equal, both non-zero    | Retry — the matcher re-attempts (back to `matching`)           |
-| No votes| nobody voted            | Auto-accept — the claim stands                                 |
+| Verdict  | Condition            | Outcome                                              |
+| -------- | -------------------- | ---------------------------------------------------- |
+| LAND     | more land than bail  | Claim stands — roles swap                            |
+| BAIL     | more bail than land  | Matcher earns a letter; setter keeps setting         |
+| Tie      | equal, both non-zero | Retry — the matcher re-attempts (back to `matching`) |
+| No votes | nobody voted         | Auto-accept — the claim stands                       |
 
 Disputing is not free: the outcome increments `disputesRight` or `disputesWrong` on the disputer's public stats.
 
@@ -151,7 +151,7 @@ Games frozen in `pendingReview` or `communityReview` are **never** forfeited for
 - Format: `video/webm` on web (via MediaRecorder API) or `video/mp4` on native (via Capacitor).
 - Storage path: `games/{gameId}/turn-{turnNumber}/{role}-{uploaderUid}.{ext}` where `role` is `"set"` (setter's trick) or `"match"` (matcher's attempt) and `{ext}` is `webm` (web) or `mp4` (native). **The uploader's UID is part of the filename** and `storage.rules` matches it by exact string equality, so no account can occupy another player's upload path. The object also carries `uploaderUid` metadata, and `update` is denied outright — an upload slot is write-once.
 - Size limits: 1 KB minimum (prevents empty uploads), 50 MB maximum per video.
-- Videos are stored permanently — there is no cleanup process in the current version.
+- Videos are not kept forever. Every upload is stamped with a `retainUntil` metadata hint 90 days out (`src/services/storage.ts`) and a Storage lifecycle rule purges objects past that window. Videos attached to non-active games are also deleted eagerly by the account-deletion cascade (`deleteGameVideos`).
 
 ---
 

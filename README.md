@@ -95,7 +95,8 @@ No custom backend for game logic — the client talks directly to Firebase with 
 - **Video tricks** — one-take recording in-browser (WebM) or native app (MP4)
 - **Real-time updates** — both players see state changes the moment they happen via Firestore snapshots
 - **24-hour turn timer** — games don't stall; expired turns auto-forfeit
-- **Optional referee** _(in review)_ — nominate a neutral third player to rule on disputes and "Call BS"
+- **Optional referee** — nominate a neutral third player to rule on disputes and "Call BS"
+- **Binding community disputes** — on honor-system games a landed claim freezes the game for a 24 h accept/dispute window; a dispute goes to a binding community vote
 
 ### Identity & Trust
 
@@ -195,7 +196,7 @@ skatehubba-play/
 │   ├── screens/               # Full-page components (Lobby, GamePlay, MapPage, …)
 │   ├── context/               # AuthContext, GameContext, NavigationContext, NotificationContext, OnboardingContext
 │   ├── hooks/                 # Key hooks — useAuth, useOnlineStatus, usePlayerProfile, useBlockedUsers, …
-│   ├── services/              # Single entry point for all Firebase calls, split by domain (~57 modules)
+│   ├── services/              # Single entry point for all Firebase calls, split by domain (54 modules)
 │   │   ├── auth.ts            #   sign up / sign in / Google OAuth / password reset
 │   │   ├── users.ts           #   profiles + atomic username reservation
 │   │   ├── games.*.ts         #   game domain — games.ts is a barrel over create/match/judge/turns/mappers/subscriptions
@@ -405,13 +406,13 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 
 ### Referee System 🧑‍⚖️ — shipped in v1.1.0
 
-Optional third player who arbitrates disputes. See the v1.1.0 entries in [CHANGELOG.md](CHANGELOG.md).
+Optional third player who arbitrates disputes. Shipped 2026-04-19 — see the `[1.1.0]` entries in [CHANGELOG.md](CHANGELOG.md).
 
 - Nominate a referee at challenge time; honor system runs by default if declined or absent
 - **Dispute path** — referee rules on a matcher's "landed" claim (24 h, then auto-accept)
 - **Call BS path** — matcher can flag the setter's video before attempting (24 h, then set stands)
 - New `setReview` phase + `judgeId` / `judgeStatus` / `judgeReviewFor` schema fields (internal names preserved to avoid a migration for in-flight games)
-- Honor-system games skip the `disputable` phase entirely — landed swaps roles instantly
+- Honor-system games skip the `disputable` phase entirely; they use the binding community-dispute path instead (`pendingReview` → `communityReview`), documented in [docs/DISPUTE_BINDING_DESIGN.md](docs/DISPUTE_BINDING_DESIGN.md)
 
 **The thesis:** Each game produces shareable video content. Each shared clip is a free acquisition channel. Each new player brings their crew. The game mechanic (asynchronous, video-first) removes the coordination cost that kills most multiplayer apps — you don't need to be online at the same time or at the same spot.
 

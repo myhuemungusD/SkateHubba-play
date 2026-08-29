@@ -78,9 +78,9 @@ A fixed per-listener `limit` is acceptable for the current scale. True cursor-ba
 
 ### Future work (not scheduled)
 
-- Add `startAfter` cursor support and a "Load more" button when game count approaches 50.
+- Add `startAfter` cursor support and a "Load more" button when game count approaches `limitCount` (currently 20).
 - Consider adding a Firestore composite index on `(playerXUid, updatedAt)` to support ordered pagination.
-- Optionally surface an in-app notice when the 50-game cap is reached.
+- Optionally surface an in-app notice when the per-slice cap is reached.
 
 ---
 
