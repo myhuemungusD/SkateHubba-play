@@ -59,6 +59,14 @@ test("setter records a clip → upload completes and download URL is persisted t
   // The consent banner otherwise sits over the recorder controls and eats
   // the clicks below.
   await p1.addInitScript(CONSENT_ANSWERED_SCRIPT);
+  // Relay page-side errors into stdout: this spec's failure mode is a stalled
+  // upload or a rejected write, and only the browser knows which.
+  p1.on("console", (msg) => {
+    if (msg.type() === "error" || msg.type() === "warning") {
+      console.log(`[browser:${msg.type()}] ${msg.text()}`);
+    }
+  });
+  p1.on("pageerror", (err) => console.log(`[browser:pageerror] ${err.message}`));
 
   // Sign up + verify P1, then challenge P2 → P1 becomes the setter in the
   // setting phase, landing on the "Name your trick" step.

@@ -51,6 +51,25 @@ async function mockMedia(page: Page) {
   // The consent banner is fixed to the bottom of the viewport and covers the
   // recorder's controls until it is answered.
   await page.addInitScript(CONSENT_ANSWERED_SCRIPT);
+  echoBrowserErrors(page);
+}
+
+/**
+ * Relay browser-side errors into the Playwright stdout stream.
+ *
+ * These specs drive real uploads and real Firestore writes, so when one
+ * stalls the reason is almost always something the PAGE logged — a rejected
+ * write, a failed upload — and the job log shows only the Playwright-side
+ * timeout. Without this the failure reads as "the waiting screen never
+ * appeared" and says nothing about why.
+ */
+function echoBrowserErrors(page: Page) {
+  page.on("console", (msg) => {
+    if (msg.type() === "error" || msg.type() === "warning") {
+      console.log(`[browser:${msg.type()}] ${msg.text()}`);
+    }
+  });
+  page.on("pageerror", (err) => console.log(`[browser:pageerror] ${err.message}`));
 }
 
 /**
