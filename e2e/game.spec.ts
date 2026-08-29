@@ -20,6 +20,7 @@ import {
   forceTokenRefresh,
 } from "./helpers/emulator";
 import { MEDIA_MOCK_SCRIPT } from "./helpers/media-mock";
+import { CONSENT_ANSWERED_SCRIPT } from "./helpers/consent";
 import { signUpAndSetupProfile, signInViaUI } from "./helpers/auth-flow";
 
 // ─── Fixed test data ──────────────────────────────────────────────────────────
@@ -47,6 +48,9 @@ function gameCard(page: Page, username: string) {
  */
 async function mockMedia(page: Page) {
   await page.addInitScript(MEDIA_MOCK_SCRIPT);
+  // The consent banner is fixed to the bottom of the viewport and covers the
+  // recorder's controls until it is answered.
+  await page.addInitScript(CONSENT_ANSWERED_SCRIPT);
 }
 
 /**

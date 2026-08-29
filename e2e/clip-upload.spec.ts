@@ -34,6 +34,7 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { clearAll, createUser, createProfile, listGames, getCurrentTrickVideoUrl } from "./helpers/emulator";
 import { MEDIA_MOCK_SCRIPT } from "./helpers/media-mock";
+import { CONSENT_ANSWERED_SCRIPT } from "./helpers/consent";
 import { signUpVerifiedAndChallenge } from "./helpers/game-flow";
 
 const P1 = { email: "p1@test.com", password: "password123", username: "p1skater" };
@@ -55,6 +56,9 @@ test("setter records a clip → upload completes and download URL is persisted t
   // performs the first goto). The Storage upload itself is NOT mocked — it
   // hits the Storage emulator for real.
   await p1.addInitScript(MEDIA_MOCK_SCRIPT);
+  // The consent banner otherwise sits over the recorder controls and eats
+  // the clicks below.
+  await p1.addInitScript(CONSENT_ANSWERED_SCRIPT);
 
   // Sign up + verify P1, then challenge P2 → P1 becomes the setter in the
   // setting phase, landing on the "Name your trick" step.
