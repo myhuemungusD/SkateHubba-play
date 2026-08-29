@@ -14,7 +14,7 @@
  * upstream FCM behaviour is its own concern and covered by unit tests.
  */
 import { test, expect } from "@playwright/test";
-import { clearAll, createUser, createProfile, createGame } from "./helpers/emulator";
+import { clearAll, createUser, createProfile, createGame, getSignedInUid } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
 import { expectOnLobby, revealActiveGameInLobby } from "./helpers/lobby-nav";
 
@@ -35,15 +35,10 @@ test("dispatching skatehubba:open-game routes recipient into the referenced game
 
   // Resolve the recipient's uid from the in-page Firebase auth handle so we
   // can pin them as `player2Uid` on the seeded game.
-  const recipientUid = await page.evaluate(() => {
-    type E2EAuth = { currentUser?: { uid?: string } };
-    const auth = (globalThis as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
-    return auth?.currentUser?.uid ?? null;
-  });
-  expect(recipientUid).toBeTruthy();
+  const recipientUid = await getSignedInUid(page);
 
   const gameId = "deeplink-target-game";
-  await createGame(gameId, challenger.uid, CHALLENGER.username, recipientUid as string, RECIPIENT.username, {
+  await createGame(gameId, challenger.uid, CHALLENGER.username, recipientUid, RECIPIENT.username, {
     phase: "setting",
     currentTurn: challenger.uid,
     currentSetter: challenger.uid,

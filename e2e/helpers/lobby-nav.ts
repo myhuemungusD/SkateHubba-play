@@ -19,54 +19,50 @@
  *  - finished games are no longer cards in the lobby at all; they collapse
  *    to a "N finished · W–L" roll-up that opens the viewer's own profile,
  *    where the game history card exposes "View Full Recap".
+ *
+ * Overlay policy: the consent banner is NOT handled here. It is pre-answered
+ * before the first navigation by `CONSENT_ANSWERED_SCRIPT` (helpers/consent.ts),
+ * which `signUpViaUI` / `signInViaUI` install, so it never mounts in an
+ * authenticated session. Clicking it away here as well would be a second,
+ * racier mechanism for the same problem — the banner mounts asynchronously,
+ * so a click-based dismissal can always lose to the tap it is protecting.
+ * The onboarding coach mark has no such pre-seed (it is driven by Firestore
+ * onboarding state, which onboarding.spec.ts asserts on), so it is dismissed
+ * through the UI below.
  */
 import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
- * Dismiss the two overlays that sit on top of the bottom nav and would
- * otherwise swallow a tab tap: the onboarding coach mark (anchored just above
- * the nav for fresh accounts, `z-[60]`) and the consent banner (pinned to the
- * bottom of every screen until answered, `z-50`).
+ * Dismiss the onboarding coach mark, which is anchored just above the bottom
+ * nav (`z-[60]`) for fresh accounts and would otherwise swallow a tab tap.
  *
- * This is what a real user has to do — both are dismissible controls and both
- * persist their answer — so it is setup, not a workaround: Playwright refuses
- * to click through an intercepting element, exactly as a thumb cannot.
+ * This is what a real user has to do — the coach mark is a dismissible control
+ * and it persists its answer — so it is setup, not a workaround: Playwright
+ * refuses to click through an intercepting element, exactly as a thumb cannot.
  *
- * Order matters: the coach mark outranks the banner, so it goes first or its
- * primary CTA eats the tap aimed at the banner's "OK". A dismissal that is
- * itself intercepted (the coach mark mounts asynchronously, so it can appear
- * between the two steps) is swallowed rather than thrown — `clickPastOverlays`
- * runs the whole sequence again, which converges once both are on screen.
+ * A dismissal that is itself intercepted is swallowed rather than thrown, so
+ * `clickPastOverlays` can run the sequence again once the overlay has settled.
  *
- * Safe to call at any point — each branch no-ops when its overlay is absent.
+ * Safe to call at any point — it no-ops when the coach mark is absent.
  */
 export async function dismissBottomOverlays(page: Page): Promise<void> {
   const tour = page.locator('[data-testid="tutorial-overlay"]');
-  await dismiss(tour, tour.getByRole("button", { name: /close tour/i }));
-
-  const consent = page.getByRole("region", { name: "Cookie and analytics notice" });
-  await dismiss(consent, consent.getByRole("button", { name: "OK", exact: true }));
-}
-
-/** Close `overlay` via `closeButton` when it is on screen. */
-async function dismiss(overlay: Locator, closeButton: Locator): Promise<void> {
-  if (!(await closeButton.isVisible().catch(() => false))) return;
+  const close = tour.getByRole("button", { name: /close tour/i });
+  if (!(await close.isVisible().catch(() => false))) return;
   try {
-    await closeButton.click({ timeout: 3_000 });
+    await close.click({ timeout: 3_000 });
   } catch {
-    // Something on top of this overlay took the tap — leave it to the caller's
-    // next pass, which dismisses the higher overlay first.
+    // Something on top took the tap — leave it to the caller's next pass.
     return;
   }
-  await expect(overlay).toHaveCount(0);
+  await expect(tour).toHaveCount(0);
 }
 
 /**
- * Click `target`, clearing the bottom overlays first and again if one of them
- * mounts late and intercepts the tap.
+ * Click `target`, clearing the coach mark first and again if it mounts late
+ * and intercepts the tap.
  *
- * Both overlays appear only after their async gate resolves (consent state on
- * app mount, the coach mark once the onboarding doc loads), so a single
+ * The coach mark appears only after the onboarding doc loads, so a single
  * up-front dismissal can lose the race on a page that has just navigated. The
  * retry is bounded and every attempt re-runs the dismissal, so a control that
  * is genuinely unreachable still fails the test instead of being force-clicked.
@@ -137,7 +133,17 @@ export async function openClipsFeed(page: Page): Promise<void> {
   await page.waitForURL("**/feed**", { timeout: 10_000 });
 }
 
-/** The lobby card for an active game against `opponentHandle` ("vs @handle"). */
+/**
+ * The lobby card for an active game against `opponentHandle` ("vs @handle").
+ *
+ * Matched on the card's TEXT, not on `getByRole("button", { name })`. The card
+ * nests a second button ("View @<handle>'s profile"), and a plain
+ * `getByRole("button")` picks up both — a strict-mode violation that only
+ * tripped once the opponent's profile data had arrived, so it failed
+ * intermittently. Only the outer card's text contains the literal "vs @handle"
+ * (the inner button's label is "Profile"), so this stays unambiguous whether
+ * or not the inner button has rendered yet.
+ */
 function activeGameCard(page: Page, opponentHandle: string): Locator {
   return page.getByRole("button").filter({ hasText: `vs @${opponentHandle}` });
 }

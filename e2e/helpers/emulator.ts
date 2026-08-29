@@ -357,9 +357,33 @@ export async function forceTokenRefresh(page: Page): Promise<void> {
     type E2EAuth = {
       currentUser?: { getIdToken: (forceRefresh: boolean) => Promise<string> };
     };
-    const auth = (globalThis as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
+    // `as unknown as` is required: `typeof globalThis` declares `closed:
+    // boolean`, which is not assignable to the index signature's value type,
+    // so a direct assertion is rejected by TS2352.
+    const auth = (globalThis as unknown as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
     if (auth?.currentUser) {
       await auth.currentUser.getIdToken(/* forceRefresh= */ true);
     }
   });
+}
+
+/**
+ * Read the signed-in uid out of the page's Firebase auth handle
+ * (`window.__e2eFirebaseAuth`, exposed by src/firebase.ts under
+ * `VITE_USE_EMULATORS`).
+ *
+ * Four specs each carried their own copy of this `page.evaluate`, three of
+ * which used a direct `as` cast that does not type-check. Throwing (rather
+ * than returning null) keeps the callers' `string` typing honest and turns
+ * "not signed in yet" into a named failure instead of a downstream
+ * `undefined` in a seeded document.
+ */
+export async function getSignedInUid(page: Page): Promise<string> {
+  const uid = await page.evaluate(() => {
+    type E2EAuth = { currentUser?: { uid?: string } };
+    const auth = (globalThis as unknown as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
+    return auth?.currentUser?.uid ?? null;
+  });
+  if (!uid) throw new Error("expected an authenticated user, but __e2eFirebaseAuth has no currentUser");
+  return uid;
 }

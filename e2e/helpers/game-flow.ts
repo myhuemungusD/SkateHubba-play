@@ -13,6 +13,26 @@ import { MEDIA_MOCK_SCRIPT } from "./media-mock";
 import { signUpAndSetupProfile, signInViaUI } from "./auth-flow";
 import { openActiveGameFromLobby, openChallengeForm } from "./lobby-nav";
 
+/**
+ * Relay browser-side errors into the Playwright stdout stream.
+ *
+ * These specs drive real uploads and real Firestore writes, so when one stalls
+ * the reason is almost always something the PAGE logged — a rejected write, a
+ * failed upload — and the job log shows only the Playwright-side timeout.
+ * Without this the failure reads as "the waiting screen never appeared" and
+ * says nothing about why.
+ *
+ * Installed by every session opener below so no spec has to remember it.
+ */
+export function relayBrowserErrors(page: Page): void {
+  page.on("console", (msg) => {
+    if (msg.type() === "error" || msg.type() === "warning") {
+      console.log(`[browser:${msg.type()}] ${msg.text()}`);
+    }
+  });
+  page.on("pageerror", (err) => console.log(`[browser:pageerror] ${err.message}`));
+}
+
 interface Credentials {
   email: string;
   password: string;
@@ -79,6 +99,23 @@ export interface PlayerSession {
 }
 
 /**
+ * Open a fresh device (context + page) for an ALREADY-SEEDED player: media
+ * mock and browser-error relay installed before the first navigation, then
+ * signed in through the UI. Left sitting on the lobby, so the caller chooses
+ * how to reach the game (active card vs finished roll-up).
+ *
+ * Caller owns the returned context and must close it.
+ */
+export async function openPlayerSession(browser: Browser, player: Credentials): Promise<PlayerSession> {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.addInitScript(MEDIA_MOCK_SCRIPT);
+  relayBrowserErrors(page);
+  await signInViaUI(page, player.email, player.password);
+  return { ctx, page };
+}
+
+/**
  * Seed `opponent` in the emulator, then open a fresh context for `setter`,
  * sign them up through the UI, verify them, and challenge `opponent` —
  * leaving the page on the setter's trick-name step.
@@ -100,6 +137,7 @@ export async function openSetterSession(
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
   await page.addInitScript(MEDIA_MOCK_SCRIPT);
+  relayBrowserErrors(page);
   await signUpVerifiedAndChallenge(page, setter, opponent.username);
   return { ctx, page };
 }
@@ -116,9 +154,7 @@ export async function openMatcherSession(
   matcher: Credentials,
   opponentHandle: string,
 ): Promise<PlayerSession> {
-  const ctx = await browser.newContext();
-  const page = await ctx.newPage();
-  await page.addInitScript(MEDIA_MOCK_SCRIPT);
-  await signInAndOpenGame(page, matcher, opponentHandle);
-  return { ctx, page };
+  const session = await openPlayerSession(browser, matcher);
+  await openActiveGameFromLobby(session.page, opponentHandle);
+  return session;
 }
