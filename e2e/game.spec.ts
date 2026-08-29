@@ -51,28 +51,24 @@ async function mockMedia(page: Page) {
 
 /**
  * Complete a VideoRecorder interaction:
- *  1. Click "Open Camera" (if shown — not shown when autoOpen=true)
+ *  1. Click "Open Camera" (always required — the stream needs a gesture)
  *  2. Click "Record — {label}"
  *  3. Wait briefly, then click "Stop Recording"
  *  4. Wait for the "done" state to indicate the blob was captured
  */
 async function recordVideo(page: Page, recordLabel: string, doneLabel = "Recorded") {
-  // For matchers (autoOpen=false) the "Open Camera" button must be clicked.
-  // For setters (autoOpen=true) the camera opens automatically — the button
-  // is absent or disappears very quickly.  We use a generous 5 s timeout so
-  // CI latency doesn't cause the check to time-out and skip the click.
+  // The camera does NOT auto-open for anyone. The recorder only acquires a
+  // stream inside a user gesture (see useMediaRecorder), so "Open Camera" has
+  // to be tapped — by the setter as much as the matcher. This helper used to
+  // treat the tap as optional-for-setters, which is why every recording spec
+  // then failed at the Record button that the tap is what reveals.
+  //
+  // The click is bounded: unbounded, it sat in Playwright's actionability
+  // retry loop and burned the whole 30 s test budget, reporting "Test ended"
+  // against this line instead of anything diagnostic.
   const openBtn = page.getByRole("button", { name: /Open Camera/i });
-  if (await openBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-    // Bounded, and allowed to fail. The button is already optional here (the
-    // isVisible check above tolerates its absence), but the click was not:
-    // when the setter's camera auto-opened between the check and the click,
-    // the click sat in Playwright's actionability retry loop until the whole
-    // 30 s test budget was gone and the run reported "Test ended" against
-    // this line rather than anything diagnostic. Falling through to the
-    // Record button — the actual goal — either works or fails where it means
-    // something.
-    await openBtn.click({ timeout: 5_000 }).catch(() => {});
-  }
+  await expect(openBtn).toBeVisible({ timeout: 5_000 });
+  await openBtn.click({ timeout: 5_000 });
 
   await page.getByRole("button", { name: new RegExp(`Record.*${recordLabel}`, "i") }).click();
   // Let the fake recording "run" for 200 ms before stopping
@@ -140,8 +136,9 @@ test("setter records trick → game moves to matching phase", async ({ browser }
   await expect(p1.getByText("Name your trick", { exact: false })).toBeVisible({ timeout: 10_000 });
   await p1.getByPlaceholder("Name your trick").fill("Kickflip");
 
-  // The VideoRecorder should auto-open the camera
-  await expect(p1.getByRole("button", { name: /Stop Recording|Record/i })).toBeVisible({
+  // The VideoRecorder is revealed by the trick name, showing its "Open Camera"
+  // affordance — it does not auto-open. recordVideo() does the tapping.
+  await expect(p1.getByRole("button", { name: /Open Camera/i })).toBeVisible({
     timeout: 5_000,
   });
 

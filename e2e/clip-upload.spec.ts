@@ -63,7 +63,10 @@ test("setter records a clip → upload completes and download URL is persisted t
   // Name the trick (this reveals the recorder).
   await p1.getByPlaceholder("Name your trick").fill("Kickflip");
 
-  // Record and stop the fake clip (camera auto-opens for the setter).
+  // Record and stop the fake clip. The camera does not auto-open — the
+  // recorder only acquires a stream inside a user gesture — so the tap comes
+  // first; without it the Record button below never exists.
+  await p1.getByRole("button", { name: /Open Camera/i }).click();
   await p1.getByRole("button", { name: /Record.*Land Your Trick/i }).click();
   await p1.waitForTimeout(200);
   await p1.getByRole("button", { name: "Stop Recording" }).click();
