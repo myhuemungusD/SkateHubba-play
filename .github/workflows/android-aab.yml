@@ -85,7 +85,7 @@ jobs:
           REQUIRE_SW_CONFIG: '1'
       - name: Sync Capacitor
         run: npx cap sync android
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -142,7 +142,7 @@ jobs:
       # built above via the upload-only fastlane lane (no second Gradle run),
       # so the artifact attached to the workflow and the one on the internal
       # track are byte-identical.
-      - uses: ruby/setup-ruby@e5517072e87f198d9533967ae13d97c11b604005 # v1.99.0
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1.321.0
         if: inputs.upload_to_play == true
         with:
           ruby-version: '3.3'
