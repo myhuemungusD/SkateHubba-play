@@ -159,6 +159,16 @@ describe("analytics service", () => {
       });
     });
 
+    it("installPromptAnswered sends install_prompt_answered with the outcome", () => {
+      analytics.installPromptAnswered("dismissed");
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "install_prompt_answered", outcome: "dismissed" });
+    });
+
+    it("appInstalled sends app_installed event", () => {
+      analytics.appInstalled();
+      expect(vaSpy).toHaveBeenCalledWith("event", { name: "app_installed" });
+    });
+
     it("challengeFromSpot sends challenge_from_spot event", () => {
       analytics.challengeFromSpot("11111111-2222-3333-4444-555555555555");
       expect(vaSpy).toHaveBeenCalledWith("event", {

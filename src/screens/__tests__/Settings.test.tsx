@@ -99,6 +99,14 @@ vi.mock("../../services/notifications", () => ({
   markNotificationRead: vi.fn(),
 }));
 
+// PWA install hook. Defaults to the "manual" web state; the install block
+// below flips it per test.
+const mockInstallStatus = vi.fn<() => "native" | "installed" | "prompt" | "ios" | "manual">(() => "manual");
+const promptInstallMock = vi.fn().mockResolvedValue("accepted");
+vi.mock("../../hooks/useInstallPrompt", () => ({
+  useInstallPrompt: () => ({ status: mockInstallStatus(), promptInstall: promptInstallMock }),
+}));
+
 const replayTutorialMock = vi.fn().mockResolvedValue(undefined);
 vi.mock("../../context/OnboardingContext", () => ({
   useOnboardingContext: () => ({ replay: replayTutorialMock }),
@@ -146,6 +154,7 @@ beforeEach(() => {
   // clearAllMocks wipes call history, not return values — re-arm the web
   // default so a native test can't leak into the next one.
   mockIsPushSupported.mockReturnValue(false);
+  mockInstallStatus.mockReturnValue("manual");
   localStorage.clear();
 });
 
@@ -161,6 +170,7 @@ describe("Settings", () => {
     expect(screen.getByRole("heading", { name: /Settings/i })).toBeInTheDocument();
     expect(screen.getByText(/NOTIFICATIONS/)).toBeInTheDocument();
     expect(screen.getByText(/FEEDBACK/)).toBeInTheDocument();
+    expect(screen.getByText(/INSTALL APP/)).toBeInTheDocument();
     expect(screen.getByText(/BLOCKED PLAYERS/)).toBeInTheDocument();
     expect(screen.getByText(/HELP & SUPPORT/)).toBeInTheDocument();
     expect(screen.getByText(/LEGAL/)).toBeInTheDocument();
@@ -505,6 +515,30 @@ describe("Settings", () => {
     render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
     await waitFor(() => expect(screen.getByRole("switch", { name: /Push notifications/i })).toBeEnabled());
     expect(screen.queryByText(/Enable notifications in your device settings/i)).toBeNull();
+  });
+
+  /* ── PWA install section ────────────────────────────── */
+
+  describe("install app section", () => {
+    it("shows manual instructions on a browser without an install prompt", () => {
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      expect(screen.getByText(/INSTALL APP/)).toBeInTheDocument();
+      expect(screen.getByText(/Open your browser's menu/)).toBeInTheDocument();
+    });
+
+    it("offers a one-tap install when Chromium parked the prompt", async () => {
+      mockInstallStatus.mockReturnValue("prompt");
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      await userEvent.click(screen.getByRole("button", { name: /Install SkateHubba/ }));
+      expect(promptInstallMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("hides the whole section inside the native shell", () => {
+      mockInstallStatus.mockReturnValue("native");
+      render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
+      expect(screen.queryByText(/INSTALL APP/)).toBeNull();
+      expect(screen.queryByText(/Install SkateHubba/)).toBeNull();
+    });
   });
 
   /* ── Native (Capacitor) push branch ─────────────────── */

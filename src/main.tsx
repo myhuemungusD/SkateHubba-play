@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router";
 import { Capacitor } from "@capacitor/core";
 import { initSentry, captureException, addBreadcrumb } from "./lib/sentry";
 import { initPosthogOnConsent } from "./lib/posthog";
+import { captureInstallPrompt } from "./lib/installPrompt";
 import App from "./App";
 import "./index.css";
 
@@ -94,6 +95,12 @@ if (import.meta.env.VITE_POSTHOG_KEY) {
     (err) => captureException(err, { extra: { context: "initPosthog" } }),
   );
 }
+
+// Park Chromium's one-shot `beforeinstallprompt` before it fires so the
+// Settings "Install app" card can open the install dialog later. Must run
+// at startup — the event fires once per page load, right after the manifest
+// is validated, long before anyone reaches Settings.
+captureInstallPrompt();
 
 // Catch unhandled promise rejections that escape try/catch blocks and report
 // them to Sentry so they are never silently lost in production.
