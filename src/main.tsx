@@ -4,8 +4,16 @@ import { BrowserRouter } from "react-router";
 import { Capacitor } from "@capacitor/core";
 import { initSentry, captureException, addBreadcrumb } from "./lib/sentry";
 import { initPosthogOnConsent } from "./lib/posthog";
+import { captureInstallPrompt } from "./lib/installPrompt";
 import App from "./App";
 import "./index.css";
+
+// Park Chromium's one-shot `beforeinstallprompt` before it fires so the
+// Settings "Install app" card can open the install dialog later. First thing
+// at startup, ahead of the Sentry/PostHog init blocks — the event fires once
+// per page load right after the manifest is validated, and a throw in an
+// analytics init must not cost the listener.
+captureInstallPrompt();
 
 // Prefer an explicit release tag (set by the Release workflow to the
 // tag_name, e.g. "v1.2.0") and fall back to the VERCEL_GIT_COMMIT_SHA for
