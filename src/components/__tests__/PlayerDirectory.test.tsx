@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PlayerDirectory } from "../PlayerDirectory";
 import type { UserProfile } from "../../services/users";
@@ -21,6 +21,8 @@ const base = {
   onChallengeUser: vi.fn(),
 };
 
+beforeEach(() => vi.clearAllMocks());
+
 describe("PlayerDirectory", () => {
   it("renders every player's username", () => {
     const players = [
@@ -39,8 +41,8 @@ describe("PlayerDirectory", () => {
     const players = [player({ uid: "u2", username: "player_one" }), player({ uid: "u3", username: "player_two" })];
     render(<PlayerDirectory {...base} players={players} />);
 
-    const badge = screen.getByText("SKATERS").parentElement!.querySelector(".tabular-nums")!;
-    expect(badge.textContent).toBe("2");
+    const header = screen.getByText("SKATERS").parentElement!;
+    expect(within(header).getByText("2")).toBeInTheDocument();
   });
 
   it("shows a content-shaped skeleton announced via role=status while loading", () => {
@@ -49,7 +51,8 @@ describe("PlayerDirectory", () => {
     // Assistive tech hears the wait; sighted users see placeholder rows.
     const status = screen.getByRole("status", { name: /loading skaters/i });
     expect(status).toHaveAttribute("aria-busy", "true");
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    expect(within(status).getByText("Loading skaters…")).toHaveClass("sr-only");
+    expect(within(status).getByText("SKATERS")).toBeInTheDocument();
   });
 
   it("renders nothing when there are no other skaters", () => {

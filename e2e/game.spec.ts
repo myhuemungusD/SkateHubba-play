@@ -85,10 +85,6 @@ async function setterConfirmsLanded(page: Page) {
  * does with the trick.
  */
 async function setterSetsTrick(p1: Page, trickName: string) {
-  // The setter UI arrives with the game snapshot after the challenge write;
-  // gate on it explicitly so a slow listen fails here, by name, rather than
-  // inside fill()'s generic action wait.
-  await expect(p1.getByPlaceholder("Name your trick")).toBeVisible({ timeout: 10_000 });
   await p1.getByPlaceholder("Name your trick").fill(trickName);
   await recordVideo(p1, "Land Your Trick", "Recorded");
   await setterConfirmsLanded(p1);
@@ -123,7 +119,6 @@ test("setter records trick → game moves to matching phase", async ({ browser }
   const { ctx: p1Ctx, page: p1 } = await openSetterSession(browser, P1, P2);
 
   // P1 is the setter — name the trick (this reveals the recorder)
-  await expect(p1.getByPlaceholder("Name your trick")).toBeVisible({ timeout: 10_000 });
   await p1.getByPlaceholder("Name your trick").fill("Kickflip");
 
   // The VideoRecorder is revealed by the trick name, showing its "Open Camera"

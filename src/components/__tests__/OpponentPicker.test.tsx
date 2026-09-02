@@ -5,9 +5,9 @@ import { OpponentPicker } from "../OpponentPicker";
 import type { UserProfile } from "../../services/users";
 
 /**
- * Step 1 of the challenge flow. The roster fetch + viewer/blocked filtering
- * assertions here were rehomed from the Lobby suite, which used to mount the
- * directory; the selection/collapse contract is the picker's own.
+ * Step 1 of the challenge flow. The selection/collapse contract is the
+ * picker's own; the roster hook is exercised only as far as proving the
+ * picker wires it up (usePlayerDirectory.test.ts owns the hook).
  */
 
 const mockGetPlayerDirectory = vi.fn();
@@ -50,20 +50,16 @@ describe("OpponentPicker", () => {
     expect(screen.queryByTestId("browse-skaters-toggle")).not.toBeInTheDocument();
   });
 
-  it("filters the viewer out of the roster", async () => {
-    render(<OpponentPicker {...base} />);
-
-    await screen.findByText("@kickflip_king");
-    expect(screen.queryByText("@sk8r")).not.toBeInTheDocument();
-    expect(mockGetBlockedUserIds).toHaveBeenCalledWith("u1");
-  });
-
-  it("filters out skaters the viewer has blocked", async () => {
+  it("mounts the directory hook for the viewer, so they and their blocked list are excluded", async () => {
+    // The filtering itself is usePlayerDirectory's contract (its own suite);
+    // this pins that the picker hands the hook the right uid.
     mockGetPlayerDirectory.mockResolvedValue([viewer, rival, player("u3", "blocked_guy")]);
     mockGetBlockedUserIds.mockResolvedValue(new Set(["u3"]));
     render(<OpponentPicker {...base} />);
 
     await screen.findByText("@kickflip_king");
+    expect(mockGetBlockedUserIds).toHaveBeenCalledWith("u1");
+    expect(screen.queryByText("@sk8r")).not.toBeInTheDocument();
     expect(screen.queryByText("@blocked_guy")).not.toBeInTheDocument();
   });
 

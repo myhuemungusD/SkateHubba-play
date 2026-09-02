@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AccountActions } from "../AccountActions";
 import { deferred } from "../../__tests__/harness/deferred";
@@ -9,7 +9,8 @@ import { deferred } from "../../__tests__/harness/deferred";
  * moved into Settings: the data-export state machine (in-flight lock, error
  * surfacing, non-Error fallback) and the delete modal's integration with the
  * row that opens it. DeleteAccountModal.test.tsx owns the modal's own
- * internals; here the modal is driven through this component's row.
+ * internals (backdrop/inner-click propagation, non-Error fallback, deleting
+ * state); nothing here re-asserts those.
  */
 
 const downloadBtn = () => screen.getByRole("button", { name: /download a copy of my data/i });
@@ -20,16 +21,6 @@ async function openDeleteModal(): Promise<HTMLElement> {
   expect(screen.getByText("Delete Account?")).toBeInTheDocument();
   return screen.getByRole("dialog");
 }
-
-/** Fire a raw DOM event on the dialog backdrop, as the old Lobby suite did. */
-async function dispatchOnDialog(dialog: HTMLElement, event: Event): Promise<void> {
-  await act(async () => {
-    dialog.dispatchEvent(event);
-  });
-}
-
-const backdropClick = () => new MouseEvent("click", { bubbles: true });
-const escapeKey = () => new KeyboardEvent("keydown", { key: "Escape", bubbles: true });
 
 describe("AccountActions", () => {
   const onDeleteAccount = vi.fn<() => Promise<void>>();
@@ -87,7 +78,7 @@ describe("AccountActions", () => {
       expect(onDownloadData).toHaveBeenCalledTimes(2);
     });
 
-    it("ignores re-clicks while an export is in flight", async () => {
+    it("disables the row while an export is in flight so a second tap cannot re-enter", async () => {
       const pending = deferred<void>();
       const onDownloadData = vi.fn().mockReturnValue(pending.promise);
       render(<AccountActions onDownloadData={onDownloadData} />);
@@ -96,7 +87,9 @@ describe("AccountActions", () => {
       await waitFor(() => expect(downloadBtn()).toBeDisabled());
       expect(downloadBtn()).toHaveTextContent("Preparing your data…");
 
-      // Disabled while loading, so the second click never reaches the handler.
+      // The `downloading` early-return inside handleDownload is unreachable
+      // through the UI: React drops clicks on a disabled button. What this
+      // pins is the disabled state itself — the user-facing re-entrancy lock.
       await userEvent.click(downloadBtn());
 
       pending.resolve();
@@ -131,31 +124,26 @@ describe("AccountActions", () => {
       expect(screen.getByText("Delete Forever")).toBeInTheDocument();
     });
 
+    // The modal's own suite asserts onClose is CALLED; these two prove this
+    // component's wiring actually unmounts it.
     it("overlay click closes the modal", async () => {
       render(<AccountActions onDeleteAccount={onDeleteAccount} />);
       const dialog = await openDeleteModal();
 
-      await dispatchOnDialog(dialog, backdropClick());
+      await userEvent.click(dialog);
 
       await waitFor(() => expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument());
     });
 
     it("Escape key closes the modal", async () => {
       render(<AccountActions onDeleteAccount={onDeleteAccount} />);
-      const dialog = await openDeleteModal();
-
-      await dispatchOnDialog(dialog, escapeKey());
-
-      await waitFor(() => expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument());
-    });
-
-    it("inner modal click stops propagation", async () => {
-      render(<AccountActions onDeleteAccount={onDeleteAccount} />);
       await openDeleteModal();
 
-      await userEvent.click(screen.getByText("Delete Account?"));
+      // Focus is trapped inside the dialog (Cancel autofocuses), so the key
+      // bubbles to the dialog's onKeyDown.
+      await userEvent.keyboard("{Escape}");
 
-      expect(screen.getByText("Delete Account?")).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument());
     });
 
     it("does not close while deletion is in flight", async () => {
@@ -165,10 +153,10 @@ describe("AccountActions", () => {
       await userEvent.click(screen.getByText("Delete Forever"));
       await waitFor(() => expect(screen.getByText("Deleting...")).toBeInTheDocument());
 
-      await dispatchOnDialog(dialog, backdropClick());
+      await userEvent.click(dialog);
       expect(screen.getByText("Delete Account?")).toBeInTheDocument();
 
-      await dispatchOnDialog(dialog, escapeKey());
+      await userEvent.keyboard("{Escape}");
       expect(screen.getByText("Delete Account?")).toBeInTheDocument();
     });
 
@@ -182,15 +170,6 @@ describe("AccountActions", () => {
 
       await userEvent.click(screen.getByText("×"));
       expect(screen.queryByText("Delete failed")).not.toBeInTheDocument();
-    });
-
-    it("non-Error delete failure shows the fallback message", async () => {
-      onDeleteAccount.mockRejectedValueOnce("string error");
-      render(<AccountActions onDeleteAccount={onDeleteAccount} />);
-      await openDeleteModal();
-      await userEvent.click(screen.getByText("Delete Forever"));
-
-      await waitFor(() => expect(screen.getByText("Deletion failed — try again")).toBeInTheDocument());
     });
   });
 });

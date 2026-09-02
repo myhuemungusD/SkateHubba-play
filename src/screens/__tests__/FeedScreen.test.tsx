@@ -20,7 +20,7 @@ vi.mock("../../components/ClipsFeed", () => ({
   ),
 }));
 
-const profile: UserProfile = { uid: "u1", username: "sk8r", stance: "regular", createdAt: null };
+const profile: UserProfile = { uid: "u1", username: "sk8r", stance: "Regular", createdAt: null };
 
 describe("FeedScreen", () => {
   it("renders the Clips header and mounts the feed for the viewer", () => {
