@@ -21,6 +21,7 @@ import { ProUsername } from "../components/ProUsername";
 import { ChevronLeftIcon } from "../components/icons";
 import { useOnboardingContext } from "../context/OnboardingContext";
 import { AvatarPicker } from "../components/AvatarPicker";
+import { AccountActions } from "../components/AccountActions";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
@@ -299,7 +300,19 @@ function BlockedPlayersList({
 
 /* ── Main Settings screen ───────────────────────────────── */
 
-export function Settings({ profile, onBack }: { profile: UserProfile; onBack: () => void }) {
+export function Settings({
+  profile,
+  onBack,
+  onDownloadData,
+  onDeleteAccount,
+}: {
+  profile: UserProfile;
+  onBack: () => void;
+  /** Data-export handler. Omit to hide the row (see {@link AccountActions}). */
+  onDownloadData?: () => Promise<void>;
+  /** Account-deletion handler. Omit to hide the row. */
+  onDeleteAccount?: () => Promise<void>;
+}) {
   const { soundEnabled, toggleSound, notify } = useNotifications();
   const { replay: replayTutorial } = useOnboardingContext();
   const [replayingTutorial, setReplayingTutorial] = useState(false);
@@ -664,6 +677,15 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
             <p className="font-display text-sm text-white tracking-wide">Data Deletion</p>
           </Link>
         </div>
+
+        {/* Account — data export + deletion. Rows self-hide when the
+            corresponding handler isn't supplied. */}
+        {(onDownloadData || onDeleteAccount) && (
+          <>
+            <SectionHeader title="ACCOUNT" />
+            <AccountActions onDownloadData={onDownloadData} onDeleteAccount={onDeleteAccount} />
+          </>
+        )}
 
         {/* Brand watermark */}
         <div className="brand-watermark mt-10">

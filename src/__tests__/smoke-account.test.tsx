@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, act } from "@testing-library/react";
+import { screen, waitFor, act, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderApp, createMockHelpers } from "./smoke-helpers";
 import { makeAuthStateSetters } from "./harness/mockAuth";
@@ -40,6 +40,48 @@ const { withGames, renderLobby } = createMockHelpers({
   mockSubscribeToMyGames: games.refs.subscribeToMyGames,
   mockSubscribeToGame: games.refs.subscribeToGame,
 });
+
+/**
+ * Walk from the lobby into Settings → ACCOUNT and open the delete-account
+ * modal. Account controls (delete + data export) moved off the lobby footer
+ * into the Settings screen, reached via the gear in the lobby header.
+ */
+async function openDeleteAccountModal(): Promise<void> {
+  await userEvent.click(await screen.findByRole("button", { name: "Settings" }));
+  await userEvent.click(await screen.findByRole("button", { name: /^Delete account/ }));
+  await screen.findByRole("dialog");
+}
+
+/**
+ * The server's report for a delete that went all the way through: the Auth
+ * user is gone and the SDK has signed the session out. Flipping the auth mock
+ * from inside the call is what makes the subsequent render see a signed-out
+ * user; resolving with `{ authDeleted: true }` is what makes AuthContext clear
+ * the pending-delete marker (and re-render against that mock).
+ */
+async function deleteSucceedsAndSignsOut(): Promise<{ authDeleted: boolean }> {
+  asSignedOut();
+  return { authDeleted: true };
+}
+
+/**
+ * Render the signed-in app, walk to Settings → ACCOUNT, and confirm deletion.
+ * Callers arrange `deleteAccount` beforehand — the outcome is the test.
+ */
+async function confirmDeleteFromSettings(): Promise<void> {
+  asUnverifiedUser();
+  withGames([]);
+  await renderApp();
+
+  await openDeleteAccountModal();
+  await userEvent.click(modal().getByText("Delete Forever"));
+}
+
+/** Scope queries to the open delete modal — the Settings row behind it repeats
+ *  some of the same copy ("This cannot be undone"). */
+function modal(): ReturnType<typeof within> {
+  return within(screen.getByRole("dialog"));
+}
 
 describe("Smoke: Account & Sign Out", () => {
   it("sign out returns to landing", async () => {
@@ -96,24 +138,24 @@ describe("Smoke: Account & Sign Out", () => {
     });
   });
 
-  it("shows delete account modal when Delete Account is clicked", async () => {
+  it("shows delete account modal when Delete account is clicked", async () => {
     await renderLobby([]);
 
-    await userEvent.click(await screen.findByText("Delete Account"));
+    await openDeleteAccountModal();
 
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
-    expect(screen.getByText(/This cannot be undone/)).toBeInTheDocument();
-    expect(screen.getByText("Cancel")).toBeInTheDocument();
-    expect(screen.getByText("Delete Forever")).toBeInTheDocument();
+    expect(modal().getByText(/This cannot be undone/)).toBeInTheDocument();
+    expect(modal().getByText("Cancel")).toBeInTheDocument();
+    expect(modal().getByText("Delete Forever")).toBeInTheDocument();
   });
 
   it("cancel button closes the delete modal without calling delete", async () => {
     await renderLobby([]);
 
-    await userEvent.click(await screen.findByText("Delete Account"));
+    await openDeleteAccountModal();
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByText("Cancel"));
+    await userEvent.click(modal().getByText("Cancel"));
 
     expect(screen.queryByText("Delete Account?")).not.toBeInTheDocument();
     expect(users.refs.deleteUserData).not.toHaveBeenCalled();
@@ -126,17 +168,9 @@ describe("Smoke: Account & Sign Out", () => {
     // throws, nothing was erased and the profile is preserved for retry.
     // deleteUserData is NOT called from AuthContext. The username is not passed
     // — the server reads it from the profile it is deleting.
-    authSvc.refs.deleteAccount.mockImplementationOnce(async () => {
-      // Simulate Firebase sign-out after auth account deletion
-      asSignedOut();
-    });
+    authSvc.refs.deleteAccount.mockImplementationOnce(deleteSucceedsAndSignsOut);
 
-    asUnverifiedUser();
-    withGames([]);
-    await renderApp();
-
-    await userEvent.click(await screen.findByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
+    await confirmDeleteFromSettings();
 
     await waitFor(() => {
       expect(authSvc.refs.deleteAccount).toHaveBeenCalledWith("u1");
@@ -152,8 +186,8 @@ describe("Smoke: Account & Sign Out", () => {
     authSvc.refs.deleteAccount.mockRejectedValueOnce(new Error("Auth deletion failed"));
     await renderLobby([]);
 
-    await userEvent.click(await screen.findByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
+    await openDeleteAccountModal();
+    await userEvent.click(modal().getByText("Delete Forever"));
 
     await waitFor(() => {
       expect(screen.getByText("Auth deletion failed")).toBeInTheDocument();
@@ -170,8 +204,8 @@ describe("Smoke: Account & Sign Out", () => {
     authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError());
     await renderLobby([]);
 
-    await userEvent.click(await screen.findByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
+    await openDeleteAccountModal();
+    await userEvent.click(modal().getByText("Delete Forever"));
 
     await waitFor(() => {
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
@@ -187,8 +221,8 @@ describe("Smoke: Account & Sign Out", () => {
     authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError());
     await renderLobby([]);
 
-    await userEvent.click(await screen.findByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
+    await openDeleteAccountModal();
+    await userEvent.click(modal().getByText("Delete Forever"));
 
     await waitFor(() => {
       expect(sessionStorage.getItem("skate.pendingDeleteUid")).toBe("u1");
@@ -274,17 +308,11 @@ describe("Smoke: Account & Sign Out", () => {
     // preserved). User re-auths and re-triggers; second attempt succeeds.
     // deleteUserData is never called from AuthContext — it lives inside
     // deleteAccount now.
-    authSvc.refs.deleteAccount.mockRejectedValueOnce(requiresRecentLoginError()).mockImplementationOnce(async () => {
-      asSignedOut();
-      return { authDeleted: true };
-    });
+    authSvc.refs.deleteAccount
+      .mockRejectedValueOnce(requiresRecentLoginError())
+      .mockImplementationOnce(deleteSucceedsAndSignsOut);
 
-    asUnverifiedUser();
-    withGames([]);
-    await renderApp();
-
-    await userEvent.click(await screen.findByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
+    await confirmDeleteFromSettings();
 
     await waitFor(() => {
       expect(screen.getByText(/sign out and sign back in/)).toBeInTheDocument();
@@ -293,7 +321,7 @@ describe("Smoke: Account & Sign Out", () => {
     expect(users.refs.deleteUserData).not.toHaveBeenCalled();
 
     // Second attempt (simulating user re-auth + retry) succeeds end-to-end.
-    await userEvent.click(screen.getByText("Delete Forever"));
+    await userEvent.click(modal().getByText("Delete Forever"));
 
     await waitFor(() => {
       expect(screen.getByText("QUIT SCROLLING.")).toBeInTheDocument();
@@ -340,7 +368,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("delete modal closes on overlay click", async () => {
     await renderLobby([]);
 
-    await userEvent.click(await screen.findByText("Delete Account"));
+    await openDeleteAccountModal();
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
 
     // The overlay div has role="dialog" and aria-modal — click it directly
@@ -359,7 +387,7 @@ describe("Smoke: Account & Sign Out", () => {
   it("delete modal closes on Escape key", async () => {
     await renderLobby([]);
 
-    await userEvent.click(await screen.findByText("Delete Account"));
+    await openDeleteAccountModal();
     expect(screen.getByText("Delete Account?")).toBeInTheDocument();
 
     // Fire keydown on the overlay div directly
@@ -377,15 +405,15 @@ describe("Smoke: Account & Sign Out", () => {
     authSvc.refs.deleteAccount.mockRejectedValueOnce(new Error("Deletion failed"));
     await renderLobby([]);
 
-    await userEvent.click(await screen.findByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
+    await openDeleteAccountModal();
+    await userEvent.click(modal().getByText("Delete Forever"));
 
     await waitFor(() => {
       expect(screen.getByText("Deletion failed")).toBeInTheDocument();
     });
 
     // Dismiss the error banner
-    const dismissBtn = screen.getByText("×");
+    const dismissBtn = modal().getByText("×");
     await userEvent.click(dismissBtn);
 
     await waitFor(() => {
@@ -397,8 +425,8 @@ describe("Smoke: Account & Sign Out", () => {
     authSvc.refs.deleteAccount.mockRejectedValueOnce("string error");
     await renderLobby([]);
 
-    await userEvent.click(await screen.findByText("Delete Account"));
-    await userEvent.click(screen.getByText("Delete Forever"));
+    await openDeleteAccountModal();
+    await userEvent.click(modal().getByText("Delete Forever"));
 
     await waitFor(() => {
       expect(screen.getByText("Deletion failed — try again")).toBeInTheDocument();

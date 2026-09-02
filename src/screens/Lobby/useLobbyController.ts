@@ -1,8 +1,6 @@
-import { useCallback, useState, type FocusEvent, type KeyboardEvent } from "react";
+import { useCallback, type FocusEvent, type KeyboardEvent } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
-import { usePlayerDirectory } from "../../hooks/usePlayerDirectory";
-import { usePullToRefresh } from "../../hooks/usePullToRefresh";
 
 export function isGameExpired(g: GameDoc): boolean {
   const deadline = g.turnDeadline?.toMillis?.() ?? 0;
@@ -12,19 +10,22 @@ export function isGameExpired(g: GameDoc): boolean {
 interface Args {
   profile: UserProfile;
   games: GameDoc[];
-  onDownloadData?: () => Promise<void>;
+}
+
+/** Win/loss tally behind the one-line completed summary. Judge-only games
+ *  count toward `total` but not toward W/L — the viewer never played them. */
+export interface CompletedSummary {
+  total: number;
+  wins: number;
+  losses: number;
 }
 
 export interface LobbyController {
-  players: ReturnType<typeof usePlayerDirectory>["players"];
-  playersLoading: boolean;
-  ptr: ReturnType<typeof usePullToRefresh>;
-
-  active: GameDoc[];
-  done: GameDoc[];
-  liveActive: GameDoc[];
-  showActiveEmpty: boolean;
-  showCompletedEmpty: boolean;
+  /** Games awaiting the viewer's move, most urgent (soonest deadline) first. */
+  myTurn: GameDoc[];
+  /** Every other active game — waiting on the opponent, a referee, or expiry. */
+  theirTurn: GameDoc[];
+  completedSummary: CompletedSummary;
 
   isJudge: (g: GameDoc) => boolean;
   isPlayer: (g: GameDoc) => boolean;
@@ -41,29 +42,11 @@ export interface LobbyController {
     onKeyUp: (e: KeyboardEvent<HTMLElement>) => void;
     onBlur: (e: FocusEvent<HTMLElement>) => void;
   };
-
-  showDeleteModal: boolean;
-  openDeleteModal: () => void;
-  closeDeleteModal: () => void;
-
-  downloadingData: boolean;
-  downloadError: string;
-  handleDownload: () => Promise<void>;
 }
 
-export function useLobbyController({ profile, games, onDownloadData }: Args): LobbyController {
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [downloadingData, setDownloadingData] = useState(false);
-  const [downloadError, setDownloadError] = useState("");
-
-  const { players, loading: playersLoading, refresh: refreshPlayers } = usePlayerDirectory(profile.uid);
-  const ptr = usePullToRefresh(refreshPlayers);
-
+export function useLobbyController({ profile, games }: Args): LobbyController {
   const active = games.filter((g) => g.status === "active");
   const done = games.filter((g) => g.status !== "active");
-  const liveActive = active.filter((g) => !isGameExpired(g));
-  const showActiveEmpty = active.length === 0 && done.length > 0;
-  const showCompletedEmpty = done.length === 0 && active.length > 0;
 
   const isJudge = useCallback((g: GameDoc) => !!g.judgeId && g.judgeId === profile.uid, [profile.uid]);
   const isPlayer = useCallback(
@@ -95,6 +78,14 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
   const turnLabel = useCallback(
     (g: GameDoc) => {
       const trick = g.currentTrickName || "Trick";
+      // An expired deadline freezes the game for everyone until the
+      // auto-forfeit sweep lands (GameContext dispatches forfeitExpiredTurn
+      // from the games snapshot), so guard first — same order as
+      // isActionableTurn below — or the branches after this would still claim
+      // it's someone's turn. The outcome depends on the phase (forfeit,
+      // dispute auto-accepted, set auto-cleared), so the label only says the
+      // clock ran out, split by which side let it run out.
+      if (isGameExpired(g)) return isMyTurn(g) ? "Your time ran out — resolving" : "Their time ran out — resolving";
       if (isJudge(g) && !isPlayer(g)) {
         if (isMyTurn(g)) {
           if (g.phase === "disputable") return "Rule: landed or missed?";
@@ -124,6 +115,36 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
     [isJudge, isPlayer, isMyTurn, profile.uid],
   );
 
+  // Whether the viewer can actually move on this game right now. Mirrors the
+  // guard order in turnLabel above: a referee only acts in the review phases,
+  // review/community phases freeze the players, and an expired turn is waiting
+  // on the auto-forfeit sweep, not on the viewer.
+  const isActionableTurn = useCallback(
+    (g: GameDoc) => {
+      if (isGameExpired(g)) return false;
+      if (isJudge(g) && !isPlayer(g)) return isMyTurn(g) && (g.phase === "disputable" || g.phase === "setReview");
+      if (g.phase === "disputable" || g.phase === "setReview" || g.phase === "communityReview") return false;
+      if (g.phase === "pendingReview") return g.currentSetter === profile.uid;
+      return isMyTurn(g);
+    },
+    [isJudge, isPlayer, isMyTurn, profile.uid],
+  );
+
+  // Games with no deadline sort last so a live countdown always outranks them.
+  const deadlineRank = (g: GameDoc): number => {
+    const ms = g.turnDeadline?.toMillis?.() ?? 0;
+    return ms > 0 ? ms : Number.POSITIVE_INFINITY;
+  };
+
+  const myTurn = active.filter(isActionableTurn).sort((a, b) => deadlineRank(a) - deadlineRank(b));
+  const theirTurn = active.filter((g) => !isActionableTurn(g));
+
+  const completedSummary: CompletedSummary = {
+    total: done.length,
+    wins: done.filter((g) => isPlayer(g) && g.winner === profile.uid).length,
+    losses: done.filter((g) => isPlayer(g) && !!g.winner && g.winner !== profile.uid).length,
+  };
+
   const cardButtonProps = useCallback(
     (handler: () => void) => ({
       onKeyDown: (e: KeyboardEvent<HTMLElement>) => {
@@ -150,31 +171,10 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
     [],
   );
 
-  const openDeleteModal = useCallback(() => setShowDeleteModal(true), []);
-  const closeDeleteModal = useCallback(() => setShowDeleteModal(false), []);
-
-  const handleDownload = useCallback(async () => {
-    if (!onDownloadData || downloadingData) return;
-    setDownloadError("");
-    setDownloadingData(true);
-    try {
-      await onDownloadData();
-    } catch (err) {
-      setDownloadError(err instanceof Error ? err.message : "Export failed — try again");
-    } finally {
-      setDownloadingData(false);
-    }
-  }, [onDownloadData, downloadingData]);
-
   return {
-    players,
-    playersLoading,
-    ptr,
-    active,
-    done,
-    liveActive,
-    showActiveEmpty,
-    showCompletedEmpty,
+    myTurn,
+    theirTurn,
+    completedSummary,
     isJudge,
     isPlayer,
     opponent,
@@ -185,11 +185,5 @@ export function useLobbyController({ profile, games, onDownloadData }: Args): Lo
     theirLetters,
     turnLabel,
     cardButtonProps,
-    showDeleteModal,
-    openDeleteModal,
-    closeDeleteModal,
-    downloadingData,
-    downloadError,
-    handleDownload,
   };
 }

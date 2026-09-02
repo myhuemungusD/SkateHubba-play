@@ -57,7 +57,8 @@ export type Screen =
   | "challenge"
   | "game"
   | "gameover"
-  | "record"
+  | "me"
+  | "feed"
   | "player"
   | "map"
   | "spotdetail"
@@ -75,7 +76,8 @@ const SCREEN_TO_PATH: Record<Screen, string> = {
   challenge: "/challenge",
   game: "/game",
   gameover: "/gameover",
-  record: "/record",
+  me: "/me",
+  feed: "/feed",
   player: "/player",
   map: "/map",
   spotdetail: "/spots",

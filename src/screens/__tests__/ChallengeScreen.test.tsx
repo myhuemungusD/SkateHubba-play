@@ -17,6 +17,11 @@ const mockFetchSpotName = vi.fn();
 vi.mock("../../services/users", () => ({
   getUidByUsername: (...args: unknown[]) => mockGetUidByUsername(...args),
   getLeaderboard: () => Promise.resolve([]),
+  // The opponent picker (step 1 of this flow) mounts usePlayerDirectory, which
+  // calls getPlayerDirectory inside a Promise.all on mount. Omitting it here
+  // throws synchronously during render and fails every test in the file, not
+  // just the picker's own.
+  getPlayerDirectory: () => Promise.resolve([]),
 }));
 
 vi.mock("../../services/analytics", () => ({

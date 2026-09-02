@@ -54,19 +54,27 @@ beforeEach(() => {
 });
 
 describe("BottomNav", () => {
-  it("renders all three primary tabs on the lobby screen", () => {
+  it("renders all five primary tabs on the lobby screen", () => {
     renderNav("/lobby");
     expect(screen.getByRole("navigation", { name: /primary navigation/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Home" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Map" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Me" })).toBeInTheDocument();
+    for (const label of ["Home", "Clips", "Challenge", "Map", "Me"]) {
+      expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
+    }
   });
 
   it("points each tab at its canonical screen path", () => {
     renderNav("/lobby");
     expect(screen.getByRole("link", { name: "Home" })).toHaveAttribute("href", "/lobby");
+    expect(screen.getByRole("link", { name: "Clips" })).toHaveAttribute("href", "/feed");
+    expect(screen.getByRole("link", { name: "Challenge" })).toHaveAttribute("href", "/challenge");
     expect(screen.getByRole("link", { name: "Map" })).toHaveAttribute("href", "/map");
-    expect(screen.getByRole("link", { name: "Me" })).toHaveAttribute("href", "/record");
+    expect(screen.getByRole("link", { name: "Me" })).toHaveAttribute("href", "/me");
+  });
+
+  it("orders the tabs Home, Clips, Challenge, Map, Me — Challenge is the centre action", () => {
+    renderNav("/lobby");
+    const labels = screen.getAllByRole("link").map((el) => el.getAttribute("aria-label"));
+    expect(labels).toEqual(["Home", "Clips", "Challenge", "Map", "Me"]);
   });
 
   it("marks the current screen as the active tab", () => {
@@ -76,29 +84,38 @@ describe("BottomNav", () => {
     expect(screen.getByRole("link", { name: "Home" })).not.toHaveAttribute("aria-current");
   });
 
-  it("marks the Me tab active on /player/:uid routes", () => {
+  it("marks the Challenge tab active on the challenge screen", () => {
+    mockScreen = "challenge";
+    renderNav("/challenge");
+    expect(screen.getByRole("link", { name: "Challenge" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("marks the Clips tab active on the feed screen", () => {
+    mockScreen = "feed";
+    renderNav("/feed");
+    expect(screen.getByRole("link", { name: "Clips" })).toHaveAttribute("aria-current", "page");
+  });
+
+  // /player/:uid is someone else's profile — a pushed detail screen, not a tab
+  // destination. It used to light up "Me", which made one tab stand for both
+  // your own record and any other skater's profile.
+  it("claims no tab on another player's profile, and hides the bar there", () => {
     mockScreen = "player";
     renderNav("/player/u42");
-    expect(screen.getByRole("link", { name: "Me" })).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByRole("navigation", { name: /primary navigation/i })).toBeNull();
   });
 
-  it("navigates to /map when the Map tab is tapped", async () => {
-    renderNav("/lobby");
-    await userEvent.click(screen.getByRole("link", { name: "Map" }));
-    expect(screen.getByTestId("location")).toHaveTextContent("/map");
-  });
-
-  it("navigates to /lobby when the Home tab is tapped", async () => {
-    mockScreen = "map";
-    renderNav("/map");
-    await userEvent.click(screen.getByRole("link", { name: "Home" }));
-    expect(screen.getByTestId("location")).toHaveTextContent("/lobby");
-  });
-
-  it("navigates to /record when the Me tab is tapped", async () => {
-    renderNav("/lobby");
-    await userEvent.click(screen.getByRole("link", { name: "Me" }));
-    expect(screen.getByTestId("location")).toHaveTextContent("/record");
+  it.each([
+    ["Map", "/map"],
+    ["Home", "/lobby"],
+    ["Clips", "/feed"],
+    ["Challenge", "/challenge"],
+    ["Me", "/me"],
+  ])("navigates to %s's path when tapped", async (label, path) => {
+    mockScreen = label === "Home" ? "map" : "lobby";
+    renderNav(mockScreen === "map" ? "/map" : "/lobby");
+    await userEvent.click(screen.getByRole("link", { name: label }));
+    expect(screen.getByTestId("location")).toHaveTextContent(path);
   });
 
   it("hides itself on focus-mode screens (game)", () => {
@@ -119,15 +136,9 @@ describe("BottomNav", () => {
     expect(screen.queryByRole("navigation", { name: /primary navigation/i })).toBeNull();
   });
 
-  it("is visible on the map screen", () => {
-    mockScreen = "map";
-    renderNav("/map");
-    expect(screen.getByRole("navigation", { name: /primary navigation/i })).toBeInTheDocument();
-  });
-
-  it("is visible on the record screen", () => {
-    mockScreen = "record";
-    renderNav("/record");
+  it.each<Screen>(["lobby", "feed", "challenge", "map", "me"])("is visible on the %s screen", (s) => {
+    mockScreen = s;
+    renderNav();
     expect(screen.getByRole("navigation", { name: /primary navigation/i })).toBeInTheDocument();
   });
 
@@ -159,11 +170,21 @@ describe("BottomNav", () => {
     expect(screen.getByRole("link", { name: "Home" })).not.toHaveTextContent("4");
   });
 
-  it("never badges the Map or Me tabs", () => {
+  it("never badges any tab but Home", () => {
     mockScreen = "map";
     mockUnreadCount = 5;
     renderNav("/map");
-    expect(screen.getByRole("link", { name: "Map" })).not.toHaveTextContent("5");
-    expect(screen.getByRole("link", { name: "Me" })).not.toHaveTextContent("5");
+    for (const label of ["Clips", "Challenge", "Map", "Me"]) {
+      expect(screen.getByRole("link", { name: label })).not.toHaveTextContent("5");
+    }
+  });
+
+  // The tour anchors two steps by data-tutorial id and silently auto-skips a
+  // step whose anchor is missing, so a stale id degrades the tour without
+  // failing anything. Both steps run on the lobby screen, where the nav shows.
+  it("carries the onboarding tour's anchors on the Me and Challenge tabs", () => {
+    renderNav("/lobby");
+    expect(screen.getByRole("link", { name: "Me" })).toHaveAttribute("data-tutorial", "record-button");
+    expect(screen.getByRole("link", { name: "Challenge" })).toHaveAttribute("data-tutorial", "challenge-cta");
   });
 });

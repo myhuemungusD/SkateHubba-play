@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { activeGame, createMockHelpers } from "./smoke-helpers";
 
@@ -36,7 +36,7 @@ describe("Smoke: Lobby", () => {
     await renderLobby([game]);
 
     expect(await screen.findByText(/@sk8r/i)).toBeInTheDocument();
-    expect(screen.getByText("Your Games")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "YOUR TURN" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
     expect(screen.getByText("Your turn to set")).toBeInTheDocument();
   });
@@ -56,7 +56,11 @@ describe("Smoke: Lobby", () => {
     expect(await screen.findByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
   });
 
-  it("sorts active games before completed games", async () => {
+  it("pins the active game above the finished-game roll-up", async () => {
+    // The lobby used to stack an ACTIVE section over a COMPLETED one. Finished
+    // games now collapse to a single "N finished · W–L" line, so the pinning
+    // this case exists for is: an actionable game is a card at the top, a
+    // finished game is never a card, and the roll-up sits below the stack.
     const active1 = activeGame({ id: "g1", turnNumber: 3 });
     const completed = activeGame({
       id: "g2",
@@ -67,13 +71,24 @@ describe("Smoke: Lobby", () => {
     });
     await renderLobby([active1, completed]);
 
-    expect(await screen.findByText("ACTIVE")).toBeInTheDocument();
-    expect(screen.getByText("COMPLETED")).toBeInTheDocument();
+    const turnStack = await screen.findByRole("region", { name: "YOUR TURN" });
+    expect(within(turnStack).getByRole("button", { name: /vs @rival/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /vs @loser/i })).not.toBeInTheDocument();
+
+    const summary = screen.getByRole("button", { name: /1 finished · 1–0/ });
+    expect(turnStack.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("lobby shows 'Waiting on opponent' for non-turn games", async () => {
     const game = activeGame({ currentTurn: "u2" });
     await renderLobby([game]);
+
+    // Games the viewer can't move on are context, not a task: they collapse
+    // behind a count and only render their card once expanded.
+    const disclosure = await screen.findByRole("button", { name: "1 waiting on them" });
+    expect(screen.queryByText("They're setting a trick")).not.toBeInTheDocument();
+
+    await userEvent.click(disclosure);
 
     expect(await screen.findByText("They're setting a trick")).toBeInTheDocument();
   });
@@ -85,7 +100,11 @@ describe("Smoke: Lobby", () => {
     expect(await screen.findByText("PLAY")).toBeInTheDocument();
   });
 
-  it("lobby shows forfeit label on completed forfeit game", async () => {
+  it("counts a forfeit win in the finished roll-up", async () => {
+    // A forfeit is a finished game, not an active one: it must leave the turn
+    // stack and land on the win side of the summary. (The per-game "forfeit"
+    // label moved with the history to the profile screen — see
+    // PlayerProfileScreen.test.tsx "shows forfeit game card with correct label".)
     const game = activeGame({
       status: "forfeit",
       winner: "u1",
@@ -94,7 +113,8 @@ describe("Smoke: Lobby", () => {
     });
     await renderLobby([game]);
 
-    expect(await screen.findByText(/forfeit/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /1 finished · 1–0/ })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "YOUR TURN" })).not.toBeInTheDocument();
   });
 
   it("opens game via keyboard Enter on active game card", async () => {
@@ -116,25 +136,30 @@ describe("Smoke: Lobby", () => {
     });
   });
 
-  it("opens completed game via keyboard Space on done card", async () => {
+  it("finished-game roll-up opens the viewer's record", async () => {
+    // Completed games are no longer cards on the lobby; the roll-up line is
+    // the route from home to the finished-game history, which now lives on
+    // the viewer's own profile screen.
     const game = activeGame({ status: "complete", winner: "u1", p1Letters: 0, p2Letters: 5 });
     await renderLobby([game]);
     withGameSub(game);
 
-    const gameCard = await screen.findByRole("button", { name: /vs @rival/i });
-    gameCard.focus();
-    await userEvent.keyboard(" ");
+    await userEvent.click(await screen.findByRole("button", { name: /1 finished · 1–0/ }));
 
     await waitFor(() => {
-      expect(screen.getByText("You Win")).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Me" })).toHaveAttribute("aria-current", "page");
     });
   });
 
-  it("challenge button is disabled when email is not verified", async () => {
+  it("challenge CTA is withheld when email is not verified", async () => {
     await renderLobby([]); // uses unverified user
-    const btn = await screen.findByText(/Challenge Someone/);
-    expect(btn.closest("button")).toBeDisabled();
-    expect(screen.getByText("Verify your email to start challenging")).toBeInTheDocument();
+
+    // The empty state swaps its CTA for the reason it can't be used, and the
+    // lobby repeats the gate above the stack. Either way an unverified viewer
+    // is never handed a control that would bounce off the /challenge guard.
+    expect(await screen.findByText("Verify your email to start a game")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Challenge your first opponent/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Verify your email to start challenging.")).toBeInTheDocument();
   });
 
   it("opens active game via keyboard Space", async () => {
@@ -165,6 +190,6 @@ describe("Smoke: Lobby", () => {
     await userEvent.keyboard("a");
 
     // Still on lobby
-    expect(screen.getByText("Your Games")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "YOUR TURN" })).toBeInTheDocument();
   });
 });
