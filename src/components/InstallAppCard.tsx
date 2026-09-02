@@ -5,7 +5,7 @@ import { logger } from "../services/logger";
 
 const CARD = "block w-full text-left p-4 rounded-2xl glass-card";
 const INTERACTIVE =
-  " hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:opacity-60 disabled:cursor-not-allowed";
+  " hover:border-white/[0.1] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
 const TITLE = "font-display text-sm text-white tracking-wide";
 const DESC = "font-body text-xs text-faint mt-1";
 
@@ -55,22 +55,19 @@ export function InstallAppCard({
       <div className={CARD}>
         <p className={TITLE}>Add to Home Screen</p>
         <p className={DESC}>
-          Open skatehubba.com in Safari, tap the Share button, then choose &ldquo;Add to Home Screen&rdquo;. SkateHubba
-          opens full-screen like a native app.
+          Tap the Share button in your browser, then choose &ldquo;Add to Home Screen&rdquo;. SkateHubba opens
+          full-screen like a native app.
         </p>
       </div>
     );
   }
 
   if (status === "prompt") {
+    // Not `disabled` while the dialog is open: that would blur the button and
+    // strand keyboard focus on <body> once the sheet closes. The `installing`
+    // guard in handleInstall already blocks a second tap.
     return (
-      <button
-        type="button"
-        onClick={handleInstall}
-        disabled={installing}
-        aria-busy={installing}
-        className={CARD + INTERACTIVE}
-      >
+      <button type="button" onClick={handleInstall} aria-busy={installing} className={CARD + INTERACTIVE}>
         <p className={TITLE}>Install SkateHubba</p>
         <p className={DESC}>
           {installing
@@ -85,7 +82,8 @@ export function InstallAppCard({
     <div className={CARD}>
       <p className={TITLE}>Install SkateHubba</p>
       <p className={DESC}>
-        Open your browser&apos;s menu and choose &ldquo;Install app&rdquo; or &ldquo;Add to Home Screen&rdquo;.
+        If your browser supports it, look for &ldquo;Install app&rdquo; or &ldquo;Add to Home Screen&rdquo; in its menu.
+        Already installed? Launch SkateHubba from your home screen or app list.
       </p>
     </div>
   );

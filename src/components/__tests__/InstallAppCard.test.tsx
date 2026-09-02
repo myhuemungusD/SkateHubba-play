@@ -28,7 +28,7 @@ describe("InstallAppCard", () => {
 
   it("points at the browser menu when no prompt is available", () => {
     render(<InstallAppCard status="manual" onInstall={vi.fn()} />);
-    expect(screen.getByText(/Open your browser's menu/)).toBeInTheDocument();
+    expect(screen.getByText(/If your browser supports it/)).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();
   });
 
@@ -45,7 +45,8 @@ describe("InstallAppCard", () => {
     const button = screen.getByRole("button", { name: /Install SkateHubba/ });
     await userEvent.click(button);
     expect(onInstall).toHaveBeenCalledTimes(1);
-    expect(button).toBeDisabled();
+    // Stays enabled (a disabled button would drop keyboard focus) but busy.
+    expect(button).toBeEnabled();
     expect(button).toHaveAttribute("aria-busy", "true");
     expect(screen.getByText(/Confirm in your browser/)).toBeInTheDocument();
 
@@ -54,7 +55,7 @@ describe("InstallAppCard", () => {
     expect(onInstall).toHaveBeenCalledTimes(1);
 
     resolveChoice("accepted");
-    await waitFor(() => expect(button).toBeEnabled());
+    await waitFor(() => expect(button).toHaveAttribute("aria-busy", "false"));
     expect(screen.getByText(/Add it to your home screen/)).toBeInTheDocument();
   });
 

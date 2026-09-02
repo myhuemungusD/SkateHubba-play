@@ -523,7 +523,7 @@ describe("Settings", () => {
     it("shows manual instructions on a browser without an install prompt", () => {
       render(wrap(<Settings profile={profile} onBack={vi.fn()} />));
       expect(screen.getByText(/INSTALL APP/)).toBeInTheDocument();
-      expect(screen.getByText(/Open your browser's menu/)).toBeInTheDocument();
+      expect(screen.getByText(/If your browser supports it/)).toBeInTheDocument();
     });
 
     it("offers a one-tap install when Chromium parked the prompt", async () => {
