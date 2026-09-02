@@ -9,6 +9,7 @@ import { NotificationProvider, useNotifications } from "./context/NotificationCo
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
 import { useEmailVerifiedToast } from "./hooks/useEmailVerifiedToast";
+import { useNativeShell } from "./hooks/useNativeShell";
 import { TutorialOverlay } from "./components/onboarding/TutorialOverlay";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -106,6 +107,10 @@ function AppEmailVerifyBanner() {
 function AppScreens() {
   const auth = useAuthContext();
   useEmailVerifiedToast(auth.user?.emailVerified);
+  // Capacitor shell wiring (status bar, Android back button, deep links).
+  // No-ops on web. Called before the loading early-return so the subscriptions
+  // are attached from first render, not after auth hydration.
+  useNativeShell();
 
   if (auth.loading) return <Spinner />;
 
