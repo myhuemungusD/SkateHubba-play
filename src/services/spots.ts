@@ -45,6 +45,7 @@ import type { CreateSpotRequest, ObstacleType, Spot, SpotComment } from "../type
 import { logger } from "./logger";
 import { captureException } from "../lib/sentry";
 import { parseFirebaseError } from "../utils/helpers";
+import { boundsAroundPoint, haversineKm, type LatLng } from "../utils/geo";
 
 /* ────────────────────────────────────────────
  * Constants
@@ -52,6 +53,12 @@ import { parseFirebaseError } from "../utils/helpers";
 
 /** Max spots returned from a single bounds query. Matches the old API cap. */
 const BOUNDS_QUERY_LIMIT = 500;
+
+/** Default search radius for the "spots near me" list. */
+export const NEARBY_RADIUS_KM = 10;
+
+/** Default row cap for the "spots near me" list. */
+export const NEARBY_LIMIT = 10;
 
 /** 30-second client-side cooldown on spot creation (matches Firestore rule). */
 const SPOT_CREATE_COOLDOWN_MS = 30_000;
@@ -387,6 +394,49 @@ export async function getSpotsInBounds(bounds: SpotBounds): Promise<Spot[]> {
     }
   }
   return spots;
+}
+
+/* ────────────────────────────────────────────
+ * getSpotsNearby
+ * ──────────────────────────────────────────── */
+
+export interface NearbySpot extends Spot {
+  /** Great-circle distance from the query point, in kilometres. */
+  distanceKm: number;
+}
+
+/**
+ * Closest active spots to `center`, nearest first, within `radiusKm`.
+ *
+ * Reuses the bounds query (and its existing composite index) by wrapping the
+ * radius in a bounding box, then trims the box corners with a haversine
+ * check client-side. A 10 km radius is a ~0.18° box, so the 500-doc cap on
+ * the underlying query is not a practical concern.
+ */
+export async function getSpotsNearby(
+  center: LatLng,
+  radiusKm: number = NEARBY_RADIUS_KM,
+  limit: number = NEARBY_LIMIT,
+): Promise<NearbySpot[]> {
+  if (
+    !Number.isFinite(center.lat) ||
+    !Number.isFinite(center.lng) ||
+    !Number.isFinite(radiusKm) ||
+    radiusKm <= 0 ||
+    !Number.isInteger(limit) ||
+    limit <= 0
+  ) {
+    throw new Error("Invalid nearby query");
+  }
+
+  const spots = await getSpotsInBounds(boundsAroundPoint(center, radiusKm));
+  const nearby: NearbySpot[] = [];
+  for (const spot of spots) {
+    const distanceKm = haversineKm(center, { lat: spot.latitude, lng: spot.longitude });
+    if (distanceKm <= radiusKm) nearby.push({ ...spot, distanceKm });
+  }
+  nearby.sort((a, b) => a.distanceKm - b.distanceKm);
+  return nearby.slice(0, limit);
 }
 
 /* ────────────────────────────────────────────

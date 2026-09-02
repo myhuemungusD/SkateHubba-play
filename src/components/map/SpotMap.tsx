@@ -3,6 +3,7 @@ import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { Crosshair, Plus } from "lucide-react";
 import type { Spot } from "../../types/spot";
+import type { NearbySpot } from "../../services/spots";
 import { logger } from "../../services/logger";
 import { captureMessage } from "../../lib/sentry";
 import { MAPBOX_TOKEN, MAP_STYLE, MAP_DEFAULTS, reportMapStyleConfig } from "../../lib/mapbox";
@@ -181,6 +182,18 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
 
   useSpotMarkers({ map, visibleSpots, activeGameSpotId, onSpotClick: handleSpotClick });
 
+  // Nearby-dropdown pick: stop following the user so the follow-me easeTo
+  // doesn't fight the flyTo, jump to the spot, and open its card. The
+  // `moveend` listener refetches the viewport so the marker shows up.
+  const handleSelectNearby = useCallback(
+    (spot: NearbySpot) => {
+      setIsTrackingUser(false);
+      map.current?.flyTo({ center: [spot.longitude, spot.latitude], zoom: 16 });
+      handleSpotClick(spot);
+    },
+    [handleSpotClick, setIsTrackingUser],
+  );
+
   // Cleanup the toast timer on unmount. Marker / fetch-timer cleanup lives
   // in the dedicated hooks; the stale-fetch guard is generation-based.
   useEffect(() => {
@@ -230,6 +243,8 @@ export function SpotMap({ activeGameSpotId, onSpotSelect, onRetry, autoOpenAddSp
           onChange={setFilters}
           totalCount={spots.length}
           matchCount={visibleSpots.length}
+          userLocation={userLocation}
+          onSelectNearby={handleSelectNearby}
         />
       )}
 

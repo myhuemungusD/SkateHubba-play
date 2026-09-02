@@ -88,6 +88,7 @@ import {
   getSpot,
   getSpotComments,
   getSpotsInBounds,
+  getSpotsNearby,
   fetchSpotName,
   addSpotComment,
   _resetCreateSpotRateLimit,
@@ -483,6 +484,78 @@ describe("getSpotsInBounds", () => {
     { label: "west is -Infinity", bounds: { north: 1, south: 0, east: 0, west: -Infinity } },
   ])("rejects when $label", async ({ bounds }) => {
     await expect(getSpotsInBounds(bounds)).rejects.toThrow(/Invalid/);
+  });
+});
+
+/* ────────────────────────────────────────────
+ * getSpotsNearby
+ * ──────────────────────────────────────────── */
+
+describe("getSpotsNearby", () => {
+  const center = { lat: 34.0522, lng: -118.2437 };
+
+  it("returns spots sorted nearest-first with a distanceKm annotation", async () => {
+    mockGetDocs.mockResolvedValueOnce(
+      makeQuerySnap([
+        // ~5.5 km north
+        makeSpotSnap({ latitude: 34.1022, longitude: -118.2437 }, "far"),
+        // at the center
+        makeSpotSnap({}, "here"),
+        // ~1.1 km north
+        makeSpotSnap({ latitude: 34.0622, longitude: -118.2437 }, "near"),
+      ]),
+    );
+
+    const spots = await getSpotsNearby(center);
+
+    expect(spots.map((s) => s.id)).toEqual(["here", "near", "far"]);
+    expect(spots[0].distanceKm).toBe(0);
+    expect(spots[1].distanceKm).toBeCloseTo(1.11, 1);
+    expect(spots[2].distanceKm).toBeCloseTo(5.57, 1);
+  });
+
+  it("queries a bounding box around the center and drops box corners beyond the radius", async () => {
+    mockGetDocs.mockResolvedValueOnce(
+      makeQuerySnap([
+        // Inside the 10 km lat box AND the lng box, but diagonally ~12.6 km
+        // away — a corner the haversine check must reject.
+        makeSpotSnap({ latitude: 34.1422, longitude: -118.3437 }, "corner"),
+        makeSpotSnap({}, "here"),
+      ]),
+    );
+
+    const spots = await getSpotsNearby(center, 10);
+
+    const whereCalls = mockWhere.mock.calls;
+    const south = whereCalls.find((c) => c[0] === "latitude" && c[1] === ">=")?.[2] as number;
+    const north = whereCalls.find((c) => c[0] === "latitude" && c[1] === "<=")?.[2] as number;
+    expect(south).toBeCloseTo(center.lat - 10 / 111.32, 5);
+    expect(north).toBeCloseTo(center.lat + 10 / 111.32, 5);
+    expect(spots.map((s) => s.id)).toEqual(["here"]);
+  });
+
+  it("caps the result at the requested limit", async () => {
+    mockGetDocs.mockResolvedValueOnce(
+      makeQuerySnap([
+        makeSpotSnap({ latitude: 34.06 }, "a"),
+        makeSpotSnap({ latitude: 34.07 }, "b"),
+        makeSpotSnap({ latitude: 34.08 }, "c"),
+      ]),
+    );
+    const spots = await getSpotsNearby(center, 10, 2);
+    expect(spots.map((s) => s.id)).toEqual(["a", "b"]);
+  });
+
+  it.each<{ label: string; center: { lat: number; lng: number }; radius?: number; limit?: number }>([
+    { label: "lat is NaN", center: { lat: NaN, lng: 0 } },
+    { label: "lng is Infinity", center: { lat: 0, lng: Infinity } },
+    { label: "radius is zero", center: { lat: 0, lng: 0 }, radius: 0 },
+    { label: "radius is NaN", center: { lat: 0, lng: 0 }, radius: NaN },
+    { label: "limit is zero", center: { lat: 0, lng: 0 }, radius: 10, limit: 0 },
+    { label: "limit is fractional", center: { lat: 0, lng: 0 }, radius: 10, limit: 1.5 },
+  ])("rejects when $label without hitting Firestore", async ({ center: c, radius, limit }) => {
+    await expect(getSpotsNearby(c, radius, limit)).rejects.toThrow(/Invalid nearby/);
+    expect(mockGetDocs).not.toHaveBeenCalled();
   });
 });
 
