@@ -111,7 +111,9 @@ export default defineConfig({
         // Entry point — not unit-testable in isolation
         "src/main.tsx",
       ],
-      reporter: ["text", "lcov"],
+      // json-summary feeds scripts/check-coverage-per-file.mjs, the per-file
+      // half of the UI floors below (the globs are aggregate-only).
+      reporter: ["text", "lcov", "json-summary"],
       thresholds: {
         // Services and hooks have complete unit test coverage
         "src/services/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
@@ -119,7 +121,11 @@ export default defineConfig({
         // firebase.ts: App Check branches depend on runtime env vars (VITE_RECAPTCHA_SITE_KEY)
         // that cannot be set in Vitest's test environment — ~2 lines are legitimately untestable.
         "src/firebase.ts": { lines: 93, functions: 100, branches: 80, statements: 93 },
-        // UI coverage floors — enforces that component/screen coverage doesn't regress
+        // UI coverage floors — enforces that component/screen coverage doesn't regress.
+        // These are AGGREGATE floors: a single file can sit at 0% and still pass.
+        // The per-file rule lives in scripts/check-coverage-per-file.mjs (run by
+        // `npm run test:coverage`), because vitest's `perFile` is global and
+        // would trip on every pre-existing under-covered file at once.
         "src/components/**": { lines: 80, functions: 80, branches: 75, statements: 80 },
         "src/screens/**": { lines: 80, functions: 80, branches: 75, statements: 80 },
       },
