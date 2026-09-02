@@ -67,6 +67,23 @@ vi.mock("../../services/pushNotifications", () => ({
   }),
 }));
 
+const mockDeepLinkUnsub = vi.fn();
+/** Captures the callback the watcher hands to subscribeToDeepLinks. */
+let deepLinkCb: ((path: string) => void) | null = null;
+
+vi.mock("../../services/nativeApp", () => ({
+  subscribeToDeepLinks: vi.fn((cb: (path: string) => void) => {
+    deepLinkCb = cb;
+    return mockDeepLinkUnsub;
+  }),
+}));
+
+const mockNavigate = vi.fn();
+
+vi.mock("react-router", () => ({
+  useNavigate: () => mockNavigate,
+}));
+
 /* ── Helpers ────────────────────────────────── */
 
 function makeGame(overrides: Partial<GameDoc> = {}): GameDoc {
@@ -539,6 +556,49 @@ describe("native push deep-link bridge", () => {
     const { unmount } = render(<GameNotificationWatcher />);
     unmount();
     expect(mockNativePushUnsub).toHaveBeenCalled();
+  });
+});
+
+/* ── Universal / App Link deep-link ─────────── */
+
+describe("native universal-link bridge", () => {
+  /** Renders the watcher and delivers one deep-linked path. */
+  const deliver = (path: string) => {
+    render(<GameNotificationWatcher />);
+    expect(deepLinkCb).toBeTypeOf("function");
+    deepLinkCb!(path);
+  };
+
+  it("routes /game/<id> through the OPEN_GAME_EVENT bridge", () => {
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent");
+    deliver("/game/g-link");
+
+    const ev = dispatchSpy.mock.calls.find((c) => c[0] instanceof CustomEvent && c[0].type === OPEN_GAME_EVENT);
+    expect((ev![0] as CustomEvent).detail).toEqual({ gameId: "g-link" });
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("navigates known routes, query string included", () => {
+    deliver("/player/u9?ref=share");
+    expect(mockNavigate).toHaveBeenCalledWith("/player/u9?ref=share");
+  });
+
+  it("navigates a bare /game path (no id) instead of dispatching", () => {
+    deliver("/game");
+    expect(mockNavigate).toHaveBeenCalledWith("/game");
+  });
+
+  it("ignores paths with no matching route", () => {
+    deliver("/blog/some-post");
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it("subscribes while signed out and unsubscribes on unmount", () => {
+    mockUser = null;
+    const { unmount } = render(<GameNotificationWatcher />);
+    expect(deepLinkCb).toBeTypeOf("function");
+    unmount();
+    expect(mockDeepLinkUnsub).toHaveBeenCalled();
   });
 });
 

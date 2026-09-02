@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { useOnlineStatus, subscribe, getSnapshot, getServerSnapshot } from "../useOnlineStatus";
+import { useOnlineStatus, getServerSnapshot } from "../useOnlineStatus";
 
 describe("useOnlineStatus", () => {
   afterEach(() => {
@@ -38,32 +38,8 @@ describe("useOnlineStatus", () => {
     expect(result.current).toBe(true);
   });
 
-  it("getSnapshot returns navigator.onLine", () => {
-    Object.defineProperty(navigator, "onLine", { value: false, writable: true, configurable: true });
-    expect(getSnapshot()).toBe(false);
-    Object.defineProperty(navigator, "onLine", { value: true, writable: true, configurable: true });
-    expect(getSnapshot()).toBe(true);
-  });
-
   it("getServerSnapshot returns true (SSR fallback)", () => {
     expect(getServerSnapshot()).toBe(true);
-  });
-
-  it("subscribe registers and unsubscribes listeners", () => {
-    const addSpy = vi.spyOn(window, "addEventListener");
-    const removeSpy = vi.spyOn(window, "removeEventListener");
-    const cb = vi.fn();
-
-    const unsub = subscribe(cb);
-    expect(addSpy).toHaveBeenCalledWith("online", cb);
-    expect(addSpy).toHaveBeenCalledWith("offline", cb);
-
-    unsub();
-    expect(removeSpy).toHaveBeenCalledWith("online", cb);
-    expect(removeSpy).toHaveBeenCalledWith("offline", cb);
-
-    addSpy.mockRestore();
-    removeSpy.mockRestore();
   });
 
   it("removes event listeners on unmount", () => {

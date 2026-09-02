@@ -22,6 +22,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Android App Links: https://skatehubba.com/... opens the app
+                 instead of the browser. `autoVerify` requires
+                 /.well-known/assetlinks.json to be served from BOTH hosts with
+                 the release signing cert's SHA-256 fingerprint — see
+                 ios/NATIVE_SETUP.md §5. www is claimed as well because the
+                 vercel.json www -> apex redirect happens after the OS has
+                 already matched (or failed to match) the tapped host. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="skatehubba.com" />
+                <data android:scheme="https" android:host="www.skatehubba.com" />
+            </intent-filter>
+
         </activity>
 
         <provider

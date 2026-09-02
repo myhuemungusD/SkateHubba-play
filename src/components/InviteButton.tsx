@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { trackEvent } from "../services/analytics";
+import { copyText, isShareAvailable, shareUrl } from "../services/nativeBridge";
 
 export function InviteButton({ username, className = "" }: { username?: string; className?: string }) {
   const [showPanel, setShowPanel] = useState(false);
@@ -66,7 +67,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(fullMessage);
+      await copyText(fullMessage);
       setCopied(true);
       safeTimeout(() => setCopied(false), 2000);
       trackEvent("invite_sent", { method: "copy_link" });
@@ -77,7 +78,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
 
   const handleNativeShare = async () => {
     try {
-      await navigator.share({ title: "SkateHubba", text, url });
+      await shareUrl({ title: "SkateHubba", text, url });
       trackEvent("invite_sent", { method: "native_share" });
     } catch {
       /* cancelled */
@@ -251,7 +252,7 @@ export function InviteButton({ username, className = "" }: { username?: string; 
                 </>
               )}
             </button>
-            {typeof navigator.share === "function" && (
+            {isShareAvailable() && (
               <button
                 type="button"
                 onClick={handleNativeShare}
