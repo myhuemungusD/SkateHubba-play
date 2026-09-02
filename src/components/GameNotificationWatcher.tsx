@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
+import { useNavigate } from "react-router";
 import { useAuthContext } from "../context/AuthContext";
 import { useGameContext } from "../context/GameContext";
 import { useNotifications } from "../context/NotificationContext";
 import { onForegroundMessage } from "../services/fcm";
 import { subscribeToNudges, subscribeToNotifications } from "../services/notifications";
 import { subscribeToNativePushOpens } from "../services/pushNotifications";
+import { subscribeToDeepLinks } from "../services/nativeApp";
 import type { GameDoc } from "../services/games";
 import type { ChimeType } from "../services/sounds";
 
@@ -232,6 +234,59 @@ function useNativePushDeepLink(uid: string | null) {
 }
 
 /**
+ * First path segments App.tsx declares a `<Route>` for. A universal link to
+ * anything else (a marketing page, a future web-only route) is ignored rather
+ * than pushed at react-router, which would land the user on /404 inside the
+ * app instead of leaving the URL to the browser.
+ */
+const ROUTABLE_SEGMENTS = new Set([
+  "auth",
+  "profile",
+  "lobby",
+  "challenge",
+  "game",
+  "gameover",
+  "me",
+  "record",
+  "player",
+  "privacy",
+  "terms",
+  "data-deletion",
+  "settings",
+  "my-stats",
+  "map",
+  "spots",
+  "feed",
+  "admin",
+]);
+
+/**
+ * Universal / App Link bridge (native only — the service no-ops on web).
+ *
+ * `/game/<id>` has no `<Route>`: opening a game is a state-machine move, so
+ * it reuses the same `OPEN_GAME_EVENT` bridge as a push tap and lets App.tsx
+ * resolve the id (including its lobby fallback for a stale link). Every other
+ * known route is a plain react-router navigation. Not auth-gated — the route
+ * guards in App.tsx already bounce a signed-out user to /auth.
+ */
+function useNativeDeepLink() {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    return subscribeToDeepLinks((path) => {
+      const [pathname] = path.split(/[?#]/);
+      const [segment, ...rest] = pathname.replace(/^\//, "").split("/");
+      if (segment === "game" && rest[0]) {
+        window.dispatchEvent(new CustomEvent(OPEN_GAME_EVENT, { detail: { gameId: rest[0] } }));
+        return;
+      }
+      if (!ROUTABLE_SEGMENTS.has(segment)) return;
+      navigate(path);
+    });
+  }, [navigate]);
+}
+
+/**
  * Foreground FCM bridge. FCM is still required for background/closed-tab
  * delivery; in the foreground its only job is to surface unknown/future
  * types that no Firestore subscription covers.
@@ -279,6 +334,7 @@ export function GameNotificationWatcher() {
   useGameCompletionWatcher(uid, games, activeGame, notify);
   useServiceWorkerDeepLink(uid);
   useNativePushDeepLink(uid);
+  useNativeDeepLink();
   useFcmForegroundBridge(uid, notify);
 
   return null;

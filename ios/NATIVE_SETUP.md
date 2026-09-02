@@ -137,11 +137,66 @@ to the app.
 
 ---
 
+## 5. Publish the deep-link association files (iOS **and** Android)
+
+The app code and the native config for universal / App Links are already in
+place:
+
+- `src/services/nativeApp.ts` → `subscribeToDeepLinks` turns an `appUrlOpen`
+  for a `skatehubba.com` https URL into an in-app path; `/game/<id>` reuses
+  the existing `OPEN_GAME_EVENT` bridge, other routes navigate.
+- `ios/App/App/AppRelease.entitlements` declares
+  `com.apple.developer.associated-domains` = `applinks:skatehubba.com`.
+- `android/app/src/main/AndroidManifest.xml` has an `android:autoVerify="true"`
+  VIEW intent-filter for `https://skatehubba.com` and `https://www.skatehubba.com`.
+
+**Both remaining steps need maintainer-only secrets, so they are NOT in the
+repo.** Until they are done, tapped links keep opening the browser.
+
+1. **Apple App Site Association** — create
+   `public/.well-known/apple-app-site-association` (no file extension, served
+   as `application/json`, no redirect) containing the real **Team ID**:
+
+   ```json
+   { "applinks": { "details": [{ "appID": "<TEAMID>.com.skatehubba.app", "paths": ["*"] }] } }
+   ```
+
+   Also enable the **Associated Domains** capability on the App ID /
+   provisioning profile in the Apple Developer portal — the entitlement alone
+   fails code signing without it.
+
+2. **Android asset links** — create `public/.well-known/assetlinks.json` with
+   the **release keystore's SHA-256 certificate fingerprint** (and Play App
+   Signing's fingerprint if enrolled, both entries):
+
+   ```json
+   [
+     {
+       "relation": ["delegate_permission/common.handle_all_urls"],
+       "target": {
+         "namespace": "android_app",
+         "package_name": "com.skatehubba.app",
+         "sha256_cert_fingerprints": ["<SHA256>"]
+       }
+     }
+   ]
+   ```
+
+   Verify afterwards with
+   `adb shell pm verify-app-links --re-verify com.skatehubba.app`.
+
+Check `vercel.json` serves `/.well-known/*` untouched by the SPA rewrite
+before shipping either file.
+
+---
+
 ## Final launch smoke test
 
-After §1–§4 on a Mac:
+After §1–§5 on a Mac:
 
 - [ ] App launches on a physical device with no Firebase / App Check crash.
 - [ ] Email/password and Google sign-in both complete and return to the app.
+- [ ] Tapping `https://skatehubba.com/me` from Notes/Messages opens the app on
+      the profile screen (not Safari / Chrome).
 - [ ] App Store Connect **App Privacy** answers match
       `ios/App/App/PrivacyInfo.xcprivacy` (see `docs/STORE_PRIVACY_ANSWERS.md`).

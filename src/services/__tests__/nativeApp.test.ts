@@ -31,12 +31,14 @@ vi.mock("@capacitor/status-bar", () => ({
 /* ── mock @capacitor/app ──────────────────────── */
 
 type BackButtonHandler = (event: { canGoBack: boolean }) => void;
+type UrlOpenHandler = (event: { url: string }) => void;
 
 const mockAddListener = vi.fn();
 const mockMinimizeApp = vi.fn();
 const mockListenerRemove = vi.fn().mockResolvedValue(undefined);
 
 let capturedBackHandler: BackButtonHandler | null = null;
+let capturedUrlHandler: UrlOpenHandler | null = null;
 
 vi.mock("@capacitor/app", () => ({
   App: {
@@ -54,7 +56,7 @@ vi.mock("../logger", () => ({
   logger: { warn: mockWarn, error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
-import { initStatusBar, subscribeToBackButton } from "../nativeApp";
+import { initStatusBar, subscribeToBackButton, subscribeToDeepLinks } from "../nativeApp";
 
 /** Flush the microtask queue so promise-chained cleanup settles. */
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -69,11 +71,38 @@ beforeEach(() => {
   mockMinimizeApp.mockResolvedValue(undefined);
   mockListenerRemove.mockResolvedValue(undefined);
   capturedBackHandler = null;
-  mockAddListener.mockImplementation((event: string, cb: BackButtonHandler) => {
+  capturedUrlHandler = null;
+  mockAddListener.mockImplementation((event: string, cb: BackButtonHandler & UrlOpenHandler) => {
     if (event === "backButton") capturedBackHandler = cb;
+    if (event === "appUrlOpen") capturedUrlHandler = cb;
     return Promise.resolve({ remove: mockListenerRemove });
   });
 });
+
+/**
+ * Unsubscribe-lifecycle assertions shared by both subscribe* exports: the
+ * handle is removed exactly once no matter how often unsubscribe is called,
+ * and a rejecting `remove()` never throws at the caller.
+ */
+async function expectIdempotentUnsubscribe(subscribe: () => () => void): Promise<void> {
+  const unsub = subscribe();
+  await flush();
+  expect(() => {
+    unsub();
+    unsub();
+  }).not.toThrow();
+  await flush();
+  expect(mockListenerRemove).toHaveBeenCalledTimes(1);
+}
+
+/** Subscribe, wait for the listener handle, and fire one appUrlOpen. */
+async function openUrl(url: string): Promise<string[]> {
+  const paths: string[] = [];
+  subscribeToDeepLinks((p) => paths.push(p));
+  await flush();
+  capturedUrlHandler!({ url });
+  return paths;
+}
 
 describe("initStatusBar", () => {
   it("no-ops on web", async () => {
@@ -153,20 +182,68 @@ describe("subscribeToBackButton", () => {
   });
 
   it("unsubscribe removes the listener exactly once", async () => {
-    const unsub = subscribeToBackButton();
-    await flush();
-    unsub();
-    unsub();
-    await flush();
-    expect(mockListenerRemove).toHaveBeenCalledTimes(1);
+    await expectIdempotentUnsubscribe(subscribeToBackButton);
   });
 
   it("swallows remove() failures during unsubscribe", async () => {
     mockListenerRemove.mockRejectedValue(new Error("already gone"));
-    const unsub = subscribeToBackButton();
+    await expectIdempotentUnsubscribe(subscribeToBackButton);
+  });
+});
+
+describe("subscribeToDeepLinks", () => {
+  it("returns a no-op unsubscribe on web without touching the plugin", () => {
+    mockIsNativePlatform.mockReturnValue(false);
+    const unsub = subscribeToDeepLinks(vi.fn());
+    expect(mockAddListener).not.toHaveBeenCalled();
+    expect(() => unsub()).not.toThrow();
+  });
+
+  it("hands the caller the path of a claimed https link", async () => {
+    expect(await openUrl("https://skatehubba.com/player/abc123")).toEqual(["/player/abc123"]);
+  });
+
+  it("preserves the query string and hash", async () => {
+    expect(await openUrl("https://skatehubba.com/feed?tab=hot#clip1")).toEqual(["/feed?tab=hot#clip1"]);
+  });
+
+  it("accepts the www host (redirected on web, matched by the OS first)", async () => {
+    expect(await openUrl("https://www.skatehubba.com/lobby")).toEqual(["/lobby"]);
+  });
+
+  it("ignores a bare-origin link with no destination", async () => {
+    expect(await openUrl("https://skatehubba.com/")).toEqual([]);
+  });
+
+  it("ignores non-http(s) schemes such as OAuth callbacks", async () => {
+    expect(await openUrl("com.skatehubba.app://oauth/callback")).toEqual([]);
+  });
+
+  it("ignores foreign hosts", async () => {
+    expect(await openUrl("https://evil.example.com/game/1")).toEqual([]);
+  });
+
+  it("warns and ignores an unparseable url", async () => {
+    expect(await openUrl("not a url")).toEqual([]);
+    expect(mockWarn).toHaveBeenCalledWith("deep_link_unparseable");
+  });
+
+  it("warns when the listener cannot be attached and unsubscribe stays safe", async () => {
+    mockAddListener.mockImplementation(() => Promise.reject(new Error("bridge down")));
+    const unsub = subscribeToDeepLinks(vi.fn());
     await flush();
+    expect(mockWarn).toHaveBeenCalledWith("deep_link_listener_failed", { error: "bridge down" });
     expect(() => unsub()).not.toThrow();
     await flush();
-    expect(mockListenerRemove).toHaveBeenCalledTimes(1);
+    expect(mockListenerRemove).not.toHaveBeenCalled();
+  });
+
+  it("unsubscribe removes the listener exactly once", async () => {
+    await expectIdempotentUnsubscribe(() => subscribeToDeepLinks(vi.fn()));
+  });
+
+  it("swallows remove() failures during unsubscribe", async () => {
+    mockListenerRemove.mockRejectedValue(new Error("already gone"));
+    await expectIdempotentUnsubscribe(() => subscribeToDeepLinks(vi.fn()));
   });
 });
