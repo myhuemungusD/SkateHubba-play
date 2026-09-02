@@ -8,6 +8,13 @@ import { captureInstallPrompt } from "./lib/installPrompt";
 import App from "./App";
 import "./index.css";
 
+// Park Chromium's one-shot `beforeinstallprompt` before it fires so the
+// Settings "Install app" card can open the install dialog later. First thing
+// at startup, ahead of the Sentry/PostHog init blocks — the event fires once
+// per page load right after the manifest is validated, and a throw in an
+// analytics init must not cost the listener.
+captureInstallPrompt();
+
 // Prefer an explicit release tag (set by the Release workflow to the
 // tag_name, e.g. "v1.2.0") and fall back to the VERCEL_GIT_COMMIT_SHA for
 // Preview builds. This single identifier lets Sentry dedupe stack traces
@@ -95,12 +102,6 @@ if (import.meta.env.VITE_POSTHOG_KEY) {
     (err) => captureException(err, { extra: { context: "initPosthog" } }),
   );
 }
-
-// Park Chromium's one-shot `beforeinstallprompt` before it fires so the
-// Settings "Install app" card can open the install dialog later. Must run
-// at startup — the event fires once per page load, right after the manifest
-// is validated, long before anyone reaches Settings.
-captureInstallPrompt();
 
 // Catch unhandled promise rejections that escape try/catch blocks and report
 // them to Sentry so they are never silently lost in production.

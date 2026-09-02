@@ -18,6 +18,10 @@ commit; the git history between `v1.1.0` and `HEAD` is the exhaustive record.
 
 ### Added
 
+- **Install as an app from Settings.** New "Install app" section: one-tap
+  install on Chromium (the one-shot `beforeinstallprompt` is parked at
+  startup), Share → "Add to Home Screen" steps on iOS, hidden inside the
+  native shell. Manifest gains `id` + `scope`. ([#542](https://github.com/myhuemungusD/SkateHubba-play/pull/542))
 - **Binding community trick disputes.** A landed claim on an honor-system game
   no longer swaps roles instantly — it freezes the game into `pendingReview`
   for a 24-hour setter accept/dispute window, escalating to a `communityReview`

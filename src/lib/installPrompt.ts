@@ -34,6 +34,8 @@ export type InstallOutcome = "accepted" | "dismissed" | "unavailable";
 let deferredPrompt: BeforeInstallPromptEvent | null = null;
 let installed = false;
 let captured = false;
+/** True while the browser's install dialog is open — guards a double-tap. */
+let prompting = false;
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -56,8 +58,9 @@ function onAppInstalled(): void {
 }
 
 /**
- * Attach the window listeners. Idempotent — a second call (HMR, tests) is a
- * no-op so the same event can never be parked twice.
+ * Attach the window listeners. Idempotent within one module instance — a
+ * second call (tests, a duplicated import) is a no-op so the same event can
+ * never be parked twice.
  */
 export function captureInstallPrompt(): void {
   if (captured) return;
@@ -88,17 +91,22 @@ export function getServerSnapshot(): InstallStoreState {
 /**
  * Open the browser's install dialog. Must run inside a user gesture.
  *
- * The deferred event is single-use: it is cleared up front so a double-tap
- * cannot call `prompt()` twice, and subscribers are notified once the user
- * has answered (or the browser threw) — never mid-dialog, so the card
- * behind the native sheet does not flicker. A dismissal leaves the store at
- * "none": Chrome will not re-fire `beforeinstallprompt` this page load, so
- * the UI drops back to the manual instructions.
+ * The parked event stays in the store while the dialog is open, so an
+ * unrelated re-render of Settings mid-dialog still reads "prompt" and the
+ * card behind the native sheet does not flicker; `prompting` is what stops
+ * a double-tap from calling `prompt()` twice. The event is single-use either
+ * way — consumed on answer, dead if the browser threw — so it is dropped and
+ * subscribers notified only once the outcome is known. A dismissal leaves
+ * the store at "none": Chrome will not re-fire `beforeinstallprompt` this
+ * page load, so the UI drops back to the manual instructions.
+ *
+ * Rejects if the browser refuses to open the dialog (e.g. the parked event
+ * went stale); callers must catch.
  */
 export async function promptInstall(): Promise<InstallOutcome> {
   const event = deferredPrompt;
-  if (!event) return "unavailable";
-  deferredPrompt = null;
+  if (!event || prompting) return "unavailable";
+  prompting = true;
   try {
     await event.prompt();
     const { outcome } = await event.userChoice;
@@ -106,6 +114,8 @@ export async function promptInstall(): Promise<InstallOutcome> {
     analytics.installPromptAnswered(outcome);
     return outcome;
   } finally {
+    deferredPrompt = null;
+    prompting = false;
     emit();
   }
 }
@@ -119,5 +129,6 @@ export function __resetInstallPromptForTest(): void {
   captured = false;
   deferredPrompt = null;
   installed = false;
+  prompting = false;
   listeners.clear();
 }

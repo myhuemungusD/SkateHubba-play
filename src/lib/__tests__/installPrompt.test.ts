@@ -79,13 +79,28 @@ describe("installPrompt store", () => {
   it("promptInstall opens the dialog once, records acceptance, and flips to installed", async () => {
     const cb = vi.fn();
     subscribe(cb);
-    const { prompt } = fireBeforeInstallPrompt("accepted");
+    let answer: (choice: { outcome: "accepted"; platform: string }) => void = () => {};
+    const event = new Event("beforeinstallprompt", { cancelable: true }) as BeforeInstallPromptEvent;
+    const prompt = vi.fn().mockResolvedValue(undefined);
+    Object.assign(event, {
+      prompt,
+      userChoice: new Promise((resolve) => {
+        answer = resolve;
+      }),
+    });
+    window.dispatchEvent(event);
     cb.mockClear();
 
-    // Double-tap: the second call must not reach prompt() again.
-    const [first, second] = await Promise.all([promptInstall(), promptInstall()]);
-    expect(first).toBe("accepted");
-    expect(second).toBe("unavailable");
+    const first = promptInstall();
+    // Dialog open: the store still reads "prompt" (an unrelated re-render
+    // must not flip the card), and a double-tap must not reach prompt().
+    await Promise.resolve();
+    expect(getSnapshot()).toBe("prompt");
+    await expect(promptInstall()).resolves.toBe("unavailable");
+    expect(cb).not.toHaveBeenCalled();
+
+    answer({ outcome: "accepted", platform: "web" });
+    await expect(first).resolves.toBe("accepted");
     expect(prompt).toHaveBeenCalledTimes(1);
     expect(getSnapshot()).toBe("installed");
     expect(installPromptAnswered).toHaveBeenCalledWith("accepted");

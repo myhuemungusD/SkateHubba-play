@@ -21,6 +21,7 @@ export type InstallStatus = "native" | "installed" | "prompt" | "ios" | "manual"
 
 export interface UseInstallPromptResult {
   status: InstallStatus;
+  /** Opens the browser's install dialog. Rejects if the browser refuses — catch it. */
   promptInstall: () => Promise<InstallOutcome>;
 }
 
