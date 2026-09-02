@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef, memo } from "react";
 import type { TurnRecord } from "../services/games";
 import { isFirebaseStorageUrl } from "../utils/helpers";
 import { trackEvent } from "../services/analytics";
+import { shareText } from "../services/nativeBridge";
 import { captureException } from "../lib/sentry";
 
 interface TurnHistoryViewerProps {
@@ -240,26 +241,14 @@ function ShareBtn({ url, trickName, context }: { url: string; trickName: string;
       const file = new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, {
         type: "video/webm",
       });
-      if (typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: `SkateHubba — ${trickName}`,
-          text: `Check out my ${trickName} on SkateHubba!`,
-          files: [file],
-        });
-        trackEvent("clip_shared", { method: "native_share", context });
-      } else if (typeof navigator.share === "function") {
-        const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-        await navigator.share({
-          title: `SkateHubba — ${trickName}`,
-          text: `Check out my ${trickName} on SkateHubba!\n${appUrl}`,
-        });
-        trackEvent("clip_shared", { method: "native_share_text", context });
-      } else {
-        const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
-        const text = `Check out my ${trickName} on SkateHubba!\n${appUrl}`;
-        await navigator.clipboard.writeText(text);
-        trackEvent("clip_shared", { method: "clipboard", context });
-      }
+      const appUrl = import.meta.env.VITE_APP_URL || window.location.origin;
+      const method = await shareText({
+        title: `SkateHubba — ${trickName}`,
+        text: `Check out my ${trickName} on SkateHubba!`,
+        files: [file],
+        textWithoutFiles: `Check out my ${trickName} on SkateHubba!\n${appUrl}`,
+      });
+      trackEvent("clip_shared", { method, context });
       setStatus("shared");
       scheduleReset();
     } catch (err) {

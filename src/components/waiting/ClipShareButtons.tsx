@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { trackEvent } from "../../services/analytics";
+import { shareText } from "../../services/nativeBridge";
 import { captureException } from "../../lib/sentry";
 
 export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; trickName: string }) {
@@ -53,26 +54,14 @@ export function ClipShareButtons({ videoUrl, trickName }: { videoUrl: string; tr
       const file = new File([blob], `skatehubba-${trickName.replace(/\s+/g, "-").toLowerCase()}.webm`, {
         type: "video/webm",
       });
-      if (typeof navigator.share === "function" && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: `SkateHubba — ${trickName}`,
-          text: `Check out my ${trickName} on SkateHubba!`,
-          files: [file],
-        });
-        trackEvent("clip_shared", { method: "native_share", context: "waiting_screen" });
-      } else if (typeof navigator.share === "function") {
-        const url = import.meta.env.VITE_APP_URL || window.location.origin;
-        await navigator.share({
-          title: `SkateHubba — ${trickName}`,
-          text: `Check out my ${trickName} on SkateHubba!\n${url}`,
-        });
-        trackEvent("clip_shared", { method: "native_share_text", context: "waiting_screen" });
-      } else {
-        const url = import.meta.env.VITE_APP_URL || window.location.origin;
-        const text = `Check out my ${trickName} on SkateHubba!\n${url}`;
-        await navigator.clipboard.writeText(text);
-        trackEvent("clip_shared", { method: "clipboard", context: "waiting_screen" });
-      }
+      const url = import.meta.env.VITE_APP_URL || window.location.origin;
+      const method = await shareText({
+        title: `SkateHubba — ${trickName}`,
+        text: `Check out my ${trickName} on SkateHubba!`,
+        files: [file],
+        textWithoutFiles: `Check out my ${trickName} on SkateHubba!\n${url}`,
+      });
+      trackEvent("clip_shared", { method, context: "waiting_screen" });
       setShareStatus("shared");
       safeTimeout(() => setShareStatus("idle"), 2000);
     } catch (err) {
