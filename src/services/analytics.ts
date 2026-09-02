@@ -69,6 +69,13 @@ export const analytics = {
   signInFailure: (method: string, code: string) => trackEvent("sign_in_failure", { method, code }),
   signUpAttempt: (method: string) => trackEvent("sign_up_attempt", { method }),
   signUpFailure: (method: string, code: string) => trackEvent("sign_up_failure", { method, code }),
+  // ── PWA install funnel ────────────────────────────────────────────────
+  // `install_prompt_answered` is the user's answer to Chromium's install
+  // dialog (src/lib/installPrompt.ts); `app_installed` is the browser's own
+  // `appinstalled` event, which also fires for installs started from the
+  // browser menu rather than the Settings card.
+  installPromptAnswered: (outcome: "accepted" | "dismissed") => trackEvent("install_prompt_answered", { outcome }),
+  appInstalled: () => trackEvent("app_installed"),
   // ── Map funnel ────────────────────────────────────────────────────────
   /** Top of funnel — fires once per MapPage mount. */
   mapViewed: () => trackEvent("map_viewed"),

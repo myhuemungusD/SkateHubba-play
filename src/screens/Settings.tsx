@@ -15,12 +15,14 @@ import {
   type NativePushPermission,
 } from "../services/pushNotifications";
 import { usePushPreference } from "../hooks/usePushPreference";
+import { useInstallPrompt } from "../hooks/useInstallPrompt";
 import { logger } from "../services/logger";
 import { Btn } from "../components/ui/Btn";
 import { ProUsername } from "../components/ProUsername";
 import { ChevronLeftIcon } from "../components/icons";
 import { useOnboardingContext } from "../context/OnboardingContext";
 import { AvatarPicker } from "../components/AvatarPicker";
+import { InstallAppCard } from "../components/InstallAppCard";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
 
 type PushState = "unsupported" | "default" | "granted" | "denied";
@@ -403,6 +405,10 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
 
   const blockedUids = useBlockedUsers(profile.uid);
 
+  // PWA install. Hidden entirely inside the Capacitor shell — the store app
+  // is already installed, so the section would only confuse.
+  const { status: installStatus, promptInstall } = useInstallPrompt();
+
   const handleUnblock = useCallback(
     async (uid: string) => {
       await unblockUser(profile.uid, uid);
@@ -444,7 +450,9 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
 
       <div className="px-5 pt-7 max-w-[430px] mx-auto">
         <h1 className="font-display text-fluid-4xl text-white mb-2 tracking-wide">Settings</h1>
-        <p className="font-body text-sm text-muted mb-6">Notifications, sound, haptics, and blocked players.</p>
+        <p className="font-body text-sm text-muted mb-6">
+          Notifications, sound, haptics, install, and blocked players.
+        </p>
 
         {/* Profile picture */}
         <SectionHeader title="PROFILE PICTURE" />
@@ -554,6 +562,16 @@ export function Settings({ profile, onBack }: { profile: UserProfile; onBack: ()
             onChange={handleToggleHaptics}
           />
         </div>
+
+        {/* Install as an app (web only) */}
+        {installStatus !== "native" && (
+          <>
+            <SectionHeader title="INSTALL APP" />
+            <div className="space-y-2">
+              <InstallAppCard status={installStatus} onInstall={promptInstall} />
+            </div>
+          </>
+        )}
 
         {/* Blocked players */}
         <SectionHeader title="BLOCKED PLAYERS" count={blockedUids.size} />
