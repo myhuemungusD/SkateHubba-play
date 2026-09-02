@@ -48,7 +48,8 @@ platform :ios do
   lane :beta do
     certificates
     build_app(
-      workspace: "ios/App/App.xcworkspace",
+      # SPM-based Capacitor project — there is no CocoaPods workspace.
+      project: "ios/App/App.xcodeproj",
       scheme: "App",
       configuration: "Release",
       clean: true,

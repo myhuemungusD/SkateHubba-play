@@ -47,10 +47,28 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing from environment — same secrets the android-aab.yml
+    // workflow injects via android.injected.signing.* (which still take
+    // precedence when set). Lets `fastlane android internal` and local
+    // `./gradlew bundleRelease` produce a signed AAB; without the env vars
+    // the build stays unsigned, as before.
+    if (System.getenv('KEYSTORE_PATH')) {
+        signingConfigs {
+            release {
+                storeFile file(System.getenv('KEYSTORE_PATH'))
+                storePassword System.getenv('KEYSTORE_PASSWORD')
+                keyAlias System.getenv('KEY_ALIAS')
+                keyPassword System.getenv('KEY_PASSWORD')
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (System.getenv('KEYSTORE_PATH')) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     bundle {
