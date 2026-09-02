@@ -58,6 +58,22 @@ export async function renderApp(opts?: { waitForLazy?: boolean }): Promise<Rende
 }
 
 /**
+ * Open a game from the lobby by the opponent name on its card.
+ *
+ * The lobby pins games awaiting the viewer in the "YOUR TURN" stack and hides
+ * everything waiting on someone else behind a collapsed "N waiting on them"
+ * disclosure, so expand that first when it's present. Callers that need the
+ * disclosure itself asserted on should still query it directly.
+ */
+export async function openGameFromLobby(opponent: RegExp = /vs @rival/i): Promise<void> {
+  const disclosure = screen.queryByRole("button", { name: /waiting on them/ });
+  if (disclosure && disclosure.getAttribute("aria-expanded") === "false") {
+    await userEvent.click(disclosure);
+  }
+  await userEvent.click(await screen.findByRole("button", { name: opponent }));
+}
+
+/**
  * Fill the inline DOB fields on the AuthScreen signup form with a valid adult
  * DOB. The app no longer has a standalone age-gate screen — DOB is collected
  * alongside email + password on the same auth card.

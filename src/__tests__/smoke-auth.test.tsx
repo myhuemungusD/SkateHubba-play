@@ -120,8 +120,10 @@ describe("Smoke: Auth", () => {
     withGames([]);
     await renderApp();
 
-    // Wait for lazy-loaded lobby to render before asserting absence
-    await screen.findByText(/Challenge Someone/);
+    // Wait for lazy-loaded lobby to render before asserting absence. The
+    // verified-only empty-state CTA doubles as proof the lobby rendered for a
+    // verified viewer, which is exactly the state under test.
+    await screen.findByRole("button", { name: /Challenge your first opponent/ });
     expect(screen.queryByText("VERIFY YOUR EMAIL")).not.toBeInTheDocument();
   });
 

@@ -7,9 +7,31 @@
  * flow lives here. Trick names stay per-test (they vary), so this helper stops
  * at the point where the trick-name input is ready.
  */
-import { expect, type Page } from "@playwright/test";
-import { verifyEmail, forceTokenRefresh } from "./emulator";
-import { signUpAndSetupProfile } from "./auth-flow";
+import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { createProfile, createUser, verifyEmail, forceTokenRefresh } from "./emulator";
+import { MEDIA_MOCK_SCRIPT } from "./media-mock";
+import { signUpAndSetupProfile, signInViaUI } from "./auth-flow";
+import { openActiveGameFromLobby, openChallengeForm } from "./lobby-nav";
+
+/**
+ * Relay browser-side errors into the Playwright stdout stream.
+ *
+ * These specs drive real uploads and real Firestore writes, so when one stalls
+ * the reason is almost always something the PAGE logged — a rejected write, a
+ * failed upload — and the job log shows only the Playwright-side timeout.
+ * Without this the failure reads as "the waiting screen never appeared" and
+ * says nothing about why.
+ *
+ * Installed by every session opener below so no spec has to remember it.
+ */
+export function relayBrowserErrors(page: Page): void {
+  page.on("console", (msg) => {
+    if (msg.type() === "error" || msg.type() === "warning") {
+      console.log(`[browser:${msg.type()}] ${msg.text()}`);
+    }
+  });
+  page.on("pageerror", (err) => console.log(`[browser:pageerror] ${err.message}`));
+}
 
 interface Credentials {
   email: string;
@@ -24,7 +46,7 @@ interface Credentials {
  * the caller as setter).
  */
 export async function challengeToSetter(page: Page, opponentHandle: string): Promise<void> {
-  await page.getByRole("button", { name: "Challenge Someone" }).click();
+  await openChallengeForm(page);
   await page.getByPlaceholder("their_handle").fill(opponentHandle);
   await page.getByRole("button", { name: /Send Challenge/i }).click();
   // The challenger becomes the setter — the game opens in the setting phase
@@ -53,4 +75,86 @@ export async function signUpVerifiedAndChallenge(
   await page.reload();
   await forceTokenRefresh(page);
   await challengeToSetter(page, opponentHandle);
+}
+
+/**
+ * Sign an existing player back in and open the active game they share with
+ * `opponentHandle` straight from the lobby.
+ *
+ * The two steps are always paired in the multi-context game specs (a second
+ * browser context signs in purely to take its turn), and the lobby half is no
+ * longer a single click — a game the viewer can't move on hides behind the
+ * "N waiting on them" disclosure — so the pair lives here rather than being
+ * re-inlined per test.
+ */
+export async function signInAndOpenGame(page: Page, player: Credentials, opponentHandle: string): Promise<void> {
+  await signInViaUI(page, player.email, player.password);
+  await openActiveGameFromLobby(page, opponentHandle);
+}
+
+/** A dedicated browser context plus its first page — one simulated device. */
+export interface PlayerSession {
+  ctx: BrowserContext;
+  page: Page;
+}
+
+/**
+ * Open a fresh device (context + page) for an ALREADY-SEEDED player: media
+ * mock and browser-error relay installed before the first navigation, then
+ * signed in through the UI. Left sitting on the lobby, so the caller chooses
+ * how to reach the game (active card vs finished roll-up).
+ *
+ * Caller owns the returned context and must close it.
+ */
+export async function openPlayerSession(browser: Browser, player: Credentials): Promise<PlayerSession> {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.addInitScript(MEDIA_MOCK_SCRIPT);
+  relayBrowserErrors(page);
+  await signInViaUI(page, player.email, player.password);
+  return { ctx, page };
+}
+
+/**
+ * Seed `opponent` in the emulator, then open a fresh context for `setter`,
+ * sign them up through the UI, verify them, and challenge `opponent` —
+ * leaving the page on the setter's trick-name step.
+ *
+ * The media mock is installed before the first navigation so callers that go
+ * on to record a clip don't need a second variant of this preamble; it is
+ * inert for callers that never open the camera.
+ *
+ * Caller owns the returned context and must close it.
+ */
+export async function openSetterSession(
+  browser: Browser,
+  setter: Credentials,
+  opponent: Credentials,
+): Promise<PlayerSession> {
+  const seeded = await createUser(opponent.email, opponent.password);
+  await createProfile(seeded.uid, opponent.username, opponent.email, false);
+
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await page.addInitScript(MEDIA_MOCK_SCRIPT);
+  relayBrowserErrors(page);
+  await signUpVerifiedAndChallenge(page, setter, opponent.username);
+  return { ctx, page };
+}
+
+/**
+ * Open a second device for `matcher`: fresh context with the media mock
+ * installed, signed in, and sitting inside the active game they share with
+ * `opponentHandle`.
+ *
+ * Caller owns the returned context and must close it.
+ */
+export async function openMatcherSession(
+  browser: Browser,
+  matcher: Credentials,
+  opponentHandle: string,
+): Promise<PlayerSession> {
+  const session = await openPlayerSession(browser, matcher);
+  await openActiveGameFromLobby(session.page, opponentHandle);
+  return session;
 }

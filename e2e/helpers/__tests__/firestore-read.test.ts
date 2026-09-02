@@ -67,8 +67,9 @@ describe("uidForEmail", () => {
 
     const body = JSON.parse(String(init.body)) as QueryRequestBody;
     expect(body.returnUserInfo).toBe(true);
-    expect(typeof body.limit).toBe("number");
-    expect((body.limit ?? 0) > 0).toBe(true);
+    // `limit` must NOT be sent: the Auth emulator rejects it outright with
+    // `501 limit is not implemented`, which failed every lookup that used it.
+    expect(body).not.toHaveProperty("limit");
   });
 
   it("returns the matching localId when multiple users are present", async () => {

@@ -22,8 +22,9 @@
  */
 
 import { test, expect, type BrowserContext, type Page, type Locator } from "@playwright/test";
-import { clearAll } from "./helpers/emulator";
+import { clearAll, getSignedInUid } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { expectOnLobby } from "./helpers/lobby-nav";
 
 // ─── Constants pinned from production source ─────────────────────────────────
 //
@@ -34,16 +35,6 @@ const TUTORIAL_TOTAL_STEPS = 5;
 
 function dismissedKey(uid: string): string {
   return `skatehubba.onboarding.dismissed.v${TUTORIAL_VERSION}.${uid}`;
-}
-
-async function getCurrentUid(page: Page): Promise<string> {
-  const uid = await page.evaluate(() => {
-    type E2EAuth = { currentUser?: { uid?: string } };
-    const auth = (globalThis as unknown as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
-    return auth?.currentUser?.uid ?? null;
-  });
-  expect(uid, "expected an authenticated user").toBeTruthy();
-  return uid as string;
 }
 
 // ─── Tour locators ───────────────────────────────────────────────────────────
@@ -152,7 +143,7 @@ async function expectDismissedAndPersisted(page: Page, uid: string) {
   const stored = await page.evaluate((key) => window.localStorage.getItem(key), dismissedKey(uid));
   expect(stored).toBe("1");
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
+  await expectOnLobby(page);
   await expect(tourProgress(page)).toBeHidden();
 }
 
@@ -160,7 +151,7 @@ test("Escape dismisses the tour and the dismissed flag persists across reload", 
   await signUpAndSetupProfile(page, "tour-esc@test.com", "password123", "touresc");
 
   await expect(tourProgress(page)).toBeVisible({ timeout: 10_000 });
-  const uid = await getCurrentUid(page);
+  const uid = await getSignedInUid(page);
 
   await page.keyboard.press("Escape");
   await expectDismissedAndPersisted(page, uid);
@@ -170,7 +161,7 @@ test("close (×) button dismisses the tour and persists across reload", async ({
   await signUpAndSetupProfile(page, "tour-close@test.com", "password123", "tourclose");
 
   await expect(tourProgress(page)).toBeVisible({ timeout: 10_000 });
-  const uid = await getCurrentUid(page);
+  const uid = await getSignedInUid(page);
 
   await tourDialog(page)
     .getByRole("button", { name: /close tour/i })
@@ -197,7 +188,7 @@ test("tour pauses (does not show) on the gameplay screen, resumes on lobby", asy
 
   // Navigate back — tour resumes at the same step.
   await page.goto("/lobby");
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
+  await expectOnLobby(page);
   const resumed = tourProgress(page);
   await expect(resumed).toBeVisible({ timeout: 10_000 });
   await expect(resumed).toHaveAttribute("aria-valuenow", "2");
@@ -220,7 +211,7 @@ test("cross-tab dismissal propagates via storage event", async ({ browser }) => 
     // Tab B: same context, same origin → shares localStorage with Tab A.
     const pageB = await ctx.newPage();
     await pageB.goto("/lobby");
-    await expect(pageB.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
+    await expectOnLobby(pageB);
     await expect(tourProgress(pageB)).toBeVisible({ timeout: 10_000 });
 
     // Tab A dismisses via Escape.
@@ -257,7 +248,7 @@ test("Settings → Replay onboarding re-arms the tour at step 0", async ({ page 
   // lobby (manually, in case Settings doesn't auto-route in this build) and
   // assert the tour re-arms from step 0.
   await page.goto("/lobby");
-  await expect(page.getByRole("heading", { name: "Your Games" })).toBeVisible({ timeout: 15_000 });
+  await expectOnLobby(page);
 
   const reArmed = tourProgress(page);
   await expect(reArmed).toBeVisible({ timeout: 10_000 });

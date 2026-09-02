@@ -108,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Sync activeProfile from `profile` during render rather than via useEffect.
   // The previous useEffect-mirror introduced a one-render lag because effects
   // run bottom-up (NavigationContext's routing effect fired before the
-  // AuthContext mirror), so direct deep-links (/map, /record, /player/:uid)
+  // AuthContext mirror), so direct deep-links (/map, /me, /player/:uid)
   // saw activeProfile=null in the gap between profile resolving and the
   // mirror committing — and got bounced through /profile → /lobby. Adjusting
   // state during render is the recommended React pattern for this case;

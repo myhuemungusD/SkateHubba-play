@@ -1,8 +1,11 @@
 /**
  * E2E for the community clips spotlight upvote flow (audit F8).
  *
- * The lobby embeds <ClipsFeed> which fetches the top-ranked landed-trick
- * clip and lets a viewer tap the flame button to upvote it. The optimistic
+ * The Clips tab (/feed) renders <ClipsFeed>, which fetches the top-ranked
+ * landed-trick clip and lets a viewer tap the flame button to upvote it. The
+ * feed used to be embedded in the lobby; the redesign moved it onto its own
+ * route behind the bottom nav's Clips tab, so these tests navigate there the
+ * way a user does. The optimistic
  * UI flips `aria-pressed=true` and increments the count immediately, then
  * the transactional `upvoteClip` write reconciles the authoritative count
  * from Firestore.
@@ -12,8 +15,17 @@
  * mirrors what `writeLandedClipsInTransaction` would have written.
  */
 import { test, expect } from "@playwright/test";
-import { clearAll, createUser, createProfile, createClip, verifyEmail, forceTokenRefresh } from "./helpers/emulator";
+import {
+  clearAll,
+  createUser,
+  createProfile,
+  createClip,
+  verifyEmail,
+  forceTokenRefresh,
+  getSignedInUid,
+} from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { openClipsFeed } from "./helpers/lobby-nav";
 
 const VIEWER = { email: "viewer@test.com", password: "password123", username: "viewer1" };
 const AUTHOR = { email: "author@test.com", password: "password123", username: "tricklord" };
@@ -30,7 +42,7 @@ test("viewer upvotes another player's clip → button flips to pressed and count
   // One landed-trick clip authored by AUTHOR — visible to any signed-in viewer.
   await createClip("seeded-game-id", 1, "set", author.uid, AUTHOR.username);
 
-  // Viewer signs up through the UI and lands on the lobby (which mounts ClipsFeed).
+  // Viewer signs up through the UI and lands on the lobby.
   // Both `clipVotes` create and the `clips.upvoteCount` increment require
   // `email_verified == true` in firestore.rules — without verifyEmail +
   // forceTokenRefresh the upvote transaction would be permission-denied.
@@ -38,6 +50,9 @@ test("viewer upvotes another player's clip → button flips to pressed and count
   await verifyEmail(VIEWER.email);
   await page.reload();
   await forceTokenRefresh(page);
+
+  // The feed is no longer on the lobby — open the Clips tab.
+  await openClipsFeed(page);
 
   // Wait for the spotlight card to hydrate. The control is labelled
   // `Thumbs up clip by @<username> · current count <n>` when not yet voted —
@@ -66,17 +81,13 @@ test("clip viewer cannot upvote their own clip — the control renders disabled"
   // seed a clip authored by that same uid.
   await signUpAndSetupProfile(page, VIEWER.email, VIEWER.password, VIEWER.username);
 
-  const uid = await page.evaluate(() => {
-    type E2EAuth = { currentUser?: { uid?: string } };
-    const auth = (globalThis as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
-    return auth?.currentUser?.uid ?? null;
-  });
-  expect(uid).toBeTruthy();
+  const uid = await getSignedInUid(page);
 
-  await createClip("own-clip-game", 1, "set", uid as string, VIEWER.username);
+  await createClip("own-clip-game", 1, "set", uid, VIEWER.username);
 
-  // Reload so the freshly-seeded clip appears in the feed pool.
-  await page.reload();
+  // Open the Clips tab. The navigation is what pulls the freshly-seeded clip
+  // into the feed pool — ClipsFeed queries on mount — so no reload is needed.
+  await openClipsFeed(page);
 
   // The author chip is the hydration anchor. ClipActions does NOT omit the
   // control on your own clip — it renders it disabled and says why. The old

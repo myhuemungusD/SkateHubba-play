@@ -17,9 +17,8 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { clearAll, createSpot } from "./helpers/emulator";
+import { clearAll, createSpot, getSignedInUid } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
-import { CONSENT_ANSWERED_SCRIPT } from "./helpers/consent";
 
 const SPOT_ID = "11111111-2222-3333-4444-555555555555";
 
@@ -120,11 +119,11 @@ test.describe("Map → challenge wiring", () => {
     // relaxCspForEmulators' rewritten document responses hung it at the
     // post-"Create Account" navigation — every other spec signs up against
     // unintercepted pages, and this one now does too.
-    // Answer the consent banner before it can render: it sits fixed at the
-    // bottom at z-50 and swallowed the "Challenge from here" click exactly
-    // as it did the recorder controls in the recording specs.
-    await page.addInitScript(CONSENT_ANSWERED_SCRIPT);
-
+    // The consent banner (fixed, bottom, z-50) swallowed the "Challenge from
+    // here" click exactly as it did the recorder controls in the recording
+    // specs. It is pre-answered before the first navigation by
+    // signUpAndSetupProfile → signUpViaUI (helpers/auth-flow.ts), so there is
+    // nothing to do here beyond signing up.
     const unique = Date.now();
     await signUpAndSetupProfile(page, `mapper${unique}@example.com`, "sk8pass123", `mapper${unique}`);
 
@@ -134,12 +133,7 @@ test.describe("Map → challenge wiring", () => {
     // actionability retries ("mascot-bubble … intercepts pointer events").
     // The dismissed flag is per-uid, so it can only be seeded after signup;
     // the /map navigation below reloads the app, which re-reads it.
-    const uid = await page.evaluate(() => {
-      type E2EAuth = { currentUser?: { uid?: string } };
-      const auth = (globalThis as unknown as Record<string, E2EAuth | undefined>).__e2eFirebaseAuth;
-      return auth?.currentUser?.uid ?? null;
-    });
-    expect(uid, "expected an authenticated user").toBeTruthy();
+    const uid = await getSignedInUid(page);
     await page.evaluate((key) => window.localStorage.setItem(key, "1"), TOUR_DISMISSED_KEY_PREFIX + uid);
 
     await relaxCspForEmulators(page);
