@@ -1,0 +1,206 @@
+{
+  "generatedAt": "2026-09-02T05:29:30.076Z",
+  "note": "Files under the per-file UI coverage floor when the gate was introduced. Each entry is the minimum coverage that file may have; the list only shrinks. Do not add files by hand — fix their coverage instead. Prune graduated entries with `node scripts/check-coverage-per-file.mjs --update-baseline`.",
+  "floors": {
+    "src/components/**": {
+      "lines": 80,
+      "functions": 80,
+      "branches": 75,
+      "statements": 80
+    },
+    "src/screens/**": {
+      "lines": 80,
+      "functions": 80,
+      "branches": 75,
+      "statements": 80
+    }
+  },
+  "files": {
+    "src/components/AvatarPicker.tsx": {
+      "lines": 80.16,
+      "functions": 82.6,
+      "branches": 64.7,
+      "statements": 77.09
+    },
+    "src/components/ClipsFeed/NextClipPrefetcher.tsx": {
+      "lines": 81.25,
+      "functions": 100,
+      "branches": 50,
+      "statements": 69.56
+    },
+    "src/components/ClipsFeed/SpotlightVideo.tsx": {
+      "lines": 97.77,
+      "functions": 78.57,
+      "branches": 86.66,
+      "statements": 88.67
+    },
+    "src/components/ClipsFeed/index.tsx": {
+      "lines": 72.22,
+      "functions": 69.23,
+      "branches": 100,
+      "statements": 79.16
+    },
+    "src/components/ClipsFeed/useClipComments.ts": {
+      "lines": 100,
+      "functions": 100,
+      "branches": 67.85,
+      "statements": 91.3
+    },
+    "src/components/ClipsFeed/utils.ts": {
+      "lines": 63.15,
+      "functions": 100,
+      "branches": 69.56,
+      "statements": 56
+    },
+    "src/components/FisheyeRenderer.tsx": {
+      "lines": 53.33,
+      "functions": 70,
+      "branches": 33.33,
+      "statements": 50
+    },
+    "src/components/GameReplay.tsx": {
+      "lines": 97.36,
+      "functions": 77.77,
+      "branches": 100,
+      "statements": 97.56
+    },
+    "src/components/Leaderboard.tsx": {
+      "lines": 92.3,
+      "functions": 87.5,
+      "branches": 70.45,
+      "statements": 93.33
+    },
+    "src/components/RulesSheet.tsx": {
+      "lines": 100,
+      "functions": 100,
+      "branches": 50,
+      "statements": 100
+    },
+    "src/components/TurnHistoryViewer.tsx": {
+      "lines": 84.72,
+      "functions": 76.47,
+      "branches": 86.25,
+      "statements": 80.23
+    },
+    "src/components/UserClipUpload/index.tsx": {
+      "lines": 87.5,
+      "functions": 75,
+      "branches": 81.48,
+      "statements": 77.77
+    },
+    "src/components/map/AddSpotSheet.tsx": {
+      "lines": 71.08,
+      "functions": 50,
+      "branches": 81.81,
+      "statements": 68.88
+    },
+    "src/components/map/BustRisk.tsx": {
+      "lines": 83.33,
+      "functions": 66.66,
+      "branches": 100,
+      "statements": 83.33
+    },
+    "src/components/map/GnarRating.tsx": {
+      "lines": 83.33,
+      "functions": 66.66,
+      "branches": 100,
+      "statements": 83.33
+    },
+    "src/components/map/LandingMap.tsx": {
+      "lines": 98.36,
+      "functions": 93.75,
+      "branches": 72.22,
+      "statements": 92.85
+    },
+    "src/components/map/SpotMap.tsx": {
+      "lines": 73.23,
+      "functions": 45.83,
+      "branches": 76.59,
+      "statements": 69.23
+    },
+    "src/components/map/SpotMapOverlays.tsx": {
+      "lines": 88.88,
+      "functions": 88.88,
+      "branches": 50,
+      "statements": 88.88
+    },
+    "src/components/map/useSpotMarkers.ts": {
+      "lines": 78.18,
+      "functions": 87.5,
+      "branches": 44.44,
+      "statements": 77.58
+    },
+    "src/components/map/useSpotsInBounds.ts": {
+      "lines": 90,
+      "functions": 100,
+      "branches": 40,
+      "statements": 80
+    },
+    "src/components/map/useUserGeolocation.ts": {
+      "lines": 77.04,
+      "functions": 75,
+      "branches": 57.69,
+      "statements": 76.56
+    },
+    "src/components/waiting/ClipShareButtons.tsx": {
+      "lines": 96.42,
+      "functions": 50,
+      "branches": 100,
+      "statements": 89.06
+    },
+    "src/screens/GameOverScreen.tsx": {
+      "lines": 87.69,
+      "functions": 73.33,
+      "branches": 85.33,
+      "statements": 85.5
+    },
+    "src/screens/GamePlayScreen/components/GamePlayHeader.tsx": {
+      "lines": 100,
+      "functions": 100,
+      "branches": 66.66,
+      "statements": 100
+    },
+    "src/screens/GamePlayScreen/components/JudgeStatusBadge.tsx": {
+      "lines": 66.66,
+      "functions": 100,
+      "branches": 75,
+      "statements": 72.72
+    },
+    "src/screens/GamePlayScreen/components/MatcherDecisionPanel.tsx": {
+      "lines": 50,
+      "functions": 50,
+      "branches": 92.85,
+      "statements": 50
+    },
+    "src/screens/GamePlayScreen/components/SetterTrickInput.tsx": {
+      "lines": 100,
+      "functions": 100,
+      "branches": 63.63,
+      "statements": 100
+    },
+    "src/screens/PlayerProfileScreen/components/StatCard.tsx": {
+      "lines": 0,
+      "functions": 0,
+      "branches": 100,
+      "statements": 0
+    },
+    "src/screens/PlayerProfileScreen/components/StatTile.tsx": {
+      "lines": 96.42,
+      "functions": 100,
+      "branches": 71.42,
+      "statements": 96.77
+    },
+    "src/screens/PrivacyPolicy.tsx": {
+      "lines": 80,
+      "functions": 66.66,
+      "branches": 100,
+      "statements": 80
+    },
+    "src/screens/SpotDetailPage.tsx": {
+      "lines": 96.29,
+      "functions": 93.33,
+      "branches": 72.72,
+      "statements": 88.52
+    }
+  }
+}

@@ -2,7 +2,7 @@
 
 ## Overview
 
-SkateHubba uses [@sentry/react](https://docs.sentry.io/platforms/javascript/guides/react/) for runtime error monitoring. The SDK is lazily loaded — it is only fetched when `VITE_SENTRY_DSN` is set.
+SkateHubba uses [@sentry/react](https://docs.sentry.io/platforms/javascript/guides/react/) for runtime error monitoring on the web. On native (Capacitor) builds, `src/lib/sentry.ts` initialises [@sentry/capacitor](https://docs.sentry.io/platforms/javascript/guides/capacitor/) — which wraps `@sentry/react` — so Swift/Obj-C/Kotlin/Java crashes are forwarded too. Both are direct dependencies. The SDK is lazily loaded — it is only fetched when `VITE_SENTRY_DSN` is set.
 
 ## Environment Variable
 
@@ -27,7 +27,7 @@ All boundaries report to Sentry via `captureException()` with component stack tr
 
 ### User Context
 
-When a user signs in, their Firebase UID is attached to all subsequent Sentry events via `setUser({ id: uid })`. This is cleared on sign-out. No PII (email, name) is sent — only the UID.
+When a user signs in, a deterministic **hash** of their Firebase UID (`hashIdentity` / `hashUid`, FNV-1a, `src/utils/pii.ts`) is attached as the Sentry user id — the raw UID never leaves the app. Their public **username** is attached alongside it when available (`src/context/AuthContext.tsx`). This is cleared on sign-out. Email is never sent, and `beforeSend` deletes `user.email` and `user.ip_address` defensively. Treat the username as an identifier when scoping who can read Sentry.
 
 ## Configuring Sentry Alerts
 
@@ -105,7 +105,15 @@ Adjust `tracesSampleRate` in `src/main.tsx` as traffic grows.
 
 ## PII Scrubbing
 
-The `beforeSend` hook in `src/main.tsx` strips `email=` query parameters from event URLs. Only Firebase UIDs are attached as user context — no email addresses or display names are sent to Sentry.
+The `beforeSend` hook in `src/main.tsx` does considerably more than strip `email=`:
+
+- Scrubs `email`, `token`, `api_key`, `access_token`, `id_token`, `auth`, `authorization`, `password`, `phone`, `otp`, and `verification_code` from event URLs.
+- Deletes `event.request.headers` and `event.request.cookies` wholesale.
+- Deletes `event.user.email` and `event.user.ip_address`.
+- Scrubs breadcrumb `data.url` values.
+- `sendDefaultPii: false` is set at init.
+
+Separately, `src/services/logger.ts` redacts `email` and `*uid` keys on the breadcrumb path (`src/utils/pii.ts`). User context is a **hashed** UID plus the public username — never the raw UID, never an email address.
 
 ## Verifying the Setup
 
@@ -113,3 +121,29 @@ The `beforeSend` hook in `src/main.tsx` strips `email=` query parameters from ev
 2. Open the browser console and run: `throw new Error("Sentry test")`
 3. Confirm the event appears in Sentry → **Issues** within ~30 seconds
 4. Confirm alert notifications arrive in Slack/email
+
+---
+
+## Known caveats and gaps
+
+**`environment:production` also matches preview deploys.** `src/main.tsx` sets
+`environment: import.meta.env.MODE`, and `vite build` yields `MODE === "production"`
+for _every_ build — including the Vercel preview deployments this doc tells you to
+give a `VITE_SENTRY_DSN`. The `event.environment:production` filter on the alert
+rules above therefore cannot distinguish production from preview. Either accept the
+noise or derive the environment from a Vercel-provided variable; `VERCEL` is already
+parsed in `src/lib/env.ts` and currently unused for this.
+
+**Releases and source maps.** `.github/workflows/release.yml` runs
+`getsentry/action-release` to create the Sentry release and upload the hidden source
+maps from `./dist/assets`, gated on the `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, and
+`SENTRY_PROJECT` secrets. The release string comes from `VITE_APP_VERSION` /
+`VITE_GIT_SHA` (`src/main.tsx`). Without those secrets, production stack traces stay
+minified — this is what makes them readable, so treat the secrets as part of the
+alerting setup, not an afterthought.
+
+**App Check failures have no alert rule yet.** `docs/APPCHECK_ROLLOUT.md` names
+`appcheck_init_failed`, `appcheck_enabled_but_no_site_key`,
+`appcheck_native_init_failed`, and `users/{uid} permission-denied after retries` as
+rollout abort triggers, but this document defines no matching alert — it currently
+covers only the two map alerts. Add them before the next App Check enablement attempt.

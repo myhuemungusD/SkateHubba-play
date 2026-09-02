@@ -79,7 +79,11 @@ export async function uidForEmail(email: string): Promise<string> {
       "Content-Type": "application/json",
       Authorization: "Bearer owner",
     },
-    body: JSON.stringify({ returnUserInfo: true, limit: 500 }),
+    // No `limit`: the Auth emulator answers `accounts:query` carrying one with
+    // 501 NOT_IMPLEMENTED ("limit is not implemented"), which failed every
+    // lookup here. The emulator is cleared per test, so the unpaged default
+    // covers the handful of accounts a spec creates.
+    body: JSON.stringify({ returnUserInfo: true }),
   });
   if (!res.ok) throw new Error(`accounts lookup failed: ${res.status} ${await res.text()}`);
   const body = (await res.json()) as { userInfo?: Array<{ localId: string; email: string }> };

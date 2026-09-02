@@ -6,10 +6,13 @@ client-side retries (~10 s across 4 attempts with force-refreshed ID tokens) are
 already exhausted — something on the backend is rejecting the read.
 
 The read that fails is `users/{uid}` in the named database **`skatehubba`**. The
-Firestore rule is literally `allow read: if isSignedIn();` (see `firestore.rules`,
-`match /users/{uid}` block), so a signed-in user should always be allowed. If
-they're getting `permission-denied` anyway, one of the four causes below is the
-culprit.
+Firestore rule splits the read verbs (see `firestore.rules`, `match /users/{uid}`
+block): `allow get: if true;` — a single-doc read is **public**, so a shared
+`/player/{uid}` link resolves even signed-out — and `allow list: if isSignedIn();`.
+Because `get` is unconditional, a `permission-denied` on this read is almost never
+the rule itself. That makes "the user is genuinely signed out" a weak hypothesis
+and App Check / wrong-database correspondingly strong. One of the four causes
+below is the culprit.
 
 ## 0. Current default — App Check is OFF
 
@@ -72,7 +75,20 @@ arg to `initializeFirestore`). Rules must be deployed to that named DB — NOT t
   `firestore` block — that's what routes `firebase deploy --only firestore:rules`
   to the named DB.
 - `.github/workflows/firebase-rules-deploy.yml` runs on every push to `main` that
-  touches `firestore.rules` / `firebase.json` / `.firebaserc`.
+  touches `firestore.rules`, `firestore.indexes.json`, `storage.rules`,
+  `firebase.json`, `.firebaserc`, or the workflow file itself — **plus a daily
+  `schedule` re-deploy at `0 7 * * *`**. That daily run normally matters during
+  triage — a hand-edit made in the Firebase Console is reverted within 24 h —
+  but **as of 2026-08-29 every deploy since 2026-08-20 has failed**
+  ([#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519):
+  `google-github-actions/auth` rejects `FIREBASE_WIF_PROVIDER` with
+  `Invalid value for "audience"`). While that holds, production runs a **stale
+  ruleset** — which makes "the deployed rules differ from `main`" a _leading_
+  hypothesis for an unexplained `permission-denied`, not a footnote. Check the
+  last successful deploy before you check anything else. The deploy can
+  also hard-fail on its PII-scan gate when the repo authenticates with the legacy
+  `FIREBASE_TOKEN`, so "rules are stale" is not always an auth problem — read the
+  job log, don't just re-check the credentials.
 
 **Verify:** GitHub Actions → Workflows → **Deploy Firebase Rules** → check the most
 recent run against `main`. It should be green. If the last run is red or hasn't run
@@ -82,7 +98,7 @@ named DB are stale or missing.
 **Fix path:** Re-run the workflow manually (workflow_dispatch) or deploy locally:
 
 ```bash
-npx firebase-tools@14 deploy --project <project-id> --only firestore:rules
+npx firebase-tools@15 deploy --project <project-id> --only firestore:rules
 ```
 
 ## 3. Is the named `skatehubba` database created in the Firebase project?

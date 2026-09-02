@@ -41,9 +41,10 @@ bundle exec fastlane ios beta          # build + upload to TestFlight
 bundle exec fastlane ios release       # submit latest TestFlight for review
 
 # Android
-bundle exec fastlane android internal  # build + upload to internal testing
-bundle exec fastlane android beta      # promote internal → closed (beta)
-bundle exec fastlane android release   # promote beta → production (10% rollout)
+bundle exec fastlane android internal          # build + upload to internal testing
+bundle exec fastlane android publish_internal  # upload a pre-built AAB to internal testing (what CI calls)
+bundle exec fastlane android beta              # promote internal → closed (beta)
+bundle exec fastlane android release           # promote beta → production (10% rollout)
 ```
 
 ## Release flow (end-to-end)
@@ -63,19 +64,18 @@ bundle exec fastlane android release   # promote beta → production (10% rollou
    - `bundle exec fastlane ios release` → Apple review
    - `bundle exec fastlane android release` → 10% staged rollout
 
-## Why not automate the full pipeline today?
+## CI wiring
 
-Two reasons this PR stages the config without wiring a `workflow_dispatch`
-job that actually invokes the lanes:
+- **Android** — `.github/workflows/android-aab.yml` builds the release AAB
+  and, when its `publish_internal` dispatch input is set, runs
+  `bundle exec fastlane android publish_internal` to upload it to the Play
+  internal track.
+- **iOS** — `.github/workflows/ios-build.yml` covers the CI-side iOS build.
+  The signing/upload lanes (`ios beta`, `ios release`) are still run
+  manually from a Mac, deliberately: GitHub-hosted `macos-latest` minutes
+  bill 10x `ubuntu-latest`, so those minutes are spent on deliberate
+  releases, not every `main` push.
 
-1. **macOS runners cost money.** GitHub-hosted `macos-latest` minutes bill
-   10x `ubuntu-latest`. We only want those minutes spent on deliberate
-   releases, not every `main` push.
-2. **iOS project not yet generated.** The `ios/` Xcode project is created
-   by `npx cap add ios` on a macOS host. Until that first sync is committed
-   (along with app icons, launch screen, push-notification capability),
-   running an iOS lane would fail on a missing workspace anyway.
-
-The intended follow-up: once `ios/` lands in the repo, add
-`.github/workflows/fastlane-ios.yml` and `fastlane-android.yml` that
-invoke the lanes on `workflow_dispatch` with the release tag as input.
+The `ios/` Xcode project is committed (`ios/App/App.xcodeproj/`), so the
+iOS lanes run against the real project — see `ios/README.md` for the
+per-Mac signing setup they assume.

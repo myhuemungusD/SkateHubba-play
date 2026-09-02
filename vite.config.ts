@@ -18,8 +18,14 @@ function firebaseSwPlugin(): Plugin {
     writeBundle(options) {
       const outDir = options.dir ?? "dist";
       const swPath = resolve(outDir, "firebase-messaging-sw.js");
+      let content: string;
       try {
-        let content = readFileSync(swPath, "utf-8");
+        content = readFileSync(swPath, "utf-8");
+      } catch {
+        // SW file may not exist in test builds — skip silently
+        return;
+      }
+      {
         const replacements: Record<string, string | undefined> = {
           __PLACEHOLDER_API_KEY__: process.env.VITE_FIREBASE_API_KEY,
           __PLACEHOLDER_AUTH_DOMAIN__: process.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -37,13 +43,20 @@ function firebaseSwPlugin(): Plugin {
           }
         }
         if (unreplaced.length > 0) {
-          console.warn(
-            `[firebase-sw-config] Warning: ${unreplaced.length} placeholder(s) not replaced in SW (missing env vars): ${unreplaced.join(", ")}`,
-          );
+          const message = `[firebase-sw-config] ${unreplaced.length} placeholder(s) not replaced in SW (missing env vars): ${unreplaced.join(", ")}`;
+          // Store/release builds must never ship a service worker with dead
+          // placeholder config — background web push would silently break.
+          // REQUIRE_SW_CONFIG=1 turns the warning into a hard build failure.
+          // Set in android-aab.yml and release.yml; the Vercel production
+          // deploy needs it added as a project env var (dashboard) to get the
+          // same guarantee. Local builds without a .env keep working with the
+          // query-string fallback the SW ships.
+          if (process.env.REQUIRE_SW_CONFIG) {
+            throw new Error(message);
+          }
+          console.warn(`${message} — set REQUIRE_SW_CONFIG=1 to make this fatal.`);
         }
         writeFileSync(swPath, content);
-      } catch {
-        // SW file may not exist in test builds — skip silently
       }
     },
   };
@@ -98,7 +111,9 @@ export default defineConfig({
         // Entry point — not unit-testable in isolation
         "src/main.tsx",
       ],
-      reporter: ["text", "lcov"],
+      // json-summary feeds scripts/check-coverage-per-file.mjs, the per-file
+      // half of the UI floors below (the globs are aggregate-only).
+      reporter: ["text", "lcov", "json-summary"],
       thresholds: {
         // Services and hooks have complete unit test coverage
         "src/services/**": { lines: 100, functions: 100, branches: 100, statements: 100 },
@@ -106,7 +121,11 @@ export default defineConfig({
         // firebase.ts: App Check branches depend on runtime env vars (VITE_RECAPTCHA_SITE_KEY)
         // that cannot be set in Vitest's test environment — ~2 lines are legitimately untestable.
         "src/firebase.ts": { lines: 93, functions: 100, branches: 80, statements: 93 },
-        // UI coverage floors — enforces that component/screen coverage doesn't regress
+        // UI coverage floors — enforces that component/screen coverage doesn't regress.
+        // These are AGGREGATE floors: a single file can sit at 0% and still pass.
+        // The per-file rule lives in scripts/check-coverage-per-file.mjs (run by
+        // `npm run test:coverage`), because vitest's `perFile` is global and
+        // would trip on every pre-existing under-covered file at once.
         "src/components/**": { lines: 80, functions: 80, branches: 75, statements: 80 },
         "src/screens/**": { lines: 80, functions: 80, branches: 75, statements: 80 },
       },

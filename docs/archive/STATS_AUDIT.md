@@ -1,6 +1,12 @@
 # Player Stats Audit — Current State & Roadmap
 
-Status: **Tier 1 implemented 2026-07-26.** Original audit captured 2026-07-24. Companion to `IDEAS_PRO_SKATER_PRIZE.md` (trick difficulty/ratings depend on the Tier 2 aggregation below). Tier 2+ still needs maintainer sign-off on the CI allowlist scope.
+> **ARCHIVED 2026-08-26.** Historical audit only. The forward-looking Tier 2/3
+> roadmap and the architectural constraints that were in this file — including
+> the unmet maintainer sign-off gate on the CI allowlist scope — moved to
+> [`docs/STATS.md`](../STATS.md). The "deliberately not tracked" decision moved
+> to [`docs/DECISIONS.md`](../DECISIONS.md).
+
+Status: **Tier 1 implemented 2026-07-26.** Original audit captured 2026-07-24.
 
 ## Shipped since the original audit
 
@@ -33,7 +39,7 @@ Everything else surfaced as a "stat" is derived client-side per viewer from game
 ## Gaps found
 
 1. **Rich per-turn data captured but never aggregated.** Every game doc carries `turnHistory` (trick name, setter/matcher, landed, who took the letter, judge) — used only for clip replay today. This is the raw material for all trick-level stats.
-2. **UI already committed to stats that don't exist.** `WinStreakBanner` (needs `currentWinStreak`), `AchievementsRibbon` (placeholder), XP/level chip (hardcoded L1) — all noted "deferred until counters ship" in `PlayerProfileScreen/index.tsx`.
+2. **UI already committed to stats that don't exist.** `WinStreakBanner` (needs `currentWinStreak`), `AchievementsRibbon` (placeholder), XP/level chip (hardcoded L1) — all noted "deferred until counters ship" in `src/screens/PlayerProfileScreen/index.tsx`.
 3. **Achievements schema exists with no writer.** `users/{uid}/achievements` has correct owner-read/delete rules (`create/update: if false`) and deletion-cascade handling, but nothing writes achievements.
 4. **No-winner terminal games are uncounted.** `applyGameStats` returns `no-winner` without setting `statsApplied` — ties/anomalies tracked nowhere (acceptable, but by omission not decision).
 5. **Leaderboard sorts on raw win count** (`getLeaderboard` in `src/services/users.ts`) — 50-200 outranks 20-0. Fixing it needs more counters or a rating.
@@ -51,19 +57,3 @@ All incrementable inside the existing `applyGameStats` transaction; no new infra
 | `gamesPlayed`      | +1 both players (or derive wins+losses) | win-rate everywhere           | ✅ shipped                                    |
 | `forfeitLosses`    | +1 loser when status is `forfeit`       | distinguishes quit vs. beaten | ❌ rejected — public shame metric, see above  |
 | `lastGameAt`       | server timestamp both players           | activity/recency features     | ❌ rejected — public presence leak, see above |
-
-### Tier 2 — trick-level, folded out of `turnHistory` at close-out
-
-Same function, one pass over the history: tricks set, tricks landed as matcher, match success rate, letters given/taken, most-used trick. This is the on-ramp for the trick difficulty/ratings concept — once tricks carry difficulty scores, "average difficulty landed" comes from this same aggregation.
-
-### Tier 3 — derived
-
-XP/level (unblocks the level chip), server-written achievements (first win, 5-streak, 100 tricks landed) into the existing `achievements` subcollection, and a quality-aware leaderboard sort (win rate with a minimum-games floor, or a simple rating).
-
-## Architectural constraints
-
-- All writers land in `applyGameStats` — the one maintainer-approved Cloud Function — so no new client write paths open.
-- Every new counter name must be added to the owner-immutable `affectedKeys().hasAny([...])` backstop list in `firestore.rules`.
-- Idempotency comes free from the existing `statsApplied` guard.
-- Existing users need a one-time admin backfill (same playbook as the wins/losses backfill).
-- The CI allowlist approval (2026-07) was scoped to "stats close-out"; Tier 2/3 expansion of the function needs maintainer sign-off before implementation.

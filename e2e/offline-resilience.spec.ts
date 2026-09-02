@@ -7,8 +7,9 @@
  * and fires those events deterministically, so we don't need to tamper
  * with global mocks.
  *
- * Beyond the banner, this spec asserts that the cached UI shell (header,
- * "Your Games" heading) remains responsive while offline. The Firestore
+ * Beyond the banner, this spec asserts that the cached UI shell (the lobby
+ * itself — its empty-state heading and the bottom nav's current-page Home
+ * tab) remains responsive while offline. The Firestore
  * persistent cache (configured in `src/firebase.ts`) lets the lobby keep
  * rendering its last snapshot — a regression that yanks the UI on
  * disconnect would corrupt that contract.
@@ -16,6 +17,7 @@
 import { test, expect } from "@playwright/test";
 import { clearAll } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { expectOnLobby } from "./helpers/lobby-nav";
 
 const USER = { email: "offline@test.com", password: "password123", username: "offliner" };
 
@@ -49,14 +51,17 @@ test("lobby UI shell stays mounted while offline (cached snapshot)", async ({ pa
   await signUpAndSetupProfile(page, USER.email, USER.password, USER.username);
 
   // Capture a stable element from the cached lobby before the disconnect.
-  const heading = page.getByRole("heading", { name: "Your Games" });
+  // A fresh account has no games, so the lobby's empty state is the piece of
+  // shell that must survive the disconnect.
+  const heading = page.getByRole("heading", { name: "Ready to S.K.A.T.E.?" });
   await expect(heading).toBeVisible();
 
   await context.setOffline(true);
-  // Banner appears AND the cached heading is still in the DOM — a
-  // regression that unmounts the lobby on disconnect would fail this.
+  // Banner appears AND the cached lobby is still mounted — a regression that
+  // unmounts the lobby on disconnect would fail this.
   await expect(page.getByText(/You.?re offline/i)).toBeVisible({ timeout: 5_000 });
   await expect(heading).toBeVisible();
+  await expectOnLobby(page);
 
   await context.setOffline(false);
 });

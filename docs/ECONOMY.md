@@ -31,7 +31,7 @@ Some items are purchased. The best items are only obtainable by doing something 
 - Complete a kickflip challenge → unlock shoes
 - Win a regional competition → receive a numbered limited item
 
-**Engineering note.** Locker items are new — there is no existing collection to extend. Model them as `users/{uid}/locker/{itemId}`, mirroring the `users/{uid}/achievements/{achievementId}` pattern already in `firestore.rules`: **client read, server write only** (`allow create, update: if false`). Each document carries the item identity (type, brand, name, image) plus provenance — issuance timestamp, reason, and issuing event — because provenance _is_ the scarcity model. Awards are written by the same Admin-SDK path that maintains `users/{uid}` stat fields; a client that can mint its own gear has no economy.
+**Engineering note — already implemented.** `users/{uid}/locker/{itemId}` exists in `firestore.rules` with a fully pinned item shape (`type`, `brand`, `name`, `imageUrl`, `rarity`, `acquiredAt`, `provenance`; strings length-capped, `acquiredAt` server-stamped) and is served by `src/services/locker.ts` — it is not a collection still to be created. The posture is **`allow read: if isSignedIn()`** (equipped gear is public reputation, rendered on `/player/:uid`), **`allow create: if isAdmin()`**, `allow update: if false`, and `allow delete: if isOwner(uid) || isAdmin()`. Note that create is `isAdmin()`, not `if false` — an operator holding the `admin` custom claim can mint from a client, so **admin-claim custody is part of the economy's integrity model**. Each document carries the item identity (type, brand, name, image) plus provenance — issuance timestamp, reason, and issuing event — because provenance _is_ the scarcity model. Awards are written by the same Admin-SDK path that maintains `users/{uid}` stat fields; a client that can mint its own gear has no economy.
 
 ## Badges & Verification
 
@@ -59,7 +59,7 @@ Proposed launch set (names are placeholders). Every criterion below reads from f
 
 Time-locked badges (like OG) create real scarcity: an early SkateHubba badge means something five or ten years later because the system knows exactly when and why it was issued.
 
-**Engineering note.** `users/{uid}/achievements/{achievementId}` already exists in `firestore.rules` with exactly the right shape — owner-readable, owner-deletable, `create`/`update` denied to all clients. Badge awards go through the Admin SDK alongside the stats close-out that already maintains `wins`, `losses`, `gamesPlayed`, `currentWinStreak`, and `bestWinStreak`. Four of the five launch badges are a read of a counter that is already correct.
+**Engineering note.** `users/{uid}/achievements/{achievementId}` already exists in `firestore.rules` with exactly the right shape — readable by any signed-in user (badges are public reputation), owner- or admin-deletable, `update` denied outright, and `create` gated on `isAdmin()` with a pinned two-key shape (`earnedAt`, `reason`). Ordinary clients cannot mint; an admin-claim holder can. Badge awards go through the Admin SDK alongside the stats close-out that already maintains `wins`, `losses`, `gamesPlayed`, `currentWinStreak`, and `bestWinStreak`. Four of the five launch badges are a read of a counter that is already correct.
 
 Note the Pioneer criterion differs from earlier drafts: there is no check-in feature in this codebase. Spot engagement is measured through games linked to a spot (`games.spotId`, already populated by the challenge-from-spot flow), not check-ins.
 

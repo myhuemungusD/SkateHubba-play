@@ -1,22 +1,52 @@
 # Game State Machine
 
-This document formalizes the implicit state machine that governs every game
-of S.K.A.T.E. in SkateHubba. The source of truth lives in the Firestore
-`games` collection; transitions happen inside atomic Firestore transactions
-in `src/services/games.ts`.
+This document formalizes the state machine that governs every game of
+S.K.A.T.E. in SkateHubba. The source of truth is the Firestore `games`
+collection. Client transitions happen inside atomic Firestore transactions in
+`src/services/games.{create,match,judge,turns}.ts`; two phases are resolved
+**only** by a server-side cron (`api/cron/resolve-expired-disputes.ts`).
+
+> `src/services/games.ts` is a 22-line barrel re-export. It contains no logic —
+> do not read it looking for implementation. The module map is in §Modules.
 
 ---
 
 ## States
 
-| `status`   | `phase`      | Description                                                                          |
-| ---------- | ------------ | ------------------------------------------------------------------------------------ |
-| `active`   | `setting`    | Current setter must name & record a trick                                            |
-| `active`   | `matching`   | Matcher must attempt the trick (or "Call BS" on the set, if a judge is active)       |
-| `active`   | `setReview`  | Judge reviews the setter's video after a "Call BS" from the matcher (judge-only)     |
-| `active`   | `disputable` | Judge reviews matcher's "landed" claim (judge-only — honor games skip this entirely) |
-| `complete` | —            | A player reached 5 letters; winner is recorded                                       |
-| `forfeit`  | —            | Turn timer expired; opponent wins automatically                                      |
+`status` and `phase` are independent fields. `phase` is only meaningful while
+`status === "active"`.
+
+| `status`   | `phase`           | Description                                                                     |
+| ---------- | ----------------- | ------------------------------------------------------------------------------- |
+| `active`   | `setting`         | Current setter must name & record a trick                                       |
+| `active`   | `matching`        | Matcher must attempt the trick (or "Call BS" on the set, if a judge is active)  |
+| `active`   | `setReview`       | Judge reviews the setter's video after a "Call BS" (judge-only)                 |
+| `active`   | `disputable`      | Judge reviews the matcher's "landed" claim (judge-only)                         |
+| `active`   | `pendingReview`   | **Honor-system landed claim. Game is FROZEN** pending the setter's 24h decision |
+| `active`   | `communityReview` | **Setter disputed the claim. Game is FROZEN** pending a 24h community vote      |
+| `complete` | —                 | A player reached 5 letters; winner is recorded                                  |
+| `forfeit`  | —                 | Turn timer expired; opponent wins automatically                                 |
+
+Source of the union: `src/services/games.mappers.ts:27` (documented at `:12-26`).
+
+### The two frozen phases
+
+`pendingReview` and `communityReview` are **not** ordinary turn states. While a
+game sits in either one, `currentSetter`, `currentTurn`, `turnNumber`, and both
+letter counts are pinned — nothing advances.
+
+- **`pendingReview`** has exactly one client exit, and it is gated on the
+  **setter**, not the matcher: `firestore.rules:1459-1464` requires
+  `request.auth.uid == resource.data.currentSetter`. The matcher who made the
+  claim cannot resolve their own claim.
+- **`communityReview`** has **no client `allow update` branch anywhere in
+  `firestore.rules`**. The absence _is_ the enforcement — only the Admin SDK
+  referee can move a game out of it. This is invisible to grep; do not "helpfully"
+  add a branch for it.
+
+The turn-forfeit sweep deliberately skips both: `turnForfeit.shared.ts:146`
+returns null for them, and the cron's reminder pass filters them via
+`FROZEN_REVIEW_PHASES`. A frozen game can never be forfeited for inactivity.
 
 ### Judge status (game-level, independent of `phase`)
 
@@ -27,249 +57,241 @@ in `src/services/games.ts`.
 | `accepted`    | Judge accepted — `disputable` and `setReview` paths unlock             |
 | `declined`    | Judge declined — permanent honor system for this game                  |
 
-`isJudgeActive(game)` returns true only when `judgeStatus === "accepted"`.
+`isJudgeActive(game)` (`games.mappers.ts:152`) is true only when `judgeId` is set
+**and** `judgeStatus === "accepted"`. Everything else is the honor path.
 
 ---
 
 ## State Diagram
 
 ```
-                       createGame()
-                           │
-                           ▼
-                  ┌────────────────┐
-                  │ active:setting │◄──────────────────────────────┐
-                  └───────┬────────┘                               │
-                          │ setTrick()                             │
-                          ▼                                        │
-                 ┌─────────────────┐                               │
-                 │ active:matching │                               │
-                 └───────┬─────────┘                               │
-                         │                                         │
-        ┌────────────────┼───────────────────────────┐             │
-        │ callBs()       │ submitMatchAttempt()      │             │
-        │ (judge only)   │                           │             │
-        ▼                │                           │             │
-┌────────────────┐       ▼                           ▼             │
-│active:setReview│   landed=false                landed=true       │
-└───────┬────────┘   letters++ for matcher           │             │
-        │            (turn resolves)                 │             │
-        │ resolveSetReview()  letters>=5?            │             │
-        │ (judge)        ┌────┴────┐                 │             │
-        │              YES        NO                 │             │
-        │               │          └───►(setter keeps setting)─────┤
-        │               ▼                            │             │
-        │         ┌──────────┐                       │             │
-        │         │ complete │                       │             │
-        │         └──────────┘                       │             │
-        │                                            │             │
-        │       ┌────────────────┬───────────────────┘             │
-        │       │ judge active?  │                                 │
-        │     NO│                │YES                              │
-        │       ▼                ▼                                 │
-        │  roles swap     ┌──────────────────────┐                 │
-        │  immediately    │ active:disputable    │                 │
-        │  (honor system) └───────┬──────────────┘                 │
-        │       │                 │ judge reviews (24 h)           │
-        │       │                 │ resolveDispute()               │
-        │       │           ┌─────┴────────┐                       │
-        │       │         accept         dispute                   │
-        │       │       (or auto-accept) (judge overrules)         │
-        │       │           │              │                       │
-        │       │     roles swap     letters++ for matcher         │
-        │       │           │              │                       │
-        │       │           │       letters>=5?                    │
-        │       │           │       ┌──────┴──────┐                │
-        │       │           │     YES            NO                │
-        │       │           │       │             │                │
-        │       │           │       ▼     setter keeps setting     │
-        │       │           │ ┌──────────┐        │                │
-        │       │           │ │ complete │        │                │
-        │       │           │ └──────────┘        │                │
-        │       │           │                     │                │
-        │       └───────────┴─────────────────────┴────────────────┘
-        │  (set re-set / clean rulings route back to setting/matching)
-        └────────────────────────────────────────────────────────────
+                        createGame()
+                            │
+                            ▼
+                   ┌────────────────┐
+                   │ active:setting │◄──────────────────────────────┐
+                   └───────┬────────┘                               │
+                           │ setTrick()                             │
+                           ▼                                        │
+                  ┌─────────────────┐◄───── judge: "clean" ───┐     │
+             ┌───►│ active:matching │◄───── tie verdict ──────┤     │
+             │    └───────┬─────────┘                         │     │
+             │            │                                   │     │
+             │  callBS()  │  submitMatchAttempt()             │     │
+             │  (judge)   │                                   │     │
+             ▼            ├──── landed=false ─────────────────┼─────┤
+   ┌────────────────┐     │     matcher +1 letter             │     │
+   │active:setReview│     │     (5 letters → complete)        │     │
+   └───────┬────────┘     │                                   │     │
+           │              └──── landed=true ──┐               │     │
+           │ judgeRule()                      │               │     │
+           │  clean   → matching       judge active?          │     │
+           │  sketchy → setting        ┌──────┴───────┐       │     │
+           │  (24h)   → matching      NO             YES      │     │
+           └──────────────────┐        │              │       │     │
+                              │        ▼              ▼       │     │
+                              │ ┌──────────────┐ ┌──────────────┐   │
+                              │ │  FROZEN      │ │   active:    │   │
+                              │ │ pendingReview│ │  disputable  │   │
+                              │ └──────┬───────┘ └──────┬───────┘   │
+                              │        │                │           │
+                              │  setter decides   judge rules (24h) │
+                              │  within 24h       resolveDispute()  │
+                              │        │                │           │
+                    ┌─────────┴────┬───┴──────┐    ┌────┴─────┐     │
+                    │              │          │    │          │     │
+              acceptLanded()  raiseDispute()  │  accept    dispute  │
+              (setter only)   (setter only)   │  (or 24h    +1 to   │
+                    │              │       cron 24h auto-  matcher) │
+                    │              ▼       auto-accept)      │      │
+                    │      ┌──────────────┐   │       │      │      │
+                    │      │   FROZEN     │   │       │      │      │
+                    │      │communityReview│  │       │      │      │
+                    │      └──────┬───────┘   │       │      │      │
+                    │             │           │       │      │      │
+                    │      cron, after 24h vote window │      │      │
+                    │      ┌──────┼───────┬───────┐   │      │      │
+                    │    land   bail    tie     none  │      │      │
+                    │      │      │       │       │   │      │      │
+                    │      │      │       └───────┼───┼──────┼──►matching
+                    │      │      │               │   │      │      │
+                    └──────┴──────┴───────────────┴───┴──────┴──────┘
+                                  (roles swap, or setter keeps setting)
 
 
   setting/matching + turnDeadline expired
-              │
-              │ forfeitExpiredTurn()
+              │  forfeitExpiredTurn()  — client on game open, OR
+              │  api/cron/sweep-expired-turns.ts every 15 min
               ▼
         ┌──────────┐
         │ forfeit  │
         └──────────┘
 
-  disputable + turnDeadline expired (judge didn't rule)
-              │
-              │ forfeitExpiredTurn() → auto-accept
-              ▼
-        back to active:setting (matcher's call stands)
-
-  setReview + turnDeadline expired (judge didn't rule on Call BS)
-              │
-              │ forfeitExpiredTurn() → set stands
-              ▼
-        back to active:matching (matcher must attempt)
+  pendingReview / communityReview  →  NEVER forfeit (frozen, sweep skips them)
 ```
 
 ---
 
 ## Transitions
 
-### `createGame(challenger, opponent)`
+Each entry names the module that actually implements it.
 
-**File:** `src/services/games.ts` — `createGame()`
+### `createGame(...)` — `games.create.ts`
 
-- **Pre-condition:** Client-side 10 s cooldown; Firestore rules block self-challenge
-- **Writes:**
-  - `status: "active"`, `phase: "setting"`
-  - `currentTurn`: challenger UID, `currentSetter`: challenger UID
-  - `turnDeadline`: now + 24 h
-  - `turnNumber: 1`, both letter counts at 0
-- **Result state:** `active:setting`
+- **Pre-condition:** client-side cooldown; `firestore.rules:1162` enforces a
+  30-second server-side cooldown and blocks self-challenge
+- **Writes:** `status: "active"`, `phase: "setting"`, `currentTurn`/`currentSetter`
+  = challenger, `turnDeadline` = now + 24 h, `turnNumber: 1`, letters 0
+- **Result:** `active:setting`
 
-### `setTrick(gameId, trickName, videoUrl)`
+### `setTrick(gameId, trickName, videoUrl)` — `games.match.ts:16`
 
-**File:** `src/services/games.ts` — `setTrick()`
+- **Pre-conditions:** `status === "active"`, `phase === "setting"`
+- **Writes:** `phase: "matching"`, trick name + video, `currentTurn` → matcher,
+  fresh 24 h deadline
+- **Result:** `active:matching`
 
-- **Pre-conditions (validated inside transaction):**
-  - `status === "active"`
-  - `phase === "setting"`
-- **Writes:**
-  - `phase: "matching"`
-  - `currentTrickName`, `currentTrickVideoUrl` set
-  - `currentTurn` → matcher (opponent of current setter)
-  - `turnDeadline` → now + 24 h
-- **Result state:** `active:matching`
+### `failSetTrick(gameId)` — `games.match.ts:83`
 
-### `submitMatchAttempt(gameId, matchVideoUrl, landed)`
+Setter concedes they cannot land their own set. Next setter, `turnNumber++`.
 
-**File:** `src/services/games.ts` — `submitMatchAttempt()`
+- **Result:** `active:setting`
 
-- **Pre-conditions (validated inside transaction):**
-  - `status === "active"`
-  - `phase === "matching"`
+### `submitMatchAttempt(gameId, matchVideoUrl, landed)` — `games.match.ts:143`
 
-#### Path A — Matcher claims missed (`landed === false`)
+- **Pre-conditions:** `status === "active"`, `phase === "matching"`
 
-- Matcher gains 1 letter (`p1Letters++` or `p2Letters++`)
-- Turn resolves immediately: `phase: "setting"`, `turnNumber++`
-- Setter keeps setting (same `currentSetter`)
-- If letters === 5: `status: "complete"`, `winner` set
-- Turn recorded in `turnHistory`
-- **Result state:** `active:setting` or `complete`
+#### Path A — matcher claims missed (`landed === false`) — `:256`
 
-#### Path B — Matcher claims landed, no active judge (`landed === true`, honor system)
+- Matcher gains 1 letter; turn resolves immediately
+- `phase: "setting"`, `turnNumber++`, same `currentSetter`
+- At 5 letters: `status: "complete"`, `winner` set
+- **Result:** `active:setting` or `complete`
 
-- No letters awarded
-- Roles swap immediately — `currentSetter` → matcher
-- `phase: "setting"`, `turnNumber++`
-- Turn recorded in `turnHistory` with `landed: true`, `judgedBy: null`
-- **Result state:** `active:setting`
+#### Path B — matcher claims landed, **no active judge** — `:207`
 
-#### Path C — Matcher claims landed, judge accepted (`landed === true`, judge active)
+**This does not swap roles.** It freezes the game.
 
-- No letters awarded, no turn history recorded yet
-- `phase: "disputable"`, `matchVideoUrl` set, `judgeReviewFor` = matcher
-- `currentTurn` → `judgeId` (judge reviews — never the setter)
-- `turnDeadline` → now + 24 h
-- **Result state:** `active:disputable`
+- Writes **only** `phase: "pendingReview"`, `reviewFor` = matcher,
+  `reviewDeadline` = now + 24 h, `matchVideoUrl`, `updatedAt`
+- `currentSetter`, `currentTurn`, `turnNumber` and both letter counts are
+  deliberately left untouched
+- The landed clip and the "Trick Landed" notification are **deferred** until the
+  claim is actually accepted — a claim is not a landing yet
+- The setter is notified that a claim opened the review window
+- **Result:** `active:pendingReview` (frozen)
 
-### `callBSOnSetTrick(gameId)`
+#### Path C — matcher claims landed, **judge accepted** — `:167`
 
-**File:** `src/services/games.ts` — `callBSOnSetTrick()` _(judge-only path)_
+- `phase: "disputable"`, `judgeReviewFor` = matcher, `currentTurn` → `judgeId`,
+  fresh 24 h deadline
+- **Result:** `active:disputable`
 
-- **Pre-conditions:** `status === "active"`, `phase === "matching"`, judge active, caller is matcher
-- **Writes:** `phase: "setReview"`, `currentTurn` → `judgeId`, `judgeReviewFor` = setter, fresh deadline
-- **Result state:** `active:setReview`
+### `acceptLanded(gameId)` — `games.match.ts:388` · **setter only**
 
-### `judgeRuleSetTrick(gameId, clean)`
+The deferred honor swap, executed once the setter accepts.
 
-**File:** `src/services/games.ts` — `judgeRuleSetTrick()` _(judge-only)_
+- **Pre-conditions:** `phase === "pendingReview"`, caller is `currentSetter`
+  (`firestore.rules:1459-1530`)
+- **Writes:** roles swap (`currentSetter` → matcher), `phase: "setting"`,
+  `turnNumber++`, landed `TurnRecord` appended, clips written, "Trick Landed"
+  notification sent
+- **Result:** `active:setting`
 
-- **Pre-conditions:** `status === "active"`, `phase === "setReview"`, caller is `judgeId`
-- **Path A — clean (`clean === true`):** matcher must attempt → `phase: "matching"`, `currentTurn` → matcher
-- **Path B — sketchy (`clean === false`):** setter must re-set → `phase: "setting"`, `currentTurn` → setter, set video cleared
+### `raiseDispute(gameId)` — `disputes.raise.ts:93` · **setter only**
 
-### `resolveDispute(gameId, accept)`
+- **Pre-conditions:** `phase === "pendingReview"`, caller is `currentSetter`
+  (`firestore.rules:1538-1548`)
+- **Writes:** `phase: "communityReview"`, plus a new
+  `disputes/{gameId}_{turnNumber}` document with `status: "open"` and a 24 h
+  `reviewDeadline` (`firestore.rules:3033-3068`)
+- **Result:** `active:communityReview` (frozen — no client can move it further)
 
-**File:** `src/services/games.ts` — `resolveDispute()` _(judge-only)_
+### `callBSOnSetTrick(gameId)` — `games.judge.ts:24` · judge-active only
 
-- **Pre-conditions (validated inside transaction):**
-  - `status === "active"`
-  - `phase === "disputable"`
-  - Caller is the `judgeId` (the setter never self-judges — that was the point of inviting a third party)
+Matcher flags the setter's video before attempting.
 
-#### Path A — Accept (`accept === true`)
+- **Writes:** `phase: "setReview"`, `currentTurn` → `judgeId`, fresh deadline
+- **Result:** `active:setReview`
 
-- No letters awarded
-- `currentSetter` → matcher (roles swap — they landed, so they set next)
-- `phase: "setting"`, `turnNumber++`
-- Turn recorded in `turnHistory` with `landed: true`, `judgedBy: judgeId`
-- **Result state:** `active:setting`
+### `judgeRuleSetTrick(gameId, clean)` — `games.judge.ts:78` · judge only
 
-#### Path B — Dispute, no game over (`accept === false`, letters < 5)
+- **clean:** matcher must attempt → `active:matching`
+- **sketchy:** setter must re-set → `active:setting`, set video cleared
 
-- Matcher gains 1 letter (judge overrules the "landed" claim)
-- `currentSetter` stays the same (setter keeps setting)
-- `phase: "setting"`, `turnNumber++`
-- Turn recorded in `turnHistory` with `landed: false`, `judgedBy: judgeId`
-- **Result state:** `active:setting`
+### `resolveDispute(gameId, accept)` — `games.judge.ts:162` · judge only
 
-#### Path C — Dispute, game over (`accept === false`, letters === 5)
+- **Pre-conditions:** `phase === "disputable"`, caller is `judgeId`
+- **accept:** no letters, roles swap, `turnNumber++` → `active:setting`
+- **dispute:** matcher +1 letter, setter keeps setting → `active:setting`, or
+  `complete` at 5 letters
 
-- Matcher gains the 5th letter
-- `status: "complete"`, `winner` = opponent of the player with 5 letters
-- **Result state:** `complete`
+### `forfeitExpiredTurn(gameId)` — `games.turns.ts:93`
 
-### `acceptJudgeInvite(gameId)` / `declineJudgeInvite(gameId)`
+Called on game-screen mount when the deadline has passed, and independently by
+the server sweep. Decision logic is shared (`turnForfeit.shared.ts`) so the two
+paths cannot diverge.
 
-**File:** `src/services/games.ts`
+| Expired phase          | Outcome                                                     |
+| ---------------------- | ----------------------------------------------------------- |
+| `setting` / `matching` | `status: "forfeit"`, winner = opponent of `currentTurn`     |
+| `disputable`           | Auto-accept — matcher's call stands, roles swap → `setting` |
+| `setReview`            | Set stands (benefit of the doubt) → `matching`              |
+| `pendingReview`        | **Not handled here** — cron only (see below)                |
+| `communityReview`      | **Not handled here** — cron only (see below)                |
 
-- Pre-condition: caller is `judgeId`, `judgeStatus === "pending"`
-- Accept → `judgeStatus: "accepted"` (unlocks dispute + Call BS paths)
-- Decline → `judgeStatus: "declined"` (permanent honor system; `judgeId` preserved for history)
+---
 
-### `forfeitExpiredTurn(gameId)`
+## Server-resolved transitions (cron only)
 
-**File:** `src/services/games.ts` — `forfeitExpiredTurn()`
+`api/cron/resolve-expired-disputes.ts`, scheduled `*/15 * * * *` by
+`.github/workflows/resolve-expired-disputes.yml`. Bearer-`CRON_SECRET`
+authenticated, `MAX_PER_RUN = 100` per phase, idempotent, dry-run capable.
 
-#### Setting / matching phase expired
+### `pendingReview` + `reviewDeadline` lapsed
 
-- **Pre-conditions:** `status === "active"`, `phase` is `"setting"` or `"matching"`, deadline passed
-- **Writes:** `status: "forfeit"`, `winner` = opponent of `currentTurn`
-- **Result state:** `forfeit`
+The setter never decided. The claim **auto-accepts**: roles swap, `turnNumber++`,
+landed `TurnRecord` appended — identical to `acceptLanded`. No stat deltas are
+written for a silent expiry.
 
-#### Disputable phase expired (judge didn't rule → auto-accept)
+### `communityReview` + `reviewDeadline` lapsed
 
-- **Pre-conditions:** `status === "active"`, `phase === "disputable"`, deadline passed
-- **Writes:** matcher's "landed" call stands (no letters, roles swap), `phase: "setting"`, `turnNumber++`
-- Turn recorded in `turnHistory` with `landed: true`
-- **Result state:** `active:setting`
+The community vote is tallied and the verdict applied
+(`dispute.resolution.shared.ts:120-280`). **Quorum is one vote.**
 
-#### setReview phase expired (judge didn't rule on Call BS → set stands)
+| Verdict | Condition               | Outcome                                                             |
+| ------- | ----------------------- | ------------------------------------------------------------------- |
+| `land`  | `landVotes > bailVotes` | Claim stands — roles swap, `turnNumber++` → `setting`               |
+| `bail`  | `bailVotes > landVotes` | Matcher +1 letter, setter keeps setting → `setting` or `complete`   |
+| `tie`   | equal, both non-zero    | Retry — `phase: "matching"`, `matchVideoUrl` cleared, no TurnRecord |
+| `none`  | zero votes              | Auto-accept, same as `land`                                         |
 
-- **Pre-conditions:** `status === "active"`, `phase === "setReview"`, deadline passed
-- **Writes:** matcher must attempt — `phase: "matching"`, `currentTurn` → matcher, fresh deadline
-- **Result state:** `active:matching` (benefit of the doubt to the setter)
+The dispute document is then closed with `status: "closed"`, its `verdict`, and
+`resolutionApplied: true`. Community resolution also increments `tricksDisputed`
+on the claimer and `disputesRaised`/`disputesRight`/`disputesWrong` on the
+disputer.
 
-**Trigger:** Called on game-screen mount when deadline has passed
+---
+
+## Modules
+
+| Module                         | Owns                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------ |
+| `games.mappers.ts`             | types (`GameStatus`, `GamePhase`, `JudgeStatus`), `toGameDoc`, `isJudgeActive` |
+| `games.create.ts`              | `createGame`, `acceptJudgeInvite`, `declineJudgeInvite`                        |
+| `games.match.ts`               | `setTrick`, `failSetTrick`, `submitMatchAttempt`, `acceptLanded`               |
+| `games.judge.ts`               | `callBSOnSetTrick`, `judgeRuleSetTrick`, `resolveDispute`                      |
+| `games.turns.ts`               | `forfeitExpiredTurn`, client-side rate limits                                  |
+| `games.subscriptions.ts`       | `subscribeToGame`, `subscribeToMyGames`, `fetchPlayerCompletedGames`           |
+| `disputes.raise.ts`            | `raiseDispute` (pendingReview → communityReview)                               |
+| `dispute.resolution.shared.ts` | verdict classification + game/stat deltas, shared with the cron                |
 
 ---
 
 ## Client-Side Navigation States
 
-The `GameContext` (`src/context/GameContext.tsx`) maps game data into
-navigation screens. This is not part of the Firestore state machine but
-governs what the user sees:
-
-```
-Screen flow:
-  landing → auth → profile → lobby → challenge → game → gameover
-                                 ↑                         │
-                                 └─────────────────────────┘
-```
+`GameContext` (`src/context/GameContext.tsx`) maps game data into navigation
+screens. Not part of the Firestore state machine.
 
 | Condition                            | Screen      |
 | ------------------------------------ | ----------- |
@@ -284,25 +306,32 @@ Screen flow:
 
 ## Invariants
 
-These are always true for a valid game document:
-
 1. `p1Letters` and `p2Letters` are in range `[0, 5]`
 2. Letters never decrease
 3. Only one player gains a letter per turn
 4. `winner` is null while `status === "active"`
 5. `winner` is non-null when `status` is `"complete"` or `"forfeit"`
-6. `currentSetter` always equals `currentTurn` during the `setting` phase
+6. `currentSetter` equals `currentTurn` during the `setting` phase
 7. `turnNumber` increases monotonically (starts at 1)
-8. All state transitions happen inside Firestore transactions (no partial updates)
+8. **`turnNumber`, `currentSetter` and both letter counts never change while
+   `phase` is `pendingReview` or `communityReview`**
+9. All client state transitions happen inside Firestore transactions
 
 ---
 
-## Turn Deadline
+## Deadlines
 
-- Duration: 24 hours (`TURN_DURATION_MS`)
-- Reset on every phase transition (setTrick / submitMatchAttempt / resolveDispute)
-- Enforced client-side: `forfeitExpiredTurn()` is called when any player
-  opens a game whose deadline has passed
-- For setting/matching: expired deadline → forfeit (opponent wins)
-- For disputable: expired deadline → auto-accept (matcher's call stands, game continues)
-- Firestore security rules prevent fraudulent forfeit and auto-accept claims
+Two distinct 24-hour fields, both derived from `TURN_DURATION_MS`
+(`src/services/turnDuration.ts:10`). Do not conflate them.
+
+| Field            | Applies to                                       | Expiry handled by                                           |
+| ---------------- | ------------------------------------------------ | ----------------------------------------------------------- |
+| `turnDeadline`   | `setting`, `matching`, `setReview`, `disputable` | client on open, **and** `sweep-expired-turns` cron (15 min) |
+| `reviewDeadline` | `pendingReview`, `communityReview`               | `resolve-expired-disputes` cron **only** (15 min)           |
+
+Firestore rules independently validate every expiry-driven write, so a client
+cannot fabricate a forfeit or an auto-accept.
+
+> Both crons are scheduled by GitHub Actions, not Vercel — the Hobby plan caps
+> `vercel.json` crons at once per day. `schedule:` triggers are best-effort, so
+> a sweep can run late under GitHub platform load.

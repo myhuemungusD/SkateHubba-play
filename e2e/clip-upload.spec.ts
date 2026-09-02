@@ -34,7 +34,7 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { clearAll, createUser, createProfile, listGames, getCurrentTrickVideoUrl } from "./helpers/emulator";
 import { MEDIA_MOCK_SCRIPT } from "./helpers/media-mock";
-import { signUpVerifiedAndChallenge } from "./helpers/game-flow";
+import { relayBrowserErrors, signUpVerifiedAndChallenge } from "./helpers/game-flow";
 
 const P1 = { email: "p1@test.com", password: "password123", username: "p1skater" };
 const P2 = { email: "p2@test.com", password: "password123", username: "p2skater" };
@@ -55,6 +55,14 @@ test("setter records a clip → upload completes and download URL is persisted t
   // performs the first goto). The Storage upload itself is NOT mocked — it
   // hits the Storage emulator for real.
   await p1.addInitScript(MEDIA_MOCK_SCRIPT);
+  // Relay page-side errors into stdout: this spec's failure mode is a stalled
+  // upload or a rejected write, and only the browser knows which.
+  //
+  // The consent banner — which used to be pre-answered with a second
+  // addInitScript here because it sits over the recorder controls — is now
+  // seeded once by signUpViaUI/signInViaUI in helpers/auth-flow.ts, which
+  // signUpVerifiedAndChallenge below goes through. Same mechanism, one owner.
+  relayBrowserErrors(p1);
 
   // Sign up + verify P1, then challenge P2 → P1 becomes the setter in the
   // setting phase, landing on the "Name your trick" step.
@@ -63,16 +71,26 @@ test("setter records a clip → upload completes and download URL is persisted t
   // Name the trick (this reveals the recorder).
   await p1.getByPlaceholder("Name your trick").fill("Kickflip");
 
-  // Record and stop the fake clip (camera auto-opens for the setter).
+  // Record and stop the fake clip. The camera does not auto-open — the
+  // recorder only acquires a stream inside a user gesture — so the tap comes
+  // first; without it the Record button below never exists.
+  await p1.getByRole("button", { name: /Open Camera/i }).click();
   await p1.getByRole("button", { name: /Record.*Land Your Trick/i }).click();
   await p1.waitForTimeout(200);
   await p1.getByRole("button", { name: "Stop Recording" }).click();
-  await expect(p1.getByText("Recorded", { exact: false })).toBeVisible({ timeout: 5_000 });
+  // "✓ Recorded" exactly — a bare "Recorded" is a case-insensitive substring
+  // match that also hits "No video recorded …" copy elsewhere on the screen.
+  await expect(p1.getByText("✓ Recorded")).toBeVisible({ timeout: 5_000 });
 
   // (1) Confirm the trick was LANDED. This is the click game.spec.ts omits —
   // it is what triggers submitSetterTrick() → uploadVideo() → setTrick().
   // Without it the upload never runs and the phase never advances.
   await expect(p1.getByRole("button", { name: "✓ Landed" })).toBeVisible({ timeout: 5_000 });
+  // Wait out firestore.rules' 2 s turn-action cooldown — Playwright reaches
+  // this click ~1.8 s after game creation stamped updatedAt, and the submit
+  // is permission-denied inside the window (this test's "flaky" pass was the
+  // retry drifting past 2 s).
+  await p1.waitForTimeout(2_100);
   await p1.getByRole("button", { name: "✓ Landed" }).click();
 
   // (2) Upload + setTrick complete → game advances to the matching phase, so

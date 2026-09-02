@@ -78,9 +78,9 @@ A fixed per-listener `limit` is acceptable for the current scale. True cursor-ba
 
 ### Future work (not scheduled)
 
-- Add `startAfter` cursor support and a "Load more" button when game count approaches 50.
+- Add `startAfter` cursor support and a "Load more" button when game count approaches `limitCount` (currently 20).
 - Consider adding a Firestore composite index on `(playerXUid, updatedAt)` to support ordered pagination.
-- Optionally surface an in-app notice when the 50-game cap is reached.
+- Optionally surface an in-app notice when the per-slice cap is reached.
 
 ---
 
@@ -262,3 +262,22 @@ non-admin, anonymous is denied, and an admin cannot exceed any field guard
 (self-grant, ride-along `wins` edit, extra badge key, report reopen, verdict
 overwrite, back-dated timestamps). The pre-existing owner paths are
 regression-asserted in the same file.
+
+## DEC-007 — `forfeitLosses` and `lastGameAt` deliberately not tracked
+
+**Date:** 2026-07-26
+**Status:** Accepted
+**Category:** Product / Privacy
+
+### Context
+
+Both fields were proposed as Tier 1 player-stat counters (see `docs/STATS.md`).
+
+### Decision
+
+Neither is tracked. `forfeitLosses` and `lastGameAt` were both proposed in Tier 1 below and were **rejected**. `users/{uid}` is `allow read: if isSignedIn()`, so any field on that doc is readable by every signed-in account — declining to render it in the UI does not make it private. A public quit-counter is socially punitive, and a public last-active timestamp is an activity-pattern leak in an app that already ships blocking and reporting. If either is ever needed, it belongs in `users/{uid}/private/*`.
+
+### Consequences
+
+If either is ever needed, it belongs in `users/{uid}/private/*`, not on the
+publicly-readable `users/{uid}` document.

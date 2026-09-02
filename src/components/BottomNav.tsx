@@ -1,18 +1,27 @@
 import type { ReactNode } from "react";
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
 import { useNotifications } from "../context/NotificationContext";
-import { HomeIcon, MapPinIcon, UserIcon } from "./icons";
+import { FilmIcon, HomeIcon, MapPinIcon, SkateboardIcon, UserIcon } from "./icons";
 
 /** Screens where the persistent bottom nav is rendered. */
-const NAV_VISIBLE_ON: ReadonlySet<Screen> = new Set(["lobby", "map", "record", "player"]);
+const NAV_VISIBLE_ON: ReadonlySet<Screen> = new Set(["lobby", "feed", "challenge", "map", "me"]);
 
 interface NavItem {
   screen: Screen;
   label: string;
   Icon: (props: { size?: number; className?: string }) => ReactNode;
-  /** Paths that should render this tab as active (in addition to the item's own screen). */
-  matchPaths?: readonly string[];
+  /**
+   * Anchor id for the onboarding tour. Two steps point at tabs now that the
+   * lobby no longer carries its own challenge CTA — the tour auto-skips a
+   * step whose anchor is missing, so a stale id degrades the tour silently.
+   */
+  tutorialId?: string;
+  /**
+   * Renders as the raised centre action instead of a flat tab. Reserved for
+   * the single creation action in the app.
+   */
+  primary?: true;
 }
 
 // Each tab is a navigation destination with a stable URL, so render it as an
@@ -21,10 +30,16 @@ interface NavItem {
 // on at least one build; a direct `to={path}` makes that class of bug
 // impossible and also gives us native link affordances (right-click, copy
 // link, screen readers announcing as "link").
+//
+// The Me tab is active only on the "me" screen: /player/:uid is someone
+// else's profile — a pushed detail screen, not a tab destination — so no tab
+// claims it.
 const NAV_ITEMS: readonly NavItem[] = [
   { screen: "lobby", label: "Home", Icon: HomeIcon },
+  { screen: "feed", label: "Clips", Icon: FilmIcon },
+  { screen: "challenge", label: "Challenge", Icon: SkateboardIcon, primary: true, tutorialId: "challenge-cta" },
   { screen: "map", label: "Map", Icon: MapPinIcon },
-  { screen: "record", label: "Me", Icon: UserIcon, matchPaths: ["/record", "/player"] },
+  { screen: "me", label: "Me", Icon: UserIcon, tutorialId: "record-button" },
 ];
 
 /**
@@ -37,25 +52,18 @@ const NAV_ITEMS: readonly NavItem[] = [
  */
 export function BottomNav() {
   const nav = useNavigationContext();
-  const location = useLocation();
   // Unread state already lives in NotificationContext (the bell reads the same
   // value), so the badge is a read of shared state — no new state to lift.
   const { unreadCount } = useNotifications();
 
   if (!NAV_VISIBLE_ON.has(nav.screen)) return null;
 
-  const isActive = (item: NavItem): boolean => {
-    if (nav.screen === item.screen) return true;
-    if (!item.matchPaths) return false;
-    return item.matchPaths.some((p) => location.pathname === p || location.pathname.startsWith(`${p}/`));
-  };
-
   return (
     <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-safe">
       <div className="max-w-[430px] mx-auto glass rounded-2xl shadow-glass">
         <ul className="flex items-stretch justify-around px-2 py-2">
           {NAV_ITEMS.map((item) => {
-            const active = isActive(item);
+            const active = nav.screen === item.screen;
             const path = screenToPath(item.screen);
             // Badge only on Home, and only when the user is somewhere else —
             // the lobby header's bell already carries the count in place.
@@ -66,14 +74,23 @@ export function BottomNav() {
                   to={path}
                   aria-current={active ? "page" : undefined}
                   aria-label={badgeCount > 0 ? `${item.label} (${badgeCount} unread)` : item.label}
-                  data-tutorial={item.screen === "record" ? "record-button" : undefined}
-                  className={`group relative w-full flex flex-col items-center justify-center gap-1 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
+                  data-tutorial={item.tutorialId}
+                  className={`group relative w-full min-h-[44px] flex flex-col items-center justify-center gap-1 px-0.5 py-2 rounded-xl transition-all duration-300 ease-smooth focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange ${
                     active
                       ? "text-brand-orange"
                       : "text-faint hover:text-white hover:bg-white/[0.03] active:scale-[0.97]"
                   }`}
                 >
-                  <span className="relative inline-flex">
+                  <span
+                    className={
+                      item.primary
+                        ? // Raised filled disc: Challenge is the only creation
+                          // action in the app, so it carries the visual weight
+                          // of a FAB while staying a plain tab <Link>.
+                          "relative inline-flex items-center justify-center -mt-5 w-11 h-11 rounded-full bg-brand-orange text-white shadow-glow-sm ring-4 ring-background/80"
+                        : "relative inline-flex"
+                    }
+                  >
                     <item.Icon
                       size={22}
                       className={`transition-transform duration-300 ${active ? "scale-110" : "group-hover:-translate-y-0.5"}`}
@@ -87,7 +104,10 @@ export function BottomNav() {
                       </span>
                     )}
                   </span>
-                  <span className="font-display text-[10px] tracking-[0.15em] leading-none uppercase">
+                  {/* Tracking is tighter than the 0.15em used elsewhere purely
+                      so five labels (incl. "Challenge") fit a 320px viewport
+                      without wrapping. Font size is unchanged. */}
+                  <span className="font-display text-[10px] tracking-[0.05em] leading-none uppercase">
                     {item.label}
                   </span>
                   {active && (

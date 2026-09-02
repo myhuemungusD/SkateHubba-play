@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { activeGame, createMockHelpers } from "./smoke-helpers";
+import { activeGame, createMockHelpers, openGameFromLobby } from "./smoke-helpers";
 import type { GameDoc } from "../services/games";
 
 /* ── Hoisted mocks ──────────────────────────── */
@@ -57,6 +57,24 @@ function captureGameSub(initial: GameDoc): { pushUpdate: (g: GameDoc) => void } 
   return { pushUpdate: (g: GameDoc) => cb(g) };
 }
 
+/**
+ * Open a game from the lobby and land on the game-over screen.
+ *
+ * The lobby only lists active games now — a finished one collapses into the
+ * "N finished · W–L" roll-up — so the way a player actually meets game over is
+ * from inside the game: they open it and the live subscription delivers the
+ * completed doc (their own final move, or the opponent's, or the forfeit
+ * sweep). `lobbyGame` is what the lobby card is built from; `completed` is
+ * what the game subscription pushes.
+ */
+async function openGameThenComplete(completed: GameDoc, lobbyGame: GameDoc = activeGame()): Promise<void> {
+  const { pushUpdate } = captureGameSub(lobbyGame);
+  await openGameFromLobby();
+  await act(async () => {
+    pushUpdate(completed);
+  });
+}
+
 describe("Smoke: Game Over", () => {
   it("shows game over screen for a completed game (winner)", async () => {
     const game = activeGame({
@@ -65,10 +83,8 @@ describe("Smoke: Game Over", () => {
       p1Letters: 2,
       p2Letters: 5,
     });
-    await renderVerifiedLobby([game]);
-    withGameSub(game);
-
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await renderVerifiedLobby([activeGame()]);
+    await openGameThenComplete(game);
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -84,10 +100,8 @@ describe("Smoke: Game Over", () => {
       p1Letters: 5,
       p2Letters: 1,
     });
-    await renderLobby([game]);
-    withGameSub(game);
-
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await renderLobby([activeGame()]);
+    await openGameThenComplete(game);
 
     await waitFor(() => {
       expect(screen.getByText("S.K.A.T.E.")).toBeInTheDocument();
@@ -97,13 +111,12 @@ describe("Smoke: Game Over", () => {
 
   it("rematch from game over creates a new game", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
-    await renderVerifiedLobby([game]);
-    withGameSub(game);
+    await renderVerifiedLobby([activeGame()]);
     games.refs.createGame.mockResolvedValueOnce("game2");
     // Rematch sources the opponent handle from their authoritative profile.
     users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
 
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await openGameThenComplete(game);
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -121,10 +134,8 @@ describe("Smoke: Game Over", () => {
 
   it("back to lobby from game over returns to lobby", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
-    await renderLobby([game]);
-    withGameSub(game);
-
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await renderLobby([activeGame()]);
+    await openGameThenComplete(game);
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -133,7 +144,7 @@ describe("Smoke: Game Over", () => {
     await userEvent.click(screen.getByText("Back to Lobby"));
 
     await waitFor(() => {
-      expect(screen.getByText("Your Games")).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "YOUR TURN" })).toBeInTheDocument();
     });
   });
 
@@ -144,10 +155,8 @@ describe("Smoke: Game Over", () => {
       p1Letters: 1,
       p2Letters: 2,
     });
-    await renderLobby([game]);
-    withGameSub(game);
-
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await renderLobby([activeGame()]);
+    await openGameThenComplete(game);
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -162,10 +171,8 @@ describe("Smoke: Game Over", () => {
       p1Letters: 1,
       p2Letters: 2,
     });
-    await renderLobby([game]);
-    withGameSub(game);
-
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await renderLobby([activeGame()]);
+    await openGameThenComplete(game);
 
     await waitFor(() => {
       expect(screen.getByText("Forfeit")).toBeInTheDocument();
@@ -180,7 +187,7 @@ describe("Smoke: Game Over", () => {
     // First subscription returns active game, then sends a completed update
     const { pushUpdate } = captureGameSub(game);
 
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await openGameFromLobby();
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText("Name your trick")).toBeInTheDocument();
@@ -207,10 +214,9 @@ describe("Smoke: Game Over", () => {
     // Make createGame hang to show loading state
     games.refs.createGame.mockImplementation(() => new Promise(() => {}));
     users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
-    await renderVerifiedLobby([game]);
-    withGameSub(game);
+    await renderVerifiedLobby([activeGame()]);
 
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await openGameThenComplete(game);
 
     await waitFor(() => expect(screen.getByText("You Win")).toBeInTheDocument());
 
@@ -223,10 +229,8 @@ describe("Smoke: Game Over", () => {
 
   it("game over shows disabled rematch button when email not verified", async () => {
     const game = activeGame({ status: "complete", winner: "u1", p2Letters: 5 });
-    await renderLobby([game]); // renderLobby uses unverified user
-    withGameSub(game);
-
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await renderLobby([activeGame()]); // renderLobby uses unverified user
+    await openGameThenComplete(game);
 
     await waitFor(() => {
       expect(screen.getByText("You Win")).toBeInTheDocument();
@@ -239,10 +243,9 @@ describe("Smoke: Game Over", () => {
     const newGame = activeGame({ id: "game2" });
     games.refs.createGame.mockResolvedValueOnce("game2");
     users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
-    await renderVerifiedLobby([game]);
-    withGameSub(game);
+    await renderVerifiedLobby([activeGame()]);
 
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await openGameThenComplete(game);
     await waitFor(() => expect(screen.getByText("You Win")).toBeInTheDocument());
 
     withGameSub(newGame);
@@ -265,13 +268,18 @@ describe("Smoke: Game Over", () => {
     games.refs.createGame.mockResolvedValueOnce("rematch1");
     // Opponent (u1's rival) is player1 here; sourced from their authoritative profile.
     users.refs.getUserProfile.mockResolvedValueOnce({ uid: "u2", username: "rival" });
-    games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
-      cb(game);
-      return vi.fn();
+    // The viewer is player2 in this game; the lobby card is built from the
+    // same seating so the rematch has to flip the perspective either way.
+    const mirroredActive = activeGame({
+      player1Uid: "u2",
+      player2Uid: "u1",
+      player1Username: "rival",
+      player2Username: "sk8r",
+      currentTurn: "u1",
     });
-    await renderVerifiedLobby([game]);
+    await renderVerifiedLobby([mirroredActive]);
 
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await openGameThenComplete(game, mirroredActive);
     await waitFor(() => expect(screen.getByText(/Rematch/)).toBeInTheDocument());
 
     await userEvent.click(screen.getByText(/Rematch/));
@@ -292,7 +300,7 @@ describe("Smoke: Game Over", () => {
 
     const { pushUpdate } = captureGameSub(game);
 
-    await userEvent.click(await screen.findByRole("button", { name: /vs @rival/i }));
+    await openGameFromLobby();
 
     await waitFor(() => expect(screen.getByText(/Match.*Pop Shove/)).toBeInTheDocument());
 

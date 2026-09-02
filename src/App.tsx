@@ -9,7 +9,6 @@ import { NotificationProvider, useNotifications } from "./context/NotificationCo
 import { OnboardingProvider } from "./context/OnboardingContext";
 import { VerifyEmailBanner } from "./components/VerifyEmailBanner";
 import { useEmailVerifiedToast } from "./hooks/useEmailVerifiedToast";
-import { useNativeShell } from "./hooks/useNativeShell";
 import { TutorialOverlay } from "./components/onboarding/TutorialOverlay";
 import { getUidByUsername } from "./services/users";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -50,6 +49,7 @@ const TermsOfService = lazy(() => import("./screens/TermsOfService").then((m) =>
 const DataDeletion = lazy(() => import("./screens/DataDeletion").then((m) => ({ default: m.DataDeletion })));
 const NotFound = lazy(() => import("./screens/NotFound").then((m) => ({ default: m.NotFound })));
 const MapPage = lazy(() => import("./screens/MapPage").then((m) => ({ default: m.MapPage })));
+const FeedScreen = lazy(() => import("./screens/FeedScreen").then((m) => ({ default: m.FeedScreen })));
 const SpotDetailPage = lazy(() => import("./screens/SpotDetailPage").then((m) => ({ default: m.SpotDetailPage })));
 const Settings = lazy(() => import("./screens/Settings").then((m) => ({ default: m.Settings })));
 const MyStatsScreen = lazy(() => import("./screens/MyStatsScreen").then((m) => ({ default: m.MyStatsScreen })));
@@ -107,10 +107,6 @@ function AppEmailVerifyBanner() {
 function AppScreens() {
   const auth = useAuthContext();
   useEmailVerifiedToast(auth.user?.emailVerified);
-  // Capacitor shell wiring (status bar, Android back button, deep links).
-  // No-ops on web. Called before the loading early-return so the subscriptions
-  // are attached from first render, not after auth hydration.
-  useNativeShell();
 
   if (auth.loading) return <Spinner />;
 
@@ -382,14 +378,9 @@ function AppRoutes() {
                       setChallengeTarget("");
                       nav.setScreen("challenge");
                     }}
-                    onChallengeUser={(username: string) => {
-                      directChallenge(username);
-                    }}
                     onOpenGame={game.openGame}
                     onSignOut={auth.handleSignOut}
-                    onDeleteAccount={auth.handleDeleteAccount}
-                    onDownloadData={auth.handleDownloadData}
-                    onViewRecord={() => nav.setScreen("record")}
+                    onViewRecord={() => nav.setScreen("me")}
                     onOpenSettings={() => navigate("/settings")}
                     hasMoreGames={game.hasMoreGames}
                     onLoadMore={game.loadMoreGames}
@@ -510,7 +501,7 @@ function AppRoutes() {
             />
 
             <Route
-              path="/record"
+              path="/me"
               element={
                 auth.activeProfile ? (
                   <PlayerProfileScreen
@@ -531,6 +522,12 @@ function AppRoutes() {
                 )
               }
             />
+
+            {/* "Your record" moved from /record to /me: the screen id, path and
+                tab label are now one name ("me"), which /record's overlap with
+                video recording made impossible. Redirect so existing deep
+                links, shared URLs and installed PWA shortcuts still land. */}
+            <Route path="/record" element={<Navigate to="/me" replace />} />
 
             {/* Public: a shared profile link has to open for someone without
                 an account, or it can never bring them in. No auth guard here
@@ -575,7 +572,12 @@ function AppRoutes() {
               path="/settings"
               element={
                 auth.activeProfile ? (
-                  <Settings profile={auth.activeProfile} onBack={() => nav.setScreen("lobby")} />
+                  <Settings
+                    profile={auth.activeProfile}
+                    onBack={() => nav.setScreen("lobby")}
+                    onDownloadData={auth.handleDownloadData}
+                    onDeleteAccount={auth.handleDeleteAccount}
+                  />
                 ) : (
                   <Navigate to="/" replace />
                 )
@@ -591,7 +593,7 @@ function AppRoutes() {
               path="/my-stats"
               element={
                 auth.activeProfile ? (
-                  <MyStatsScreen profile={auth.activeProfile} onBack={() => nav.setScreen("record")} />
+                  <MyStatsScreen profile={auth.activeProfile} onBack={() => nav.setScreen("me")} />
                 ) : (
                   <Navigate to="/" replace />
                 )
@@ -606,9 +608,25 @@ function AppRoutes() {
               stashes the spot id before bouncing and restores it post-login. */}
             <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/" replace />} />
 
-            {/* /feed used to live as its own route + tab — it's now embedded in
-              the lobby. Redirect lingering deep-links so old shares still land. */}
-            <Route path="/feed" element={<Navigate to="/lobby" replace />} />
+            {/* Clips is its own tab again. Same auth guard as /lobby — the feed
+              reads clips as a signed-in viewer (upvotes, disputes, comments),
+              so a signed-out render has nothing to show. */}
+            <Route
+              path="/feed"
+              element={
+                auth.activeProfile ? (
+                  <FeedScreen
+                    profile={auth.activeProfile}
+                    onViewPlayer={nav.navigateToPlayer}
+                    onChallengeUser={(username: string) => {
+                      directChallenge(username);
+                    }}
+                  />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
 
             <Route
               path="/admin"
@@ -630,7 +648,7 @@ function AppRoutes() {
 
       {/* Every tab behind this nav is auth-gated. `/player/:uid` is now
           reachable signed-out, so without this check a visitor would get a
-          tab bar whose three destinations all bounce them straight back. */}
+          tab bar whose destinations all bounce them straight back. */}
       {auth.activeProfile && <BottomNav />}
       <ConsentBanner onNav={nav.setScreen} />
       {analyticsAllowed && (

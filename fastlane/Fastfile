@@ -3,7 +3,8 @@
 # Automates beta + production releases for iOS (TestFlight + App Store) and
 # Android (internal + closed + production tracks on Google Play). All lanes
 # read credentials from GitHub Actions secrets (see `.github/workflows/
-# fastlane-*.yml` once they're added) so nothing sensitive lives in the repo.
+# android-aab.yml`, which calls `android publish_internal`) so nothing
+# sensitive lives in the repo.
 #
 # Run a lane locally:
 #   bundle exec fastlane ios beta
@@ -48,13 +49,27 @@ platform :ios do
   lane :beta do
     certificates
     build_app(
-      # SPM-based Capacitor project — there is no CocoaPods workspace.
+      # The Capacitor iOS project uses SPM (CapApp-SPM), not CocoaPods —
+      # there is no .xcworkspace to build; the shared App scheme lives in
+      # App.xcodeproj/xcshareddata/xcschemes/App.xcscheme.
       project: "ios/App/App.xcodeproj",
       scheme: "App",
       configuration: "Release",
       clean: true,
       output_directory: "ios/build",
       export_method: "app-store",
+      # Release signs manually (see project.pbxproj): the team comes from the
+      # environment so no developer identity is hardcoded in the repo, and the
+      # profile is the match-managed App Store profile synced by :certificates.
+      # NOTE: the profile name below must stay in lockstep with
+      # PROVISIONING_PROFILE_SPECIFIER in ios/App/App.xcodeproj/project.pbxproj.
+      xcargs: "DEVELOPMENT_TEAM=#{ENV['APPLE_TEAM_ID'] || UI.user_error!('APPLE_TEAM_ID env var is required for manual signing')}",
+      export_team_id: ENV["APPLE_TEAM_ID"],
+      export_options: {
+        provisioningProfiles: {
+          "com.skatehubba.app" => "match AppStore com.skatehubba.app",
+        },
+      },
       # Required by App Store Connect to dedupe submissions for the same
       # marketing version — CI increments from the package.json value.
       include_bitcode: false,
@@ -69,6 +84,12 @@ platform :ios do
   desc "Submit the latest TestFlight build for App Store review"
   lane :release do
     deliver(
+      # Versioned listing copy lives in fastlane/metadata/ (the android/
+      # subfolder inside it belongs to supply, not deliver — deliver only
+      # reads locale folders like en-US/). No screenshots are versioned yet,
+      # so skip that surface entirely instead of wiping the store's set.
+      metadata_path: "fastlane/metadata",
+      skip_screenshots: true,
       submit_for_review: true,
       automatic_release: true,
       force: true,  # skip interactive confirmation
@@ -87,17 +108,64 @@ end
 # Android
 # ──────────────────────────────────────────────────────────────────────────
 platform :android do
+  # Release signing config, shared by every lane that runs Gradle. The same
+  # four values drive android/app/build.gradle's signingConfigs block (via
+  # keystore.properties or these env vars) AND the CI workflow's
+  # `-Pandroid.injected.signing.*` overrides — one keystore, three entry
+  # points, identical signatures.
+  def signing_properties
+    keys = %w[KEYSTORE_FILE KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD]
+    set = keys.select { |k| ENV[k].to_s.length.positive? }
+    # No env vars at all → fall through to android/keystore.properties, which
+    # build.gradle's signingConfigs block picks up on its own. build.gradle
+    # carries an explicit guard that fails bundleRelease when neither source
+    # is configured (AGP would otherwise emit an unsigned AAB silently).
+    return {} if set.empty?
+    missing = keys - set
+    unless missing.empty?
+      UI.user_error!("Partial Android signing env: missing #{missing.join(', ')} " \
+                     "(set all four of #{keys.join(', ')}, or none and use android/keystore.properties)")
+    end
+    {
+      "android.injected.signing.store.file" => File.expand_path(ENV["KEYSTORE_FILE"]),
+      "android.injected.signing.store.password" => ENV["KEYSTORE_PASSWORD"],
+      "android.injected.signing.key.alias" => ENV["KEY_ALIAS"],
+      "android.injected.signing.key.password" => ENV["KEY_PASSWORD"],
+    }
+  end
+
   desc "Build + upload an AAB to Google Play Internal Testing"
   lane :internal do
     gradle(
       task: "bundle",
       build_type: "Release",
       project_dir: "android/",
+      properties: signing_properties,
     )
     upload_to_play_store(
       track: "internal",
       aab: "android/app/build/outputs/bundle/release/app-release.aab",
       json_key_data: ENV["GOOGLE_PLAY_SERVICE_ACCOUNT_JSON"],
+      # Deliberate asymmetry with the promote lanes below: lanes that upload
+      # a NEW artifact also upload its changelog (fastlane/metadata/android/
+      # en-US/changelogs/); promotions reuse the changelog already attached.
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+    )
+  end
+
+  desc "Upload an ALREADY-BUILT AAB to the internal track (no Gradle run). " \
+       "Used by CI, which builds + signs the AAB itself; pass AAB_PATH to override."
+  lane :publish_internal do
+    aab_path = ENV["AAB_PATH"] || "android/app/build/outputs/bundle/release/app-release.aab"
+    UI.user_error!("AAB not found at #{aab_path} — build it first (gradlew bundleRelease).") unless File.exist?(aab_path)
+    upload_to_play_store(
+      track: "internal",
+      aab: aab_path,
+      json_key_data: ENV["GOOGLE_PLAY_SERVICE_ACCOUNT_JSON"],
+      # Same changelog policy as :internal — new artifact, so its changelog
+      # (fastlane/metadata/android/en-US/changelogs/) uploads with it.
       skip_upload_metadata: true,
       skip_upload_images: true,
       skip_upload_screenshots: true,
