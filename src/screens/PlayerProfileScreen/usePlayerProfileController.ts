@@ -35,7 +35,7 @@ export type MatchResult = "W" | "L";
  * an empty run — the same "absent means zero" convention every other counter
  * on this screen follows.
  */
-export function narrowRecentResults(raw: string[] | undefined): MatchResult[] {
+function narrowRecentResults(raw: string[] | undefined): MatchResult[] {
   if (!Array.isArray(raw)) return [];
   return raw.filter((v): v is MatchResult => v === "W" || v === "L");
 }

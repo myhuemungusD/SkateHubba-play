@@ -78,7 +78,7 @@ export function coerceVoteCount(raw: unknown): number {
  * missing (dispute still open), a legacy literal, or a corrupted value — reads
  * as undefined so consumers only ever see a ruling they can render.
  */
-export function coerceVerdict(raw: unknown): DisputeOutcome | undefined {
+function coerceVerdict(raw: unknown): DisputeOutcome | undefined {
   return raw === "land" || raw === "bail" || raw === "tie" || raw === "none" ? raw : undefined;
 }
 

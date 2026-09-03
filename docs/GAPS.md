@@ -149,7 +149,7 @@ The report/ban infrastructure is above-average as abuse tooling (`reports.ts`, `
 
 ### P2-7 · Missing e2e coverage on high-risk flows
 
-No e2e for: third-party judging, community dispute→verdict→tally, user-clip upload + downvote, admin ban/unban/award, **account deletion** (irreversible cascade). All have unit tests but no browser-level test. Also: `e2e/onboarding.spec.ts:131` is a permanent `test.fixme`; `e2e/helpers/__tests__/firestore-read.test.ts` is wired to no npm script or CI step (dead tests).
+No e2e for: third-party judging, community dispute→verdict→tally, user-clip upload + downvote, admin ban/unban/award, **account deletion** (irreversible cascade). All have unit tests but no browser-level test. Also: `e2e/onboarding.spec.ts:131` is a permanent `test.fixme`.
 
 ### P2-8 · Controller hooks escape the 100% hook coverage rule
 

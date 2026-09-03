@@ -14,12 +14,11 @@ export interface UploadProgress {
 /**
  * Minimum upload size (1 KB) — must match storage.rules.
  *
- * Defined in `src/constants/video.ts` and re-exported here so the capture path
- * can share it without importing this module (which would pull the Firebase SDK
- * into the recorder). Re-exported rather than redeclared so the uploader and the
- * recorder can never drift apart.
+ * Defined in `src/constants/video.ts` so the capture path can share it without
+ * importing this module (which would pull the Firebase SDK into the recorder).
+ * Imported rather than redeclared so the uploader and the recorder can never
+ * drift apart.
  */
-export { MIN_UPLOAD_BYTES, MAX_UPLOAD_BYTES } from "../constants/video";
 import { MIN_UPLOAD_BYTES, MAX_UPLOAD_BYTES } from "../constants/video";
 /**
  * Base delay for exponential backoff on upload retries.
@@ -63,7 +62,7 @@ interface UploadShape {
  * `.type` already matches the decision, we return the original blob unchanged
  * to avoid needless re-wrapping.
  */
-export function classifyVideoBlob(blob: Blob): UploadShape {
+function classifyVideoBlob(blob: Blob): UploadShape {
   const type = blob.type;
 
   let ext: "mp4" | "webm";

@@ -2,7 +2,7 @@ import { useCallback, type FocusEvent, type KeyboardEvent } from "react";
 import type { GameDoc } from "../../services/games";
 import type { UserProfile } from "../../services/users";
 
-export function isGameExpired(g: GameDoc): boolean {
+function isGameExpired(g: GameDoc): boolean {
   const deadline = g.turnDeadline?.toMillis?.() ?? 0;
   return deadline > 0 && deadline <= Date.now();
 }
