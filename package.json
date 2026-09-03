@@ -94,7 +94,8 @@
     "tmp": "^0.2.6",
     "brace-expansion": "^5.0.9",
     "minimatch": "^10.1.1",
-    "re2": "^1.25.2"
+    "re2": "^1.25.2",
+    "qs": "^6.16.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.2.0",
