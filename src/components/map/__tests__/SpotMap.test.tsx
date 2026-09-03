@@ -339,7 +339,7 @@ describe("SpotMap", () => {
       const searchbox = await screen.findByRole("searchbox", { name: /search spots/i });
       await userEvent.click(searchbox);
 
-      const option = await screen.findByRole("option", { name: /test hubba/i });
+      const option = await screen.findByRole("button", { name: /test hubba/i });
       expect(option).toHaveTextContent("420 m");
       expect(mockGetSpotsNearby).toHaveBeenCalledWith({ lat: 34.0522, lng: -118.2437 });
 
@@ -347,7 +347,7 @@ describe("SpotMap", () => {
       await userEvent.click(option);
 
       expect(fakeFlyTo).toHaveBeenCalledWith({ center: [FIXTURE.longitude, FIXTURE.latitude], zoom: 16 });
-      expect(screen.queryByRole("listbox")).toBeNull();
+      expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
       // Picking a spot hands the recenter button back to manual mode.
       expect(screen.getByRole("button", { name: /recenter to my location/i })).toBeInTheDocument();
       expect(screen.getByText("Test Hubba")).toBeInTheDocument();

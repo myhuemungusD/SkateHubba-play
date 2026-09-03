@@ -151,4 +151,86 @@ describe("useNearbySpots", () => {
     rerender({ on: false });
     expect(result.current.status).toBe("idle");
   });
+
+  it("reopening the dropdown in place reuses the cached list without a second read", async () => {
+    mockGetSpotsNearby.mockResolvedValueOnce([makeNearby("a", 0.2)]);
+    const { result, rerender } = renderHook(({ on }) => useNearbySpots(LA, on), {
+      initialProps: { on: true },
+    });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    rerender({ on: false });
+    rerender({ on: true });
+    expect(result.current.status).toBe("ready");
+    expect(result.current.spots.map((s) => s.id)).toEqual(["a"]);
+    expect(mockGetSpotsNearby).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries after a failure on the next GPS tick, and stops after three consecutive failures", async () => {
+    mockGetSpotsNearby.mockRejectedValue(new Error("offline"));
+    const { result, rerender } = renderHook(({ loc }) => useNearbySpots(loc, true), {
+      initialProps: { loc: LA },
+    });
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(mockGetSpotsNearby).toHaveBeenCalledTimes(1);
+
+    // Tick 2 (new object, same place) → retry.
+    rerender({ loc: { ...LA } });
+    expect(result.current.status).toBe("loading");
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    expect(mockGetSpotsNearby).toHaveBeenCalledTimes(2);
+
+    // Tick 3 → last allowed retry.
+    rerender({ loc: { ...LA } });
+    await waitFor(() => expect(mockGetSpotsNearby).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(result.current.status).toBe("error"));
+
+    // Ticks 4 and 5 → capped, no more reads while this open lasts.
+    rerender({ loc: { ...LA } });
+    rerender({ loc: { ...LA } });
+    expect(result.current.status).toBe("error");
+    expect(mockGetSpotsNearby).toHaveBeenCalledTimes(3);
+  });
+
+  it("clears a failed result on close so a stationary device can retry on reopen", async () => {
+    mockGetSpotsNearby.mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce([makeNearby("a", 0.2)]);
+    const { result, rerender } = renderHook(({ on }) => useNearbySpots(LA, on), {
+      initialProps: { on: true },
+    });
+    await waitFor(() => expect(result.current.status).toBe("error"));
+
+    rerender({ on: false });
+    expect(result.current.status).toBe("idle");
+
+    // Same GPS object, no new tick — reopen alone must trigger the retry.
+    rerender({ on: true });
+    expect(result.current.status).toBe("loading");
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+    expect(mockGetSpotsNearby).toHaveBeenCalledTimes(2);
+  });
+
+  it("a success after failures resets the failure count", async () => {
+    mockGetSpotsNearby
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce([makeNearby("a", 0.2)])
+      .mockRejectedValue(new Error("offline"));
+    const { result, rerender } = renderHook(({ loc }) => useNearbySpots(loc, true), {
+      initialProps: { loc: LA },
+    });
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    rerender({ loc: { ...LA } });
+    await waitFor(() => expect(result.current.status).toBe("ready"));
+
+    // Move > 250 m so the cached success goes stale; three fresh failures
+    // are allowed again before the cap bites.
+    const far = { lat: LA.lat + 0.01, lng: LA.lng };
+    rerender({ loc: far });
+    await waitFor(() => expect(result.current.status).toBe("error"));
+    rerender({ loc: { ...far } });
+    await waitFor(() => expect(mockGetSpotsNearby).toHaveBeenCalledTimes(4));
+    rerender({ loc: { ...far } });
+    await waitFor(() => expect(mockGetSpotsNearby).toHaveBeenCalledTimes(5));
+    rerender({ loc: { ...far } });
+    expect(mockGetSpotsNearby).toHaveBeenCalledTimes(5);
+  });
 });

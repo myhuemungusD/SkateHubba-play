@@ -47,6 +47,11 @@ describe("NearbySpotsList", () => {
     expect(screen.getByRole("status")).toHaveTextContent(/no spots within 10 km/i);
   });
 
+  it("explains when filters hide every nearby spot", () => {
+    render(<NearbySpotsList status="ready" spots={[]} hiddenByFilters radiusKm={10} onSelect={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent(/hidden by your filters/i);
+  });
+
   it("lists spots with distance, a verified badge, and the first three obstacles", () => {
     const spots = [
       makeNearby(),
@@ -60,7 +65,8 @@ describe("NearbySpotsList", () => {
     ];
     render(<NearbySpotsList status="ready" spots={spots} radiusKm={10} onSelect={vi.fn()} />);
 
-    const options = screen.getAllByRole("option");
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
+    const options = screen.getAllByRole("button");
     expect(options).toHaveLength(2);
     expect(options[0]).toHaveTextContent("Hollenbeck Hubba");
     expect(options[0]).toHaveTextContent("350 m");
@@ -74,7 +80,7 @@ describe("NearbySpotsList", () => {
     const onSelect = vi.fn();
     const spot = makeNearby();
     render(<NearbySpotsList status="ready" spots={[spot]} radiusKm={10} onSelect={onSelect} />);
-    await userEvent.click(screen.getByRole("option", { name: /hollenbeck/i }));
+    await userEvent.click(screen.getByRole("button", { name: /hollenbeck/i }));
     expect(onSelect).toHaveBeenCalledWith(spot);
   });
 });

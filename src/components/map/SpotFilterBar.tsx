@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Search, SlidersHorizontal, X, BadgeCheck } from "lucide-react";
 import type { Spot, ObstacleType } from "../../types/spot";
 import { NEARBY_RADIUS_KM, type NearbySpot } from "../../services/spots";
@@ -56,7 +56,7 @@ const FILTERABLE_OBSTACLES: readonly ObstacleType[] = [
  * Pure filter — exported so tests (and any future list view) can exercise the
  * exact same logic the map uses to decide which markers to render.
  */
-export function applySpotFilters(spots: Spot[], f: SpotFilters): Spot[] {
+export function applySpotFilters<T extends Spot>(spots: T[], f: SpotFilters): T[] {
   const q = f.query.trim().toLowerCase();
   const hasObstacleFilter = f.obstacles.length > 0;
   return spots.filter((s) => {
@@ -105,6 +105,10 @@ export function SpotFilterBar({
   const isFiltering = active > 0 || filters.query.trim().length > 0;
   const showNearby = searchFocused && !expanded && filters.query.trim().length === 0;
   const nearby = useNearbySpots(userLocation, showNearby);
+  // The dropdown honours the same chip filters as the markers, otherwise a
+  // "Verified only" user could pick an unverified row and land on a card
+  // with no pin under it.
+  const nearbySpots = useMemo(() => applySpotFilters(nearby.spots, filters), [nearby.spots, filters]);
 
   const toggleObstacle = useCallback(
     (o: ObstacleType) => {
@@ -137,16 +141,25 @@ export function SpotFilterBar({
   // unintentional modal trap).
   useEffect(() => {
     if (!expanded && !searchFocused) return;
-    const handler = (e: MouseEvent) => {
+    const handler = (e: Event) => {
       const target = e.target as Node | null;
       if (panelRef.current && target && !panelRef.current.contains(target)) {
         setExpanded(false);
         setSearchFocused(false);
+        // Drop DOM focus too, otherwise the next tap on the (still focused)
+        // input fires no focus event and the list can't reopen.
+        inputRef.current?.blur();
       }
     };
     // Capture phase so we see the tap before map/marker handlers eat it.
+    // Mapbox preventDefaults touch gestures on the canvas, which suppresses
+    // the synthesized mousedown — listen to touchstart too.
     document.addEventListener("mousedown", handler, true);
-    return () => document.removeEventListener("mousedown", handler, true);
+    document.addEventListener("touchstart", handler, true);
+    return () => {
+      document.removeEventListener("mousedown", handler, true);
+      document.removeEventListener("touchstart", handler, true);
+    };
   }, [expanded, searchFocused]);
 
   return (
@@ -165,9 +178,7 @@ export function SpotFilterBar({
               if (e.key === "Escape") closeNearby();
             }}
             placeholder="Search spots or find nearby"
-            aria-label="Search spots in current map view"
-            aria-expanded={showNearby}
-            aria-controls="nearby-spots-list"
+            aria-label="Search spots in view or find spots near you"
             className="flex-1 min-w-0 bg-transparent text-base text-white placeholder:text-faint focus:outline-none"
           />
           {filters.query.length > 0 && (
@@ -206,14 +217,13 @@ export function SpotFilterBar({
 
       {/* Nearby dropdown — search box focused with nothing typed. */}
       {showNearby && (
-        <div id="nearby-spots-list">
-          <NearbySpotsList
-            status={nearby.status}
-            spots={nearby.spots}
-            radiusKm={NEARBY_RADIUS_KM}
-            onSelect={selectNearby}
-          />
-        </div>
+        <NearbySpotsList
+          status={nearby.status}
+          spots={nearbySpots}
+          hiddenByFilters={nearby.spots.length > 0 && nearbySpots.length === 0}
+          radiusKm={NEARBY_RADIUS_KM}
+          onSelect={selectNearby}
+        />
       )}
 
       {/* Result counter — only when a filter or query is active, so the resting

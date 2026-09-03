@@ -94,6 +94,7 @@ import {
   _resetCreateSpotRateLimit,
 } from "../spots";
 import type { CreateSpotRequest } from "../../types/spot";
+import { boundsAroundPoint } from "../../utils/geo";
 
 const VALID_ID = "11111111-2222-3333-4444-555555555555";
 const OTHER_ID = "22222222-3333-4444-5555-666666666666";
@@ -529,8 +530,9 @@ describe("getSpotsNearby", () => {
     const whereCalls = mockWhere.mock.calls;
     const south = whereCalls.find((c) => c[0] === "latitude" && c[1] === ">=")?.[2] as number;
     const north = whereCalls.find((c) => c[0] === "latitude" && c[1] === "<=")?.[2] as number;
-    expect(south).toBeCloseTo(center.lat - 10 / 111.32, 5);
-    expect(north).toBeCloseTo(center.lat + 10 / 111.32, 5);
+    const expected = boundsAroundPoint(center, 10);
+    expect(south).toBe(expected.south);
+    expect(north).toBe(expected.north);
     expect(spots.map((s) => s.id)).toEqual(["here"]);
   });
 

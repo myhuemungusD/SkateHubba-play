@@ -410,8 +410,16 @@ export interface NearbySpot extends Spot {
  *
  * Reuses the bounds query (and its existing composite index) by wrapping the
  * radius in a bounding box, then trims the box corners with a haversine
- * check client-side. A 10 km radius is a ~0.18° box, so the 500-doc cap on
- * the underlying query is not a practical concern.
+ * check client-side.
+ *
+ * Scaling caveat, inherited from `getSpotsInBounds`: only latitude is bounded
+ * server-side, so the Firestore query is a worldwide latitude band (~0.18°
+ * tall for 10 km), longitude is filtered after the fact, and the 500-doc cap
+ * applies to that band ordered south→north. Once more than 500 active spots
+ * exist in the same band anywhere on Earth, the user's own nearby spots can
+ * fall outside the returned page. That is the trigger for the geohash
+ * migration noted in the module header; it is not a concern at current data
+ * volumes.
  */
 export async function getSpotsNearby(
   center: LatLng,

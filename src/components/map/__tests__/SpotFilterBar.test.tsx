@@ -292,7 +292,7 @@ describe("SpotFilterBar", () => {
   it("keeps the nearby list closed until the search box is focused", () => {
     render(<ControlledHost />);
     expect(screen.queryByTestId("nearby-status")).toBeNull();
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
     // Hook is still mounted but told to stay disabled.
     expect(mockUseNearbySpots).toHaveBeenLastCalledWith(null, false);
   });
@@ -304,7 +304,6 @@ describe("SpotFilterBar", () => {
     await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
     expect(mockUseNearbySpots).toHaveBeenLastCalledWith(loc, true);
     expect(screen.getByTestId("nearby-status")).toBeInTheDocument();
-    expect(screen.getByRole("searchbox", { name: /search spots/i })).toHaveAttribute("aria-expanded", "true");
   });
 
   it("hides the nearby list once the user starts typing a query", async () => {
@@ -312,14 +311,14 @@ describe("SpotFilterBar", () => {
     render(<ControlledHost />);
     const box = screen.getByRole("searchbox", { name: /search spots/i });
     await userEvent.click(box);
-    expect(screen.getByRole("listbox", { name: /spots near you/i })).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
 
     await userEvent.type(box, "h");
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
     expect(mockUseNearbySpots).toHaveBeenLastCalledWith(null, false);
   });
 
-  it("closes the nearby list on Escape and when the user taps outside", async () => {
+  it("closes the nearby list on Escape, on an outside mousedown, and on an outside touch", async () => {
     stubNearby("ready", [makeNearby()]);
     render(
       <div>
@@ -330,25 +329,58 @@ describe("SpotFilterBar", () => {
     const box = screen.getByRole("searchbox", { name: /search spots/i });
 
     await userEvent.click(box);
-    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
     await userEvent.keyboard("{Escape}");
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
 
     await userEvent.click(box);
-    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
     fireEvent.mouseDown(screen.getByTestId("outside"));
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+
+    // Mapbox preventDefaults canvas touches, which suppresses the synthesized
+    // mousedown — the bar must also listen for the raw touchstart.
+    await userEvent.click(box);
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
+    fireEvent.touchStart(screen.getByTestId("outside"));
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+  });
+
+  it("runs the nearby list through the active chip filters", async () => {
+    const verified = makeNearby({
+      id: "00000000-0000-0000-0000-00000000000a",
+      name: "Verified Ledge",
+      isVerified: true,
+    });
+    const unverified = makeNearby({
+      id: "00000000-0000-0000-0000-00000000000b",
+      name: "Sketchy Rail",
+      isVerified: false,
+    });
+    stubNearby("ready", [unverified, verified]);
+    render(<ControlledHost initial={{ ...DEFAULT_SPOT_FILTERS, verifiedOnly: true }} />);
+    await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
+
+    expect(screen.getByRole("button", { name: /verified ledge/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sketchy rail/i })).toBeNull();
+  });
+
+  it("explains an empty nearby list that is empty only because of filters", async () => {
+    stubNearby("ready", [makeNearby({ isVerified: false })]);
+    render(<ControlledHost initial={{ ...DEFAULT_SPOT_FILTERS, verifiedOnly: true }} />);
+    await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
+    expect(screen.getByTestId("nearby-status")).toHaveTextContent(/hidden by your filters/i);
   });
 
   it("yields to the filter panel so the two dropdowns never stack", async () => {
     stubNearby("ready", [makeNearby()]);
     render(<ControlledHost />);
     await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
-    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: /filters/i }));
     expect(screen.getByRole("region", { name: /spot filters/i })).toBeInTheDocument();
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
   });
 
   it("reports the tapped nearby spot and closes the list", async () => {
@@ -357,16 +389,16 @@ describe("SpotFilterBar", () => {
     const onSelectNearby = vi.fn();
     render(<ControlledHost onSelectNearby={onSelectNearby} />);
     await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
-    await userEvent.click(screen.getByRole("option", { name: /hollenbeck/i }));
+    await userEvent.click(screen.getByRole("button", { name: /hollenbeck/i }));
     expect(onSelectNearby).toHaveBeenCalledWith(spot);
-    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
   });
 
   it("tolerates a missing onSelectNearby handler", async () => {
     stubNearby("ready", [makeNearby()]);
     render(<ControlledHost />);
     await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
-    await userEvent.click(screen.getByRole("option", { name: /hollenbeck/i }));
-    expect(screen.queryByRole("listbox")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /hollenbeck/i }));
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
   });
 });

@@ -5,7 +5,10 @@ import type { NearbyStatus } from "./useNearbySpots";
 
 interface NearbySpotsListProps {
   status: NearbyStatus;
+  /** Already run through the active chip filters by the caller. */
   spots: NearbySpot[];
+  /** True when nearby spots exist but every one is hidden by a chip filter. */
+  hiddenByFilters?: boolean;
   radiusKm: number;
   onSelect: (spot: NearbySpot) => void;
 }
@@ -13,8 +16,12 @@ interface NearbySpotsListProps {
 /**
  * Dropdown under the map search box listing the closest spots to the user.
  * Purely presentational — `useNearbySpots` owns the fetch.
+ *
+ * Deliberately a plain list of buttons rather than an ARIA combobox: the
+ * search input is not the thing being navigated, and a listbox without
+ * arrow-key handling is worse for assistive tech than an honest list.
  */
-export function NearbySpotsList({ status, spots, radiusKm, onSelect }: NearbySpotsListProps) {
+export function NearbySpotsList({ status, spots, hiddenByFilters = false, radiusKm, onSelect }: NearbySpotsListProps) {
   const panel =
     "mt-2 pointer-events-auto bg-surface-alt/95 backdrop-blur border border-[#333] rounded-xl shadow-2xl overflow-hidden";
 
@@ -47,7 +54,9 @@ export function NearbySpotsList({ status, spots, radiusKm, onSelect }: NearbySpo
         aria-live="polite"
         data-testid="nearby-status"
       >
-        No spots within {radiusKm} km. Be the first to add one.
+        {hiddenByFilters
+          ? "Nearby spots are hidden by your filters. Loosen them to see more."
+          : `No spots within ${radiusKm} km. Be the first to add one.`}
       </div>
     );
   }
@@ -55,13 +64,11 @@ export function NearbySpotsList({ status, spots, radiusKm, onSelect }: NearbySpo
   return (
     <div className={`${panel} max-h-[50dvh] overflow-y-auto`}>
       <div className="px-3 pt-2 pb-1 text-xs text-muted font-medium">Near you</div>
-      <ul role="listbox" aria-label="Spots near you" className="pb-1">
+      <ul aria-label="Spots near you" className="pb-1">
         {spots.map((spot) => (
-          <li key={spot.id} role="none">
+          <li key={spot.id}>
             <button
               type="button"
-              role="option"
-              aria-selected={false}
               onClick={() => onSelect(spot)}
               className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-[#222] transition-colors"
             >
