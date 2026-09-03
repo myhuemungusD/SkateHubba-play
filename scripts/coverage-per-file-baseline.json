@@ -178,12 +178,6 @@
       "branches": 63.63,
       "statements": 100
     },
-    "src/screens/PlayerProfileScreen/components/StatCard.tsx": {
-      "lines": 0,
-      "functions": 0,
-      "branches": 100,
-      "statements": 0
-    },
     "src/screens/PlayerProfileScreen/components/StatTile.tsx": {
       "lines": 96.42,
       "functions": 100,

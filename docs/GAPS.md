@@ -8,6 +8,22 @@ The verify gate is **green** end to end (`tsc -b`, lint, coverage thresholds, bu
 
 ---
 
+## Re-audit at HEAD `9d97f09` (62 commits past the `5091db4` baseline)
+
+Full re-run of the five audits + verify gate against the current tree. `npm run verify` is **green** (tsc, lint, per-file coverage gate, build, test-dup).
+
+**Closures independently re-verified against source (not just the Status lines):**
+
+- **P0-1** (clipVotes decrement) and **P0-2** (storage path-squat) — confirmed genuinely closed. The `clipVotes` `allow delete` block has no bare-delete fall-through; every branch is a paired decrement or a legitimate escape, and the stuffing-cycle red-team test asserts `upvoteCount` stays 1. Storage filenames are `{role}-{uid}.{ext}` by exact-string equality across web/native × set/match, and the legitimate client upload path in `storage.ts` matches the rule byte-for-byte (not broken by the re-pin).
+- **P0-3** — setter side closed and correct (in-tx `writeNotificationInTx`). The claimer side (`disputes.raise.ts`) is **still silent** — accurately scoped as PARTIALLY CLOSED.
+- **P0-SECURITY-AUDIT** archived; per-file coverage gate now catches the "0%-file hides" hole **for `src/components`/`src/screens` only**.
+
+**New code shipped clean.** The native/platform work (`nativeApp.ts`, `nativeBridge.ts`), PWA install flow, disputes subscription, and Lobby rework respect every guardrail (no Firebase-in-components, no `any`, `runTransaction` on all game writes) and ship at 100% service coverage. Deep-link parsing was checked specifically for open-redirect and is sound (scheme + host allowlist on the parsed `hostname`, routed through the event bridge, not blind `navigate()`). One latent bug found — see **P3-6** (native online-status global).
+
+**Still open, re-confirmed:** P1-1 through P1-8, P2-1 (`api/**` still outside coverage `include`), the global-threshold gap in P2-8 (`src/context`/`lib`/`utils` can still regress to 0%), and the P3 block. P3-4 got slightly **worse** (see that item).
+
+---
+
 ## Priority model
 
 | Tier   | Meaning                                                                             | Act            |
@@ -133,7 +149,7 @@ The report/ban infrastructure is above-average as abuse tooling (`reports.ts`, `
 
 ### P2-7 · Missing e2e coverage on high-risk flows
 
-No e2e for: third-party judging, community dispute→verdict→tally, user-clip upload + downvote, admin ban/unban/award, **account deletion** (irreversible cascade). All have unit tests but no browser-level test. Also: `e2e/onboarding.spec.ts:131` is a permanent `test.fixme`; `e2e/helpers/__tests__/firestore-read.test.ts` is wired to no npm script or CI step (dead tests).
+No e2e for: third-party judging, community dispute→verdict→tally, user-clip upload + downvote, admin ban/unban/award, **account deletion** (irreversible cascade). All have unit tests but no browser-level test. Also: `e2e/onboarding.spec.ts:131` is a permanent `test.fixme`.
 
 ### P2-8 · Controller hooks escape the 100% hook coverage rule
 
@@ -171,7 +187,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-4 · File-length budget enforced nowhere; 10 files over
 
-`check:file-length` is not in `verify` and only `continue-on-error` in `pr-gate.yml:146-150`. Worst: `Settings.tsx` (561/350), `Landing.tsx` (553/350), `AddSpotSheet.tsx` (391/250). `Settings.tsx` carries 3 independent effects that extract cleanly into hooks.
+`check:file-length` is not in `verify` and only `continue-on-error` in `pr-gate.yml:146-150`. Worst (at HEAD `9d97f09`): `Settings.tsx` (**594**/350 — up from 561 at baseline; the in-app PWA install section from `3485e88` added +33), `Landing.tsx` (553/350), `AddSpotSheet.tsx` (391/250), `useGamePlayController.ts` (463/350 — up from 456). Still 10 files over budget. `Settings.tsx` now carries 4 independent concerns (blocked-profile hydration, native push permission, push prefs, PWA install) that extract cleanly into hooks — it is the one file the recent work regressed.
 
 ### P3-5 · Accessibility edges
 
@@ -185,6 +201,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 - `@tensorflow/tfjs` is an undeclared direct dep (auto-peer-installed via nsfwjs) → unmanaged by Dependabot, floating version, ships in bundle.
 - `LevelChip.tsx` is a hardcoded `level = 1` stub already removed from its only call site — dead code.
 - `guard-as-any-casts` / `guard-todo-fixme-hack` don't scan `api/` — the most privileged code can carry `as any` and TODOs unchecked.
+- **(new, from the native rework)** `nativeBridge.ts` `subscribeToNetworkStatus` stores connectivity in a single module-level global (`nativeOnline`) that its unsubscribe unconditionally nulls. `useOnlineStatus` wires it through `useSyncExternalStore`, which subscribes once per mounted consumer — so with two+ consumers, unmounting one wipes the cached value for the others and `getNetworkSnapshot()` falls back to `navigator.onLine`, which is pinned `true` in iOS WKWebView (the exact case this module exists to work around). Not user-visible today (only `OfflineBanner` consumes it, single instance), but a trap for the next consumer. Fix: ref-count the listener, or hold state per-subscription instead of one global.
 
 ### P3-7 · Verified NOT problems (no action)
 
