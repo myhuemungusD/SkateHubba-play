@@ -1,6 +1,10 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { Search, SlidersHorizontal, X, BadgeCheck } from "lucide-react";
 import type { Spot, ObstacleType } from "../../types/spot";
+import { NEARBY_RADIUS_KM, type NearbySpot } from "../../services/spots";
+import type { LatLng } from "../../utils/geo";
+import { useNearbySpots } from "./useNearbySpots";
+import { NearbySpotsList } from "./NearbySpotsList";
 
 /**
  * Top-of-map filter + search bar.
@@ -10,6 +14,10 @@ import type { Spot, ObstacleType } from "../../types/spot";
  * search so users are forced to pan. This bar closes both gaps with a pure
  * client-side filter (no extra Firestore reads) that operates on the spots
  * already fetched by the viewport query.
+ *
+ * Focusing the search box with an empty query drops down the closest spots
+ * to the user's GPS position (one radius-bounded Firestore read, see
+ * `useNearbySpots`). Typing switches back to the name filter.
  */
 
 export interface SpotFilters {
@@ -48,7 +56,7 @@ const FILTERABLE_OBSTACLES: readonly ObstacleType[] = [
  * Pure filter — exported so tests (and any future list view) can exercise the
  * exact same logic the map uses to decide which markers to render.
  */
-export function applySpotFilters(spots: Spot[], f: SpotFilters): Spot[] {
+export function applySpotFilters<T extends Spot>(spots: T[], f: SpotFilters): T[] {
   const q = f.query.trim().toLowerCase();
   const hasObstacleFilter = f.obstacles.length > 0;
   return spots.filter((s) => {
@@ -75,13 +83,32 @@ interface SpotFilterBarProps {
   totalCount: number;
   /** Number of spots after filters (post-filter). */
   matchCount: number;
+  /** Current GPS fix; null until the first lock (or when denied). */
+  userLocation?: LatLng | null;
+  /** Fired when the user taps a row in the nearby dropdown. */
+  onSelectNearby?: (spot: NearbySpot) => void;
 }
 
-export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: SpotFilterBarProps) {
+export function SpotFilterBar({
+  filters,
+  onChange,
+  totalCount,
+  matchCount,
+  userLocation = null,
+  onSelectNearby,
+}: SpotFilterBarProps) {
   const [expanded, setExpanded] = useState(false);
+  const [searchFocused, setSearchFocused] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const active = countActiveFilters(filters);
   const isFiltering = active > 0 || filters.query.trim().length > 0;
+  const showNearby = searchFocused && !expanded && filters.query.trim().length === 0;
+  const nearby = useNearbySpots(userLocation, showNearby);
+  // The dropdown honours the same chip filters as the markers, otherwise a
+  // "Verified only" user could pick an unverified row and land on a card
+  // with no pin under it.
+  const nearbySpots = useMemo(() => applySpotFilters(nearby.spots, filters), [nearby.spots, filters]);
 
   const toggleObstacle = useCallback(
     (o: ObstacleType) => {
@@ -96,20 +123,44 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
     setExpanded(false);
   }, [onChange]);
 
-  // Close the panel when the user taps outside of it (common mobile expectation
-  // — a filter sheet that won't dismiss is an unintentional modal trap).
+  const closeNearby = useCallback(() => {
+    setSearchFocused(false);
+    inputRef.current?.blur();
+  }, []);
+
+  const selectNearby = useCallback(
+    (spot: NearbySpot) => {
+      closeNearby();
+      onSelectNearby?.(spot);
+    },
+    [closeNearby, onSelectNearby],
+  );
+
+  // Close the panel / nearby list when the user taps outside of it (common
+  // mobile expectation — a filter sheet that won't dismiss is an
+  // unintentional modal trap).
   useEffect(() => {
-    if (!expanded) return;
-    const handler = (e: MouseEvent) => {
+    if (!expanded && !searchFocused) return;
+    const handler = (e: Event) => {
       const target = e.target as Node | null;
       if (panelRef.current && target && !panelRef.current.contains(target)) {
         setExpanded(false);
+        setSearchFocused(false);
+        // Drop DOM focus too, otherwise the next tap on the (still focused)
+        // input fires no focus event and the list can't reopen.
+        inputRef.current?.blur();
       }
     };
     // Capture phase so we see the tap before map/marker handlers eat it.
+    // Mapbox preventDefaults touch gestures on the canvas, which suppresses
+    // the synthesized mousedown — listen to touchstart too.
     document.addEventListener("mousedown", handler, true);
-    return () => document.removeEventListener("mousedown", handler, true);
-  }, [expanded]);
+    document.addEventListener("touchstart", handler, true);
+    return () => {
+      document.removeEventListener("mousedown", handler, true);
+      document.removeEventListener("touchstart", handler, true);
+    };
+  }, [expanded, searchFocused]);
 
   return (
     <div ref={panelRef} className="absolute top-3 left-3 right-3 z-30 pointer-events-none">
@@ -118,11 +169,16 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
         <label className="flex-1 flex items-center gap-2 bg-surface-alt/95 backdrop-blur border border-[#333] rounded-xl px-3 h-10">
           <Search size={16} className="text-muted flex-shrink-0" aria-hidden="true" />
           <input
+            ref={inputRef}
             type="search"
             value={filters.query}
             onChange={(e) => onChange({ ...filters, query: e.target.value })}
-            placeholder="Search spots in view"
-            aria-label="Search spots in current map view"
+            onFocus={() => setSearchFocused(true)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") closeNearby();
+            }}
+            placeholder="Search spots or find nearby"
+            aria-label="Search spots in view or find spots near you"
             className="flex-1 min-w-0 bg-transparent text-base text-white placeholder:text-faint focus:outline-none"
           />
           {filters.query.length > 0 && (
@@ -158,6 +214,17 @@ export function SpotFilterBar({ filters, onChange, totalCount, matchCount }: Spo
           )}
         </button>
       </div>
+
+      {/* Nearby dropdown — search box focused with nothing typed. */}
+      {showNearby && (
+        <NearbySpotsList
+          status={nearby.status}
+          spots={nearbySpots}
+          hiddenByFilters={nearby.spots.length > 0 && nearbySpots.length === 0}
+          radiusKm={NEARBY_RADIUS_KM}
+          onSelect={selectNearby}
+        />
+      )}
 
       {/* Result counter — only when a filter or query is active, so the resting
           map stays uncluttered. */}

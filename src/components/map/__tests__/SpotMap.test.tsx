@@ -4,9 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 
 const mockGetSpotsInBounds = vi.fn();
+const mockGetSpotsNearby = vi.fn();
 
 vi.mock("../../../services/spots", () => ({
   getSpotsInBounds: (...args: unknown[]) => mockGetSpotsInBounds(...args),
+  getSpotsNearby: (...args: unknown[]) => mockGetSpotsNearby(...args),
+  NEARBY_RADIUS_KM: 10,
 }));
 
 // Stub the firebase module so re-importing SpotMap (via `vi.resetModules()` +
@@ -91,6 +94,8 @@ vi.mock("../../../lib/mapbox", async () => {
 // The mock implements just enough surface for SpotMap's lifecycle hooks
 // (constructor + addControl + on + getBounds + flyTo + remove).
 const mapEventHandlers: Record<string, Array<() => void>> = {};
+// Spy on the map's camera moves so the nearby-pick test can assert the jump.
+const fakeFlyTo = vi.fn();
 // Observable count — the missing-token fallback test asserts that the map
 // constructor is never invoked when VITE_MAPBOX_TOKEN is unset.
 let fakeMapConstructorCalls = 0;
@@ -139,7 +144,9 @@ vi.mock("mapbox-gl", () => {
         getWest: () => -118.3,
       };
     }
-    flyTo() {}
+    flyTo(opts: unknown) {
+      fakeFlyTo(opts);
+    }
     easeTo() {}
     remove() {}
   }
@@ -309,6 +316,48 @@ describe("SpotMap", () => {
     // fires on the next microtask. Query synchronously to catch it.
     const loading = screen.getByRole("status", { name: /loading map/i });
     expect(loading).toBeInTheDocument();
+  });
+
+  it("flies to a nearby spot picked from the search dropdown and opens its card", async () => {
+    // jsdom has no navigator.geolocation; install a stub that reports a fix
+    // immediately so useUserGeolocation hands the bar a real location.
+    const watchPosition = vi.fn((success: (pos: { coords: { latitude: number; longitude: number } }) => void) => {
+      success({ coords: { latitude: 34.0522, longitude: -118.2437 } });
+      return 1;
+    });
+    Object.defineProperty(globalThis.navigator, "geolocation", {
+      configurable: true,
+      value: { watchPosition, clearWatch: vi.fn() },
+    });
+    mockGetSpotsNearby.mockResolvedValue([{ ...FIXTURE, distanceKm: 0.42 }]);
+    const view = render(
+      <MemoryRouter>
+        <SpotMap />
+      </MemoryRouter>,
+    );
+    try {
+      const searchbox = await screen.findByRole("searchbox", { name: /search spots/i });
+      await userEvent.click(searchbox);
+
+      const option = await screen.findByRole("button", { name: /test hubba/i });
+      expect(option).toHaveTextContent("420 m");
+      expect(mockGetSpotsNearby).toHaveBeenCalledWith({ lat: 34.0522, lng: -118.2437 });
+
+      fakeFlyTo.mockClear();
+      await userEvent.click(option);
+
+      expect(fakeFlyTo).toHaveBeenCalledWith({ center: [FIXTURE.longitude, FIXTURE.latitude], zoom: 16 });
+      expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+      // Picking a spot hands the recenter button back to manual mode.
+      expect(screen.getByRole("button", { name: /recenter to my location/i })).toBeInTheDocument();
+      expect(screen.getByText("Test Hubba")).toBeInTheDocument();
+    } finally {
+      // Unmount while the stub is still installed (the hook's cleanup calls
+      // clearWatch), then remove the key entirely so `"geolocation" in
+      // navigator` is false again for the rest of this file.
+      view.unmount();
+      delete (globalThis.navigator as { geolocation?: unknown }).geolocation;
+    }
   });
 
   it("renders the filter/search bar after the map has loaded", async () => {

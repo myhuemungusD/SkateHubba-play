@@ -1,8 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useState } from "react";
 import { render, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Spot } from "../../../types/spot";
+import type { NearbySpot } from "../../../services/spots";
+import type { NearbyStatus } from "../useNearbySpots";
 import {
   SpotFilterBar,
   applySpotFilters,
@@ -10,6 +12,24 @@ import {
   DEFAULT_SPOT_FILTERS,
   type SpotFilters,
 } from "../SpotFilterBar";
+
+// The nearby fetch is owned by useNearbySpots (covered in its own spec); here
+// it is a controllable stub so the bar's open/close/select wiring can be
+// asserted without Firestore.
+const { mockUseNearbySpots } = vi.hoisted(() => ({ mockUseNearbySpots: vi.fn() }));
+vi.mock("../useNearbySpots", () => ({
+  useNearbySpots: (...args: unknown[]) => mockUseNearbySpots(...args),
+}));
+vi.mock("../../../services/spots", () => ({ NEARBY_RADIUS_KM: 10 }));
+
+function stubNearby(status: NearbyStatus, spots: NearbySpot[] = []) {
+  mockUseNearbySpots.mockReturnValue({ status, spots });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  stubNearby("idle");
+});
 
 /**
  * Host that owns the filter state so controlled-component tests actually
@@ -20,11 +40,15 @@ function ControlledHost({
   totalCount = 10,
   matchCount = 10,
   onChangeSpy,
+  userLocation,
+  onSelectNearby,
 }: {
   initial?: SpotFilters;
   totalCount?: number;
   matchCount?: number;
   onChangeSpy?: (next: SpotFilters) => void;
+  userLocation?: { lat: number; lng: number } | null;
+  onSelectNearby?: (spot: NearbySpot) => void;
 }) {
   const [f, setF] = useState<SpotFilters>(initial);
   return (
@@ -36,8 +60,14 @@ function ControlledHost({
       }}
       totalCount={totalCount}
       matchCount={matchCount}
+      userLocation={userLocation}
+      onSelectNearby={onSelectNearby}
     />
   );
+}
+
+function makeNearby(overrides: Partial<NearbySpot> = {}): NearbySpot {
+  return { ...makeSpot(), distanceKm: 0.35, ...overrides };
 }
 
 function makeSpot(overrides: Partial<Spot> = {}): Spot {
@@ -257,5 +287,118 @@ describe("SpotFilterBar", () => {
     // Use fireEvent because the outside listener is attached at the capture phase.
     fireEvent.mouseDown(screen.getByTestId("outside"));
     expect(screen.queryByRole("region", { name: /spot filters/i })).toBeNull();
+  });
+
+  it("keeps the nearby list closed until the search box is focused", () => {
+    render(<ControlledHost />);
+    expect(screen.queryByTestId("nearby-status")).toBeNull();
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+    // Hook is still mounted but told to stay disabled.
+    expect(mockUseNearbySpots).toHaveBeenLastCalledWith(null, false);
+  });
+
+  it("opens the nearby list on focus and passes the user location to the hook", async () => {
+    const loc = { lat: 34.05, lng: -118.25 };
+    stubNearby("no-gps");
+    render(<ControlledHost userLocation={loc} />);
+    await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
+    expect(mockUseNearbySpots).toHaveBeenLastCalledWith(loc, true);
+    expect(screen.getByTestId("nearby-status")).toBeInTheDocument();
+  });
+
+  it("hides the nearby list once the user starts typing a query", async () => {
+    stubNearby("ready", [makeNearby()]);
+    render(<ControlledHost />);
+    const box = screen.getByRole("searchbox", { name: /search spots/i });
+    await userEvent.click(box);
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
+
+    await userEvent.type(box, "h");
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+    expect(mockUseNearbySpots).toHaveBeenLastCalledWith(null, false);
+  });
+
+  it("closes the nearby list on Escape, on an outside mousedown, and on an outside touch", async () => {
+    stubNearby("ready", [makeNearby()]);
+    render(
+      <div>
+        <ControlledHost />
+        <div data-testid="outside">outside</div>
+      </div>,
+    );
+    const box = screen.getByRole("searchbox", { name: /search spots/i });
+
+    await userEvent.click(box);
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+
+    await userEvent.click(box);
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByTestId("outside"));
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+
+    // Mapbox preventDefaults canvas touches, which suppresses the synthesized
+    // mousedown — the bar must also listen for the raw touchstart.
+    await userEvent.click(box);
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
+    fireEvent.touchStart(screen.getByTestId("outside"));
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+  });
+
+  it("runs the nearby list through the active chip filters", async () => {
+    const verified = makeNearby({
+      id: "00000000-0000-0000-0000-00000000000a",
+      name: "Verified Ledge",
+      isVerified: true,
+    });
+    const unverified = makeNearby({
+      id: "00000000-0000-0000-0000-00000000000b",
+      name: "Sketchy Rail",
+      isVerified: false,
+    });
+    stubNearby("ready", [unverified, verified]);
+    render(<ControlledHost initial={{ ...DEFAULT_SPOT_FILTERS, verifiedOnly: true }} />);
+    await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
+
+    expect(screen.getByRole("button", { name: /verified ledge/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sketchy rail/i })).toBeNull();
+  });
+
+  it("explains an empty nearby list that is empty only because of filters", async () => {
+    stubNearby("ready", [makeNearby({ isVerified: false })]);
+    render(<ControlledHost initial={{ ...DEFAULT_SPOT_FILTERS, verifiedOnly: true }} />);
+    await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
+    expect(screen.getByTestId("nearby-status")).toHaveTextContent(/hidden by your filters/i);
+  });
+
+  it("yields to the filter panel so the two dropdowns never stack", async () => {
+    stubNearby("ready", [makeNearby()]);
+    render(<ControlledHost />);
+    await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
+    expect(screen.getByRole("list", { name: /spots near you/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /filters/i }));
+    expect(screen.getByRole("region", { name: /spot filters/i })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+  });
+
+  it("reports the tapped nearby spot and closes the list", async () => {
+    const spot = makeNearby();
+    stubNearby("ready", [spot]);
+    const onSelectNearby = vi.fn();
+    render(<ControlledHost onSelectNearby={onSelectNearby} />);
+    await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
+    await userEvent.click(screen.getByRole("button", { name: /hollenbeck/i }));
+    expect(onSelectNearby).toHaveBeenCalledWith(spot);
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
+  });
+
+  it("tolerates a missing onSelectNearby handler", async () => {
+    stubNearby("ready", [makeNearby()]);
+    render(<ControlledHost />);
+    await userEvent.click(screen.getByRole("searchbox", { name: /search spots/i }));
+    await userEvent.click(screen.getByRole("button", { name: /hollenbeck/i }));
+    expect(screen.queryByRole("list", { name: /spots near you/i })).toBeNull();
   });
 });
