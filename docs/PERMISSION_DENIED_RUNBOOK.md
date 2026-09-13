@@ -79,16 +79,30 @@ arg to `initializeFirestore`). Rules must be deployed to that named DB — NOT t
   `firebase.json`, `.firebaserc`, or the workflow file itself — **plus a daily
   `schedule` re-deploy at `0 7 * * *`**. That daily run normally matters during
   triage — a hand-edit made in the Firebase Console is reverted within 24 h —
-  but **as of 2026-08-29 every deploy since 2026-08-20 has failed**
+  but **every deploy between 2026-08-20 and 2026-09-12 failed**
   ([#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519):
   `google-github-actions/auth` rejects `FIREBASE_WIF_PROVIDER` with
-  `Invalid value for "audience"`). While that holds, production runs a **stale
-  ruleset** — which makes "the deployed rules differ from `main`" a _leading_
-  hypothesis for an unexplained `permission-denied`, not a footnote. Check the
-  last successful deploy before you check anything else. The deploy can
-  also hard-fail on its PII-scan gate when the repo authenticates with the legacy
-  `FIREBASE_TOKEN`, so "rules are stale" is not always an auth problem — read the
-  job log, don't just re-check the credentials.
+  `Invalid value for "audience"`). Production ran a **stale ruleset** for three
+  weeks, and the user-visible symptom was not a `permission-denied` at all —
+  it was `storage/unauthorized` on every landed-trick video upload, because
+  `storage.rules` in production still required `set.webm` while the shipped
+  client had moved to `set-{uid}.webm`.
+
+  Two workflow changes came out of that incident, and they change what you
+  should expect to see here:
+  - A WIF failure no longer aborts the job. If `FIREBASE_WIF_PROVIDER` is
+    broken and `FIREBASE_TOKEN` is present, the deploy warns loudly and ships
+    on the token. So a **green** run whose log carries
+    `Falling back to the legacy FIREBASE_TOKEN` still means the WIF secret
+    needs fixing.
+  - The PII-scan gate now blocks only when a deploy would **introduce** the
+    public profile read. Once `allow get: if true` is already live, refusing
+    to deploy cannot un-publish it — it only strands unrelated rule fixes,
+    which is precisely what stranded the Storage fix above.
+
+  "The deployed rules differ from `main`" remains a _leading_ hypothesis for
+  anything unexplained. Check the last successful deploy before you check
+  anything else — the alert issue's title now carries the day count.
 
 **Verify:** GitHub Actions → Workflows → **Deploy Firebase Rules** → check the most
 recent run against `main`. It should be green. If the last run is red or hasn't run
@@ -98,8 +112,25 @@ named DB are stale or missing.
 **Fix path:** Re-run the workflow manually (workflow_dispatch) or deploy locally:
 
 ```bash
-npx firebase-tools@15 deploy --project <project-id> --only firestore:rules
+npx firebase-tools@15 deploy --project <project-id> --only firestore:rules,firestore:indexes,storage
 ```
+
+Deploy **all three** surfaces, not just `firestore:rules`. Storage rules drift
+independently and the 2026-08 incident was a Storage-only mismatch that a
+`--only firestore:rules` deploy would have left in place.
+
+**If the failure is `Invalid value for "audience"`,** `FIREBASE_WIF_PROVIDER`
+names a provider GCP cannot resolve. Do not retype it from memory — read the
+canonical value out of GCP:
+
+```bash
+gcloud iam workload-identity-pools providers describe PROVIDER_ID \
+  --location=global --workload-identity-pool=POOL_ID --format='value(name)'
+```
+
+The leading `projects/<N>` segment is the project **number**, not the project
+ID. The workflow's own shape check cannot catch this — a well-formed name for a
+provider that does not exist passes it.
 
 ## 3. Is the named `skatehubba` database created in the Firebase project?
 

@@ -20,6 +20,14 @@ name: Deploy Firebase Rules
 #   `FIREBASE_WIF_SERVICE_ACCOUNT` secrets are set. Falls back to the legacy
 #   `FIREBASE_TOKEN` secret so existing projects keep working.
 #
+#   The fallback is a RUNTIME one, not just a configuration one: if WIF is
+#   configured but fails to authenticate, the job warns and continues on
+#   `FIREBASE_TOKEN` rather than aborting. That is the lesson of #519 — a
+#   FIREBASE_WIF_PROVIDER naming a provider GCP could not resolve held every
+#   rules deploy for three weeks while a usable token sat in the same secret
+#   store, and the visible symptom was players unable to upload a landed trick
+#   because storage.rules in production predated the client.
+#
 #   NOTE: `FIREBASE_TOKEN` (from `firebase login:ci`) is DEPRECATED in
 #   firebase-tools and is the most likely cause of a deploy that worked for
 #   months then began failing. Migrate to WIF and verify/rotate the secret in
@@ -105,8 +113,16 @@ jobs:
       # The failure/success alert steps open, comment on, and close the
       # tracking issue so a broken rules deploy can never pass unnoticed.
       issues: write
+      # `Resolve last successful deploy` reads this workflow's own run history
+      # to establish which commit production's rules actually came from.
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history: `Check whether rules expose public profile reads`
+          # inspects firestore.rules as of the last successfully deployed
+          # commit, which a depth-1 clone does not contain.
+          fetch-depth: 0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -133,6 +149,49 @@ jobs:
           fi
           echo "Resolved project: $PROJECT_ID"
           echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+
+      # ── Deploy freshness ──
+      # Two steps below need one fact: which commit production's rules actually
+      # came from. A run's `conclusion` alone is not that fact — a dry run
+      # finishes green having deployed nothing — so check the `Deploy rules and
+      # indexes` step of each recent successful run and take the first that
+      # really ran. That sha drives how stale the failure alert reports
+      # production to be, and whether this deploy would INTRODUCE the public
+      # profile read or merely re-publish one that is already live.
+      - name: Resolve last successful deploy
+        id: last
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const runs = await github.rest.actions.listWorkflowRuns({
+              ...context.repo,
+              workflow_id: 'firebase-rules-deploy.yml',
+              status: 'success',
+              per_page: 20,
+            });
+            for (const run of runs.data.workflow_runs) {
+              const jobs = await github.rest.actions.listJobsForWorkflowRun({
+                ...context.repo,
+                run_id: run.id,
+              });
+              const deployed = jobs.data.jobs.some((job) =>
+                (job.steps || []).some(
+                  (step) => step.name === 'Deploy rules and indexes' && step.conclusion === 'success',
+                ),
+              );
+              if (!deployed) continue;
+              const days = Math.floor((Date.now() - Date.parse(run.updated_at)) / 86400000);
+              core.setOutput('sha', run.head_sha);
+              core.setOutput('days_stale', String(days));
+              core.notice(`Production rules last deployed from ${run.head_sha} (${days} day(s) ago).`);
+              return;
+            }
+            // Nothing in the recent window actually deployed. Report that as
+            // unknown rather than guessing: both consumers below treat an empty
+            // sha as "cannot tell" and take their conservative branch.
+            core.setOutput('sha', '');
+            core.setOutput('days_stale', '');
+            core.warning('No successful deploy found in the last 20 successful runs.');
 
       - name: Detect available credentials
         id: creds
@@ -165,12 +224,63 @@ jobs:
             exit 1
           fi
 
+      # A WIF failure is NOT fatal on its own. A FIREBASE_WIF_PROVIDER that
+      # passes the shape check above but names no provider GCP can resolve took
+      # production rules 3+ weeks stale (#519) — every run red, the deploy step
+      # skipped — while a FIREBASE_TOKEN sat unused in the same secret store,
+      # because this step aborted the whole job. Capture the outcome instead and
+      # let the next step decide, so a broken WIF config costs a warning rather
+      # than the deploy.
       - name: Authenticate via Workload Identity Federation
+        id: wif
         if: steps.creds.outputs.method == 'wif'
+        continue-on-error: true
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         with:
           workload_identity_provider: ${{ secrets.FIREBASE_WIF_PROVIDER }}
           service_account: ${{ secrets.FIREBASE_WIF_SERVICE_ACCOUNT }}
+
+      # `steps.creds.outputs.method` is the PREFERRED method; this is the one
+      # that actually authenticated. Everything downstream must read the method
+      # from here and never from `creds`, or it assumes Application Default
+      # Credentials that the WIF step failed to write.
+      - name: Resolve effective auth method
+        id: auth
+        env:
+          FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
+          PREFERRED: ${{ steps.creds.outputs.method }}
+          WIF_OUTCOME: ${{ steps.wif.outcome }}
+        run: |
+          set -euo pipefail
+          if [ "$PREFERRED" = "wif" ] && [ "$WIF_OUTCOME" = "success" ]; then
+            echo "method=wif" >> "$GITHUB_OUTPUT"
+            echo "Authenticated via Workload Identity Federation."
+            exit 0
+          fi
+          if [ "$PREFERRED" = "wif" ]; then
+            echo "::warning::WIF authentication FAILED — the Google error is in the step above."
+            echo "::warning::FIREBASE_WIF_PROVIDER must be the full resource name of a provider that exists."
+            echo "::warning::Read the correct value straight from GCP rather than composing it by hand:"
+            echo "::warning::  gcloud iam workload-identity-pools providers describe PROVIDER_ID \\"
+            echo "::warning::    --location=global --workload-identity-pool=POOL_ID --format='value(name)'"
+            echo "::warning::The project segment is the project NUMBER, not the project ID."
+          fi
+          if [ -n "$FIREBASE_TOKEN" ]; then
+            echo "method=token" >> "$GITHUB_OUTPUT"
+            # The auth action writes its credentials file and exports
+            # GOOGLE_APPLICATION_CREDENTIALS *before* it fails token exchange,
+            # leaving a dead external-account config pointed at by ADC.
+            # firebase-tools prefers FIREBASE_TOKEN over ADC, so this is belt
+            # and braces — but a half-written credential nobody cleared is
+            # exactly the kind of thing that turns a fallback into a new
+            # mystery. Clear it.
+            echo "GOOGLE_APPLICATION_CREDENTIALS=" >> "$GITHUB_ENV"
+            echo "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=" >> "$GITHUB_ENV"
+            echo "::warning::Falling back to the legacy FIREBASE_TOKEN so the deploy still ships."
+            exit 0
+          fi
+          echo "::error::No usable Firebase credentials — WIF failed and FIREBASE_TOKEN is unset."
+          exit 1
 
       # ── PII gate — scoped to the rule that needs it ──
       # `users/{uid}` is publicly `get`-able so a shared /player/{uid} link
@@ -204,6 +314,26 @@ jobs:
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
             echo "No public profile read in firestore.rules — PII scan not required."
+            echo "introduced=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Present at HEAD — but is this deploy PUBLISHING it, or re-publishing
+          # something production already serves? The gate below only has teeth
+          # in the first case: once the rule is live, refusing to deploy cannot
+          # un-publish it, it only strands every other rule fix (#519 stranded a
+          # Storage fix for three weeks exactly this way). So resolve which case
+          # this is against the ruleset production actually runs.
+          LAST_SHA="${{ steps.last.outputs.sha }}"
+          if [ -z "$LAST_SHA" ]; then
+            # Cannot tell which ruleset is live — treat as an introduction.
+            echo "introduced=true" >> "$GITHUB_OUTPUT"
+            echo "Last deployed commit unknown — treating the public read as newly introduced."
+          elif git show "$LAST_SHA:firestore.rules" 2>/dev/null | grep -qE '^\s*allow get: if true;'; then
+            echo "introduced=false" >> "$GITHUB_OUTPUT"
+            echo "Public read already live in the deployed ruleset ($LAST_SHA)."
+          else
+            echo "introduced=true" >> "$GITHUB_OUTPUT"
+            echo "Public read is NEW relative to the deployed ruleset ($LAST_SHA)."
           fi
 
       - name: Scan production for residual PII on public user docs
@@ -211,9 +341,11 @@ jobs:
         env:
           FIREBASE_PROJECT_ID: ${{ steps.project.outputs.project_id }}
           ACK: ${{ github.event.inputs.pii_scan_verified }}
+          METHOD: ${{ steps.auth.outputs.method }}
+          INTRODUCED: ${{ steps.pubread.outputs.introduced }}
         run: |
           set -euo pipefail
-          if [ "${{ steps.creds.outputs.method }}" = "wif" ]; then
+          if [ "$METHOD" = "wif" ]; then
             # Application Default Credentials are present; scan for real.
             node scripts/migrate-users-private.mjs --verify
             exit 0
@@ -225,7 +357,24 @@ jobs:
             echo "::warning::PII scan skipped — maintainer asserted it was run by hand (pii_scan_verified)."
             exit 0
           fi
-          echo "::error::Cannot verify production before publishing a public read rule."
+          if [ "$INTRODUCED" != "true" ]; then
+            # The public read is already live in the ruleset this deploy
+            # replaces. Blocking here cannot reduce that exposure by one
+            # document — it only keeps every OTHER rule fix off production,
+            # which is how #519 stranded a Storage rule fix for three weeks
+            # while players could not upload a landed trick. Warn and proceed.
+            # The scan still runs, and still blocks on offending>0, whenever
+            # credentials allow it; and the hard block below still stands
+            # unconditionally when a deploy would be the one to PUBLISH the
+            # public read.
+            echo "::warning::PII scan could not run — legacy FIREBASE_TOKEN cannot authenticate the Admin SDK."
+            echo "::warning::Proceeding anyway: 'allow get: if true' is already live in the deployed ruleset,"
+            echo "::warning::so withholding this deploy would not reduce exposure — only delay unrelated fixes."
+            echo "::warning::Run the scan by hand and fix WIF:"
+            echo "::warning::  GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json node scripts/migrate-users-private.mjs --verify"
+            exit 0
+          fi
+          echo "::error::Cannot verify production before publishing a NEW public read rule."
           echo ""
           echo "firestore.rules contains 'allow get: if true' for users/{uid}, which makes every"
           echo "public user doc world-readable. That is only safe once production is confirmed to"
@@ -250,7 +399,7 @@ jobs:
           # Only pass FIREBASE_TOKEN when WIF isn't configured — firebase-tools
           # prefers FIREBASE_TOKEN over Application Default Credentials, so
           # leaving both set silently bypasses WIF.
-          FIREBASE_TOKEN: ${{ steps.creds.outputs.method == 'token' && secrets.FIREBASE_TOKEN || '' }}
+          FIREBASE_TOKEN: ${{ steps.auth.outputs.method == 'token' && secrets.FIREBASE_TOKEN || '' }}
           PROJECT_ID: ${{ steps.project.outputs.project_id }}
         run: |
           # firebase-tools is pinned to the same major the repo depends on
@@ -316,7 +465,15 @@ jobs:
         with:
           script: |
             const label = 'firebase-rules-deploy-failure';
-            const title = '🚨 Firebase rules deploy FAILED';
+            // The staleness figure belongs in the TITLE, not buried in a
+            // comment. #519 collected 27 identical comments under a constant
+            // title while production drifted three weeks behind main; a title
+            // that visibly counts up is the difference between an issue you
+            // scroll past in the list and one you open.
+            const daysStale = '${{ steps.last.outputs.days_stale }}';
+            const title = daysStale
+              ? `🚨 Firebase rules deploy FAILED — production ${daysStale} day(s) behind main`
+              : '🚨 Firebase rules deploy FAILED';
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
               'The **Deploy Firebase Rules** workflow failed.',
@@ -324,8 +481,16 @@ jobs:
               `- Failed run: ${runUrl}`,
               `- Commit: \`${context.sha}\``,
               `- Triggered by: \`${context.eventName}\``,
+              daysStale
+                ? `- Production rules last deployed: **${daysStale} day(s) ago** (\`${{ steps.last.outputs.sha }}\`)`
+                : '- Production rules last deployed: **unknown** — no successful deploy in the recent run window',
               '',
-              'Production Firestore/Storage rules and indexes may now be **stale**.',
+              'Production Firestore/Storage rules and indexes are **stale**: every rule',
+              'change merged to `main` since that commit is live in the app but not in the',
+              'backend. Assume any unexplained `permission-denied` or',
+              '`storage/unauthorized` report is this until proven otherwise —',
+              'see `docs/PERMISSION_DENIED_RUNBOOK.md`.',
+              '',
               'Investigate the run logs above, then re-run the workflow once fixed.',
               '',
               '_This issue is auto-managed; it will be updated (not duplicated) on repeat failures._',
@@ -362,6 +527,9 @@ jobs:
                 issue_number: number,
                 body,
               });
+              // Re-title on every failure so the running day count is visible
+              // from the issue list without opening anything.
+              await github.rest.issues.update({ ...context.repo, issue_number: number, title });
               core.notice(`Updated existing alert issue #${number}.`);
             } else {
               const created = await github.rest.issues.create({
