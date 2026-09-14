@@ -324,11 +324,25 @@ jobs:
           # Storage fix for three weeks exactly this way). So resolve which case
           # this is against the ruleset production actually runs.
           LAST_SHA="${{ steps.last.outputs.sha }}"
+          # `git show ... | grep -q` is NOT safe here, and the first version of
+          # this step got it wrong: grep -q exits the instant it matches and
+          # closes the pipe, git show is still streaming a ~3000-line file and
+          # dies of SIGPIPE (141), and `set -o pipefail` reports the whole
+          # pipeline as failed — so a rule that IS present reads as absent. That
+          # flipped `introduced` to true and hard-blocked the very deploy this
+          # gate was rewritten to stop blocking (run #824). Materialise the old
+          # ruleset to a file first: git show's exit status is then checked on
+          # its own, and grep reads a file with no pipe to break.
+          PREV_RULES="$(mktemp)"
           if [ -z "$LAST_SHA" ]; then
             # Cannot tell which ruleset is live — treat as an introduction.
             echo "introduced=true" >> "$GITHUB_OUTPUT"
             echo "Last deployed commit unknown — treating the public read as newly introduced."
-          elif git show "$LAST_SHA:firestore.rules" 2>/dev/null | grep -qE '^\s*allow get: if true;'; then
+          elif ! git show "$LAST_SHA:firestore.rules" > "$PREV_RULES" 2>/dev/null; then
+            # The commit or the file is not reachable in this clone.
+            echo "introduced=true" >> "$GITHUB_OUTPUT"
+            echo "Cannot read firestore.rules at $LAST_SHA — treating the public read as newly introduced."
+          elif grep -qE '^\s*allow get: if true;' "$PREV_RULES"; then
             echo "introduced=false" >> "$GITHUB_OUTPUT"
             echo "Public read already live in the deployed ruleset ($LAST_SHA)."
           else
