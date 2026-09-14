@@ -14,6 +14,8 @@ export interface SpotlightCardProps {
   voting: boolean;
   onViewPlayer: (uid: string) => void;
   onNext: () => void;
+  /** True while the next page is being fetched — NEXT TRICK shows a pending state. */
+  advancing?: boolean;
   onUpvote: (clip: ClipDoc) => void;
   onDownvote: (clip: ClipDoc) => void;
   onChallenge: (username: string) => void;
@@ -72,6 +74,7 @@ export const SpotlightCard = memo(function SpotlightCard({
   voting,
   onViewPlayer,
   onNext,
+  advancing = false,
   onUpvote,
   onDownvote,
   onChallenge,
@@ -105,7 +108,7 @@ export const SpotlightCard = memo(function SpotlightCard({
       {/* Video — plays once, no loop, no auto-advance. `key={clip.id}`
           remounts (and resets ended/muted state) on every Next. */}
       <div className="px-4">
-        <SpotlightVideo key={clip.id} src={clip.videoUrl} onNext={onNext} />
+        <SpotlightVideo key={clip.id} src={clip.videoUrl} onNext={onNext} advancing={advancing} />
       </div>
 
       <div className="px-4 pt-3">

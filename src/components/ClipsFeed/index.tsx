@@ -65,7 +65,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
         onSortChange={c.handleSortChange}
         // Lock the toggle during a load so rapid taps don't queue concurrent
         // fetches (the latest would still win, but it wastes reads + flickers).
-        disabled={c.loading}
+        disabled={c.loading || c.loadingMore}
         position={c.visibleClips.length > 0 ? { index: c.safeIndex, total: c.visibleClips.length } : undefined}
         onPostClip={() => setUploadOpen(true)}
       />
@@ -77,7 +77,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
       {!c.loading &&
         !c.error &&
         !currentClip &&
-        (c.exhausted ? <ClipsFeedExhausted onReload={c.loadPool} /> : <ClipsFeedEmpty />)}
+        (c.exhausted ? <ClipsFeedExhausted onReload={c.hasMore ? c.loadMore : c.loadPool} /> : <ClipsFeedEmpty />)}
 
       {!c.loading && currentClip && (
         <>
@@ -88,6 +88,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
             voting={c.isVoting(currentClip.id)}
             onViewPlayer={onViewPlayer}
             onNext={c.handleNext}
+            advancing={c.loadingMore}
             onUpvote={c.handleUpvote}
             onDownvote={c.handleDownvote}
             onChallenge={onChallengeUser}
