@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchClipsFeed, type ClipDoc, type ClipsFeedSort } from "../../services/clips";
+import { fetchClipsFeed, type ClipDoc, type ClipsFeedCursor, type ClipsFeedSort } from "../../services/clips";
 import { fetchClipVoteState, removeClipVote, voteClip, type ClipVoteState } from "../../services/clips.upvotes";
 import { trackEvent } from "../../services/analytics";
 import { logger } from "../../services/logger";
@@ -23,6 +23,14 @@ export function useClipsFeedController(viewerUid: string) {
   const [pool, setPool] = useState<ClipDoc[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
+  // Pagination. `cursor` is the service's opaque "start after" token for the
+  // page we last fetched; `hasMore` flips off once a page comes back empty or
+  // adds nothing new (the 'top' index circuit breaker serves page one of
+  // 'new' regardless of cursor, so "nothing new" is the only reliable
+  // end-of-feed signal on that path).
+  const [cursor, setCursor] = useState<ClipsFeedCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   // Clips removed from THIS session's feed. Reporting is now the only thing
@@ -33,6 +41,14 @@ export function useClipsFeedController(viewerUid: string) {
   const [votingIds, setVotingIds] = useState<ReadonlySet<string>>(new Set());
 
   const blockedUids = useBlockedUsers(viewerUid);
+  const blockedUidsRef = useRef<ReadonlySet<string>>(blockedUids);
+  useEffect(() => {
+    blockedUidsRef.current = blockedUids;
+  }, [blockedUids]);
+  const dismissedRef = useRef<ReadonlySet<string>>(dismissedClipIds);
+  useEffect(() => {
+    dismissedRef.current = dismissedClipIds;
+  }, [dismissedClipIds]);
 
   // Guard against setState-after-unmount during fetch races.
   const mountedRef = useRef(true);
@@ -123,6 +139,8 @@ export function useClipsFeedController(viewerUid: string) {
       if (!mountedRef.current) return;
       setPool(page.clips);
       setCurrentIndex(0);
+      setCursor(page.cursor);
+      setHasMore(page.cursor !== null);
       // Hydration is fire-and-forget — spotlight renders immediately,
       // vote counts pop in once the batch resolves.
       void hydrateVotes(page.clips);
@@ -154,18 +172,80 @@ export function useClipsFeedController(viewerUid: string) {
   // so the bytes start arriving while the current clip is still playing.
   const nextClip = safeIndex + 1 < visibleClips.length ? visibleClips[safeIndex + 1] : null;
 
-  // Every clip in the page was blocked, reported, or thumbed down. Distinct
-  // from "no clips exist" — the copy and the affordance differ.
+  // Every clip in the page was blocked or reported. Distinct from "no clips
+  // exist" — the copy and the affordance differ.
   const exhausted = !loading && !error && pool.length > 0 && visibleClips.length === 0;
+
+  // Mirror `cursor` / `loadingMore` in refs so loadMore keeps a stable
+  // identity (same reasoning as votingIdsRef above).
+  const cursorRef = useRef<ClipsFeedCursor | null>(cursor);
+  useEffect(() => {
+    cursorRef.current = cursor;
+  }, [cursor]);
+  const loadingMoreRef = useRef(false);
+
+  /**
+   * Fetch the next page and append it to the pool, then jump the spotlight to
+   * the first newly-added clip. Clips already in the pool are dropped so a
+   * page boundary can't repeat a row; a page that adds nothing ends the feed.
+   *
+   * Unlike `loadPool` this keeps the current card mounted — the viewer tapped
+   * NEXT TRICK on the end-of-clip overlay, and swapping in a skeleton there
+   * reads as the feed resetting.
+   */
+  const loadMore = useCallback(async () => {
+    const next = cursorRef.current;
+    if (!next || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const page = await fetchClipsFeed(next, PAGE_SIZE, sortRef.current);
+      if (!mountedRef.current) return;
+      setPool((prev) => {
+        const seen = new Set(prev.map((c) => c.id));
+        const added = page.clips.filter((c) => !seen.has(c.id));
+        if (added.length === 0) {
+          setHasMore(false);
+          return prev;
+        }
+        setHasMore(page.cursor !== null);
+        // The pool is filtered (blocked / dismissed) into visibleClips, and the
+        // appended clips land at its tail — so the first new visible clip sits
+        // at the pre-append visible length. Computed from `prev` with the same
+        // filter to stay in sync with the memo above.
+        const prevVisible = prev.filter(
+          (c) => !blockedUidsRef.current.has(c.playerUid) && !dismissedRef.current.has(c.id),
+        );
+        setCurrentIndex(prevVisible.length);
+        return [...prev, ...added];
+      });
+      setCursor(page.cursor);
+    } catch (err) {
+      const code = errorCodeFor(err);
+      logger.warn("clips_feed_load_more_failed", { code, error: parseFirebaseError(err) });
+      if (mountedRef.current) {
+        setError(copyForError(code));
+        setErrorCode(code ?? null);
+      }
+    } finally {
+      loadingMoreRef.current = false;
+      if (mountedRef.current) setLoadingMore(false);
+    }
+  }, []);
 
   const handleNext = useCallback(() => {
     if (safeIndex + 1 >= visibleClips.length) {
-      // Page exhausted — refetch with the current sort.
-      void loadPool();
+      // Page exhausted — pull the next page, or start over from the top of
+      // the feed once there is nothing left to page through.
+      if (hasMore) {
+        void loadMore();
+      } else {
+        void loadPool();
+      }
       return;
     }
     setCurrentIndex(safeIndex + 1);
-  }, [safeIndex, visibleClips.length, loadPool]);
+  }, [safeIndex, visibleClips.length, hasMore, loadMore, loadPool]);
 
   const dismissClip = useCallback((clipId: string) => {
     setDismissedClipIds((prev) => {
@@ -244,6 +324,9 @@ export function useClipsFeedController(viewerUid: string) {
     nextClip,
     safeIndex,
     exhausted,
+    hasMore,
+    loadingMore,
+    loadMore,
     voteFor: (clipId: string) => voteState.get(clipId) ?? NO_VOTE,
     isVoting: (clipId: string) => votingIds.has(clipId),
     loadPool,

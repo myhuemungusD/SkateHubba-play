@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SpotlightVideo } from "../SpotlightVideo";
 
@@ -68,5 +68,38 @@ describe("SpotlightVideo reduced motion", () => {
     render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} />);
     await userEvent.click(screen.getByLabelText(/unmute clip/i));
     expect(play).toHaveBeenCalled();
+  });
+});
+
+describe("SpotlightVideo playback failure", () => {
+  it("RETRY clears the failure overlay and reloads the element", async () => {
+    const user = userEvent.setup();
+    const load = vi.spyOn(window.HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    const { container } = render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+
+    fireEvent.error(video);
+    expect(screen.getByRole("alert")).toHaveTextContent(/couldn't play this clip/i);
+
+    // A rejected play() (autoplay policy, still-dead network) must not throw
+    // out of the click handler — the element's next `error` event re-raises
+    // the overlay instead.
+    play.mockRejectedValueOnce(new Error("NotAllowedError"));
+    await user.click(screen.getByRole("button", { name: /retry clip/i }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(load).toHaveBeenCalled();
+    expect(play).toHaveBeenCalled();
+    load.mockRestore();
+  });
+
+  it("keeps the failure overlay over the ended overlay and disables NEXT while advancing", () => {
+    const { container } = render(<SpotlightVideo src="clip.webm" onNext={vi.fn()} advancing />);
+    const video = container.querySelector("video") as HTMLVideoElement;
+    fireEvent.ended(video);
+    fireEvent.error(video);
+    expect(screen.queryByText(/clip ended/i)).not.toBeInTheDocument();
+    const next = screen.getByRole("button", { name: /next trick/i });
+    expect(next).toBeDisabled();
+    expect(next).toHaveTextContent("LOADING…");
   });
 });

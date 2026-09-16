@@ -133,6 +133,26 @@ async function mountWithUpvoteSetup(
   return { user, upvoteBtn };
 }
 
+/**
+ * Report the only clip in `firstPage` away, confirm the exhausted state, then
+ * tap "Load more clips" and wait for the refetched clip to render. Callers
+ * assert on HOW the refetch was issued (fresh page vs cursor).
+ */
+async function reportAwayThenLoadMore(firstPage: ClipDoc[] | { clips: ClipDoc[]; cursor: unknown }) {
+  const user = userEvent.setup();
+  mockFetchClipsFeed.mockResolvedValueOnce(firstPage);
+  render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+
+  await user.click(await screen.findByRole("button", { name: /report clip by @alice/i }));
+  await user.click(await screen.findByText("__submit__"));
+
+  expect(await screen.findByText(/that's everything in this batch/i)).toBeInTheDocument();
+  mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ id: "g2_1_set", trickName: "Tre Flip" })]);
+  await user.click(screen.getByRole("button", { name: /load more clips/i }));
+
+  await waitFor(() => expect(screen.getByText("Tre Flip")).toBeInTheDocument());
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   mockFetchClipVoteState.mockResolvedValue(new Map());
@@ -676,6 +696,104 @@ describe("ClipsFeed", () => {
     expect(mockFetchClipsFeed).toHaveBeenCalledTimes(2);
   });
 
+  it("NEXT TRICK pages forward with the cursor and lands on the first new clip", async () => {
+    const user = userEvent.setup();
+    const ts = { toMillis: () => Date.now() - 60_000 } as ClipDoc["createdAt"];
+    const cursor = { createdAt: ts, id: "a", upvoteCount: 0 };
+    mockFetchClipsFeed
+      .mockResolvedValueOnce({ clips: [makeClip({ id: "a", trickName: "TrickA" })], cursor })
+      .mockResolvedValueOnce({
+        clips: [
+          // Duplicate of the page-boundary row — must be dropped, not shown twice.
+          makeClip({ id: "a", trickName: "TrickA" }),
+          makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
+        ],
+        cursor: null,
+      });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
+
+    fireEvent.ended(document.querySelector("video") as HTMLVideoElement);
+    await user.click(await screen.findByRole("button", { name: /Next trick/i }));
+
+    await waitFor(() => expect(screen.getByText("TrickB")).toBeInTheDocument());
+    expect(mockFetchClipsFeed).toHaveBeenLastCalledWith(cursor, 12, "top");
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+
+    // Cursor was null on the second page, so the next NEXT restarts the feed.
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ id: "a", trickName: "TrickA" })]);
+    fireEvent.ended(document.querySelector("video") as HTMLVideoElement);
+    await user.click(await screen.findByRole("button", { name: /Next trick/i }));
+    await waitFor(() => expect(mockFetchClipsFeed).toHaveBeenLastCalledWith(null, 12, "top"));
+  });
+
+  it("stops paging when a cursor page adds nothing new (top-index fallback serves page one)", async () => {
+    const user = userEvent.setup();
+    const ts = { toMillis: () => Date.now() - 60_000 } as ClipDoc["createdAt"];
+    const cursor = { createdAt: ts, id: "a" };
+    mockFetchClipsFeed
+      .mockResolvedValueOnce({ clips: [makeClip({ id: "a", trickName: "TrickA" })], cursor })
+      .mockResolvedValueOnce({ clips: [makeClip({ id: "a", trickName: "TrickA" })], cursor });
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
+
+    fireEvent.ended(document.querySelector("video") as HTMLVideoElement);
+    await user.click(await screen.findByRole("button", { name: /Next trick/i }));
+    await waitFor(() => expect(mockFetchClipsFeed).toHaveBeenCalledTimes(2));
+    expect(screen.getByText("1/1")).toBeInTheDocument();
+
+    // hasMore is now false: the next tap is a fresh first page, not the cursor.
+    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ id: "a", trickName: "TrickA" })]);
+    await user.click(await screen.findByRole("button", { name: /Next trick/i }));
+    await waitFor(() => expect(mockFetchClipsFeed).toHaveBeenLastCalledWith(null, 12, "top"));
+  });
+
+  it("shows the error copy when paging forward fails, keeping the current clip", async () => {
+    const user = userEvent.setup();
+    const ts = { toMillis: () => Date.now() - 60_000 } as ClipDoc["createdAt"];
+    mockFetchClipsFeed
+      .mockResolvedValueOnce({
+        clips: [makeClip({ id: "a", trickName: "TrickA" })],
+        cursor: { createdAt: ts, id: "a" },
+      })
+      .mockRejectedValueOnce(new Error("offline"));
+
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
+
+    fireEvent.ended(document.querySelector("video") as HTMLVideoElement);
+    await user.click(await screen.findByRole("button", { name: /Next trick/i }));
+
+    expect(await screen.findByText(/couldn't load the feed/i)).toBeInTheDocument();
+    expect(screen.getByText("TrickA")).toBeInTheDocument();
+  });
+
+  it("'Load more clips' on the exhausted state uses the cursor when there is more to page", async () => {
+    const ts = { toMillis: () => Date.now() - 60_000 } as ClipDoc["createdAt"];
+    const cursor = { createdAt: ts, id: "g1_2_set" };
+    await reportAwayThenLoadMore({ clips: [makeClip()], cursor });
+    expect(mockFetchClipsFeed).toHaveBeenLastCalledWith(cursor, 12, "top");
+  });
+
+  it("offers RETRY and NEXT TRICK when the spotlight video fails to load", async () => {
+    const user = userEvent.setup();
+    mockFetchClipsFeed.mockResolvedValueOnce([
+      makeClip({ id: "a", trickName: "TrickA" }),
+      makeClip({ id: "b", trickName: "TrickB", playerUid: "p2", playerUsername: "bob" }),
+    ]);
+    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("TrickA")).toBeInTheDocument());
+
+    fireEvent.error(document.querySelector("video") as HTMLVideoElement);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't play this clip/i);
+    expect(screen.queryByRole("button", { name: /unmute clip/i })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Next trick/i }));
+    await waitFor(() => expect(screen.getByText("TrickB")).toBeInTheDocument());
+  });
+
   it("pauses the spotlight clip when it scrolls out of the viewport and resumes on re-entry", async () => {
     type IOCallback = ConstructorParameters<typeof IntersectionObserver>[0];
     let ioCallback: IOCallback | null = null;
@@ -851,18 +969,8 @@ describe("ClipsFeed — thumbs down", () => {
   });
 
   it("offers a reload once every clip in the batch has been reported away", async () => {
-    const user = userEvent.setup();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
-    render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
-
-    await user.click(await screen.findByRole("button", { name: /report clip by @alice/i }));
-    await user.click(await screen.findByText("__submit__"));
-
-    expect(await screen.findByText(/that's everything in this batch/i)).toBeInTheDocument();
-    mockFetchClipsFeed.mockResolvedValueOnce([makeClip({ id: "g2_1_set", trickName: "Tre Flip" })]);
-    await user.click(screen.getByRole("button", { name: /load more clips/i }));
-
-    await waitFor(() => expect(screen.getByText("Tre Flip")).toBeInTheDocument());
+    await reportAwayThenLoadMore([makeClip()]);
+    expect(mockFetchClipsFeed).toHaveBeenLastCalledWith(null, 12, "top");
   });
 
   it("keeps both thumbs visible but disabled on the viewer's own clip", async () => {

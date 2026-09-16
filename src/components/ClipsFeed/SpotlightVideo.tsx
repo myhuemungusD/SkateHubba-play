@@ -14,9 +14,37 @@ import { useReducedMotion } from "../../hooks/useReducedMotion";
  * element + IntersectionObserver). The parent SpotlightCard is also memoised
  * — between them every unrelated lobby state mutation skips the video JS.
  */
-function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }) {
+const NEXT_BTN =
+  "min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-5 font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange disabled:cursor-wait disabled:opacity-60 disabled:hover:translate-y-0";
+
+const SECONDARY_BTN =
+  "min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-5 border border-border bg-surface/80 text-white/90 font-display text-sm tracking-wider hover:bg-white/[0.04] active:scale-[0.97] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange";
+
+/** Shared NEXT TRICK control for the ended and failed overlays. */
+function NextTrickButton({ onNext, advancing }: { onNext: () => void; advancing: boolean }) {
+  return (
+    <button type="button" onClick={onNext} disabled={advancing} aria-label="Next trick" className={NEXT_BTN}>
+      {advancing ? "LOADING…" : "NEXT TRICK"}
+      {!advancing && <ChevronRightIcon size={14} />}
+    </button>
+  );
+}
+
+interface SpotlightVideoProps {
+  src: string;
+  onNext: () => void;
+  /** True while the feed is fetching the next page — NEXT TRICK shows a pending state. */
+  advancing?: boolean;
+}
+
+function SpotlightVideoImpl({ src, onNext, advancing = false }: SpotlightVideoProps) {
   const [muted, setMuted] = useState(true);
   const [ended, setEnded] = useState(false);
+  // The media element raised `error` — a deleted or expired file, an
+  // unsupported codec, a dead network. Without an escape hatch here the
+  // viewer is stuck: the only NEXT TRICK control lives on the ended overlay,
+  // and a clip that never loads never ends.
+  const [failed, setFailed] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const hasPlayedRef = useRef(false);
@@ -31,6 +59,20 @@ function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }
 
   const handleEnded = useCallback(() => {
     setEnded(true);
+  }, []);
+
+  const handleError = useCallback(() => {
+    setFailed(true);
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    setFailed(false);
+    // load() re-issues the fetch for the same src; a transient network drop
+    // recovers here without remounting the element.
+    el.load();
+    el.play().catch(() => undefined);
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -116,12 +158,13 @@ function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }
         preload="auto"
         onPlay={handlePlay}
         onEnded={handleEnded}
+        onError={handleError}
         className="w-full aspect-[9/16] max-h-[560px] bg-black object-cover"
       />
 
-      {/* Tap-to-unmute overlay. Hidden once the clip ends so the Replay /
-          Next Trick overlay below can receive taps. */}
-      {!ended && (
+      {/* Tap-to-unmute overlay. Hidden once the clip ends (or fails) so the
+          overlay below can receive taps. */}
+      {!ended && !failed && (
         <button
           type="button"
           onClick={toggleMute}
@@ -139,28 +182,32 @@ function SpotlightVideoImpl({ src, onNext }: { src: string; onNext: () => void }
         </button>
       )}
 
+      {/* Playback failure: RETRY or NEXT TRICK. Takes precedence over the
+          ended overlay — a clip that errored mid-play is still unplayable. */}
+      {failed && (
+        <div
+          role="alert"
+          className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 backdrop-blur-sm p-4"
+        >
+          <p className="font-display text-[11px] tracking-[0.2em] text-white/70">Couldn&apos;t play this clip</p>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={handleRetry} aria-label="Retry clip" className={SECONDARY_BTN}>
+              RETRY
+            </button>
+            <NextTrickButton onNext={onNext} advancing={advancing} />
+          </div>
+        </div>
+      )}
+
       {/* End-of-clip prompt: REPLAY or NEXT TRICK. */}
-      {ended && (
+      {ended && !failed && (
         <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/70 backdrop-blur-sm p-4">
           <p className="font-display text-[11px] tracking-[0.2em] text-white/70">Clip ended</p>
           <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={handleReplay}
-              aria-label="Replay clip"
-              className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-5 border border-border bg-surface/80 text-white/90 font-display text-sm tracking-wider hover:bg-white/[0.04] active:scale-[0.97] transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-            >
+            <button type="button" onClick={handleReplay} aria-label="Replay clip" className={SECONDARY_BTN}>
               REPLAY
             </button>
-            <button
-              type="button"
-              onClick={onNext}
-              aria-label="Next trick"
-              className="min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-5 font-display text-sm tracking-wider bg-gradient-to-r from-brand-orange via-[#FF7A1A] to-[#FF8533] text-white active:scale-[0.97] hover:-translate-y-0.5 transition-all shadow-[0_2px_12px_rgba(255,107,0,0.18)] ring-1 ring-white/[0.08] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-            >
-              NEXT TRICK
-              <ChevronRightIcon size={14} />
-            </button>
+            <NextTrickButton onNext={onNext} advancing={advancing} />
           </div>
         </div>
       )}
