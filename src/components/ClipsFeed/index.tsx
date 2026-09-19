@@ -114,6 +114,12 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
             viewerUid={profile.uid}
             viewerUsername={profile.username}
             onClose={() => setCommentsTarget(null)}
+            onReport={() => {
+              // Close the sheet first — ReportModal shares the same fixed
+              // inset-0 overlay z-index, so both open together would stack.
+              setCommentsTarget(null);
+              setReportTarget(commentsTarget);
+            }}
           />
         </Suspense>
       )}
