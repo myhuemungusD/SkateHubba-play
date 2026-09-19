@@ -16,7 +16,7 @@
 import { describe, it } from "vitest";
 import { assertSucceeds, assertFails, type RulesTestContext } from "@firebase/rules-unit-testing";
 import { doc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
-import { setupRulesTestEnv } from "./_fixtures";
+import { seedUsernameReservation, setupRulesTestEnv } from "./_fixtures";
 
 const PROD_BUCKET = "sk8hub-d7806.firebasestorage.app";
 const OWNER_UID = "owner-uid";
@@ -117,6 +117,7 @@ describe("avatar Firestore rule — profileImageUrl pinning", () => {
 
   describe("CREATE path (Codex P1 + chief BLOCKER #1)", () => {
     it("allows creating a user doc with a bucket+UID-pinned profileImageUrl", async () => {
+      await seedUsernameReservation(getEnv(), NEW_OWNER_UID, "new_owner");
       await assertSucceeds(
         setDoc(doc(asNewOwner().firestore(), "users", NEW_OWNER_UID), {
           uid: NEW_OWNER_UID,

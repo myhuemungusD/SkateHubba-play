@@ -40,6 +40,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, setDoc, updateDoc, setLogLevel } from "firebase/firestore";
+import { seedUsernameReservation } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-users-selfinflate";
 
@@ -251,10 +252,12 @@ describe("users/{uid} create — Tier-1 counters must start at zero", () => {
   });
 
   it.each(TIER_1_COUNTERS)("succeeds: creating with %s explicitly zeroed", async (field) => {
+    await seedUsernameReservation(testEnv, ALICE_UID, "alice");
     await assertSucceeds(setDoc(doc(asAlice().firestore(), "users", ALICE_UID), newProfile({ [field]: 0 })));
   });
 
   it("succeeds: creating with the counters absent entirely (the normal client path)", async () => {
+    await seedUsernameReservation(testEnv, ALICE_UID, "alice");
     await assertSucceeds(setDoc(doc(asAlice().firestore(), "users", ALICE_UID), newProfile()));
   });
 });
@@ -308,8 +311,9 @@ describe("users/{uid} Tier-1 stat counters — client writes are DENIED", () => 
 
 // Shared by the dispute- and letter-counter suites below: attempt to create
 // Alice's own profile with a single server-only counter set to `value`.
-function createProfileWithCounter(field: string, value: number) {
-  return setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+async function createProfileWithCounter(field: string, value: number): Promise<void> {
+  await seedUsernameReservation(testEnv, ALICE_UID, "alice");
+  await setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
     uid: ALICE_UID,
     username: "alice",
     stance: "Regular",
@@ -517,6 +521,7 @@ describe("users/{uid} recentResults — client writes are DENIED", () => {
   });
 
   it("succeeds: creating with recentResults as an empty list", async () => {
+    await seedUsernameReservation(testEnv, ALICE_UID, "alice");
     await assertSucceeds(
       setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
         uid: ALICE_UID,

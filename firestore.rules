@@ -337,6 +337,20 @@ service cloud.firestore {
         && request.resource.data.username.size() <= 20 // USERNAME_MAX
         // Enforce lowercase alphanumeric + underscore only (matches client-side normalisation)
         && request.resource.data.username.matches('[a-z0-9_]+') // USERNAME_RE body
+        // ── Username reservation binding (uniqueness bypass guard) ──
+        // Shape validation above only constrains the STRING; it never
+        // required a companion usernames/{username} reservation to exist.
+        // The legitimate client (src/services/users.ts) always writes both
+        // docs in the same runTransaction, but nothing server-side enforced
+        // that pairing — a direct write could mint users/{uid} with a
+        // username someone else already holds, since the reservation
+        // collection was never consulted. Require the SAME atomic write to
+        // also own (create-or-already-own) usernames/{username}; if that
+        // doc already belongs to a different uid, its `allow update: if
+        // false` rule blocks the write outright, so this getAfter can only
+        // resolve to `uid`. Mirrors the getAfter idiom already used by
+        // clipRateLimitOk() below.
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.username)).data.uid == uid
         // wins/losses must start at zero if present (prevents leaderboard inflation
         // by injecting arbitrary stats at profile creation time)
         && (!('wins' in request.resource.data) || request.resource.data.wins == 0)
@@ -1058,6 +1072,28 @@ service cloud.firestore {
             && request.resource.data.judgeUsername == resource.data.judgeUsername);
     }
 
+    // ── player{1,2}IsVerifiedPro are bound at create, immutable on every update ──
+    // The create rule binds each field to the authoritative
+    // users/{uid}.isVerifiedPro (badge-forgery guard, mirrors the username
+    // impersonation guard). Pro status can change mid-game (admin grants it
+    // elsewhere), but that must not retroactively relabel an in-progress
+    // game — no update path legitimately rewrites either field, so every
+    // /games update branch pins them to their stored value here.
+    // Presence-tolerant (mirrors judgeUsernameUnchanged) so non-Pro players
+    // (field omitted entirely — see games.create.ts) and any legacy doc that
+    // predates the field both pass.
+    function verifiedProBadgesUnchanged() {
+      return (
+        (!('player1IsVerifiedPro' in resource.data) && !('player1IsVerifiedPro' in request.resource.data))
+        || ('player1IsVerifiedPro' in resource.data && 'player1IsVerifiedPro' in request.resource.data
+            && request.resource.data.player1IsVerifiedPro == resource.data.player1IsVerifiedPro)
+      ) && (
+        (!('player2IsVerifiedPro' in resource.data) && !('player2IsVerifiedPro' in request.resource.data))
+        || ('player2IsVerifiedPro' in resource.data && 'player2IsVerifiedPro' in request.resource.data
+            && request.resource.data.player2IsVerifiedPro == resource.data.player2IsVerifiedPro)
+      );
+    }
+
     // ── Games ──
     match /games/{gameId} {
       // Players AND the nominated judge can read the game document.
@@ -1158,6 +1194,27 @@ service cloud.firestore {
           || request.resource.data.judgeId == null
           || request.resource.data.judgeUsername ==
                get(/databases/$(database)/documents/users/$(request.resource.data.judgeId)).data.username
+        )
+        // ── Verified Pro badge forgery guard ──
+        // player{1,2}IsVerifiedPro are denormalized for the lobby/scoreboard
+        // UI (WaitingHeader, useLobbyController, LetterScoreboard) so those
+        // screens don't need an extra profile read. The legitimate client
+        // only ever echoes back its own already-fetched
+        // users/{uid}.isVerifiedPro (see GameContext.tsx) and omits the
+        // field entirely when false (games.create.ts), but nothing bound
+        // that server-side — same impersonation shape as the username guard
+        // above, and it reuses the same two get()s (+0 reads). Presence-
+        // optional: a field, if present, must match the authoritative
+        // source; absence always passes (covers the false/legacy case).
+        && (
+          !('player1IsVerifiedPro' in request.resource.data)
+          || request.resource.data.player1IsVerifiedPro ==
+               get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('isVerifiedPro', false)
+        )
+        && (
+          !('player2IsVerifiedPro' in request.resource.data)
+          || request.resource.data.player2IsVerifiedPro ==
+               get(/databases/$(database)/documents/users/$(request.resource.data.player2Uid)).data.get('isVerifiedPro', false)
         )
         // Rate limit: at most one game creation per 30 seconds per user.
         // Checks the user's lastGameCreatedAt field — if it doesn't exist
@@ -1322,7 +1379,8 @@ service cloud.firestore {
         )
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged();
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
 
       // ── Match resolution (matcher submits an attempt) ──
       // Honor system (no active judge):
@@ -1430,7 +1488,8 @@ service cloud.firestore {
         && matchResolutionPinsOk(resource.data, request.resource.data)
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged();
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
 
       // ── Pending-review resolution (honor-system binding dispute, Phase 2) ──
       // A matcher's landed claim now freezes the game in `pendingReview` (see
@@ -1552,7 +1611,8 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged();
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
 
       // ── Dispute resolution (judge rules on the matcher's "landed" claim) ──
       // Judge-only. The setter never self-judges — disputes only exist in
@@ -1655,7 +1715,8 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged();
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
 
       // ── Call BS resolution (judge rules on set trick in setReview phase) ──
       // Judge-only. Clean → back to matching (matcher must attempt).
@@ -1725,7 +1786,8 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged();
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
 
       // ── Judge invite accept / decline ──
       // Only the nominated judge can flip their status from pending. No
@@ -1777,7 +1839,8 @@ service cloud.firestore {
         )
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged();
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
 
       // Either player can forfeit the current-turn player's expired turn
       // Winner must be the opponent of the player whose turn it is
@@ -1826,7 +1889,8 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged();
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
 
       // ── Expired dispute auto-accept ──
       // When the judge's review window expires (24 h), any participant
@@ -1894,7 +1958,8 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged();
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
 
       // ── Expired setReview auto-clear ──
       // When the judge doesn't rule on a "Call BS" within 24h, the set
@@ -1946,7 +2011,8 @@ service cloud.firestore {
         && turnHistoryGrowthOk()
         && judgeUsernameUnchanged()
         && statsAppliedUnchanged()
-        && cronNotifyTombstonesUnchanged();
+        && cronNotifyTombstonesUnchanged()
+        && verifiedProBadgesUnchanged();
 
       // Players may delete their own non-active games (account deletion flow)
       allow delete: if isSignedIn() && isPlayer(resource.data)
