@@ -72,6 +72,13 @@ function asAnonymous(): RulesTestContext {
   return testEnv.unauthenticatedContext();
 }
 
+/** Ban `uid` by seeding the authoritative `bans/{uid}` tombstone (notBanned()). */
+async function ban(uid: string): Promise<void> {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "bans", uid), { bannedBy: "u-admin", bannedAt: new Date() });
+  });
+}
+
 beforeAll(async () => {
   setLogLevel("error");
   testEnv = await initializeTestEnvironment({
@@ -142,6 +149,11 @@ describe("spots — create", () => {
 
   it("rejects a create where createdBy doesn't match the caller", async () => {
     await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot({ createdBy: OTHER_UID })));
+  });
+
+  it("rejects a create from a banned account (notBanned() guard)", async () => {
+    await ban(OWNER_UID);
+    await assertFails(addDoc(collection(asOwner().firestore(), "spots"), makeValidSpot()));
   });
 
   it("rejects an empty name", async () => {
@@ -280,6 +292,13 @@ describe("spots/{id}/comments", () => {
 
   it("a verified user can post their own comment", async () => {
     await assertSucceeds(
+      addDoc(collection(asOtherVerified().firestore(), "spots", SPOT_ID, "comments"), makeValidComment(OTHER_UID)),
+    );
+  });
+
+  it("rejects a comment from a banned account (notBanned() guard)", async () => {
+    await ban(OTHER_UID);
+    await assertFails(
       addDoc(collection(asOtherVerified().firestore(), "spots", SPOT_ID, "comments"), makeValidComment(OTHER_UID)),
     );
   });
