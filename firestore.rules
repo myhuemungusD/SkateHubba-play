@@ -2047,6 +2047,7 @@ service cloud.firestore {
       // via users/{uid}.lastSpotCreatedAt (30s cooldown), same pattern
       // as game creation above.
       allow create: if isSignedIn()
+        && notBanned()
         && request.auth.token.email_verified == true
         && request.resource.data.createdBy == request.auth.uid
         // name: 1–80 chars
@@ -2132,6 +2133,7 @@ service cloud.firestore {
         allow read: if isSignedIn();
 
         allow create: if isSignedIn()
+          && notBanned()
           && request.auth.token.email_verified == true
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.content is string
@@ -2589,11 +2591,17 @@ service cloud.firestore {
         || (isSignedIn() && resource.data.reporterUid == request.auth.uid);
 
       allow create: if isSignedIn()
+        && notBanned()
+        && request.auth.token.email_verified == true
         && request.resource.data.reporterUid == request.auth.uid
         // Cannot report yourself
         && request.resource.data.reportedUid != request.auth.uid
         && request.resource.data.reportedUid is string
         && request.resource.data.reportedUsername is string
+        // Denormalized handle, same bound as the authoritative username field
+        // (USERNAME_MAX) — without a cap, a client could wedge a
+        // multi-megabyte string into the moderation queue.
+        && request.resource.data.reportedUsername.size() <= 20
         // gameId is the game a reported player was encountered in. It stays
         // a mandatory string for game-sourced reports, but a user-uploaded
         // clip has no backing game — those reports carry gameId: null and
@@ -3264,6 +3272,7 @@ service cloud.firestore {
       allow read: if isSignedIn();
 
       allow create: if isSignedIn()
+        && notBanned()
         // Email verification mirrors clipVotes — without it, throwaway
         // accounts could brigade a public verdict.
         && request.auth.token.email_verified == true
