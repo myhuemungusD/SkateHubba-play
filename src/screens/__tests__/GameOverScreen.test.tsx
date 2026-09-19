@@ -120,6 +120,26 @@ describe("GameOverScreen", () => {
     expect(onRematch).toHaveBeenCalledTimes(1);
   });
 
+  it("shows a retryable error when starting a rematch fails", async () => {
+    const onRematch = vi.fn().mockRejectedValue(new Error("Cannot challenge this player."));
+    render(<GameOverScreen game={makeGame()} profile={profile} onRematch={onRematch} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText(/Rematch/));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Cannot challenge this player.");
+    expect(screen.getByText(/Rematch/)).toBeEnabled();
+  });
+
+  it("falls back to a generic message when the rematch rejection isn't an Error", async () => {
+    const onRematch = vi.fn().mockRejectedValue("permission-denied");
+    render(<GameOverScreen game={makeGame()} profile={profile} onRematch={onRematch} onBack={vi.fn()} />);
+
+    await userEvent.click(screen.getByText(/Rematch/));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't start the rematch. Please try again.");
+    expect(screen.getByText(/Rematch/)).toBeEnabled();
+  });
+
   it("shows disabled button when onRematch is undefined", () => {
     render(<GameOverScreen game={makeGame()} profile={profile} onBack={vi.fn()} />);
     expect(screen.getByText("Verify email to rematch")).toBeInTheDocument();

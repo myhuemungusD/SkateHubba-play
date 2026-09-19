@@ -1,10 +1,10 @@
 # SkateHubba Gap Analysis & Prioritization
 
-**Date:** 2026-08-21
+**Date:** 2026-09-19
 **Scope:** `SkateHubba-play` (full audit). _(The original report also carried a DesignMainline static-site pass; that section was removed 2026-08-26 as out-of-repo scope — those findings live with that repo.)_
 **Method:** Five parallel code audits (roadmap-vs-code, rules/service parity, test coverage, security/infra/ops, code-quality/UX), plus the full `npm run verify` gate. Highest-severity findings were re-verified by hand against source. Line references are `file:line` at the audited commit (`5091db4`).
 
-The verify gate is **green** end to end (`tsc -b`, lint, coverage thresholds, build, test-dup all pass). The gaps below are things the gate does not catch: security-rule holes, a silent gameplay dead-end, missing compliance controls, doc drift, and coverage/observability blind spots.
+The verify gate was **green** end to end at the audit baseline (`tsc -b`, lint, coverage thresholds, build, test-dup all passed). The gaps below are things the gate does not catch: security-rule holes, missing compliance controls, doc drift, and coverage/observability blind spots. Status annotations record fixes landed after the baseline.
 
 ---
 
@@ -20,7 +20,16 @@ Full re-run of the five audits + verify gate against the current tree. `npm run 
 
 **New code shipped clean.** The native/platform work (`nativeApp.ts`, `nativeBridge.ts`), PWA install flow, disputes subscription, and Lobby rework respect every guardrail (no Firebase-in-components, no `any`, `runTransaction` on all game writes) and ship at 100% service coverage. Deep-link parsing was checked specifically for open-redirect and is sound (scheme + host allowlist on the parsed `hostname`, routed through the event bridge, not blind `navigate()`). One latent bug found — see **P3-6** (native online-status global).
 
-**Still open, re-confirmed:** P1-1 through P1-8, P2-1 (`api/**` still outside coverage `include`), the global-threshold gap in P2-8 (`src/context`/`lib`/`utils` can still regress to 0%), and the P3 block. P3-4 got slightly **worse** (see that item).
+**Still open, re-confirmed at that re-audit:** P1-1 through P1-8, P2-1 (`api/**` still outside coverage `include`), the global-threshold gap in P2-8 (`src/context`/`lib`/`utils` can still regress to 0%), and the P3 block. P1-6 and P1-7 were subsequently closed on 2026-09-19; their entries below retain the original evidence and record the closure. P3-4 got slightly **worse** (see that item).
+
+---
+
+## Reliability follow-up at HEAD `ed97049` (2026-09-19)
+
+- **P0-3 CLOSED:** raising a community dispute now creates the matcher's in-app notification in the same transaction as the game/dispute writes and stages push dispatch for after commit. The existing `your_turn` notification type is intentionally reused, matching the setter-side review notification and avoiding a schema/rules expansion.
+- **P1-6 CLOSED:** rematch failures are caught, rendered in an accessible inline alert, and leave the Rematch action enabled for retry.
+- **P1-7 CLOSED:** an authoritative missing-game snapshot clears the stale active game, returns the user to the lobby, and explains that the game is no longer available. Transient listener errors remain distinct and continue retaining the last good game.
+- Focused regression suites pass (121 service/screen/context tests plus the deleted-game smoke case); typecheck, lint, production build, and the test-duplication gate also pass. The full coverage gate was not completed in this follow-up, so this section does not claim a fresh end-to-end `npm run verify` result.
 
 ---
 
@@ -57,11 +66,10 @@ Every item lists the evidence so it can be picked up cold.
 
 ### P0-3 · `pendingReview` transition fires no notification → the 24h dispute window is silent
 
-**Status: PARTIALLY CLOSED** — `1b98ec6` notifies the setter when a land claim opens the review window (`writeNotificationInTx` inside the `pendingReview` freeze in `games.match.ts`, reusing the existing `your_turn` type rather than a new `dispute_pending` type). Still open: `disputes.raise.ts` writes no notification, so the claimer is never told their land was disputed.
+**Status: CLOSED** — `1b98ec6` notifies the setter when a land claim opens the review window. `ed97049` closes the remaining claimer side: `disputes.raise.ts` writes the matcher's notification atomically with the transition and drains its staged push dispatch only after commit. Both paths reuse the existing `your_turn` type.
 
-**Active user-facing breakage. A shipped feature silently defeats itself.**
-_As originally filed:_ when a matcher claimed a land on the honor path, `games.match.ts` wrote `phase: "pendingReview"` + `reviewDeadline` and **no notification** — the in-code comment said "DEFERRED." (The setter side of this is now fixed; see Status above.) Every other branch in that file notifies (`:60,:113,:180,:304,:317,:430`). `notifications.ts:32` still has no dispute-specific `NotificationDocType`. Where a party is not notified, they find out only if they happen to open the lobby — otherwise the window expires and `api/cron/resolve-expired-disputes.ts` auto-accepts. That silence still applies to `disputes.raise.ts` (the claimer isn't told their land was disputed).
-**Fix:** add a `dispute_pending` / `dispute_raised` `NotificationDocType` and `writeNotificationInTx` calls in both transitions, plus push. (Verified by hand: the branch returns `outcome: "pending_review"` which is consumed nowhere in the repo.)
+**Original severity: active user-facing breakage.**
+_As originally filed:_ when a matcher claimed a land on the honor path, `games.match.ts` wrote `phase: "pendingReview"` + `reviewDeadline` and **no notification** — the in-code comment said "DEFERRED." The same silence applied to `disputes.raise.ts`, so the claimer was not told their land was disputed. The implemented fix uses the existing `your_turn` type for both transitions, writes each notification transactionally, and dispatches push after commit; a dedicated dispute type was unnecessary.
 
 ### P0-4 · DSA compliance: zero controls, hard deadline of 2026-02-17 **already missed**
 
@@ -106,13 +114,15 @@ The report/ban infrastructure is above-average as abuse tooling (`reports.ts`, `
 
 ### P1-6 · Unhandled rejection on Rematch → silent dead-end
 
-`src/screens/GameOverScreen.tsx:40-52` — `try/finally` with **no catch**, wired directly as a click handler (`:203`). `onRematch` → `startChallenge` throws on reachable paths (`GameContext.tsx:199` "Cannot challenge this player." when either side blocked; plus Firestore rejections). Spinner clears via `finally`, nothing else happens, error only surfaces as an uncaught console rejection. Contrast `App.tsx:262-266` which wraps the same call.
-**Fix:** add `catch` + surface a toast.
+**Status: CLOSED** — fixed in `ed97049`. `GameOverScreen` catches the rejected rematch promise, renders the message through an accessible `role="alert"`, clears the loading state, and permits retry. Regression coverage exercises the reachable `Cannot challenge this player.` rejection.
 
-### P1-7 · Deleted/permission-denied active game is swallowed → frozen screen
+**Original finding:** `GameOverScreen` used `try/finally` with **no catch**, wired directly as a click handler. `onRematch` → `startChallenge` throws on reachable paths (including "Cannot challenge this player." when either side blocked, plus Firestore rejections). The spinner cleared via `finally`, but nothing else happened and the error surfaced only as an uncaught console rejection.
 
-`src/context/GameContext.tsx:156-158` ignores the `null` emission that `subscribeToGame` sends when the doc is gone (`games.subscriptions.ts:193-196`). A game deleted by admin/moderation cascade leaves the user parked on a frozen GamePlayScreen with no route out.
-**Fix:** on `null`, route to lobby + toast.
+### P1-7 · Deleted active game is swallowed → frozen screen
+
+**Status: CLOSED** — fixed in `ed97049`. An authoritative `null` snapshot now clears `activeGame`, routes to the lobby, and emits a user-facing explanation. Listener error callbacks still do not emit `null`, so network, token-refresh, and App Check failures retain the last-good game instead of incorrectly ejecting the player.
+
+**Original finding:** `GameContext` ignored the `null` emission that `subscribeToGame` sends when the document is authoritatively gone. A game deleted by an admin/moderation cascade left the user parked on a frozen GamePlayScreen with no route out.
 
 ### P1-8 · Three cron workflows have no failure alerting → silent P0 reintroduction
 
@@ -214,8 +224,8 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ## Recommended sequence
 
-1. **Today:** P0-1, P0-2, P0-4 (rules fixes are small and self-contained; DSA account tasks have external lead time — start the clock).
-2. **This cycle:** P0-3 + P1-1..P1-8 (the notification gap, the banned-write surfaces, and cron alerting are the user-facing/abuse cluster).
+1. **Today:** P0-4 (the remaining P0; DSA account tasks have external lead time — start the clock). P0-1, P0-2, and P0-3 are closed.
+2. **This cycle:** P1-1..P1-5 and P1-8 (P1-6/P1-7 are closed; the banned-write surfaces, identity integrity, compliance code, and cron alerting remain).
 3. **Schedule:** P2 block — `api/` observability + coverage, App Check rollout, moderation.
 4. **Batch:** P3 doc rewrite (P3-1 first — the state-machine docs actively mislead), release hygiene.
 
