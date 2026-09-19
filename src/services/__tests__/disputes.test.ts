@@ -307,7 +307,7 @@ describe("raiseDispute", () => {
     expect((gameUpdate as { reviewDeadline: unknown }).reviewDeadline).toBeInstanceOf(FakeTimestamp);
 
     // 2) dispute doc denormalized from the FROZEN game (NOT turnHistory).
-    expect(tx.set).toHaveBeenCalledTimes(1);
+    expect(tx.set).toHaveBeenCalledTimes(2);
     const [ref, payload] = tx.set.mock.calls[0];
     expect((ref as { __path: string }).__path).toBe("disputes/g1_3");
     expect(payload).toEqual({
@@ -321,6 +321,16 @@ describe("raiseDispute", () => {
       moderationStatus: "active",
       landVotes: 0,
       bailVotes: 0,
+    });
+
+    const [, notification] = tx.set.mock.calls[1];
+    expect(notification).toMatchObject({
+      senderUid: "setter",
+      recipientUid: "matcher",
+      type: "your_turn",
+      title: "Call sent to the community",
+      gameId: "g1",
+      read: false,
     });
   });
 

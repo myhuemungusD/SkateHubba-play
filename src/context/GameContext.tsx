@@ -154,14 +154,29 @@ export function GameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!activeGame) return;
     const unsub = subscribeToGame(activeGame.id, (updated) => {
-      if (!updated) return;
+      if (!updated) {
+        // `null` is reserved by subscribeToGame for an authoritative missing
+        // document. Recover from account-deletion/admin cleanup instead of
+        // leaving the user trapped on a stale game shell forever.
+        setActiveGame(null);
+        setScreen("lobby");
+        notify({
+          type: "info",
+          title: "Game no longer available",
+          message: "It may have been deleted by another player.",
+        });
+        return;
+      }
       setActiveGame(updated);
       if ((updated.status === "complete" || updated.status === "forfeit") && screenRef.current === "game") {
         setScreen("gameover");
       }
     });
     return unsub;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-subscribe only when game ID changes
+    // notify/setScreen are read from their current provider render; including
+    // notify (whose identity changes with notification state) would tear down
+    // and recreate this listener after every toast.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- subscribe only when the game identity changes
   }, [activeGame?.id]);
 
   const openGame = useCallback(

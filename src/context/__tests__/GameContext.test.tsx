@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, act } from "@testing-library/react";
+import { render, act, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { Component, type ReactNode } from "react";
 import { useGameContext } from "../GameContext";
@@ -120,6 +121,58 @@ describe("useGameContext", () => {
     );
 
     expect(getByTestId("games").textContent).toBe("0");
+  });
+
+  it("clears an open game when its document is authoritatively deleted", async () => {
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "u1", emailVerified: true },
+      profile: { uid: "u1", username: "sk8r" },
+      refreshProfile: vi.fn(),
+    });
+    let gameUpdate: ((game: GameDoc | null) => void) | undefined;
+    mockSubscribeToGame.mockImplementation((_id: string, cb: (game: GameDoc | null) => void) => {
+      gameUpdate = cb;
+      return vi.fn();
+    });
+    const game = {
+      id: "deleted-game",
+      status: "active",
+      player1Uid: "u1",
+      player2Uid: "u2",
+      player1Username: "sk8r",
+      player2Username: "rival",
+    } as GameDoc;
+
+    function Consumer() {
+      const ctx = useGameContext();
+      return (
+        <>
+          <span data-testid="active-game">{ctx.activeGame?.id ?? "none"}</span>
+          <button onClick={() => ctx.openGame(game)}>Open</button>
+        </>
+      );
+    }
+
+    const { GameProvider } = await import("../GameContext");
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <AuthProvider>
+          <NavigationProvider>
+            <NotificationProvider uid="u1">
+              <GameProvider>
+                <Consumer />
+              </GameProvider>
+            </NotificationProvider>
+          </NavigationProvider>
+        </AuthProvider>
+      </MemoryRouter>,
+    );
+
+    await userEvent.click(screen.getByText("Open"));
+    expect(screen.getByTestId("active-game")).toHaveTextContent("deleted-game");
+    act(() => gameUpdate?.(null));
+    expect(screen.getByTestId("active-game")).toHaveTextContent("none");
   });
 });
 
