@@ -149,10 +149,32 @@ export function getNetworkSnapshot(): boolean {
   return nativeOnline ?? navigator.onLine;
 }
 
+// Ref-counted so a second (or third) simultaneous native subscriber is safe.
+// `nativeOnline` and the plugin listener are shared, process-wide state —
+// only the LAST unsubscribe may reset the cache or tear down the listener,
+// or one consumer unmounting would wipe `nativeOnline` out from under every
+// other still-mounted consumer, falling back to `navigator.onLine` (exactly
+// what this module exists to work around on WKWebView).
+let networkSubscriberCount = 0;
+// Bumped on every 0→1 transition and on teardown, so an async init that's
+// still in flight when the last subscriber leaves (or a resubscribe races
+// ahead of it) can tell it's stale and bail out instead of resurrecting a
+// listener nothing is holding a handle to.
+let networkGeneration = 0;
+let networkListenerHandle: Promise<{ remove: () => void } | null> | null = null;
+const networkCallbacks = new Set<() => void>();
+
+function notifyNetworkSubscribers(): void {
+  for (const cb of networkCallbacks) cb();
+}
+
 /**
  * Subscribe to connectivity changes. Native listens to the OS reachability
  * feed via @capacitor/network; web keeps the `online`/`offline` window events.
- * Returns an unsubscribe function; safe to call on either platform.
+ * Returns an unsubscribe function; safe to call on either platform, and safe
+ * to have multiple simultaneous native subscribers (the plugin listener and
+ * `nativeOnline` cache are shared, ref-counted, and only torn down once the
+ * last one leaves).
  */
 export function subscribeToNetworkStatus(cb: () => void): () => void {
   if (!Capacitor.isNativePlatform()) {
@@ -164,28 +186,40 @@ export function subscribeToNetworkStatus(cb: () => void): () => void {
     };
   }
 
-  let removed = false;
-  const handle = (async () => {
-    const { Network } = await import("@capacitor/network");
-    // Seed the cache before the first change event: the OS may already be
-    // offline when the app mounts, and WKWebView's navigator.onLine won't say so.
-    const status = await Network.getStatus();
-    if (removed) return null;
-    nativeOnline = status.connected;
-    cb();
-    return Network.addListener("networkStatusChange", (s) => {
-      nativeOnline = s.connected;
-      cb();
+  networkCallbacks.add(cb);
+  networkSubscriberCount++;
+
+  if (networkSubscriberCount === 1) {
+    const generation = ++networkGeneration;
+    networkListenerHandle = (async () => {
+      const { Network } = await import("@capacitor/network");
+      // Seed the cache before the first change event: the OS may already be
+      // offline when the app mounts, and WKWebView's navigator.onLine won't say so.
+      const status = await Network.getStatus();
+      if (generation !== networkGeneration) return null;
+      nativeOnline = status.connected;
+      notifyNetworkSubscribers();
+      return Network.addListener("networkStatusChange", (s) => {
+        if (generation !== networkGeneration) return;
+        nativeOnline = s.connected;
+        notifyNetworkSubscribers();
+      });
+    })().catch((err: unknown) => {
+      logger.warn("network_listener_failed", { error: parseFirebaseError(err) });
+      return null;
     });
-  })().catch((err: unknown) => {
-    logger.warn("network_listener_failed", { error: parseFirebaseError(err) });
-    return null;
-  });
+  }
 
   return () => {
-    if (removed) return;
-    removed = true;
-    nativeOnline = null;
-    void handle.then((h) => h?.remove()).catch(() => {});
+    if (!networkCallbacks.has(cb)) return; // Already unsubscribed.
+    networkCallbacks.delete(cb);
+    networkSubscriberCount--;
+    if (networkSubscriberCount === 0) {
+      networkGeneration++; // Invalidates any init still in flight.
+      nativeOnline = null;
+      const handle = networkListenerHandle;
+      networkListenerHandle = null;
+      void handle?.then((h) => h?.remove()).catch(() => {});
+    }
   };
 }
