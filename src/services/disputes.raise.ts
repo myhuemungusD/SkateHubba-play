@@ -30,6 +30,8 @@ import { requireAuth, requireDb } from "../firebase";
 import { toGameDoc, type GameDoc } from "./games.mappers";
 import { TURN_DURATION_MS } from "./turnDuration";
 import { disputeId } from "./disputes.mappers";
+import { writeNotificationInTx } from "./notifications";
+import { createPushDispatchOutbox, drainPushDispatchOutbox, resetPushDispatchOutbox } from "./pushDispatch";
 
 /** The frozen-game fields the dispute gate reasons about. */
 type DisputeGate = Pick<GameDoc, "status" | "phase" | "currentSetter" | "reviewFor" | "matchVideoUrl">;
@@ -96,8 +98,10 @@ export async function raiseDispute(gameId: string): Promise<void> {
 
   const db = requireDb();
   const gameRef = doc(db, "games", gameId);
+  const pushOutbox = createPushDispatchOutbox();
 
   await runTransaction(db, async (tx) => {
+    resetPushDispatchOutbox(pushOutbox);
     const gameSnap = await tx.get(gameRef);
     if (!gameSnap.exists()) throw new Error("Game not found");
 
@@ -148,5 +152,23 @@ export async function raiseDispute(gameId: string): Promise<void> {
       landVotes: 0,
       bailVotes: 0,
     });
+
+    // The matcher otherwise receives no signal that their claim was disputed
+    // and can remain on a stale pending-review screen until reopening the app.
+    // Keep the bell entry atomic with the game transition and dispatch push
+    // only after the transaction commits (never from a retrying callback).
+    writeNotificationInTx(
+      tx,
+      {
+        senderUid: game.currentSetter,
+        recipientUid: matcherUid,
+        type: "your_turn",
+        title: "Call sent to the community",
+        body: `@${setterUsername} disputed your ${game.currentTrickName || "trick"} claim.`,
+        gameId,
+      },
+      pushOutbox,
+    );
   });
+  void drainPushDispatchOutbox(pushOutbox);
 }

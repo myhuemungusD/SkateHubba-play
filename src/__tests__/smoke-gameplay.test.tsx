@@ -567,16 +567,15 @@ describe("Smoke: Gameplay", () => {
     });
   });
 
-  it("subscribeToGame callback with null does not crash", async () => {
+  it("recovers to the lobby when the open game was deleted", async () => {
     const game = activeGame();
     games.refs.subscribeToGame.mockImplementation((_id: string, cb: (g: GameDoc | null) => void) => {
-      cb(null); // exercise the !updated return branch
+      cb(null);
       return vi.fn();
     });
     await renderLobby([game]);
 
     await openGameFromLobby();
-    // App should not crash
-    await waitFor(() => expect(screen.getByText("← Games")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Game no longer available")).toBeInTheDocument());
   });
 });

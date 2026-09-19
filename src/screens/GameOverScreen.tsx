@@ -37,6 +37,7 @@ export function GameOverScreen({
   onViewPlayer?: (uid: string) => void;
 }) {
   const [rematching, setRematching] = useState(false);
+  const [rematchError, setRematchError] = useState<string | null>(null);
   const [resolvedDispute, setResolvedDispute] = useState<Dispute | null>(null);
   const rematchingRef = useRef(false);
 
@@ -46,8 +47,11 @@ export function GameOverScreen({
     /* v8 ignore stop */
     rematchingRef.current = true;
     setRematching(true);
+    setRematchError(null);
     try {
       await onRematch();
+    } catch (err) {
+      setRematchError(err instanceof Error ? err.message : "Couldn't start the rematch. Please try again.");
     } finally {
       rematchingRef.current = false;
       setRematching(false);
@@ -175,6 +179,12 @@ export function GameOverScreen({
             View <ProUsername username={opponentName} isVerifiedPro={opponentIsPro} />
             &apos;s Record
           </button>
+        )}
+
+        {rematchError && (
+          <p role="alert" className="mb-4 font-body text-sm text-brand-red">
+            {rematchError}
+          </p>
         )}
 
         {game.judgeUsername && game.judgeStatus === "accepted" && (
