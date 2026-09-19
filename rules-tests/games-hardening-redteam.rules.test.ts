@@ -119,9 +119,12 @@ async function seedBlock(blockerUid: string, blockedUid: string): Promise<void> 
   });
 }
 
-async function seedUser(uid: string, username: string): Promise<void> {
+async function seedUser(uid: string, username: string, isVerifiedPro?: boolean): Promise<void> {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), "users", uid), { username });
+    await setDoc(doc(ctx.firestore(), "users", uid), {
+      username,
+      ...(isVerifiedPro !== undefined && { isVerifiedPro }),
+    });
   });
 }
 
@@ -191,6 +194,87 @@ describe("games create — username impersonation guard", () => {
     // bind fails closed. A game cannot exist without an authoritative handle.
     await testEnv.clearFirestore();
     await assertFails(setDoc(gameRef(asP1(), "g-noprofile"), makeCreatePayload()));
+  });
+});
+
+// ── Verified Pro badge forgery guard ──
+// The create rule now binds player1IsVerifiedPro / player2IsVerifiedPro to
+// the authoritative users/{uid}.isVerifiedPro, mirroring the username
+// impersonation guard above. Pre-guard, any client could self-stamp the
+// badge on either player regardless of their real profile status.
+describe("games create — Verified Pro badge forgery guard", () => {
+  it("rejects a forged player1IsVerifiedPro when the challenger's profile isn't verified", async () => {
+    // beforeEach seeds P1 with no isVerifiedPro field (falsy default).
+    await assertFails(setDoc(gameRef(asP1(), "g-forge-badge-p1"), makeCreatePayload({ player1IsVerifiedPro: true })));
+  });
+
+  it("rejects a forged player2IsVerifiedPro when the opponent's profile isn't verified", async () => {
+    await assertFails(setDoc(gameRef(asP1(), "g-forge-badge-p2"), makeCreatePayload({ player2IsVerifiedPro: true })));
+  });
+
+  it("permits player1IsVerifiedPro: true when the challenger's profile really is verified", async () => {
+    await seedUser(P1_UID, "alice", true);
+    await assertSucceeds(
+      setDoc(gameRef(asP1(), "g-honest-badge-p1"), makeCreatePayload({ player1IsVerifiedPro: true })),
+    );
+  });
+
+  it("permits player2IsVerifiedPro: true when the opponent's profile really is verified", async () => {
+    await seedUser(P2_UID, "bob", true);
+    await assertSucceeds(
+      setDoc(gameRef(asP1(), "g-honest-badge-p2"), makeCreatePayload({ player2IsVerifiedPro: true })),
+    );
+  });
+
+  it("permits omitting both badge fields (the non-Pro default the client actually sends)", async () => {
+    await assertSucceeds(setDoc(gameRef(asP1(), "g-no-badge"), makeCreatePayload()));
+  });
+
+  it("rejects claiming player1IsVerifiedPro: true when the real profile is explicitly false", async () => {
+    await seedUser(P1_UID, "alice", false);
+    await assertFails(
+      setDoc(gameRef(asP1(), "g-forge-badge-explicit-false"), makeCreatePayload({ player1IsVerifiedPro: true })),
+    );
+  });
+});
+
+// ── Verified Pro badge immutability on update ──
+// Bound once at create time; no update branch may introduce, flip, or
+// strip either badge field afterward — Pro status changing mid-game must
+// not retroactively relabel an in-progress game. Piggybacked onto an
+// otherwise-legitimate match-resolution transition so the assertion proves
+// the update rule itself blocks it, not just the create rule.
+describe("games update — Verified Pro badge immutability", () => {
+  function rotatedTurnPayload(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      p1Letters: 0,
+      p2Letters: 0,
+      currentSetter: P2_UID,
+      currentTurn: P2_UID,
+      phase: "setting",
+      currentTrickName: null,
+      currentTrickVideoUrl: null,
+      matchVideoUrl: VALID_TRICK_URL,
+      turnNumber: 4,
+      turnDeadline: FUTURE_DEADLINE(),
+      updatedAt: serverTimestamp(),
+      ...extra,
+    };
+  }
+
+  it("rejects an otherwise-legitimate turn transition that also introduces player1IsVerifiedPro", async () => {
+    await seedGame(makeMatchingGame({ p2Letters: 0 }));
+    await assertFails(updateDoc(gameRef(asP2()), rotatedTurnPayload({ player1IsVerifiedPro: true })));
+  });
+
+  it("rejects an otherwise-legitimate turn transition that flips a stored true badge to false", async () => {
+    await seedGame(makeMatchingGame({ p2Letters: 0, player1IsVerifiedPro: true }));
+    await assertFails(updateDoc(gameRef(asP2()), rotatedTurnPayload({ player1IsVerifiedPro: false })));
+  });
+
+  it("permits the same transition when the badge field is left unchanged", async () => {
+    await seedGame(makeMatchingGame({ p2Letters: 0, player1IsVerifiedPro: true }));
+    await assertSucceeds(updateDoc(gameRef(asP2()), rotatedTurnPayload({ player1IsVerifiedPro: true })));
   });
 });
 

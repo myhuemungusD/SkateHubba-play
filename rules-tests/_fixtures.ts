@@ -100,6 +100,20 @@ export async function seedGameProfiles(env: RulesTestEnvironment): Promise<void>
   });
 }
 
+/**
+ * Seed a usernames/{username} reservation doc under the rules-disabled admin
+ * context. The users/{uid} create rule now requires a companion reservation
+ * write resolving to the same uid (uniqueness-bypass guard) — production
+ * always pairs the two in one runTransaction (src/services/users.ts), but a
+ * test that `setDoc`s a bare users/{uid} doc directly must pre-seed this or
+ * the create rule denies the write outright regardless of its other fields.
+ */
+export async function seedUsernameReservation(env: RulesTestEnvironment, uid: string, username: string): Promise<void> {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "usernames", username), { uid, reservedAt: serverTimestamp() });
+  });
+}
+
 /** DocumentReference to a /games doc for the given context. */
 export function gameDoc(ctx: RulesTestContext, gameId: string): DocumentReference {
   return doc(ctx.firestore(), "games", gameId);

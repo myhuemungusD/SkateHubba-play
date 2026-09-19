@@ -36,6 +36,7 @@ import {
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { doc, serverTimestamp, setDoc, setLogLevel, updateDoc } from "firebase/firestore";
+import { seedUsernameReservation } from "./_fixtures";
 
 const PROJECT_ID = "demo-skatehubba-rules-rate-limit-redteam";
 
@@ -202,6 +203,7 @@ describe("users create — red-team against cooldown-anchor seeding at profile c
   it("legitimate: can create a profile without any cooldown-anchor fields", async () => {
     // Sanity regression: the canonical createProfile() payload must still
     // land. If this starts failing, the create rule has over-constrained.
+    await seedUsernameReservation(testEnv, OWNER_UID, "alice");
     await assertSucceeds(setDoc(doc(asOwner().firestore(), "users", OWNER_UID), makeUserCreate()));
   });
 });

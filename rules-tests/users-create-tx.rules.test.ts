@@ -133,6 +133,11 @@ beforeEach(async () => {
   await testEnv.clearFirestore();
 });
 
+/** Run the canonical, valid createProfile transaction for Alice. */
+async function seedAliceProfile(): Promise<void> {
+  await assertSucceeds(runCreateProfileTx({ ctx: asAlice(), pathUid: ALICE_UID, username: ALICE_USERNAME }));
+}
+
 describe("createProfile 3-write transaction — happy path", () => {
   it("authenticated user CAN run the exact production transaction shape", async () => {
     // This is the canary. If the rules drift in a way that breaks signup
@@ -228,13 +233,7 @@ describe("createProfile 3-write transaction — predicate isolation (negatives)"
     // the uniqueness invariant; the in-transaction `tx.get(usernameRef)`
     // existence check is defense-in-depth — even if the client skipped it,
     // the rule still blocks the collision.
-    await assertSucceeds(
-      runCreateProfileTx({
-        ctx: asAlice(),
-        pathUid: ALICE_UID,
-        username: ALICE_USERNAME,
-      }),
-    );
+    await seedAliceProfile();
     await assertFails(
       runCreateProfileTx({
         ctx: asBob(),
@@ -261,6 +260,41 @@ describe("createProfile 3-write transaction — predicate isolation (negatives)"
         // Skip the read — unauthenticated reads against the rule are
         // themselves denied, and we want to prove the WRITE path is gated.
         readUsernameFirst: false,
+      }),
+    );
+  });
+
+  it("DENIED: users/{uid} create with no companion usernames/{name} reservation (uniqueness bypass)", async () => {
+    // Predicate: getAfter(usernames/{username}).data.uid == uid on the
+    // users/{uid} create rule. A direct write that skips the usernames/{name}
+    // half of the transaction entirely — e.g. a raw API call, not the
+    // client's runTransaction — must fail even though every other field is
+    // valid. Without this, two accounts could each hold a users/{uid}
+    // profile claiming the same handle, since nothing cross-checked the
+    // reservation collection.
+    await assertFails(
+      setDoc(doc(asAlice().firestore(), "users", ALICE_UID), {
+        uid: ALICE_UID,
+        username: ALICE_USERNAME,
+        stance: "Regular",
+        createdAt: serverTimestamp(),
+      }),
+    );
+  });
+
+  it("DENIED: users/{uid} create claims a username already reserved by someone else", async () => {
+    // Same predicate as above, opposite direction: Bob's profile create
+    // targets a username whose usernames/{name} doc already exists and
+    // belongs to Alice. getAfter(...).uid resolves to Alice's uid (Bob
+    // cannot overwrite it — usernames/{name} has no update rule), so the
+    // comparison against Bob's own uid fails.
+    await seedAliceProfile();
+    await assertFails(
+      setDoc(doc(asBob().firestore(), "users", BOB_UID), {
+        uid: BOB_UID,
+        username: ALICE_USERNAME,
+        stance: "Regular",
+        createdAt: serverTimestamp(),
       }),
     );
   });
