@@ -285,6 +285,61 @@ describe("network status on native", () => {
     expect(mockRemove).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the shared cache and listener alive for a second subscriber after the first unsubscribes", async () => {
+    setNavigator("onLine", true);
+    mockGetStatus.mockResolvedValue({ connected: false });
+    const cbA = vi.fn();
+    const cbB = vi.fn();
+    const unsubA = subscribeToNetworkStatus(cbA);
+    await flush();
+    // A second subscriber joins after the plugin is already seeded — it
+    // must NOT trigger a second getStatus()/addListener() round trip.
+    const unsubB = subscribeToNetworkStatus(cbB);
+    expect(mockNetAddListener).toHaveBeenCalledTimes(1);
+
+    unsubA();
+    await flush();
+    // The regression this guards: unsubscribing A must not reset the shared
+    // nativeOnline cache (falling back to navigator.onLine) or tear down the
+    // listener while B is still mounted.
+    expect(mockRemove).not.toHaveBeenCalled();
+    expect(getNetworkSnapshot()).toBe(false);
+
+    const handler = mockNetAddListener.mock.calls[0][1] as (s: { connected: boolean }) => void;
+    handler({ connected: true });
+    expect(getNetworkSnapshot()).toBe(true);
+    expect(cbB).toHaveBeenCalled();
+    // A already unsubscribed — called once during the initial seed, never
+    // again once the change event fires after its unsubscribe.
+    expect(cbA).toHaveBeenCalledTimes(1);
+
+    unsubB();
+    await flush();
+    expect(mockRemove).toHaveBeenCalledTimes(1);
+    expect(getNetworkSnapshot()).toBe(true); // cache cleared, navigator.onLine wins
+  });
+
+  it("ignores a stale event that arrives after unsubscribe but before the native remove() lands", async () => {
+    // A real race: the OS can deliver one more networkStatusChange between
+    // this module bumping its generation counter and Network.addListener's
+    // remove() actually taking effect on the native side. `onLine: false`
+    // here so a leaked write is distinguishable from the guard working: if
+    // the stale event's `connected: true` slipped through, the snapshot
+    // would wrongly read `true` instead of falling through to `onLine`.
+    setNavigator("onLine", false);
+    mockGetStatus.mockResolvedValue({ connected: false });
+    const cb = vi.fn();
+    const unsub = subscribeToNetworkStatus(cb);
+    await flush();
+
+    const handler = mockNetAddListener.mock.calls[0][1] as (s: { connected: boolean }) => void;
+    unsub(); // Bumps the generation and clears the cache; remove() is still in flight.
+    handler({ connected: true }); // Stale delivery — must be ignored, not resurrect the cache.
+
+    expect(getNetworkSnapshot()).toBe(false); // navigator.onLine, not the stale `true` from the event
+    await flush();
+  });
+
   it("swallows a failing listener removal", async () => {
     mockRemove.mockRejectedValueOnce(new Error("already removed"));
     const unsub = subscribeToNetworkStatus(vi.fn());
