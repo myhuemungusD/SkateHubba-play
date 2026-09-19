@@ -49,9 +49,10 @@ vi.mock("../UserClipUpload", () => ({
 }));
 
 vi.mock("../ClipsFeed/ClipComments", () => ({
-  ClipComments: ({ onClose }: { onClose: () => void }) => (
+  ClipComments: ({ onClose, onReport }: { onClose: () => void; onReport?: () => void }) => (
     <div role="dialog" aria-label="comments-sheet">
       <button onClick={onClose}>__close_comments__</button>
+      {onReport && <button onClick={onReport}>__report_from_comments__</button>}
     </div>
   ),
 }));
@@ -1016,14 +1017,27 @@ describe("ClipsFeed — user clips and comments", () => {
     expect(await screen.findByRole("dialog", { name: /upload-modal/i })).toBeInTheDocument();
   });
 
-  it("opens the comment sheet from the clip's COMMENTS action", async () => {
-    const user = userEvent.setup();
+  /** Render the feed, wait for its one clip, and open the comment sheet. */
+  async function renderAndOpenComments(user: ReturnType<typeof userEvent.setup>) {
     mockFetchClipsFeed.mockResolvedValueOnce([makeClip()]);
     render(<ClipsFeed profile={profile} onViewPlayer={vi.fn()} onChallengeUser={vi.fn()} />);
     await waitFor(() => expect(screen.getByText("Kickflip")).toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: /comments on @alice's clip/i }));
-
     expect(await screen.findByRole("dialog", { name: /comments-sheet/i })).toBeInTheDocument();
+  }
+
+  it("opens the comment sheet from the clip's COMMENTS action", async () => {
+    await renderAndOpenComments(userEvent.setup());
+  });
+
+  it("opens the report modal (and closes the comment sheet) from the REPORT action inside comments", async () => {
+    const user = userEvent.setup();
+    await renderAndOpenComments(user);
+
+    await user.click(screen.getByRole("button", { name: "__report_from_comments__" }));
+
+    expect(await screen.findByRole("dialog", { name: /report-modal/i })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /comments-sheet/i })).not.toBeInTheDocument();
   });
 });
