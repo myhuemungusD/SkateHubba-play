@@ -113,6 +113,24 @@ describe("sweep handler auth (fail-closed)", () => {
     };
   }
 
+  it("does not leak the raw init error to the client on a malformed service account", async () => {
+    process.env.CRON_SECRET = "s3cret";
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON = "{not valid json";
+    getAppsMock.mockReturnValue([]);
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { res, out } = makeRes();
+    await handler(makeReq({ authorization: "Bearer s3cret" }), res);
+
+    expect(out.code).toBe(500);
+    expect(out.body).toMatchObject({ error: "init_failed", message: "Server misconfiguration." });
+    // The raw parse error (which can embed a snippet of the secret it failed
+    // to parse) goes to the server log only, never the HTTP response.
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("init_failed"));
+    expect(JSON.stringify(out.body)).not.toContain("not valid json");
+    warnSpy.mockRestore();
+  });
+
   it("proceeds past auth with the correct token", async () => {
     process.env.CRON_SECRET = "s3cret";
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON = VALID_SERVICE_ACCOUNT;

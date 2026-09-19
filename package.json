@@ -35,7 +35,7 @@
     "cap:open:android": "cap open android",
     "cap:run:ios": "cap run ios",
     "cap:run:android": "cap run android",
-    "lint": "eslint src/ api/ e2e/",
+    "lint": "eslint src/ api/ e2e/ public/sw-cleanup.js",
     "lint:fix": "eslint src/ api/ e2e/ --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "check:test-dup": "node scripts/check-test-duplication.mjs",

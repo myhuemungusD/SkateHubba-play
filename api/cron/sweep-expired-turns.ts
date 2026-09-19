@@ -683,7 +683,12 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
     db = getAdminFirestore();
   } catch (err) {
     // Misconfiguration (missing/malformed service account) — surface as 500.
-    res.status(500).json({ error: "init_failed", message: err instanceof Error ? err.message : String(err) });
+    // The raw error (e.g. a JSON.parse failure on FIREBASE_SERVICE_ACCOUNT_JSON)
+    // can embed a snippet of the secret it failed to parse, so it's logged
+    // server-side only — the client gets a flat message, matching the same
+    // init_failed path in api/account/delete.ts.
+    console.warn(JSON.stringify({ event: "init_failed", message: err instanceof Error ? err.message : String(err) }));
+    res.status(500).json({ error: "init_failed", message: "Server misconfiguration." });
     return;
   }
 
