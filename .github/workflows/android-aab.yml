@@ -17,6 +17,7 @@ on:
       - 'android/**'
       - 'package.json'
       - 'capacitor.config.ts'
+      - '.github/workflows/android-aab.yml'
     tags:
       - 'v*'
 
