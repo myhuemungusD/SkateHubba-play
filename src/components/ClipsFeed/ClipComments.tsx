@@ -10,6 +10,10 @@ export interface ClipCommentsProps {
   viewerUid: string;
   viewerUsername: string;
   onClose: () => void;
+  /** Opens the report flow for the clip this thread belongs to (comments
+   *  aren't independently reportable — reporting the clip is the existing,
+   *  moderator-actionable path). Omitted entirely hides the control. */
+  onReport?: () => void;
 }
 
 /**
@@ -20,7 +24,7 @@ export interface ClipCommentsProps {
  * — off screen. Focus is trapped while it is open (`useFocusTrap`), and it
  * closes on backdrop tap or Escape, matching ReportModal.
  */
-export function ClipComments({ clip, viewerUid, viewerUsername, onClose }: ClipCommentsProps) {
+export function ClipComments({ clip, viewerUid, viewerUsername, onClose, onReport }: ClipCommentsProps) {
   const c = useClipComments(clip.id, viewerUid, viewerUsername);
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef);
@@ -45,14 +49,26 @@ export function ClipComments({ clip, viewerUid, viewerUsername, onClose }: ClipC
           <h3 id="clip-comments-title" className="font-display text-lg text-white">
             Comments
           </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close comments"
-            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-border font-display text-[11px] tracking-[0.15em] text-muted transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
-          >
-            CLOSE
-          </button>
+          <div className="flex items-center gap-2">
+            {onReport && (
+              <button
+                type="button"
+                onClick={onReport}
+                aria-label="Report this clip"
+                className="inline-flex min-h-[44px] items-center rounded-xl border border-border px-2 font-display text-[11px] tracking-[0.15em] text-muted transition-colors hover:text-brand-red focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+              >
+                REPORT
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close comments"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-border font-display text-[11px] tracking-[0.15em] text-muted transition-colors hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-orange"
+            >
+              CLOSE
+            </button>
+          </div>
         </div>
 
         <p className="mb-3 font-body text-xs text-faint">

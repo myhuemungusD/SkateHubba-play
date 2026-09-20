@@ -14,8 +14,10 @@ const { fetch: mockFetch, create: mockCreate, remove: mockDelete } = clipComment
 
 const clip = makeGameClip({ id: "c1", videoUrl: "https://cdn/x.webm" });
 
-function renderSheet(viewerUid = "me", onClose = vi.fn()) {
-  render(<ClipComments clip={clip} viewerUid={viewerUid} viewerUsername="viewer" onClose={onClose} />);
+function renderSheet(viewerUid = "me", onClose = vi.fn(), onReport?: () => void) {
+  render(
+    <ClipComments clip={clip} viewerUid={viewerUid} viewerUsername="viewer" onClose={onClose} onReport={onReport} />,
+  );
   return { onClose };
 }
 
@@ -146,6 +148,22 @@ describe("ClipComments", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/couldn't delete/i);
     expect(screen.getByText("Mine.")).toBeInTheDocument();
+  });
+
+  it("hides the report control when no onReport handler is given", async () => {
+    renderSheet();
+    await screen.findByTestId("comments-empty");
+    expect(screen.queryByRole("button", { name: /report this clip/i })).not.toBeInTheDocument();
+  });
+
+  it("calls onReport when the report control is tapped", async () => {
+    const user = userEvent.setup();
+    const onReport = vi.fn();
+    renderSheet("me", vi.fn(), onReport);
+    await screen.findByTestId("comments-empty");
+
+    await user.click(screen.getByRole("button", { name: /report this clip/i }));
+    expect(onReport).toHaveBeenCalledTimes(1);
   });
 
   it("closes on the CLOSE control and on Escape", async () => {
