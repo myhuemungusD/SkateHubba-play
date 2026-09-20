@@ -146,6 +146,59 @@ describe("useFocusTrap", () => {
     expect(document.activeElement).toBe(buttons[2]);
   });
 
+  it("calls onEscape when Escape is pressed and the trap is active", () => {
+    const container = createContainer();
+    const onEscape = vi.fn();
+
+    renderHook(() => {
+      const ref = useRef<HTMLDivElement>(container);
+      useFocusTrap(ref, true, onEscape);
+    });
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(onEscape).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call onEscape when the trap is disabled", () => {
+    const container = createContainer();
+    const onEscape = vi.fn();
+
+    renderHook(() => {
+      const ref = useRef<HTMLDivElement>(container);
+      useFocusTrap(ref, false, onEscape);
+    });
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(onEscape).not.toHaveBeenCalled();
+  });
+
+  it("picks up a new onEscape identity across rerenders without retrapping focus", () => {
+    const container = createContainer();
+    const buttons = container.querySelectorAll("button");
+    const first = vi.fn();
+    const second = vi.fn();
+
+    const { rerender } = renderHook(
+      ({ onEscape }: { onEscape: () => void }) => {
+        const ref = useRef<HTMLDivElement>(container);
+        useFocusTrap(ref, true, onEscape);
+      },
+      { initialProps: { onEscape: first } },
+    );
+
+    // Move focus off the first button — if the trap effect re-ran on the
+    // prop change below (the bug the onEscapeRef pattern guards against),
+    // this would get silently reset back to buttons[0].
+    (buttons[1] as HTMLElement).focus();
+
+    rerender({ onEscape: second });
+    expect(document.activeElement).toBe(buttons[1]);
+
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
   it("handles container with no focusable elements", () => {
     const container = document.createElement("div");
     container.innerHTML = "<span>Not focusable</span>";

@@ -14,9 +14,26 @@ function getFocusableElements(container: HTMLElement): HTMLElement[] {
  * Initial focus lands on whichever node declares `autoFocus`; if none exists,
  * the first focusable element inside the container is focused so keyboard
  * users never land "nowhere" when a modal opens.
+ *
+ * `onEscape`, when passed, is invoked on an Escape keypress while the trap is
+ * active — opt-in so existing callers that already hand-roll their own
+ * Escape handling (an onKeyDown on the panel) aren't double-invoked.
  */
-export function useFocusTrap(containerRef: React.RefObject<HTMLElement | null>, enabled = true): void {
+export function useFocusTrap(
+  containerRef: React.RefObject<HTMLElement | null>,
+  enabled = true,
+  onEscape?: () => void,
+): void {
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  // Latest-ref pattern: an inline `() => ...` passed as onEscape gets a new
+  // identity every render. Reading it through a ref (updated on every
+  // render, not just when the trap effect re-runs) keeps that common case
+  // from tearing down and reinitializing the trap — including the refocus-
+  // first-element step — on every parent re-render.
+  const onEscapeRef = useRef(onEscape);
+  useEffect(() => {
+    onEscapeRef.current = onEscape;
+  });
 
   useEffect(() => {
     if (!enabled) return;
@@ -39,6 +56,10 @@ export function useFocusTrap(containerRef: React.RefObject<HTMLElement | null>, 
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onEscapeRef.current?.();
+        return;
+      }
       if (e.key !== "Tab") return;
 
       const focusable = getFocusableElements(container);
