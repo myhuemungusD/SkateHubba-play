@@ -57,6 +57,13 @@ function makeValidReport(overrides: Record<string, unknown> = {}): Record<string
   };
 }
 
+/** Ban `uid` by seeding the authoritative `bans/{uid}` tombstone (notBanned()). */
+async function ban(uid: string): Promise<void> {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "bans", uid), { bannedBy: "u-admin", bannedAt: new Date() });
+  });
+}
+
 async function seedLimit(lastSentAt: Date): Promise<void> {
   await testEnv.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(ctx.firestore(), "reports_limits", LIMIT_ID), {
@@ -109,6 +116,11 @@ beforeEach(async () => {
 describe("reports — companion write + 1h cooldown", () => {
   it("legitimate: first-ever report writes both the report and the limit doc", async () => {
     await assertSucceeds(submitReportBatch());
+  });
+
+  it("attack: a banned reporter CANNOT submit a report (notBanned() guard)", async () => {
+    await ban(REPORTER_UID);
+    await assertFails(submitReportBatch());
   });
 
   it("attack: CANNOT submit a report without the companion reports_limits write", async () => {
