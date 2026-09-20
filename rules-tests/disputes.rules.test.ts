@@ -125,6 +125,13 @@ async function seedDispute(overrides: Record<string, unknown> = {}): Promise<voi
   });
 }
 
+/** Ban `uid` by seeding the authoritative `bans/{uid}` tombstone (notBanned()). */
+async function ban(uid: string): Promise<void> {
+  await getEnv().withSecurityRulesDisabled(async (ctx) => {
+    await setDoc(doc(ctx.firestore(), "bans", uid), { bannedBy: "u-admin", bannedAt: new Date() });
+  });
+}
+
 /** Seed a verdict already cast by `voterUid`, with the tally to match. */
 async function seedExistingVote(voterUid: string, verdict: "land" | "bail" = "land"): Promise<void> {
   await getEnv().withSecurityRulesDisabled(async (ctx) => {
@@ -679,6 +686,12 @@ describe("disputeVotes", () => {
     await seedDispute();
     await seedExistingVote(VIEWER_UID);
     await assertSucceeds(getDoc(voteRef(as(OTHER_VIEWER_UID), VIEWER_UID)));
+  });
+
+  it("rejects a vote from a banned account (notBanned() guard)", async () => {
+    await seedDispute();
+    await ban(VIEWER_UID);
+    await assertFails(setDoc(voteRef(as(VIEWER_UID), VIEWER_UID), makeValidVote(VIEWER_UID)));
   });
 
   it("rejects a vote doc whose id doesn't match uid_disputeId", async () => {
