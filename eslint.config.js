@@ -26,5 +26,14 @@ export default tseslint.config(
       "@typescript-eslint/no-unsafe-function-type": "off",
     },
   },
+  // The one plain (non-TypeScript) browser script in the repo — loaded
+  // directly via a <script> tag, not bundled, so it never picks up the
+  // DOM lib types the rest of the codebase gets through tsconfig. Without
+  // an explicit global, `navigator` trips no-undef (the TS-specific rule
+  // sets elsewhere disable that check for .ts/.tsx files; this is .js).
+  {
+    files: ["public/sw-cleanup.js"],
+    languageOptions: { globals: { navigator: "readonly" } },
+  },
   prettier,
 );
