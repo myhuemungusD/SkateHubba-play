@@ -19,6 +19,10 @@
 import { test, expect, type Page } from "@playwright/test";
 import { clearAll, createSpot, getSignedInUid } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
+import { EXTRAS_ENABLED, EXTRAS_SKIP_REASON } from "./helpers/feature-flags";
+
+// /map is frozen (redirects to /lobby) unless the flag is on.
+test.skip(!EXTRAS_ENABLED, EXTRAS_SKIP_REASON);
 
 const SPOT_ID = "11111111-2222-3333-4444-555555555555";
 

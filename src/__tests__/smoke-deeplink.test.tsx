@@ -22,6 +22,7 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import App from "../App";
 import { verifiedUser, testProfile } from "./smoke-helpers";
+import { withExtrasEnabled } from "./harness/featureFlags";
 import type { UserProfile } from "../services/users";
 
 // Minimal mock surface: only the modules `App` directly touches at startup
@@ -100,11 +101,6 @@ describe("Smoke: direct-URL deep-linking", () => {
     expect(activeNavTab()).toBe("Me");
   });
 
-  it("loads /map directly without bouncing to /lobby", async () => {
-    await renderAt("/map");
-    expect(activeNavTab()).toBe("Map");
-  });
-
   it("loads /player/:uid directly without bouncing to /lobby", async () => {
     // No renderAt() here: /player/:uid is another skater's profile — a pushed
     // detail screen, not a tab destination — so the nav deliberately does not
@@ -128,11 +124,6 @@ describe("Smoke: direct-URL deep-linking", () => {
     expect(activeNavTab()).toBe("Me");
   });
 
-  it("loads /feed directly and lights up the Clips tab", async () => {
-    await renderAt("/feed");
-    expect(activeNavTab()).toBe("Clips");
-  });
-
   it("loads /lobby directly and renders the lobby", async () => {
     await renderAt("/lobby");
     expect(activeNavTab()).toBe("Home");
@@ -150,7 +141,63 @@ describe("Smoke: direct-URL deep-linking", () => {
  * `/player/:uid` passed both. Prop wiring on a route is only observable
  * through the real route table, hence an App-level spec.
  */
+describe("Smoke: frozen-extras deep links (VITE_FEATURE_EXTRAS_ENABLED=true)", () => {
+  withExtrasEnabled();
+
+  it("loads /map directly without bouncing to /lobby", async () => {
+    await renderAt("/map");
+    expect(activeNavTab()).toBe("Map");
+  });
+
+  it("loads /feed directly and lights up the Clips tab", async () => {
+    await renderAt("/feed");
+    expect(activeNavTab()).toBe("Clips");
+  });
+});
+
+/**
+ * Feature freeze (flag unset — the production default). The Map, spot detail
+ * and Clips feed URLs must redirect rather than 404, to the same destinations
+ * the existing auth guards use: /lobby when signed in, / when signed out.
+ */
+describe("Smoke: feature freeze redirects (VITE_FEATURE_EXTRAS_ENABLED unset)", () => {
+  const FROZEN_PATHS = ["/map", "/feed", "/spots/11111111-2222-3333-4444-555555555555"];
+
+  it.each(FROZEN_PATHS)("redirects a signed-in user from %s to /lobby", async (path) => {
+    await mountApp(path);
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/lobby");
+    });
+    expect(activeNavTab()).toBe("Home");
+  });
+
+  it.each(FROZEN_PATHS)("redirects a signed-out visitor from %s to the landing page", async (path) => {
+    mocks.auth.refs.useAuth.mockReturnValue({ loading: false, user: null, profile: null, refreshProfile: vi.fn() });
+    await mountApp(path);
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/");
+    });
+  });
+
+  it("keeps the Challenge loop entry points: Home · Challenge · Me, no Clips or Map", async () => {
+    await renderAt("/lobby");
+    const labels = Array.from(document.querySelectorAll('nav[aria-label="Primary navigation"] a')).map((a) =>
+      a.getAttribute("aria-label"),
+    );
+    expect(labels).toEqual(["Home", "Challenge", "Me"]);
+  });
+
+  it("renders no ADD A SPOT entry point on the own profile", async () => {
+    await renderAt("/me");
+    await screen.findByTestId("my-stats-button");
+    expect(screen.queryByRole("button", { name: /add a spot/i })).not.toBeInTheDocument();
+  });
+});
+
 describe("Smoke: /record own-profile affordances", () => {
+  // ADD A SPOT is a Map entry point, so these pin the extras-enabled wiring.
+  withExtrasEnabled();
+
   it("renders ADD A SPOT as an enabled control, not an inert affordance", async () => {
     await renderAt("/record");
     expect(await screen.findByRole("button", { name: /add a spot/i })).toBeEnabled();
@@ -226,6 +273,7 @@ describe("Smoke: /my-stats is owner-only", () => {
  * fighting over the URL, and that the spot id outlives the round trip.
  */
 describe("Smoke: /spots/:id deep link survives the auth bounce", () => {
+  withExtrasEnabled();
   const SPOT_ID = "11111111-2222-3333-4444-555555555555";
   const DETAIL_KEY = "skate.pendingSpotDetail";
 

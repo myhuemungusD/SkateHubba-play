@@ -1,3 +1,5 @@
+import { isExtrasEnabled } from "../lib/featureFlags";
+
 interface ProUsernameProps {
   username: string;
   isVerifiedPro?: boolean;
@@ -5,7 +7,11 @@ interface ProUsernameProps {
   className?: string;
 }
 
-export function ProUsername({ username, isVerifiedPro, className = "" }: ProUsernameProps) {
+export function ProUsername({ username, isVerifiedPro: rawIsVerifiedPro, className = "" }: ProUsernameProps) {
+  // Verified Pro is frozen behind VITE_FEATURE_EXTRAS_ENABLED (default OFF):
+  // while frozen the gold shimmer + ✦ badge are suppressed app-wide. The
+  // `isVerifiedPro` data itself is untouched — see src/lib/featureFlags.ts.
+  const isVerifiedPro = rawIsVerifiedPro === true && isExtrasEnabled();
   return (
     <span className={`${className} ${isVerifiedPro ? "pro-username" : ""}`}>
       @{username}

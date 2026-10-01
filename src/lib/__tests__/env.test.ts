@@ -71,6 +71,19 @@ describe("safeParseEnv", () => {
     expect(safeParseEnv({ ...validEnv, VITE_APPCHECK_ENABLED: "" })?.VITE_APPCHECK_ENABLED).toBe(false);
   });
 
+  it.each([
+    [undefined, false],
+    ["", false],
+    ["false", false],
+    ["TRUE", false],
+    ["1", false],
+    ["true", true],
+  ])("parses VITE_FEATURE_EXTRAS_ENABLED=%j as %s (feature freeze, default off)", (raw, expected) => {
+    const result = safeParseEnv({ ...validEnv, VITE_FEATURE_EXTRAS_ENABLED: raw });
+    expect(result).not.toBeNull();
+    expect(result?.VITE_FEATURE_EXTRAS_ENABLED).toBe(expected);
+  });
+
   it("accepts every optional var when provided with a valid string", () => {
     const result = safeParseEnv({
       ...validEnv,

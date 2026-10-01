@@ -23,6 +23,7 @@ import { firebaseReady } from "./firebase";
 import { ConsentBanner } from "./components/ConsentBanner";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
+import { isExtrasEnabled } from "./lib/featureFlags";
 // Eager: first-paint / onboarding path (Landing, AuthScreen, ProfileSetup)
 // plus Lobby since it's the primary destination for returning authed users.
 // DOB + parental consent are collected inline on AuthScreen (COPPA/CCPA), and
@@ -163,7 +164,7 @@ function PlayerProfileRoute({
   onChallenge: (uid: string, username: string) => void;
   onViewPlayer: (uid: string) => void;
   blockedUids: Set<string>;
-  onAddSpot: () => void;
+  onAddSpot?: () => void;
   onRefreshProfile: () => Promise<void>;
   onSignUp: () => void;
   onEditProfile: () => void;
@@ -242,6 +243,12 @@ function AppRoutes() {
   const analyticsAllowed = useAnalyticsConsent();
   const { notify } = useNotifications();
   const [challengeTarget, setChallengeTarget] = useState("");
+  const extrasEnabled = isExtrasEnabled();
+  // Where a frozen-feature URL lands (see the /map, /spots/:id, /feed routes).
+  const frozenRedirect = auth.activeProfile ? "/lobby" : "/";
+  // The profile "ADD A SPOT" CTA deep-links into the Map; omit it while the
+  // Map is frozen so PlayerProfileScreen renders no spot entry point at all.
+  const onAddSpot = extrasEnabled ? nav.navigateToMapWithAddSpot : undefined;
   const directChallenge = useCallback(
     async (username: string) => {
       if (!auth.user?.emailVerified) {
@@ -512,7 +519,7 @@ function AppRoutes() {
                     onOpenGame={game.openGame}
                     onBack={() => nav.setScreen("lobby")}
                     onViewPlayer={nav.navigateToPlayer}
-                    onAddSpot={nav.navigateToMapWithAddSpot}
+                    onAddSpot={onAddSpot}
                     onRefreshProfile={auth.refreshProfile}
                     onEditProfile={() => navigate("/settings")}
                     onViewMyStats={() => navigate("/my-stats")}
@@ -544,7 +551,7 @@ function AppRoutes() {
                   onChallenge={(_uid, username) => directChallenge(username)}
                   onViewPlayer={nav.navigateToPlayer}
                   blockedUids={blockedUids}
-                  onAddSpot={nav.navigateToMapWithAddSpot}
+                  onAddSpot={onAddSpot}
                   onRefreshProfile={auth.refreshProfile}
                   onSignUp={() => {
                     nav.setAuthMode("signup");
@@ -600,33 +607,50 @@ function AppRoutes() {
               }
             />
 
-            <Route path="/map" element={auth.user ? <MapPage /> : <Navigate to="/auth" replace />} />
-            {/* Signed-out target is "/" (not "/auth") to match the auth
-              router's bounce for gated screens — /spots/:id now resolves to
-              the "spotdetail" screen, so both mechanisms fire and must agree
-              on a destination or they fight over the URL. The auth router
-              stashes the spot id before bouncing and restores it post-login. */}
-            <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/" replace />} />
+            {/* Feature freeze: Map, spot detail and the Clips feed are gated
+              behind VITE_FEATURE_EXTRAS_ENABLED (default OFF — see
+              src/lib/featureFlags.ts). While frozen, every one of these URLs
+              redirects instead of 404'ing so old deep links, shares and PWA
+              shortcuts still land somewhere useful: signed-in users go to the
+              lobby, signed-out visitors go home — the same destinations the
+              existing auth guards use. */}
+            {extrasEnabled ? (
+              <>
+                <Route path="/map" element={auth.user ? <MapPage /> : <Navigate to="/auth" replace />} />
+                {/* Signed-out target is "/" (not "/auth") to match the auth
+                router's bounce for gated screens — /spots/:id now resolves to
+                the "spotdetail" screen, so both mechanisms fire and must agree
+                on a destination or they fight over the URL. The auth router
+                stashes the spot id before bouncing and restores it post-login. */}
+                <Route path="/spots/:id" element={auth.user ? <SpotDetailPage /> : <Navigate to="/" replace />} />
 
-            {/* Clips is its own tab again. Same auth guard as /lobby — the feed
-              reads clips as a signed-in viewer (upvotes, disputes, comments),
-              so a signed-out render has nothing to show. */}
-            <Route
-              path="/feed"
-              element={
-                auth.activeProfile ? (
-                  <FeedScreen
-                    profile={auth.activeProfile}
-                    onViewPlayer={nav.navigateToPlayer}
-                    onChallengeUser={(username: string) => {
-                      directChallenge(username);
-                    }}
-                  />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
+                {/* Clips is its own tab again. Same auth guard as /lobby — the feed
+                reads clips as a signed-in viewer (upvotes, disputes, comments),
+                so a signed-out render has nothing to show. */}
+                <Route
+                  path="/feed"
+                  element={
+                    auth.activeProfile ? (
+                      <FeedScreen
+                        profile={auth.activeProfile}
+                        onViewPlayer={nav.navigateToPlayer}
+                        onChallengeUser={(username: string) => {
+                          directChallenge(username);
+                        }}
+                      />
+                    ) : (
+                      <Navigate to="/" replace />
+                    )
+                  }
+                />
+              </>
+            ) : (
+              <>
+                <Route path="/map" element={<Navigate to={frozenRedirect} replace />} />
+                <Route path="/spots/:id" element={<Navigate to={frozenRedirect} replace />} />
+                <Route path="/feed" element={<Navigate to={frozenRedirect} replace />} />
+              </>
+            )}
 
             <Route
               path="/admin"
