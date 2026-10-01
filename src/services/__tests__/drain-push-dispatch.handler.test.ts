@@ -40,8 +40,12 @@ vi.mock("firebase-admin/messaging", () => ({
   getMessaging: h.getMessagingMock,
 }));
 
+// Only loaded when SENTRY_DSN is set (see the "error reporting" block).
+vi.mock("@sentry/node", async () => (await import("./sentry-node.test-helpers")).sentryNodeMock);
+
 import handler from "../../../api/cron/drain-push-dispatch";
 import { makeRes, makeReq, VALID_SERVICE_ACCOUNT } from "./cron.test-helpers";
+import { recordSentryOrder, resetSentryNodeMock, sentryNodeMock, TEST_SENTRY_DSN } from "./sentry-node.test-helpers";
 
 const SECRET = "s3cret";
 const AUTH = `Bearer ${SECRET}`;
@@ -562,5 +566,42 @@ describe("dry run", () => {
     const { res, out } = makeRes();
     await handler(makeReq({ authorization: AUTH, url: "/api/cron/drain-push-dispatch?dryRun=1" }), res);
     expect(out.body).toMatchObject({ dryRun: true });
+  });
+});
+
+describe("error reporting (server-side Sentry)", () => {
+  /** The module caches the SDK after first init, so load a fresh one with SENTRY_DSN set. */
+  async function drainWithSentry(): Promise<{ out: { code?: number; body?: unknown }; order: string[] }> {
+    process.env.SENTRY_DSN = TEST_SENTRY_DSN;
+    resetSentryNodeMock();
+    vi.resetModules();
+    const fresh = (await import("../../../api/cron/drain-push-dispatch")).default;
+    const { res, out } = makeRes();
+    const order = recordSentryOrder(res);
+    await fresh(makeReq({ authorization: AUTH }), res);
+    return { out, order };
+  }
+
+  afterEach(() => {
+    delete process.env.SENTRY_DSN;
+  });
+
+  it("reports a query-level drain_failed and flushes before the 500", async () => {
+    h.getFirestoreMock.mockReturnValue(makeDb([], rec, { queryThrows: true }));
+    const { out, order } = await drainWithSentry();
+    expect(out.code).toBe(500);
+    expect(order).toEqual(["error:drain_failed", "flush", "respond"]);
+  });
+
+  it("reports a per-doc failure as a warning with only the dispatch id, flushed before the 200", async () => {
+    sendEachForMulticast.mockRejectedValueOnce(new Error("FCM unavailable"));
+    h.getFirestoreMock.mockReturnValue(makeDb([makeFakeDoc("d1", dispatchDoc(), rec)], rec));
+    const { out, order } = await drainWithSentry();
+    expect(out.code).toBe(200);
+    expect(order).toEqual(["warning:drain_dispatch_failed", "flush", "respond"]);
+    const calls = sentryNodeMock.captureException.mock.calls;
+    expect(calls[0][1].extra).toEqual({ dispatchId: "d1" });
+    // Device tokens never leave the function.
+    expect(JSON.stringify(calls)).not.toContain("tok-a");
   });
 });

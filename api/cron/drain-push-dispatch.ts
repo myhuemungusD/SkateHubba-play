@@ -47,6 +47,7 @@ import { cert, getApps, initializeApp, type App, type ServiceAccount } from "fir
 import { getFirestore, FieldValue, type Firestore } from "firebase-admin/firestore";
 import { getMessaging } from "firebase-admin/messaging";
 import { parseServiceAccountJson } from "./_serviceAccount.js";
+import { captureServerError, flushServerErrors, withSentry } from "../_sentry.js";
 
 /** Named Firestore database — must match `src/firebase.ts` FIRESTORE_DB_NAME. */
 const FIRESTORE_DB_NAME = "skatehubba";
@@ -273,11 +274,12 @@ async function pruneDeadTokens(db: Firestore, recipientUid: string, dead: string
         message: err instanceof Error ? err.message : String(err),
       }),
     );
+    captureServerError("drain_prune_failed", err, { recipientUid }, { level: "warning" });
     return 0;
   }
 }
 
-export default async function handler(req: CronRequest, res: CronResponse): Promise<void> {
+async function handler(req: CronRequest, res: CronResponse): Promise<void> {
   if (!isAuthorized(req)) {
     res.status(401).json({ error: "unauthorized" });
     return;
@@ -311,6 +313,8 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
     db = getFirestore(app, FIRESTORE_DB_NAME);
   } catch (err) {
     // Misconfiguration (missing/malformed service account) — surface as 500.
+    captureServerError("drain_init_failed", err, {}, { redactMessage: true });
+    await flushServerErrors();
     res.status(500).json({ error: "init_failed", message: err instanceof Error ? err.message : String(err) });
     return;
   }
@@ -374,14 +378,20 @@ export default async function handler(req: CronRequest, res: CronResponse): Prom
             message: err instanceof Error ? err.message : String(err),
           }),
         );
+        captureServerError("drain_dispatch_failed", err, { dispatchId: docSnap.id }, { level: "warning" });
       }
     }
 
+    await flushServerErrors();
     res.status(200).json(summary);
   } catch (err) {
     // Query-level failure (index missing, permission, etc). Never throw to the
     // platform — return what we have plus the error so the cron logs surface it.
     console.warn(JSON.stringify({ event: "drain_failed", message: err instanceof Error ? err.message : String(err) }));
+    captureServerError("drain_failed", err);
+    await flushServerErrors();
     res.status(500).json({ ...summary, error: "drain_failed" });
   }
 }
+
+export default withSentry("drain_push_dispatch", handler);
