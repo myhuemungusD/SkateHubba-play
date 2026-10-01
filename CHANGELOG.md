@@ -8,16 +8,28 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/). Version
 
 ## [Unreleased]
 
-Reconstructed by hand on 2026-08-26. The v1.1.0 release was cut 2026-04-19 and
-nothing was recorded for the ~4 months since, despite 167 `feat`/`fix`/`perf`
-commits landing. This section groups that work by area rather than listing every
-commit; the git history between `v1.1.0` and `HEAD` is the exhaustive record.
+Reconstructed by hand on 2026-08-26 and brought current on 2026-10-01. The
+v1.1.0 release was cut 2026-04-19 and nothing was recorded for the ~4 months
+after it, despite 167 `feat`/`fix`/`perf` commits landing. This section groups
+that work by area rather than listing every commit; the git history between
+`v1.1.0` and `HEAD` is the exhaustive record.
 
 **Release hygiene note:** the repository has **no git tags at all**, and
 `package.json` still reads `1.1.0`. Cutting a real tag is tracked in `ROADMAP.md`.
 
 ### Added
 
+- **Five-tab bottom nav.** Home · Clips · Challenge · Map · Me, with Challenge
+  as the raised centre action. Clips gets its own `/feed` route; `/record` is
+  renamed `/me` and redirects so old deep links still land. ([#534](https://github.com/myhuemungusD/SkateHubba-play/pull/534))
+- **Nearby spots on the map.** Focusing an empty map search lists the closest
+  active spots within 10 km of the user's GPS fix; tapping one flies the map to
+  it. No new index, rules change, or dependency. ([#547](https://github.com/myhuemungusD/SkateHubba-play/pull/547))
+- **Native shell for the app stores** — Android hardware back button,
+  Universal/App Links routed through react-router, status-bar styling, and
+  native share/network bridges. ([#545](https://github.com/myhuemungusD/SkateHubba-play/pull/545))
+- **Report a clip from its comment thread.** The clip's existing report flow is
+  reachable from inside `ClipComments`. ([#578](https://github.com/myhuemungusD/SkateHubba-play/pull/578))
 - **Install as an app from Settings.** New "Install app" section: one-tap
   install on Chromium (the one-shot `beforeinstallprompt` is parked at
   startup), Share → "Add to Home Screen" steps on iOS, hidden inside the
@@ -47,6 +59,14 @@ commit; the git history between `v1.1.0` and `HEAD` is the exhaustive record.
 
 ### Fixed — security
 
+- Required a matching `usernames/{name}` reservation on profile create, closing
+  a username-uniqueness bypass, and bound `player{1,2}IsVerifiedPro` to the
+  authoritative profile so the Verified Pro badge can't be forged. ([#576](https://github.com/myhuemungusD/SkateHubba-play/pull/576))
+- Enforced `notBanned()` on spot, spot-comment, report, and dispute-vote
+  creates; capped `reports.reportedUsername` and required a verified email to
+  file a report. ([#577](https://github.com/myhuemungusD/SkateHubba-play/pull/577))
+- Cleared all 15 `npm audit` findings (4 high) in one lockfile update within
+  existing semver ranges. ([#593](https://github.com/myhuemungusD/SkateHubba-play/pull/593))
 - Pinned game-video filenames to the uploader UID, closing a path-squatting
   attack that could force a forfeit win. (`3afa0d0`)
 - Required a paired counter decrement on `clipVotes` delete, closing unbounded
@@ -63,6 +83,22 @@ commit; the git history between `v1.1.0` and `HEAD` is the exhaustive record.
 
 ### Fixed — gameplay & reliability
 
+- Refused a setter's zero-byte take with a message instead of submitting a
+  `setTrick` that the rules deny. ([#538](https://github.com/myhuemungusD/SkateHubba-play/pull/538))
+- Settled `/map` as an authenticated screen (spot reads require auth). ([#538](https://github.com/myhuemungusD/SkateHubba-play/pull/538))
+- Paged the clips feed forward instead of refetching page one forever, and added
+  a RETRY / NEXT TRICK overlay when a clip fails to play. ([#566](https://github.com/myhuemungusD/SkateHubba-play/pull/566))
+- Hardened the PWA install flow after review. ([#543](https://github.com/myhuemungusD/SkateHubba-play/pull/543))
+- Ref-counted the native network-status listener so one unmount can't wipe
+  connectivity state for other subscribers. ([#580](https://github.com/myhuemungusD/SkateHubba-play/pull/580))
+- Kept the toast `aria-live` region mounted so screen readers announce
+  game-critical toasts, and added an opt-in Escape handler to `useFocusTrap`. ([#579](https://github.com/myhuemungusD/SkateHubba-play/pull/579))
+- Unblocked the Firestore rules deploy that had left production ~3 weeks stale,
+  and fixed a SIGPIPE false positive in its public-read gate. ([#560](https://github.com/myhuemungusD/SkateHubba-play/pull/560), [#563](https://github.com/myhuemungusD/SkateHubba-play/pull/563))
+- Moved the Android build off a retired SDK tools package. ([#569](https://github.com/myhuemungusD/SkateHubba-play/pull/569))
+- Stopped the expired-turn sweep from echoing raw init errors (which could embed
+  a service-account snippet) to clients, and brought `public/sw-cleanup.js`
+  under lint. ([#581](https://github.com/myhuemungusD/SkateHubba-play/pull/581))
 - Notified the setter when a land claim opens the review window. (`1b98ec6`)
 - Repaired dispute read-rule regressions from participant scoping. (`971b31e`)
 - Closed out dead-end stats — verdict surfacing, letter aggregation. ([#512](https://github.com/myhuemungusD/SkateHubba-play/pull/512))
@@ -82,6 +118,7 @@ commit; the git history between `v1.1.0` and `HEAD` is the exhaustive record.
 - Performance: batched clip upvote hydration, memoized spotlight subtree,
   inlined `@font-face` to remove render-blocking CSS, immutable cache headers
   on clip uploads.
+- Removed dead code — unused exports, dead CSS, stale baselines. ([#549](https://github.com/myhuemungusD/SkateHubba-play/pull/549))
 
 ---
 
