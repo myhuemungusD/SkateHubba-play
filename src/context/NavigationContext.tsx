@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef, ty
 import { useNavigate, useLocation } from "react-router";
 import { useAuthContext } from "./AuthContext";
 import { logger } from "../services/logger";
+import { clearBootAuthMode, peekBootAuthMode } from "../boot/landingBoot";
 
 /**
  * SessionStorage key used to carry a pending challenge spotId through the
@@ -227,7 +228,12 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     navigate(`${SCREEN_TO_PATH.map}?add=1`);
   }, [navigate]);
 
-  const [authMode, setAuthMode] = useState<"signup" | "signin">("signup");
+  // A "Sign in" / "Create account" tap on the boot landing (before this
+  // provider existed) is carried over here; see boot/landingBoot.ts.
+  const [authMode, setAuthMode] = useState<"signup" | "signin">(() => peekBootAuthMode() ?? "signup");
+  useEffect(() => {
+    clearBootAuthMode();
+  }, []);
   const [ageGateDob, setAgeGateDob] = useState<string | null>(null);
   const [ageGateParentalConsent, setAgeGateParentalConsent] = useState(false);
 

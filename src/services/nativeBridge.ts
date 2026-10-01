@@ -24,7 +24,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { logger } from "./logger";
-import { parseFirebaseError } from "../utils/helpers";
+import { parseFirebaseError } from "../utils/errors";
 
 /** How a share was ultimately delivered — call sites report this to analytics. */
 export type ShareMethod = "native_share" | "native_share_text" | "clipboard";

@@ -19,7 +19,9 @@ test("emulator connectivity: sign up via SDK works", async ({ page }) => {
   // for "Account" also picks up "Create account" and trips strict mode.
   await expect(page.getByRole("button", { name: "Create account", exact: true })).toBeVisible({ timeout: 10_000 });
 
-  // Verify emulator mode is active
+  // Verify emulator mode is active. The landing paints before the app chunk
+  // (and Firebase) loads, so wait for firebase.ts to expose the handle.
+  await page.waitForFunction(() => "__e2eFirebaseAuth" in globalThis, null, { timeout: 10_000 });
   const connected = await page.evaluate(() => "__e2eFirebaseAuth" in globalThis);
   expect(connected).toBe(true);
 
