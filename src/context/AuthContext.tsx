@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { signOut as fbSignOut, signInWithGoogle, resolveGoogleRedirect, deleteAccount } from "../services/auth";
+import { writeAuthHint } from "../boot/landingBoot";
 import { getMfaChallenge, type MfaChallenge } from "../services/mfa";
 import { removeCurrentFcmToken, refreshWebPushTokenIfGranted } from "../services/fcm";
 import { isPushSupported, registerPushTokenIfGranted, unregisterPushToken } from "../services/pushNotifications";
@@ -129,6 +130,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Mirror of PENDING_DELETE_KEY in React state so the banner component can
   // re-render on capture / clear without polling storage.
   const [pendingDeleteUid, setPendingDeleteUid] = useState<string | null>(() => readPendingDeleteUid());
+
+  // Remember whether this browser has a session so the next visit to `/` can
+  // safely paint the landing before the full app loads (boot/landingBoot.ts).
+  useEffect(() => {
+    if (!loading) writeAuthHint(user !== null);
+  }, [loading, user]);
 
   // Resolve any pending Google redirect on mount
   useEffect(() => {

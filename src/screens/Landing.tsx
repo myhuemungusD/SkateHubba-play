@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
 import { LandingDemoVideo } from "../components/LandingDemoVideo";
@@ -95,6 +95,17 @@ const FEATURES = [
 
 /* ── Component ───────────────────────────────────────────── */
 
+// The hero entrance animation plays once per page load. The landing can be
+// mounted twice in quick succession (the boot landing painted before the full
+// app loads, then App's own landing route — see src/boot/landingBoot.ts), and
+// replaying the entrance on that swap would look like a glitch.
+let heroEntrancePlayed = false;
+
+/** @internal test-only reset */
+export function __resetHeroEntranceForTest(): void {
+  heroEntrancePlayed = false;
+}
+
 export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) {
   const handleAuth = useCallback(
     (mode: AuthMode) => () => {
@@ -106,6 +117,11 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
   const handleGoogle = useCallback(() => {
     onGoogle();
   }, [onGoogle]);
+
+  const [animateHero] = useState(() => !heroEntrancePlayed);
+  useEffect(() => {
+    heroEntrancePlayed = true;
+  }, []);
 
   return (
     <div className="min-h-dvh pb-28 md:pb-0">
@@ -150,7 +166,9 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
         {/* Layered ambient glow */}
         <div className="absolute inset-0 pointer-events-none bg-hero-glow" />
 
-        <div className="relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center hero-stagger">
+        <div
+          className={`relative max-w-6xl mx-auto px-6 flex flex-col items-center text-center${animateHero ? " hero-stagger" : ""}`}
+        >
           {/* Badge */}
           <span className="inline-flex items-center gap-2 font-body text-xs tracking-wide text-brand-orange/80 border border-brand-orange/15 rounded-full px-4 py-1.5 mb-8 backdrop-blur-sm">
             <span className="w-1.5 h-1.5 rounded-full bg-brand-orange animate-rec-pulse" />
@@ -158,9 +176,11 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
           </span>
 
           {/* Main headline */}
+          {/* hero-lcp: the heading is the page's LCP element, so it must be
+              visible in the very first frame (see .hero-stagger in index.css). */}
           <h1
             id="hero-heading"
-            className="font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)]"
+            className="hero-lcp font-display tracking-wide text-white mb-5 leading-[0.9] text-[clamp(3rem,2.2rem_+_4.5vw,6.5rem)]"
           >
             <span className="block text-brand-orange [text-shadow:0_0_60px_rgba(255,107,0,0.35),0_0_120px_rgba(255,107,0,0.15)]">
               SKATEHUBBA

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Landing } from "../Landing";
+import { Landing, __resetHeroEntranceForTest } from "../Landing";
 import { SOCIAL_LINKS } from "../../constants/socialLinks";
 
 // Stub the lazy LandingMap so these tests don't pull mapbox-gl through the
@@ -215,5 +215,17 @@ describe("Landing", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+
+  it("plays the hero entrance only on the first mount of the page", () => {
+    __resetHeroEntranceForTest();
+    const first = render(<Landing {...defaultProps} />);
+    const heroOf = () => screen.getByRole("heading", { level: 1 }).parentElement!;
+    expect(heroOf()).toHaveClass("hero-stagger");
+    // The LCP heading is never hidden by the entrance (see .hero-lcp).
+    expect(screen.getByRole("heading", { level: 1 })).toHaveClass("hero-lcp");
+    first.unmount();
+    render(<Landing {...defaultProps} />);
+    expect(heroOf()).not.toHaveClass("hero-stagger");
   });
 });

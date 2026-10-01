@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, lazy, Suspense, type ReactNode } from "react";
+import { useState, useCallback, useEffect, useSyncExternalStore, lazy, Suspense, type ReactNode } from "react";
 import { Routes, Route, Navigate, useParams, useNavigate, useLocation } from "react-router";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
@@ -24,6 +24,17 @@ import { ConsentBanner } from "./components/ConsentBanner";
 import { DeleteAccountRetryBanner } from "./components/DeleteAccountRetryBanner";
 import { useAnalyticsConsent } from "./hooks/useAnalyticsConsent";
 import { isExtrasEnabled } from "./lib/featureFlags";
+import {
+  hasBootGoogleSignIn,
+  isBootShellActive,
+  isLandingBooted,
+  releaseBootShell,
+  requestBootGoogleSignIn,
+  setLandingBridge,
+  subscribeBootShell,
+  takeBootGoogleSignIn,
+  type LandingBridge,
+} from "./boot/landingBoot";
 // Eager: first-paint / onboarding path (Landing, AuthScreen, ProfileSetup)
 // plus Lobby since it's the primary destination for returning authed users.
 // DOB + parental consent are collected inline on AuthScreen (COPPA/CCPA), and
@@ -76,6 +87,7 @@ function ScreenErrorFallback({ onBack }: { onBack: () => void }) {
 }
 
 function FirebaseMissing() {
+  useEffect(() => releaseBootShell(), []);
   return (
     <div className="min-h-dvh flex flex-col items-center justify-center px-6 text-center">
       <span className="font-display text-lg tracking-[0.35em] text-brand-orange mb-2">SKATEHUBBA™</span>
@@ -107,9 +119,27 @@ function AppEmailVerifyBanner() {
 
 function AppScreens() {
   const auth = useAuthContext();
+  const { pathname } = useLocation();
   useEmailVerifiedToast(auth.user?.emailVerified);
 
-  if (auth.loading) return <Spinner />;
+  // Replay a Google tap made on the boot landing before App had loaded.
+  const { loading, user, handleGoogleSignIn } = auth;
+  useEffect(() => {
+    if (!loading && !user && takeBootGoogleSignIn()) void handleGoogleSignIn();
+  }, [loading, user, handleGoogleSignIn]);
+
+  // When the landing was painted ahead of App (signed-out visitor, see
+  // boot/landingBoot.ts), keep showing it while Firebase Auth resolves rather
+  // than swapping it for the full-screen spinner.
+  const landingWhileLoading = auth.loading && pathname === "/" && isLandingBooted();
+
+  // The boot landing hands over to App's own screens as soon as App renders
+  // anything but `/`.
+  useEffect(() => {
+    if (pathname !== "/") releaseBootShell();
+  }, [pathname]);
+
+  if (auth.loading && !landingWhileLoading) return <Spinner />;
 
   return (
     <>
@@ -122,6 +152,39 @@ function AppScreens() {
       <TutorialOverlay />
     </>
   );
+}
+
+/**
+ * The `/` route. While the boot landing (see boot/landingBoot.ts) is still on
+ * screen, App doesn't render a second landing: it hands its handlers to the
+ * boot one through the shell bridge, so that instance — and whatever the
+ * visitor already did on it — stays. A signed-in user, or leaving the route,
+ * releases the shell and App renders its own screens from then on.
+ */
+function LandingRoute({
+  authLoading,
+  signedIn,
+  onGo,
+  onGoogle,
+  googleLoading,
+  onNav,
+}: LandingBridge & { authLoading: boolean; signedIn: boolean }) {
+  const shellActive = useSyncExternalStore(subscribeBootShell, isBootShellActive);
+  const holdShell = shellActive && !signedIn;
+
+  // Taps before auth resolves are queued the same way the boot landing does
+  // and replayed by AppScreens.
+  const googleHandler = authLoading ? requestBootGoogleSignIn : onGoogle;
+  useEffect(() => {
+    if (!holdShell) return;
+    setLandingBridge({ onGo, onGoogle: googleHandler, googleLoading, onNav });
+  }, [holdShell, onGo, googleHandler, googleLoading, onNav]);
+  useEffect(() => {
+    if (shellActive && signedIn) releaseBootShell();
+  }, [shellActive, signedIn]);
+
+  if (holdShell) return null;
+  return <Landing onGo={onGo} onGoogle={onGoogle} googleLoading={googleLoading} onNav={onNav} />;
 }
 
 /**
@@ -310,14 +373,18 @@ function AppRoutes() {
             <Route
               path="/"
               element={
-                <Landing
+                <LandingRoute
                   onGo={(m) => {
                     nav.setAuthMode(m);
                     nav.setScreen("auth");
                   }}
                   onGoogle={auth.handleGoogleSignIn}
-                  googleLoading={auth.googleLoading}
+                  // A Google tap on the boot landing stays "loading" until
+                  // AppScreens replays it once auth has resolved.
+                  googleLoading={auth.googleLoading || hasBootGoogleSignIn()}
                   onNav={nav.setScreen}
+                  authLoading={auth.loading}
+                  signedIn={auth.user !== null}
                 />
               }
             />

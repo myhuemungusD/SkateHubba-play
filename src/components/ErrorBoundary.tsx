@@ -1,6 +1,7 @@
 import { Component, type ReactNode } from "react";
 import { captureException } from "../lib/sentry";
 import { logger } from "../services/logger";
+import { releaseBootShell } from "../boot/landingBoot";
 
 interface Props {
   children: ReactNode;
@@ -20,6 +21,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: { componentStack?: string }) {
+    // Never leave the pre-App landing shell covering this fallback.
+    releaseBootShell();
     captureException(error, { extra: { componentStack: info.componentStack } });
     logger.error("error_boundary_caught", { error: error.message, componentStack: info.componentStack ?? "" });
   }

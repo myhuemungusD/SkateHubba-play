@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import userEvent from "@testing-library/user-event";
 
@@ -84,6 +84,9 @@ vi.mock("./services/onboarding", () => ({
 vi.mock("./services/analytics", () => ({
   trackEvent: vi.fn(),
   analytics: {
+    // Boot-landing Google replay paths report attempts/failures too.
+    signInAttempt: vi.fn(),
+    signInFailure: vi.fn(),
     gameCreated: vi.fn(),
     trickSet: vi.fn(),
     matchSubmitted: vi.fn(),
@@ -108,6 +111,19 @@ vi.mock("@sentry/react", () => ({
 }));
 
 import App from "./App";
+import { signInWithGoogle } from "./services/auth";
+import {
+  AUTH_HINT_KEY,
+  __resetLandingBootForTest,
+  getLandingBridge,
+  hasBootGoogleSignIn,
+  isBootShellActive,
+  peekBootAuthMode,
+  releaseBootShell,
+  requestBootGoogleSignIn,
+  setBootAuthMode,
+  setLandingBooted,
+} from "./boot/landingBoot";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -369,5 +385,89 @@ describe("App", () => {
 
     expect(await screen.findByText("ADMIN")).toBeInTheDocument();
     expect(screen.queryByText("BAIL!")).not.toBeInTheDocument();
+  });
+});
+
+describe("App — boot landing handoff", () => {
+  const signedOut = (loading: boolean) => ({ loading, user: null, profile: null, refreshProfile: vi.fn() });
+
+  beforeEach(() => {
+    __resetLandingBootForTest();
+    localStorage.clear();
+  });
+
+  it("drives the boot landing instead of rendering its own while auth resolves", async () => {
+    setLandingBooted(true);
+    mockUseAuth.mockReturnValue(signedOut(true));
+    renderApp("/");
+    expect(screen.queryByRole("status", { name: "Loading" })).not.toBeInTheDocument();
+    // No second landing: the boot one (rendered by Root) stays on screen.
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    await waitFor(() => expect(getLandingBridge()).not.toBeNull());
+    // A Google tap before auth resolves is queued for replay.
+    act(() => getLandingBridge()?.onGoogle());
+    expect(hasBootGoogleSignIn()).toBe(true);
+    // Unresolved auth must not be recorded as signed out.
+    expect(localStorage.getItem(AUTH_HINT_KEY)).toBeNull();
+    // Once the shell is released App renders the landing itself.
+    act(() => releaseBootShell());
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("SKATEHUBBA");
+  });
+
+  it("releases the boot landing for a signed-in user or another route", async () => {
+    setLandingBooted(true);
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "u1", email: "a@b.com" },
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    const { unmount } = renderApp("/");
+    await waitFor(() => expect(isBootShellActive()).toBe(false));
+    unmount();
+    __resetLandingBootForTest();
+    setLandingBooted(true);
+    mockUseAuth.mockReturnValue(signedOut(false));
+    renderApp("/privacy");
+    await waitFor(() => expect(isBootShellActive()).toBe(false));
+  });
+
+  it("still shows the spinner on other paths while auth resolves", () => {
+    setLandingBooted(true);
+    mockUseAuth.mockReturnValue(signedOut(true));
+    renderApp("/auth");
+    expect(screen.getByRole("status", { name: "Loading" })).toBeInTheDocument();
+  });
+
+  it("records the auth hint once auth resolves", async () => {
+    mockUseAuth.mockReturnValue(signedOut(false));
+    const { unmount } = renderApp("/");
+    await waitFor(() => expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("0"));
+    unmount();
+    mockUseAuth.mockReturnValue({
+      loading: false,
+      user: { uid: "u1", email: "a@b.com" },
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    renderApp("/profile");
+    await waitFor(() => expect(localStorage.getItem(AUTH_HINT_KEY)).toBe("1"));
+  });
+
+  it("replays a Google tap made on the boot landing once auth resolves", async () => {
+    setLandingBooted(true);
+    requestBootGoogleSignIn();
+    vi.mocked(signInWithGoogle).mockResolvedValue(null);
+    mockUseAuth.mockReturnValue(signedOut(false));
+    renderApp("/");
+    await waitFor(() => expect(signInWithGoogle).toHaveBeenCalledTimes(1));
+  });
+
+  it("opens /auth in the mode chosen on the boot landing", async () => {
+    setBootAuthMode("signin");
+    mockUseAuth.mockReturnValue(signedOut(false));
+    renderApp("/auth");
+    await waitFor(() => expect(screen.getByText("Welcome Back")).toBeInTheDocument());
+    expect(peekBootAuthMode()).toBeNull();
   });
 });
