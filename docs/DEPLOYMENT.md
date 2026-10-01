@@ -81,13 +81,15 @@ Rules changes are **not** part of the Vercel pipeline — but they are **not man
 > freshness guard, so a hand-rollback in the Firebase console is reverted within
 > 24 hours — the fix for a bad rule is a revert commit, not a console edit.
 >
-> **⚠️ As of 2026-08-29 this pipeline is failing and has been since 2026-08-20**
-> (last success: run #793; 15 consecutive failures since;
-> `google-github-actions/auth` rejects `FIREBASE_WIF_PROVIDER` with
-> `Invalid value for "audience"`, tracked as
-> [#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519)).
-> Production is enforcing a **stale** ruleset and the 24-hour guarantee is not
-> holding. Do not assume `firestore.rules` on `main` is live.
+> **Resolved incident:** every deploy between 2026-08-20 and 2026-09-13 failed
+> (`google-github-actions/auth` rejected `FIREBASE_WIF_PROVIDER`;
+> [#519](https://github.com/myhuemungusD/SkateHubba-play/issues/519), closed
+> 2026-09-14). Since #560 a WIF failure falls back to `FIREBASE_TOKEN` at
+> runtime, and the daily deploy has been green since. **WIF itself still
+> fails** (verified in the run #845 log, 2026-10-01): every deploy rides the
+> deprecated `FIREBASE_TOKEN` fallback, and the production PII scan is skipped
+> because that token cannot authenticate the Admin SDK. Fix the
+> `FIREBASE_WIF_PROVIDER` secret before Google retires token auth.
 >
 > This paragraph previously claimed rules were deployed by hand. That was stale
 > and actively dangerous: it invited safety checks to be written as runbook
