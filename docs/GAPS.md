@@ -44,6 +44,7 @@ Doc-only pass: each item below was re-checked against the current source, not ju
 - **P2-10 PARTIALLY CLOSED** (#577) — `reports.reportedUsername` capped at 20 chars and `reports` create requires `email_verified`. `notifications` create deliberately left without `email_verified` (it runs inside turn transactions; gating it would block unverified players mid-game). Spots URLs and the missing `hasOnly()` allowlists remain open.
 - **P3-5 CLOSED** (#579) — toast live region is always mounted; `useFocusTrap` takes an opt-in `onEscape`.
 - **P3-6 native online-status global CLOSED** (#580) — listener is ref-counted with a generation guard.
+- **P3-6 `sw-cleanup.js` lint errors and `init_failed` raw-error echo CLOSED** (#581, merged 2026-10-01 after this sweep started).
 - **New (ops), from the 2026-10-01 rules-deploy log (run #845):** deploys are green, but WIF auth still fails with `Invalid value for "audience"`. Every deploy authenticates with the deprecated `FIREBASE_TOKEN` fallback, and the production PII scan (`migrate-users-private.mjs --verify`) is skipped every run because that token cannot drive the Admin SDK. When Google retires token auth, rules deploys stop again. Fix the `FIREBASE_WIF_PROVIDER` secret (GCP/secrets task).
 - **Still open, re-confirmed:** P0-4, P1-4 (no `getAfter` on either cooldown anchor; `games.create.ts:168` still writes `lastGameCreatedAt` fire-and-forget), P1-5 DSA bullets, P1-8 (none of the three cron workflows has a failure step), P2-1 (coverage `include` is still `src/**` only; `api/` has no tests), P2-5 (no CodeQL/gitleaks/Semgrep workflow), P2-9 (rules now **193.9 KB / 3,335 lines, ~76%** of the 256 KB limit — up from 189.5 KB), the rest of P3-6.
 
@@ -232,8 +233,8 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 ### P3-6 · Smaller correctness/hygiene
 
 - Client clip-vote flip skips the decrement when drop counter is 0 (`clips.votes.ts:231-235`) but rule FLIP branch requires both deltas to move (`firestore.rules:226-232`) → whole tx denied. Client/rule divergence.
-- `init_failed` 500 echoes raw `JSON.parse` message (may embed input snippet of the service-account key) — `sweep-expired-turns.ts:682`; match `delete.ts:228`'s flat "Server misconfiguration."
-- `public/sw-cleanup.js:4-5` has 2 real lint errors, invisible because lint is scoped to `src/ api/`.
+- ~~`init_failed` 500 echoes raw `JSON.parse` message (may embed input snippet of the service-account key) — `sweep-expired-turns.ts:682`; match `delete.ts:228`'s flat "Server misconfiguration."~~ **CLOSED in #581.**
+- ~~`public/sw-cleanup.js:4-5` has 2 real lint errors, invisible because lint is scoped to `src/ api/`.~~ **CLOSED in #581** — the file is now in `npm run lint`.
 - `@tensorflow/tfjs` is an undeclared direct dep (auto-peer-installed via nsfwjs) → unmanaged by Dependabot, floating version, ships in bundle.
 - `LevelChip.tsx` is a hardcoded `level = 1` stub already removed from its only call site — dead code.
 - `guard-as-any-casts` / `guard-todo-fixme-hack` don't scan `api/` — the most privileged code can carry `as any` and TODOs unchecked.

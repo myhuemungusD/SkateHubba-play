@@ -24,7 +24,7 @@ Long-term economy/creator vision lives in `docs/ECONOMY.md` — nothing there sh
 ## Stack (LOCKED — no substitutions without Chief Engineer approval)
 
 - **Repo:** single-package, npm, Node 22+ (`.nvmrc`, `engines`). Not a monorepo.
-- **Web:** React 19.2 + Vite 8 (SPA only, no SSR), TypeScript 5.6 strict, Tailwind CSS 4
+- **Web:** React 19 + Vite 8 (SPA only, no SSR), TypeScript 5.6 strict, Tailwind CSS 4
 - **Client state:** React Context (Auth, Navigation, Game, Notification, Onboarding) + hooks
 - **Routing:** `react-router` v8 — every `<Route>` in `App.tsx`; transitions via `NavigationContext.setScreen`
 - **Auth:** Firebase Auth (email/password + Google OAuth, popup with redirect fallback)

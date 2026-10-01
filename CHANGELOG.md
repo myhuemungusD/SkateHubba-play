@@ -96,6 +96,9 @@ that work by area rather than listing every commit; the git history between
 - Unblocked the Firestore rules deploy that had left production ~3 weeks stale,
   and fixed a SIGPIPE false positive in its public-read gate. ([#560](https://github.com/myhuemungusD/SkateHubba-play/pull/560), [#563](https://github.com/myhuemungusD/SkateHubba-play/pull/563))
 - Moved the Android build off a retired SDK tools package. ([#569](https://github.com/myhuemungusD/SkateHubba-play/pull/569))
+- Stopped the expired-turn sweep from echoing raw init errors (which could embed
+  a service-account snippet) to clients, and brought `public/sw-cleanup.js`
+  under lint. ([#581](https://github.com/myhuemungusD/SkateHubba-play/pull/581))
 - Notified the setter when a land claim opens the review window. (`1b98ec6`)
 - Repaired dispute read-rule regressions from participant scoping. (`971b31e`)
 - Closed out dead-end stats — verdict surfacing, letter aggregation. ([#512](https://github.com/myhuemungusD/SkateHubba-play/pull/512))

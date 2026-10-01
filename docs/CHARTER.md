@@ -138,7 +138,7 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 
 ### 4.1 Web platform
 
-- React 19.2 + Vite 8 (SPA only — no SSR)
+- React 19 + Vite 8 (SPA only — no SSR)
 - TypeScript 5.6 strict
 - Tailwind CSS 4 — **CSS-based config in `src/index.css`** via `@import "tailwindcss"` + `@theme { ... }`. No `tailwind.config.js`.
 - React Router v8 (`react-router` package; all routes in `App.tsx`; transitions via `NavigationContext.setScreen`)
@@ -322,7 +322,7 @@ authoritative per-collection reference (fields, constraints, access model).
 
 ### 4.12 Production dependencies (approved majors)
 
-React 19.2, react-dom 19.2, react-router 8, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 4, @vercel/analytics 2, @vercel/speed-insights 2, nsfwjs 4 (on-device avatar screening), firebase-admin 14 (serverless endpoints only), @capacitor/core 8 (+ android/ios/app/camera/clipboard/haptics/keyboard/network/push-notifications/share/splash-screen/status-bar), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
+React 19, react-dom 19, react-router 8, firebase 12, mapbox-gl 3, lucide-react 1, zod 4, posthog-js 1, @sentry/react 10, @sentry/capacitor 4, @vercel/analytics 2, @vercel/speed-insights 2, nsfwjs 4 (on-device avatar screening), firebase-admin 14 (serverless endpoints only), @capacitor/core 8 (+ android/ios/app/camera/clipboard/haptics/keyboard/network/push-notifications/share/splash-screen/status-bar), @capacitor-community/video-recorder 7, @capacitor-firebase/authentication 8, @capacitor-firebase/app-check 8.
 
 These are the approved majors. Minors and patches track upstream via the caret ranges in `package.json`; `package-lock.json` is the deterministic record installed in CI and in production. New production deps require written justification and Chief Engineer approval.
 

@@ -45,7 +45,7 @@ Open [http://localhost:5173](http://localhost:5173).
 | `npm run test:rules`                        | Run Firestore rules tests against the rules emulator                        |
 | `npm run test:e2e`                          | Run Playwright E2E tests (auto-starts the Auth/Firestore/Storage emulators) |
 | `npm run test:e2e:ui`                       | Same as above in the Playwright UI runner                                   |
-| `npm run lint`                              | Lint `src/`, `api/`, and `e2e/` with ESLint                                 |
+| `npm run lint`                              | Lint `src/`, `api/`, `e2e/`, and `public/sw-cleanup.js` with ESLint         |
 | `npm run lint:fix`                          | Lint and auto-fix where possible                                            |
 | `npm run format`                            | Format `src/**/*.{ts,tsx}` with Prettier                                    |
 | `npm run check:test-dup`                    | Flag duplicated test cases (CI gate, part of `verify`)                      |
@@ -268,7 +268,7 @@ Or step through individually:
 
 ```bash
 npx tsc -b                # Type check
-npm run lint              # ESLint over src/, api/, and e2e/
+npm run lint              # ESLint over src/, api/, e2e/, public/sw-cleanup.js
 npm run test:coverage     # Tests + coverage thresholds
 npm run build             # Production build
 npm run check:test-dup    # Duplicated-test gate
