@@ -33,6 +33,23 @@ Full re-run of the five audits + verify gate against the current tree. `npm run 
 
 ---
 
+## Status sweep at HEAD `f140619` (2026-10-01)
+
+Doc-only pass: each item below was re-checked against the current source, not just the commit messages. No new audit was run.
+
+- **P1-1 PARTIALLY CLOSED** (#577) — `notBanned()` now gates `spots` create, `spots/{id}/comments` create, `reports` create, and `disputeVotes` create. `disputes` create and game-sourced `clips` create stay ungated **on purpose**: both commit in the same transaction as a `/games` write, and gating them would break the documented "a banned user can finish an in-flight game" exception (and could fail the honest opponent's turn).
+- **P1-2 CLOSED** (#576) — `users/{uid}` create requires `getAfter(usernames/{username}).uid == uid` (`firestore.rules:353`).
+- **P1-3 CLOSED** (#576) — `player{1,2}IsVerifiedPro` bound to `users/{uid}.isVerifiedPro` at create and pinned immutable on every `/games` update branch via `verifiedProBadgesUnchanged()`.
+- **P1-5 — clip-comments bullet CLOSED** (#578): a viewer can report the clip from inside its comment thread. The four DSA bullets (illegal-content category, reporter notice, statement of reasons, appeal) remain open.
+- **P2-10 PARTIALLY CLOSED** (#577) — `reports.reportedUsername` capped at 20 chars and `reports` create requires `email_verified`. `notifications` create deliberately left without `email_verified` (it runs inside turn transactions; gating it would block unverified players mid-game). Spots URLs and the missing `hasOnly()` allowlists remain open.
+- **P3-5 CLOSED** (#579) — toast live region is always mounted; `useFocusTrap` takes an opt-in `onEscape`.
+- **P3-6 native online-status global CLOSED** (#580) — listener is ref-counted with a generation guard.
+- **P3-6 `sw-cleanup.js` lint errors and `init_failed` raw-error echo CLOSED** (#581, merged 2026-10-01 after this sweep started).
+- **New (ops), from the 2026-10-01 rules-deploy log (run #845):** deploys are green, but WIF auth still fails with `Invalid value for "audience"`. Every deploy authenticates with the deprecated `FIREBASE_TOKEN` fallback, and the production PII scan (`migrate-users-private.mjs --verify`) is skipped every run because that token cannot drive the Admin SDK. When Google retires token auth, rules deploys stop again. Fix the `FIREBASE_WIF_PROVIDER` secret (GCP/secrets task).
+- **Still open, re-confirmed:** P0-4, P1-4 (no `getAfter` on either cooldown anchor; `games.create.ts:168` still writes `lastGameCreatedAt` fire-and-forget), P1-5 DSA bullets, P1-8 (none of the three cron workflows has a failure step), P2-1 (coverage `include` is still `src/**` only; `api/` has no tests), P2-5 (no CodeQL/gitleaks/Semgrep workflow), P2-9 (rules now **193.9 KB / 3,335 lines, ~76%** of the 256 KB limit — up from 189.5 KB), the rest of P3-6.
+
+---
+
 ## Priority model
 
 | Tier   | Meaning                                                                             | Act            |
@@ -85,14 +102,20 @@ _As originally filed:_ when a matcher claimed a land on the honor path, `games.m
 
 ### P1-1 · `notBanned()` missing from six UGC write surfaces
 
+**Status: PARTIALLY CLOSED** — #577 gated four surfaces (spots, spot comments, reports, disputeVotes). `disputes` and game-sourced `clips` creates are intentionally left ungated; see the 2026-10-01 status sweep.
+
 `firestore.rules:76-77` claims a banned account "loses **every** UGC-producing write." Actually enforced on only 3 paths (user clips `:2766`, comments `:2832`, clipVotes `:2873/:2911`). **Missing** on: `disputes` create (`:2945`), `disputeVotes` create (`:3136` — these write _binding_ letters/turn order), `spots/{id}/comments` (`:2068`), `spots` create (`:1983`), `reports` create (`:2525`), game-source `clips` create (`:2702`). Only the `/games` omission is a documented budget exception (`:79-84`). Red-team suite covers 3 of 9 surfaces.
 
 ### P1-2 · `users` create not bound to a `usernames` reservation → username uniqueness bypass
+
+**Status: CLOSED** — #576 requires the companion `usernames/{name}` reservation via `getAfter` on user create.
 
 `firestore.rules:331-420` validates username _shape_ but never requires a companion `usernames/{name}` write; `:863-874` gates the reservation but never cross-checks the profile. The client always writes both (`src/services/users.ts:340-360`), but a direct API call can create `users/{uid}` with `username:"famous_pro"` and skip the reservation. `/games` create then binds denormalized handles to `get(users/{uid}).username` (`:1150-1153`), propagating the forged handle authoritatively.
 **Fix:** require `getAfter(usernames/{username}).uid == request.auth.uid` on user create (the file already uses this idiom in `clipRateLimitOk`, `:172-178`).
 
 ### P1-3 · `player1/2IsVerifiedPro` are client-writable and unvalidated → badge forgery
+
+**Status: CLOSED** — #576 binds both fields to `users/{uid}.isVerifiedPro` at create and pins them on every update branch (`verifiedProBadgesUnchanged()`).
 
 `src/services/games.create.ts:136-137` sets these client-side; the `/games` create rule has no `keys().hasOnly()` allowlist (`:1030-1031`) and never validates them. Any user can self-stamp `player1IsVerifiedPro:true` and show as Verified Pro to every opponent (`WaitingHeader.tsx:41`, `useLobbyController.ts:82`, `LetterScoreboard.tsx:35`). (Hand-verified.)
 **Fix:** pin against `get(users/{uid}).isVerifiedPro`, or add a `keys().hasOnly()` to `/games`.
@@ -110,7 +133,7 @@ The report/ban infrastructure is above-average as abuse tooling (`reports.ts`, `
 - **No receipt/decision notice to reporter** (Art. 16(4-5)) — `submitReport` writes nothing back; close-out `hasOnly` (`:2587`) structurally prevents attaching a notification.
 - **No Art. 17 statement of reasons** — `bans.reason` is optional free text (`:845-849`); content removal produces no uploader notice (`clips.cascade.ts`).
 - **No Art. 20 appeal path** — rules structurally preclude one (`:854-856`, `:2586`, `:2594`); an appeal needs a new collection, not a rule relaxation.
-- **Clip comments not reportable** — `ReportModal` is not wired into `ClipComments.tsx`; `submitReport` already accepts `clipId`, so this is the cheapest fix.
+- ~~**Clip comments not reportable**~~ — **CLOSED** in #578: `ClipComments` takes an `onReport` prop wired to the clip's existing report flow.
 
 ### P1-6 · Unhandled rejection on Rematch → silent dead-end
 
@@ -165,11 +188,13 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ~2,400 lines of stateful game/upload logic live next to components (`useGamePlayController.ts` 456 LOC, `useUserClipUpload.ts`, `useClipsFeedController.ts`, etc.) so they face the 80% UI floor, not the 100% `src/hooks/**` floor. No global coverage threshold means `src/context`, `src/lib`, `src/utils` can regress to 0%.
 
-### P2-9 · `firestore.rules` at 74% of Firebase's hard limit, no size guard
+### P2-9 · `firestore.rules` at ~76% of Firebase's hard limit, no size guard
 
-189.5 KB / 256 KB, growing every feature; the per-evaluation node ceiling has already been hit once (`firestore.rules:880-895`). No CI check on rules size — failure mode is a deploy that hard-fails at the Firebase API. Add a size/complexity guard to `firebase-rules-deploy.yml`.
+193.9 KB / 256 KB (3,335 lines, measured 2026-10-01; 189.5 KB at the original audit), growing every feature; the per-evaluation node ceiling has already been hit once (`firestore.rules:880-895`). No CI check on rules size — failure mode is a deploy that hard-fails at the Firebase API. Add a size/complexity guard to `firebase-rules-deploy.yml`.
 
 ### P2-10 · Over-permissive rule content (spots URLs, missing hasOnly, unbounded strings)
+
+**Status: PARTIALLY CLOSED** — #577 capped `reports.reportedUsername` and added `email_verified` to `reports` create. `notifications` deliberately unchanged (turn-transaction coupling). Spots URLs and `hasOnly()` remain open.
 
 `spots.photoUrls`/`obstacles` are type-only checked (`firestore.rules:2011-2015`), so arbitrary external URLs render as `<img src>` (`SpotPreviewCard.tsx:94-98`) — the exfil surface the clip video-pins were built to close. No `keys().hasOnly()` on six write-heavy collections (games, spots, clips×2, disputes, reports, nudges). `reports.reportedUsername` has no length cap (`:2530`) → ~1MB docs into the moderation queue. `reports`/`notifications` create lack `email_verified`.
 
@@ -201,17 +226,19 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 
 ### P3-5 · Accessibility edges
 
+**Status: CLOSED** — #579.
+
 `ToastContainer.tsx:7` returns `null` when empty and the `aria-live` region mounts with its text, so screen readers may drop game-critical toasts ("it's your turn"); render the live region persistently. `useFocusTrap.ts:40-41` handles only Tab, so 8 modals hand-roll Escape and the 9th will silently ship without it. (Icon-button labels, reduced-motion, and focus-trap coverage are otherwise clean.)
 
 ### P3-6 · Smaller correctness/hygiene
 
 - Client clip-vote flip skips the decrement when drop counter is 0 (`clips.votes.ts:231-235`) but rule FLIP branch requires both deltas to move (`firestore.rules:226-232`) → whole tx denied. Client/rule divergence.
-- `init_failed` 500 echoes raw `JSON.parse` message (may embed input snippet of the service-account key) — `sweep-expired-turns.ts:682`; match `delete.ts:228`'s flat "Server misconfiguration."
-- `public/sw-cleanup.js:4-5` has 2 real lint errors, invisible because lint is scoped to `src/ api/`.
+- ~~`init_failed` 500 echoes raw `JSON.parse` message (may embed input snippet of the service-account key) — `sweep-expired-turns.ts:682`; match `delete.ts:228`'s flat "Server misconfiguration."~~ **CLOSED in #581.**
+- ~~`public/sw-cleanup.js:4-5` has 2 real lint errors, invisible because lint is scoped to `src/ api/`.~~ **CLOSED in #581** — the file is now in `npm run lint`.
 - `@tensorflow/tfjs` is an undeclared direct dep (auto-peer-installed via nsfwjs) → unmanaged by Dependabot, floating version, ships in bundle.
 - `LevelChip.tsx` is a hardcoded `level = 1` stub already removed from its only call site — dead code.
 - `guard-as-any-casts` / `guard-todo-fixme-hack` don't scan `api/` — the most privileged code can carry `as any` and TODOs unchecked.
-- **(new, from the native rework)** `nativeBridge.ts` `subscribeToNetworkStatus` stores connectivity in a single module-level global (`nativeOnline`) that its unsubscribe unconditionally nulls. `useOnlineStatus` wires it through `useSyncExternalStore`, which subscribes once per mounted consumer — so with two+ consumers, unmounting one wipes the cached value for the others and `getNetworkSnapshot()` falls back to `navigator.onLine`, which is pinned `true` in iOS WKWebView (the exact case this module exists to work around). Not user-visible today (only `OfflineBanner` consumes it, single instance), but a trap for the next consumer. Fix: ref-count the listener, or hold state per-subscription instead of one global.
+- ~~**(new, from the native rework)**~~ **CLOSED in #580.** `nativeBridge.ts` `subscribeToNetworkStatus` stores connectivity in a single module-level global (`nativeOnline`) that its unsubscribe unconditionally nulls. `useOnlineStatus` wires it through `useSyncExternalStore`, which subscribes once per mounted consumer — so with two+ consumers, unmounting one wipes the cached value for the others and `getNetworkSnapshot()` falls back to `navigator.onLine`, which is pinned `true` in iOS WKWebView (the exact case this module exists to work around). Not user-visible today (only `OfflineBanner` consumes it, single instance), but a trap for the next consumer. Fix: ref-count the listener, or hold state per-subscription instead of one global.
 
 ### P3-7 · Verified NOT problems (no action)
 
@@ -225,7 +252,7 @@ No e2e for: third-party judging, community dispute→verdict→tally, user-clip 
 ## Recommended sequence
 
 1. **Today:** P0-4 (the remaining P0; DSA account tasks have external lead time — start the clock). P0-1, P0-2, and P0-3 are closed.
-2. **This cycle:** P1-1..P1-5 and P1-8 (P1-6/P1-7 are closed; the banned-write surfaces, identity integrity, compliance code, and cron alerting remain).
+2. **This cycle:** P1-4, the P1-5 DSA bullets, and P1-8 (P1-2/P1-3/P1-6/P1-7 are closed; P1-1 is closed as far as it safely can be).
 3. **Schedule:** P2 block — `api/` observability + coverage, App Check rollout, moderation.
 4. **Batch:** P3 doc rewrite (P3-1 first — the state-machine docs actively mislead), release hygiene.
 

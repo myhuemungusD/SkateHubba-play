@@ -17,14 +17,14 @@ Authoritative sources, in order: `docs/CHARTER.md` → `CLAUDE.md` → `docs/STA
 
 Async S.K.A.T.E. game — live on skatehubba.com. Turn-based, 24-hour timers, one-take video proof, disputes, auto-forfeit. Geo-tagged spot map with gnar/bust-risk ratings and challenge-from-spot (no check-in feature exists). Released v1.1.0.
 
-Phases 1 and 2 are shipped in full; Phase 3 is complete except deferred spectator mode; Phase 4 is partial. The referee system is code-complete and awaiting a release tag. Push notification **delivery** has been live since 2026-07-27 via `api/cron/drain-push-dispatch.ts` — it is no longer a blocker. See `docs/STATUS_REPORT.md` for the per-feature table; do not restate status from memory.
+Phases 1 and 2 are shipped in full; Phase 3 is complete except deferred spectator mode; Phase 4 is partial. The referee system shipped in v1.1.0; everything merged since (binding community disputes, admin console, user clips, native shell, …) sits in `[Unreleased]` awaiting a release tag — the repo has no git tags. Push notification **delivery** has been live since 2026-07-27 via `api/cron/drain-push-dispatch.ts` — it is no longer a blocker. See `docs/STATUS_REPORT.md` for the per-feature table; do not restate status from memory.
 
 Long-term economy/creator vision lives in `docs/ECONOMY.md` — nothing there ships before its stated gates.
 
 ## Stack (LOCKED — no substitutions without Chief Engineer approval)
 
 - **Repo:** single-package, npm, Node 22+ (`.nvmrc`, `engines`). Not a monorepo.
-- **Web:** React 19.2 + Vite 8 (SPA only, no SSR), TypeScript 5.6 strict, Tailwind CSS 4
+- **Web:** React 19 + Vite 8 (SPA only, no SSR), TypeScript 5.6 strict, Tailwind CSS 4
 - **Client state:** React Context (Auth, Navigation, Game, Notification, Onboarding) + hooks
 - **Routing:** `react-router` v8 — every `<Route>` in `App.tsx`; transitions via `NavigationContext.setScreen`
 - **Auth:** Firebase Auth (email/password + Google OAuth, popup with redirect fallback)
@@ -70,5 +70,5 @@ PostgreSQL / Neon / Drizzle (Firestore is the datastore — final) · Redux / Zu
 
 - Concise and decisive. No filler.
 - End with a single actionable next step.
-- Commitlint: all-lowercase subject.
+- Commit subject: all lowercase (convention enforced by review — there is no commitlint).
 - Challenge suboptimal decisions. Ship correct v1 today over perfect v2 later.

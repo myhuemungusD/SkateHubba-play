@@ -133,8 +133,11 @@ native SDK inherits them via the sibling-SDK init pattern
 
 ## Version numbers
 
-`CFBundleShortVersionString` in `Info.plist` is the marketing version and
-is currently hardcoded to mirror `package.json` (`1.1.0`). `CFBundleVersion`
+`CFBundleShortVersionString` in `Info.plist` (and `MARKETING_VERSION` in
+`project.pbxproj`) is the marketing version, currently `1.1.0`. Both carry an
+`x-release-please-version` marker and are listed as `extra-files` in
+`release-please-config.json`, so release-please bumps them with `package.json`
+when a release PR merges. `CFBundleVersion`
 is the build number; CI bumps it per TestFlight upload (Phase A4 automation
 will wire this up). If you release locally, bump both by hand and commit
 the change alongside the `package.json` bump.
