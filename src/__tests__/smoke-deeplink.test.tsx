@@ -119,6 +119,25 @@ describe("Smoke: direct-URL deep-linking", () => {
     expect(screen.getByTestId("location").textContent).toBe("/me");
   });
 
+  it.each(["/play", "/play/anything/deeper"])("redirects the legacy %s deep-link to /lobby", async (path) => {
+    await renderAt(path);
+    expect(screen.getByTestId("location").textContent).toBe("/lobby");
+    expect(activeNavTab()).toBe("Home");
+  });
+
+  it("sends a signed-out /play visitor through the /lobby guard to the landing page", async () => {
+    mocks.auth.refs.useAuth.mockReturnValue({
+      loading: false,
+      user: null,
+      profile: null,
+      refreshProfile: vi.fn(),
+    });
+    await mountApp("/play");
+    await waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("/");
+    });
+  });
+
   it("loads /me directly without bouncing to /lobby", async () => {
     await renderAt("/me");
     expect(activeNavTab()).toBe("Me");

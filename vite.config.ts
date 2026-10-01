@@ -62,9 +62,27 @@ function firebaseSwPlugin(): Plugin {
   };
 }
 
+/**
+ * Browser Sentry DSN fallback for the Vercel PRODUCTION build only.
+ *
+ * The browser reads VITE_SENTRY_DSN (src/main.tsx), but the Vercel project
+ * stores the DSN as SENTRY_DSN — a Sensitive var, so its value cannot be read
+ * back out to copy into a second variable. Vercel does expose it to the build,
+ * so when VITE_SENTRY_DSN is unset on a production build, inline SENTRY_DSN
+ * instead. A DSN is a public client identifier (it ships in every Sentry-
+ * enabled bundle), so inlining it is expected. Preview builds, local builds
+ * and the native release workflows (which pass VITE_SENTRY_DSN explicitly)
+ * are unaffected; an explicit VITE_SENTRY_DSN always wins.
+ */
+const browserSentryDsnFallback =
+  !process.env.VITE_SENTRY_DSN && process.env.VERCEL_ENV === "production" ? (process.env.SENTRY_DSN ?? "").trim() : "";
+
 export default defineConfig({
   plugins: [tailwindcss(), react(), firebaseSwPlugin()],
   define: {
+    ...(browserSentryDsnFallback
+      ? { "import.meta.env.VITE_SENTRY_DSN": JSON.stringify(browserSentryDsnFallback) }
+      : {}),
     "import.meta.env.VERCEL": JSON.stringify(process.env.VERCEL ?? ""),
     "import.meta.env.VITE_GIT_SHA": JSON.stringify(process.env.VERCEL_GIT_COMMIT_SHA ?? ""),
     // Release identifier stamped at build time. Prefer an explicit
