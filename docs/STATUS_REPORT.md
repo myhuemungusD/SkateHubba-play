@@ -1,6 +1,6 @@
 # Feature Completion Status Report
 
-**Generated:** 2026-06-01 · **Last verified:** 2026-08-26
+**Generated:** 2026-06-01 · **Last verified:** 2026-10-01
 **Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`. Active debt is tracked in `docs/GAPS.md` and `docs/DECISIONS.md` (per CHARTER — the old `COMPREHENSIVE_GAP_ANALYSIS.md` is archived and no longer authoritative).
 
 Status legend:
@@ -40,15 +40,15 @@ Status legend:
 | Lobby (active+completed games) | **Done** | `src/screens/Lobby/`                                                                                                                                                                                                                                                                                                                                                                                  |
 | Player profile + game history  | **Done** | `src/screens/PlayerProfileScreen/`                                                                                                                                                                                                                                                                                                                                                                    |
 | Privacy Policy / ToS / Data    | **Done** | `src/screens/PrivacyPolicy.tsx`, `TermsOfService.tsx`, `DataDeletion.tsx`                                                                                                                                                                                                                                                                                                                             |
-| Account deletion               | **Done** | `src/services/auth.ts`, `src/components/DeleteAccountModal.tsx`                                                                                                                                                                                                                                                                                                                                       |
+| Account deletion               | **Done** | `src/services/auth.ts` → server-side erasure in `api/account/delete.ts`, `src/components/DeleteAccountModal.tsx`                                                                                                                                                                                                                                                                                      |
 | Age gate (COPPA, 13+)          | **Done** | Inline DOB + parental-consent on `src/screens/AuthScreen.tsx`; carried to ProfileSetup via `NavigationContext.setAgeGateResult`                                                                                                                                                                                                                                                                       |
 | Consent banner                 | **Done** | `src/components/ConsentBanner.tsx`                                                                                                                                                                                                                                                                                                                                                                    |
 | Offline read support           | **Done** | `src/firebase.ts` (persistent cache), `src/components/OfflineBanner.tsx`                                                                                                                                                                                                                                                                                                                              |
 | PWA install                    | **Done** | `index.html`, `public/manifest.json`; in-app install from Settings → "Install app" — `src/lib/installPrompt.ts` parks Chromium's `beforeinstallprompt` at startup (`src/main.tsx`), `src/hooks/useInstallPrompt.ts` resolves the platform state, `src/components/InstallAppCard.tsx` offers one-tap install (Chromium) or Share → "Add to Home Screen" steps (iOS); hidden inside the Capacitor shell |
 | Capacitor iOS/Android shells   | **Done** | `capacitor.config.ts`, `android/`, `ios/` (per `cap:open:*` scripts)                                                                                                                                                                                                                                                                                                                                  |
-| Sentry error tracking          | **Done** | `src/lib/sentry`, `src/main.tsx`                                                                                                                                                                                                                                                                                                                                                                      |
+| Sentry error tracking          | **Done** | `src/lib/sentry.ts`, `src/main.tsx`                                                                                                                                                                                                                                                                                                                                                                   |
 | Vercel Analytics + Speed       | **Done** | `src/App.tsx` (`Analytics`, `SpeedInsights`)                                                                                                                                                                                                                                                                                                                                                          |
-| Firestore security rules       | **Done** | `firestore.rules` (~190 KB / 3,260 lines, validates turn order + scores + rate limits + judge paths)                                                                                                                                                                                                                                                                                                  |
+| Firestore security rules       | **Done** | `firestore.rules` (~194 KB / 3,335 lines, validates turn order + scores + rate limits + judge paths)                                                                                                                                                                                                                                                                                                  |
 | Storage security rules         | **Done** | `storage.rules`                                                                                                                                                                                                                                                                                                                                                                                       |
 
 **Phase 1 verdict:** 100% complete, in production at [skatehubba.com](https://skatehubba.com).
@@ -100,7 +100,7 @@ Status legend:
 | Spot ↔ game linkage             | **Done**        | `SpotDetailPage.tsx` challenge button navigates to `/challenge?spot=`, `SpotPreviewCard.tsx` mirrors the flow, `rules-tests/games-spotId.rules.test.ts` |
 | Add a Spot UX                   | **Done**        | `src/components/map/AddSpotSheet.tsx`                                                                                                                   |
 | Spot filters (gnar / bust risk) | **Done**        | `src/components/map/SpotFilterBar.tsx`, `BustRisk.tsx`, `GnarRating.tsx`                                                                                |
-| Bottom tab bar (Home/Map/Me)    | **Done**        | `src/components/BottomNav.tsx`, persistent navigation across main screens                                                                               |
+| Bottom tab bar (5 tabs)         | **Done**        | `src/components/BottomNav.tsx` — Home · Clips · Challenge · Map · Me, Challenge as the raised centre action                                             |
 | Custom Mapbox style             | **In Progress** | Issue [#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191) — design + infra task, no code change needed                                   |
 | Crew challenges (3v3)           | **Planned**     | No code yet                                                                                                                                             |
 | Trick library                   | **Planned**     | No code yet                                                                                                                                             |
@@ -133,19 +133,19 @@ Status legend:
 
 ### 5b. Binding community disputes — shipped post-v1.1.0
 
-The honor-system path no longer resolves a "landed" claim instantly. It freezes the game into `pendingReview` (setter's 24 h accept/dispute window) and, if disputed, `communityReview` (24 h binding community vote). Not yet in any CHANGELOG release section.
+The honor-system path no longer resolves a "landed" claim instantly. It freezes the game into `pendingReview` (setter's 24 h accept/dispute window) and, if disputed, `communityReview` (24 h binding community vote). Recorded under `[Unreleased]` in CHANGELOG — not yet in a tagged release.
 
-| Feature                                      | Status               | Evidence                                                                 |
-| -------------------------------------------- | -------------------- | ------------------------------------------------------------------------ |
-| `pendingReview` / `communityReview` phases   | **Shipped** (v1.1.0) | `src/services/games.mappers.ts`, `src/services/games.match.ts`           |
-| `reviewFor` / `reviewDeadline` freeze fields | **Shipped** (v1.1.0) | `games.mappers.ts`; sweep skips frozen games (`turnForfeit.shared.ts`)   |
-| Raise dispute (setter-only)                  | **Shipped** (v1.1.0) | `src/services/disputes.raise.ts`, `firestore.rules` `/disputes`          |
-| Community land/bail voting, 1-vote quorum    | **Shipped** (v1.1.0) | `src/services/disputes.votes.ts`, `firestore.rules` `/disputeVotes`      |
-| Server-side dispute referee (expiry + tally) | **Shipped** (v1.1.0) | `api/cron/resolve-expired-disputes.ts`, `dispute.resolution.shared.ts`   |
-| Four public dispute counters on profiles     | **Shipped** (v1.1.0) | `src/services/users.ts`, zero-seeded + immutable in `firestore.rules`    |
-| Dispute lane UI + review panels              | **Shipped** (v1.1.0) | `src/components/ClipsFeed/DisputeLane.tsx`, `GamePlayScreen/components/` |
+| Feature                                      | Status                   | Evidence                                                                 |
+| -------------------------------------------- | ------------------------ | ------------------------------------------------------------------------ |
+| `pendingReview` / `communityReview` phases   | **Shipped** (unreleased) | `src/services/games.mappers.ts`, `src/services/games.match.ts`           |
+| `reviewFor` / `reviewDeadline` freeze fields | **Shipped** (unreleased) | `games.mappers.ts`; sweep skips frozen games (`turnForfeit.shared.ts`)   |
+| Raise dispute (setter-only)                  | **Shipped** (unreleased) | `src/services/disputes.raise.ts`, `firestore.rules` `/disputes`          |
+| Community land/bail voting, 1-vote quorum    | **Shipped** (unreleased) | `src/services/disputes.votes.ts`, `firestore.rules` `/disputeVotes`      |
+| Server-side dispute referee (expiry + tally) | **Shipped** (unreleased) | `api/cron/resolve-expired-disputes.ts`, `dispute.resolution.shared.ts`   |
+| Four public dispute counters on profiles     | **Shipped** (unreleased) | `src/services/users.ts`, zero-seeded + immutable in `firestore.rules`    |
+| Dispute lane UI + review panels              | **Shipped** (unreleased) | `src/components/ClipsFeed/DisputeLane.tsx`, `GamePlayScreen/components/` |
 
-**Gap:** `disputes.raise.ts` writes no notification, so a claimer is never told their land was disputed — see GAPS.md P0-3 (partially closed).
+**Notifications:** both sides are notified — the setter when a land claim opens the review window (`1b98ec6`), and the matcher when their claim is disputed (`ed97049`, written in the same transaction as the dispute). GAPS.md P0-3 is closed.
 
 ### 5c. Other shipped subsystems not tracked in the phase tables above
 
@@ -161,24 +161,26 @@ The honor-system path no longer resolves a "landed" claim instantly. It freezes 
 | Social cards for shared `/player` links     | `api/player-meta.ts`, crawler-UA rewrite in `vercel.json`                     |
 | Stats close-out Cloud Function              | `functions/src/applyGameStats.ts` (CI-pinned allowlist)                       |
 | Mobile store release pipeline               | `fastlane/`, `.github/workflows/ios-build.yml`, `android-aab.yml`             |
+| Native shell (back button, deep links)      | `src/services/nativeApp.ts`, `nativeBridge.ts`                                |
+| Nearby spots dropdown on map search         | `src/services/spots.ts` (`getSpotsNearby`), `src/utils/geo.ts`                |
 
 ---
 
 ## 6. Cross-Cutting Quality
 
-| Concern                         | Status   | Notes                                                                                                                                                                          |
-| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| TypeScript strict, no `any`     | **Done** | `tsc -b` green, lint enforced                                                                                                                                                  |
-| Unit + component tests          | **Done** | 193 test files / ~3,300 test cases under `src/` (measured 2026-08-26), plus 52 rules-tests and 11 e2e specs                                                                    |
-| 100% coverage on services/hooks | **Done** | Enforced by Vitest thresholds                                                                                                                                                  |
-| Firestore rules unit tests      | **Done** | `rules-tests/clips.rules.test.ts`, `spots.rules.test.ts`, `games-spotId`, `notifications` (closes prior gap T2)                                                                |
-| E2E (Playwright)                | **Done** | `e2e/auth.spec.ts`, `e2e/game.spec.ts`, `e2e/map.spec.ts` (closes prior gap T1)                                                                                                |
-| Lighthouse CI                   | **Done** | `.lighthouserc.json` in repo root                                                                                                                                              |
-| GitHub Actions CI gate          | **Done** | `.github/workflows/`                                                                                                                                                           |
-| Conventional commits            | **Done** | Enforced by convention + PR review; Husky runs `lint-staged` (pre-commit) and `check:test-dup` (pre-push) — no commitlint                                                      |
-| Sentry + PII scrubbing          | **Done** | `src/lib/sentry`, `docs/SENTRY_ALERTS.md`                                                                                                                                      |
-| App Check (reCAPTCHA v3)        | **Done** | `src/firebase.ts` — opt-in via `VITE_APPCHECK_ENABLED`; skipped/misconfigured paths log loudly (`logger.info`/`logger.error` + Sentry `captureMessage`), not a silent fallback |
-| Dark theme + custom tokens      | **Done** | `src/index.css` (Tailwind v4 `@theme`)                                                                                                                                         |
+| Concern                         | Status   | Notes                                                                                                                                                                                                     |
+| ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript strict, no `any`     | **Done** | `tsc -b` green, lint enforced                                                                                                                                                                             |
+| Unit + component tests          | **Done** | 206 test files / 3,832 tests under `src/` (`npm run verify`, 2026-10-01), plus 53 rules-test files and 11 e2e specs                                                                                       |
+| 100% coverage on services/hooks | **Done** | Enforced by Vitest thresholds                                                                                                                                                                             |
+| Firestore rules unit tests      | **Done** | 53 files under `rules-tests/` covering every collection plus Storage, incl. red-team suites (closes prior gap T2). Runs on rules-touching PRs and before every deploy, not on every PR — see GAPS.md P2-4 |
+| E2E (Playwright)                | **Done** | 11 specs in `e2e/` — auth, game, forfeit, invite, map, clip upload, clip voting, onboarding, offline, notification deep-link, sign-up back-end state (closes prior gap T1)                                |
+| Lighthouse CI                   | **Done** | `.lighthouserc.json` in repo root                                                                                                                                                                         |
+| GitHub Actions CI gate          | **Done** | `.github/workflows/`                                                                                                                                                                                      |
+| Conventional commits            | **Done** | Enforced by convention + PR review; Husky runs `lint-staged` (pre-commit) and `check:test-dup` (pre-push) — no commitlint                                                                                 |
+| Sentry + PII scrubbing          | **Done** | `src/lib/sentry.ts`, `docs/SENTRY_ALERTS.md`                                                                                                                                                              |
+| App Check (reCAPTCHA v3)        | **Done** | `src/firebase.ts` — opt-in via `VITE_APPCHECK_ENABLED`; skipped/misconfigured paths log loudly (`logger.info`/`logger.error` + Sentry `captureMessage`), not a silent fallback                            |
+| Dark theme + custom tokens      | **Done** | `src/index.css` (Tailwind v4 `@theme`)                                                                                                                                                                    |
 
 ---
 
@@ -198,11 +200,11 @@ The honor-system path no longer resolves a "landed" claim instantly. It freezes 
 
 ### P2 — Quality
 
-| Item                                  | Status                                                                                                                                                                                 |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Focus trap in modals                  | **Done** — `useFocusTrap` (`src/hooks/useFocusTrap.ts`) wired into `RulesSheet`, `ReportModal`, `DeleteAccountModal`, `ClipsFeed`, `LandingMap`, `AddSpotSheet`, and `SpotPreviewCard` |
-| Accessibility (axe-core) in CI        | **Planned**                                                                                                                                                                            |
-| TTL cleanup for username reservations | **Planned**                                                                                                                                                                            |
+| Item                                  | Status                                                                                                                                                                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Focus trap in modals                  | **Done** — `useFocusTrap` (`src/hooks/useFocusTrap.ts`) wired into `RulesSheet`, `ReportModal`, `DeleteAccountModal`, `ClipsFeed`, `ClipComments`, `LandingMap`, `AddSpotSheet`, and `SpotPreviewCard`; opt-in `onEscape` since #579 |
+| Accessibility (axe-core) in CI        | **Planned**                                                                                                                                                                                                                          |
+| TTL cleanup for username reservations | **Planned**                                                                                                                                                                                                                          |
 
 ### P3 — Polish
 
@@ -231,14 +233,14 @@ work that has never been folded into a phase table and is excluded from these
 totals — they under-report what is actually built.
 
 **Overall product completion (excluding deferred):** 64 of 68 non-deferred items ≈ **94%**. Including the single deferred item (spectator), 64 of 69 ≈ 93%.
-**Active focus:** cut a release tag — the repo has no git tags at all and `[Unreleased]` holds ~4 months of merged work; custom Mapbox style (Phase 4 — design/infra).
-**Production gate:** Green on the verify suite. **2 of 4 P0s are fully closed; P0-3 (dispute notifications) and P0-4 (DSA controls) are partially closed** — see [GAPS.md](GAPS.md).
+**Active focus:** cut a release tag — the repo has no git tags at all and `[Unreleased]` holds ~5½ months of merged work; custom Mapbox style (Phase 4 — design/infra).
+**Production gate:** Green on the verify suite. **3 of 4 P0s are closed; P0-4 (DSA controls) is partially closed** and blocks app-store submission on its account-level items — see [GAPS.md](GAPS.md).
 
 ---
 
 ## 9. Recommended Next Actions
 
-1. **Cut a release tag** _(active focus)_. The referee system already shipped in v1.1.0, but the repo has no git tags at all and `[Unreleased]` now holds ~4 months of merged work.
+1. **Cut a release tag** _(active focus)_. The referee system already shipped in v1.1.0, but the repo has no git tags at all and `[Unreleased]` now holds ~5½ months of merged work.
 2. **Custom Mapbox style** ([#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191)) — design a branded dark-base style in Mapbox Studio and set `VITE_MAPBOX_STYLE_URL` in Vercel. No code change needed; `src/lib/mapbox.ts` already reads the env var.
 3. ~~Spec spectator mode~~ — **deferred**; revisit once vote-driven ranking has shipped engagement data to read against.
 4. **Schedule the P1 ops items** (rules deploy, backups, video purge, branch protection) — these are blockers for scaling, not for shipping.

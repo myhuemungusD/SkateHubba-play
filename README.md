@@ -118,7 +118,7 @@ No custom backend for game logic — the client talks directly to Firebase with 
 - **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
-- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, and challenge-from-spot
+- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, a nearby-spots dropdown (closest spots within 10 km), and challenge-from-spot
 - **Achievements & badges** — earned badges (century club, streaks, OG, …) shown on profiles
 - **Hubba Locker** — collectible locker items with a profile showcase (economy Phase A)
 - **Verified Pro** — gold username treatment for verified professional skaters
@@ -166,7 +166,7 @@ For full setup including Firebase emulators, see [docs/DEVELOPMENT.md](docs/DEVE
 | `npm run test:rules`        | Run Firestore security-rules tests against the rules emulator |
 | `npm run test:e2e`          | Run Playwright E2E tests (auto-starts emulators)              |
 | `npm run test:e2e:ui`       | Same as above in the Playwright UI runner                     |
-| `npm run lint`              | Lint `src/` and `api/` with ESLint                            |
+| `npm run lint`              | Lint `src/`, `api/`, and `e2e/` with ESLint                   |
 | `npm run lint:fix`          | Lint and auto-fix where possible                              |
 | `npm run format`            | Format `src/**/*.{ts,tsx}` with Prettier                      |
 | `npm run check:test-dup`    | Flag duplicated test cases (CI gate)                          |
@@ -196,7 +196,7 @@ skatehubba-play/
 │   ├── screens/               # Full-page components (Lobby, GamePlay, MapPage, …)
 │   ├── context/               # AuthContext, GameContext, NavigationContext, NotificationContext, OnboardingContext
 │   ├── hooks/                 # Key hooks — useAuth, useOnlineStatus, usePlayerProfile, useBlockedUsers, …
-│   ├── services/              # Single entry point for all Firebase calls, split by domain (54 modules)
+│   ├── services/              # Single entry point for all Firebase calls, split by domain (55 modules)
 │   │   ├── auth.ts            #   sign up / sign in / Google OAuth / password reset
 │   │   ├── users.ts           #   profiles + atomic username reservation
 │   │   ├── games.*.ts         #   game domain — games.ts is a barrel over create/match/judge/turns/mappers/subscriptions
@@ -219,8 +219,8 @@ skatehubba-play/
 │   └── types/                 # Shared TypeScript types
 ├── api/                       # Vercel serverless endpoints (cron sweeps, push drain, account deletion, social cards)
 ├── functions/                 # Maintainer-approved stats close-out Cloud Function (CI-pinned file set)
-├── e2e/                       # Playwright E2E tests (auth, game, map)
-├── rules-tests/               # Firestore rules unit tests (clips, spots, notifications)
+├── e2e/                       # Playwright E2E specs (auth, game, forfeit, invite, map, clips, onboarding, offline, …)
+├── rules-tests/               # Firestore + Storage rules tests incl. red-team suites (53 files)
 ├── docs/                      # Documentation suite
 │   └── screenshots/           # README images + brand assets
 ├── firestore.rules            # Firestore security rules (turn order, scores, rate limits)
@@ -273,23 +273,25 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 
 ## Documentation
 
-| Document                                                 | Description                                 |
-| -------------------------------------------------------- | ------------------------------------------- |
-| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)               | Local setup, emulators, dev workflow        |
-| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)                 | Production deploy to Vercel + Firebase      |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)             | System design, data flow, decisions         |
-| [docs/DATABASE.md](docs/DATABASE.md)                     | Firestore schema and security rules         |
-| [docs/API.md](docs/API.md)                               | Service layer function reference            |
-| [docs/TESTING.md](docs/TESTING.md)                       | Test suite overview and how to run          |
-| [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md)         | Game rules and turn flow                    |
-| [docs/GAME_STATE_MACHINE.md](docs/GAME_STATE_MACHINE.md) | State transitions and lifecycle             |
-| [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md)           | Per-feature completion status               |
-| [docs/DECISIONS.md](docs/DECISIONS.md)                   | Architecture decision records               |
-| [ROADMAP.md](ROADMAP.md)                                 | Direction, exit criteria, and the icebox    |
-| [docs/ECONOMY.md](docs/ECONOMY.md)                       | Long-term economy and creator ecosystem     |
-| [CONTRIBUTING.md](CONTRIBUTING.md)                       | How to contribute                           |
-| [SECURITY.md](SECURITY.md)                               | Security policy and vulnerability reporting |
-| [CHANGELOG.md](CHANGELOG.md)                             | Version history                             |
+| Document                                                 | Description                                  |
+| -------------------------------------------------------- | -------------------------------------------- |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)               | Local setup, emulators, dev workflow         |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)                 | Production deploy to Vercel + Firebase       |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)             | System design, data flow, decisions          |
+| [docs/DATABASE.md](docs/DATABASE.md)                     | Firestore schema and security rules          |
+| [docs/API.md](docs/API.md)                               | Service layer function reference             |
+| [docs/TESTING.md](docs/TESTING.md)                       | Test suite overview and how to run           |
+| [docs/GAME_MECHANICS.md](docs/GAME_MECHANICS.md)         | Game rules and turn flow                     |
+| [docs/GAME_STATE_MACHINE.md](docs/GAME_STATE_MACHINE.md) | State transitions and lifecycle              |
+| [docs/STATUS_REPORT.md](docs/STATUS_REPORT.md)           | Per-feature completion status                |
+| [docs/DECISIONS.md](docs/DECISIONS.md)                   | Architecture decision records                |
+| [docs/CHARTER.md](docs/CHARTER.md)                       | Operating charter — architectural boundaries |
+| [docs/GAPS.md](docs/GAPS.md)                             | Prioritized risk register (P0–P3)            |
+| [ROADMAP.md](ROADMAP.md)                                 | Direction, exit criteria, and the icebox     |
+| [docs/ECONOMY.md](docs/ECONOMY.md)                       | Long-term economy and creator ecosystem      |
+| [CONTRIBUTING.md](CONTRIBUTING.md)                       | How to contribute                            |
+| [SECURITY.md](SECURITY.md)                               | Security policy and vulnerability reporting  |
+| [CHANGELOG.md](CHANGELOG.md)                             | Version history                              |
 
 ---
 
@@ -305,19 +307,19 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 
 ## Traction
 
-| Metric                | Status                                                                   |
-| --------------------- | ------------------------------------------------------------------------ |
-| Live at               | [skatehubba.com](https://skatehubba.com)                                 |
-| Auth methods          | Email/password + Google OAuth (with verification + popup→redirect)       |
-| Real-time multiplayer | Firestore `onSnapshot` — sub-second updates                              |
-| Video infrastructure  | WebM (web) + MP4 (native), 1 KB – 50 MB per clip, retry w/ backoff       |
-| Turn timer            | 24 h per turn, server-validated forfeit                                  |
-| Native apps           | Capacitor builds for iOS + Android                                       |
-| CI pipeline           | Lint → type-check → unit tests + coverage → build → Lighthouse → E2E     |
-| Test coverage         | 100% on `src/services/**` and `src/hooks/**` (enforced by CI thresholds) |
-| Rules tests           | `@firebase/rules-unit-testing` against the Firestore emulator            |
-| Security posture      | App Check (reCAPTCHA v3), CSP/HSTS, Firestore rules enforce game logic   |
-| Bundle size (gzip)    | ~289 kB total (Firebase 148 kB, app 71 kB) — code-split vendor chunks    |
+| Metric                | Status                                                                                                                                              |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Live at               | [skatehubba.com](https://skatehubba.com)                                                                                                            |
+| Auth methods          | Email/password + Google OAuth (with verification + popup→redirect)                                                                                  |
+| Real-time multiplayer | Firestore `onSnapshot` — sub-second updates                                                                                                         |
+| Video infrastructure  | WebM (web) + MP4 (native), 1 KB – 50 MB per clip, retry w/ backoff                                                                                  |
+| Turn timer            | 24 h per turn, server-validated forfeit                                                                                                             |
+| Native apps           | Capacitor builds for iOS + Android                                                                                                                  |
+| CI pipeline           | Lint → type-check → unit tests + coverage → build → Lighthouse → E2E                                                                                |
+| Test coverage         | 100% on `src/services/**` and `src/hooks/**` (enforced by CI thresholds)                                                                            |
+| Rules tests           | `@firebase/rules-unit-testing` against the Firestore emulator                                                                                       |
+| Security posture      | App Check (reCAPTCHA v3), CSP/HSTS, Firestore rules enforce game logic                                                                              |
+| Bundle size (gzip)    | ~384 kB first load incl. CSS (Firebase ~212 kB, React ~59 kB, app ~63 kB), measured 2026-10-01 — Mapbox, nsfwjs, and non-critical screens lazy-load |
 
 ---
 
@@ -327,22 +329,33 @@ All analytics flow through a single wrapper (`src/services/analytics.ts`) that f
 
 ### Instrumented Events
 
-| Event                 | Fires When                                | Properties                    |
-| --------------------- | ----------------------------------------- | ----------------------------- |
-| `sign_up`             | New account created                       | `method` (email / google)     |
-| `sign_in`             | User logs in                              | `method` (email / google)     |
-| `game_created`        | Player creates a new challenge            | `gameId`                      |
-| `trick_set`           | Setter records and submits a trick        | `gameId`, `trickName`         |
-| `match_submitted`     | Matcher submits their attempt             | `gameId`, `landed` (bool)     |
-| `game_completed`      | Game reaches a final state (win/loss)     | `gameId`, `won` (bool)        |
-| `video_uploaded`      | Trick video successfully uploaded         | `durationMs`, `sizeBytes`     |
-| `invite_sent`         | Player shares an invite link              | `method` (sms / copy / share) |
-| `clip_shared`         | Player shares a trick clip                | `method`, `context`           |
-| `clip_saved`          | Player saves a trick clip locally         | `context`                     |
-| `game_shared`         | Player shares a completed game            | `context`, `method`           |
-| `map_viewed`          | Spots map screen mounts                   | —                             |
-| `spot_previewed`      | User taps a spot marker → preview opens   | `spotId`                      |
-| `challenge_from_spot` | Challenge screen opened with `?spot=` ref | `spotId`                      |
+| Event                                              | Fires When                                     | Properties                                                   |
+| -------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| `sign_up`                                          | New account created                            | `method` (email / google)                                    |
+| `sign_in`                                          | User logs in                                   | `method` (email / google)                                    |
+| `game_created`                                     | Player creates a new challenge                 | `gameId`                                                     |
+| `trick_set`                                        | Setter records and submits a trick             | `gameId`, `trickName`                                        |
+| `match_submitted`                                  | Matcher submits their attempt                  | `gameId`, `landed` (bool)                                    |
+| `game_completed`                                   | Game reaches a final state (win/loss)          | `gameId`, `won` (bool)                                       |
+| `video_uploaded`                                   | Trick video successfully uploaded              | `durationMs`, `sizeBytes`                                    |
+| `invite_sent`                                      | Player shares an invite link                   | `method` (sms / copy / share)                                |
+| `clip_shared`                                      | Player shares a trick clip                     | `method`, `context`                                          |
+| `clip_saved`                                       | Player saves a trick clip locally              | `context`                                                    |
+| `game_shared`                                      | Player shares a completed game                 | `context`, `method`                                          |
+| `map_viewed`                                       | Spots map screen mounts                        | —                                                            |
+| `spot_previewed`                                   | User taps a spot marker → preview opens        | `spotId`                                                     |
+| `challenge_from_spot`                              | Challenge screen opened with `?spot=` ref      | `spotId`                                                     |
+| `sign_in_attempt` / `sign_up_attempt`              | Auth form submitted (success-rate denominator) | `method`                                                     |
+| `sign_in_failure` / `sign_up_failure`              | Auth attempt rejected                          | `method`, `code`                                             |
+| `install_prompt_answered`                          | User answers the Chromium install dialog       | `outcome` (accepted / dismissed)                             |
+| `app_installed`                                    | Browser fires `appinstalled`                   | —                                                            |
+| `landing_map_viewed`                               | Landing-page map teaser scrolls into view      | —                                                            |
+| `landing_pin_clicked`                              | Locked pin on the landing map teaser tapped    | `spotId`                                                     |
+| `profile_viewed`                                   | Player profile screen mounts                   | hashed `viewerUid` / `profileUid`, `isOwn`, `msToFirstPaint` |
+| `profile_stat_tile_tapped`                         | Stat tile tapped on a profile                  | `statName`, hashed `profileUid`                              |
+| `avatar_upload_started` / `_completed` / `_failed` | Avatar upload pipeline stages                  | `source`, sizes, `nsfwScore`, `errorCode`                    |
+| `avatar_deleted`                                   | Avatar removed                                 | hashed `uid`                                                 |
+| `account_deleted`                                  | Account-deletion cascade completes             | hashed `uid`, `achievementsRemoved`, `avatarRemoved`         |
 
 ### Core Funnel
 
@@ -398,13 +411,14 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 - ✅ **Spot tagging** — geo-tagged skate spots with gnar rating + bust risk, full CRUD, Firestore rules, and security-rule tests
 - ✅ **Spot map UI** — Mapbox GL integration with markers, filters (gnar/bust risk), spot preview cards, and add-spot sheet
 - ✅ **Spot ↔ game linkage** — challenge from any spot detail page or map preview; `?spot=` query param flows through to the game doc
-- ✅ **Bottom tab bar** — persistent Home / Map / Me navigation across all main screens
+- ✅ **Bottom tab bar** — persistent Home · Clips · Challenge · Map · Me navigation, with Challenge as the raised centre action
+- ✅ **Nearby spots** — focusing the empty map search lists the closest active spots within 10 km of your GPS fix
 - 🚧 **Custom Mapbox style** — branded dark-base map style via Mapbox Studio ([#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191))
 - ⏳ **Crew challenges** — team-based S.K.A.T.E. (3v3) multiplies each invite by 6 players
 - ⏳ **Trick library** — community trick index with video proof, a defensible content layer
 - ⏳ **Tournaments** — bracket-style competitions for appointment engagement
 
-### Referee System 🧑‍⚖️ — shipped in v1.1.0
+### Referee System ✅ — shipped in v1.1.0
 
 Optional third player who arbitrates disputes. Shipped 2026-04-19 — see the `[1.1.0]` entries in [CHANGELOG.md](CHANGELOG.md).
 
