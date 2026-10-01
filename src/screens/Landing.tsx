@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { GoogleButton } from "../components/GoogleButton";
 import { InviteButton } from "../components/InviteButton";
+import { LandingDemoVideo } from "../components/LandingDemoVideo";
 import { SkateButton } from "../components/SkateButton";
 import { VideoIcon, ClockIcon, FlameIcon, ShieldIcon, TrophyIcon, UsersIcon } from "../components/icons";
 import { SOCIAL_LINKS } from "../constants/socialLinks";
@@ -232,19 +233,7 @@ export function Landing({ onGo, onGoogle, googleLoading, onNav }: LandingProps) 
         </h2>
         <div className="video-showcase">
           <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] shadow-[0_0_80px_rgba(255,107,0,0.06),0_20px_60px_rgba(0,0,0,0.4)]">
-            <video
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="metadata"
-              disablePictureInPicture
-              controlsList="nodownload noplaybackrate"
-              className="w-full aspect-video object-cover bg-surface"
-              aria-label="SkateHubba gameplay demo"
-            >
-              <source src="/sh-video-edit.mp4" type="video/mp4" />
-            </video>
+            <LandingDemoVideo />
             {/* Bottom fade */}
             <div className="absolute inset-0 pointer-events-none bg-video-overlay" />
             {/* Caption overlay */}

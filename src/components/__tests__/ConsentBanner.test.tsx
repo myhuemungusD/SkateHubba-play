@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ConsentBanner } from "../ConsentBanner";
+import { ConsentBanner, CONSENT_BANNER_OPEN_CLASS, CONSENT_BANNER_SPACE_VAR } from "../ConsentBanner";
 import { subscribeConsent } from "../../lib/consent";
 
 beforeEach(() => {
@@ -55,5 +55,55 @@ describe("ConsentBanner", () => {
     await userEvent.click(screen.getByText("No"));
     expect(listener).toHaveBeenCalled();
     unsubscribe();
+  });
+});
+
+describe("ConsentBanner bottom clearance", () => {
+  const root = () => document.documentElement;
+
+  it("reserves bottom space on <html> while visible and releases it on OK", async () => {
+    render(<ConsentBanner onNav={vi.fn()} />);
+    expect(root().classList.contains(CONSENT_BANNER_OPEN_CLASS)).toBe(true);
+    expect(root().style.getPropertyValue(CONSENT_BANNER_SPACE_VAR)).toMatch(/^\d+px$/);
+
+    await userEvent.click(screen.getByText("OK"));
+    expect(root().classList.contains(CONSENT_BANNER_OPEN_CLASS)).toBe(false);
+    expect(root().style.getPropertyValue(CONSENT_BANNER_SPACE_VAR)).toBe("");
+    // Consent semantics unchanged: analytics only after an explicit OK.
+    expect(localStorage.getItem("sh_analytics_consent")).toBe("accepted");
+  });
+
+  it("releases the reserved space when declined", async () => {
+    render(<ConsentBanner onNav={vi.fn()} />);
+    await userEvent.click(screen.getByText("No"));
+    expect(root().classList.contains(CONSENT_BANNER_OPEN_CLASS)).toBe(false);
+  });
+
+  it("never reserves space when consent was already given", () => {
+    localStorage.setItem("sh_analytics_consent", "declined");
+    render(<ConsentBanner onNav={vi.fn()} />);
+    expect(root().classList.contains(CONSENT_BANNER_OPEN_CLASS)).toBe(false);
+  });
+
+  it("re-measures via ResizeObserver and disconnects on unmount", () => {
+    const observe = vi.fn();
+    const disconnect = vi.fn();
+    let onResize: (() => void) | undefined;
+    const realRO = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = vi.fn(function (this: unknown, cb: () => void) {
+      onResize = cb;
+      return { observe, disconnect, unobserve: vi.fn() };
+    }) as unknown as typeof ResizeObserver;
+    try {
+      const { unmount } = render(<ConsentBanner onNav={vi.fn()} />);
+      expect(observe).toHaveBeenCalledWith(screen.getByRole("region", { name: /analytics notice/i }));
+      onResize?.();
+      expect(root().style.getPropertyValue(CONSENT_BANNER_SPACE_VAR)).toMatch(/^\d+px$/);
+      unmount();
+      expect(disconnect).toHaveBeenCalled();
+      expect(root().classList.contains(CONSENT_BANNER_OPEN_CLASS)).toBe(false);
+    } finally {
+      globalThis.ResizeObserver = realRO;
+    }
   });
 });

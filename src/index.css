@@ -515,6 +515,15 @@
   padding-top: env(safe-area-inset-top);
 }
 
+/* ── Cookie banner clearance ────────────────────────── */
+/* ConsentBanner adds this class (and publishes its measured height, which
+   already includes the safe-area inset) while it is on screen, so the end of
+   every page — e.g. the "Create Account" button on /auth — can always be
+   scrolled clear of the fixed banner instead of hiding underneath it. */
+html.consent-banner-open body {
+  padding-bottom: var(--consent-banner-space, calc(5rem + env(safe-area-inset-bottom)));
+}
+
 /* ── Reduced motion ────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *,
