@@ -62,8 +62,9 @@ Goal: shrink the gap between "what's tested" and "what users actually do" — no
 - Auto-forfeit on expired turns — client on game open plus a 15-minute server sweep (`api/cron/sweep-expired-turns.ts`)
 - Nudge system with rate limiting
 - Spot map (Mapbox GL + Firestore `spots` collection, challenge flow integration)
+- **Frozen since #599 (hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`):** spot map, Clips feed, Verified Pro badge. Listed below as built, not as user-visible.
 - Clips feed on its own tab (`/feed`) — two lanes: pending referee rulings (disputes and Call-BS reviews awaiting the viewer, ruled inline) above the community clip spotlight (thumbs up / thumbs down, Top/New toggle, autoplay)
-- Persistent five-tab bottom bar (Home · Clips · Challenge · Map · Me), Challenge as the raised centre action
+- Persistent bottom bar — Home · Challenge · Me by default; Clips and Map tabs only when extras are enabled. Challenge is the raised centre action
 - Nearby-spots dropdown on map search (closest active spots within 10 km)
 - Verified pro profiles with gold treatment
 - Public player profiles with game history

@@ -112,16 +112,18 @@ No custom backend for game logic — the client talks directly to Firebase with 
 
 ### Social & Discovery
 
+> **Feature freeze (2026-10, #599):** items marked _frozen_ ship in the codebase but are hidden by default — see [Feature freeze](#environment-variables) under Environment Variables.
+
 - **Invite & share** — SMS, link copy, and native share for invites and trick clips
 - **Push notifications** — FCM "your turn" alerts that deep-link into the game
-- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips
-- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results
+- **Cross-game clips feed** — every landed trick rolls into a global, scrollable feed; the top slot autoplays muted with tap-to-unmute and rotates through visible clips _(frozen — hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`)_
+- **Clip upvotes** — single-tap, no-undo upvotes; one vote per user per clip enforced by rules, with a Top/New toggle over upvote-ranked results _(frozen — hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`)_
 - **Leaderboard** — ranked players by wins
 - **Player profiles** — public per-user pages with full game history
-- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, a nearby-spots dropdown (closest spots within 10 km), and challenge-from-spot
+- **Spots map** — geo-tagged skate spots with gnar rating + bust risk, filters, a nearby-spots dropdown (closest spots within 10 km), and challenge-from-spot _(frozen — hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`)_
 - **Achievements & badges** — earned badges (century club, streaks, OG, …) shown on profiles
 - **Hubba Locker** — collectible locker items with a profile showcase (economy Phase A)
-- **Verified Pro** — gold username treatment for verified professional skaters
+- **Verified Pro** — gold username treatment for verified professional skaters _(frozen — hidden unless `VITE_FEATURE_EXTRAS_ENABLED=true`)_
 - **Admin console** — in-app moderation surface for bans, badge awards, and dispute oversight
 
 ### Platform
@@ -329,7 +331,7 @@ See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full guide. Short version:
 | Test coverage         | 100% on `src/services/**` and `src/hooks/**` (enforced by CI thresholds)                                                                            |
 | Rules tests           | `@firebase/rules-unit-testing` against the Firestore emulator                                                                                       |
 | Security posture      | App Check (reCAPTCHA v3), CSP/HSTS, Firestore rules enforce game logic                                                                              |
-| Bundle size (gzip)    | ~401 kB first load incl. CSS (Firebase ~213 kB, React ~68 kB, app ~64 kB), measured 2026-10-01 — Mapbox, nsfwjs, and non-critical screens lazy-load |
+| Bundle size (gzip)    | ~400 kB first load incl. CSS (Firebase ~213 kB, React ~68 kB, app ~64 kB), measured 2026-10-01 — Mapbox, nsfwjs, and non-critical screens lazy-load |
 
 ---
 
@@ -339,33 +341,33 @@ All analytics flow through a single wrapper (`src/services/analytics.ts`) that f
 
 ### Instrumented Events
 
-| Event                                              | Fires When                                     | Properties                                                   |
-| -------------------------------------------------- | ---------------------------------------------- | ------------------------------------------------------------ |
-| `sign_up`                                          | New account created                            | `method` (email / google)                                    |
-| `sign_in`                                          | User logs in                                   | `method` (email / google)                                    |
-| `game_created`                                     | Player creates a new challenge                 | `gameId`                                                     |
-| `trick_set`                                        | Setter records and submits a trick             | `gameId`, `trickName`                                        |
-| `match_submitted`                                  | Matcher submits their attempt                  | `gameId`, `landed` (bool)                                    |
-| `game_completed`                                   | Game reaches a final state (win/loss)          | `gameId`, `won` (bool)                                       |
-| `video_uploaded`                                   | Trick video successfully uploaded              | `durationMs`, `sizeBytes`                                    |
-| `invite_sent`                                      | Player shares an invite link                   | `method` (sms / copy / share)                                |
-| `clip_shared`                                      | Player shares a trick clip                     | `method`, `context`                                          |
-| `clip_saved`                                       | Player saves a trick clip locally              | `context`                                                    |
-| `game_shared`                                      | Player shares a completed game                 | `context`, `method`                                          |
-| `map_viewed`                                       | Spots map screen mounts                        | —                                                            |
-| `spot_previewed`                                   | User taps a spot marker → preview opens        | `spotId`                                                     |
-| `challenge_from_spot`                              | Challenge screen opened with `?spot=` ref      | `spotId`                                                     |
-| `sign_in_attempt` / `sign_up_attempt`              | Auth form submitted (success-rate denominator) | `method`                                                     |
-| `sign_in_failure` / `sign_up_failure`              | Auth attempt rejected                          | `method`, `code`                                             |
-| `install_prompt_answered`                          | User answers the Chromium install dialog       | `outcome` (accepted / dismissed)                             |
-| `app_installed`                                    | Browser fires `appinstalled`                   | —                                                            |
-| `landing_map_viewed`                               | Landing-page map teaser scrolls into view      | —                                                            |
-| `landing_pin_clicked`                              | Locked pin on the landing map teaser tapped    | `spotId`                                                     |
-| `profile_viewed`                                   | Player profile screen mounts                   | hashed `viewerUid` / `profileUid`, `isOwn`, `msToFirstPaint` |
-| `profile_stat_tile_tapped`                         | Stat tile tapped on a profile                  | `statName`, hashed `profileUid`                              |
-| `avatar_upload_started` / `_completed` / `_failed` | Avatar upload pipeline stages                  | `source`, sizes, `nsfwScore`, `errorCode`                    |
-| `avatar_deleted`                                   | Avatar removed                                 | hashed `uid`                                                 |
-| `account_deleted`                                  | Account-deletion cascade completes             | hashed `uid`, `achievementsRemoved`, `avatarRemoved`         |
+| Event                                              | Fires When                                                                                   | Properties                                                   |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `sign_up`                                          | New account created                                                                          | `method` (email / google)                                    |
+| `sign_in`                                          | User logs in                                                                                 | `method` (email / google)                                    |
+| `game_created`                                     | Player creates a new challenge                                                               | `gameId`                                                     |
+| `trick_set`                                        | Setter records and submits a trick                                                           | `gameId`, `trickName`                                        |
+| `match_submitted`                                  | Matcher submits their attempt                                                                | `gameId`, `landed` (bool)                                    |
+| `game_completed`                                   | Game reaches a final state (win/loss)                                                        | `gameId`, `won` (bool)                                       |
+| `video_uploaded`                                   | Trick video successfully uploaded                                                            | `durationMs`, `sizeBytes`                                    |
+| `invite_sent`                                      | Player shares an invite link                                                                 | `method` (sms / copy / share)                                |
+| `clip_shared`                                      | Player shares a trick clip                                                                   | `method`, `context`                                          |
+| `clip_saved`                                       | Player saves a trick clip locally                                                            | `context`                                                    |
+| `game_shared`                                      | Player shares a completed game                                                               | `context`, `method`                                          |
+| `map_viewed`                                       | Spots map screen mounts                                                                      | —                                                            |
+| `spot_previewed`                                   | User taps a spot marker → preview opens                                                      | `spotId`                                                     |
+| `challenge_from_spot`                              | Challenge screen opened with `?spot=` ref                                                    | `spotId`                                                     |
+| `sign_in_attempt` / `sign_up_attempt`              | Auth form submitted (success-rate denominator)                                               | `method`                                                     |
+| `sign_in_failure` / `sign_up_failure`              | Auth attempt rejected                                                                        | `method`, `code`                                             |
+| `install_prompt_answered`                          | User answers the Chromium install dialog                                                     | `outcome` (accepted / dismissed)                             |
+| `app_installed`                                    | Browser fires `appinstalled`                                                                 | —                                                            |
+| `landing_map_viewed`                               | Landing-page map teaser scrolls into view — **not fired since #599** (landing map removed)   | —                                                            |
+| `landing_pin_clicked`                              | Locked pin on the landing map teaser tapped — **not fired since #599** (landing map removed) | `spotId`                                                     |
+| `profile_viewed`                                   | Player profile screen mounts                                                                 | hashed `viewerUid` / `profileUid`, `isOwn`, `msToFirstPaint` |
+| `profile_stat_tile_tapped`                         | Stat tile tapped on a profile                                                                | `statName`, hashed `profileUid`                              |
+| `avatar_upload_started` / `_completed` / `_failed` | Avatar upload pipeline stages                                                                | `source`, sizes, `nsfwScore`, `errorCode`                    |
+| `avatar_deleted`                                   | Avatar removed                                                                               | hashed `uid`                                                 |
+| `account_deleted`                                  | Account-deletion cascade completes                                                           | hashed `uid`, `achievementsRemoved`, `avatarRemoved`         |
 
 ### Core Funnel
 
@@ -418,10 +420,12 @@ For the live, evidence-backed completion table, see [docs/STATUS_REPORT.md](docs
 
 ### Phase 4 — Network Effects Flywheel 🟡 in progress
 
+> The Map and spot features below are built but **frozen** (hidden by default) since #599 — the product currently ships only the core Challenge loop.
+
 - ✅ **Spot tagging** — geo-tagged skate spots with gnar rating + bust risk, full CRUD, Firestore rules, and security-rule tests
 - ✅ **Spot map UI** — Mapbox GL integration with markers, filters (gnar/bust risk), spot preview cards, and add-spot sheet
 - ✅ **Spot ↔ game linkage** — challenge from any spot detail page or map preview; `?spot=` query param flows through to the game doc
-- ✅ **Bottom tab bar** — persistent Home · Clips · Challenge · Map · Me navigation, with Challenge as the raised centre action
+- ✅ **Bottom tab bar** — Home · Challenge · Me by default, with Challenge as the raised centre action; Clips and Map tabs return when `VITE_FEATURE_EXTRAS_ENABLED=true`
 - ✅ **Nearby spots** — focusing the empty map search lists the closest active spots within 10 km of your GPS fix
 - 🚧 **Custom Mapbox style** — branded dark-base map style via Mapbox Studio ([#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191))
 - ⏳ **Crew challenges** — team-based S.K.A.T.E. (3v3) multiplies each invite by 6 players

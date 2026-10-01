@@ -1,7 +1,9 @@
 # Feature Completion Status Report
 
 **Generated:** 2026-06-01 · **Last verified:** 2026-10-01
-**Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`. Active debt is tracked in `docs/GAPS.md` and `docs/DECISIONS.md` (per CHARTER — the old `COMPREHENSIVE_GAP_ANALYSIS.md` is archived and no longer authoritative).
+
+> **Feature freeze (2026-10, #599):** the Map (`/map`, `/spots/:id`), the Clips feed (`/feed`) and Verified Pro are built and tested but **hidden by default** behind `VITE_FEATURE_EXTRAS_ENABLED` (`src/lib/featureFlags.ts`). Rows below still read **Done** because the code ships; they are not user-visible unless the flag is `true`. The landing-page map teaser was removed outright.
+> **Source of truth:** `src/`, `firestore.rules`, `e2e/`, `rules-tests/`, `CHANGELOG.md`. Active debt is tracked in `docs/GAPS.md` and `docs/DECISIONS.md` (per CHARTER — the old `COMPREHENSIVE_GAP_ANALYSIS.md` is archived and no longer authoritative).
 
 Status legend:
 
@@ -94,17 +96,17 @@ Status legend:
 
 ## 4. Phase 4 — Network Effects
 
-| Feature                         | Status          | Evidence                                                                                                                                                |
-| ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Spot tagging (geo-tagged map)   | **Done**        | `src/screens/MapPage.tsx`, `SpotDetailPage.tsx`, `src/components/map/*`, `src/services/spots.ts`, `e2e/map.spec.ts`, `rules-tests/spots.rules.test.ts`  |
-| Spot ↔ game linkage             | **Done**        | `SpotDetailPage.tsx` challenge button navigates to `/challenge?spot=`, `SpotPreviewCard.tsx` mirrors the flow, `rules-tests/games-spotId.rules.test.ts` |
-| Add a Spot UX                   | **Done**        | `src/components/map/AddSpotSheet.tsx`                                                                                                                   |
-| Spot filters (gnar / bust risk) | **Done**        | `src/components/map/SpotFilterBar.tsx`, `BustRisk.tsx`, `GnarRating.tsx`                                                                                |
-| Bottom tab bar (5 tabs)         | **Done**        | `src/components/BottomNav.tsx` — Home · Clips · Challenge · Map · Me, Challenge as the raised centre action                                             |
-| Custom Mapbox style             | **In Progress** | Issue [#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191) — design + infra task, no code change needed                                   |
-| Crew challenges (3v3)           | **Planned**     | No code yet                                                                                                                                             |
-| Trick library                   | **Planned**     | No code yet                                                                                                                                             |
-| Tournaments                     | **Planned**     | No code yet                                                                                                                                             |
+| Feature                         | Status          | Evidence                                                                                                                                                                 |
+| ------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Spot tagging (geo-tagged map)   | **Done**        | `src/screens/MapPage.tsx`, `SpotDetailPage.tsx`, `src/components/map/*`, `src/services/spots.ts`, `e2e/map.spec.ts`, `rules-tests/spots.rules.test.ts`                   |
+| Spot ↔ game linkage             | **Done**        | `SpotDetailPage.tsx` challenge button navigates to `/challenge?spot=`, `SpotPreviewCard.tsx` mirrors the flow, `rules-tests/games-spotId.rules.test.ts`                  |
+| Add a Spot UX                   | **Done**        | `src/components/map/AddSpotSheet.tsx`                                                                                                                                    |
+| Spot filters (gnar / bust risk) | **Done**        | `src/components/map/SpotFilterBar.tsx`, `BustRisk.tsx`, `GnarRating.tsx`                                                                                                 |
+| Bottom tab bar (5 tabs)         | **Done**        | `src/components/BottomNav.tsx` — Home · Challenge · Me by default (Clips + Map tabs only when `VITE_FEATURE_EXTRAS_ENABLED=true`), Challenge as the raised centre action |
+| Custom Mapbox style             | **In Progress** | Issue [#191](https://github.com/myhuemungusD/SkateHubba-play/issues/191) — design + infra task, no code change needed                                                    |
+| Crew challenges (3v3)           | **Planned**     | No code yet                                                                                                                                                              |
+| Trick library                   | **Planned**     | No code yet                                                                                                                                                              |
+| Tournaments                     | **Planned**     | No code yet                                                                                                                                                              |
 
 **Phase 4 verdict:** Spots/Map sub-feature is shipped (map UI, CRUD, filters, spot↔game linkage, tab bar). Custom Mapbox style is a design/infra task in progress. Crew, library, and tournaments remain on the roadmap.
 
@@ -171,7 +173,7 @@ The honor-system path no longer resolves a "landed" claim instantly. It freezes 
 | Concern                         | Status   | Notes                                                                                                                                                                                                     |
 | ------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | TypeScript strict, no `any`     | **Done** | `tsc -b` green, lint enforced                                                                                                                                                                             |
-| Unit + component tests          | **Done** | 206 test files / 3,833 tests under `src/` (`npm run verify`, 2026-10-01), plus 53 rules-test files and 11 e2e specs                                                                                       |
+| Unit + component tests          | **Done** | 207 test files / 3,869 tests under `src/` (`npm run verify`, 2026-10-01), plus 53 rules-test files and 11 e2e specs                                                                                       |
 | 100% coverage on services/hooks | **Done** | Enforced by Vitest thresholds                                                                                                                                                                             |
 | Firestore rules unit tests      | **Done** | 53 files under `rules-tests/` covering every collection plus Storage, incl. red-team suites (closes prior gap T2). Runs on rules-touching PRs and before every deploy, not on every PR — see GAPS.md P2-4 |
 | E2E (Playwright)                | **Done** | 11 specs in `e2e/` — auth, game, forfeit, invite, map, clip upload, clip voting, onboarding, offline, notification deep-link, sign-up back-end state (closes prior gap T1)                                |

@@ -66,9 +66,9 @@ This means:
 /me             PlayerProfileScreen  (own profile — the "Me" tab)
 /record         → redirects to /me   (legacy deep links)
 /player/:uid    PlayerProfileScreen  (any user)
-/feed           FeedScreen           ("Clips" tab — wraps ClipsFeed)
-/map            MapPage              (skate spots — Mapbox; signed-in only)
-/spots/:id      SpotDetailPage       (signed-in only; signed-out visitors bounce to /)
+/feed           FeedScreen           ("Clips" tab — wraps ClipsFeed)            ┐ frozen: redirect to /lobby
+/map            MapPage              (skate spots — Mapbox; signed-in only)    │ (or / signed out) unless
+/spots/:id      SpotDetailPage       (signed-in only; signed-out bounce to /)  ┘ VITE_FEATURE_EXTRAS_ENABLED=true
 /settings       Settings
 /my-stats       MyStatsScreen        (owner-only analytics)
 /admin          AdminScreen          (admin-only moderation console)

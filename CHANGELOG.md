@@ -111,6 +111,10 @@ that work by area rather than listing every commit; the git history between
 
 ### Changed
 
+- **Feature freeze on the core Challenge loop.** The Map, Clips feed and
+  Verified Pro are hidden behind `VITE_FEATURE_EXTRAS_ENABLED` (default off):
+  their routes redirect to `/lobby`, and their nav tabs, badge and admin panel
+  are hidden. The landing-page map teaser is removed. ([#599](https://github.com/myhuemungusD/SkateHubba-play/pull/599))
 - Automated Firestore rules and index deploys in CI, with a daily freshness
   re-deploy, WIF auth, a PII gate, and auto-filed failure issues.
 - `src/services/games.ts` decomposed into `games.{create,match,judge,turns,mappers,subscriptions}.ts`;

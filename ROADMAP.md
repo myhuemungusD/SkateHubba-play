@@ -29,6 +29,8 @@ Released **v1.1.0**, live at [skatehubba.com](https://skatehubba.com).
 | Referee System                     | Shipped (v1.1.0)                                                          |
 | Binding community disputes         | Shipped post-v1.1.0 (`pendingReview` → `communityReview`)                 |
 
+**Feature freeze (Oct 2026, #599):** the Map, Clips feed and Verified Pro are built but hidden by default (`VITE_FEATURE_EXTRAS_ENABLED`) so the product ships only the core Challenge loop while the traction number below is measured.
+
 **The core loop is built.** Async games, video proof, push delivery, clips feed with vote-driven ranking, leaderboard, profiles, spot map, moderation — all in production. The open question is no longer _can we build it_. It is _do skaters use it_.
 
 ---
