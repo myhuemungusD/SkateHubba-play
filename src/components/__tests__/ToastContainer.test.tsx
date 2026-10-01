@@ -22,9 +22,11 @@ import { useNotifications } from "../../context/NotificationContext";
 describe("ToastContainer", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("returns null when there are no toasts", () => {
-    const { container } = render(<ToastContainer />);
-    expect(container.firstChild).toBeNull();
+  it("stays mounted as a live region even with no toasts (so the first toast lands in an already-present region)", () => {
+    render(<ToastContainer />);
+    const region = screen.getByRole("status");
+    expect(region).toBeInTheDocument();
+    expect(region).toBeEmptyDOMElement();
   });
 
   it("renders toasts when present", () => {
