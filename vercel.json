@@ -23,7 +23,9 @@
       "permanent": true
     },
     { "source": "/logonew.png", "destination": "/og-image.png", "permanent": true },
-    { "source": "/logoblack.png", "destination": "/favicon.ico", "permanent": true }
+    { "source": "/logoblack.png", "destination": "/favicon.ico", "permanent": true },
+    { "source": "/play", "destination": "/lobby", "permanent": false },
+    { "source": "/play/:path*", "destination": "/lobby", "permanent": false }
   ],
   "rewrites": [
     {
