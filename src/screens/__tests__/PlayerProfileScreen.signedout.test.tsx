@@ -48,15 +48,26 @@ describe("PlayerProfileScreen — signed-out visitor", () => {
 
   // ── Public content still renders ────────────────────
 
-  it("renders the shareable content: username, stance, verified-pro badge, stat tiles", () => {
+  it("renders the shareable content: username, stance, stat tiles", () => {
     render(<PlayerProfileScreen {...visitorProps} />);
     expect(screen.getByText("@sk8rboi")).toBeInTheDocument();
     expect(screen.getByText("goofy")).toBeInTheDocument();
-    expect(screen.getByTitle("Verified Pro")).toBeInTheDocument();
+    // Verified Pro is frozen by default (VITE_FEATURE_EXTRAS_ENABLED unset).
+    expect(screen.queryByTitle("Verified Pro")).not.toBeInTheDocument();
     // 10-3 clears the rated-games floor, so the public record is real.
     expect(screen.getByLabelText("Lifetime wins: 10")).toBeInTheDocument();
     expect(screen.getByLabelText("Lifetime losses: 3")).toBeInTheDocument();
     expect(screen.getByLabelText("Win rate: 77 percent")).toBeInTheDocument();
+  });
+
+  it("shows the verified-pro badge to visitors when extras are enabled", () => {
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
+    try {
+      render(<PlayerProfileScreen {...visitorProps} />);
+      expect(screen.getByTitle("Verified Pro")).toBeInTheDocument();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("labels Back for a visitor who has no lobby to return to", async () => {

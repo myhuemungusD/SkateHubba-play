@@ -4,6 +4,7 @@ import { AdminTabs, type AdminTab } from "./components/AdminTabs";
 import { VerifyProPanel } from "./components/VerifyProPanel";
 import { AwardsPanel } from "./components/AwardsPanel";
 import { ReportsPanel } from "./components/ReportsPanel";
+import { isExtrasEnabled } from "../../lib/featureFlags";
 
 interface Props {
   /** The signed-in admin. Passed to every service call that records who acted. */
@@ -24,7 +25,10 @@ interface Props {
  * panel showing what Firestore actually holds.
  */
 export function AdminScreen({ adminUid, onBack }: Props) {
-  const [tab, setTab] = useState<AdminTab>("verify");
+  // Verified Pro is frozen behind VITE_FEATURE_EXTRAS_ENABLED (default OFF);
+  // while frozen its grant/revoke panel is hidden and Awards opens first.
+  const verifyProEnabled = isExtrasEnabled();
+  const [tab, setTab] = useState<AdminTab>(verifyProEnabled ? "verify" : "awards");
 
   return (
     <div className="min-h-dvh overflow-y-auto bg-background pb-24">
@@ -46,8 +50,8 @@ export function AdminScreen({ adminUid, onBack }: Props) {
       </div>
 
       <div className="mx-auto max-w-lg px-5 pt-6">
-        <AdminTabs tab={tab} onChange={setTab} />
-        {tab === "verify" && <VerifyProPanel adminUid={adminUid} />}
+        <AdminTabs tab={tab} onChange={setTab} showVerifyPro={verifyProEnabled} />
+        {verifyProEnabled && tab === "verify" && <VerifyProPanel adminUid={adminUid} />}
         {tab === "awards" && <AwardsPanel />}
         {tab === "reports" && <ReportsPanel adminUid={adminUid} />}
       </div>

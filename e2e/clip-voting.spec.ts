@@ -26,6 +26,10 @@ import {
 } from "./helpers/emulator";
 import { signUpAndSetupProfile } from "./helpers/auth-flow";
 import { openClipsFeed } from "./helpers/lobby-nav";
+import { EXTRAS_ENABLED, EXTRAS_SKIP_REASON } from "./helpers/feature-flags";
+
+// /feed and the Clips tab are frozen (redirect to /lobby) unless the flag is on.
+test.skip(!EXTRAS_ENABLED, EXTRAS_SKIP_REASON);
 
 const VIEWER = { email: "viewer@test.com", password: "password123", username: "viewer1" };
 const AUTHOR = { email: "author@test.com", password: "password123", username: "tricklord" };

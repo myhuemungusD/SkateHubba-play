@@ -21,6 +21,7 @@ import { ProfileStatsGrid } from "./components/ProfileStatsGrid";
 import { SignUpToChallengeCta } from "./components/SignUpToChallengeCta";
 import { AddedSpotsPlaceholder } from "./components/AddedSpotsPlaceholder";
 import { WinStreakBanner } from "./components/WinStreakBanner";
+import { isExtrasEnabled } from "../../lib/featureFlags";
 
 /**
  * Streak length before the banner appears. A "1 win streak" is just a win —
@@ -347,7 +348,9 @@ export function PlayerProfileScreen({
         {/* Owner-only: advertising an unbuilt feature on someone else's public
             profile is noise to every visitor but the owner. AchievementsRibbon
             used to sit here too — see this file's docstring for why it doesn't. */}
-        {isOwnProfile && <AddedSpotsPlaceholder onAddSpot={onAddSpot ? handleAddSpot : undefined} />}
+        {isOwnProfile && isExtrasEnabled() && (
+          <AddedSpotsPlaceholder onAddSpot={onAddSpot ? handleAddSpot : undefined} />
+        )}
 
         {/* Both sections are derived from games, and game reads are gated on
             participation — a signed-out visitor can read none of them. The

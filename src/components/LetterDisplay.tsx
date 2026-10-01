@@ -1,4 +1,5 @@
 import { LETTERS } from "../utils/helpers";
+import { isExtrasEnabled } from "../lib/featureFlags";
 
 export function LetterDisplay({
   count,
@@ -18,6 +19,8 @@ export function LetterDisplay({
    */
   testId?: string;
 }) {
+  // Verified Pro shimmer is frozen with the other extras (src/lib/featureFlags.ts).
+  const showPro = isVerifiedPro === true && isExtrasEnabled();
   return (
     <div
       className={`flex flex-col items-center gap-2 px-4 py-3.5 rounded-2xl border transition-all duration-300 ease-smooth min-w-[88px] backdrop-blur-sm
@@ -27,7 +30,7 @@ export function LetterDisplay({
       data-letter-count={count}
     >
       <span
-        className={`font-body text-xs font-semibold tracking-wide ${isVerifiedPro ? "pro-username" : active ? "text-brand-orange" : "text-muted"}`}
+        className={`font-body text-xs font-semibold tracking-wide ${showPro ? "pro-username" : active ? "text-brand-orange" : "text-muted"}`}
       >
         {name}
       </span>

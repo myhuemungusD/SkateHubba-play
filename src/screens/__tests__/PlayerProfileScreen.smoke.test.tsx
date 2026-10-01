@@ -36,6 +36,7 @@ vi.mock("../../services/analytics", () => ({
 
 import { analytics, trackEvent } from "../../services/analytics";
 import { hashUid } from "../../utils/pii";
+import { withExtrasEnabled } from "../../__tests__/harness/featureFlags";
 const analyticsMock = vi.mocked(analytics);
 const trackEventMock = vi.mocked(trackEvent);
 
@@ -187,31 +188,42 @@ describe("PlayerProfileScreen — smoke (telemetry, share, placeholders)", () =>
     expect(screen.queryByTestId("achievements-ribbon")).not.toBeInTheDocument();
   });
 
-  it("renders the added-spots placeholder on the viewer's own profile", () => {
-    // Kept (unlike the ribbon) because its CTA is a real, working action —
-    // it opens the map's Add Spot sheet. Only the list below it is empty.
-    render(<PlayerProfileScreen {...props} />);
-    expect(screen.getByTestId("added-spots-placeholder")).toBeInTheDocument();
-  });
+  describe("added spots (Map extras enabled)", () => {
+    withExtrasEnabled();
 
-  it("routes ADD A SPOT to the caller's map navigation", async () => {
-    // The CTA used to render permanently disabled because the screen never
-    // passed `onAddSpot` down, even though the map/add-spot flow already
-    // existed. Guards the wiring, not just the markup.
-    const onAddSpot = vi.fn();
-    render(<PlayerProfileScreen {...props} onAddSpot={onAddSpot} />);
-    const cta = screen.getByRole("button", { name: /add a spot/i });
-    expect(cta).toBeEnabled();
-    await userEvent.click(cta);
-    expect(onAddSpot).toHaveBeenCalledTimes(1);
-    expect(trackEventMock).toHaveBeenCalledWith("profile_add_a_spot_tapped", {
-      uid: hashUid("me"),
+    it("renders the added-spots placeholder on the viewer's own profile", () => {
+      // Kept (unlike the ribbon) because its CTA is a real, working action —
+      // it opens the map's Add Spot sheet. Only the list below it is empty.
+      render(<PlayerProfileScreen {...props} />);
+      expect(screen.getByTestId("added-spots-placeholder")).toBeInTheDocument();
+    });
+
+    it("routes ADD A SPOT to the caller's map navigation", async () => {
+      // The CTA used to render permanently disabled because the screen never
+      // passed `onAddSpot` down, even though the map/add-spot flow already
+      // existed. Guards the wiring, not just the markup.
+      const onAddSpot = vi.fn();
+      render(<PlayerProfileScreen {...props} onAddSpot={onAddSpot} />);
+      const cta = screen.getByRole("button", { name: /add a spot/i });
+      expect(cta).toBeEnabled();
+      await userEvent.click(cta);
+      expect(onAddSpot).toHaveBeenCalledTimes(1);
+      expect(trackEventMock).toHaveBeenCalledWith("profile_add_a_spot_tapped", {
+        uid: hashUid("me"),
+      });
+    });
+
+    it("disables ADD A SPOT when the caller supplies no map navigation", () => {
+      render(<PlayerProfileScreen {...props} />);
+      expect(screen.getByRole("button", { name: /add a spot/i })).toBeDisabled();
     });
   });
 
-  it("disables ADD A SPOT when the caller supplies no map navigation", () => {
-    render(<PlayerProfileScreen {...props} />);
-    expect(screen.getByRole("button", { name: /add a spot/i })).toBeDisabled();
+  it("hides the added-spots CTA entirely while the Map is frozen (flag unset)", () => {
+    // Feature freeze: even with a wired onAddSpot, no Map entry point renders.
+    render(<PlayerProfileScreen {...props} onAddSpot={vi.fn()} />);
+    expect(screen.queryByTestId("added-spots-placeholder")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add a spot/i })).not.toBeInTheDocument();
   });
 
   it("hides both unbuilt-feature placeholders on another player's profile", () => {

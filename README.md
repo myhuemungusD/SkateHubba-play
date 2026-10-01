@@ -237,30 +237,40 @@ Copy `.env.example` to `.env.local` and fill in the values. The full template (w
 
 **Required**
 
-| Variable                            | Source                                                          |
-| ----------------------------------- | --------------------------------------------------------------- |
-| `VITE_FIREBASE_API_KEY`             | Firebase Console → Project Settings → General → Your Apps       |
-| `VITE_FIREBASE_AUTH_DOMAIN`         | "                                                               |
-| `VITE_FIREBASE_PROJECT_ID`          | "                                                               |
-| `VITE_FIREBASE_STORAGE_BUCKET`      | "                                                               |
-| `VITE_FIREBASE_MESSAGING_SENDER_ID` | "                                                               |
-| `VITE_FIREBASE_APP_ID`              | "                                                               |
-| `VITE_MAPBOX_TOKEN`                 | Mapbox Dashboard → Access Tokens (required for the `/map` page) |
+| Variable                            | Source                                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `VITE_FIREBASE_API_KEY`             | Firebase Console → Project Settings → General → Your Apps                                                                |
+| `VITE_FIREBASE_AUTH_DOMAIN`         | "                                                                                                                        |
+| `VITE_FIREBASE_PROJECT_ID`          | "                                                                                                                        |
+| `VITE_FIREBASE_STORAGE_BUCKET`      | "                                                                                                                        |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | "                                                                                                                        |
+| `VITE_FIREBASE_APP_ID`              | "                                                                                                                        |
+| `VITE_MAPBOX_TOKEN`                 | Mapbox Dashboard → Access Tokens (required for the `/map` page — only reachable when `VITE_FEATURE_EXTRAS_ENABLED=true`) |
 
 **Optional (recommended in production)**
 
-| Variable                       | Purpose                                                                      |
-| ------------------------------ | ---------------------------------------------------------------------------- |
-| `VITE_FIREBASE_MEASUREMENT_ID` | Firebase Analytics                                                           |
-| `VITE_FIREBASE_VAPID_KEY`      | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)    |
-| `VITE_RECAPTCHA_SITE_KEY`      | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                    |
-| `VITE_APPCHECK_ENABLED`        | App Check master switch; set to `true` to activate alongside the site key    |
-| `VITE_SENTRY_DSN`              | Sentry error tracking; without it, errors only appear in the browser console |
-| `VITE_POSTHOG_KEY`             | PostHog product analytics; consent-gated, omit to disable                    |
-| `VITE_POSTHOG_HOST`            | PostHog ingestion host; defaults to the US cloud when unset                  |
-| `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs              |
-| `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`  |
-| `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                 |
+| Variable                       | Purpose                                                                             |
+| ------------------------------ | ----------------------------------------------------------------------------------- |
+| `VITE_FIREBASE_MEASUREMENT_ID` | Firebase Analytics                                                                  |
+| `VITE_FIREBASE_VAPID_KEY`      | FCM web push (Firebase Console → Cloud Messaging → Web Push certificates)           |
+| `VITE_RECAPTCHA_SITE_KEY`      | App Check via reCAPTCHA v3 (blocks bot/API-abuse traffic)                           |
+| `VITE_APPCHECK_ENABLED`        | App Check master switch; set to `true` to activate alongside the site key           |
+| `VITE_SENTRY_DSN`              | Sentry error tracking; without it, errors only appear in the browser console        |
+| `VITE_POSTHOG_KEY`             | PostHog product analytics; consent-gated, omit to disable                           |
+| `VITE_POSTHOG_HOST`            | PostHog ingestion host; defaults to the US cloud when unset                         |
+| `VITE_APP_URL`                 | Production domain for Firebase email action links + invite URLs                     |
+| `VITE_MAPBOX_STYLE_URL`        | Custom Mapbox Studio style; falls back to `mapbox://styles/mapbox/dark-v11`         |
+| `VITE_USE_EMULATORS=true`      | Local-only — point the client at the Firebase emulator suite                        |
+| `VITE_FEATURE_EXTRAS_ENABLED`  | Feature-freeze switch for Map / Clips feed / Verified Pro — default OFF (see below) |
+
+**Feature freeze (`VITE_FEATURE_EXTRAS_ENABLED`)**
+
+The app is in a feature freeze focused on the core S.K.A.T.E. Challenge loop (lobby → challenge → record → game → result → rematch). The Map (`/map`, `/spots/:id`), the Clips feed (`/feed`) and Verified Pro are still in the codebase but hidden unless `VITE_FEATURE_EXTRAS_ENABLED` is the literal string `true`:
+
+- **Unset / anything else (default):** `/map`, `/spots/:id` and `/feed` redirect to `/lobby` (signed in) or `/` (signed out) instead of 404'ing; the Clips and Map bottom-nav tabs, the profile "Add a spot" CTA, the Verified Pro badge/shimmer and the admin Verify Pro panel are hidden.
+- **`true`:** everything renders exactly as before the freeze.
+
+To re-enable, set `VITE_FEATURE_EXTRAS_ENABLED=true` in Vercel → Project Settings → Environment Variables (or `.env.local`) and redeploy — `VITE_*` values are inlined at build time. The flag lives in [`src/lib/featureFlags.ts`](src/lib/featureFlags.ts). The landing-page Map teaser was removed outright (not gated) so mapbox-gl never loads on `/`.
 
 **Server-only (Vercel project env, never `VITE_`-prefixed — see `.env.example`)**
 

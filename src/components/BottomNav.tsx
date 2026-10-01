@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { useNavigationContext, screenToPath, type Screen } from "../context/NavigationContext";
 import { useNotifications } from "../context/NotificationContext";
 import { FilmIcon, HomeIcon, MapPinIcon, SkateboardIcon, UserIcon } from "./icons";
+import { isExtrasEnabled } from "../lib/featureFlags";
 
 /** Screens where the persistent bottom nav is rendered. */
 const NAV_VISIBLE_ON: ReadonlySet<Screen> = new Set(["lobby", "feed", "challenge", "map", "me"]);
@@ -22,6 +23,11 @@ interface NavItem {
    * the single creation action in the app.
    */
   primary?: true;
+  /**
+   * Frozen feature tab (Clips, Map). Only rendered when
+   * VITE_FEATURE_EXTRAS_ENABLED is "true" — see src/lib/featureFlags.ts.
+   */
+  extra?: true;
 }
 
 // Each tab is a navigation destination with a stable URL, so render it as an
@@ -36,9 +42,9 @@ interface NavItem {
 // claims it.
 const NAV_ITEMS: readonly NavItem[] = [
   { screen: "lobby", label: "Home", Icon: HomeIcon },
-  { screen: "feed", label: "Clips", Icon: FilmIcon },
+  { screen: "feed", label: "Clips", Icon: FilmIcon, extra: true },
   { screen: "challenge", label: "Challenge", Icon: SkateboardIcon, primary: true, tutorialId: "challenge-cta" },
-  { screen: "map", label: "Map", Icon: MapPinIcon },
+  { screen: "map", label: "Map", Icon: MapPinIcon, extra: true },
   { screen: "me", label: "Me", Icon: UserIcon, tutorialId: "record-button" },
 ];
 
@@ -58,11 +64,16 @@ export function BottomNav() {
 
   if (!NAV_VISIBLE_ON.has(nav.screen)) return null;
 
+  // Feature freeze: drop the Clips + Map tabs unless extras are enabled,
+  // leaving Home · Challenge · Me around the raised Challenge action.
+  const extrasEnabled = isExtrasEnabled();
+  const items = extrasEnabled ? NAV_ITEMS : NAV_ITEMS.filter((item) => !item.extra);
+
   return (
     <nav aria-label="Primary navigation" className="fixed bottom-0 left-0 right-0 z-40 px-4 pb-safe">
       <div className="max-w-[430px] mx-auto glass rounded-2xl shadow-glass">
         <ul className="flex items-stretch justify-around px-2 py-2">
-          {NAV_ITEMS.map((item) => {
+          {items.map((item) => {
             const active = nav.screen === item.screen;
             const path = screenToPath(item.screen);
             // Badge only on Home, and only when the user is somewhere else —
