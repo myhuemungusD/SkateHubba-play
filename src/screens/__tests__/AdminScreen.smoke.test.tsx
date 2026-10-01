@@ -29,6 +29,7 @@ vi.mock("../../services/logger", () => ({
 
 import { AdminScreen } from "../AdminScreen";
 import { NotificationProvider } from "../../context/NotificationContext";
+import { withExtrasEnabled } from "../../__tests__/harness/featureFlags";
 
 function Wrapper({ children }: { children: ReactNode }) {
   return <NotificationProvider uid="admin1">{children}</NotificationProvider>;
@@ -40,6 +41,9 @@ beforeEach(() => {
 });
 
 describe("AdminScreen", () => {
+  // Verify Pro is a frozen extra; these tests cover the pre-freeze console.
+  withExtrasEnabled();
+
   it("opens on the Verify Pro tab", () => {
     render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
 
@@ -71,5 +75,17 @@ describe("AdminScreen", () => {
     await user.click(screen.getByRole("button", { name: "Back to lobby" }));
 
     expect(onBack).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AdminScreen — feature freeze (VITE_FEATURE_EXTRAS_ENABLED unset, the default)", () => {
+  it("hides the Verify Pro tab and panel and opens on Awards", () => {
+    render(<AdminScreen adminUid="admin1" onBack={vi.fn()} />, { wrapper: Wrapper });
+
+    expect(screen.queryByRole("button", { name: "VERIFY PRO" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Verify Pro" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "AWARDS" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("region", { name: "Awards" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "REPORTS" })).toBeInTheDocument();
   });
 });

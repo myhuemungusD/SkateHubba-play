@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route, useLocation } from "react-router";
 import { BottomNav } from "../BottomNav";
 import type { Screen } from "../../context/NavigationContext";
+import { withExtrasEnabled } from "../../__tests__/harness/featureFlags";
 
 let mockScreen: Screen = "lobby";
 let mockUnreadCount = 0;
@@ -54,6 +55,10 @@ beforeEach(() => {
 });
 
 describe("BottomNav", () => {
+  // Pre-freeze five-tab layout. The default (flag unset) layout is covered
+  // by the "feature freeze" block at the bottom of this file.
+  withExtrasEnabled();
+
   it("renders all five primary tabs on the lobby screen", () => {
     renderNav("/lobby");
     expect(screen.getByRole("navigation", { name: /primary navigation/i })).toBeInTheDocument();
@@ -186,5 +191,21 @@ describe("BottomNav", () => {
     renderNav("/lobby");
     expect(screen.getByRole("link", { name: "Me" })).toHaveAttribute("data-tutorial", "record-button");
     expect(screen.getByRole("link", { name: "Challenge" })).toHaveAttribute("data-tutorial", "challenge-cta");
+  });
+});
+
+describe("BottomNav — feature freeze (VITE_FEATURE_EXTRAS_ENABLED unset, the default)", () => {
+  it("renders only Home, Challenge and Me — Challenge stays the centre action", () => {
+    renderNav("/lobby");
+    const labels = screen.getAllByRole("link").map((el) => el.getAttribute("aria-label"));
+    expect(labels).toEqual(["Home", "Challenge", "Me"]);
+    expect(screen.queryByRole("link", { name: "Clips" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Map" })).not.toBeInTheDocument();
+  });
+
+  it("keeps no link to /feed or /map anywhere in the bar", () => {
+    renderNav("/lobby");
+    const hrefs = screen.getAllByRole("link").map((el) => el.getAttribute("href"));
+    expect(hrefs).toEqual(["/lobby", "/challenge", "/me"]);
   });
 });

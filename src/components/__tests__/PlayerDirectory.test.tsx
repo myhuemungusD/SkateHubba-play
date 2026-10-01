@@ -143,11 +143,13 @@ describe("PlayerDirectory", () => {
     expect(screen.getByText(/Regular · No games yet/)).toBeInTheDocument();
   });
 
-  it("marks verified pros with the pro username treatment", () => {
+  it("marks verified pros with the pro username treatment (extras enabled)", () => {
+    vi.stubEnv("VITE_FEATURE_EXTRAS_ENABLED", "true");
     render(
       <PlayerDirectory {...base} players={[player({ uid: "u2", username: "pro_skater", isVerifiedPro: true })]} />,
     );
 
     expect(screen.getByTitle("Verified Pro")).toBeInTheDocument();
+    vi.unstubAllEnvs();
   });
 });

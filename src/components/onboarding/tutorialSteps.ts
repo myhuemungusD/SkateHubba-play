@@ -72,7 +72,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
   {
     id: "celebrate",
     title: "you're set",
-    bubble: "clean lands hit the feed. catch you out there.",
+    bubble: "go land something. catch you out there.",
     skipMessage: "saved as a draft.",
     primaryCtaLabel: "let's skate",
     isFinal: true,

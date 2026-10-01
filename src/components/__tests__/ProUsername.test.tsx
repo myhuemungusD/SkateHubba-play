@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { ProUsername } from "../ProUsername";
+import { withExtrasEnabled } from "../../__tests__/harness/featureFlags";
 
 describe("ProUsername", () => {
+  // Pre-freeze rendering; the frozen default is covered below.
+  withExtrasEnabled();
+
   it("renders username with @ prefix", () => {
     render(<ProUsername username="mikewhite" />);
     expect(screen.getByText(/@mikewhite/)).toBeInTheDocument();
@@ -32,5 +36,14 @@ describe("ProUsername", () => {
     const span = container.firstElementChild;
     expect(span?.className).toContain("font-display");
     expect(span?.className).toContain("text-xl");
+  });
+});
+
+describe("ProUsername — feature freeze (VITE_FEATURE_EXTRAS_ENABLED unset, the default)", () => {
+  it("renders a verified pro as a plain username: no gold class, no badge", () => {
+    const { container } = render(<ProUsername username="mikewhite" isVerifiedPro={true} />);
+    expect(screen.getByText(/@mikewhite/)).toBeInTheDocument();
+    expect(container.querySelector(".pro-username")).toBeNull();
+    expect(screen.queryByTitle("Verified Pro")).toBeNull();
   });
 });

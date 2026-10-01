@@ -29,6 +29,9 @@ interface ImportMetaEnv {
    *  declared here so direct `import.meta.env.VITE_APPCHECK_ENABLED` reads
    *  remain typed. Keep in sync with src/lib/env.ts. */
   readonly VITE_APPCHECK_ENABLED?: string;
+  /** Feature-freeze switch: "true" shows Map / Clips feed / Verified Pro.
+   *  Unset (default) hides them. Read via src/lib/featureFlags.ts. */
+  readonly VITE_FEATURE_EXTRAS_ENABLED?: string;
   readonly VITE_MAPBOX_TOKEN?: string;
   /** Optional Mapbox Studio style URL. Falls back to mapbox://styles/mapbox/dark-v11. */
   readonly VITE_MAPBOX_STYLE_URL?: string;
