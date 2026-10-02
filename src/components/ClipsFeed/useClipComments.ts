@@ -7,7 +7,7 @@
  * partially-migrated one.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CLIP_COMMENT_MAX_LENGTH,
   createClipComment,
@@ -25,7 +25,11 @@ import { parseFirebaseError } from "../../utils/helpers";
  */
 export const COMMENT_MAX_LENGTH = CLIP_COMMENT_MAX_LENGTH;
 
+/** Shared empty set so the default argument keeps a stable identity. */
+const NO_BLOCKED_UIDS: ReadonlySet<string> = new Set<string>();
+
 export interface ClipCommentsController {
+  /** Comments the viewer may see — blocked authors already filtered out. */
   comments: ClipComment[];
   loading: boolean;
   error: string;
@@ -48,7 +52,20 @@ export function isPostableComment(draft: string): boolean {
   return trimmed.length > 0 && trimmed.length <= COMMENT_MAX_LENGTH;
 }
 
-export function useClipComments(clipId: string, viewerUid: string, viewerUsername: string): ClipCommentsController {
+/**
+ * `blockedUids` filters the rendered thread the same way the feed's
+ * `visibleClips` filters the clip pool: blocking is a viewer-side decision, so
+ * the fetched list stays intact and only what renders is narrowed. Comments
+ * are not re-fetched when the block list changes — the filter is derived, so a
+ * block made elsewhere in the app takes effect on the next snapshot without a
+ * round-trip.
+ */
+export function useClipComments(
+  clipId: string,
+  viewerUid: string,
+  viewerUsername: string,
+  blockedUids: ReadonlySet<string> = NO_BLOCKED_UIDS,
+): ClipCommentsController {
   const [comments, setComments] = useState<ClipComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -87,6 +104,13 @@ export function useClipComments(clipId: string, viewerUid: string, viewerUsernam
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // Own comments always survive the filter: a viewer can't block themselves,
+  // and dropping their own freshly posted comment would read as a failed post.
+  const visibleComments = useMemo(
+    () => comments.filter((c) => c.userId === viewerUid || !blockedUids.has(c.userId)),
+    [comments, blockedUids, viewerUid],
+  );
 
   const canSubmit = isPostableComment(draft) && !posting;
 
@@ -137,7 +161,7 @@ export function useClipComments(clipId: string, viewerUid: string, viewerUsernam
   );
 
   return {
-    comments,
+    comments: visibleComments,
     loading,
     error,
     draft,

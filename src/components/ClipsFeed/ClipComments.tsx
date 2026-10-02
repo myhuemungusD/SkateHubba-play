@@ -14,6 +14,9 @@ export interface ClipCommentsProps {
    *  aren't independently reportable — reporting the clip is the existing,
    *  moderator-actionable path). Omitted entirely hides the control. */
   onReport?: () => void;
+  /** Uids the viewer has blocked. Their comments are filtered out of the
+   *  thread, matching how the feed drops their clips. */
+  blockedUids?: ReadonlySet<string>;
 }
 
 /**
@@ -24,8 +27,8 @@ export interface ClipCommentsProps {
  * — off screen. Focus is trapped while it is open (`useFocusTrap`), and it
  * closes on backdrop tap or Escape, matching ReportModal.
  */
-export function ClipComments({ clip, viewerUid, viewerUsername, onClose, onReport }: ClipCommentsProps) {
-  const c = useClipComments(clip.id, viewerUid, viewerUsername);
+export function ClipComments({ clip, viewerUid, viewerUsername, onClose, onReport, blockedUids }: ClipCommentsProps) {
+  const c = useClipComments(clip.id, viewerUid, viewerUsername, blockedUids);
   const panelRef = useRef<HTMLDivElement>(null);
   useFocusTrap(panelRef);
 

@@ -316,6 +316,9 @@ export function useClipsFeedController(viewerUid: string) {
 
   return {
     sort,
+    // Exposed so the comment sheet can filter blocked authors out of a thread
+    // without opening a second `subscribeToBlockedUsers` listener.
+    blockedUids,
     loading,
     error,
     errorCode,

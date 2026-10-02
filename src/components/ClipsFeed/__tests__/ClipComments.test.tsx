@@ -166,6 +166,28 @@ describe("ClipComments", () => {
     expect(onReport).toHaveBeenCalledTimes(1);
   });
 
+  it("leaves a blocked author's comment out of the rendered thread", async () => {
+    mockFetch.mockResolvedValueOnce({
+      comments: [
+        comment({ id: "blocked", userId: "troll", username: "troll", text: "nope" }),
+        comment({ text: "Clean." }),
+      ],
+      cursor: null,
+    });
+    render(
+      <ClipComments
+        clip={clip}
+        viewerUid="me"
+        viewerUsername="viewer"
+        onClose={vi.fn()}
+        blockedUids={new Set(["troll"])}
+      />,
+    );
+
+    expect(await screen.findByText("Clean.")).toBeInTheDocument();
+    expect(screen.queryByText("nope")).not.toBeInTheDocument();
+  });
+
   it("closes on the CLOSE control and on Escape", async () => {
     const user = userEvent.setup();
     const { onClose } = renderSheet();
