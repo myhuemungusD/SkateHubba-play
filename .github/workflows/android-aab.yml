@@ -86,7 +86,7 @@ jobs:
           REQUIRE_SW_CONFIG: '1'
       - name: Sync Capacitor
         run: npx cap sync android
-      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -94,7 +94,7 @@ jobs:
         # The action's historic default included the retired SDK package `tools`.
         # Request only the current platform tools; Gradle resolves the platform
         # and build-tools versions declared by the Android project.
-        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
         with:
           packages: platform-tools
       - name: Decode keystore
@@ -148,7 +148,7 @@ jobs:
       # built above via the upload-only fastlane lane (no second Gradle run),
       # so the artifact attached to the workflow and the one on the internal
       # track are byte-identical.
-      - uses: ruby/setup-ruby@e5517072e87f198d9533967ae13d97c11b604005 # v1.99.0
+      - uses: ruby/setup-ruby@a0102e0972be65f351c307e2d64b9314a57c8073 # v1.324.0
         if: inputs.upload_to_play == true
         with:
           ruby-version: '3.3'
