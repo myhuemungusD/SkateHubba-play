@@ -20,6 +20,10 @@ function mount() {
   return renderHook(() => useClipComments("c1", "me", "viewer"));
 }
 
+function mountWithBlocked(blocked: ReadonlySet<string>) {
+  return renderHook(() => useClipComments("c1", "me", "viewer", blocked));
+}
+
 beforeEach(resetClipCommentsMocks);
 
 describe("isPostableComment", () => {
@@ -94,6 +98,59 @@ describe("useClipComments", () => {
       await pending;
     });
     expect(result.current.deletingId).toBeNull();
+  });
+
+  it("hides comments by blocked authors while keeping the rest of the thread", async () => {
+    mockFetch.mockResolvedValueOnce({
+      comments: [
+        comment({ id: "blocked", userId: "troll", username: "troll", text: "nope" }),
+        comment({ id: "ok", userId: "p2", username: "bob", text: "Clean." }),
+      ],
+      cursor: null,
+    });
+
+    const { result } = mountWithBlocked(new Set(["troll"]));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.comments.map((c) => c.id)).toEqual(["ok"]);
+  });
+
+  it("reads as an empty thread when every comment is by a blocked author", async () => {
+    mockFetch.mockResolvedValueOnce({
+      comments: [comment({ id: "blocked", userId: "troll", username: "troll" })],
+      cursor: null,
+    });
+
+    const { result } = mountWithBlocked(new Set(["troll"]));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.comments).toHaveLength(0);
+  });
+
+  it("never filters the viewer's own comment, even if their uid is in the block set", async () => {
+    mockFetch.mockResolvedValueOnce({ comments: [comment({ id: "mine" })], cursor: null });
+
+    const { result } = mountWithBlocked(new Set(["me"]));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.comments.map((c) => c.id)).toEqual(["mine"]);
+  });
+
+  it("applies a later block without refetching the thread", async () => {
+    mockFetch.mockResolvedValueOnce({
+      comments: [comment({ id: "theirs", userId: "troll", username: "troll" })],
+      cursor: null,
+    });
+
+    const { result, rerender } = renderHook(({ blocked }) => useClipComments("c1", "me", "viewer", blocked), {
+      initialProps: { blocked: new Set<string>() as ReadonlySet<string> },
+    });
+    await waitFor(() => expect(result.current.comments).toHaveLength(1));
+
+    rerender({ blocked: new Set(["troll"]) as ReadonlySet<string> });
+
+    expect(result.current.comments).toHaveLength(0);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("reload refetches the thread", async () => {

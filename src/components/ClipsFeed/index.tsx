@@ -113,6 +113,7 @@ export function ClipsFeed({ profile, onViewPlayer, onChallengeUser }: ClipsFeedP
             clip={commentsTarget}
             viewerUid={profile.uid}
             viewerUsername={profile.username}
+            blockedUids={c.blockedUids}
             onClose={() => setCommentsTarget(null)}
             onReport={() => {
               // Close the sheet first — ReportModal shares the same fixed
